@@ -1,6 +1,6 @@
 use std::{any::Any, io::Read};
 
-use crate::{battle, replayer, rom, save, session, shadow};
+use crate::{battle, replayer, rom, session, shadow};
 
 mod bn1;
 mod bn2;
@@ -287,15 +287,15 @@ where
     fn expected_crc32(&self) -> u32;
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(
         &self,
         _rom: &[u8],
         _wram: &[u8],
         _overrides: &rom::Overrides,
-    ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error>;
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error>;
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         &[][..]
     }
 }

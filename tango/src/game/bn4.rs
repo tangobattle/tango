@@ -1,6 +1,4 @@
 mod hooks;
-mod rom;
-mod save;
 
 use crate::game;
 
@@ -34,23 +32,24 @@ impl game::Game for EXE4RSImpl {
         &hooks::B4WJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != save::Variant::RedSun
-            || (game_info.region != save::Region::JP && game_info.region != save::Region::Any)
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun
+            || (game_info.region != tango_dataview::game::bn4::save::Region::JP
+                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::RedSun,
+            tango_dataview::game::bn4::save::GameInfo {
+                region: tango_dataview::game::bn4::save::Region::JP,
+                variant: tango_dataview::game::bn4::save::Variant::RedSun,
             },
         )?))
     }
@@ -60,62 +59,69 @@ impl game::Game for EXE4RSImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::B4WJ_01,
-            overrides
-                .language
-                .as_ref()
-                .and_then(|lang| rom::patch_cards::for_language(lang))
-                .unwrap_or(&rom::patch_cards::JA_PATCH_CARDS),
-            overrides
-                .charset
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
-            rom.to_vec(),
-            wram.to_vec(),
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn4::rom::Assets::new(
+                &tango_dataview::game::bn4::rom::B4WJ_01,
+                overrides
+                    .language
+                    .as_ref()
+                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
+                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::JA_PATCH_CARDS),
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn4::rom::JA_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
+            overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/dark_hp_997_rs_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_999_rs_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_1000_rs_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+            static ref DARK_HP_997_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/dark_hp_997_rs_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_999_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_999_rs_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_1000_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_1000_rs_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> = vec![
                 (
                     "dark-hp-997",
-                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*DARK_HP_997_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-999",
-                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_999_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-1000",
-                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_1000_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
             ];
         }
@@ -151,23 +157,24 @@ impl game::Game for EXE4BMImpl {
         &hooks::B4BJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != save::Variant::BlueMoon
-            || (game_info.region != save::Region::JP && game_info.region != save::Region::Any)
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon
+            || (game_info.region != tango_dataview::game::bn4::save::Region::JP
+                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::BlueMoon,
+            tango_dataview::game::bn4::save::GameInfo {
+                region: tango_dataview::game::bn4::save::Region::JP,
+                variant: tango_dataview::game::bn4::save::Variant::BlueMoon,
             },
         )?))
     }
@@ -177,62 +184,69 @@ impl game::Game for EXE4BMImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::B4BJ_01,
-            overrides
-                .language
-                .as_ref()
-                .and_then(|lang| rom::patch_cards::for_language(lang))
-                .unwrap_or(&rom::patch_cards::JA_PATCH_CARDS),
-            overrides
-                .charset
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
-            rom.to_vec(),
-            wram.to_vec(),
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn4::rom::Assets::new(
+                &tango_dataview::game::bn4::rom::B4BJ_01,
+                overrides
+                    .language
+                    .as_ref()
+                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
+                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::JA_PATCH_CARDS),
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn4::rom::JA_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
+            overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/dark_hp_997_bm_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_999_bm_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_1000_bm_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+            static ref DARK_HP_997_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/dark_hp_997_bm_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_999_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_999_bm_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_1000_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_1000_bm_jp.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::JP,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> = vec![
                 (
                     "dark-hp-997",
-                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*DARK_HP_997_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-999",
-                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_999_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-1000",
-                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_1000_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
             ];
         }
@@ -268,23 +282,24 @@ impl game::Game for BN4RSImpl {
         &hooks::B4WE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != save::Variant::RedSun
-            || (game_info.region != save::Region::US && game_info.region != save::Region::Any)
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun
+            || (game_info.region != tango_dataview::game::bn4::save::Region::US
+                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::RedSun,
+            tango_dataview::game::bn4::save::GameInfo {
+                region: tango_dataview::game::bn4::save::Region::US,
+                variant: tango_dataview::game::bn4::save::Variant::RedSun,
             },
         )?))
     }
@@ -294,62 +309,69 @@ impl game::Game for BN4RSImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::B4WE_00,
-            overrides
-                .language
-                .as_ref()
-                .and_then(|lang| rom::patch_cards::for_language(lang))
-                .unwrap_or(&rom::patch_cards::EN_PATCH_CARDS),
-            overrides
-                .charset
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
-            rom.to_vec(),
-            wram.to_vec(),
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn4::rom::Assets::new(
+                &tango_dataview::game::bn4::rom::B4WE_00,
+                overrides
+                    .language
+                    .as_ref()
+                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
+                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::EN_PATCH_CARDS),
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn4::rom::EN_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
+            overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/dark_hp_997_rs_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_999_rs_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_1000_rs_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::RedSun
-                }
-            )
-            .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+            static ref DARK_HP_997_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/dark_hp_997_rs_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_999_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_999_rs_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_1000_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_1000_rs_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                    }
+                )
+                .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> = vec![
                 (
                     "dark-hp-997",
-                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*DARK_HP_997_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-999",
-                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_999_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-1000",
-                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_1000_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
             ];
         }
@@ -385,23 +407,24 @@ impl game::Game for BN4BMImpl {
         &hooks::B4BE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != save::Variant::BlueMoon
-            || (game_info.region != save::Region::US && game_info.region != save::Region::Any)
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon
+            || (game_info.region != tango_dataview::game::bn4::save::Region::US
+                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::BlueMoon,
+            tango_dataview::game::bn4::save::GameInfo {
+                region: tango_dataview::game::bn4::save::Region::US,
+                variant: tango_dataview::game::bn4::save::Variant::BlueMoon,
             },
         )?))
     }
@@ -411,62 +434,69 @@ impl game::Game for BN4BMImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::B4BE_00,
-            overrides
-                .language
-                .as_ref()
-                .and_then(|lang| rom::patch_cards::for_language(lang))
-                .unwrap_or(&rom::patch_cards::EN_PATCH_CARDS),
-            overrides
-                .charset
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
-            rom.to_vec(),
-            wram.to_vec(),
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn4::rom::Assets::new(
+                &tango_dataview::game::bn4::rom::B4BE_00,
+                overrides
+                    .language
+                    .as_ref()
+                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
+                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::EN_PATCH_CARDS),
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn4::rom::EN_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
+            overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/dark_hp_997_bm_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::BlueMoon
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_999_bm_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::BlueMoon
-                }
-            )
-            .unwrap();
-            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
-                include_bytes!("bn4/save/light_hp_1000_bm_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::BlueMoon
-                }
-            )
-            .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+            static ref DARK_HP_997_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/dark_hp_997_bm_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_999_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_999_bm_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
+                    }
+                )
+                .unwrap();
+            static ref LIGHT_HP_1000_SAVE: tango_dataview::game::bn4::save::Save =
+                tango_dataview::game::bn4::save::Save::from_wram(
+                    include_bytes!("bn4/save/light_hp_1000_bm_us.raw"),
+                    tango_dataview::game::bn4::save::GameInfo {
+                        region: tango_dataview::game::bn4::save::Region::US,
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
+                    }
+                )
+                .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> = vec![
                 (
                     "dark-hp-997",
-                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*DARK_HP_997_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-999",
-                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_999_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
                 (
                     "light-hp-1000",
-                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                    &*LIGHT_HP_1000_SAVE as &(dyn tango_dataview::save::Save + Send + Sync)
                 ),
             ];
         }

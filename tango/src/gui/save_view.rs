@@ -6,7 +6,7 @@ mod patch_cards_view;
 
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 #[derive(PartialEq, Clone)]
 enum Tab {
@@ -45,8 +45,8 @@ pub fn show(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    save: &Box<dyn save::Save + Send + Sync>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    save: &Box<dyn tango_dataview::save::Save + Send + Sync>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
     prefer_vertical: bool,
 ) {

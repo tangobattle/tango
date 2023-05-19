@@ -1,7 +1,7 @@
 use fluent_templates::Loader;
 use itertools::Itertools;
 
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 pub struct State {
     rendered_navicust_cache: Option<(image::RgbaImage, ComposedNavicust, egui::TextureHandle)>,
@@ -15,41 +15,41 @@ impl State {
     }
 }
 
-fn navicust_part_colors(color: &rom::NavicustPartColor) -> (image::Rgba<u8>, image::Rgba<u8>) {
+fn navicust_part_colors(color: &tango_dataview::rom::NavicustPartColor) -> (image::Rgba<u8>, image::Rgba<u8>) {
     match color {
-        rom::NavicustPartColor::Red => (
+        tango_dataview::rom::NavicustPartColor::Red => (
             image::Rgba([0xde, 0x10, 0x00, 0xff]),
             image::Rgba([0xbd, 0x00, 0x00, 0xff]),
         ),
-        rom::NavicustPartColor::Pink => (
+        tango_dataview::rom::NavicustPartColor::Pink => (
             image::Rgba([0xde, 0x8c, 0xc6, 0xff]),
             image::Rgba([0xbd, 0x6b, 0xa5, 0xff]),
         ),
-        rom::NavicustPartColor::Yellow => (
+        tango_dataview::rom::NavicustPartColor::Yellow => (
             image::Rgba([0xde, 0xde, 0x00, 0xff]),
             image::Rgba([0xbd, 0xbd, 0x00, 0xff]),
         ),
-        rom::NavicustPartColor::Green => (
+        tango_dataview::rom::NavicustPartColor::Green => (
             image::Rgba([0x18, 0xc6, 0x00, 0xff]),
             image::Rgba([0x00, 0xa5, 0x00, 0xff]),
         ),
-        rom::NavicustPartColor::Blue => (
+        tango_dataview::rom::NavicustPartColor::Blue => (
             image::Rgba([0x29, 0x84, 0xde, 0xff]),
             image::Rgba([0x08, 0x60, 0xb8, 0xff]),
         ),
-        rom::NavicustPartColor::White => (
+        tango_dataview::rom::NavicustPartColor::White => (
             image::Rgba([0xde, 0xde, 0xde, 0xff]),
             image::Rgba([0xbd, 0xbd, 0xbd, 0xff]),
         ),
-        rom::NavicustPartColor::Orange => (
+        tango_dataview::rom::NavicustPartColor::Orange => (
             image::Rgba([0xde, 0x7b, 0x00, 0xff]),
             image::Rgba([0xbd, 0x5a, 0x00, 0xff]),
         ),
-        rom::NavicustPartColor::Purple => (
+        tango_dataview::rom::NavicustPartColor::Purple => (
             image::Rgba([0x94, 0x00, 0xce, 0xff]),
             image::Rgba([0x73, 0x00, 0xad, 0xff]),
         ),
-        rom::NavicustPartColor::Gray => (
+        tango_dataview::rom::NavicustPartColor::Gray => (
             image::Rgba([0x84, 0x84, 0x84, 0xff]),
             image::Rgba([0x63, 0x63, 0x63, 0xff]),
         ),
@@ -61,7 +61,7 @@ fn show_part_name(
     name: egui::RichText,
     description: egui::RichText,
     is_enabled: bool,
-    color: &rom::NavicustPartColor,
+    color: &tango_dataview::rom::NavicustPartColor,
 ) {
     egui::Frame::none()
         .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
@@ -79,7 +79,11 @@ fn show_part_name(
         .on_hover_text(description);
 }
 
-fn ncp_bitmap<'a>(info: &'a Box<dyn rom::NavicustPart + 'a>, compressed: bool, rot: u8) -> rom::NavicustBitmap {
+fn ncp_bitmap<'a>(
+    info: &'a Box<dyn tango_dataview::rom::NavicustPart + 'a>,
+    compressed: bool,
+    rot: u8,
+) -> tango_dataview::rom::NavicustBitmap {
     let mut bitmap = if compressed {
         info.compressed_bitmap()
     } else {
@@ -105,8 +109,8 @@ fn ncp_bitmap<'a>(info: &'a Box<dyn rom::NavicustPart + 'a>, compressed: bool, r
 type ComposedNavicust = image::ImageBuffer<image::LumaA<u8>, Vec<u8>>;
 
 fn compose_navicust<'a>(
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> ComposedNavicust {
     let mut composed = image::ImageBuffer::new(navicust_view.width() as u32, navicust_view.height() as u32);
     for i in 0..navicust_view.count() {
@@ -156,8 +160,8 @@ const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff
 
 fn render_navicust<'a>(
     composed: &ComposedNavicust,
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
     raw_font: &[u8],
 ) -> image::RgbaImage {
     let body = render_navicust_body(composed, navicust_view, assets);
@@ -218,9 +222,9 @@ fn render_navicust<'a>(
 }
 
 fn gather_ncp_colors<'a>(
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
-) -> Vec<rom::NavicustPartColor> {
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
+) -> Vec<tango_dataview::rom::NavicustPartColor> {
     (0..navicust_view.count())
         .flat_map(|i| {
             let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
@@ -247,7 +251,7 @@ fn gather_ncp_colors<'a>(
         .collect::<Vec<_>>()
 }
 
-fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -> image::RgbaImage {
+fn render_navicust_color_bar3<'a>(extra_color: Option<tango_dataview::rom::NavicustPartColor>) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE / 4.0;
 
     let mut pixmap = tiny_skia::Pixmap::new(
@@ -285,9 +289,9 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
     let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
 
     for (i, color) in [
-        Some(rom::NavicustPartColor::White),
-        Some(rom::NavicustPartColor::Pink),
-        Some(rom::NavicustPartColor::Yellow),
+        Some(tango_dataview::rom::NavicustPartColor::White),
+        Some(tango_dataview::rom::NavicustPartColor::Pink),
+        Some(tango_dataview::rom::NavicustPartColor::Yellow),
         extra_color,
     ]
     .into_iter()
@@ -315,8 +319,8 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
 }
 
 fn render_navicust_color_bar456<'a>(
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
 
@@ -409,8 +413,8 @@ fn render_navicust_color_bar456<'a>(
 
 fn render_navicust_body<'a>(
     composed: &ComposedNavicust,
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
     let mut pixmap = tiny_skia::Pixmap::new(
         (composed.width() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
@@ -672,8 +676,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
     prefer_vertical: bool,
 ) {

@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 pub struct State {}
 
@@ -34,8 +34,8 @@ pub fn show_patch_card4s<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card4s_view: &Box<dyn save::PatchCard4sView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    patch_card4s_view: &Box<dyn tango_dataview::save::PatchCard4sView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
     ui.horizontal(|ui| {
@@ -142,8 +142,8 @@ pub fn show_patch_card56s<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card56s_view: &Box<dyn save::PatchCard56sView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    patch_card56s_view: &Box<dyn tango_dataview::save::PatchCard56sView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
     let items = (0..patch_card56s_view.count())
@@ -284,12 +284,12 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_cards_view: &save::PatchCardsView,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    patch_cards_view: &tango_dataview::save::PatchCardsView,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
     match patch_cards_view {
-        save::PatchCardsView::PatchCard4s(patch_card4s_view) => show_patch_card4s(
+        tango_dataview::save::PatchCardsView::PatchCard4s(patch_card4s_view) => show_patch_card4s(
             ui,
             clipboard,
             font_families,
@@ -299,7 +299,7 @@ pub fn show<'a>(
             assets,
             state,
         ),
-        save::PatchCardsView::PatchCard56s(patch_card56s_view) => show_patch_card56s(
+        tango_dataview::save::PatchCardsView::PatchCard56s(patch_card56s_view) => show_patch_card56s(
             ui,
             clipboard,
             font_families,

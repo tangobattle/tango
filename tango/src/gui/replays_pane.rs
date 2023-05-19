@@ -1,16 +1,16 @@
 use fluent_templates::Loader;
 
-use crate::{audio, game, gui, i18n, patch, replay, rom, save, scanner, session, stats};
+use crate::{audio, game, gui, i18n, patch, replay, rom, scanner, session, stats};
 
 struct Selection {
     path: std::path::PathBuf,
     game: &'static (dyn game::Game + Send + Sync),
     replay: replay::Replay,
-    save: Box<dyn save::Save + Send + Sync>,
+    save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
     patch: Option<(String, semver::Version, patch::Version)>,
-    assets: Option<Box<dyn rom::Assets + Send + Sync>>,
+    assets: Option<Box<dyn tango_dataview::rom::Assets + Send + Sync>>,
     save_view: gui::save_view::State,
 }
 

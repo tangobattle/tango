@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, replay, replayer, rom, save, stats, video};
+use crate::{audio, battle, config, game, net, replay, replayer, rom, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -12,8 +12,8 @@ pub struct GameInfo {
 
 pub struct Setup {
     pub game_lang: unic_langid::LanguageIdentifier,
-    pub save: Box<dyn save::Save + Send + Sync>,
-    pub assets: Box<dyn rom::Assets + Send + Sync>,
+    pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
 }
 
 pub struct Session {

@@ -46,6 +46,7 @@ prost = "0.10"
 bytes = "1.1.0"
 sdl2 = { version = "0.35", features = ["static-link", "bundled"] }
 input-helper = { path = "../input-helper" }
+tango-dataview = { path = "../tango-dataview" }
 serde_repr = "0.1"
 serde_plain = "1.0"
 png = "0.17"

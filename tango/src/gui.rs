@@ -22,7 +22,7 @@ mod welcome;
 
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
-    pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
+    pub assets: Option<Box<dyn tango_dataview::rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
     pub rom: Vec<u8>,
     pub patch: Option<(String, semver::Version, patch::Version)>,

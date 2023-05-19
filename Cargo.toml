@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "mgba",
     "tango",
+    "tango-dataview",
     "tango-protos",
     "tango-server",
     "datachannel-wrapper",

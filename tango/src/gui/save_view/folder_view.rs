@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 pub struct State {
     grouped: bool,
@@ -26,8 +26,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    chips_view: &Box<dyn save::ChipsView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    chips_view: &Box<dyn tango_dataview::save::ChipsView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
     struct GroupedChip {
@@ -154,19 +154,19 @@ pub fn show<'a>(
                                     })
                                 } else {
                                     match info.class() {
-                                        rom::ChipClass::Standard => None,
-                                        rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
+                                        tango_dataview::rom::ChipClass::Standard => None,
+                                        tango_dataview::rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
                                             egui::Color32::from_rgb(0x52, 0x84, 0x9c)
                                         } else {
                                             egui::Color32::from_rgb(0xad, 0xef, 0xef)
                                         }),
-                                        rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
+                                        tango_dataview::rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
                                             egui::Color32::from_rgb(0x8c, 0x31, 0x52)
                                         } else {
                                             egui::Color32::from_rgb(0xf7, 0xce, 0xe7)
                                         }),
-                                        rom::ChipClass::None => None,
-                                        rom::ChipClass::ProgramAdvance => None,
+                                        tango_dataview::rom::ChipClass::None => None,
+                                        tango_dataview::rom::ChipClass::ProgramAdvance => None,
                                     }
                                 };
                                 (

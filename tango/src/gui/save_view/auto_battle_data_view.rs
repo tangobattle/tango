@@ -1,7 +1,7 @@
 use fluent_templates::Loader;
 use itertools::Itertools;
 
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
@@ -38,8 +38,8 @@ struct MaterializedAutoBattleData {
 
 impl MaterializedAutoBattleData {
     fn new(
-        auto_battle_data_view: &Box<dyn save::AutoBattleDataView + '_>,
-        assets: &Box<dyn rom::Assets + Send + Sync>,
+        auto_battle_data_view: &Box<dyn tango_dataview::save::AutoBattleDataView + '_>,
+        assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     ) -> Self {
         let mut use_counts = vec![];
         loop {
@@ -66,7 +66,7 @@ impl MaterializedAutoBattleData {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class() == rom::ChipClass::Standard)
+                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Standard)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -83,7 +83,7 @@ impl MaterializedAutoBattleData {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class() == rom::ChipClass::Standard)
+                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Standard)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -100,7 +100,7 @@ impl MaterializedAutoBattleData {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class() == rom::ChipClass::Mega)
+                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Mega)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -117,7 +117,7 @@ impl MaterializedAutoBattleData {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class() == rom::ChipClass::Giga)
+                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Giga)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -130,7 +130,7 @@ impl MaterializedAutoBattleData {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class() == rom::ChipClass::ProgramAdvance)
+                        .map(|c| c.class() == tango_dataview::rom::ChipClass::ProgramAdvance)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -144,7 +144,7 @@ fn show_table<const N: usize>(
     ui: &mut egui::Ui,
     chips: &[Option<usize>; N],
     counts: &[usize; N],
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
@@ -167,19 +167,19 @@ fn show_table<const N: usize>(
                             })
                         } else {
                             match info.class() {
-                                rom::ChipClass::Standard => None,
-                                rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
+                                tango_dataview::rom::ChipClass::Standard => None,
+                                tango_dataview::rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
                                     egui::Color32::from_rgb(0x52, 0x84, 0x9c)
                                 } else {
                                     egui::Color32::from_rgb(0xad, 0xef, 0xef)
                                 }),
-                                rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
+                                tango_dataview::rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
                                     egui::Color32::from_rgb(0x8c, 0x31, 0x52)
                                 } else {
                                     egui::Color32::from_rgb(0xf7, 0xce, 0xe7)
                                 }),
-                                rom::ChipClass::None => None,
-                                rom::ChipClass::ProgramAdvance => None,
+                                tango_dataview::rom::ChipClass::None => None,
+                                tango_dataview::rom::ChipClass::ProgramAdvance => None,
                             }
                         };
                         (
@@ -301,7 +301,7 @@ fn show_table<const N: usize>(
 fn make_string<'a, const N: usize>(
     chips: &'a [Option<usize>; N],
     counts: &'a [usize; N],
-    assets: &'a Box<dyn rom::Assets + Send + Sync>,
+    assets: &'a Box<dyn tango_dataview::rom::Assets + Send + Sync>,
 ) -> impl std::iter::Iterator<Item = String> + 'a {
     std::iter::zip(chips, counts).map(|(id, count)| {
         let name = if let Some(id) = id {
@@ -323,8 +323,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    auto_battle_data_view: &Box<dyn save::AutoBattleDataView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    auto_battle_data_view: &Box<dyn tango_dataview::save::AutoBattleDataView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
     let materialized = state

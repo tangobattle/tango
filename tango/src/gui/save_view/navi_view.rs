@@ -2,7 +2,7 @@
 use fluent_templates::Loader;
 
 #[allow(unused_imports)]
-use crate::{gui, i18n, rom, save};
+use crate::{gui, i18n};
 
 pub struct State {
     emblem_texture_cache: Option<egui::TextureHandle>,
@@ -22,8 +22,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     _lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navi_view: &Box<dyn save::NaviView<'a> + 'a>,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
+    navi_view: &Box<dyn tango_dataview::save::NaviView<'a> + 'a>,
+    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
     let navi_id = navi_view.navi();

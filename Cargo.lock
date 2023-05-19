@@ -5471,6 +5471,7 @@ dependencies = [
  "steamlocate",
  "subtle",
  "sys-locale",
+ "tango-dataview",
  "tango-protos",
  "tempfile",
  "thiserror",
@@ -5488,6 +5489,17 @@ dependencies = [
  "winit",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "tango-dataview"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "image 0.24.3",
+ "parking_lot",
+ "thiserror",
+ "unic-langid",
 ]
 
 [[package]]

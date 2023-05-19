@@ -181,7 +181,7 @@ fn make_warning(
 #[derive(Clone)]
 struct LocalSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
-    pub save: Box<dyn save::Save + Send + Sync>,
+    pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     pub rom: Vec<u8>,
     pub patch: Option<(String, semver::Version, patch::Version)>,
 }

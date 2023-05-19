@@ -1,6 +1,4 @@
 mod hooks;
-mod rom;
-mod save;
 
 use crate::game;
 
@@ -34,12 +32,12 @@ impl game::Game for EXE6GImpl {
         &hooks::BR5J_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn6::save::Save::new(data)?;
         if save.game_info()
-            != &(save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Gregar,
+            != &(tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::JP,
+                variant: tango_dataview::game::bn6::save::Variant::Gregar,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
@@ -47,12 +45,12 @@ impl game::Game for EXE6GImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn6::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Gregar,
+            tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::JP,
+                variant: tango_dataview::game::bn6::save::Variant::Gregar,
             },
         )?))
     }
@@ -62,28 +60,35 @@ impl game::Game for EXE6GImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::BR5J_00,
-            rom.to_vec(),
-            wram.to_vec(),
-            &rom::JA_CHARSET,
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn6::rom::Assets::new(
+                &tango_dataview::game::bn6::rom::BR5J_00,
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn6::rom::JA_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
             overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref SAVE: save::Save = save::Save::from_wram(
+            static ref SAVE: tango_dataview::game::bn6::save::Save = tango_dataview::game::bn6::save::Save::from_wram(
                 include_bytes!("bn6/save/g_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::Gregar,
+                tango_dataview::game::bn6::save::GameInfo {
+                    region: tango_dataview::game::bn6::save::Region::JP,
+                    variant: tango_dataview::game::bn6::save::Variant::Gregar,
                 }
             )
             .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn tango_dataview::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }
@@ -117,12 +122,12 @@ impl game::Game for EXE6FImpl {
         &hooks::BR6J_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn6::save::Save::new(data)?;
         if save.game_info()
-            != &(save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Falzar,
+            != &(tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::JP,
+                variant: tango_dataview::game::bn6::save::Variant::Falzar,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
@@ -130,12 +135,12 @@ impl game::Game for EXE6FImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn6::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Falzar,
+            tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::JP,
+                variant: tango_dataview::game::bn6::save::Variant::Falzar,
             },
         )?))
     }
@@ -145,28 +150,35 @@ impl game::Game for EXE6FImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::BR6J_00,
-            rom.to_vec(),
-            wram.to_vec(),
-            &rom::JA_CHARSET,
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn6::rom::Assets::new(
+                &tango_dataview::game::bn6::rom::BR6J_00,
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn6::rom::JA_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
             overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref SAVE: save::Save = save::Save::from_wram(
+            static ref SAVE: tango_dataview::game::bn6::save::Save = tango_dataview::game::bn6::save::Save::from_wram(
                 include_bytes!("bn6/save/f_jp.raw"),
-                save::GameInfo {
-                    region: save::Region::JP,
-                    variant: save::Variant::Falzar,
+                tango_dataview::game::bn6::save::GameInfo {
+                    region: tango_dataview::game::bn6::save::Region::JP,
+                    variant: tango_dataview::game::bn6::save::Variant::Falzar,
                 }
             )
             .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn tango_dataview::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }
@@ -200,12 +212,12 @@ impl game::Game for BN6GImpl {
         &hooks::BR5E_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn6::save::Save::new(data)?;
         if save.game_info()
-            != &(save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Gregar,
+            != &(tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::US,
+                variant: tango_dataview::game::bn6::save::Variant::Gregar,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
@@ -213,12 +225,12 @@ impl game::Game for BN6GImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn6::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Gregar,
+            tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::US,
+                variant: tango_dataview::game::bn6::save::Variant::Gregar,
             },
         )?))
     }
@@ -228,28 +240,35 @@ impl game::Game for BN6GImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::BR5E_00,
-            rom.to_vec(),
-            wram.to_vec(),
-            &rom::EN_CHARSET,
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn6::rom::Assets::new(
+                &tango_dataview::game::bn6::rom::BR5E_00,
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn6::rom::EN_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
             overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref SAVE: save::Save = save::Save::from_wram(
+            static ref SAVE: tango_dataview::game::bn6::save::Save = tango_dataview::game::bn6::save::Save::from_wram(
                 include_bytes!("bn6/save/g_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::Gregar,
+                tango_dataview::game::bn6::save::GameInfo {
+                    region: tango_dataview::game::bn6::save::Region::US,
+                    variant: tango_dataview::game::bn6::save::Variant::Gregar,
                 }
             )
             .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn tango_dataview::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }
@@ -283,12 +302,12 @@ impl game::Game for BN6FImpl {
         &hooks::BR6E_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        let save = tango_dataview::game::bn6::save::Save::new(data)?;
         if save.game_info()
-            != &(save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Falzar,
+            != &(tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::US,
+                variant: tango_dataview::game::bn6::save::Variant::Falzar,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
@@ -296,12 +315,12 @@ impl game::Game for BN6FImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(save::Save::from_wram(
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(tango_dataview::game::bn6::save::Save::from_wram(
             data,
-            save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Falzar,
+            tango_dataview::game::bn6::save::GameInfo {
+                region: tango_dataview::game::bn6::save::Region::US,
+                variant: tango_dataview::game::bn6::save::Variant::Falzar,
             },
         )?))
     }
@@ -311,28 +330,35 @@ impl game::Game for BN6FImpl {
         rom: &[u8],
         wram: &[u8],
         overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(rom::Assets::new(
-            &rom::BR6E_00,
-            rom.to_vec(),
-            wram.to_vec(),
-            &rom::EN_CHARSET,
+    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(crate::rom::OverridenAssets::new(
+            tango_dataview::game::bn6::rom::Assets::new(
+                &tango_dataview::game::bn6::rom::BR6E_00,
+                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                    tango_dataview::game::bn6::rom::EN_CHARSET
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                }),
+                rom.to_vec(),
+                wram.to_vec(),
+            ),
             overrides,
         )))
     }
 
-    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+    fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         lazy_static! {
-            static ref SAVE: save::Save = save::Save::from_wram(
+            static ref SAVE: tango_dataview::game::bn6::save::Save = tango_dataview::game::bn6::save::Save::from_wram(
                 include_bytes!("bn6/save/f_us.raw"),
-                save::GameInfo {
-                    region: save::Region::US,
-                    variant: save::Variant::Falzar,
+                tango_dataview::game::bn6::save::GameInfo {
+                    region: tango_dataview::game::bn6::save::Region::US,
+                    variant: tango_dataview::game::bn6::save::Variant::Falzar,
                 }
             )
             .unwrap();
-            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn tango_dataview::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }
