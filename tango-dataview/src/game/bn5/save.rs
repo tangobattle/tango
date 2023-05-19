@@ -7,6 +7,7 @@ const SRAM_SIZE: usize = 0x7c14;
 const MASK_OFFSET: usize = 0x1a34;
 const GAME_NAME_OFFSET: usize = 0x29e0;
 const CHECKSUM_OFFSET: usize = 0x29dc;
+const SHIFT_OFFSET: usize = 0x1A30;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Region {
