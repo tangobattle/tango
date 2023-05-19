@@ -35,28 +35,33 @@ fn compute_raw_checksum(buf: &[u8]) -> u32 {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
         let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+            .ok_or(save::Error::InvalidSize(buf.len()))?;
 
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE3 20021002" && n != b"BBN3 v0.5.0 20021002" {
-            anyhow::bail!("unknown game name: {:02x?}", n);
+            return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
+        let save_checksum = byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4]);
+        let raw_checksum = compute_raw_checksum(&buf);
         let game_info = {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
             const BLUE: u32 = checksum_start_for_variant(Variant::Blue);
             GameInfo {
-                variant: match byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
-                    .checked_sub(compute_raw_checksum(&buf))
-                {
+                variant: match save_checksum.checked_sub(raw_checksum) {
                     Some(WHITE) => Variant::White,
                     Some(BLUE) => Variant::Blue,
-                    n => {
-                        anyhow::bail!("unknown checksum start: {:02x?}", n)
+                    _ => {
+                        return Err(save::Error::ChecksumMismatch {
+                            actual: save_checksum,
+                            expected: vec![raw_checksum + WHITE, raw_checksum + BLUE],
+                            attempt: 0,
+                            shift: 0,
+                        });
                     }
                 },
             }
@@ -67,12 +72,12 @@ impl Save {
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SRAM_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+                .ok_or(save::Error::InvalidSize(buf.len()))?,
             game_info,
         })
     }

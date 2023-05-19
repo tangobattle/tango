@@ -46,22 +46,22 @@ fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
         let mut buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+            .ok_or(save::Error::InvalidSize(buf.len()))?;
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
-            anyhow::bail!("invalid shift of {}", shift);
+            return Err(save::Error::InvalidShift(shift));
         }
 
         let n = &buf[shift + GAME_NAME_OFFSET..shift + GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE4 20031022" {
-            anyhow::bail!("unknown game name: {:02x?}", n);
+            return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
         let game_info = {
@@ -79,21 +79,21 @@ impl Save {
                     Some(RED_SUN) => (Variant::RedSun, Region::JP),
                     Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
                     _ => {
-                        anyhow::bail!(
-                            "unknown game, bad checksum: got checksum {} but read checksum {}, shift {} (attempt 2)",
-                            expected_checksum,
-                            raw_checksum,
+                        return Err(save::Error::ChecksumMismatch {
+                            expected: vec![expected_checksum],
+                            actual: raw_checksum,
                             shift,
-                        );
+                            attempt: 1,
+                        });
                     }
                 },
                 _ => {
-                    anyhow::bail!(
-                        "unknown game, bad checksum: got checksum {} but read checksum {}, shift {}",
-                        expected_checksum,
-                        raw_checksum,
+                    return Err(save::Error::ChecksumMismatch {
+                        expected: vec![expected_checksum],
+                        actual: raw_checksum,
                         shift,
-                    );
+                        attempt: 0,
+                    });
                 }
             };
 
@@ -108,15 +108,15 @@ impl Save {
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+            .ok_or(save::Error::InvalidSize(buf.len()))?;
 
         let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
-            anyhow::bail!("invalid shift of {}", shift);
+            return Err(save::Error::InvalidShift(shift));
         }
 
         Ok(Self { buf, game_info, shift })

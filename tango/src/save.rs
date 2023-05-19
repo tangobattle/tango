@@ -281,3 +281,23 @@ pub trait AutoBattleDataView<'a> {
 
 pub type Scanner =
     scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>>>;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("invalid size: {0}")]
+    InvalidSize(usize),
+
+    #[error("invalid game name: {0:02x?}")]
+    InvalidGameName(Vec<u8>),
+
+    #[error("invalid checksum: {expected:08x?} != {actual:08x} (shift: {shift}, attempt: {attempt})")]
+    ChecksumMismatch {
+        expected: Vec<u32>,
+        actual: u32,
+        shift: usize,
+        attempt: usize,
+    },
+
+    #[error("invalid shift: {0}")]
+    InvalidShift(usize),
+}

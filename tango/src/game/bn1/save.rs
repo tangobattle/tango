@@ -24,17 +24,17 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
         let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+            .ok_or(save::Error::InvalidSize(buf.len()))?;
 
         let game_info = match &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
             b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
             b"ROCKMAN EXE 20010727" => GameInfo { region: Region::US },
             n => {
-                anyhow::bail!("unknown game name: {:02x?}", n);
+                return Err(save::Error::InvalidGameName(n.to_vec()));
             }
         };
 
@@ -42,22 +42,23 @@ impl Save {
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
-            anyhow::bail!(
-                "checksum mismatch: expected {:08x}, got {:08x}",
-                save.checksum(),
-                computed_checksum
-            );
+            return Err(save::Error::ChecksumMismatch {
+                actual: save.checksum(),
+                expected: vec![computed_checksum],
+                attempt: 0,
+                shift: 0,
+            });
         }
 
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SRAM_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+                .ok_or(save::Error::InvalidSize(buf.len()))?,
             game_info,
         })
     }

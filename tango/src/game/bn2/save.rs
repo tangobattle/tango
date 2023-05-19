@@ -12,31 +12,32 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
         let save = Save::from_wram(buf)?;
         let n = &save.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE2 20011016" {
-            anyhow::bail!("unknown game name: {:02x?}", n);
+            return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
-            anyhow::bail!(
-                "checksum mismatch: expected {:08x}, got {:08x}",
-                save.checksum(),
-                computed_checksum
-            );
+            return Err(save::Error::ChecksumMismatch {
+                actual: save.checksum(),
+                expected: vec![computed_checksum],
+                attempt: 0,
+                shift: 0,
+            });
         }
 
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn from_wram(buf: &[u8]) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SRAM_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+                .ok_or(save::Error::InvalidSize(buf.len()))?,
         })
     }
 
