@@ -391,6 +391,25 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             compressed: buf[0x6] != 0,
         })
     }
+
+    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
+        let offset = if self.save.game_info.region == Region::JP {
+            0x410C
+        } else {
+            0x414C
+        };
+
+        Some(
+            ndarray::Array2::from_shape_vec(
+                (self.height(), self.width()),
+                self.save.buf[offset..offset + (self.height() * self.width())]
+                    .iter()
+                    .map(|v| v.checked_sub(1).map(|v| v as usize))
+                    .collect(),
+            )
+            .unwrap(),
+        )
+    }
 }
 pub struct NaviView<'a> {
     save: &'a Save,

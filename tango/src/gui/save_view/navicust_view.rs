@@ -705,7 +705,9 @@ pub fn show<'a>(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let composed = tango_dataview::navicust::compose(navicust_view, assets);
+                        let composed = navicust_view
+                            .precomposed()
+                            .unwrap_or_else(|| tango_dataview::navicust::compose(navicust_view, assets));
                         let image = render_navicust(
                             &composed,
                             &navicust_layout,
@@ -748,7 +750,7 @@ pub fn show<'a>(
                                 let tx = (x - LEFT) / SQUARE_SIZE as u32;
                                 let ty = (y - TOP) / SQUARE_SIZE as u32;
 
-                                if let Some(ncp_i) = composed[[tx as usize, ty as usize]] {
+                                if let Some(ncp_i) = composed[[ty as usize, tx as usize]] {
                                     if let Some(info) = navicust_view
                                         .navicust_part(ncp_i)
                                         .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))

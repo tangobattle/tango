@@ -178,6 +178,7 @@ pub trait NavicustView<'a> {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
+    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust>;
 }
 
 pub trait NavicustViewMut<'a> {

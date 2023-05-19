@@ -205,4 +205,8 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             compressed: (self.save.buf[0x0310 + (raw >> 3) as usize] & (0x80 >> (raw >> 7))) != 0,
         })
     }
+
+    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
+        None
+    }
 }

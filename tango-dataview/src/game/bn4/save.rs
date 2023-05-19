@@ -265,6 +265,21 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             compressed: buf[0x5] != 0,
         })
     }
+
+    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
+        let offset = self.save.shift + 0x4540;
+
+        Some(
+            ndarray::Array2::from_shape_vec(
+                (self.height(), self.width()),
+                self.save.buf[offset..offset + (self.height() * self.width())]
+                    .iter()
+                    .map(|v| v.checked_sub(1).map(|v| v as usize))
+                    .collect(),
+            )
+            .unwrap(),
+        )
+    }
 }
 
 pub struct PatchCard4sView<'a> {
