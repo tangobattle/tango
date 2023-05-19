@@ -60,6 +60,10 @@ where
         None
     }
 
+    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut + '_>> {
+        None
+    }
+
     fn view_navi(&self) -> Option<Box<dyn NaviView + '_>> {
         None
     }
@@ -193,6 +197,11 @@ pub trait AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<usize>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize>;
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData;
+}
+
+pub trait AutoBattleDataViewMut<'a> {
+    fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool;
+    fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool;
 }
 
 #[derive(thiserror::Error, Debug)]

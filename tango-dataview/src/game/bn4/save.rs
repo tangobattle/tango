@@ -199,6 +199,10 @@ impl save::Save for Save {
         Some(Box::new(AutoBattleDataView { save: self }))
     }
 
+    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn save::AutoBattleDataViewMut + '_>> {
+        Some(Box::new(AutoBattleDataViewMut { save: self }))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -384,5 +388,29 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
                 .try_into()
                 .unwrap(),
         )
+    }
+}
+
+pub struct AutoBattleDataViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
+    fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool {
+        if id >= super::NUM_CHIPS {
+            return false;
+        }
+        let offset = 0x7340 + id * 2;
+        byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
+        true
+    }
+
+    fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool {
+        if id >= super::NUM_CHIPS {
+            return false;
+        }
+        let offset: usize = 0x2340 + id * 2;
+        byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
+        true
     }
 }
