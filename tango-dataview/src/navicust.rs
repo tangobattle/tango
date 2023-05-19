@@ -36,13 +36,13 @@ fn ncp_bitmap<'a>(
     .into_owned()
 }
 
-pub type ComposedNavicust = ndarray::Array2<Option<usize>>;
+pub type MaterializedNavicust = ndarray::Array2<Option<usize>>;
 
-pub fn compose<'a>(
+pub fn materialize<'a>(
     navicust_view: &(dyn crate::save::NavicustView<'a> + 'a),
     assets: &(dyn crate::rom::Assets + 'a),
-) -> ComposedNavicust {
-    let mut composed = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
+) -> MaterializedNavicust {
+    let mut materialized = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
     for i in 0..navicust_view.count() {
         let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
             ncp
@@ -75,7 +75,7 @@ pub fn compose<'a>(
 
         for (src_row, dst_row) in std::iter::zip(
             bitmap.slice(ndarray::s![src_y.., src_x..]).rows(),
-            composed.slice_mut(ndarray::s![dst_y.., dst_x..]).rows_mut(),
+            materialized.slice_mut(ndarray::s![dst_y.., dst_x..]).rows_mut(),
         ) {
             for (src, dst) in std::iter::zip(src_row, dst_row) {
                 if *src {
@@ -84,5 +84,5 @@ pub fn compose<'a>(
             }
         }
     }
-    composed
+    materialized
 }

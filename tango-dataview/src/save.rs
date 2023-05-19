@@ -184,7 +184,7 @@ pub trait NavicustView<'a> {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
-    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust>;
+    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust>;
 }
 
 pub trait NavicustViewMut<'a> {
@@ -193,7 +193,7 @@ pub trait NavicustViewMut<'a> {
     }
 
     fn set_navicust_part(&mut self, i: usize, part: NavicustPart) -> bool;
-    fn rebuild_precomposed(&mut self, assets: &dyn crate::rom::Assets);
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
 pub trait AutoBattleDataView<'a> {

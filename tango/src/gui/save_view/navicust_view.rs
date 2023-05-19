@@ -6,7 +6,7 @@ use crate::{gui, i18n};
 pub struct State {
     rendered_navicust_cache: Option<(
         image::RgbaImage,
-        tango_dataview::navicust::ComposedNavicust,
+        tango_dataview::navicust::MaterializedNavicust,
         egui::TextureHandle,
     )>,
 }
@@ -93,13 +93,13 @@ const BG_FILL_COLOR: image::Rgba<u8> = image::Rgba([0x20, 0x20, 0x20, 0xff]);
 const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff]);
 
 fn render_navicust<'a>(
-    composed: &tango_dataview::navicust::ComposedNavicust,
+    materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
     raw_font: &[u8],
 ) -> image::RgbaImage {
-    let body = render_navicust_body(composed, navicust_layout, navicust_view, assets);
+    let body = render_navicust_body(materialized, navicust_layout, navicust_view, assets);
 
     let color_bar = if let Some(style) = navicust_view.style() {
         let color_bar_right = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
@@ -346,12 +346,12 @@ fn render_navicust_color_bar456<'a>(
 }
 
 fn render_navicust_body<'a>(
-    composed: &tango_dataview::navicust::ComposedNavicust,
+    materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    let (height, width) = composed.dim();
+    let (height, width) = materialized.dim();
 
     let mut pixmap = tiny_skia::Pixmap::new(
         (width as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
@@ -473,7 +473,7 @@ fn render_navicust_body<'a>(
     }
 
     // Second pass: draw squares.
-    for (i, ncp_i) in composed.iter().enumerate() {
+    for (i, ncp_i) in materialized.iter().enumerate() {
         let x = i % width as usize;
         let y = i / width as usize;
         let ncp_i = if let Some(ncp_i) = ncp_i {
@@ -517,7 +517,7 @@ fn render_navicust_body<'a>(
     }
 
     // Third pass: draw borders.
-    for (i, ncp_i) in composed.iter().enumerate() {
+    for (i, ncp_i) in materialized.iter().enumerate() {
         let ncp_i = if let Some(ncp_i) = ncp_i {
             *ncp_i
         } else {
@@ -535,7 +535,10 @@ fn render_navicust_body<'a>(
 
             let mut should_stroke = x < 0 || x >= width as isize || y < 0 || y >= height as isize;
             if !should_stroke {
-                if composed[[y as usize, x as usize]].map(|v| v != ncp_i).unwrap_or(true) {
+                if materialized[[y as usize, x as usize]]
+                    .map(|v| v != ncp_i)
+                    .unwrap_or(true)
+                {
                     should_stroke = true;
                 }
             }
@@ -705,11 +708,11 @@ pub fn show<'a>(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let composed = navicust_view.precomposed().unwrap_or_else(|| {
-                            tango_dataview::navicust::compose(navicust_view.as_ref(), assets.as_ref())
+                        let materialized = navicust_view.materialized().unwrap_or_else(|| {
+                            tango_dataview::navicust::materialize(navicust_view.as_ref(), assets.as_ref())
                         });
                         let image = render_navicust(
-                            &composed,
+                            &materialized,
                             &navicust_layout,
                             navicust_view,
                             assets,
@@ -723,10 +726,10 @@ pub fn show<'a>(
                             ),
                             egui::TextureOptions::NEAREST,
                         );
-                        state.rendered_navicust_cache = Some((image, composed, texture));
+                        state.rendered_navicust_cache = Some((image, materialized, texture));
                     }
 
-                    if let Some((image, composed, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+                    if let Some((image, materialized, texture_handle)) = state.rendered_navicust_cache.as_ref() {
                         let resp = ui.image(
                             texture_handle.id(),
                             egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
@@ -750,7 +753,7 @@ pub fn show<'a>(
                                 let tx = (x - LEFT) / SQUARE_SIZE as u32;
                                 let ty = (y - TOP) / SQUARE_SIZE as u32;
 
-                                if let Some(ncp_i) = composed[[ty as usize, tx as usize]] {
+                                if let Some(ncp_i) = materialized[[ty as usize, tx as usize]] {
                                     if let Some(info) = navicust_view
                                         .navicust_part(ncp_i)
                                         .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))

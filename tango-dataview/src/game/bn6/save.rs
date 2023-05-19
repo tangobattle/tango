@@ -413,7 +413,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         })
     }
 
-    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
+    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
         let offset = self.save.shift
             + if self.save.game_info.region == Region::JP {
                 0x410C
@@ -463,10 +463,10 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         true
     }
 
-    fn rebuild_precomposed(&mut self, assets: &dyn crate::rom::Assets) {
-        let composed = crate::navicust::compose(&NavicustView { save: self.save }, assets);
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
+        let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, assets);
         self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x44].copy_from_slice(
-            &composed
+            &materialized
                 .into_iter()
                 .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
                 .chain(std::iter::repeat(0))

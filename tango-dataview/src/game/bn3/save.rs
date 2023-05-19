@@ -202,7 +202,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         })
     }
 
-    fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
+    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
         None
     }
 }
