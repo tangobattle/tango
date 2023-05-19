@@ -167,6 +167,10 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_chips_mut(&mut self) -> Option<Box<dyn save::ChipsViewMut + '_>> {
+        Some(Box::new(ChipsViewMut { save: self }))
+    }
+
     fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
         Some(Box::new(NavicustView { save: self }))
     }
