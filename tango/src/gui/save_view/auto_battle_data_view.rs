@@ -29,10 +29,12 @@ fn show_table(
     chip_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
 ) {
+    let groups = chips.iter().group_by(|k| **k);
+    let groups = groups.into_iter().enumerate().collect::<Vec<_>>();
     egui_extras::StripBuilder::new(ui)
-        .sizes(egui_extras::Size::exact(28.0), chips.len())
+        .sizes(egui_extras::Size::exact(28.0), groups.len())
         .vertical(|mut outer_strip| {
-            for (i, (id, g)) in chips.iter().group_by(|k| **k).into_iter().enumerate() {
+            for (i, (id, g)) in groups {
                 outer_strip.cell(|ui| {
                     let info = id.and_then(|id| assets.chip(id));
 
