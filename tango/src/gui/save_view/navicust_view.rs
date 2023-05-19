@@ -117,13 +117,13 @@ fn ncp_bitmap<'a>(
     .into_owned()
 }
 
-type ComposedNavicust = image::ImageBuffer<image::LumaA<u8>, Vec<u8>>;
+type ComposedNavicust = ndarray::Array2<Option<usize>>;
 
 fn compose_navicust<'a>(
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> ComposedNavicust {
-    let mut composed = image::ImageBuffer::new(navicust_view.width() as u32, navicust_view.height() as u32);
+    let mut composed = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
     for i in 0..navicust_view.count() {
         let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
             ncp
@@ -138,23 +138,32 @@ fn compose_navicust<'a>(
         };
 
         let bitmap = ncp_bitmap(&info, ncp.compressed, ncp.rot);
-        let (height, width) = bitmap.dim();
+        let (bitmap_height, bitmap_width) = bitmap.dim();
+        let ncp_y = (ncp.row as isize) - bitmap_height as isize / 2;
+        let ncp_x = (ncp.col as isize) - bitmap_width as isize / 2;
 
-        // Convert bitmap to composable Navicust image (LumaA).
-        image::imageops::overlay(
-            &mut composed,
-            &image::ImageBuffer::from_vec(
-                width as u32,
-                height as u32,
-                bitmap
-                    .into_iter()
-                    .flat_map(|b| [i as u8, if b { 0xff } else { 0 }])
-                    .collect::<Vec<u8>>(),
-            )
-            .unwrap(),
-            ncp.col as i64 - (width / 2) as i64,
-            ncp.row as i64 - (height / 2) as i64,
-        );
+        let (src_y, dst_y) = if ncp_y < 0 {
+            (-ncp_y as usize, 0)
+        } else {
+            (0, ncp_y as usize)
+        };
+
+        let (src_x, dst_x) = if ncp_x < 0 {
+            (-ncp_x as usize, 0)
+        } else {
+            (0, ncp_x as usize)
+        };
+
+        for (src_row, dst_row) in std::iter::zip(
+            bitmap.slice(ndarray::s![src_y.., src_x..]).rows(),
+            composed.slice_mut(ndarray::s![dst_y.., dst_x..]).rows_mut(),
+        ) {
+            for (src, dst) in std::iter::zip(src_row, dst_row) {
+                if *src {
+                    *dst = Some(i);
+                }
+            }
+        }
     }
     composed
 }
@@ -427,9 +436,11 @@ fn render_navicust_body<'a>(
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
+    let (height, width) = composed.dim();
+
     let mut pixmap = tiny_skia::Pixmap::new(
-        (composed.width() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
-        (composed.height() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
+        (width as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
+        (height as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
     )
     .unwrap();
 
@@ -473,7 +484,7 @@ fn render_navicust_body<'a>(
     let command_line_path = {
         let mut pb = tiny_skia::PathBuilder::new();
         pb.move_to(0.0, 0.0);
-        pb.line_to(SQUARE_SIZE * composed.width() as f32, 0.0);
+        pb.line_to(SQUARE_SIZE * width as f32, 0.0);
         pb.finish().unwrap()
     };
 
@@ -522,13 +533,13 @@ fn render_navicust_body<'a>(
     ];
 
     // First pass: draw background.
-    for y in 0..composed.width() {
-        for x in 0..composed.height() {
+    for y in 0..width {
+        for x in 0..height {
             if navicust_layout.has_out_of_bounds
                 && ((x == 0 && y == 0)
-                    || (x == 0 && y == composed.height() - 1)
-                    || (x == composed.width() - 1 && y == 0)
-                    || (x == composed.width() - 1 && y == composed.height() - 1))
+                    || (x == 0 && y == height - 1)
+                    || (x == width - 1 && y == 0)
+                    || (x == width - 1 && y == height - 1))
             {
                 continue;
             }
@@ -547,16 +558,15 @@ fn render_navicust_body<'a>(
     }
 
     // Second pass: draw squares.
-    for (i, p) in composed.pixels().enumerate() {
-        let x = i % composed.width() as usize;
-        let y = i / composed.width() as usize;
-        let [l, a] = p.0;
-
-        if a == 0 {
+    for (i, ncp_i) in composed.iter().enumerate() {
+        let x = i % width as usize;
+        let y = i / width as usize;
+        let ncp_i = if let Some(ncp_i) = ncp_i {
+            *ncp_i
+        } else {
             continue;
-        }
+        };
 
-        let ncp_i = l as usize;
         let ncp = if let Some(ncp) = navicust_view.navicust_part(ncp_i) {
             ncp
         } else {
@@ -592,26 +602,25 @@ fn render_navicust_body<'a>(
     }
 
     // Third pass: draw borders.
-    for (i, p) in composed.pixels().enumerate() {
-        let x = i % composed.width() as usize;
-        let y = i / composed.width() as usize;
-        let [l, a] = p.0;
-
-        if a == 0 {
+    for (i, ncp_i) in composed.iter().enumerate() {
+        let ncp_i = if let Some(ncp_i) = ncp_i {
+            *ncp_i
+        } else {
             continue;
-        }
+        };
+
+        let x = i % width as usize;
+        let y = i / width as usize;
 
         let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
 
-        let ncp_i = l as usize;
         for neighbor in neighbors.iter() {
             let x = x as isize + neighbor.offset[0];
             let y = y as isize + neighbor.offset[1];
 
-            let mut should_stroke = x < 0 || x >= composed.width() as isize || y < 0 || y >= composed.height() as isize;
+            let mut should_stroke = x < 0 || x >= width as isize || y < 0 || y >= height as isize;
             if !should_stroke {
-                let [l, a] = composed.get_pixel(x as u32, y as u32).0;
-                if a == 0 || l as usize != ncp_i {
+                if composed[[y as usize, x as usize]].map(|v| v != ncp_i).unwrap_or(true) {
                     should_stroke = true;
                 }
             }
@@ -645,14 +654,14 @@ fn render_navicust_body<'a>(
             let mut pb = tiny_skia::PathBuilder::new();
 
             let w = SQUARE_SIZE + BORDER_WIDTH;
-            let h = (composed.height() - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
+            let h = (height - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
 
             // Left
             pb.push_rect(-BORDER_WIDTH / 2.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h);
 
             // Right
             pb.push_rect(
-                (composed.width() - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                (width - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
                 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
                 w,
                 h,
@@ -664,7 +673,7 @@ fn render_navicust_body<'a>(
             // Bottom
             pb.push_rect(
                 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                (composed.height() - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                (height - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
                 h,
                 w,
             );
@@ -824,10 +833,7 @@ pub fn show<'a>(
                                 let tx = (x - LEFT) / SQUARE_SIZE as u32;
                                 let ty = (y - TOP) / SQUARE_SIZE as u32;
 
-                                let [l, a] = composed.get_pixel(tx, ty).0;
-                                if a != 0 {
-                                    let ncp_i = l as usize;
-
+                                if let Some(ncp_i) = composed[[tx as usize, ty as usize]] {
                                     if let Some(info) = navicust_view
                                         .navicust_part(ncp_i)
                                         .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))
