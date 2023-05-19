@@ -1,11 +1,11 @@
 use itertools::Itertools;
 
-const SECONDARY_STANDARD_CHIP_COUNTS: [usize; 3] = [1, 1, 1];
-const STANDARD_CHIP_COUNTS: [usize; 16] = [4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
-const MEGA_CHIP_COUNTS: [usize; 5] = [1, 1, 1, 1, 1];
-const GIGA_CHIP_COUNTS: [usize; 1] = [1];
-const COMBO_COUNTS: [usize; 8] = [1, 1, 1, 1, 1, 1, 1, 1];
-const PROGRAM_ADVANCE_COUNTS: [usize; 1] = [1];
+const SECONDARY_STANDARD_CHIP_COUNTS: &[usize] = &[1, 1, 1];
+const STANDARD_CHIP_COUNTS: &[usize] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+const MEGA_CHIP_COUNTS: &[usize] = &[1, 1, 1, 1, 1];
+const GIGA_CHIP_COUNTS: &[usize] = &[1];
+const COMBO_COUNTS: &[usize] = &[1, 1, 1, 1, 1, 1, 1, 1];
+const PROGRAM_ADVANCE_COUNTS: &[usize] = &[1];
 
 pub struct MaterializedAutoBattleData([Option<usize>; 42]);
 
@@ -76,7 +76,7 @@ impl MaterializedAutoBattleData {
                 .chain(
                     std::iter::repeat(None)
                         .zip(COMBO_COUNTS)
-                        .flat_map(|(item, count)| vec![item; count]),
+                        .flat_map(|(item, count)| vec![item; *count]),
                 )
                 .chain(materialize_section(
                     assets,
