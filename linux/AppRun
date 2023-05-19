@@ -8,6 +8,6 @@ tango_bin_path="$(pwd)/$(uname -m)/bin"
 PATH="${tango_bin_path}:${PATH}"
 export PATH
 
-export WINIT_X11_SCALE_FACTOR=1
+export WINIT_X11_SCALE_FACTOR="${WINIT_X11_SCALE_FACTOR:-1}"
 
 exec "${tango_bin_path}/tango"
