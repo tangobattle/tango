@@ -284,13 +284,13 @@ pub type Scanner =
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("invalid size: {0}")]
+    #[error("invalid size: {0} bytes")]
     InvalidSize(usize),
 
     #[error("invalid game name: {0:02x?}")]
     InvalidGameName(Vec<u8>),
 
-    #[error("invalid checksum: {expected:08x?} != {actual:08x} (shift: {shift}, attempt: {attempt})")]
+    #[error("invalid checksum: {actual:08x} not in {expected:08x?} (shift: {shift}, attempt: {attempt})")]
     ChecksumMismatch {
         expected: Vec<u32>,
         actual: u32,
