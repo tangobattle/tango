@@ -330,11 +330,9 @@ pub struct AutoBattleDataView<'a> {
     save: &'a Save,
 }
 
-const NUM_AUTO_BATTLE_DATA_CHIPS: usize = 368;
-
 impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<usize> {
-        if id >= NUM_AUTO_BATTLE_DATA_CHIPS {
+        if id >= super::NUM_CHIPS {
             return None;
         }
         let offset = 0x7340 + id * 2;
@@ -342,7 +340,7 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
-        if id >= NUM_AUTO_BATTLE_DATA_CHIPS {
+        if id >= super::NUM_CHIPS {
             return None;
         }
         let offset = 0x2340 + id * 2;
