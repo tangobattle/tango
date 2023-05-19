@@ -96,6 +96,10 @@ impl MaterializedAutoBattleData {
         )
     }
 
+    pub fn as_slice(&self) -> &[Option<usize>] {
+        &self.0
+    }
+
     pub fn secondary_standard_chips(&self) -> &[Option<usize>] {
         &self.0[0..3]
     }

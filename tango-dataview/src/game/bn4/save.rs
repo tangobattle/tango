@@ -1,4 +1,4 @@
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
 use crate::save::{self, Save as _};
 
@@ -140,6 +140,16 @@ impl Save {
         &self.game_info
     }
 
+    fn rebuild_materialized_auto_battle_data(&mut self, assets: &dyn crate::rom::Assets) {
+        let materialized =
+            crate::abd::MaterializedAutoBattleData::materialize(self.view_auto_battle_data().unwrap().as_ref(), assets);
+        let mut buf = &mut self.buf[self.shift + 0x5064..];
+        for v in materialized.as_slice() {
+            buf.write_u16::<byteorder::LittleEndian>(v.map(|v| v as u16).unwrap_or(0xffff))
+                .unwrap();
+        }
+    }
+
     fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
         let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
         self.buf[self.shift + 0x4540..self.shift + 0x4540 + 0x24].copy_from_slice(
@@ -198,6 +208,7 @@ impl save::Save for Save {
     }
 
     fn rebuild(&mut self, assets: &dyn crate::rom::Assets) {
+        self.rebuild_materialized_auto_battle_data(assets);
         self.rebuild_precomposed_navicust(assets);
         self.rebuild_checksum();
     }
