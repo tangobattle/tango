@@ -348,13 +348,15 @@ impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
     }
 }
 
+const NUM_AUTO_BATTLE_DATA_CHIPS: usize = 350;
+
 pub struct AutoBattleDataView<'a> {
     save: &'a Save,
 }
 
 impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<usize> {
-        if id >= 350 {
+        if id >= NUM_AUTO_BATTLE_DATA_CHIPS {
             return None;
         }
         let offset = 0x6f50 + id * 2;
@@ -362,7 +364,7 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
-        if id >= 350 {
+        if id >= NUM_AUTO_BATTLE_DATA_CHIPS {
             return None;
         }
         let offset = 0x1bb0 + id * 2;
