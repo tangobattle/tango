@@ -1,4 +1,4 @@
-use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::save::{self, NavicustView as _, PatchCard56sView as _};
 
@@ -367,19 +367,8 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
-        let mut buf = &self.save.buf[self.save.shift + 0x554c..];
-        crate::abd::MaterializedAutoBattleData::new(
-            (0..42)
-                .map(|_| {
-                    let v = buf.read_u16::<byteorder::LittleEndian>().unwrap() as usize;
-                    if v == 0xffff {
-                        return None;
-                    }
-                    return Some(v);
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+        crate::abd::MaterializedAutoBattleData::from_save(
+            &self.save.buf[self.save.shift + 0x554c..self.save.shift + 0x554c + 42 * 2],
         )
     }
 }

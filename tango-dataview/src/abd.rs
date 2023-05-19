@@ -1,3 +1,4 @@
+use byteorder::ReadBytesExt;
 use itertools::Itertools;
 
 const SECONDARY_STANDARD_CHIP_COUNTS: &[usize] = &[1, 1, 1];
@@ -27,8 +28,20 @@ fn materialize_section<'a>(
 }
 
 impl MaterializedAutoBattleData {
-    pub fn new(v: [Option<usize>; 42]) -> Self {
-        Self(v)
+    pub fn from_save(mut buf: &[u8]) -> Self {
+        Self(
+            (0..42)
+                .map(|_| {
+                    let v = buf.read_u16::<byteorder::LittleEndian>().unwrap() as usize;
+                    if v == 0xffff {
+                        return None;
+                    }
+                    return Some(v);
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        )
     }
 
     pub fn materialize(
@@ -53,7 +66,7 @@ impl MaterializedAutoBattleData {
             }
         }
 
-        Self::new(
+        Self(
             std::iter::empty()
                 .chain(materialize_section(
                     assets,
