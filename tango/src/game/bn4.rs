@@ -35,10 +35,7 @@ impl game::Game for EXE4RSImpl {
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun
-            || (game_info.region != tango_dataview::game::bn4::save::Region::JP
-                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
-        {
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun || !game_info.region.jp {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
@@ -48,7 +45,7 @@ impl game::Game for EXE4RSImpl {
         Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
             tango_dataview::game::bn4::save::GameInfo {
-                region: tango_dataview::game::bn4::save::Region::JP,
+                region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
                 variant: tango_dataview::game::bn4::save::Variant::RedSun,
             },
         )?))
@@ -82,7 +79,7 @@ impl game::Game for EXE4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/dark_hp_997_rs_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -91,7 +88,7 @@ impl game::Game for EXE4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_999_rs_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -100,7 +97,7 @@ impl game::Game for EXE4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_1000_rs_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -155,10 +152,7 @@ impl game::Game for EXE4BMImpl {
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon
-            || (game_info.region != tango_dataview::game::bn4::save::Region::JP
-                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
-        {
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon || !game_info.region.jp {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
@@ -168,7 +162,7 @@ impl game::Game for EXE4BMImpl {
         Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
             tango_dataview::game::bn4::save::GameInfo {
-                region: tango_dataview::game::bn4::save::Region::JP,
+                region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
                 variant: tango_dataview::game::bn4::save::Variant::BlueMoon,
             },
         )?))
@@ -202,8 +196,8 @@ impl game::Game for EXE4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/dark_hp_997_bm_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
-                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
                 .unwrap();
@@ -211,8 +205,8 @@ impl game::Game for EXE4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_999_bm_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
-                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
                 .unwrap();
@@ -220,8 +214,8 @@ impl game::Game for EXE4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_1000_bm_jp.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::JP,
-                        variant: tango_dataview::game::bn4::save::Variant::RedSun
+                        region: tango_dataview::game::bn4::save::Region { jp: true, us: false },
+                        variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
                 .unwrap();
@@ -275,10 +269,7 @@ impl game::Game for BN4RSImpl {
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun
-            || (game_info.region != tango_dataview::game::bn4::save::Region::US
-                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
-        {
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::RedSun || !game_info.region.us {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
@@ -288,7 +279,7 @@ impl game::Game for BN4RSImpl {
         Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
             tango_dataview::game::bn4::save::GameInfo {
-                region: tango_dataview::game::bn4::save::Region::US,
+                region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                 variant: tango_dataview::game::bn4::save::Variant::RedSun,
             },
         )?))
@@ -322,7 +313,7 @@ impl game::Game for BN4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/dark_hp_997_rs_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -331,7 +322,7 @@ impl game::Game for BN4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_999_rs_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -340,7 +331,7 @@ impl game::Game for BN4RSImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_1000_rs_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::RedSun
                     }
                 )
@@ -395,10 +386,7 @@ impl game::Game for BN4BMImpl {
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn4::save::Save::new(data)?;
         let game_info = save.game_info();
-        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon
-            || (game_info.region != tango_dataview::game::bn4::save::Region::US
-                && game_info.region != tango_dataview::game::bn4::save::Region::Any)
-        {
+        if game_info.variant != tango_dataview::game::bn4::save::Variant::BlueMoon || !game_info.region.us {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
@@ -408,7 +396,7 @@ impl game::Game for BN4BMImpl {
         Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
             data,
             tango_dataview::game::bn4::save::GameInfo {
-                region: tango_dataview::game::bn4::save::Region::US,
+                region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                 variant: tango_dataview::game::bn4::save::Variant::BlueMoon,
             },
         )?))
@@ -442,7 +430,7 @@ impl game::Game for BN4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/dark_hp_997_bm_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
@@ -451,7 +439,7 @@ impl game::Game for BN4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_999_bm_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
@@ -460,7 +448,7 @@ impl game::Game for BN4BMImpl {
                 tango_dataview::game::bn4::save::Save::from_wram(
                     include_bytes!("bn4/save/light_hp_1000_bm_us.raw"),
                     tango_dataview::game::bn4::save::GameInfo {
-                        region: tango_dataview::game::bn4::save::Region::US,
+                        region: tango_dataview::game::bn4::save::Region { jp: false, us: true },
                         variant: tango_dataview::game::bn4::save::Variant::BlueMoon
                     }
                 )
