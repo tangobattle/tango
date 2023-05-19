@@ -31,6 +31,7 @@ where
     fn as_raw_wram(&self) -> &[u8];
 
     fn rebuild_checksum(&mut self);
+    fn rebuild_anticheat(&mut self) {}
 
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
@@ -99,6 +100,11 @@ pub trait ChipsView<'a> {
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]>;
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        let _ = id;
+        let _ = variant;
+        None
+    }
 }
 
 pub trait ChipsViewMut<'a> {
@@ -115,6 +121,12 @@ pub trait ChipsViewMut<'a> {
     fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
         let _ = folder_index;
         let _ = chip_index;
+        false
+    }
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        let _ = id;
+        let _ = variant;
+        let _ = count;
         false
     }
 }

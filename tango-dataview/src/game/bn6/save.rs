@@ -110,6 +110,16 @@ impl Save {
             0x47cc
         }) + 0x64 * if id == 0 { 0 } else { 1 }
     }
+
+    fn rebuild_patch_cards_anticheat(&mut self) {
+        for id in 0..118 {
+            self.buf[0x5047 + id] = self.buf[0x06bf + id]
+                ^ match self.game_info.variant {
+                    Variant::Gregar => 0x43,
+                    Variant::Falzar => 0x8d,
+                };
+        }
+    }
 }
 
 impl save::Save for Save {
@@ -157,6 +167,10 @@ impl save::Save for Save {
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
         byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        self.rebuild_patch_cards_anticheat();
     }
 }
 
@@ -216,6 +230,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[(raw >> 9) as usize] as char,
         })
     }
+
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        Some(self.save.buf[0x2230 + id * 0xc + variant] as usize)
+    }
 }
 
 pub struct PatchCard56sView<'a> {
@@ -246,7 +264,6 @@ pub struct PatchCard56sViewMut<'a> {
 impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
         self.save.buf[0x65f0] = count as u8;
-        self.rebuild();
     }
 
     fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
@@ -255,33 +272,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             return false;
         }
         self.save.buf[0x6620 + slot] = (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
-        self.rebuild();
         true
-    }
-}
-
-impl<'a> PatchCard56sViewMut<'a> {
-    fn rebuild(&mut self) {
-        for i in 0..118 {
-            self.set_patch_card_loaded(i, false);
-        }
-
-        for i in 0..(PatchCard56sView { save: self.save }).count() {
-            let patch_card = if let Some(patch_card) = (PatchCard56sView { save: self.save }).patch_card(i) {
-                patch_card
-            } else {
-                continue;
-            };
-            self.set_patch_card_loaded(patch_card.id, true);
-        }
-    }
-
-    fn set_patch_card_loaded(&mut self, id: usize, loaded: bool) {
-        let mask = match self.save.game_info.variant {
-            Variant::Gregar => 0x43,
-            Variant::Falzar => 0x8d,
-        };
-        self.save.buf[0x5047 + id] = self.save.buf[0x06bf + id] ^ if loaded { mask } else { 0xff };
     }
 }
 
@@ -317,7 +308,6 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             &mut self.save.buf[offset..offset + 2],
             chip.id as u16 | ((variant as u16) << 9),
         );
-        self.rebuild();
         true
     }
 
@@ -350,20 +340,10 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         self.save.buf[navi_stats_offset + 0x2e + folder_index] = chip_index as u8;
         true
     }
-}
 
-impl<'a> ChipsViewMut<'a> {
-    fn rebuild(&mut self) {
-        // Kind of goody, but it works.
-        for id in 0..411 {
-            for variant in 0..4 {
-                self.set_pack_count(id, variant, 99);
-            }
-        }
-    }
-
-    fn set_pack_count(&mut self, id: usize, variant: usize, count: u8) {
-        self.save.buf[0x2230 + id * 0xc + variant] = count;
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        self.save.buf[0x2230 + id * 0xc + variant] = count as u8;
+        true
     }
 }
 
