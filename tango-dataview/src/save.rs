@@ -186,11 +186,11 @@ pub trait NavicustView<'a> {
 }
 
 pub trait NavicustViewMut<'a> {
-    fn set_style(&self, _style: usize) -> bool {
+    fn set_style(&mut self, _style: usize) -> bool {
         false
     }
 
-    fn set_navicust_part(&self, _i: usize, _part: NavicustPart) -> bool;
+    fn set_navicust_part(&mut self, i: usize, part: NavicustPart) -> bool;
 }
 
 pub trait AutoBattleDataView<'a> {

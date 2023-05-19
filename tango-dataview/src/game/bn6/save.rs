@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, ChipsView as _, NaviView as _, PatchCard56sView as _, Save as _};
+use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
 
 const SAVE_START_OFFSET: usize = 0x0100;
 const SAVE_SIZE: usize = 0x6710;
@@ -173,6 +173,10 @@ impl save::Save for Save {
 
     fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
         Some(Box::new(NavicustView { save: self }))
+    }
+
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn save::NavicustViewMut + '_>> {
+        Some(Box::new(NavicustViewMut { save: self }))
     }
 
     fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
@@ -450,6 +454,37 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         )
     }
 }
+
+pub struct NavicustViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
+    fn set_navicust_part(&mut self, i: usize, part: save::NavicustPart) -> bool {
+        if part.id >= super::NUM_NAVICUST_PARTS.0 || part.variant >= super::NUM_NAVICUST_PARTS.1 {
+            return false;
+        }
+        if i >= (NavicustView { save: self.save }).count() {
+            return false;
+        }
+
+        let ncp_offset = self.save.shift
+            + if self.save.game_info.region == Region::JP {
+                0x4150
+            } else {
+                0x4190
+            };
+
+        let buf = &mut self.save.buf[ncp_offset + i * 8..ncp_offset + (i + 1) * 8];
+        buf[0x0] = (part.id * 4 + part.variant) as u8;
+        buf[0x3] = part.col as u8;
+        buf[0x4] = part.row as u8;
+        buf[0x5] = part.rot as u8;
+        buf[0x6] = if part.compressed { 1 } else { 0 };
+        true
+    }
+}
+
 pub struct NaviView<'a> {
     save: &'a Save,
 }
