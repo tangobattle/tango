@@ -73,17 +73,17 @@ impl MaterializedAutoBattleData {
                     &MEGA_CHIP_COUNTS[..],
                     crate::rom::ChipClass::Mega,
                 ))
-                .chain(
-                    std::iter::repeat(None)
-                        .zip(COMBO_COUNTS)
-                        .flat_map(|(item, count)| vec![item; *count]),
-                )
                 .chain(materialize_section(
                     assets,
                     &use_counts,
                     &GIGA_CHIP_COUNTS[..],
                     crate::rom::ChipClass::Giga,
                 ))
+                .chain(
+                    std::iter::repeat(None)
+                        .zip(COMBO_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
                 .chain(materialize_section(
                     assets,
                     &use_counts,
