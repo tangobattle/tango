@@ -259,13 +259,13 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn class(&self) -> rom::ChipClass {
         let raw = self.raw_info();
-        [
-            rom::ChipClass::Standard,
-            rom::ChipClass::Mega,
-            rom::ChipClass::Giga,
-            rom::ChipClass::None,
-            rom::ChipClass::ProgramAdvance,
-        ][raw[0x08] as usize]
+        match raw[0x08] {
+            0 => rom::ChipClass::Standard,
+            1 => rom::ChipClass::Mega,
+            2 => rom::ChipClass::Giga,
+            4 => rom::ChipClass::ProgramAdvance,
+            _ => rom::ChipClass::None,
+        }
     }
 
     fn dark(&self) -> bool {
