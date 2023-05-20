@@ -1,6 +1,6 @@
 [package]
 name = "tango-dataview"
-version = "4.0.43"
+version = "4.0.44"
 edition = "2021"
 license = "LGPL-3.0-or-later"
 
