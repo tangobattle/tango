@@ -95,8 +95,8 @@ const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff
 fn render_navicust<'a>(
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
+    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     raw_font: &[u8],
 ) -> image::RgbaImage {
     let body = render_navicust_body(materialized, navicust_layout, navicust_view, assets);
@@ -156,8 +156,8 @@ fn render_navicust<'a>(
 }
 
 fn gather_ncp_colors<'a>(
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
+    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> Vec<tango_dataview::rom::NavicustPartColor> {
     (0..navicust_view.count())
         .flat_map(|i| {
@@ -253,8 +253,8 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<tango_dataview::rom::Navic
 }
 
 fn render_navicust_color_bar456<'a>(
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
+    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
 
@@ -348,8 +348,8 @@ fn render_navicust_color_bar456<'a>(
 fn render_navicust_body<'a>(
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
+    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     let (height, width) = materialized.dim();
 
@@ -614,8 +614,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
     prefer_vertical: bool,
 ) {
@@ -708,9 +708,9 @@ pub fn show<'a>(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let materialized = navicust_view.materialized().unwrap_or_else(|| {
-                            tango_dataview::navicust::materialize(navicust_view.as_ref(), assets.as_ref())
-                        });
+                        let materialized = navicust_view
+                            .materialized()
+                            .unwrap_or_else(|| tango_dataview::navicust::materialize(navicust_view, assets));
                         let image = render_navicust(
                             &materialized,
                             &navicust_layout,

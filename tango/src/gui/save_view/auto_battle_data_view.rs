@@ -22,7 +22,7 @@ impl State {
 fn show_table(
     ui: &mut egui::Ui,
     chips: &[Option<usize>],
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
@@ -178,7 +178,7 @@ fn show_table(
         });
 }
 
-fn make_string(chips: &[Option<usize>], assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>) -> String {
+fn make_string(chips: &[Option<usize>], assets: &(dyn tango_dataview::rom::Assets + Send + Sync)) -> String {
     chips
         .iter()
         .group_by(|k| **k)
@@ -205,8 +205,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    auto_battle_data_view: &Box<dyn tango_dataview::save::AutoBattleDataView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    auto_battle_data_view: &dyn tango_dataview::save::AutoBattleDataView<'a>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
     let materialized = state

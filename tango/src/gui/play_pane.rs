@@ -2458,8 +2458,8 @@ pub fn show(
                             } else {
                                 &game_language
                             },
-                            &selection.save.save,
-                            assets,
+                            selection.save.save.as_ref(),
+                            assets.as_ref(),
                             &mut selection.save_view_state,
                             false,
                         );

@@ -457,8 +457,8 @@ pub fn show(
                             } else {
                                 &game_language
                             },
-                            &selection.save,
-                            &assets,
+                            selection.save.as_ref(),
+                            assets.as_ref(),
                             &mut selection.save_view,
                             false,
                         );

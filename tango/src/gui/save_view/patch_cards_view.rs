@@ -34,8 +34,8 @@ pub fn show_patch_card4s<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card4s_view: &Box<dyn tango_dataview::save::PatchCard4sView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    patch_card4s_view: &dyn tango_dataview::save::PatchCard4sView<'a>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     _state: &mut State,
 ) {
     ui.horizontal(|ui| {
@@ -142,8 +142,8 @@ pub fn show_patch_card56s<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card56s_view: &Box<dyn tango_dataview::save::PatchCard56sView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    patch_card56s_view: &dyn tango_dataview::save::PatchCard56sView<'a>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     _state: &mut State,
 ) {
     let items = (0..patch_card56s_view.count())
@@ -285,7 +285,7 @@ pub fn show<'a>(
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
     patch_cards_view: &tango_dataview::save::PatchCardsView,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
     match patch_cards_view {
@@ -295,7 +295,7 @@ pub fn show<'a>(
             font_families,
             lang,
             game_lang,
-            patch_card4s_view,
+            patch_card4s_view.as_ref(),
             assets,
             state,
         ),
@@ -305,7 +305,7 @@ pub fn show<'a>(
             font_families,
             lang,
             game_lang,
-            patch_card56s_view,
+            patch_card56s_view.as_ref(),
             assets,
             state,
         ),

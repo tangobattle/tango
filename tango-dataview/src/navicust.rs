@@ -20,11 +20,7 @@ where
     arr
 }
 
-fn ncp_bitmap<'a>(
-    info: &'a Box<dyn crate::rom::NavicustPart + 'a>,
-    compressed: bool,
-    rot: u8,
-) -> crate::rom::NavicustBitmap {
+fn ncp_bitmap(info: &dyn crate::rom::NavicustPart, compressed: bool, rot: u8) -> crate::rom::NavicustBitmap {
     rotate(
         &if compressed {
             info.compressed_bitmap()
@@ -47,8 +43,8 @@ pub fn materialized_from_wram(buf: &[u8], height: usize, width: usize) -> Materi
 }
 
 pub fn materialize<'a>(
-    navicust_view: &(dyn crate::save::NavicustView<'a> + 'a),
-    assets: &(dyn crate::rom::Assets + 'a),
+    navicust_view: &dyn crate::save::NavicustView<'a>,
+    assets: &dyn crate::rom::Assets,
 ) -> MaterializedNavicust {
     let mut materialized = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
     for i in 0..navicust_view.count() {
@@ -64,7 +60,7 @@ pub fn materialize<'a>(
             continue;
         };
 
-        let bitmap = ncp_bitmap(&info, ncp.compressed, ncp.rot);
+        let bitmap = ncp_bitmap(info.as_ref(), ncp.compressed, ncp.rot);
         let (bitmap_height, bitmap_width) = bitmap.dim();
         let ncp_y = (ncp.row as isize) - bitmap_height as isize / 2;
         let ncp_x = (ncp.col as isize) - bitmap_width as isize / 2;

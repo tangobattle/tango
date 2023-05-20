@@ -45,8 +45,8 @@ pub fn show(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    save: &Box<dyn tango_dataview::save::Save + Send + Sync>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    save: &(dyn tango_dataview::save::Save + Send + Sync),
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
     prefer_vertical: bool,
 ) {
@@ -120,7 +120,7 @@ pub fn show(
                         font_families,
                         lang,
                         game_lang,
-                        &navi_view,
+                        navi_view.as_ref(),
                         assets,
                         &mut state.navi_view,
                     );
@@ -134,7 +134,7 @@ pub fn show(
                         font_families,
                         lang,
                         game_lang,
-                        &navicust_view,
+                        navicust_view.as_ref(),
                         assets,
                         &mut state.navicust_view,
                         prefer_vertical,
@@ -149,7 +149,7 @@ pub fn show(
                         font_families,
                         lang,
                         game_lang,
-                        &chips_view,
+                        chips_view.as_ref(),
                         assets,
                         &mut state.folder_view,
                     );
@@ -177,7 +177,7 @@ pub fn show(
                         font_families,
                         lang,
                         game_lang,
-                        &auto_battle_data_view,
+                        auto_battle_data_view.as_ref(),
                         assets,
                         &mut state.auto_battle_data_view,
                     );

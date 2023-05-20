@@ -26,8 +26,8 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    chips_view: &Box<dyn tango_dataview::save::ChipsView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
+    chips_view: &dyn tango_dataview::save::ChipsView<'a>,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
     struct GroupedChip {
