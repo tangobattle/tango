@@ -6,12 +6,10 @@ const SAVE_SIZE: usize = 0xc7a8;
 const MASK_OFFSET: usize = 0x3c84;
 const GAME_NAME_OFFSET: usize = 0x4ba8;
 const CHECKSUM_OFFSET: usize = 0x4b88;
-const SHIFT_OFFSET: usize = 0x3c80;
 
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SAVE_SIZE],
-    shift: usize,
 }
 
 impl Save {
@@ -22,23 +20,18 @@ impl Save {
             .ok_or(save::Error::InvalidSize(buf.len()))?;
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
-        if shift > 0x1fc || (shift & 3) != 0 {
-            return Err(save::Error::InvalidShift(shift));
-        }
-
-        let n = &buf[shift + GAME_NAME_OFFSET..shift + GAME_NAME_OFFSET + 20];
+        let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
-        let save = Self { buf, shift };
+        let save = Self { buf };
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
             return Err(save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
-                shift,
+                shift: 0,
                 attempt: 0,
             });
         }
@@ -47,30 +40,24 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
+        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET) + 0x38
+        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x38
     }
 
     pub fn from_wram(buf: &[u8]) -> Result<Self, save::Error> {
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
-        if shift > 0x1fc || (shift & 3) != 0 {
-            return Err(save::Error::InvalidShift(shift));
-        }
-
         Ok(Self {
             buf: buf
                 .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
-            shift,
         })
     }
 
     pub fn current_navi(&self) -> u8 {
-        self.buf[self.shift + 0x4ad1]
+        self.buf[0x4ad1]
     }
 }
 
@@ -96,10 +83,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(
-            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
-            checksum,
-        );
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
     }
 }
 
@@ -129,7 +113,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = self.save.shift + 0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
+        let offset = self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
         let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
 
         Some(save::Chip {
@@ -145,6 +129,6 @@ pub struct NaviView<'a> {
 
 impl<'a> save::NaviView<'a> for NaviView<'a> {
     fn navi(&self) -> usize {
-        self.save.buf[self.save.shift + 0x4ad1] as usize
+        self.save.buf[0x4ad1] as usize
     }
 }
