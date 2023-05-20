@@ -295,7 +295,6 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            // TODO: Do we need to check if the patch card is loaded and mask with 0xff if not loaded?
             self.save.buf[self.save.shift + 0x5047 + id] = self.save.buf[self.save.shift + 0x06bf + id] ^ mask;
         }
     }
@@ -369,6 +368,16 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
         self.save.buf[self.save.shift + 0x2230 + id * 0xc + variant] = count as u8;
         true
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        let mask = match self.save.game_info.variant {
+            Variant::Gregar => 0x17,
+            Variant::Falzar => 0x81,
+        };
+        for id in 0..super::NUM_CHIPS {
+            self.save.buf[self.save.shift + 0x4be0 + id] = self.save.buf[self.save.shift + 0x08a0 + id] ^ mask;
+        }
     }
 }
 

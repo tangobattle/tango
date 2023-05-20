@@ -132,7 +132,7 @@ pub trait ChipsViewMut<'a> {
         let _ = count;
         false
     }
-    // TODO: reubuild anticheat?
+    fn rebuild_anticheat(&mut self);
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
