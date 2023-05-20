@@ -110,7 +110,7 @@ impl save::Save for Save {
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn to_vec(&self) -> Vec<u8> {
+    fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
         buf

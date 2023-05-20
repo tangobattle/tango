@@ -159,7 +159,7 @@ impl save::Save for Save {
         &self.buf
     }
 
-    fn to_vec(&self) -> Vec<u8> {
+    fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&self.buf);
         save::mask_save(&mut buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE], MASK_OFFSET);

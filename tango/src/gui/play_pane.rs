@@ -1504,7 +1504,10 @@ fn show_bottom_pane(
                         if lobby.sender.is_some() {
                             if !was_ready && ready {
                                 *show_save_select = None;
-                                let save_data = lobby.local_selection.as_ref().map(|selection| selection.save.to_vec());
+                                let save_data = lobby
+                                    .local_selection
+                                    .as_ref()
+                                    .map(|selection| selection.save.to_sram_dump());
                                 if let Some(save_data) = save_data {
                                     let _ = sync::block_on(lobby.commit(&save_data));
                                 }

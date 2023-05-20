@@ -197,7 +197,7 @@ impl save::Save for Save {
         &self.buf
     }
 
-    fn to_vec(&self) -> Vec<u8> {
+    fn to_sram_dump(&self) -> Vec<u8> {
         let mut raw_buf = self.buf.clone();
         if self.game_info.region == Region::JP {
             convert_us_to_jp(self.shift, &mut raw_buf);
