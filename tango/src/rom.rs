@@ -233,8 +233,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                                     }
                                 }
                             })
-                            .collect::<Vec<_>>()
-                            .join("")
+                            .collect::<String>()
                     })
                     .map_or_else(|| e.name, Some),
                 parameter: e.parameter,

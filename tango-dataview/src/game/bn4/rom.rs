@@ -113,100 +113,92 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        Some(
-            text::parse_entry(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-                id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    text::Part::String(s) => s,
-                    text::Part::Command {
-                        op: EREADER_COMMAND,
-                        params,
-                    } => {
-                        if let Ok(parts) = text::parse(
-                            &self.assets.mapper.get(0x02001772 + params[1] as u32 * 0x10),
-                            &self.assets.text_parse_options,
-                        ) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        text::Part::String(s) => s,
-                                        _ => "".to_string(),
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect::<String>()
-                        } else {
-                            "???".to_string()
-                        }
-                    }
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+        text::parse_entry(
+            &self
+                .assets
+                .mapper
+                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+            id,
+            &self.assets.text_parse_options,
         )
+        .ok()?
+        .into_iter()
+        .map(|part| {
+            Some(match part {
+                text::Part::String(s) => s,
+                text::Part::Command {
+                    op: EREADER_COMMAND,
+                    params,
+                } => {
+                    if let Ok(parts) = text::parse(
+                        &self.assets.mapper.get(0x02001772 + params[1] as u32 * 0x10),
+                        &self.assets.text_parse_options,
+                    ) {
+                        parts
+                            .into_iter()
+                            .flat_map(|part| {
+                                match part {
+                                    text::Part::String(s) => s,
+                                    _ => "".to_string(),
+                                }
+                                .chars()
+                                .collect::<Vec<_>>()
+                            })
+                            .collect::<String>()
+                    } else {
+                        return None;
+                    }
+                }
+                _ => "".to_string(),
+            })
+        })
+        .collect::<Option<String>>()
     }
 
     fn description(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        Some(
-            text::parse_entry(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-                id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    text::Part::String(s) => s,
-                    text::Part::Command {
-                        op: EREADER_COMMAND,
-                        params,
-                    } => {
-                        if let Ok(parts) = text::parse(
-                            &self.assets.mapper.get(0x02000522 + params[1] as u32 * 0x5c),
-                            &self.assets.text_parse_options,
-                        ) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        text::Part::String(s) => s,
-                                        _ => "".to_string(),
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect::<String>()
-                        } else {
-                            "???".to_string()
-                        }
-                    }
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+        text::parse_entry(
+            &self
+                .assets
+                .mapper
+                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+            id,
+            &self.assets.text_parse_options,
         )
+        .ok()?
+        .into_iter()
+        .map(|part| {
+            Some(match part {
+                text::Part::String(s) => s,
+                text::Part::Command {
+                    op: EREADER_COMMAND,
+                    params,
+                } => {
+                    if let Ok(parts) = text::parse(
+                        &self.assets.mapper.get(0x02000522 + params[1] as u32 * 0x5c),
+                        &self.assets.text_parse_options,
+                    ) {
+                        parts
+                            .into_iter()
+                            .flat_map(|part| {
+                                match part {
+                                    text::Part::String(s) => s,
+                                    _ => "".to_string(),
+                                }
+                                .chars()
+                                .collect::<Vec<_>>()
+                            })
+                            .collect::<String>()
+                    } else {
+                        return None;
+                    }
+                }
+                _ => "".to_string(),
+            })
+        })
+        .collect::<Option<String>>()
     }
 
     fn icon(&self) -> image::RgbaImage {
