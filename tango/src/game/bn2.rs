@@ -61,7 +61,7 @@ impl game::Game for EXE2Impl {
     }
 
     fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::AE2J_00
+        &hooks::AE2J_00_AC
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -80,7 +80,7 @@ impl game::Game for EXE2Impl {
     ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn2::rom::Assets::new(
-                &tango_dataview::game::bn2::rom::AE2J_00,
+                &tango_dataview::game::bn2::rom::AE2J_00_AC,
                 overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn2::rom::JA_CHARSET
                         .iter()

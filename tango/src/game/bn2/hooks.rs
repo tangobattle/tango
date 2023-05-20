@@ -19,8 +19,8 @@ pub static AE2E_00: Hooks = Hooks {
     offsets: &offsets::AE2E_00,
 };
 
-pub static AE2J_00: Hooks = Hooks {
-    offsets: &offsets::AE2J_00,
+pub static AE2J_00_AC: Hooks = Hooks {
+    offsets: &offsets::AE2J_00_AC,
 };
 
 fn random_background(rng: &mut impl rand::Rng) -> u8 {

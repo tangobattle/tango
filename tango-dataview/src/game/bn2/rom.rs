@@ -22,7 +22,7 @@ pub static AE2E_00: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static AE2J_00: Offsets = Offsets {
+pub static AE2J_00_AC: Offsets = Offsets {
     chip_data:                      0x0800e2fc,
     chip_names_pointers:            0x0800b528,
     chip_descriptions_pointers:     0x0800affc,

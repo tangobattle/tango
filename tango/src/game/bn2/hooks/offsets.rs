@@ -137,7 +137,7 @@ pub static AE2E_00: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static AE2J_00: Offsets = Offsets {
+pub static AE2J_00_AC: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:              0x0802495c,
