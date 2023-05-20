@@ -78,7 +78,7 @@ toml = "0.5"
 semver = { version = "1.0", features = ["serde"] }
 mailparse = "0.13"
 regex = "1.6"
-opener = { version = "0.6", features = ["reveal"] }
+open = "3"
 indexmap = "1.9"
 bytemuck = "1.12"
 rfd = "0.10"

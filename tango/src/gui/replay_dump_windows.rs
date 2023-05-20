@@ -158,12 +158,12 @@ pub fn show(
                                 .button(format!(
                                     "📄 {}",
                                     i18n::LOCALES
-                                        .lookup(language, "replays-export-show-file")
+                                        .lookup(language, "replays-export-open")
                                         .unwrap()
                                 ))
                                 .clicked()
                             {
-                                let _ = opener::reveal(&state.output_path);
+                                let _ = open::that(&state.output_path);
                             }
                         }
                         Err(e) => {

@@ -95,11 +95,7 @@ pub fn show(
                 ))
                 .clicked()
             {
-                if let Some(selection) = selection.as_ref() {
-                    let _ = opener::reveal(&selection.save.path);
-                } else {
-                    let _ = opener::open(saves_path);
-                }
+                let _ = open::that(saves_path);
             }
 
             if let Some((game, _)) = show.as_mut().unwrap().selection {

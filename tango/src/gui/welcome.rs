@@ -67,7 +67,7 @@ pub fn show(
                                 .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
                                 .clicked()
                             {
-                                let _ = opener::open(&config.roms_path());
+                                let _ = open::that(&config.roms_path());
                             }
                             ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
                                 if ui

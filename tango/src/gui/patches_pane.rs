@@ -100,7 +100,7 @@ pub fn show(
                                 ))
                                 .clicked()
                             {
-                                let _ = opener::open(&patch.path);
+                                let _ = open::that(&patch.path);
                             }
 
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {

@@ -16,7 +16,7 @@ replays-export-error = An error occurred while exporting your replay: {$error}
 replays-export-cancel = Cancel
 replays-export-confirm-success = Yay!
 replays-export-confirm-error = Damn!
-replays-export-show-file = Show file
+replays-export-open = Open
 replays-export-lossless = Lossless 1x
 
 replay-viewer-pause = Pause
