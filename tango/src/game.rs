@@ -291,9 +291,9 @@ where
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(
         &self,
-        _rom: &[u8],
-        _wram: &[u8],
-        _overrides: &rom::Overrides,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &rom::Overrides,
     ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error>;
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         &[][..]
