@@ -276,16 +276,11 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
         let offset = self.save.shift + 0x4540;
 
-        Some(
-            ndarray::Array2::from_shape_vec(
-                (self.height(), self.width()),
-                self.save.buf[offset..offset + (self.height() * self.width())]
-                    .iter()
-                    .map(|v| v.checked_sub(1).map(|v| v as usize))
-                    .collect(),
-            )
-            .unwrap(),
-        )
+        Some(crate::navicust::materialized_from_wram(
+            &self.save.buf[offset..offset + (self.height() * self.width())],
+            self.height(),
+            self.width(),
+        ))
     }
 }
 
@@ -383,7 +378,7 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
-        crate::abd::MaterializedAutoBattleData::from_save(
+        crate::abd::MaterializedAutoBattleData::from_wram(
             &self.save.buf[self.save.shift + 0x5064..self.save.shift + 0x5064 + 42 * 2],
         )
     }

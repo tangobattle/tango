@@ -38,6 +38,14 @@ fn ncp_bitmap<'a>(
 
 pub type MaterializedNavicust = ndarray::Array2<Option<usize>>;
 
+pub fn materialized_from_wram(buf: &[u8], height: usize, width: usize) -> MaterializedNavicust {
+    ndarray::Array2::from_shape_vec(
+        (height, width),
+        buf.iter().map(|v| v.checked_sub(1).map(|v| v as usize)).collect(),
+    )
+    .unwrap()
+}
+
 pub fn materialize<'a>(
     navicust_view: &(dyn crate::save::NavicustView<'a> + 'a),
     assets: &(dyn crate::rom::Assets + 'a),

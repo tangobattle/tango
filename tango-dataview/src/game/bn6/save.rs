@@ -421,16 +421,11 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
                 0x414C
             };
 
-        Some(
-            ndarray::Array2::from_shape_vec(
-                (self.height(), self.width()),
-                self.save.buf[offset..offset + (self.height() * self.width())]
-                    .iter()
-                    .map(|v| v.checked_sub(1).map(|v| v as usize))
-                    .collect(),
-            )
-            .unwrap(),
-        )
+        Some(crate::navicust::materialized_from_wram(
+            &self.save.buf[offset..offset + (self.height() * self.width())],
+            self.height(),
+            self.width(),
+        ))
     }
 }
 

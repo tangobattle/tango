@@ -28,7 +28,7 @@ fn materialize_section<'a>(
 }
 
 impl MaterializedAutoBattleData {
-    pub fn from_save(mut buf: &[u8]) -> Self {
+    pub fn from_wram(mut buf: &[u8]) -> Self {
         Self(
             (0..42)
                 .map(|_| {
