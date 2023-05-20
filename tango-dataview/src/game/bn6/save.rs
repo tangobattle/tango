@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _};
+use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
 
 const SAVE_START_OFFSET: usize = 0x0100;
 const SAVE_SIZE: usize = 0x6710;
@@ -32,6 +32,26 @@ pub struct Save {
     buf: [u8; SAVE_SIZE],
     shift: usize,
     game_info: GameInfo,
+}
+
+fn convert_jp_to_us(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
+    // Extend the shop data section.
+    let offset = shift + 0x410c;
+    let n = buf.len();
+    buf.copy_within(offset..n - 0x40, offset + 0x40);
+    for p in &mut buf[offset..offset + 0x40] {
+        *p = 0;
+    }
+}
+
+fn convert_us_to_jp(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
+    // Truncate the shop data section.
+    let offset = shift + 0x410c;
+    let n = buf.len();
+    buf.copy_within(offset + 0x40..n, offset);
+    for p in &mut buf[n - 0x40..] {
+        *p = 0;
+    }
 }
 
 impl Save {
@@ -70,7 +90,7 @@ impl Save {
             }
         };
 
-        let save = Self { buf, shift, game_info };
+        let mut save = Self { buf, shift, game_info };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
@@ -82,6 +102,12 @@ impl Save {
             });
         }
 
+        // Saves are canonicalized into US format. This will also cause a checksum rebuild, unfortunately.
+        if save.game_info.region == Region::JP {
+            convert_jp_to_us(shift, &mut save.buf);
+            save.rebuild_checksum();
+        }
+
         Ok(save)
     }
 
@@ -91,14 +117,20 @@ impl Save {
             return Err(save::Error::InvalidShift(shift));
         }
 
-        Ok(Self {
-            buf: buf
-                .get(..SAVE_SIZE)
-                .and_then(|buf| buf.try_into().ok())
-                .ok_or(save::Error::InvalidSize(buf.len()))?,
-            shift,
-            game_info,
-        })
+        let buf = buf
+            .get(..SAVE_SIZE)
+            .and_then(|buf| buf.try_into().ok())
+            .ok_or(save::Error::InvalidSize(buf.len()))?;
+
+        let mut save = Self { buf, shift, game_info };
+
+        // Saves are canonicalized into US format. This will also cause a checksum rebuild, unfortunately.
+        if save.game_info.region == Region::JP {
+            convert_jp_to_us(shift, &mut save.buf);
+            save.rebuild_checksum();
+        }
+
+        Ok(save)
     }
 
     pub fn game_info(&self) -> &GameInfo {
@@ -118,13 +150,7 @@ impl Save {
     }
 
     fn navi_stats_offset(&self, id: usize) -> usize {
-        self.shift
-            + (if self.game_info.region == Region::JP {
-                0x478c
-            } else {
-                0x47cc
-            })
-            + 0x64 * if id == 0 { 0 } else { 1 }
+        self.shift + 0x47cc + 0x64 * if id == 0 { 0 } else { 1 }
     }
 }
 
@@ -172,8 +198,13 @@ impl save::Save for Save {
     }
 
     fn to_vec(&self) -> Vec<u8> {
+        let mut raw_buf = self.buf.clone();
+        if self.game_info.region == Region::JP {
+            convert_us_to_jp(self.shift, &mut raw_buf);
+        }
+
         let mut buf = vec![0; 65536];
-        buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&self.buf);
+        buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&raw_buf);
         save::mask_save(&mut buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE], MASK_OFFSET);
         buf
     }
@@ -201,12 +232,7 @@ impl save::Save for Save {
 
         // Anticheat...
         let mask = byteorder::LittleEndian::read_u32(&self.buf[self.shift + 0x18b8..self.shift + 0x18b8 + 4]);
-        let offset = self.shift
-            + if self.game_info.region == Region::JP {
-                0x4ff0
-            } else {
-                0x5030
-            };
+        let offset = self.shift + 0x5030;
         byteorder::LittleEndian::write_u32(&mut self.buf[offset..offset + 4], mask ^ count);
 
         true
@@ -275,20 +301,23 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 }
 
+// The patch card offsets are all made up: they are at the locations they would be at in BN6, if BN6 supported it.
+
 pub struct PatchCard56sView<'a> {
     save: &'a Save,
 }
 
 impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
-        self.save.buf[self.save.shift + 0x65f0] as usize
+        self.save.buf[self.save.shift + 0x6630] as usize
     }
 
     fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
         if slot >= self.count() {
             return None;
         }
-        let raw = self.save.buf[self.save.shift + 0x6620 + slot];
+
+        let raw = self.save.buf[self.save.shift + 0x6660 + slot];
         Some(save::PatchCard {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
@@ -302,7 +331,7 @@ pub struct PatchCard56sViewMut<'a> {
 
 impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
-        self.save.buf[self.save.shift + 0x65f0] = count as u8;
+        self.save.buf[self.save.shift + 0x6630] = count as u8;
     }
 
     fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
@@ -310,7 +339,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         if slot >= view.count() {
             return false;
         }
-        self.save.buf[self.save.shift + 0x6620 + slot] =
+        self.save.buf[self.save.shift + 0x6660 + slot] =
             (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
         true
     }
@@ -321,7 +350,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.save.buf[self.save.shift + 0x5048 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
+            self.save.buf[self.save.shift + 0x5088 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
         }
     }
 }
@@ -402,12 +431,7 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             Variant::Falzar => 0x81,
         };
 
-        let base_offset = self.save.shift
-            + if self.save.game_info.region == Region::JP {
-                0x4be0
-            } else {
-                0x4c20
-            };
+        let base_offset = self.save.shift + 0x4c20;
 
         for id in 0..super::NUM_CHIPS {
             self.save.buf[base_offset + id] = self.save.buf[self.save.shift + 0x08a0 + id] ^ mask;
@@ -433,12 +457,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        let ncp_offset = self.save.shift
-            + if self.save.game_info.region == Region::JP {
-                0x4150
-            } else {
-                0x4190
-            };
+        let ncp_offset = self.save.shift + 0x4190;
 
         let buf = &self.save.buf[ncp_offset + i * 8..ncp_offset + (i + 1) * 8];
         let raw = buf[0];
@@ -457,12 +476,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     }
 
     fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
-        let offset = self.save.shift
-            + if self.save.game_info.region == Region::JP {
-                0x410c
-            } else {
-                0x414c
-            };
+        let offset = self.save.shift + 0x414c;
 
         Some(crate::navicust::materialized_from_wram(
             &self.save.buf[offset..offset + (self.height() * self.width())],
@@ -485,12 +499,7 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
             return false;
         }
 
-        let ncp_offset = self.save.shift
-            + if self.save.game_info.region == Region::JP {
-                0x4150
-            } else {
-                0x4190
-            };
+        let ncp_offset = self.save.shift + 0x4190;
 
         let buf = &mut self.save.buf[ncp_offset + i * 8..ncp_offset + (i + 1) * 8];
         buf[0x0] = (part.id * 4 + part.variant) as u8;
