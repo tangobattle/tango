@@ -1,12 +1,5 @@
 use byteorder::ReadBytesExt;
 
-const SECONDARY_STANDARD_CHIP_COUNTS: &[usize] = &[1, 1, 1];
-const STANDARD_CHIP_COUNTS: &[usize] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
-const MEGA_CHIP_COUNTS: &[usize] = &[1, 1, 1, 1, 1];
-const GIGA_CHIP_COUNTS: &[usize] = &[1];
-const COMBO_COUNTS: &[usize] = &[1, 1, 1, 1, 1, 1, 1, 1];
-const PROGRAM_ADVANCE_COUNTS: &[usize] = &[1];
-
 pub struct MaterializedAutoBattleData([Option<usize>; 42]);
 
 fn materialize_section<'a>(
@@ -63,36 +56,36 @@ impl MaterializedAutoBattleData {
                 .chain(materialize_section(
                     assets,
                     &secondary_use_counts,
-                    &SECONDARY_STANDARD_CHIP_COUNTS[..],
+                    &[1, 1, 1],
                     crate::rom::ChipClass::Standard,
                 ))
                 .chain(materialize_section(
                     assets,
                     &use_counts,
-                    &STANDARD_CHIP_COUNTS[..],
+                    &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                     crate::rom::ChipClass::Standard,
                 ))
                 .chain(materialize_section(
                     assets,
                     &use_counts,
-                    &MEGA_CHIP_COUNTS[..],
+                    &[1, 1, 1, 1, 1],
                     crate::rom::ChipClass::Mega,
                 ))
                 .chain(materialize_section(
                     assets,
                     &use_counts,
-                    &GIGA_CHIP_COUNTS[..],
+                    &[1],
                     crate::rom::ChipClass::Giga,
                 ))
                 .chain(
                     std::iter::repeat(None)
-                        .zip(COMBO_COUNTS)
+                        .zip(&[1, 1, 1, 1, 1, 1, 1, 1])
                         .flat_map(|(item, count)| vec![item; *count]),
                 )
                 .chain(materialize_section(
                     assets,
                     &use_counts,
-                    &PROGRAM_ADVANCE_COUNTS[..],
+                    &[1],
                     crate::rom::ChipClass::ProgramAdvance,
                 ))
                 .collect::<Vec<_>>()
