@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+use std::io::Write;
+
 use clap::Parser;
 
 #[macro_use]
@@ -103,7 +105,7 @@ fn main() -> Result<(), anyhow::Error> {
     let log_path = config.logs_path().join(log_filename);
     log::info!("logging to: {}", log_path.display());
 
-    let log_file = match std::fs::File::create(&log_path) {
+    let mut log_file = match std::fs::File::create(&log_path) {
         Ok(f) => f,
         Err(e) => {
             rfd::MessageDialog::new()
@@ -126,9 +128,11 @@ fn main() -> Result<(), anyhow::Error> {
     let status = std::process::Command::new(std::env::current_exe()?)
         .args(std::env::args_os().skip(1).collect::<Vec<std::ffi::OsString>>())
         .env(TANGO_CHILD_ENV_VAR, "1")
-        .stderr(log_file)
+        .stderr(log_file.try_clone()?)
         .spawn()?
         .wait()?;
+
+    writeln!(&mut log_file, "exit status: {:?}", status)?;
 
     if !status.success() {
         rfd::MessageDialog::new()
