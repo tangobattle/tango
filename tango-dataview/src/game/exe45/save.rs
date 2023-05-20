@@ -113,7 +113,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
+        let offset = 0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
         let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
 
         Some(save::Chip {
