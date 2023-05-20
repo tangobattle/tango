@@ -98,18 +98,18 @@ pub struct OverridenChip<'a> {
 }
 
 impl<'a> tango_dataview::rom::Chip for OverridenChip<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         self.overrides
             .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .flatten()
-            .unwrap_or_else(|| self.chip.name())
+            .map_or_else(|| self.chip.name(), Some)
     }
 
-    fn description(&self) -> String {
+    fn description(&self) -> Option<String> {
         self.overrides
             .map(|v| v.get(self.id).and_then(|v| v.description.clone()))
             .flatten()
-            .unwrap_or_else(|| self.chip.description())
+            .map_or_else(|| self.chip.description(), Some)
     }
 
     fn icon(&self) -> image::RgbaImage {
@@ -156,18 +156,18 @@ pub struct OverridenNavicustPart<'a> {
 }
 
 impl<'a> tango_dataview::rom::NavicustPart for OverridenNavicustPart<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         self.overrides
             .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .flatten()
-            .unwrap_or_else(|| self.navicust_part.name())
+            .map_or_else(|| self.navicust_part.name(), Some)
     }
 
-    fn description(&self) -> String {
+    fn description(&self) -> Option<String> {
         self.overrides
             .map(|v| v.get(self.id).and_then(|v| v.description.clone()))
             .flatten()
-            .unwrap_or_else(|| self.navicust_part.description())
+            .map_or_else(|| self.navicust_part.description(), Some)
     }
 
     fn color(&self) -> Option<tango_dataview::rom::NavicustPartColor> {
@@ -195,11 +195,11 @@ pub struct OverridenPatchCard56<'a> {
 }
 
 impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         self.overrides
             .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .flatten()
-            .unwrap_or_else(|| self.patch_card56.name())
+            .map_or_else(|| self.patch_card56.name(), Some)
     }
 
     fn mb(&self) -> u8 {
@@ -236,7 +236,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                             .collect::<Vec<_>>()
                             .join("")
                     })
-                    .unwrap_or_else(|| e.name),
+                    .map_or_else(|| e.name, Some),
                 parameter: e.parameter,
                 is_ability: e.is_ability,
                 is_debuff: e.is_ability,

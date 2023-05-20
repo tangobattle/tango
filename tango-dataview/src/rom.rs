@@ -10,8 +10,8 @@ pub enum ChipClass {
 }
 
 pub trait Chip {
-    fn name(&self) -> String;
-    fn description(&self) -> String;
+    fn name(&self) -> Option<String>;
+    fn description(&self) -> Option<String>;
     fn icon(&self) -> image::RgbaImage;
     fn image(&self) -> image::RgbaImage;
     fn codes(&self) -> Vec<char>;
@@ -25,22 +25,22 @@ pub trait Chip {
 
 pub struct PatchCard56Effect {
     pub id: usize,
-    pub name: String,
+    pub name: Option<String>,
     pub parameter: u8,
     pub is_ability: bool,
     pub is_debuff: bool,
 }
 
 pub trait PatchCard56 {
-    fn name(&self) -> String;
+    fn name(&self) -> Option<String>;
     fn mb(&self) -> u8;
     fn effects(&self) -> Vec<PatchCard56Effect>;
 }
 
 pub trait PatchCard4 {
-    fn name(&self) -> String;
+    fn name(&self) -> Option<String>;
     fn slot(&self) -> u8;
-    fn effect(&self) -> String;
+    fn effect(&self) -> Option<String>;
     fn bug(&self) -> Option<String>;
 }
 
@@ -60,8 +60,8 @@ pub enum NavicustPartColor {
 pub type NavicustBitmap = ndarray::Array2<bool>;
 
 pub trait NavicustPart {
-    fn name(&self) -> String;
-    fn description(&self) -> String;
+    fn name(&self) -> Option<String>;
+    fn description(&self) -> Option<String>;
     fn color(&self) -> Option<NavicustPartColor>;
     fn is_solid(&self) -> bool;
     fn compressed_bitmap(&self) -> NavicustBitmap;
@@ -69,7 +69,7 @@ pub trait NavicustPart {
 }
 
 pub trait Style {
-    fn name(&self) -> String;
+    fn name(&self) -> Option<String>;
     fn extra_ncp_color(&self) -> Option<NavicustPartColor>;
 }
 
@@ -82,7 +82,7 @@ pub enum PatchCard56EffectTemplatePart {
 pub type PatchCard56EffectTemplate = Vec<PatchCard56EffectTemplatePart>;
 
 pub trait Navi {
-    fn name(&self) -> String;
+    fn name(&self) -> Option<String>;
     fn emblem(&self) -> image::RgbaImage;
 }
 

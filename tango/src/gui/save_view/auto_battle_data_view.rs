@@ -120,7 +120,7 @@ fn show_table(
                                             ui.label(
                                                 egui::RichText::new(
                                                     info.as_ref()
-                                                        .map(|info| info.name())
+                                                        .and_then(|info| info.name())
                                                         .unwrap_or_else(|| "???".to_string()),
                                                 )
                                                 .color(fg_color.unwrap_or(ui.visuals().text_color()))
@@ -186,7 +186,7 @@ fn make_string(chips: &[Option<usize>], assets: &(dyn tango_dataview::rom::Asset
         .map(|(id, g)| {
             let name = if let Some(id) = id {
                 if let Some(info) = assets.chip(id) {
-                    info.name()
+                    info.name().unwrap_or_else(|| "???".to_string())
                 } else {
                     "-".to_string()
                 }

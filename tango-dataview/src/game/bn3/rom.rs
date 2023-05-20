@@ -105,60 +105,58 @@ impl<'a> Chip<'a> {
 }
 
 impl<'a> rom::Chip for Chip<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = text::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+        Some(
+            text::parse_entry(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+                id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
-    fn description(&self) -> String {
+    fn description(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = text::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+        Some(
+            text::parse_entry(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+                id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn icon(&self) -> image::RgbaImage {
@@ -264,52 +262,50 @@ impl<'a> NavicustPart<'a> {
 }
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
-    fn name(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match &part {
-                        text::Part::String(s) => s,
-                        _ => "",
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn name(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match &part {
+                    text::Part::String(s) => s,
+                    _ => "",
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
-    fn description(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn description(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
@@ -400,31 +396,30 @@ struct Style<'a> {
 }
 
 impl<'a> rom::Style for Style<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         let typ = self.id >> 3;
         let element = self.id & 0x7;
 
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..4],
-            )),
-            128 + typ * 5 + element,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match &part {
-                        text::Part::String(s) => s,
-                        _ => "",
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..4],
+                )),
+                128 + typ * 5 + element,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match &part {
+                    text::Part::String(s) => s,
+                    _ => "",
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn extra_ncp_color(&self) -> Option<rom::NavicustPartColor> {

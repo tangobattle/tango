@@ -53,52 +53,50 @@ impl<'a> Chip<'a> {
 }
 
 impl<'a> rom::Chip for Chip<'a> {
-    fn name(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.chip_names_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn name(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.chip_names_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
-    fn description(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.chip_descriptions_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn description(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.chip_descriptions_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn icon(&self) -> image::RgbaImage {

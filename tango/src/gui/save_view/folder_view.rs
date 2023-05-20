@@ -112,7 +112,7 @@ pub fn show<'a>(
                             let info = assets.chip(chip.id);
                             buf.push_str(&format!(
                                 "{}\t{}\t",
-                                info.map(|info| info.as_ref().name())
+                                info.and_then(|info| info.as_ref().name())
                                     .unwrap_or_else(|| "???".to_string()),
                                 chip.code
                             ));
@@ -281,7 +281,7 @@ pub fn show<'a>(
                                                 layout_job.append(
                                                     &info
                                                         .as_ref()
-                                                        .map(|info| info.name())
+                                                        .and_then(|info| info.name())
                                                         .unwrap_or_else(|| "???".to_string()),
                                                     0.0,
                                                     egui::TextFormat::simple(
@@ -305,7 +305,7 @@ pub fn show<'a>(
                                                 ui.label(layout_job).on_hover_text(
                                                     egui::RichText::new(
                                                         info.as_ref()
-                                                            .map(|info| info.description())
+                                                            .and_then(|info| info.description())
                                                             .unwrap_or_else(|| "???".to_string()),
                                                     )
                                                     .family(font_families.for_language(game_lang)),

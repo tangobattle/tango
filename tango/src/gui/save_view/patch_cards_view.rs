@@ -82,8 +82,12 @@ pub fn show_patch_card4s<'a>(
                 {
                     row.col(|ui| {
                         ui.vertical(|ui| {
-                            let mut name_label = egui::RichText::new(format!("#{:03} {}", patch_card.id, info.name()))
-                                .family(font_families.for_language(game_lang));
+                            let mut name_label = egui::RichText::new(format!(
+                                "#{:03} {}",
+                                patch_card.id,
+                                info.name().unwrap_or_else(|| "???".to_string())
+                            ))
+                            .family(font_families.for_language(game_lang));
                             if !patch_card.enabled {
                                 name_label = name_label.strikethrough();
                             }
@@ -103,7 +107,8 @@ pub fn show_patch_card4s<'a>(
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                                 show_effect(
                                     ui,
-                                    egui::RichText::new(info.effect()).family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(info.effect().unwrap_or_else(|| "???".to_string()))
+                                        .family(font_families.for_language(game_lang)),
                                     patch_card.enabled,
                                     false,
                                 );
@@ -186,7 +191,11 @@ pub fn show_patch_card56s<'a>(
                             return vec![];
                         };
 
-                        vec![format!("{}\t{}", patch_card.name(), patch_card.mb())]
+                        vec![format!(
+                            "{}\t{}",
+                            patch_card.name().unwrap_or_else(|| "???".to_string()),
+                            patch_card.mb()
+                        )]
                     })
                     .collect::<Vec<_>>()
                     .join("\n"),
@@ -219,8 +228,8 @@ pub fn show_patch_card56s<'a>(
                             .as_ref()
                             .and_then(|patch_card| assets.patch_card56(patch_card.id).map(|m| (m, patch_card.enabled)))
                         {
-                            let mut text =
-                                egui::RichText::new(&patch_card.name()).family(font_families.for_language(game_lang));
+                            let mut text = egui::RichText::new(&patch_card.name().unwrap_or_else(|| "???".to_string()))
+                                .family(font_families.for_language(game_lang));
                             if !enabled {
                                 text = text.strikethrough();
                             }
@@ -241,7 +250,8 @@ pub fn show_patch_card56s<'a>(
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name.clone().unwrap_or_else(|| "???".to_string()))
+                                            .family(font_families.for_language(game_lang)),
                                         patch_card
                                             .as_ref()
                                             .map(|patch_card| patch_card.enabled)
@@ -262,7 +272,8 @@ pub fn show_patch_card56s<'a>(
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name.clone().unwrap_or_else(|| "???".to_string()))
+                                            .family(font_families.for_language(game_lang)),
                                         patch_card
                                             .as_ref()
                                             .map(|patch_card| patch_card.enabled)

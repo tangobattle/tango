@@ -118,83 +118,81 @@ impl<'a> Chip<'a> {
 }
 
 impl<'a> rom::Chip for Chip<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = text::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+        Some(
+            text::parse_entry(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+                id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
-    fn description(&self) -> String {
+    fn description(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = text::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        text::Part::Command {
-                            op: EREADER_COMMAND,
-                            params,
-                        } => {
-                            if let Ok(parts) = text::parse(
-                                &self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100),
-                                &self.assets.text_parse_options,
-                            ) {
-                                parts
-                                    .into_iter()
-                                    .flat_map(|part| {
-                                        match part {
-                                            text::Part::String(s) => s,
-                                            _ => "".to_string(),
-                                        }
-                                        .chars()
-                                        .collect::<Vec<_>>()
-                                    })
-                                    .collect::<String>()
-                            } else {
-                                "???".to_string()
-                            }
+        Some(
+            text::parse_entry(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+                id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    text::Part::Command {
+                        op: EREADER_COMMAND,
+                        params,
+                    } => {
+                        if let Ok(parts) = text::parse(
+                            &self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100),
+                            &self.assets.text_parse_options,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        text::Part::String(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                        } else {
+                            "???".to_string()
                         }
-                        _ => "".to_string(),
                     }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn icon(&self) -> image::RgbaImage {
@@ -299,52 +297,50 @@ impl<'a> NavicustPart<'a> {
 }
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
-    fn name(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match &part {
-                        text::Part::String(s) => s,
-                        _ => "",
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn name(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match &part {
+                    text::Part::String(s) => s,
+                    _ => "",
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
-    fn description(&self) -> String {
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+    fn description(&self) -> Option<String> {
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
@@ -450,32 +446,31 @@ impl<'a> PatchCard56<'a> {
 }
 
 impl<'a> rom::PatchCard56 for PatchCard56<'a> {
-    fn name(&self) -> String {
+    fn name(&self) -> Option<String> {
         if self.id == 0 {
-            return "".to_string();
+            return Some("".to_string());
         }
 
-        if let Ok(parts) = text::parse_entry(
-            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
-            )),
-            self.id,
-            &self.assets.text_parse_options,
-        ) {
-            parts
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        text::Part::String(s) => s,
-                        _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
-                })
-                .collect::<String>()
-        } else {
-            "???".to_string()
-        }
+        Some(
+            text::parse_entry(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
+                )),
+                self.id,
+                &self.assets.text_parse_options,
+            )
+            .ok()?
+            .into_iter()
+            .flat_map(|part| {
+                match part {
+                    text::Part::String(s) => s,
+                    _ => "".to_string(),
+                }
+                .chars()
+                .collect::<Vec<_>>()
+            })
+            .collect::<String>(),
+        )
     }
 
     fn mb(&self) -> u8 {
@@ -500,40 +495,42 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                 let parameter = chunk[1];
                 crate::rom::PatchCard56Effect {
                     id,
-                    name: if let Ok(parts) = text::parse_entry(
-                        &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                            &self
-                                .assets
-                                .mapper
-                                .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
-                        )),
-                        id as usize,
-                        &self.assets.text_parse_options,
-                    ) {
-                        text::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
-                    } else {
-                        vec![crate::rom::PatchCard56EffectTemplatePart::String("???".to_string())]
-                    }
-                    .into_iter()
-                    .flat_map(|p| {
-                        match p {
-                            crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
-                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
-                                if v == 1 {
-                                    let mut parameter = parameter as u32;
-                                    if id == 0x00 || id == 0x02 {
-                                        parameter = parameter * 10;
+                    name: {
+                        text::parse_entry(
+                            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                                &self
+                                    .assets
+                                    .mapper
+                                    .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
+                            )),
+                            id as usize,
+                            &self.assets.text_parse_options,
+                        )
+                        .ok()
+                        .map(|parts| {
+                            text::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
+                                .into_iter()
+                                .flat_map(|p| {
+                                    match p {
+                                        crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
+                                        crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
+                                            if v == 1 {
+                                                let mut parameter = parameter as u32;
+                                                if id == 0x00 || id == 0x02 {
+                                                    parameter = parameter * 10;
+                                                }
+                                                format!("{}", parameter)
+                                            } else {
+                                                "".to_string()
+                                            }
+                                        }
                                     }
-                                    format!("{}", parameter)
-                                } else {
-                                    "".to_string()
-                                }
-                            }
-                        }
-                        .chars()
-                        .collect::<Vec<_>>()
-                    })
-                    .collect(),
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect()
+                        })
+                    },
                     parameter,
                     is_debuff: chunk[2] == 1,
                     is_ability: id > 0x15,

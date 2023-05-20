@@ -116,7 +116,10 @@ fn render_navicust<'a>(
             let font = fontdue::Font::from_bytes(raw_font, fontdue::FontSettings::default()).unwrap();
             let px = color_bar.height() as f32 * 2.0 / 3.0;
             let mut layout = fontdue::layout::Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown);
-            layout.append(&[&font], &fontdue::layout::TextStyle::new(&info.name(), px, 0));
+            layout.append(
+                &[&font],
+                &fontdue::layout::TextStyle::new(&info.name().unwrap_or_else(|| "???".to_string()), px, 0),
+            );
 
             for glyph in layout.glyphs() {
                 let (metrics, coverage) = font.rasterize(glyph.parent, px);
@@ -648,7 +651,7 @@ pub fn show<'a>(
                 buf.push(
                     assets
                         .style(style)
-                        .map(|style| style.name())
+                        .and_then(|style| style.name())
                         .unwrap_or_else(|| "".to_string())
                         .to_owned(),
                 );
@@ -658,11 +661,11 @@ pub fn show<'a>(
                     items
                         .iter()
                         .filter(|(info, _)| info.is_solid())
-                        .map(|(info, _)| info.name()),
+                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
                     items
                         .iter()
                         .filter(|(info, _)| !info.is_solid())
-                        .map(|(info, _)| info.name()),
+                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
                 )
                 .map(|v| match v {
                     itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
@@ -759,7 +762,7 @@ pub fn show<'a>(
                                         .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))
                                     {
                                         resp.on_hover_text_at_pointer(
-                                            egui::RichText::new(&info.name())
+                                            egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
                                                 .family(font_families.for_language(game_lang)),
                                         );
                                     }
@@ -776,8 +779,9 @@ pub fn show<'a>(
                             for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description())
+                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                        .family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,
@@ -789,8 +793,9 @@ pub fn show<'a>(
                             for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description())
+                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                        .family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,

@@ -52,7 +52,10 @@ pub fn show<'a>(
                 if let Some(texture_handle) = state.emblem_texture_cache.as_ref() {
                     ui.image(texture_handle.id(), egui::Vec2::new(30.0, 30.0));
                 }
-                ui.heading(egui::RichText::new(&navi.name()).family(font_families.for_language(game_lang)));
+                ui.heading(
+                    egui::RichText::new(&navi.name().unwrap_or_else(|| "???".to_string()))
+                        .family(font_families.for_language(game_lang)),
+                );
             });
         });
 }
