@@ -185,6 +185,28 @@ impl save::Save for Save {
             checksum,
         );
     }
+
+    fn bugfrags(&self) -> Option<u32> {
+        Some(byteorder::LittleEndian::read_u32(
+            &self.buf[self.shift + 0x1be0..self.shift + 0x1be0 + 4],
+        ))
+    }
+
+    fn set_bugfrags(&mut self, count: u32) -> bool {
+        byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x1be0..self.shift + 0x1be0 + 4], count);
+
+        // Anticheat...
+        let mask = byteorder::LittleEndian::read_u32(&self.buf[self.shift + 0x18b8..self.shift + 0x18b8 + 4]);
+        let offset = self.shift
+            + if self.game_info.region == Region::JP {
+                0x4ff0
+            } else {
+                0x5030
+            };
+        byteorder::LittleEndian::write_u32(&mut self.buf[offset..offset + 4], mask ^ count);
+
+        true
+    }
 }
 
 pub struct ChipsView<'a> {

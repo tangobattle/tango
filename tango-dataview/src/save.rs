@@ -67,6 +67,15 @@ where
     fn view_navi(&self) -> Option<Box<dyn NaviView + '_>> {
         None
     }
+
+    fn bugfrags(&self) -> Option<u32> {
+        None
+    }
+
+    fn set_bugfrags(&mut self, count: u32) -> bool {
+        let _ = count;
+        false
+    }
 }
 
 impl Clone for Box<dyn Save + Send + Sync> {
