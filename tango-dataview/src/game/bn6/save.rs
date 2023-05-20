@@ -321,7 +321,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.save.buf[self.save.shift + 0x5047 + id] = self.save.buf[self.save.shift + 0x06bf + id] ^ mask;
+            self.save.buf[self.save.shift + 0x5048 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
         }
     }
 }
@@ -401,8 +401,16 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             Variant::Gregar => 0x17,
             Variant::Falzar => 0x81,
         };
+
+        let base_offset = self.save.shift
+            + if self.save.game_info.region == Region::JP {
+                0x4be0
+            } else {
+                0x4c20
+            };
+
         for id in 0..super::NUM_CHIPS {
-            self.save.buf[self.save.shift + 0x4be0 + id] = self.save.buf[self.save.shift + 0x08a0 + id] ^ mask;
+            self.save.buf[base_offset + id] = self.save.buf[self.save.shift + 0x08a0 + id] ^ mask;
         }
     }
 }
@@ -451,9 +459,9 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
         let offset = self.save.shift
             + if self.save.game_info.region == Region::JP {
-                0x410C
+                0x410c
             } else {
-                0x414C
+                0x414c
             };
 
         Some(crate::navicust::materialized_from_wram(
