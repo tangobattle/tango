@@ -193,6 +193,10 @@ impl save::Save for Save {
     }
 
     fn set_bugfrags(&mut self, count: u32) -> bool {
+        if count > 9999 {
+            return false;
+        }
+
         byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x1be0..self.shift + 0x1be0 + 4], count);
 
         // Anticheat...
