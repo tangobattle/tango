@@ -48,23 +48,13 @@ impl MaterializedAutoBattleData {
         auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
         assets: &dyn crate::rom::Assets,
     ) -> Self {
-        let mut use_counts = vec![];
-        loop {
-            if let Some(count) = auto_battle_data_view.chip_use_count(use_counts.len()) {
-                use_counts.push(count);
-            } else {
-                break;
-            }
-        }
+        let use_counts = (0..assets.num_chips())
+            .map(|id| auto_battle_data_view.chip_use_count(id).unwrap_or(0))
+            .collect::<Vec<_>>();
 
-        let mut secondary_use_counts = vec![];
-        loop {
-            if let Some(count) = auto_battle_data_view.secondary_chip_use_count(secondary_use_counts.len()) {
-                secondary_use_counts.push(count);
-            } else {
-                break;
-            }
-        }
+        let secondary_use_counts = (0..assets.num_chips())
+            .map(|id| auto_battle_data_view.secondary_chip_use_count(id).unwrap_or(0))
+            .collect::<Vec<_>>();
 
         Self(
             std::iter::empty()
