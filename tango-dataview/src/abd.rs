@@ -1,5 +1,4 @@
 use byteorder::ReadBytesExt;
-use itertools::Itertools;
 
 const SECONDARY_STANDARD_CHIP_COUNTS: &[usize] = &[1, 1, 1];
 const STANDARD_CHIP_COUNTS: &[usize] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
@@ -16,11 +15,14 @@ fn materialize_section<'a>(
     chip_counts: &'a [usize],
     class: crate::rom::ChipClass,
 ) -> impl Iterator<Item = Option<usize>> + 'a {
-    use_counts
+    let mut materialized = use_counts
         .iter()
         .enumerate()
         .filter(|(id, count)| assets.chip(*id).map(|c| c.class() == class).unwrap_or(false) && **count > 0)
-        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+        .collect::<Vec<_>>();
+    materialized.sort_by_key(|(id, count)| (std::cmp::Reverse(**count), *id));
+    materialized
+        .into_iter()
         .map(|(id, _)| Some(id))
         .chain(std::iter::repeat(None))
         .zip(chip_counts)
