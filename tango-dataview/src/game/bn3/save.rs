@@ -98,8 +98,8 @@ impl Save {
 }
 
 impl save::Save for Save {
-    fn as_raw_wram(&self) -> &[u8] {
-        &self.buf
+    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+        std::borrow::Cow::Borrowed(&self.buf)
     }
 
     fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {

@@ -86,7 +86,7 @@ impl Match {
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
         remote_rom: &[u8],
-        remote_save: &[u8],
+        remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
         replays_path: std::path::PathBuf,
         match_type: (u8, u8),
     ) -> anyhow::Result<std::sync::Arc<Self>> {
@@ -100,7 +100,7 @@ impl Match {
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(shadow::Shadow::new(
                 &remote_rom,
-                &remote_save,
+                remote_save,
                 match_type,
                 is_offerer,
                 last_result,

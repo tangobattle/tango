@@ -176,7 +176,7 @@ impl State {
 impl Shadow {
     pub fn new(
         rom: &[u8],
-        save: &[u8],
+        save: &(dyn tango_dataview::save::Save + Send + Sync),
         match_type: (u8, u8),
         is_offerer: bool,
         battle_result: battle::BattleResult,
@@ -185,7 +185,8 @@ impl Shadow {
         let mut core = mgba::core::Core::new_gba("tango")?;
 
         core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
-        core.as_mut().load_save(mgba::vfile::VFile::open_memory(save))?;
+        core.as_mut()
+            .load_save(mgba::vfile::VFile::open_memory(&save.to_sram_dump()))?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 

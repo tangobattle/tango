@@ -28,7 +28,7 @@ where
     Self: SaveClone,
 {
     fn to_sram_dump(&self) -> Vec<u8>;
-    fn as_raw_wram(&self) -> &[u8];
+    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]>;
 
     fn rebuild_checksum(&mut self);
 

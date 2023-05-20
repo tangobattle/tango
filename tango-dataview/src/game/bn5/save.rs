@@ -155,8 +155,8 @@ impl save::Save for Save {
         Some(Box::new(AutoBattleDataViewMut { save: self }))
     }
 
-    fn as_raw_wram(&self) -> &[u8] {
-        &self.buf
+    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+        std::borrow::Cow::Borrowed(&self.buf)
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {

@@ -64,12 +64,12 @@ impl Session {
         local_patch: Option<(String, semver::Version)>,
         local_patch_overrides: &rom::Overrides,
         local_rom: &[u8],
-        local_save: &[u8],
+        local_save: Box<dyn tango_dataview::save::Save + Send + Sync + 'static>,
         remote_settings: net::protocol::Settings,
         remote_game: &'static (dyn game::Game + Send + Sync),
         remote_patch_overrides: &rom::Overrides,
         remote_rom: &[u8],
-        remote_save: &[u8],
+        remote_save: Box<dyn tango_dataview::save::Save + Send + Sync + 'static>,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         sender: net::Sender,
         receiver: net::Receiver,
@@ -83,7 +83,8 @@ impl Session {
         core.enable_video_buffer();
 
         core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
-        core.as_mut().load_save(mgba::vfile::VFile::open_memory(&local_save))?;
+        core.as_mut()
+            .load_save(mgba::vfile::VFile::open_memory(&local_save.to_sram_dump()))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
@@ -142,7 +143,7 @@ impl Session {
                 is_offerer,
                 thread.handle(),
                 remote_rom,
-                remote_save,
+                remote_save.as_ref(),
                 replays_path,
                 match_type,
             )
@@ -215,26 +216,26 @@ impl Session {
             completion_flag,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             own_setup: {
-                let save = local_game.parse_save(&local_save)?;
-                let assets = local_game.load_rom_assets(&local_rom, save.as_raw_wram(), local_patch_overrides)?;
+                let assets =
+                    local_game.load_rom_assets(&local_rom, &local_save.as_raw_wram(), local_patch_overrides)?;
                 Some(Setup {
                     game_lang: local_patch_overrides
                         .language
                         .clone()
                         .unwrap_or_else(|| game.language()),
-                    save,
+                    save: local_save,
                     assets,
                 })
             },
             opponent_setup: if reveal_setup {
-                let save = remote_game.parse_save(&remote_save)?;
-                let assets = remote_game.load_rom_assets(&remote_rom, save.as_raw_wram(), remote_patch_overrides)?;
+                let assets =
+                    remote_game.load_rom_assets(&remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides)?;
                 Some(Setup {
                     game_lang: remote_patch_overrides
                         .language
                         .clone()
                         .unwrap_or_else(|| game.language()),
-                    save,
+                    save: remote_save,
                     assets,
                 })
             } else {

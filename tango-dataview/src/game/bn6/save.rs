@@ -193,8 +193,13 @@ impl save::Save for Save {
     //     Some(Box::new(NaviView { save: self }))
     // }
 
-    fn as_raw_wram(&self) -> &[u8] {
-        &self.buf
+    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+        if self.game_info.region == Region::US {
+            return std::borrow::Cow::Borrowed(&self.buf);
+        }
+        let mut buf = self.buf.clone();
+        convert_us_to_jp(self.shift, &mut buf);
+        std::borrow::Cow::Owned(buf.to_vec())
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {

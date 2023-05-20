@@ -840,12 +840,12 @@ async fn run_connection_task(
                                 meta.rom_overrides.clone()
                             }).unwrap_or_default(),
                             &local_selection.rom,
-                            &local_negotiated_state.save_data,
+                            local_selection.game.save_from_wram(&local_negotiated_state.save_data)?,
                             remote_settings,
                             remote_selection.game,
                             &remote_patch_overrides,
                             &remote_selection.rom,
-                            &remote_negotiated_state.save_data,
+                            remote_selection.game.save_from_wram(&remote_negotiated_state.save_data)?,
                             emu_tps_counter.clone(),
                             sender,
                             receiver,
@@ -1507,7 +1507,7 @@ fn show_bottom_pane(
                                 let save_data = lobby
                                     .local_selection
                                     .as_ref()
-                                    .map(|selection| selection.save.to_sram_dump());
+                                    .map(|selection| selection.save.as_raw_wram().to_vec());
                                 if let Some(save_data) = save_data {
                                     let _ = sync::block_on(lobby.commit(&save_data));
                                 }

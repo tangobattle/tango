@@ -39,7 +39,7 @@ impl Selection {
         let assets = game
             .load_rom_assets(
                 &rom,
-                save.save.as_raw_wram(),
+                &save.save.as_raw_wram(),
                 &patch
                     .as_ref()
                     .map(|(_, _, metadata)| metadata.rom_overrides.clone())
