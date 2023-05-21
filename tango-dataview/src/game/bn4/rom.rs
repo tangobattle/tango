@@ -85,11 +85,12 @@ pub static B4BE_00: Offsets = Offsets {
     patch_cards: patch_cards::EN_PATCH_CARDS,
 };
 
-const EREADER_COMMAND: u8 = 0xff;
+const EREADER_NAME_COMMAND: &[u8] = b"\xff\x00";
+const EREADER_DESCRIPTION_COMMAND: &[u8] = b"\xff\x01";
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: msg::ParseOptions,
+    msg_parser: msg::Parser,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -113,92 +114,90 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        msg::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        )
-        .ok()?
-        .into_iter()
-        .map(|part| {
-            Some(match part {
-                msg::Part::String(s) => s,
-                msg::Part::Command {
-                    op: EREADER_COMMAND,
-                    params,
-                } => {
-                    if let Ok(parts) = msg::parse(
-                        &self.assets.mapper.get(0x02001772 + params[1] as u32 * 0x10),
-                        &self.assets.text_parse_options,
-                    ) {
-                        parts
-                            .into_iter()
-                            .flat_map(|part| {
-                                match part {
-                                    msg::Part::String(s) => s,
-                                    _ => "".to_string(),
-                                }
-                                .chars()
-                                .collect::<Vec<_>>()
-                            })
-                            .collect::<String>()
-                    } else {
-                        return None;
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_mpak_entry(&region, id)?;
+
+        self.assets
+            .msg_parser
+            .parse(entry)
+            .ok()?
+            .into_iter()
+            .map(|part| {
+                Some(match part {
+                    msg::Chunk::Text(s) => s,
+                    msg::Chunk::Command { op, params } if op == EREADER_NAME_COMMAND => {
+                        if let Ok(parts) = self
+                            .assets
+                            .msg_parser
+                            .parse(&self.assets.mapper.get(0x02001772 + params[0] as u32 * 0x10))
+                        {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        msg::Chunk::Text(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                        } else {
+                            return None;
+                        }
                     }
-                }
-                _ => "".to_string(),
+                    _ => "".to_string(),
+                })
             })
-        })
-        .collect::<Option<String>>()
+            .collect::<Option<String>>()
     }
 
     fn description(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        msg::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        )
-        .ok()?
-        .into_iter()
-        .map(|part| {
-            Some(match part {
-                msg::Part::String(s) => s,
-                msg::Part::Command {
-                    op: EREADER_COMMAND,
-                    params,
-                } => {
-                    if let Ok(parts) = msg::parse(
-                        &self.assets.mapper.get(0x02000522 + params[1] as u32 * 0x5c),
-                        &self.assets.text_parse_options,
-                    ) {
-                        parts
-                            .into_iter()
-                            .flat_map(|part| {
-                                match part {
-                                    msg::Part::String(s) => s,
-                                    _ => "".to_string(),
-                                }
-                                .chars()
-                                .collect::<Vec<_>>()
-                            })
-                            .collect::<String>()
-                    } else {
-                        return None;
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_mpak_entry(&region, id)?;
+
+        self.assets
+            .msg_parser
+            .parse(entry)
+            .ok()?
+            .into_iter()
+            .map(|part| {
+                Some(match part {
+                    msg::Chunk::Text(s) => s,
+                    msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
+                        if let Ok(parts) = self
+                            .assets
+                            .msg_parser
+                            .parse(&self.assets.mapper.get(0x02000522 + params[0] as u32 * 0x5c))
+                        {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        msg::Chunk::Text(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                        } else {
+                            return None;
+                        }
                     }
-                }
-                _ => "".to_string(),
+                    _ => "".to_string(),
+                })
             })
-        })
-        .collect::<Option<String>>()
+            .collect::<Option<String>>()
     }
 
     fn icon(&self) -> image::RgbaImage {
@@ -306,48 +305,50 @@ impl<'a> NavicustPart<'a> {
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
+        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
+        ));
+        let entry = msg::get_mpak_entry(&region, self.id)?;
+
         Some(
-            msg::parse_entry(
-                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                    &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
-                )),
-                self.id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match &part {
-                    msg::Part::String(s) => s,
-                    _ => "",
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match &part {
+                        msg::Chunk::Text(s) => s,
+                        _ => "",
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
     fn description(&self) -> Option<String> {
+        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
+        ));
+        let entry = msg::get_mpak_entry(&region, self.id)?;
+
         Some(
-            msg::parse_entry(
-                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                    &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
-                )),
-                self.id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -443,19 +444,21 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: msg::ParseOptions {
-                charset,
-                extension_ops: vec![0xe4],
-                eof_op: 0xe5,
-                newline_op: 0xe8,
-                commands: std::collections::HashMap::from([
-                    (EREADER_COMMAND, 2),
-                    (0xe6, 1),
-                    (0xe7, 1),
-                    (0xed, 3),
-                    (0xf0, 2),
-                ]),
-            },
+            msg_parser: msg::Parser::builder()
+                .with_ignore_unknown(true)
+                .add_eof_rule(b"\xe5")
+                .add_charset_rules(&charset, 0xe4)
+                .add_command_rule(EREADER_NAME_COMMAND, 1)
+                .add_command_rule(EREADER_DESCRIPTION_COMMAND, 1)
+                .add_text_rule(b"\xe8", "\n")
+                .add_command_rule(b"\xe6", 1)
+                .add_command_rule(b"\xe7\x01", 0)
+                .add_command_rule(b"\xe7\x02", 0)
+                .add_command_rule(b"\xe7\x03", 0)
+                .add_command_rule(b"\xed\x00", 2)
+                .add_command_rule(b"\xf0\x00", 1)
+                .add_command_rule(b"\xfc\x06", 0)
+                .build(),
             mapper,
             chip_icon_palette,
             element_icon_palette,

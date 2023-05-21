@@ -1,6 +1,5 @@
 use std::io::Read;
 
-use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
 use itertools::Itertools;
 
@@ -146,80 +145,4 @@ pub fn get_mpak_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
     } else {
         buf.get(offset..)
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum Part {
-    String(String),
-    Command { op: u8, params: Vec<u8> },
-}
-
-pub struct ParseOptions {
-    pub charset: Vec<String>,
-    pub extension_ops: Vec<u8>,
-    pub eof_op: u8,
-    pub newline_op: u8,
-    pub commands: std::collections::HashMap<u8, usize>,
-}
-
-pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
-    let mut parts = vec![];
-    let mut out_buf = String::new();
-    while !buf.is_empty() {
-        let op = buf.read_u8()?;
-
-        if op == options.eof_op {
-            break;
-        }
-
-        if op == options.newline_op {
-            out_buf.push('\n');
-            continue;
-        }
-
-        if let Some(len) = options.commands.get(&op) {
-            if !out_buf.is_empty() {
-                let mut next_buf = String::new();
-                std::mem::swap(&mut out_buf, &mut next_buf);
-                parts.push(Part::String(next_buf));
-            }
-
-            let mut params = vec![0u8; *len];
-            buf.read_exact(&mut params)?;
-            parts.push(Part::Command { op, params });
-        } else {
-            let mut c = op as usize;
-            if options.extension_ops.contains(&op) {
-                c += buf.read_u8()? as usize;
-            }
-            out_buf.push_str(&options.charset.get(c).cloned().unwrap_or_else(|| "�".to_string()));
-        }
-    }
-    if !out_buf.is_empty() {
-        parts.push(Part::String(out_buf));
-    }
-    Ok(parts)
-}
-
-pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
-    parse(
-        get_mpak_entry(buf, i).ok_or(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "could not read entry",
-        ))?,
-        &options,
-    )
-}
-
-pub fn parse_patch_card56_effect(parts: Vec<Part>, print_var_command: u8) -> rom::PatchCard56EffectTemplate {
-    parts
-        .into_iter()
-        .flat_map(|part| match part {
-            Part::String(s) => vec![rom::PatchCard56EffectTemplatePart::String(s)],
-            Part::Command { op, params } if op == print_var_command => {
-                vec![rom::PatchCard56EffectTemplatePart::PrintVar(params[2] as usize)]
-            }
-            _ => vec![],
-        })
-        .collect()
 }
