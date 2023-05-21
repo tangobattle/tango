@@ -2,6 +2,131 @@ use std::io::Read;
 
 use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
+use itertools::Itertools;
+
+pub enum ParsedChunk<T> {
+    Text(String),
+    Command(T),
+}
+
+type Rules<T> = patricia_tree::PatriciaMap<
+    Box<dyn Fn(&mut dyn std::io::Read) -> Result<Option<ParsedChunk<T>>, std::io::Error> + Send + Sync>,
+>;
+
+pub struct ParserBuilder<T> {
+    rules: Rules<T>,
+    eof: &'static [u8],
+    ignore_unknown: bool,
+}
+
+impl<T> ParserBuilder<T> {
+    pub fn add_rule(
+        mut self,
+        pat: &[u8],
+        parse_chunk: impl Fn(&mut dyn std::io::Read) -> Result<Option<ParsedChunk<T>>, std::io::Error>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        self.rules.insert(Box::from(pat), Box::new(parse_chunk));
+        self
+    }
+
+    pub fn add_charset(mut self, charset: &[String], extension_op_base: u8) -> Self {
+        for (i, c) in charset.iter().enumerate() {
+            let parse_chunk: Box<
+                dyn Fn(&mut dyn Read) -> Result<Option<ParsedChunk<T>>, std::io::Error> + Send + Sync,
+            > = Box::new({
+                let c = c.clone();
+                move |_| Ok(Some(ParsedChunk::Text(c.clone())))
+            });
+
+            if i < extension_op_base as usize {
+                self.rules.insert(&[i as u8][..], parse_chunk);
+            } else {
+                let offset = i - extension_op_base as usize;
+                self.rules.insert(
+                    &[extension_op_base + (offset / 0x100) as u8, (offset % 0x100) as u8][..],
+                    parse_chunk,
+                );
+            }
+        }
+        self
+    }
+
+    pub fn build(self) -> Parser<T> {
+        Parser {
+            rules: self.rules,
+            eof: self.eof,
+            ignore_unknown: self.ignore_unknown,
+        }
+    }
+}
+
+pub struct Parser<T> {
+    rules: Rules<T>,
+    eof: &'static [u8],
+    ignore_unknown: bool,
+}
+
+impl<T> Parser<T> {
+    pub fn builder(ignore_unknown: bool, eof: &'static [u8]) -> ParserBuilder<T> {
+        ParserBuilder {
+            rules: patricia_tree::PatriciaMap::new(),
+            eof,
+            ignore_unknown,
+        }
+    }
+
+    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<ParsedChunk<T>>, std::io::Error> {
+        let mut chunks = vec![];
+
+        while !buf.is_empty() {
+            if buf.starts_with(self.eof) {
+                break;
+            }
+
+            let (prefix, parse_chunk) = if let Some(parse_chunk) = self.rules.get_longest_common_prefix(buf) {
+                parse_chunk
+            } else {
+                let stray_byte = buf.read_u8().unwrap();
+                if self.ignore_unknown {
+                    continue;
+                } else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("unknown byte: {:08x}", stray_byte),
+                    ));
+                }
+            };
+            buf = &buf[prefix.len()..];
+            if let Some(chunk) = parse_chunk(&mut buf)? {
+                chunks.push(chunk);
+            }
+        }
+
+        // Coalesce text chunks together.
+        Ok(chunks
+            .into_iter()
+            .group_by(|chunk| matches!(chunk, ParsedChunk::Text(_)))
+            .into_iter()
+            .flat_map(|(is_text, g)| {
+                if !is_text {
+                    g.into_iter().collect::<Vec<_>>()
+                } else {
+                    vec![ParsedChunk::Text(
+                        g.into_iter()
+                            .map(|chunk| match chunk {
+                                ParsedChunk::Text(t) => t,
+                                ParsedChunk::Command(_) => unreachable!(),
+                            })
+                            .collect::<String>(),
+                    )]
+                }
+            })
+            .collect::<Vec<_>>())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Part {

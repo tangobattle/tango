@@ -96,8 +96,14 @@ pub static BR6E_00: Offsets = Offsets {
 const PRINT_VAR_COMMAND: u8 = 0xfa;
 const EREADER_COMMAND: u8 = 0xff;
 
+enum MsgCommand {
+    PrintVar { index: usize },
+    EReader { index: usize },
+}
+
 pub struct Assets {
     offsets: &'static Offsets,
+    msg_parser: msg::Parser<MsgCommand>,
     text_parse_options: msg::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
@@ -166,15 +172,16 @@ impl<'a> rom::Chip for Chip<'a> {
                     op: EREADER_COMMAND,
                     params,
                 } => {
-                    if let Ok(parts) = msg::parse(
-                        &self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100),
-                        &self.assets.text_parse_options,
-                    ) {
+                    if let Ok(parts) = self
+                        .assets
+                        .msg_parser
+                        .parse(&self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100))
+                    {
                         parts
                             .into_iter()
                             .flat_map(|part| {
                                 match part {
-                                    msg::Part::String(s) => s,
+                                    msg::ParsedChunk::Text(s) => s,
                                     _ => "".to_string(),
                                 }
                                 .chars()
@@ -406,6 +413,40 @@ impl Assets {
 
         Self {
             offsets,
+            msg_parser: msg::Parser::builder(true, b"\xe6")
+                .add_charset(&charset, 0xe4)
+                .add_rule(b"\xfa", |r| {
+                    let mut buf = [0; 3];
+                    r.read(&mut buf)?;
+                    Ok(Some(msg::ParsedChunk::Command(MsgCommand::PrintVar {
+                        index: buf[2] as usize,
+                    })))
+                })
+                .add_rule(b"\xff", |r| {
+                    let mut buf = [0; 2];
+                    r.read(&mut buf)?;
+                    Ok(Some(msg::ParsedChunk::Command(MsgCommand::EReader {
+                        index: buf[1] as usize,
+                    })))
+                })
+                .add_rule(b"\xe9", |_| Ok(Some(msg::ParsedChunk::Text("\n".to_string()))))
+                .add_rule(b"\xe7", |r| {
+                    r.read(&mut [0; 1])?;
+                    Ok(None)
+                })
+                .add_rule(b"\xe8", |r| {
+                    r.read(&mut [0; 3])?;
+                    Ok(None)
+                })
+                .add_rule(b"\xee", |r| {
+                    r.read(&mut [0; 3])?;
+                    Ok(None)
+                })
+                .add_rule(b"\xf1", |r| {
+                    r.read(&mut [0; 2])?;
+                    Ok(None)
+                })
+                .build(),
             text_parse_options: msg::ParseOptions {
                 charset,
                 extension_ops: vec![0xe4],
