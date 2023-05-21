@@ -365,7 +365,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 }
 
 impl Assets {
-    pub fn new(offsets: &'static Offsets, charset: Vec<String>, rom: Vec<u8>, wram: Vec<u8>) -> Self {
+    pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
         let chip_icon_palette = rom::read_palette(
             &mapper.get(byteorder::LittleEndian::read_u32(
@@ -383,7 +383,7 @@ impl Assets {
             msg_parser: msg::Parser::builder()
                 .with_ignore_unknown(true)
                 .add_eof_rule(b"\xe7")
-                .add_charset_rules(&charset, 0xe5)
+                .add_charset_rules(charset, 0xe5)
                 .add_text_rule(b"\xe8", "\n")
                 .add_command_rule(b"\xea\x00", 2)
                 .add_command_rule(b"\xeb", 0)

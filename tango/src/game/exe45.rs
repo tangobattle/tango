@@ -49,7 +49,7 @@ impl game::Game for EXE45Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::exe45::rom::Assets::new(
                 &tango_dataview::game::exe45::rom::BR4J_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::exe45::rom::CHARSET
                         .iter()
                         .map(|s| s.to_string())

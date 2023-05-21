@@ -60,7 +60,7 @@ impl game::Game for EXE4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WJ_01,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::JA_CHARSET
                         .iter()
                         .map(|s| s.to_string())
@@ -177,7 +177,7 @@ impl game::Game for EXE4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BJ_01,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::JA_CHARSET
                         .iter()
                         .map(|s| s.to_string())
@@ -294,7 +294,7 @@ impl game::Game for BN4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WE_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::EN_CHARSET
                         .iter()
                         .map(|s| s.to_string())
@@ -411,7 +411,7 @@ impl game::Game for BN4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BE_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::EN_CHARSET
                         .iter()
                         .map(|s| s.to_string())

@@ -81,7 +81,7 @@ impl game::Game for EXE2Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn2::rom::Assets::new(
                 &tango_dataview::game::bn2::rom::AE2J_00_AC,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn2::rom::JA_CHARSET
                         .iter()
                         .map(|s| s.to_string())
@@ -144,7 +144,7 @@ impl game::Game for BN2Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn2::rom::Assets::new(
                 &tango_dataview::game::bn2::rom::AE2E_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn2::rom::EN_CHARSET
                         .iter()
                         .map(|s| s.to_string())

@@ -62,7 +62,7 @@ impl game::Game for EXE1Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn1::rom::Assets::new(
                 &tango_dataview::game::bn1::rom::AREJ_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn1::rom::JA_CHARSET
                         .iter()
                         .map(|s| s.to_string())
@@ -149,7 +149,7 @@ impl game::Game for BN1Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn1::rom::Assets::new(
                 &tango_dataview::game::bn1::rom::AREE_00,
-                overrides.charset.as_ref().cloned().unwrap_or_else(|| {
+                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn1::rom::EN_CHARSET
                         .iter()
                         .map(|s| s.to_string())
