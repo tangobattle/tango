@@ -352,6 +352,14 @@ impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
             return false;
         }
 
+        if patch_card
+            .as_ref()
+            .map(|p| p.id == 0 || p.id >= super::NUM_PATCH_CARD4S)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
         self.save.buf[self.save.shift + 0x464c + slot] = 0xff;
         self.save.buf[self.save.shift + 0x464c + 7 + slot] = 0xff;
 
