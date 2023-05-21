@@ -181,21 +181,23 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
     Ok(parts)
 }
 
-pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
+pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
     let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
     let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
+
+    if next_offset > offset && next_offset <= buf.len() {
+        buf.get(offset..next_offset)
+    } else {
+        buf.get(offset..)
+    }
+}
+
+pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
     parse(
-        if next_offset > offset && next_offset <= buf.len() {
-            &buf.get(offset..next_offset).ok_or(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "could not read entry",
-            ))?
-        } else {
-            &buf.get(offset..).ok_or(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "could not read entry",
-            ))?
-        },
+        get_entry(buf, i).ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "could not read entry",
+        ))?,
         &options,
     )
 }

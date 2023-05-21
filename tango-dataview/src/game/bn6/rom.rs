@@ -128,26 +128,27 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_entry(&region, id)?;
+
         Some(
-            msg::parse_entry(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-                id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::ParsedChunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -155,47 +156,45 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        msg::parse_entry(
-            &self
-                .assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-            id,
-            &self.assets.text_parse_options,
-        )
-        .ok()?
-        .into_iter()
-        .map(|part| {
-            Some(match part {
-                msg::Part::String(s) => s,
-                msg::Part::Command {
-                    op: EREADER_COMMAND,
-                    params,
-                } => {
-                    if let Ok(parts) = self
-                        .assets
-                        .msg_parser
-                        .parse(&self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100))
-                    {
-                        parts
-                            .into_iter()
-                            .flat_map(|part| {
-                                match part {
-                                    msg::ParsedChunk::Text(s) => s,
-                                    _ => "".to_string(),
-                                }
-                                .chars()
-                                .collect::<Vec<_>>()
-                            })
-                            .collect::<String>()
-                    } else {
-                        return None;
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_entry(&region, id)?;
+
+        self.assets
+            .msg_parser
+            .parse(entry)
+            .ok()?
+            .into_iter()
+            .map(|part| {
+                Some(match part {
+                    msg::ParsedChunk::Text(s) => s,
+                    msg::ParsedChunk::Command(MsgCommand::EReader { index }) => {
+                        if let Ok(parts) = self
+                            .assets
+                            .msg_parser
+                            .parse(&self.assets.mapper.get(0x020007d6 + index as u32 * 100))
+                        {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        msg::ParsedChunk::Text(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                        } else {
+                            return None;
+                        }
                     }
-                }
-                _ => "".to_string(),
+                    _ => "".to_string(),
+                })
             })
-        })
-        .collect::<Option<String>>()
+            .collect::<Option<String>>()
     }
 
     fn icon(&self) -> image::RgbaImage {
@@ -301,48 +300,50 @@ impl<'a> NavicustPart<'a> {
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
+        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
+        ));
+        let entry = msg::get_entry(&region, self.id)?;
+
         Some(
-            msg::parse_entry(
-                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                    &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
-                )),
-                self.id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match &part {
-                    msg::Part::String(s) => s,
-                    _ => "",
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match &part {
+                        msg::ParsedChunk::Text(s) => s,
+                        _ => "",
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
     fn description(&self) -> Option<String> {
+        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
+        ));
+        let entry = msg::get_entry(&region, self.id)?;
+
         Some(
-            msg::parse_entry(
-                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                    &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
-                )),
-                self.id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::ParsedChunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -488,25 +489,26 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return Some("".to_string());
         }
 
+        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
+        ));
+        let entry = msg::get_entry(&region, self.id)?;
+
         Some(
-            msg::parse_entry(
-                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                    &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
-                )),
-                self.id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::ParsedChunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -533,40 +535,37 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                 crate::rom::PatchCard56Effect {
                     id,
                     name: {
-                        msg::parse_entry(
-                            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                                &self
-                                    .assets
-                                    .mapper
-                                    .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
-                            )),
-                            id as usize,
-                            &self.assets.text_parse_options,
-                        )
-                        .ok()
-                        .map(|parts| {
-                            msg::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
-                                .into_iter()
-                                .flat_map(|p| {
-                                    match p {
-                                        crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
-                                        crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
-                                            if v == 1 {
-                                                let mut parameter = parameter as u32;
-                                                if id == 0x00 || id == 0x02 {
-                                                    parameter = parameter * 10;
+                        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                            &self
+                                .assets
+                                .mapper
+                                .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
+                        ));
+                        msg::parse_entry(&region, id as usize, &self.assets.text_parse_options)
+                            .ok()
+                            .map(|parts| {
+                                msg::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
+                                    .into_iter()
+                                    .flat_map(|p| {
+                                        match p {
+                                            crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
+                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
+                                                if v == 1 {
+                                                    let mut parameter = parameter as u32;
+                                                    if id == 0x00 || id == 0x02 {
+                                                        parameter = parameter * 10;
+                                                    }
+                                                    format!("{}", parameter)
+                                                } else {
+                                                    "".to_string()
                                                 }
-                                                format!("{}", parameter)
-                                            } else {
-                                                "".to_string()
                                             }
                                         }
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect()
-                        })
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect()
+                            })
                     },
                     parameter,
                     is_debuff: chunk[2] == 1,
