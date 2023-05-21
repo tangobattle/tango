@@ -2,6 +2,9 @@ use byteorder::ByteOrder;
 
 use crate::{msg, rom};
 
+const PRINT_VAR_COMMAND: &[u8] = b"\xfa";
+const EREADER_COMMAND: &[u8] = b"\xff";
+
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
@@ -93,14 +96,9 @@ pub static BR6E_00: Offsets = Offsets {
     navicust_bg: NAVICUST_BG_F,
 };
 
-enum MsgCommand {
-    PrintVar { index: usize },
-    EReader { index: usize },
-}
-
 pub struct Assets {
     offsets: &'static Offsets,
-    msg_parser: msg::Parser<MsgCommand>,
+    msg_parser: msg::Parser,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -166,11 +164,11 @@ impl<'a> rom::Chip for Chip<'a> {
             .map(|part| {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
-                    msg::Chunk::Command(MsgCommand::EReader { index }) => {
+                    msg::Chunk::Command { op, params } if op == EREADER_COMMAND => {
                         if let Ok(parts) = self
                             .assets
                             .msg_parser
-                            .parse(&self.assets.mapper.get(0x020007d6 + index as u32 * 100))
+                            .parse(&self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100))
                         {
                             parts
                                 .into_iter()
@@ -411,38 +409,14 @@ impl Assets {
         Self {
             offsets,
             msg_parser: msg::Parser::builder(true, b"\xe6")
-                .add_charset(&charset, 0xe4)
-                .add_rule(b"\xfa", |r| {
-                    let mut buf = [0; 3];
-                    r.read(&mut buf)?;
-                    Ok(Some(msg::Chunk::Command(MsgCommand::PrintVar {
-                        index: buf[2] as usize,
-                    })))
-                })
-                .add_rule(b"\xff", |r| {
-                    let mut buf = [0; 2];
-                    r.read(&mut buf)?;
-                    Ok(Some(msg::Chunk::Command(MsgCommand::EReader {
-                        index: buf[1] as usize,
-                    })))
-                })
-                .add_rule(b"\xe9", |_| Ok(Some(msg::Chunk::Text("\n".to_string()))))
-                .add_rule(b"\xe7", |r| {
-                    r.read(&mut [0; 1])?;
-                    Ok(None)
-                })
-                .add_rule(b"\xe8", |r| {
-                    r.read(&mut [0; 3])?;
-                    Ok(None)
-                })
-                .add_rule(b"\xee", |r| {
-                    r.read(&mut [0; 3])?;
-                    Ok(None)
-                })
-                .add_rule(b"\xf1", |r| {
-                    r.read(&mut [0; 2])?;
-                    Ok(None)
-                })
+                .add_charset_rules(&charset, 0xe4)
+                .add_text_rule(b"\xe9", "\n")
+                .add_command_rule(PRINT_VAR_COMMAND, 3)
+                .add_command_rule(EREADER_COMMAND, 2)
+                .add_command_rule(b"\xe7", 1)
+                .add_command_rule(b"\xe8", 3)
+                .add_command_rule(b"\xee", 3)
+                .add_command_rule(b"\xf1", 2)
                 .build(),
             mapper,
             chip_icon_palette,
@@ -532,9 +506,9 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                                         msg::Chunk::Text(s) => {
                                             Some(crate::rom::PatchCard56EffectTemplatePart::String(s))
                                         }
-                                        msg::Chunk::Command(MsgCommand::PrintVar { index }) => {
-                                            Some(crate::rom::PatchCard56EffectTemplatePart::PrintVar(index))
-                                        }
+                                        msg::Chunk::Command { op, params } if op == PRINT_VAR_COMMAND => Some(
+                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[2] as usize),
+                                        ),
                                         _ => None,
                                     })
                                     .collect::<Option<Vec<_>>>()

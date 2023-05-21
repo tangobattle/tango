@@ -4,53 +4,50 @@ use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
 use itertools::Itertools;
 
-pub enum Chunk<T> {
+pub enum Chunk {
     Text(String),
-    Command(T),
+    Command { op: Vec<u8>, params: Vec<u8> },
 }
 
-type Rules<T> = patricia_tree::PatriciaMap<
-    Box<dyn Fn(&mut dyn std::io::Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync>,
->;
+enum Rule {
+    Text(String),
+    Command(usize),
+}
 
-pub struct ParserBuilder<T> {
-    rules: Rules<T>,
+pub struct ParserBuilder {
+    rules: patricia_tree::PatriciaMap<Rule>,
     eof: &'static [u8],
     ignore_unknown: bool,
 }
 
-impl<T> ParserBuilder<T> {
-    pub fn add_rule(
-        mut self,
-        pat: &[u8],
-        parse_chunk: impl Fn(&mut dyn std::io::Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync + 'static,
-    ) -> Self {
-        self.rules.insert(Box::from(pat), Box::new(parse_chunk));
+impl ParserBuilder {
+    pub fn add_command_rule(mut self, pat: &[u8], len: usize) -> Self {
+        self.rules.insert(Box::from(pat), Rule::Command(len));
         self
     }
 
-    pub fn add_charset(mut self, charset: &[String], extension_op_base: u8) -> Self {
-        for (i, c) in charset.iter().enumerate() {
-            let parse_chunk: Box<dyn Fn(&mut dyn Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync> =
-                Box::new({
-                    let c = c.clone();
-                    move |_| Ok(Some(Chunk::Text(c.clone())))
-                });
+    pub fn add_text_rule(mut self, pat: &[u8], s: &str) -> Self {
+        self.rules.insert(Box::from(pat), Rule::Text(s.to_string()));
+        self
+    }
 
+    pub fn add_charset_rules(mut self, charset: &[String], extension_op_base: u8) -> Self {
+        for (i, c) in charset.iter().enumerate() {
+            let rule = Rule::Text(c.to_string());
             if i < extension_op_base as usize {
-                self.rules.insert(&[i as u8][..], parse_chunk);
+                self.rules.insert(&[i as u8][..], rule);
             } else {
                 let offset = i - extension_op_base as usize;
                 self.rules.insert(
                     &[extension_op_base + (offset / 0x100) as u8, (offset % 0x100) as u8][..],
-                    parse_chunk,
+                    rule,
                 );
             }
         }
         self
     }
 
-    pub fn build(self) -> Parser<T> {
+    pub fn build(self) -> Parser {
         Parser {
             rules: self.rules,
             eof: self.eof,
@@ -59,14 +56,14 @@ impl<T> ParserBuilder<T> {
     }
 }
 
-pub struct Parser<T> {
-    rules: Rules<T>,
+pub struct Parser {
+    rules: patricia_tree::PatriciaMap<Rule>,
     eof: &'static [u8],
     ignore_unknown: bool,
 }
 
-impl<T> Parser<T> {
-    pub fn builder(ignore_unknown: bool, eof: &'static [u8]) -> ParserBuilder<T> {
+impl Parser {
+    pub fn builder(ignore_unknown: bool, eof: &'static [u8]) -> ParserBuilder {
         ParserBuilder {
             rules: patricia_tree::PatriciaMap::new(),
             eof,
@@ -74,7 +71,7 @@ impl<T> Parser<T> {
         }
     }
 
-    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<Chunk<T>>, std::io::Error> {
+    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<Chunk>, std::io::Error> {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
@@ -82,8 +79,8 @@ impl<T> Parser<T> {
                 break;
             }
 
-            let (prefix, parse_chunk) = if let Some(parse_chunk) = self.rules.get_longest_common_prefix(buf) {
-                parse_chunk
+            let (prefix, rule) = if let Some(rule) = self.rules.get_longest_common_prefix(buf) {
+                rule
             } else {
                 let stray_byte = buf.read_u8().unwrap();
                 if self.ignore_unknown {
@@ -95,10 +92,19 @@ impl<T> Parser<T> {
                     ));
                 }
             };
+
             buf = &buf[prefix.len()..];
-            if let Some(chunk) = parse_chunk(&mut buf)? {
-                chunks.push(chunk);
-            }
+            chunks.push(match rule {
+                Rule::Text(t) => Chunk::Text(t.clone()),
+                Rule::Command(len) => {
+                    let mut params = vec![0; *len];
+                    buf.read(&mut params)?;
+                    Chunk::Command {
+                        op: prefix.to_vec(),
+                        params,
+                    }
+                }
+            });
         }
 
         // Coalesce text chunks together.
@@ -114,7 +120,7 @@ impl<T> Parser<T> {
                         g.into_iter()
                             .map(|chunk| match chunk {
                                 Chunk::Text(t) => t,
-                                Chunk::Command(_) => unreachable!(),
+                                Chunk::Command { .. } => unreachable!(),
                             })
                             .collect::<String>(),
                     )]
