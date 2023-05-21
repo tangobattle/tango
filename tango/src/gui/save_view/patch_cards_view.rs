@@ -52,7 +52,7 @@ pub fn show_patch_card4s<'a>(
                         let patch_card = patch_card4s_view.patch_card(i);
                         if let Some(patch_card) = patch_card {
                             if patch_card.enabled {
-                                format!("{:03}", patch_card.id)
+                                format!("{:03}", if patch_card.id != 133 { patch_card.id } else { 0 })
                             } else {
                                 "---".to_owned()
                             }
@@ -93,7 +93,7 @@ pub fn show_patch_card4s<'a>(
                                     ui.vertical(|ui| {
                                         let mut name_label = egui::RichText::new(format!(
                                             "#{:03} {}",
-                                            patch_card.id,
+                                            if patch_card.id != 133 { patch_card.id } else { 0 },
                                             info.name().unwrap_or_else(|| "???".to_string())
                                         ))
                                         .family(font_families.for_language(game_lang));

@@ -15,7 +15,7 @@ pub struct Offsets {
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     navicust_bg: image::Rgba<u8>,
-    patch_cards: &'static [PatchCard4; 133],
+    patch_cards: &'static [Option<PatchCard4>; super::NUM_PATCH_CARD4S],
 }
 
 const NAVICUST_BG_RS: image::Rgba<u8> = image::Rgba([0x8c, 0x10, 0x10, 0xff]);
@@ -513,7 +513,8 @@ impl rom::Assets for Assets {
         self.offsets
             .patch_cards
             .get(id)
-            .map(|m| Box::new(m) as Box<dyn rom::PatchCard4>)
+            .map(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn rom::PatchCard4>))
+            .flatten()
     }
 
     fn num_patch_card4s(&self) -> usize {

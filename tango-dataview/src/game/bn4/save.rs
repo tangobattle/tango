@@ -328,11 +328,12 @@ impl<'a> save::PatchCard4sView<'a> for PatchCard4sView<'a> {
         }
 
         let mut id = self.save.buf[self.save.shift + 0x464c + slot] as usize;
-        let enabled = if id < 0x85 {
+
+        let enabled = if id < 0x86 {
             true
         } else {
             id = self.save.buf[self.save.shift + 0x464c + 7 + slot] as usize;
-            if id >= 0x85 {
+            if id >= 0x86 {
                 return None;
             }
             false
