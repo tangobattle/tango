@@ -13,15 +13,25 @@ pub enum Chunk {
 enum Rule {
     Text(String),
     Command(usize),
+    Eof,
 }
 
 pub struct ParserBuilder {
     rules: patricia_tree::PatriciaMap<Rule>,
-    eof: &'static [u8],
     ignore_unknown: bool,
 }
 
 impl ParserBuilder {
+    pub fn with_ignore_unknown(mut self, ignore_unknown: bool) -> Self {
+        self.ignore_unknown = ignore_unknown;
+        self
+    }
+
+    pub fn add_eof_rule(mut self, pat: &[u8]) -> Self {
+        self.rules.insert(Box::from(pat), Rule::Eof);
+        self
+    }
+
     pub fn add_command_rule(mut self, pat: &[u8], len: usize) -> Self {
         self.rules.insert(Box::from(pat), Rule::Command(len));
         self
@@ -51,7 +61,6 @@ impl ParserBuilder {
     pub fn build(self) -> Parser {
         Parser {
             rules: self.rules,
-            eof: self.eof,
             ignore_unknown: self.ignore_unknown,
         }
     }
@@ -59,16 +68,14 @@ impl ParserBuilder {
 
 pub struct Parser {
     rules: patricia_tree::PatriciaMap<Rule>,
-    eof: &'static [u8],
     ignore_unknown: bool,
 }
 
 impl Parser {
-    pub fn builder(ignore_unknown: bool, eof: &'static [u8]) -> ParserBuilder {
+    pub fn builder() -> ParserBuilder {
         ParserBuilder {
             rules: patricia_tree::PatriciaMap::new(),
-            eof,
-            ignore_unknown,
+            ignore_unknown: false,
         }
     }
 
@@ -76,10 +83,6 @@ impl Parser {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
-            if buf.starts_with(self.eof) {
-                break;
-            }
-
             let (prefix, rule) = if let Some(rule) = self.rules.get_longest_common_prefix(buf) {
                 rule
             } else {
@@ -104,6 +107,9 @@ impl Parser {
                         op: prefix.to_vec(),
                         params,
                     }
+                }
+                Rule::Eof => {
+                    break;
                 }
             });
         }

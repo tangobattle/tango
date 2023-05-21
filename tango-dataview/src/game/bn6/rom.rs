@@ -408,7 +408,9 @@ impl Assets {
 
         Self {
             offsets,
-            msg_parser: msg::Parser::builder(true, b"\xe6")
+            msg_parser: msg::Parser::builder()
+                .with_ignore_unknown(true)
+                .add_eof_rule(b"\xe6")
                 .add_charset_rules(&charset, 0xe4)
                 .add_text_rule(b"\xe9", "\n")
                 .add_command_rule(PRINT_VAR_COMMAND, 2)
