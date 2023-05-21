@@ -323,6 +323,10 @@ pub struct PatchCard4sView<'a> {
 
 impl<'a> save::PatchCard4sView<'a> for PatchCard4sView<'a> {
     fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
+        if slot > 6 {
+            return None;
+        }
+
         let mut id = self.save.buf[self.save.shift + 0x464c + slot] as usize;
         let enabled = if id < 0x85 {
             true
@@ -342,17 +346,22 @@ pub struct PatchCard4sViewMut<'a> {
 }
 
 impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
-    fn set_patch_card(&mut self, slot: usize, patch_card: Option<save::PatchCard>) {
+    fn set_patch_card(&mut self, slot: usize, patch_card: Option<save::PatchCard>) -> bool {
+        if slot > 6 {
+            return false;
+        }
+
         self.save.buf[self.save.shift + 0x464c + slot] = 0xff;
         self.save.buf[self.save.shift + 0x464c + 7 + slot] = 0xff;
 
         let patch_card = if let Some(patch_card) = patch_card {
             patch_card
         } else {
-            return;
+            return true;
         };
 
         self.save.buf[self.save.shift + 0x464c + if patch_card.enabled { 0 } else { 7 } + slot] = patch_card.id as u8;
+        true
     }
 }
 

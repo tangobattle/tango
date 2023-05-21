@@ -166,7 +166,7 @@ pub trait PatchCard4sView<'a> {
 }
 
 pub trait PatchCard4sViewMut<'a> {
-    fn set_patch_card(&mut self, slot: usize, patch_card: Option<PatchCard>);
+    fn set_patch_card(&mut self, slot: usize, patch_card: Option<PatchCard>) -> bool;
 }
 
 pub trait NaviView<'a> {
