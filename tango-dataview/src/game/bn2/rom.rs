@@ -198,7 +198,7 @@ impl Assets {
             offsets,
             text_parse_options: msg::ParseOptions {
                 charset,
-                extension_ops: 0xe5..=0xe6,
+                extension_ops: vec![0xe5, 0xe6],
                 eof_op: 0xe7,
                 newline_op: 0xe8,
                 commands: std::collections::HashMap::from([(0xeb, 0), (0xec, 2), (0xf1, 1)]),

@@ -11,7 +11,7 @@ pub enum Part {
 
 pub struct ParseOptions {
     pub charset: Vec<String>,
-    pub extension_ops: std::ops::RangeInclusive<u8>,
+    pub extension_ops: Vec<u8>,
     pub eof_op: u8,
     pub newline_op: u8,
     pub commands: std::collections::HashMap<u8, usize>,
