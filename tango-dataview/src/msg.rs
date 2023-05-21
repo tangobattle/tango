@@ -137,6 +137,17 @@ impl Parser {
     }
 }
 
+pub fn get_mpak_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
+    let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
+    let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
+
+    if next_offset > offset && next_offset <= buf.len() {
+        buf.get(offset..next_offset)
+    } else {
+        buf.get(offset..)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Part {
     String(String),
@@ -190,20 +201,9 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
     Ok(parts)
 }
 
-pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
-    let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
-    let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
-
-    if next_offset > offset && next_offset <= buf.len() {
-        buf.get(offset..next_offset)
-    } else {
-        buf.get(offset..)
-    }
-}
-
 pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
     parse(
-        get_entry(buf, i).ok_or(std::io::Error::new(
+        get_mpak_entry(buf, i).ok_or(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "could not read entry",
         ))?,
