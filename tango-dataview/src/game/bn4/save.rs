@@ -363,13 +363,11 @@ impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
         self.save.buf[self.save.shift + 0x464c + slot] = 0xff;
         self.save.buf[self.save.shift + 0x464c + 7 + slot] = 0xff;
 
-        let patch_card = if let Some(patch_card) = patch_card {
-            patch_card
-        } else {
-            return true;
-        };
+        if let Some(patch_card) = patch_card {
+            self.save.buf[self.save.shift + 0x464c + if patch_card.enabled { 0 } else { 7 } + slot] =
+                patch_card.id as u8;
+        }
 
-        self.save.buf[self.save.shift + 0x464c + if patch_card.enabled { 0 } else { 7 } + slot] = patch_card.id as u8;
         true
     }
 }
