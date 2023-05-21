@@ -142,7 +142,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::ParsedChunk::Text(s) => s,
+                        msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -169,8 +169,8 @@ impl<'a> rom::Chip for Chip<'a> {
             .into_iter()
             .map(|part| {
                 Some(match part {
-                    msg::ParsedChunk::Text(s) => s,
-                    msg::ParsedChunk::Command(MsgCommand::EReader { index }) => {
+                    msg::Chunk::Text(s) => s,
+                    msg::Chunk::Command(MsgCommand::EReader { index }) => {
                         if let Ok(parts) = self
                             .assets
                             .msg_parser
@@ -180,7 +180,7 @@ impl<'a> rom::Chip for Chip<'a> {
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        msg::ParsedChunk::Text(s) => s,
+                                        msg::Chunk::Text(s) => s,
                                         _ => "".to_string(),
                                     }
                                     .chars()
@@ -313,7 +313,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match &part {
-                        msg::ParsedChunk::Text(s) => s,
+                        msg::Chunk::Text(s) => s,
                         _ => "",
                     }
                     .chars()
@@ -337,7 +337,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::ParsedChunk::Text(s) => s,
+                        msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -419,18 +419,18 @@ impl Assets {
                 .add_rule(b"\xfa", |r| {
                     let mut buf = [0; 3];
                     r.read(&mut buf)?;
-                    Ok(Some(msg::ParsedChunk::Command(MsgCommand::PrintVar {
+                    Ok(Some(msg::Chunk::Command(MsgCommand::PrintVar {
                         index: buf[2] as usize,
                     })))
                 })
                 .add_rule(b"\xff", |r| {
                     let mut buf = [0; 2];
                     r.read(&mut buf)?;
-                    Ok(Some(msg::ParsedChunk::Command(MsgCommand::EReader {
+                    Ok(Some(msg::Chunk::Command(MsgCommand::EReader {
                         index: buf[1] as usize,
                     })))
                 })
-                .add_rule(b"\xe9", |_| Ok(Some(msg::ParsedChunk::Text("\n".to_string()))))
+                .add_rule(b"\xe9", |_| Ok(Some(msg::Chunk::Text("\n".to_string()))))
                 .add_rule(b"\xe7", |r| {
                     r.read(&mut [0; 1])?;
                     Ok(None)
@@ -502,7 +502,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::ParsedChunk::Text(s) => s,
+                        msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()

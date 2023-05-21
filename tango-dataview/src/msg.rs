@@ -4,13 +4,13 @@ use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
 use itertools::Itertools;
 
-pub enum ParsedChunk<T> {
+pub enum Chunk<T> {
     Text(String),
     Command(T),
 }
 
 type Rules<T> = patricia_tree::PatriciaMap<
-    Box<dyn Fn(&mut dyn std::io::Read) -> Result<Option<ParsedChunk<T>>, std::io::Error> + Send + Sync>,
+    Box<dyn Fn(&mut dyn std::io::Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync>,
 >;
 
 pub struct ParserBuilder<T> {
@@ -23,10 +23,7 @@ impl<T> ParserBuilder<T> {
     pub fn add_rule(
         mut self,
         pat: &[u8],
-        parse_chunk: impl Fn(&mut dyn std::io::Read) -> Result<Option<ParsedChunk<T>>, std::io::Error>
-            + Send
-            + Sync
-            + 'static,
+        parse_chunk: impl Fn(&mut dyn std::io::Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync + 'static,
     ) -> Self {
         self.rules.insert(Box::from(pat), Box::new(parse_chunk));
         self
@@ -34,12 +31,11 @@ impl<T> ParserBuilder<T> {
 
     pub fn add_charset(mut self, charset: &[String], extension_op_base: u8) -> Self {
         for (i, c) in charset.iter().enumerate() {
-            let parse_chunk: Box<
-                dyn Fn(&mut dyn Read) -> Result<Option<ParsedChunk<T>>, std::io::Error> + Send + Sync,
-            > = Box::new({
-                let c = c.clone();
-                move |_| Ok(Some(ParsedChunk::Text(c.clone())))
-            });
+            let parse_chunk: Box<dyn Fn(&mut dyn Read) -> Result<Option<Chunk<T>>, std::io::Error> + Send + Sync> =
+                Box::new({
+                    let c = c.clone();
+                    move |_| Ok(Some(Chunk::Text(c.clone())))
+                });
 
             if i < extension_op_base as usize {
                 self.rules.insert(&[i as u8][..], parse_chunk);
@@ -78,7 +74,7 @@ impl<T> Parser<T> {
         }
     }
 
-    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<ParsedChunk<T>>, std::io::Error> {
+    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<Chunk<T>>, std::io::Error> {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
@@ -108,17 +104,17 @@ impl<T> Parser<T> {
         // Coalesce text chunks together.
         Ok(chunks
             .into_iter()
-            .group_by(|chunk| matches!(chunk, ParsedChunk::Text(_)))
+            .group_by(|chunk| matches!(chunk, Chunk::Text(_)))
             .into_iter()
             .flat_map(|(is_text, g)| {
                 if !is_text {
                     g.into_iter().collect::<Vec<_>>()
                 } else {
-                    vec![ParsedChunk::Text(
+                    vec![Chunk::Text(
                         g.into_iter()
                             .map(|chunk| match chunk {
-                                ParsedChunk::Text(t) => t,
-                                ParsedChunk::Command(_) => unreachable!(),
+                                Chunk::Text(t) => t,
+                                Chunk::Command(_) => unreachable!(),
                             })
                             .collect::<String>(),
                     )]
