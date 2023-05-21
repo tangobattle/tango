@@ -4,6 +4,7 @@ use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
 use itertools::Itertools;
 
+#[derive(Debug, PartialEq)]
 pub enum Chunk {
     Text(String),
     Command { op: Vec<u8>, params: Vec<u8> },
@@ -31,20 +32,20 @@ impl ParserBuilder {
         self
     }
 
-    pub fn add_charset_rules(mut self, charset: &[String], extension_op_base: u8) -> Self {
+    pub fn add_charset_rules(self, charset: &[String], extension_op_base: u8) -> Self {
+        let mut this = self;
         for (i, c) in charset.iter().enumerate() {
-            let rule = Rule::Text(c.to_string());
             if i < extension_op_base as usize {
-                self.rules.insert(&[i as u8][..], rule);
+                this = this.add_text_rule(&[i as u8][..], c);
             } else {
                 let offset = i - extension_op_base as usize;
-                self.rules.insert(
+                this = this.add_text_rule(
                     &[extension_op_base + (offset / 0x100) as u8, (offset % 0x100) as u8][..],
-                    rule,
+                    c,
                 );
             }
         }
-        self
+        this
     }
 
     pub fn build(self) -> Parser {
@@ -88,7 +89,7 @@ impl Parser {
                 } else {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("unknown byte: {:08x}", stray_byte),
+                        format!("unknown byte: {:02x}", stray_byte),
                     ));
                 }
             };

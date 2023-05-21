@@ -2,8 +2,8 @@ use byteorder::ByteOrder;
 
 use crate::{msg, rom};
 
-const PRINT_VAR_COMMAND: &[u8] = b"\xfa";
-const EREADER_COMMAND: &[u8] = b"\xff";
+const PRINT_VAR_COMMAND: &[u8] = b"\xfa\x03";
+const EREADER_DESCRIPTION_COMMAND: &[u8] = b"\xff\x01";
 
 pub struct Offsets {
     chip_data: u32,
@@ -164,11 +164,11 @@ impl<'a> rom::Chip for Chip<'a> {
             .map(|part| {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
-                    msg::Chunk::Command { op, params } if op == EREADER_COMMAND => {
+                    msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
                         if let Ok(parts) = self
                             .assets
                             .msg_parser
-                            .parse(&self.assets.mapper.get(0x020007d6 + params[1] as u32 * 100))
+                            .parse(&self.assets.mapper.get(0x020007d6 + params[0] as u32 * 100))
                         {
                             parts
                                 .into_iter()
@@ -411,12 +411,17 @@ impl Assets {
             msg_parser: msg::Parser::builder(true, b"\xe6")
                 .add_charset_rules(&charset, 0xe4)
                 .add_text_rule(b"\xe9", "\n")
-                .add_command_rule(PRINT_VAR_COMMAND, 3)
-                .add_command_rule(EREADER_COMMAND, 2)
+                .add_command_rule(PRINT_VAR_COMMAND, 2)
+                .add_command_rule(EREADER_DESCRIPTION_COMMAND, 1)
                 .add_command_rule(b"\xe7", 1)
-                .add_command_rule(b"\xe8", 3)
-                .add_command_rule(b"\xee", 3)
-                .add_command_rule(b"\xf1", 2)
+                .add_command_rule(b"\xe8\x01", 0)
+                .add_command_rule(b"\xe8\x02", 0)
+                .add_command_rule(b"\xe8\x03", 0)
+                .add_command_rule(b"\xe8\x04", 2)
+                .add_command_rule(b"\xe8\x05", 2)
+                .add_command_rule(b"\xe8\x06", 2)
+                .add_command_rule(b"\xee\x00", 2)
+                .add_command_rule(b"\xf1\x00", 1)
                 .build(),
             mapper,
             chip_icon_palette,
@@ -507,7 +512,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                                             Some(crate::rom::PatchCard56EffectTemplatePart::String(s))
                                         }
                                         msg::Chunk::Command { op, params } if op == PRINT_VAR_COMMAND => Some(
-                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[2] as usize),
+                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[1] as usize),
                                         ),
                                         _ => None,
                                     })
