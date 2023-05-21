@@ -93,9 +93,6 @@ pub static BR6E_00: Offsets = Offsets {
     navicust_bg: NAVICUST_BG_F,
 };
 
-const PRINT_VAR_COMMAND: u8 = 0xfa;
-const EREADER_COMMAND: u8 = 0xff;
-
 enum MsgCommand {
     PrintVar { index: usize },
     EReader { index: usize },
@@ -104,7 +101,6 @@ enum MsgCommand {
 pub struct Assets {
     offsets: &'static Offsets,
     msg_parser: msg::Parser<MsgCommand>,
-    text_parse_options: msg::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -448,20 +444,6 @@ impl Assets {
                     Ok(None)
                 })
                 .build(),
-            text_parse_options: msg::ParseOptions {
-                charset,
-                extension_ops: vec![0xe4],
-                eof_op: 0xe6,
-                newline_op: 0xe9,
-                commands: std::collections::HashMap::from([
-                    (PRINT_VAR_COMMAND, 3),
-                    (EREADER_COMMAND, 2),
-                    (0xe7, 1),
-                    (0xe8, 3),
-                    (0xee, 3),
-                    (0xf1, 2),
-                ]),
-            },
             mapper,
             chip_icon_palette,
             element_icon_palette,
@@ -541,10 +523,24 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                                 .mapper
                                 .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
                         ));
-                        msg::parse_entry(&region, id as usize, &self.assets.text_parse_options)
-                            .ok()
+                        msg::get_entry(&region, id)
+                            .and_then(|entry| self.assets.msg_parser.parse(entry).ok())
+                            .and_then(|chunks| {
+                                chunks
+                                    .into_iter()
+                                    .map(|chunk| match chunk {
+                                        msg::Chunk::Text(s) => {
+                                            Some(crate::rom::PatchCard56EffectTemplatePart::String(s))
+                                        }
+                                        msg::Chunk::Command(MsgCommand::PrintVar { index }) => {
+                                            Some(crate::rom::PatchCard56EffectTemplatePart::PrintVar(index))
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect::<Option<Vec<_>>>()
+                            })
                             .map(|parts| {
-                                msg::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
+                                parts
                                     .into_iter()
                                     .flat_map(|p| {
                                         match p {
