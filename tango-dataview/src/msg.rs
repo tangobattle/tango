@@ -139,10 +139,5 @@ impl Parser {
 pub fn get_mpak_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
     let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
     let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
-
-    if next_offset > offset && next_offset <= buf.len() {
-        buf.get(offset..next_offset)
-    } else {
-        buf.get(offset..)
-    }
+    buf.get(offset..std::cmp::min(next_offset, buf.len()))
 }
