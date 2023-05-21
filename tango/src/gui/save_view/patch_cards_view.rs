@@ -68,76 +68,89 @@ pub fn show_patch_card4s<'a>(
 
     let row_height = ui.text_style_height(&egui::TextStyle::Body);
     let spacing_y = ui.spacing().item_spacing.y;
-    egui_extras::TableBuilder::new(ui)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(egui_extras::Column::remainder())
-        .column(egui_extras::Column::exact(250.0))
-        .striped(true)
-        .body(|body| {
-            body.rows(row_height * 2.0 + spacing_y, 6, |i, mut row| {
+
+    egui_extras::StripBuilder::new(ui)
+        .sizes(egui_extras::Size::exact(row_height * 2.0 + spacing_y), 6)
+        .vertical(|mut outer_strip| {
+            for i in 0..6 {
                 let patch_card = patch_card4s_view.patch_card(i);
-                if let Some((patch_card, info)) = patch_card
-                    .as_ref()
-                    .and_then(|patch_card| assets.patch_card4(patch_card.id).map(|info| (patch_card, info)))
-                {
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            let mut name_label = egui::RichText::new(format!(
-                                "#{:03} {}",
-                                patch_card.id,
-                                info.name().unwrap_or_else(|| "???".to_string())
-                            ))
-                            .family(font_families.for_language(game_lang));
-                            if !patch_card.enabled {
-                                name_label = name_label.strikethrough();
+                outer_strip.cell(|ui| {
+                    let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
+                    if i % 2 == 0 {
+                        ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                    }
+
+                    egui_extras::StripBuilder::new(ui)
+                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .size(egui_extras::Size::remainder())
+                        .size(egui_extras::Size::exact(250.0))
+                        .horizontal(|mut strip| {
+                            if let Some((patch_card, info)) = patch_card
+                                .as_ref()
+                                .and_then(|patch_card| assets.patch_card4(patch_card.id).map(|info| (patch_card, info)))
+                            {
+                                strip.cell(|ui| {
+                                    ui.vertical(|ui| {
+                                        let mut name_label = egui::RichText::new(format!(
+                                            "#{:03} {}",
+                                            patch_card.id,
+                                            info.name().unwrap_or_else(|| "???".to_string())
+                                        ))
+                                        .family(font_families.for_language(game_lang));
+                                        if !patch_card.enabled {
+                                            name_label = name_label.strikethrough();
+                                        }
+
+                                        let mut slot_label =
+                                            egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
+                                                .small();
+                                        if !patch_card.enabled {
+                                            slot_label = slot_label.strikethrough();
+                                        }
+
+                                        ui.label(name_label);
+                                        ui.label(slot_label);
+                                    });
+                                });
+                                strip.cell(|ui| {
+                                    ui.vertical(|ui| {
+                                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                            show_effect(
+                                                ui,
+                                                egui::RichText::new(info.effect().unwrap_or_else(|| "???".to_string()))
+                                                    .family(font_families.for_language(game_lang)),
+                                                patch_card.enabled,
+                                                false,
+                                            );
+
+                                            if let Some(bug) = info.bug() {
+                                                show_effect(
+                                                    ui,
+                                                    egui::RichText::new(bug)
+                                                        .family(font_families.for_language(game_lang)),
+                                                    patch_card.enabled,
+                                                    true,
+                                                );
+                                            }
+                                        });
+                                    });
+                                });
+                            } else {
+                                strip.cell(|ui| {
+                                    ui.vertical(|ui| {
+                                        ui.label("---");
+                                        ui.label(
+                                            egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
+                                                .small()
+                                                .strikethrough(),
+                                        );
+                                    });
+                                });
+                                strip.cell(|_ui| {});
                             }
-
-                            let mut slot_label =
-                                egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i])).small();
-                            if !patch_card.enabled {
-                                slot_label = slot_label.strikethrough();
-                            }
-
-                            ui.label(name_label);
-                            ui.label(slot_label);
                         });
-                    });
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                show_effect(
-                                    ui,
-                                    egui::RichText::new(info.effect().unwrap_or_else(|| "???".to_string()))
-                                        .family(font_families.for_language(game_lang)),
-                                    patch_card.enabled,
-                                    false,
-                                );
-
-                                if let Some(bug) = info.bug() {
-                                    show_effect(
-                                        ui,
-                                        egui::RichText::new(bug).family(font_families.for_language(game_lang)),
-                                        patch_card.enabled,
-                                        true,
-                                    );
-                                }
-                            });
-                        });
-                    });
-                } else {
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label("---");
-                            ui.label(
-                                egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
-                                    .small()
-                                    .strikethrough(),
-                            );
-                        });
-                    });
-                    row.col(|_ui| {});
-                }
-            });
+                });
+            }
         });
 }
 
@@ -205,88 +218,101 @@ pub fn show_patch_card56s<'a>(
 
     let row_height = ui.text_style_height(&egui::TextStyle::Body);
     let spacing_y = ui.spacing().item_spacing.y;
-    egui_extras::TableBuilder::new(ui)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(egui_extras::Column::remainder())
-        .column(egui_extras::Column::exact(150.0))
-        .column(egui_extras::Column::exact(150.0))
-        .striped(true)
-        .body(|body| {
-            body.heterogeneous_rows(
-                items.iter().map(|(_, effects)| {
-                    let num_effects = std::cmp::max(
-                        effects.iter().filter(|effect| effect.is_ability).count(),
-                        effects.iter().filter(|effect| !effect.is_ability).count(),
-                    );
-                    let num_rows = std::cmp::max(num_effects, 2);
-                    num_rows as f32 * row_height + num_rows as f32 * spacing_y - spacing_y * 0.5
-                }),
-                |i, mut row| {
-                    let (patch_card, effects) = &items[i];
-                    row.col(|ui| {
-                        if let Some((patch_card, enabled)) = patch_card
-                            .as_ref()
-                            .and_then(|patch_card| assets.patch_card56(patch_card.id).map(|m| (m, patch_card.enabled)))
-                        {
-                            let mut text = egui::RichText::new(&patch_card.name().unwrap_or_else(|| "???".to_string()))
-                                .family(font_families.for_language(game_lang));
-                            if !enabled {
-                                text = text.strikethrough();
+
+    let mut strip_builder = egui_extras::StripBuilder::new(ui);
+    for (_, effects) in items.iter() {
+        let num_effects = std::cmp::max(
+            effects.iter().filter(|effect| effect.is_ability).count(),
+            effects.iter().filter(|effect| !effect.is_ability).count(),
+        );
+        let num_rows = std::cmp::max(num_effects, 2);
+        strip_builder = strip_builder.size(egui_extras::Size::exact(
+            num_rows as f32 * row_height + num_rows as f32 * spacing_y - spacing_y * 0.5,
+        ));
+    }
+    strip_builder.vertical(|mut outer_strip| {
+        for (i, (patch_card, effects)) in items.iter().enumerate() {
+            outer_strip.cell(|ui| {
+                let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
+                if i % 2 == 0 {
+                    ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                }
+
+                egui_extras::StripBuilder::new(ui)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(150.0))
+                    .size(egui_extras::Size::exact(150.0))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            if let Some((patch_card, enabled)) = patch_card.as_ref().and_then(|patch_card| {
+                                assets.patch_card56(patch_card.id).map(|m| (m, patch_card.enabled))
+                            }) {
+                                let mut text =
+                                    egui::RichText::new(&patch_card.name().unwrap_or_else(|| "???".to_string()))
+                                        .family(font_families.for_language(game_lang));
+                                if !enabled {
+                                    text = text.strikethrough();
+                                }
+                                ui.vertical(|ui| {
+                                    ui.label(text);
+                                    ui.small(format!("{}MB", patch_card.mb()));
+                                });
                             }
+                        });
+
+                        strip.cell(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(text);
-                                ui.small(format!("{}MB", patch_card.mb()));
-                            });
-                        }
-                    });
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                    for effect in effects.iter() {
+                                        if effect.is_ability {
+                                            continue;
+                                        }
 
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                for effect in effects.iter() {
-                                    if effect.is_ability {
-                                        continue;
-                                    }
-
-                                    show_effect(
-                                        ui,
-                                        egui::RichText::new(&effect.name.clone().unwrap_or_else(|| "???".to_string()))
+                                        show_effect(
+                                            ui,
+                                            egui::RichText::new(
+                                                &effect.name.clone().unwrap_or_else(|| "???".to_string()),
+                                            )
                                             .family(font_families.for_language(game_lang)),
-                                        patch_card
-                                            .as_ref()
-                                            .map(|patch_card| patch_card.enabled)
-                                            .unwrap_or(false),
-                                        effect.is_debuff,
-                                    );
-                                }
+                                            patch_card
+                                                .as_ref()
+                                                .map(|patch_card| patch_card.enabled)
+                                                .unwrap_or(false),
+                                            effect.is_debuff,
+                                        );
+                                    }
+                                });
+                            });
+                        });
+                        strip.cell(|ui| {
+                            ui.vertical(|ui| {
+                                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                    for effect in effects.iter() {
+                                        if !effect.is_ability {
+                                            continue;
+                                        }
+
+                                        show_effect(
+                                            ui,
+                                            egui::RichText::new(
+                                                &effect.name.clone().unwrap_or_else(|| "???".to_string()),
+                                            )
+                                            .family(font_families.for_language(game_lang)),
+                                            patch_card
+                                                .as_ref()
+                                                .map(|patch_card| patch_card.enabled)
+                                                .unwrap_or(false),
+                                            effect.is_debuff,
+                                        );
+                                    }
+                                });
                             });
                         });
                     });
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                for effect in effects.iter() {
-                                    if !effect.is_ability {
-                                        continue;
-                                    }
-
-                                    show_effect(
-                                        ui,
-                                        egui::RichText::new(&effect.name.clone().unwrap_or_else(|| "???".to_string()))
-                                            .family(font_families.for_language(game_lang)),
-                                        patch_card
-                                            .as_ref()
-                                            .map(|patch_card| patch_card.enabled)
-                                            .unwrap_or(false),
-                                        effect.is_debuff,
-                                    );
-                                }
-                            });
-                        });
-                    });
-                },
-            );
-        });
+            });
+        }
+    });
 }
 
 pub fn show<'a>(
