@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::{rom, text};
+use crate::{msg, rom};
 
 pub struct Offsets {
     chip_data: u32,
@@ -29,7 +29,7 @@ pub static BR4J_00: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: text::ParseOptions,
+    text_parse_options: msg::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -54,7 +54,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let id = self.id % 0x100;
 
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self
                     .assets
                     .mapper
@@ -66,7 +66,7 @@ impl<'a> rom::Chip for Chip<'a> {
             .into_iter()
             .flat_map(|part| {
                 match part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "".to_string(),
                 }
                 .chars()
@@ -81,7 +81,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let id = self.id % 0x100;
 
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self
                     .assets
                     .mapper
@@ -93,7 +93,7 @@ impl<'a> rom::Chip for Chip<'a> {
             .into_iter()
             .flat_map(|part| {
                 match part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "".to_string(),
                 }
                 .chars()
@@ -199,7 +199,7 @@ struct Navi<'a> {
 impl<'a> rom::Navi for Navi<'a> {
     fn name(&self) -> Option<String> {
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                     &self.assets.mapper.get(self.assets.offsets.navi_names_pointer)[..4],
                 )),
@@ -210,7 +210,7 @@ impl<'a> rom::Navi for Navi<'a> {
             .into_iter()
             .flat_map(|part| {
                 match part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "".to_string(),
                 }
                 .chars()
@@ -257,7 +257,7 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: text::ParseOptions {
+            text_parse_options: msg::ParseOptions {
                 charset,
                 extension_ops: 0xe4..=0xe4,
                 eof_op: 0xe5,

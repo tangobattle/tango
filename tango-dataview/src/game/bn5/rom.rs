@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::{rom, text};
+use crate::{msg, rom};
 
 pub struct Offsets {
     chip_data: u32,
@@ -98,7 +98,7 @@ const EREADER_COMMAND: u8 = 0xff;
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: text::ParseOptions,
+    text_parse_options: msg::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -122,7 +122,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        text::parse_entry(
+        msg::parse_entry(
             &self
                 .assets
                 .mapper
@@ -134,12 +134,12 @@ impl<'a> rom::Chip for Chip<'a> {
         .into_iter()
         .map(|part| {
             Some(match part {
-                text::Part::String(s) => s,
-                text::Part::Command {
+                msg::Part::String(s) => s,
+                msg::Part::Command {
                     op: EREADER_COMMAND,
                     params,
                 } => {
-                    if let Ok(parts) = text::parse(
+                    if let Ok(parts) = msg::parse(
                         &self.assets.mapper.get(0x02001d16 + params[1] as u32 * 0x18),
                         &self.assets.text_parse_options,
                     ) {
@@ -147,7 +147,7 @@ impl<'a> rom::Chip for Chip<'a> {
                             .into_iter()
                             .flat_map(|part| {
                                 match part {
-                                    text::Part::String(s) => s,
+                                    msg::Part::String(s) => s,
                                     _ => "".to_string(),
                                 }
                                 .chars()
@@ -168,7 +168,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        text::parse_entry(
+        msg::parse_entry(
             &self
                 .assets
                 .mapper
@@ -180,12 +180,12 @@ impl<'a> rom::Chip for Chip<'a> {
         .into_iter()
         .map(|part| {
             Some(match part {
-                text::Part::String(s) => s,
-                text::Part::Command {
+                msg::Part::String(s) => s,
+                msg::Part::Command {
                     op: EREADER_COMMAND,
                     params,
                 } => {
-                    if let Ok(parts) = text::parse(
+                    if let Ok(parts) = msg::parse(
                         &self.assets.mapper.get(0x02001376 + params[1] as u32 * 0x64),
                         &self.assets.text_parse_options,
                     ) {
@@ -193,7 +193,7 @@ impl<'a> rom::Chip for Chip<'a> {
                             .into_iter()
                             .flat_map(|part| {
                                 match part {
-                                    text::Part::String(s) => s,
+                                    msg::Part::String(s) => s,
                                     _ => "".to_string(),
                                 }
                                 .chars()
@@ -316,7 +316,7 @@ impl<'a> NavicustPart<'a> {
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                     &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
                 )),
@@ -327,7 +327,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             .into_iter()
             .flat_map(|part| {
                 match &part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "",
                 }
                 .chars()
@@ -339,7 +339,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 
     fn description(&self) -> Option<String> {
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                     &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
                 )),
@@ -350,7 +350,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             .into_iter()
             .flat_map(|part| {
                 match part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "".to_string(),
                 }
                 .chars()
@@ -427,7 +427,7 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: text::ParseOptions {
+            text_parse_options: msg::ParseOptions {
                 charset,
                 extension_ops: 0xe4..=0xe4,
                 eof_op: 0xe6,
@@ -469,7 +469,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
         }
 
         Some(
-            text::parse_entry(
+            msg::parse_entry(
                 &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                     &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
                 )),
@@ -480,7 +480,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             .into_iter()
             .flat_map(|part| {
                 match part {
-                    text::Part::String(s) => s,
+                    msg::Part::String(s) => s,
                     _ => "".to_string(),
                 }
                 .chars()
@@ -513,7 +513,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                 crate::rom::PatchCard56Effect {
                     id,
                     name: {
-                        text::parse_entry(
+                        msg::parse_entry(
                             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                                 &self
                                     .assets
@@ -525,7 +525,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                         )
                         .ok()
                         .map(|parts| {
-                            text::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
+                            msg::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
                                 .into_iter()
                                 .flat_map(|p| {
                                     match p {
