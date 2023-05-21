@@ -168,7 +168,7 @@ impl<'a> rom::Chip for Chip<'a> {
                         if let Ok(parts) = self
                             .assets
                             .msg_parser
-                            .parse(&self.assets.mapper.get(0x020007d6 + params[0] as u32 * 100))
+                            .parse(&self.assets.mapper.get(0x020007d6 + params[0] as u32 * 0x64))
                         {
                             parts
                                 .into_iter()
