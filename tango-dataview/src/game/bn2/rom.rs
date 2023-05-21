@@ -33,7 +33,7 @@ pub static AE2J_00_AC: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: msg::ParseOptions,
+    msg_parser: msg::Parser,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -57,26 +57,27 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_mpak_entry(&region, id)?;
+
         Some(
-            msg::parse_entry(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-                id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -84,26 +85,27 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
+        let region = self
+            .assets
+            .mapper
+            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+        let entry = msg::get_mpak_entry(&region, id)?;
+
         Some(
-            msg::parse_entry(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
-                id,
-                &self.assets.text_parse_options,
-            )
-            .ok()?
-            .into_iter()
-            .flat_map(|part| {
-                match part {
-                    msg::Part::String(s) => s,
-                    _ => "".to_string(),
-                }
-                .chars()
-                .collect::<Vec<_>>()
-            })
-            .collect::<String>(),
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
         )
     }
 
@@ -196,13 +198,16 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: msg::ParseOptions {
-                charset,
-                extension_ops: vec![0xe5, 0xe6],
-                eof_op: 0xe7,
-                newline_op: 0xe8,
-                commands: std::collections::HashMap::from([(0xeb, 0), (0xec, 2), (0xf1, 1)]),
-            },
+            msg_parser: msg::Parser::builder()
+                .with_ignore_unknown(true)
+                .add_eof_rule(b"\xe7")
+                .add_charset_rules(&charset, 0xe5)
+                .add_text_rule(b"\xe8", "\n")
+                .add_command_rule(b"\xeb", 0)
+                .add_command_rule(b"\xec\x00", 1)
+                .add_command_rule(b"\xf1\x02", 0)
+                .add_command_rule(b"\xf1\x03", 0)
+                .build(),
             mapper,
             chip_icon_palette,
             element_icon_palette,
