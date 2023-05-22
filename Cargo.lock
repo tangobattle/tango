@@ -5413,7 +5413,7 @@ dependencies = [
 
 [[package]]
 name = "tango"
-version = "4.0.46"
+version = "4.0.47"
 dependencies = [
  "anyhow",
  "arboard 2.1.1",
@@ -5511,7 +5511,7 @@ dependencies = [
 
 [[package]]
 name = "tango-dataview"
-version = "4.0.46"
+version = "4.0.47"
 dependencies = [
  "byteorder",
  "image 0.24.3",
