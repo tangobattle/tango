@@ -1,12 +1,10 @@
-use std::io::Read;
-
 use byteorder::{ByteOrder, ReadBytesExt};
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
-pub enum Chunk {
+pub enum Chunk<'a> {
     Text(String),
-    Command { op: Vec<u8>, params: Vec<u8> },
+    Command { op: &'a [u8], params: &'a [u8] },
 }
 
 enum Rule {
@@ -78,7 +76,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<Chunk>, std::io::Error> {
+    pub fn parse<'a>(&'a self, mut buf: &'a [u8]) -> Result<Vec<Chunk<'a>>, std::io::Error> {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
@@ -100,12 +98,15 @@ impl Parser {
             chunks.push(match rule {
                 Rule::Text(t) => Chunk::Text(t.clone()),
                 Rule::Command(len) => {
-                    let mut params = vec![0; *len];
-                    buf.read(&mut params)?;
-                    Chunk::Command {
-                        op: prefix.to_vec(),
-                        params,
+                    if buf.len() < *len {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            format!("not enough bytes for command: {} < {}", buf.len(), *len),
+                        ));
                     }
+                    let (params, rest) = buf.split_at(*len);
+                    buf = rest;
+                    Chunk::Command { op: prefix, params }
                 }
                 Rule::Eof => {
                     break;
