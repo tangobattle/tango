@@ -137,7 +137,7 @@ impl Parser {
     }
 }
 
-pub fn get_mpak_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
+pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
     let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
 
     let mut next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;

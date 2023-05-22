@@ -118,7 +118,7 @@ impl<'a> rom::Chip for Chip<'a> {
             .assets
             .mapper
             .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
-        let entry = msg::get_mpak_entry(&region, id)?;
+        let entry = msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -163,7 +163,7 @@ impl<'a> rom::Chip for Chip<'a> {
             .assets
             .mapper
             .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
-        let entry = msg::get_mpak_entry(&region, id)?;
+        let entry = msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -308,7 +308,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
         ));
-        let entry = msg::get_mpak_entry(&region, self.id)?;
+        let entry = msg::get_entry(&region, self.id)?;
 
         Some(
             self.assets
@@ -332,7 +332,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
         ));
-        let entry = msg::get_mpak_entry(&region, self.id)?;
+        let entry = msg::get_entry(&region, self.id)?;
 
         Some(
             self.assets
