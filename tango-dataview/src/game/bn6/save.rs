@@ -211,22 +211,15 @@ impl save::Save for Save {
     // }
 
     fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
-        if self.game_info.region == Region::US {
-            return std::borrow::Cow::Borrowed(&self.buf);
+        match self.game_info.region {
+            Region::US => self.as_us_wram(),
+            Region::JP => self.as_jp_wram(),
         }
-        let mut buf = self.buf.clone();
-        convert_us_to_jp(self.shift, &mut buf);
-        std::borrow::Cow::Owned(buf.to_vec())
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
-        let mut raw_buf = self.buf.clone();
-        if self.game_info.region == Region::JP {
-            convert_us_to_jp(self.shift, &mut raw_buf);
-        }
-
         let mut buf = vec![0; 65536];
-        buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&raw_buf);
+        buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&self.as_raw_wram());
         save::mask_save(&mut buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE], MASK_OFFSET);
         buf
     }
