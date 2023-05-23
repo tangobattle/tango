@@ -316,15 +316,13 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 }
 
-// The patch card offsets are all made up: they are at the locations they would be at in BN6, if BN6 supported it.
-
 pub struct PatchCard56sView<'a> {
     save: &'a Save,
 }
 
 impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
-        self.save.buf[self.save.shift + 0x6630] as usize
+        self.save.buf[self.save.shift + 0x65F0] as usize
     }
 
     fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
@@ -332,7 +330,7 @@ impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
             return None;
         }
 
-        let raw = self.save.buf[self.save.shift + 0x6660 + slot];
+        let raw = self.save.buf[self.save.shift + 0x6620 + slot];
         Some(save::PatchCard {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
@@ -346,7 +344,7 @@ pub struct PatchCard56sViewMut<'a> {
 
 impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
-        self.save.buf[self.save.shift + 0x6630] = count as u8;
+        self.save.buf[self.save.shift + 0x65F0] = count as u8;
     }
 
     fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
@@ -354,7 +352,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         if slot >= view.count() {
             return false;
         }
-        self.save.buf[self.save.shift + 0x6660 + slot] =
+        self.save.buf[self.save.shift + 0x6620 + slot] =
             (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
         true
     }
@@ -365,7 +363,7 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.save.buf[self.save.shift + 0x5088 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
+            self.save.buf[self.save.shift + 0x5048 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
         }
     }
 }
