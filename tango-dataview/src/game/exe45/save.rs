@@ -2,10 +2,10 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SAVE_SIZE: usize = 0xc7a8;
-const MASK_OFFSET: usize = 0x3c84;
-const GAME_NAME_OFFSET: usize = 0x4ba8;
-const CHECKSUM_OFFSET: usize = 0x4b88;
+pub const SAVE_SIZE: usize = 0xc7a8;
+pub const MASK_OFFSET: usize = 0x3c84;
+pub const GAME_NAME_OFFSET: usize = 0x4ba8;
+pub const CHECKSUM_OFFSET: usize = 0x4b88;
 
 #[derive(Clone)]
 pub struct Save {

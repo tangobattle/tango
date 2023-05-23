@@ -2,9 +2,9 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SAVE_SIZE: usize = 0x2308;
-const GAME_NAME_OFFSET: usize = 0x03fc;
-const CHECKSUM_OFFSET: usize = 0x03f0;
+pub const SAVE_SIZE: usize = 0x2308;
+pub const GAME_NAME_OFFSET: usize = 0x03fc;
+pub const CHECKSUM_OFFSET: usize = 0x03f0;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Region {

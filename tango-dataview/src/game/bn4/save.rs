@@ -2,11 +2,16 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::save::{self, NavicustView as _};
 
-const SAVE_SIZE: usize = 0x73d2;
-const MASK_OFFSET: usize = 0x1554;
-const GAME_NAME_OFFSET: usize = 0x2208;
-const CHECKSUM_OFFSET: usize = 0x21e8;
-const SHIFT_OFFSET: usize = 0x1550;
+pub const SAVE_SIZE: usize = 0x73d2;
+pub const MASK_OFFSET: usize = 0x1554;
+pub const GAME_NAME_OFFSET: usize = 0x2208;
+pub const CHECKSUM_OFFSET: usize = 0x21e8;
+pub const SHIFT_OFFSET: usize = 0x1550;
+
+pub const EREADER_NAME_OFFSET: usize = 0x1772;
+pub const EREADER_NAME_SIZE: usize = 0x10;
+pub const EREADER_DESCRIPTION_OFFSET: usize = 0x0522;
+pub const EREADER_DESCRIPTION_SIZE: usize = 0x5c;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Variant {
@@ -125,7 +130,6 @@ impl Save {
         Ok(Self { buf, game_info, shift })
     }
 
-    #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
     }
@@ -137,6 +141,10 @@ impl Save {
             } else {
                 0
             }
+    }
+
+    pub fn shift(&self) -> usize {
+        self.shift
     }
 
     pub fn game_info(&self) -> &GameInfo {

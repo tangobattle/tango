@@ -2,9 +2,9 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SAVE_SIZE: usize = 0x57b0;
-const GAME_NAME_OFFSET: usize = 0x1e00;
-const CHECKSUM_OFFSET: usize = 0x1dd8;
+pub const SAVE_SIZE: usize = 0x57b0;
+pub const GAME_NAME_OFFSET: usize = 0x1e00;
+pub const CHECKSUM_OFFSET: usize = 0x1dd8;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Variant {

@@ -2,12 +2,17 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::save::{self, NavicustView as _, PatchCard56sView as _};
 
-const SAVE_START_OFFSET: usize = 0x0100;
-const SAVE_SIZE: usize = 0x7c14;
-const MASK_OFFSET: usize = 0x1a34;
-const GAME_NAME_OFFSET: usize = 0x29e0;
-const CHECKSUM_OFFSET: usize = 0x29dc;
-const SHIFT_OFFSET: usize = 0x1A30;
+pub const SAVE_START_OFFSET: usize = 0x0100;
+pub const SAVE_SIZE: usize = 0x7c14;
+pub const MASK_OFFSET: usize = 0x1a34;
+pub const GAME_NAME_OFFSET: usize = 0x29e0;
+pub const CHECKSUM_OFFSET: usize = 0x29dc;
+pub const SHIFT_OFFSET: usize = 0x1A30;
+
+pub const EREADER_NAME_OFFSET: usize = 0x1d16;
+pub const EREADER_NAME_SIZE: usize = 0x18;
+pub const EREADER_DESCRIPTION_OFFSET: usize = 0x1376;
+pub const EREADER_DESCRIPTION_SIZE: usize = 0x64;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Region {
@@ -107,6 +112,10 @@ impl Save {
 
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
+    }
+
+    pub fn shift(&self) -> usize {
+        self.shift
     }
 
     pub fn compute_checksum(&self) -> u32 {

@@ -138,11 +138,11 @@ impl<'a> rom::Chip for Chip<'a> {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
                     msg::Chunk::Command { op, params } if op == EREADER_NAME_COMMAND => {
-                        if let Ok(parts) = self
-                            .assets
-                            .msg_parser
-                            .parse(&self.assets.mapper.get(0x02001d16 + params[0] as u32 * 0x18))
-                        {
+                        if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
+                            (super::save::EREADER_NAME_OFFSET + params[0] as usize * super::save::EREADER_NAME_SIZE)
+                                as u32
+                                | 0x02000000,
+                        )) {
                             parts
                                 .into_iter()
                                 .flat_map(|part| {
@@ -183,11 +183,12 @@ impl<'a> rom::Chip for Chip<'a> {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
                     msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
-                        if let Ok(parts) = self
-                            .assets
-                            .msg_parser
-                            .parse(&self.assets.mapper.get(0x02001376 + params[0] as u32 * 0x64))
-                        {
+                        if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
+                            (super::save::EREADER_DESCRIPTION_OFFSET
+                                + params[0] as usize * super::save::EREADER_DESCRIPTION_SIZE)
+                                as u32
+                                | 0x02000000,
+                        )) {
                             parts
                                 .into_iter()
                                 .flat_map(|part| {
