@@ -148,6 +148,16 @@ impl Save {
         self.shift
     }
 
+    pub fn as_us_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+        std::borrow::Cow::Borrowed(&self.buf)
+    }
+
+    pub fn as_jp_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+        let mut buf = self.buf.clone();
+        convert_us_to_jp(self.shift, &mut buf);
+        std::borrow::Cow::Owned(buf.to_vec())
+    }
+
     pub fn compute_checksum(&self) -> u32 {
         save::compute_save_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET)
             + match self.game_info.variant {
