@@ -417,7 +417,7 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         if id >= super::NUM_CHIPS {
             return false;
         }
-        let offset = 0x7340 + id * 2;
+        let offset = 0x6f50 + id * 2;
         byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
         true
     }
@@ -426,7 +426,7 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         if id >= super::NUM_CHIPS {
             return false;
         }
-        let offset: usize = 0x2340 + id * 2;
+        let offset: usize = 0x1bb0 + id * 2;
         byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
         true
     }
