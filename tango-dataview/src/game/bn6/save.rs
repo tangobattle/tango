@@ -39,20 +39,20 @@ pub struct Save {
 
 fn convert_jp_to_us(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
     // Extend the shop data section.
-    let offset = shift + 0x410c;
-    let n = buf.len();
-    buf.copy_within(offset..n - 0x40, offset + 0x40);
-    for p in &mut buf[offset..offset + 0x40] {
+    let jp_start = shift + 0x410c;
+    let jp_end = shift + 0x50fc;
+    buf.copy_within(jp_start..jp_end, jp_start + 0x40);
+    for p in &mut buf[jp_start..jp_start + 0x40] {
         *p = 0;
     }
 }
 
 fn convert_us_to_jp(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
     // Truncate the shop data section.
-    let offset = shift + 0x410c;
-    let n = buf.len();
-    buf.copy_within(offset + 0x40..n, offset);
-    for p in &mut buf[n - 0x40..] {
+    let jp_start = shift + 0x410c;
+    let jp_end = shift + 0x50fc;
+    buf.copy_within(jp_start + 0x40..jp_end + 0x40, jp_start);
+    for p in &mut buf[jp_end..jp_end + 0x40] {
         *p = 0;
     }
 }
