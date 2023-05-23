@@ -1,4 +1,4 @@
 pub mod rom;
 pub mod save;
 
-const NUM_CHIPS: usize = 238;
+pub const NUM_CHIPS: usize = 238;
