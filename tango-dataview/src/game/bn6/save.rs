@@ -225,8 +225,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
     }
 
     fn bugfrags(&self) -> Option<u32> {
@@ -240,13 +239,12 @@ impl save::Save for Save {
             return false;
         }
 
-        self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(count));
+        self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&count));
 
         // Anticheat...
         let mask = bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + 0x18b8..][..std::mem::size_of::<u32>()]);
         self.buf[self.shift + 0x5030..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(mask ^ count));
+            .copy_from_slice(bytemuck::bytes_of(&(mask ^ count)));
 
         true
     }
@@ -255,6 +253,15 @@ impl save::Save for Save {
 pub struct ChipsView<'a> {
     save: &'a Save,
 }
+
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawChip {
+    #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
+    #[bitfield(name = "variant", ty = "u16", bits = "9..=15")]
+    id_and_variant: [u8; 2],
+}
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
@@ -301,16 +308,16 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let raw = bytemuck::pod_read_unaligned::<u16>(
+        let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[self.save.shift
                 + 0x2178
-                + folder_index * (30 * std::mem::size_of::<u16>())
-                + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
+                + folder_index * (30 * std::mem::size_of::<RawChip>())
+                + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
         Some(save::Chip {
-            id: (raw & 0x1ff) as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[(raw >> 9) as usize] as char,
+            id: raw.id() as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.variant() as usize] as char,
         })
     }
 
@@ -401,11 +408,14 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
 
         self.save.buf[self.save.shift
             + 0x2178
-            + folder_index * (30 * std::mem::size_of::<u16>())
-            + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u16>()]>(
-                chip.id as u16 | ((variant as u16) << 9),
-            ));
+            + folder_index * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&{
+                let mut raw = RawChip::default();
+                raw.set_id(chip.id as u16);
+                raw.set_variant(variant as u16);
+                raw
+            }));
 
         true
     }
@@ -466,9 +476,11 @@ pub struct NavicustView<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawNavicustPart {
-    id_and_variant: u8,
+    #[bitfield(name = "variant", ty = "u8", bits = "0..=1")]
+    #[bitfield(name = "id", ty = "u8", bits = "2..=7")]
+    id_and_variant: [u8; 1],
     _unk_01: u8,
     _unk_02: u8,
     col: u8,
@@ -498,9 +510,13 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
                 [..std::mem::size_of::<RawNavicustPart>()],
         );
 
+        if raw.id() == 0 {
+            return None;
+        }
+
         Some(save::NavicustPart {
-            id: (raw.id_and_variant / 4) as usize,
-            variant: (raw.id_and_variant % 4) as usize,
+            id: raw.id() as usize,
+            variant: raw.variant() as usize,
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
@@ -534,13 +550,17 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
 
         self.save.buf[self.save.shift + 0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
             [..std::mem::size_of::<RawNavicustPart>()]
-            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
-                id_and_variant: (part.id * 4 + part.variant) as u8,
-                col: part.col,
-                row: part.row,
-                rot: part.rot,
-                compressed: if part.compressed { 1 } else { 0 },
-                ..Default::default()
+            .copy_from_slice(bytemuck::bytes_of(&{
+                let mut raw = RawNavicustPart {
+                    col: part.col,
+                    row: part.row,
+                    rot: part.rot,
+                    compressed: if part.compressed { 1 } else { 0 },
+                    ..Default::default()
+                };
+                raw.set_id(part.id as u8);
+                raw.set_variant(part.variant as u8);
+                raw
             }));
 
         true

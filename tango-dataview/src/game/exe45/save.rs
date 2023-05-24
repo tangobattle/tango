@@ -81,8 +81,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
     }
 }
 
@@ -112,15 +111,26 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let raw = bytemuck::pod_read_unaligned::<u16>(
+        #[repr(transparent)]
+        #[derive(
+            bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct,
+        )]
+        struct RawChip {
+            #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
+            #[bitfield(name = "variant", ty = "u16", bits = "9..=15")]
+            id_and_variant: [u8; 2],
+        }
+        const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
+
+        let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x7500
-                + self.save.current_navi() as usize * (30 * std::mem::size_of::<u16>())
-                + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
+                + self.save.current_navi() as usize * (30 * std::mem::size_of::<RawChip>())
+                + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
         Some(save::Chip {
-            id: (raw & 0x1ff) as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[(raw >> 9) as usize] as char,
+            id: raw.id() as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.variant() as usize] as char,
         })
     }
 }

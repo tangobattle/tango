@@ -87,8 +87,7 @@ pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
     for b in buf.iter_mut() {
         *b = *b ^ (mask as u8);
     }
-    buf[mask_offset..][..std::mem::size_of::<u32>()]
-        .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(mask));
+    buf[mask_offset..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&mask));
 }
 
 pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {

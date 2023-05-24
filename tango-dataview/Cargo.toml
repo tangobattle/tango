@@ -13,3 +13,4 @@ ndarray = "0.15"
 patricia_tree = "0.5"
 itertools = "0.6"
 bytemuck = { version = "1", features = ["derive"] }
+c2rust-bitfields = "0.17"

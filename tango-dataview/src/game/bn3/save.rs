@@ -116,8 +116,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
     }
 }
 
@@ -178,9 +177,11 @@ pub struct NavicustView<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawNavicustPart {
-    id_and_variant: u8,
+    #[bitfield(name = "id", ty = "u8", bits = "0..=3")]
+    #[bitfield(name = "variant", ty = "u8", bits = "4..=7")]
+    id_and_variant: [u8; 1],
     _unk_01: u8,
     col: u8,
     row: u8,
@@ -212,18 +213,18 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
                 [..std::mem::size_of::<RawNavicustPart>()],
         );
 
-        if raw.id_and_variant == 0 {
+        if raw.id() == 0 {
             return None;
         }
 
         Some(save::NavicustPart {
-            id: (raw.id_and_variant / 4) as usize,
-            variant: (raw.id_and_variant % 4) as usize,
+            id: raw.id() as usize,
+            variant: raw.variant() as usize,
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: (self.save.buf[0x0310 + (raw.id_and_variant >> 3) as usize]
-                & (0x80 >> (raw.id_and_variant >> 7)))
+            compressed: (self.save.buf[0x0310 + (raw.id_and_variant[0] >> 3) as usize]
+                & (0x80 >> (raw.id_and_variant[0] >> 7)))
                 != 0,
         })
     }
