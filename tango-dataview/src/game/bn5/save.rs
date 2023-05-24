@@ -458,7 +458,7 @@ impl<'a> AutoBattleDataViewMut<'a> {
                 &materialized
                     .as_slice()
                     .iter()
-                    .map(|v| v.unwrap_or(0xffff))
+                    .map(|v| v.unwrap_or(0xffff) as u16)
                     .collect::<Vec<_>>(),
             ),
         );
