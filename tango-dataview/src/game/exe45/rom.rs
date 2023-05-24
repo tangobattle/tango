@@ -39,7 +39,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 4],
     _attack_element: u8,

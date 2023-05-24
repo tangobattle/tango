@@ -95,7 +95,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 6],
     element: u8,
@@ -255,7 +255,7 @@ struct NavicustPart<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
 struct RawNavicustPart {
     _unk_00: u8,
     is_solid: u8,
@@ -415,7 +415,7 @@ struct Style<'a> {
 }
 
 #[repr(transparent)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
 struct RawStyle {
     #[bitfield(name = "element", ty = "u8", bits = "0..=2")]
     #[bitfield(name = "typ", ty = "u8", bits = "3..=7")]

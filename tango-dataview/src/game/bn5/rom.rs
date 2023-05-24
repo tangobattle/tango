@@ -109,7 +109,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 4],
     _attack_element: u8,
@@ -316,7 +316,7 @@ struct NavicustPart<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
 struct RawNavicustPart {
     _unk_00: u8,
     is_solid: u8,
@@ -505,7 +505,7 @@ impl<'a> PatchCard56<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
 struct RawPatchCard56Header {
     _unk_00: u8,
     mb: u8,
@@ -514,7 +514,7 @@ struct RawPatchCard56Header {
 const _: () = assert!(std::mem::size_of::<RawPatchCard56Header>() == 0x3);
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
 struct RawPatchCard56Effect {
     id: u8,
     parameter: u8,

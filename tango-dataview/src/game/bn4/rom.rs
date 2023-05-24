@@ -100,7 +100,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 4],
     _attack_element: u8,
@@ -306,7 +306,7 @@ struct NavicustPart<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
 struct RawNavicustPart {
     _unk_00: u8,
     is_solid: u8,
