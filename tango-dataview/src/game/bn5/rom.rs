@@ -109,7 +109,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 4],
     _attack_element: u8,
@@ -117,7 +117,10 @@ struct RawChip {
     element: u8,
     class: u8,
     mb: u8,
-    effect_flags: u8,
+
+    #[bitfield(name = "dark", ty = "bool", bits = "5..=5")]
+    effect_flags: [u8; 1],
+
     _counter_settings: u8,
     _attack_family: u8,
     _attack_subfamily: u8,
@@ -283,7 +286,7 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn dark(&self) -> bool {
         let raw = self.raw();
-        (raw.effect_flags & 0x20) != 0
+        raw.dark()
     }
 
     fn mb(&self) -> u8 {

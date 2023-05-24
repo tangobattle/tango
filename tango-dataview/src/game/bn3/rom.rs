@@ -95,7 +95,7 @@ struct Chip<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     codes: [u8; 6],
     element: u8,
@@ -107,7 +107,11 @@ struct RawChip {
     damage: u16,
     library_number: u16,
     _unk_0e: [u8; 3],
-    flags: u8,
+
+    #[bitfield(name = "giga", ty = "bool", bits = "1..=1")]
+    #[bitfield(name = "mega", ty = "bool", bits = "0..=0")]
+    flags: [u8; 1],
+
     icon_ptr: u32,
     image_ptr: u32,
     palette_ptr: u32,
@@ -211,9 +215,9 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn class(&self) -> rom::ChipClass {
         let raw = self.raw();
-        if raw.flags & 0x02 != 0 {
+        if raw.giga() {
             rom::ChipClass::Giga
-        } else if raw.flags & 0x01 != 0 {
+        } else if raw.mega() {
             rom::ChipClass::Mega
         } else {
             rom::ChipClass::Standard
