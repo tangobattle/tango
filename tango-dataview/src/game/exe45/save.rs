@@ -20,7 +20,7 @@ impl Save {
             .ok_or(save::Error::InvalidSize(buf.len()))?;
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
+        let n = &buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
@@ -40,7 +40,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
+        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -83,7 +83,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
     }
 }
 
@@ -114,7 +114,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let offset = 0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
-        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
+        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]);
 
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
