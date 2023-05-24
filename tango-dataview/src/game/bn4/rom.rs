@@ -313,7 +313,6 @@ struct RawNavicustPart {
     uncompressed_bitmap_ptr: u32,
     compressed_bitmap_ptr: u32,
 }
-
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
 impl<'a> NavicustPart<'a> {

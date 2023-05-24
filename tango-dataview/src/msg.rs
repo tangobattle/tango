@@ -140,10 +140,7 @@ impl Parser {
 }
 
 pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
-    let (offset, next_offset) = match bytemuck::cast_slice::<_, u16>(&buf[i * 2..][..4]) {
-        &[offset, next_offset] => (offset, next_offset),
-        _ => unreachable!(),
-    };
+    let [offset, next_offset] = bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[i * 2..][..4]);
 
     let offset = offset as usize;
     let mut next_offset = next_offset as usize;

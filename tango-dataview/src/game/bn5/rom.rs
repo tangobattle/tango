@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::{msg, rom};
 
 pub struct Offsets {
@@ -110,11 +108,44 @@ struct Chip<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawChip {
+    codes: [u8; 4],
+    _attack_element: u8,
+    _rarity: u8,
+    element: u8,
+    class: u8,
+    mb: u8,
+    effect_flags: u8,
+    _counter_settings: u8,
+    _attack_family: u8,
+    _attack_subfamily: u8,
+    _dark_soul_usage_behavior: u8,
+    _unk_0e: u8,
+    _lock_on: u8,
+    _attack_params: [u8; 4],
+    _delay: u8,
+    _karma: u8,
+    _library_number: u8,
+    _lock_on_type: u8,
+    _alphabet_sort: u16,
+    damage: u16,
+    library_sort_order: u16,
+    _battle_chip_gate_usage: u8,
+    _dark_chip_id: u8,
+    icon_ptr: u32,
+    image_ptr: u32,
+    palette_ptr: u32,
+}
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2c);
+
 impl<'a> Chip<'a> {
-    fn raw_info(&'a self) -> [u8; 0x2c] {
-        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x2c..][..0x2c]
-            .try_into()
-            .unwrap()
+    fn raw(&'a self) -> RawChip {
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * std::mem::size_of::<RawChip>()..]
+                [..std::mem::size_of::<RawChip>()],
+        )
     }
 }
 
@@ -209,43 +240,24 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn icon(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(bytemuck::pod_read_unaligned::<u32>(&raw[0x20..][..4]))[..rom::TILE_BYTES * 4],
-                2,
-            )
-            .unwrap(),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(bytemuck::pod_read_unaligned::<u32>(&raw[0x24..][..4]))[..rom::TILE_BYTES * 7 * 6],
-                7,
-            )
-            .unwrap(),
-            &rom::read_palette(
-                &self
-                    .assets
-                    .mapper
-                    .get(bytemuck::pod_read_unaligned::<u32>(&raw[0x28..][..4]))[..32],
-            ),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.image_ptr)[..rom::TILE_BYTES * 7 * 6], 7).unwrap(),
+            &rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
         )
     }
 
     fn codes(&self) -> Vec<char> {
-        let raw = self.raw_info();
-        raw[0x00..][..4]
+        let raw = self.raw();
+        raw.codes
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -254,13 +266,13 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn element(&self) -> usize {
-        let raw = self.raw_info();
-        raw[0x06] as usize
+        let raw = self.raw();
+        raw.element as usize
     }
 
     fn class(&self) -> rom::ChipClass {
-        let raw = self.raw_info();
-        match raw[0x07] {
+        let raw = self.raw();
+        match raw.class {
             0 => rom::ChipClass::Standard,
             1 => rom::ChipClass::Mega,
             2 => rom::ChipClass::Giga,
@@ -270,29 +282,27 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn dark(&self) -> bool {
-        let raw = self.raw_info();
-        let flags = raw[0x09];
-        (flags & 0x20) != 0
+        let raw = self.raw();
+        (raw.effect_flags & 0x20) != 0
     }
 
     fn mb(&self) -> u8 {
-        let raw = self.raw_info();
-        raw[0x08]
+        let raw = self.raw();
+        raw.mb
     }
 
     fn damage(&self) -> u32 {
-        let raw = self.raw_info();
-        let damage = byteorder::LittleEndian::read_u16(&raw[0x1a..][..2]) as u32;
-        if damage < 1000 {
-            damage
+        let raw = self.raw();
+        if raw.damage < 1000 {
+            raw.damage as u32
         } else {
             0
         }
     }
 
     fn library_sort_order(&self) -> Option<usize> {
-        let raw = self.raw_info();
-        Some(byteorder::LittleEndian::read_u16(&raw[0x1c..][..2]) as usize)
+        let raw = self.raw();
+        Some(raw.library_sort_order as usize)
     }
 }
 
@@ -302,12 +312,26 @@ struct NavicustPart<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawNavicustPart {
+    _unk_00: u8,
+    is_solid: u8,
+    _unk_02: u8,
+    color: u8,
+    _unk_05: [u8; 4],
+    uncompressed_bitmap_ptr: u32,
+    compressed_bitmap_ptr: u32,
+}
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
+
 impl<'a> NavicustPart<'a> {
-    fn raw_info(&'a self) -> [u8; 0x10] {
+    fn raw(&'a self) -> RawNavicustPart {
         let i = self.id * 4 + self.variant;
-        self.assets.mapper.get(self.assets.offsets.ncp_data)[i * 0x10..][..0x10]
-            .try_into()
-            .unwrap()
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.ncp_data)[i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        )
     }
 }
 
@@ -361,8 +385,8 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
-        let raw = self.raw_info();
-        Some(match raw[0x03] {
+        let raw: RawNavicustPart = self.raw();
+        Some(match raw.color {
             1 => rom::NavicustPartColor::White,
             2 => rom::NavicustPartColor::Yellow,
             3 => rom::NavicustPartColor::Pink,
@@ -376,17 +400,15 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn is_solid(&self) -> bool {
-        let raw = self.raw_info();
-        raw[0x01] == 0
+        let raw = self.raw();
+        raw.is_solid == 0
     }
 
     fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(bytemuck::pod_read_unaligned::<u32>(&raw[0x08..][..4]))[..25]
+            self.assets.mapper.get(raw.uncompressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -395,12 +417,10 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn compressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(bytemuck::pod_read_unaligned::<u32>(&raw[0x0c..][..4]))[..25]
+            self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -458,13 +478,38 @@ struct PatchCard56<'a> {
 }
 
 impl<'a> PatchCard56<'a> {
-    pub fn raw_info(&self) -> Vec<u8> {
+    pub fn raw(&self) -> (RawPatchCard56Header, Vec<RawPatchCard56Effect>) {
         let buf = self.assets.mapper.get(self.assets.offsets.patch_card_data);
-        buf[byteorder::LittleEndian::read_u16(&buf[self.id * 2..][..2]) as usize
-            ..byteorder::LittleEndian::read_u16(&buf[(self.id + 1) * 2..][..2]) as usize]
-            .to_vec()
+        let [offset, next_offset] = bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[self.id * 2..][..4]);
+        let buf = &buf[offset as usize..next_offset as usize];
+
+        (
+            bytemuck::pod_read_unaligned(&buf[0..][..std::mem::size_of::<RawPatchCard56Header>()]),
+            buf.chunks(std::mem::size_of::<RawPatchCard56Effect>())
+                .into_iter()
+                .map(|chunk| bytemuck::pod_read_unaligned(chunk))
+                .collect(),
+        )
     }
 }
+
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawPatchCard56Header {
+    _unk_00: u8,
+    mb: u8,
+    _unused: u8,
+}
+const _: () = assert!(std::mem::size_of::<RawPatchCard56Header>() == 0x3);
+
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawPatchCard56Effect {
+    id: u8,
+    parameter: u8,
+    is_debuff: u8,
+}
+const _: () = assert!(std::mem::size_of::<RawPatchCard56Effect>() == 0x3);
 
 impl<'a> rom::PatchCard56 for PatchCard56<'a> {
     fn name(&self) -> Option<String> {
@@ -500,8 +545,8 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return 0;
         }
 
-        let raw = self.raw_info();
-        raw[1]
+        let (header, _) = self.raw();
+        header.mb
     }
 
     fn effects(&self) -> Vec<crate::rom::PatchCard56Effect> {
@@ -509,65 +554,59 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return vec![];
         }
 
-        let raw = self.raw_info();
-        raw[3..]
-            .chunks(3)
-            .map(|chunk| {
-                let id = chunk[0] as usize;
-                let parameter = chunk[1];
-                crate::rom::PatchCard56Effect {
-                    id,
-                    name: {
-                        let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                            &self
-                                .assets
-                                .mapper
-                                .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
-                        ));
-                        msg::get_entry(&region, id)
-                            .and_then(|entry| self.assets.msg_parser.parse(entry).ok())
-                            .and_then(|chunks| {
-                                chunks
-                                    .into_iter()
-                                    .map(|chunk| match chunk {
-                                        msg::Chunk::Text(s) => {
-                                            Some(crate::rom::PatchCard56EffectTemplatePart::String(s))
-                                        }
-                                        msg::Chunk::Command { op, params } if op == PRINT_VAR_COMMAND => Some(
-                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[1] as usize),
-                                        ),
-                                        _ => None,
-                                    })
-                                    .collect::<Option<Vec<_>>>()
-                            })
-                            .map(|parts| {
-                                parts
-                                    .into_iter()
-                                    .flat_map(|p| {
-                                        match p {
-                                            crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
-                                            crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
-                                                if v == 1 {
-                                                    let mut parameter = parameter as u32;
-                                                    if id == 0x00 || id == 0x02 {
-                                                        parameter = parameter * 10;
-                                                    }
-                                                    format!("{}", parameter)
-                                                } else {
-                                                    "".to_string()
+        let (_, effects) = self.raw();
+        effects
+            .into_iter()
+            .map(|effect| crate::rom::PatchCard56Effect {
+                id: effect.id as usize,
+                name: {
+                    let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+                        &self
+                            .assets
+                            .mapper
+                            .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
+                    ));
+                    msg::get_entry(&region, effect.id as usize)
+                        .and_then(|entry| self.assets.msg_parser.parse(entry).ok())
+                        .and_then(|chunks| {
+                            chunks
+                                .into_iter()
+                                .map(|chunk| match chunk {
+                                    msg::Chunk::Text(s) => Some(crate::rom::PatchCard56EffectTemplatePart::String(s)),
+                                    msg::Chunk::Command { op, params } if op == PRINT_VAR_COMMAND => {
+                                        Some(crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[1] as usize))
+                                    }
+                                    _ => None,
+                                })
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .map(|parts| {
+                            parts
+                                .into_iter()
+                                .flat_map(|p| {
+                                    match p {
+                                        crate::rom::PatchCard56EffectTemplatePart::String(s) => s,
+                                        crate::rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
+                                            if v == 1 {
+                                                let mut parameter = effect.parameter as u32;
+                                                if effect.id == 0x00 || effect.id == 0x02 {
+                                                    parameter = parameter * 10;
                                                 }
+                                                format!("{}", parameter)
+                                            } else {
+                                                "".to_string()
                                             }
                                         }
-                                        .chars()
-                                        .collect::<Vec<_>>()
-                                    })
-                                    .collect()
-                            })
-                    },
-                    parameter,
-                    is_debuff: chunk[2] == 1,
-                    is_ability: id > 0x15,
-                }
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect()
+                        })
+                },
+                parameter: effect.parameter,
+                is_debuff: effect.is_debuff == 1,
+                is_ability: effect.id > 0x15,
             })
             .collect::<Vec<_>>()
     }
