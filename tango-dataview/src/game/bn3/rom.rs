@@ -410,15 +410,22 @@ struct Style<'a> {
     assets: &'a Assets,
 }
 
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawStyle {
+    #[bitfield(name = "element", ty = "u8", bits = "0..=2")]
+    #[bitfield(name = "typ", ty = "u8", bits = "3..=7")]
+    type_and_element: [u8; 1],
+}
+
 impl<'a> rom::Style for Style<'a> {
     fn name(&self) -> Option<String> {
-        let typ = self.id >> 3;
-        let element = self.id & 0x7;
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
 
         let region = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, 128 + typ * 5 + element)?;
+        let entry = msg::get_entry(&region, 128 + raw.typ() as usize * 5 + raw.element() as usize)?;
 
         Some(
             self.assets
@@ -439,7 +446,8 @@ impl<'a> rom::Style for Style<'a> {
     }
 
     fn extra_ncp_color(&self) -> Option<rom::NavicustPartColor> {
-        Some(match self.id >> 3 {
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+        Some(match raw.typ() {
             1 => rom::NavicustPartColor::Red,
             2 => rom::NavicustPartColor::Blue,
             3 => rom::NavicustPartColor::Green,

@@ -294,8 +294,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
-        let idx1 = self.save.buf[tag_chips_offset + 0x00];
-        let idx2 = self.save.buf[tag_chips_offset + 0x01];
+        let [idx1, idx2] = bytemuck::pod_read_unaligned::<[u8; 2]>(
+            &self.save.buf[tag_chips_offset..][..std::mem::size_of::<[u8; 2]>()],
+        );
         if idx1 == 0xff || idx2 == 0xff {
             None
         } else {
@@ -330,6 +331,15 @@ pub struct PatchCard56sView<'a> {
     save: &'a Save,
 }
 
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawPatchCard {
+    #[bitfield(name = "id", ty = "u8", bits = "0..=6")]
+    #[bitfield(name = "disabled", ty = "bool", bits = "7..=7")]
+    id_and_disabled: [u8; 1],
+}
+const _: () = assert!(std::mem::size_of::<RawPatchCard>() == 0x1);
+
 impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
         self.save.buf[self.save.shift + 0x65F0] as usize
@@ -340,10 +350,14 @@ impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
             return None;
         }
 
-        let raw = self.save.buf[self.save.shift + 0x6620 + slot];
+        let raw = bytemuck::pod_read_unaligned::<RawPatchCard>(
+            &self.save.buf[self.save.shift + 0x6620 + slot * std::mem::size_of::<RawPatchCard>()..]
+                [..std::mem::size_of::<RawPatchCard>()],
+        );
+
         Some(save::PatchCard {
-            id: (raw & 0x7f) as usize,
-            enabled: raw >> 7 == 0,
+            id: raw.id() as usize,
+            enabled: !raw.disabled(),
         })
     }
 }
@@ -362,8 +376,16 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         if slot >= view.count() {
             return false;
         }
-        self.save.buf[self.save.shift + 0x6620 + slot] =
-            (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
+
+        self.save.buf[self.save.shift + 0x6620 + slot..][..std::mem::size_of::<RawPatchCard>()].copy_from_slice(
+            bytemuck::bytes_of(&{
+                let mut raw = RawPatchCard::default();
+                raw.set_id(patch_card.id as u8);
+                raw.set_disabled(!patch_card.enabled);
+                raw
+            }),
+        );
+
         true
     }
 
@@ -425,20 +447,20 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let (idx1, idx2) = if let Some([idx1, idx2]) = chip_indexes {
+        let raw = if let Some([idx1, idx2]) = chip_indexes {
             if idx1 >= 30 || idx2 >= 30 {
                 return false;
             }
-            (idx1, idx2)
+            [idx1 as u8, idx2 as u8]
         } else {
-            (0xff, 0xff)
+            [0xff, 0xff]
         };
 
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
 
-        self.save.buf[tag_chips_offset + 0x00] = idx1 as u8;
-        self.save.buf[tag_chips_offset + 0x01] = idx2 as u8;
+        self.save.buf[tag_chips_offset..][..std::mem::size_of::<[u8; 2]>()].copy_from_slice(bytemuck::bytes_of(&raw));
+
         true
     }
 

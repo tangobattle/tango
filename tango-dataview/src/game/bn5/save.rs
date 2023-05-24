@@ -243,6 +243,15 @@ pub struct PatchCard56sView<'a> {
     save: &'a Save,
 }
 
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawPatchCard {
+    #[bitfield(name = "id", ty = "u8", bits = "0..=6")]
+    #[bitfield(name = "disabled", ty = "bool", bits = "7..=7")]
+    id_and_disabled: [u8; 1],
+}
+const _: () = assert!(std::mem::size_of::<RawPatchCard>() == 0x1);
+
 impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
         self.save.buf[self.save.shift + 0x79a0] as usize
@@ -252,10 +261,15 @@ impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
         if slot >= self.count() {
             return None;
         }
-        let raw = self.save.buf[self.save.shift + 0x79d0 + slot];
+
+        let raw = bytemuck::pod_read_unaligned::<RawPatchCard>(
+            &self.save.buf[self.save.shift + 0x79d0 + slot * std::mem::size_of::<RawPatchCard>()..]
+                [..std::mem::size_of::<RawPatchCard>()],
+        );
+
         Some(save::PatchCard {
-            id: (raw & 0x7f) as usize,
-            enabled: raw >> 7 == 0,
+            id: raw.id() as usize,
+            enabled: !raw.disabled(),
         })
     }
 }
@@ -273,8 +287,16 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         if slot >= view.count() {
             return false;
         }
-        self.save.buf[self.save.shift + 0x79d0 + slot] =
-            (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
+
+        self.save.buf[self.save.shift + 0x79d0 + slot..][..std::mem::size_of::<RawPatchCard>()].copy_from_slice(
+            bytemuck::bytes_of(&{
+                let mut raw = RawPatchCard::default();
+                raw.set_id(patch_card.id as u8);
+                raw.set_disabled(!patch_card.enabled);
+                raw
+            }),
+        );
+
         true
     }
 
