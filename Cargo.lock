@@ -2220,28 +2220,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-version"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6b0decc02f4636b9ccad390dcbe77b722a77efedfa393caf8379a51d5c61899"
-dependencies = [
- "git-version-macro",
- "proc-macro-hack",
-]
-
-[[package]]
-name = "git-version-macro"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe69f1cbdb6e28af2bac214e943b99ce8a0a06b447d15d3e61161b0423139f3f"
-dependencies = [
- "proc-macro-hack",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5463,7 +5441,6 @@ dependencies = [
  "fontdue",
  "futures",
  "futures-util",
- "git-version",
  "glow",
  "glutin",
  "glutin-winit",
@@ -5562,7 +5539,6 @@ dependencies = [
  "env_logger 0.9.0",
  "envconfig",
  "futures-util",
- "git-version",
  "hmac 0.12.1",
  "hyper",
  "hyper-tungstenite",

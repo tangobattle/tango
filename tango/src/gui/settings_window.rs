@@ -703,7 +703,7 @@ fn show_advanced_tab(
 
 fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
     egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-        ui.heading(format!("Tango {} ({})", version::current(), version::vcs_info()));
+        ui.heading(format!("Tango {}", version::current()));
 
         ui.add_space(8.0);
         ui.vertical_centered(|ui| {
