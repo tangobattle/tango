@@ -342,6 +342,10 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         true
     }
 
+    fn clear_materialized(&mut self) {
+        self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x24].copy_from_slice(&[0; 0x24]);
+    }
+
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, assets);
         self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x24].copy_from_slice(
@@ -404,6 +408,10 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         let offset: usize = 0x2340 + id * 2;
         byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
         true
+    }
+
+    fn clear_materialized(&mut self) {
+        self.save.buf[self.save.shift + 0x554c..self.save.shift + 0x554c + 42 * 2].copy_from_slice(&[0; 42 * 2]);
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {

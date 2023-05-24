@@ -523,6 +523,10 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         true
     }
 
+    fn clear_materialized(&mut self) {
+        self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x44].copy_from_slice(&[0; 0x44]);
+    }
+
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, assets);
         self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x44].copy_from_slice(

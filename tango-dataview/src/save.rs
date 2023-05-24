@@ -202,6 +202,7 @@ pub trait NavicustViewMut<'a> {
     }
 
     fn set_navicust_part(&mut self, i: usize, part: NavicustPart) -> bool;
+    fn clear_materialized(&mut self);
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
@@ -214,6 +215,7 @@ pub trait AutoBattleDataView<'a> {
 pub trait AutoBattleDataViewMut<'a> {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool;
+    fn clear_materialized(&mut self);
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
