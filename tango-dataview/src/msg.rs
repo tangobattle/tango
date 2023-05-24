@@ -69,6 +69,28 @@ pub struct Parser {
     fallthrough_rule: Rule,
 }
 
+fn coalesce(chunks: Vec<Chunk>) -> Vec<Chunk> {
+    chunks
+        .into_iter()
+        .group_by(|chunk| matches!(chunk, Chunk::Text(_)))
+        .into_iter()
+        .flat_map(|(is_text, g)| {
+            if !is_text {
+                g.into_iter().collect::<Vec<_>>()
+            } else {
+                vec![Chunk::Text(
+                    g.into_iter()
+                        .map(|chunk| match chunk {
+                            Chunk::Text(t) => t,
+                            Chunk::Command { .. } => unreachable!(),
+                        })
+                        .collect::<String>(),
+                )]
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
 impl Parser {
     pub fn builder() -> ParserBuilder {
         ParserBuilder {
@@ -115,26 +137,7 @@ impl Parser {
             });
         }
 
-        // Coalesce text chunks together.
-        Ok(chunks
-            .into_iter()
-            .group_by(|chunk| matches!(chunk, Chunk::Text(_)))
-            .into_iter()
-            .flat_map(|(is_text, g)| {
-                if !is_text {
-                    g.into_iter().collect::<Vec<_>>()
-                } else {
-                    vec![Chunk::Text(
-                        g.into_iter()
-                            .map(|chunk| match chunk {
-                                Chunk::Text(t) => t,
-                                Chunk::Command { .. } => unreachable!(),
-                            })
-                            .collect::<String>(),
-                    )]
-                }
-            })
-            .collect::<Vec<_>>())
+        Ok(coalesce(chunks))
     }
 }
 
