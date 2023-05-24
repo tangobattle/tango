@@ -475,7 +475,7 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
             return false;
         }
         self.save.buf[0x6f50 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
-            .copy_from_slice(bytemuck::bytes_of(&count));
+            .copy_from_slice(bytemuck::bytes_of(&(count as u16)));
         true
     }
 
@@ -484,7 +484,7 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
             return false;
         }
         self.save.buf[0x1bb0 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
-            .copy_from_slice(bytemuck::bytes_of(&count));
+            .copy_from_slice(bytemuck::bytes_of(&(count as u16)));
         true
     }
 
