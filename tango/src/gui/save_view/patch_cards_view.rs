@@ -264,11 +264,7 @@ pub fn show_patch_card56s<'a>(
                         strip.cell(|ui| {
                             ui.vertical(|ui| {
                                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                    for effect in effects.iter() {
-                                        if effect.is_ability {
-                                            continue;
-                                        }
-
+                                    for effect in effects.iter().filter(|effect| effect.is_ability) {
                                         show_effect(
                                             ui,
                                             egui::RichText::new(
@@ -288,11 +284,7 @@ pub fn show_patch_card56s<'a>(
                         strip.cell(|ui| {
                             ui.vertical(|ui| {
                                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                    for effect in effects.iter() {
-                                        if !effect.is_ability {
-                                            continue;
-                                        }
-
+                                    for effect in effects.iter().filter(|effect| !effect.is_ability) {
                                         show_effect(
                                             ui,
                                             egui::RichText::new(
