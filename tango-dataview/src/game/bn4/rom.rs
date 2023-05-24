@@ -84,7 +84,20 @@ pub static B4BE_00: Offsets = Offsets {
 };
 
 const EREADER_NAME_COMMAND: &[u8] = b"\xff\x00";
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct EreaderNameCommand {
+    index: u8,
+}
+const _: () = assert!(std::mem::size_of::<EreaderNameCommand>() == 0x1);
+
 const EREADER_DESCRIPTION_COMMAND: &[u8] = b"\xff\x01";
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct EreaderDescriptionCommand {
+    index: u8,
+}
+const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 
 pub struct Assets {
     offsets: &'static Offsets,
@@ -161,8 +174,9 @@ impl<'a> rom::Chip for Chip<'a> {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
                     msg::Chunk::Command { op, params } if op == EREADER_NAME_COMMAND => {
+                        let cmd = bytemuck::pod_read_unaligned::<EreaderNameCommand>(&params);
                         if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
-                            (super::save::EREADER_NAME_OFFSET + params[0] as usize * super::save::EREADER_NAME_SIZE)
+                            (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
                                 as u32
                                 | 0x02000000,
                         )) {
@@ -205,9 +219,10 @@ impl<'a> rom::Chip for Chip<'a> {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
                     msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
+                        let cmd = bytemuck::pod_read_unaligned::<EreaderDescriptionCommand>(&params);
                         if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                             (super::save::EREADER_DESCRIPTION_OFFSET
-                                + params[0] as usize * super::save::EREADER_DESCRIPTION_SIZE)
+                                + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
                                 as u32
                                 | 0x02000000,
                         )) {
@@ -469,8 +484,11 @@ impl Assets {
                 .with_ignore_unknown(true)
                 .add_eof_rule(b"\xe5")
                 .add_charset_rules(charset, 0xe4)
-                .add_command_rule(EREADER_NAME_COMMAND, 1)
-                .add_command_rule(EREADER_DESCRIPTION_COMMAND, 1)
+                .add_command_rule(EREADER_NAME_COMMAND, std::mem::size_of::<EreaderNameCommand>())
+                .add_command_rule(
+                    EREADER_DESCRIPTION_COMMAND,
+                    std::mem::size_of::<EreaderDescriptionCommand>(),
+                )
                 .add_text_rule(b"\xe8", "\n")
                 .add_command_rule(b"\xe6", 1)
                 .add_command_rule(b"\xe7\x01", 0)

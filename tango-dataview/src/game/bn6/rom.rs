@@ -1,7 +1,24 @@
 use crate::{msg, rom};
 
 const PRINT_VAR_COMMAND: &[u8] = b"\xfa\x03";
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
+struct PrintVarCommand {
+    #[bitfield(name = "min_length", ty = "u8", bits = "2..=5")]
+    #[bitfield(name = "pad_zeros", ty = "bool", bits = "6..=6")]
+    #[bitfield(name = "pad_left", ty = "bool", bits = "7..=7")]
+    params: [u8; 1],
+    buffer: u8,
+}
+const _: () = assert!(std::mem::size_of::<PrintVarCommand>() == 0x2);
+
 const EREADER_DESCRIPTION_COMMAND: &[u8] = b"\xff\x01";
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct EreaderDescriptionCommand {
+    index: u8,
+}
+const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 
 pub struct Offsets {
     chip_data: u32,
@@ -194,9 +211,10 @@ impl<'a> rom::Chip for Chip<'a> {
                 Some(match part {
                     msg::Chunk::Text(s) => s,
                     msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
+                        let cmd = bytemuck::pod_read_unaligned::<EreaderDescriptionCommand>(&params);
                         if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                             (super::save::EREADER_DESCRIPTION_OFFSET
-                                + params[0] as usize * super::save::EREADER_DESCRIPTION_SIZE)
+                                + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
                                 as u32
                                 | 0x02000000,
                         )) {
@@ -433,8 +451,11 @@ impl Assets {
                 .add_eof_rule(b"\xe6")
                 .add_charset_rules(charset, 0xe4)
                 .add_text_rule(b"\xe9", "\n")
-                .add_command_rule(PRINT_VAR_COMMAND, 2)
-                .add_command_rule(EREADER_DESCRIPTION_COMMAND, 1)
+                .add_command_rule(PRINT_VAR_COMMAND, std::mem::size_of::<PrintVarCommand>())
+                .add_command_rule(
+                    EREADER_DESCRIPTION_COMMAND,
+                    std::mem::size_of::<EreaderDescriptionCommand>(),
+                )
                 .add_command_rule(b"\xe7", 1)
                 .add_command_rule(b"\xe8\x01", 0)
                 .add_command_rule(b"\xe8\x02", 0)
@@ -562,7 +583,8 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                                 .map(|chunk| match chunk {
                                     msg::Chunk::Text(s) => Some(crate::rom::PatchCard56EffectTemplatePart::String(s)),
                                     msg::Chunk::Command { op, params } if op == PRINT_VAR_COMMAND => {
-                                        Some(crate::rom::PatchCard56EffectTemplatePart::PrintVar(params[1] as usize))
+                                        let cmd = bytemuck::pod_read_unaligned::<PrintVarCommand>(&params);
+                                        Some(crate::rom::PatchCard56EffectTemplatePart::PrintVar(cmd.buffer as usize))
                                     }
                                     _ => None,
                                 })
