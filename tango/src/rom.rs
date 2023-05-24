@@ -211,7 +211,6 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
             .effects()
             .into_iter()
             .map(|e| tango_dataview::rom::PatchCard56Effect {
-                id: e.id,
                 name: self
                     .effect_overrides
                     .map(|v| v.get(e.id).and_then(|v| v.name_template.as_ref()))
@@ -236,9 +235,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                             .collect::<String>()
                     })
                     .map_or_else(|| e.name, Some),
-                parameter: e.parameter,
-                is_ability: e.is_ability,
-                is_debuff: e.is_debuff,
+                ..e
             })
             .collect()
     }
