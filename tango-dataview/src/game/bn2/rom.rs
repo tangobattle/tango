@@ -44,11 +44,31 @@ struct Chip<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawChip {
+    codes: [u8; 6],
+    element: u8,
+    _family: u8,
+    _subfamily: u8,
+    _rarity: u8,
+    mb: u8,
+    _unk_0a: u8,
+    damage: u16,
+    _unk_0e: [u8; 6],
+    icon_ptr: u32,
+    image_ptr: u32,
+    palette_ptr: u32,
+}
+
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x20);
+
 impl<'a> Chip<'a> {
-    fn raw_info(&'a self) -> [u8; 0x20] {
-        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x20..][..0x20]
-            .try_into()
-            .unwrap()
+    fn raw(&'a self) -> RawChip {
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * std::mem::size_of::<RawChip>()..]
+                [..std::mem::size_of::<RawChip>()],
+        )
     }
 }
 
@@ -110,43 +130,26 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn icon(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x14..][..4]))[..rom::TILE_BYTES * 4],
-                2,
-            )
-            .unwrap(),
+            rom::read_merged_tiles(&self.assets.mapper.get(self.raw().icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
         rom::apply_palette(
             rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x18..][..4]))[..rom::TILE_BYTES * 8 * 7],
+                &self.assets.mapper.get(self.raw().image_ptr)[..rom::TILE_BYTES * 8 * 7],
                 8,
             )
             .unwrap(),
-            &rom::read_palette(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x1c..][..4]))[..32],
-            ),
+            &rom::read_palette(&self.assets.mapper.get(self.raw().palette_ptr)[..32]),
         )
     }
 
     fn codes(&self) -> Vec<char> {
-        let raw = self.raw_info();
-        raw[0x00..][..6]
+        self.raw()
+            .codes
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -155,8 +158,7 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn element(&self) -> usize {
-        let raw = self.raw_info();
-        raw[0x06] as usize
+        self.raw().element as usize
     }
 
     fn class(&self) -> rom::ChipClass {
@@ -168,13 +170,11 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn mb(&self) -> u8 {
-        let raw = self.raw_info();
-        raw[0x0a]
+        self.raw().mb
     }
 
     fn damage(&self) -> u32 {
-        let raw = self.raw_info();
-        byteorder::LittleEndian::read_u16(&raw[0x0c..][..2]) as u32
+        self.raw().damage as u32
     }
 
     fn library_sort_order(&self) -> Option<usize> {

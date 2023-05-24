@@ -283,8 +283,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
-        let idx1 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00];
-        let idx2 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01];
+        let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
+        let idx1 = self.save.buf[tag_chips_offset + 0x00];
+        let idx2 = self.save.buf[tag_chips_offset + 0x01];
         if idx1 == 0xff || idx2 == 0xff {
             None
         } else {
@@ -403,7 +404,6 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let (idx1, idx2) = if let Some([idx1, idx2]) = chip_indexes {
             if idx1 >= 30 || idx2 >= 30 {
                 return false;
@@ -413,8 +413,11 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             (0xff, 0xff)
         };
 
-        self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00] = idx1 as u8;
-        self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01] = idx2 as u8;
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
+
+        self.save.buf[tag_chips_offset + 0x00] = idx1 as u8;
+        self.save.buf[tag_chips_offset + 0x01] = idx2 as u8;
         true
     }
 

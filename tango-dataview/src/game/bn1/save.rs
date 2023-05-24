@@ -106,6 +106,15 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawChip {
+    id: u8,
+    code: u8,
+}
+
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
+
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         1
@@ -128,10 +137,13 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = 0x01c0 + chip_index * 2;
+        let raw = bytemuck::pod_read_unaligned::<RawChip>(
+            &self.save.buf[0x01c0 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
+        );
+
         Some(save::Chip {
-            id: self.save.buf[offset] as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[self.save.buf[offset + 1] as usize] as char,
+            id: raw.id as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[raw.code as usize] as char,
         })
     }
 }

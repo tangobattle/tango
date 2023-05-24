@@ -5513,6 +5513,7 @@ dependencies = [
 name = "tango-dataview"
 version = "4.0.50"
 dependencies = [
+ "bytemuck",
  "byteorder",
  "image 0.24.3",
  "itertools 0.6.5",
