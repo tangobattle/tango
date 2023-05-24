@@ -478,19 +478,26 @@ struct PatchCard56<'a> {
 }
 
 impl<'a> PatchCard56<'a> {
-    pub fn raw(&self) -> (RawPatchCard56Header, Vec<RawPatchCard56Effect>) {
+    pub fn raw_header(&self) -> RawPatchCard56Header {
         let buf = self.assets.mapper.get(self.assets.offsets.patch_card_data);
         let [offset, next_offset] =
             bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[self.id * 2..][..std::mem::size_of::<u32>()]);
         let buf = &buf[offset as usize..next_offset as usize];
 
-        (
-            bytemuck::pod_read_unaligned(&buf[0..][..std::mem::size_of::<RawPatchCard56Header>()]),
-            buf.chunks(std::mem::size_of::<RawPatchCard56Effect>())
-                .into_iter()
-                .map(|chunk| bytemuck::pod_read_unaligned(chunk))
-                .collect(),
-        )
+        bytemuck::pod_read_unaligned(&buf[0..][..std::mem::size_of::<RawPatchCard56Header>()])
+    }
+
+    pub fn raw_effects(&self) -> Vec<RawPatchCard56Effect> {
+        let buf = self.assets.mapper.get(self.assets.offsets.patch_card_data);
+        let [offset, next_offset] =
+            bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[self.id * 2..][..std::mem::size_of::<u32>()]);
+        let buf = &buf[offset as usize..next_offset as usize];
+
+        buf[std::mem::size_of::<RawPatchCard56Header>()..]
+            .chunks(std::mem::size_of::<RawPatchCard56Effect>())
+            .into_iter()
+            .map(|chunk| bytemuck::pod_read_unaligned(chunk))
+            .collect()
     }
 }
 
@@ -546,7 +553,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return 0;
         }
 
-        let (header, _) = self.raw();
+        let header = self.raw_header();
         header.mb
     }
 
@@ -555,7 +562,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return vec![];
         }
 
-        let (_, effects) = self.raw();
+        let effects = self.raw_effects();
         effects
             .into_iter()
             .map(|effect| crate::rom::PatchCard56Effect {
