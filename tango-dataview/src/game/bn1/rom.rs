@@ -47,9 +47,9 @@ struct Chip<'a> {
 struct RawChip {
     codes: [u8; 5],
     element: u8,
-    _unk06: [u8; 6],
+    _unk_06: [u8; 6],
     attack_power: u16,
-    _unk0e: [u8; 2],
+    _unk_0e: [u8; 2],
     icon_ptr: u32,
     image_ptr: u32,
     palette_ptr: u32,
