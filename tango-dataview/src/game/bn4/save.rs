@@ -59,7 +59,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -73,7 +73,8 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let expected_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[shift + CHECKSUM_OFFSET..][..4]);
+            let expected_checksum =
+                bytemuck::pod_read_unaligned::<u32>(&buf[shift + CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]);
             let raw_checksum = compute_raw_checksum(&buf, shift);
 
             let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
@@ -122,7 +123,7 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
 
-        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -131,7 +132,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -198,7 +199,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4]
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
             .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 }
@@ -235,9 +236,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<u16>(
-            &self.save.buf
-                [self.save.shift + 0x262c + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
-                [..std::mem::size_of::<u16>()],
+            &self.save.buf[self.save.shift
+                + 0x262c
+                + folder_index * (30 * std::mem::size_of::<u16>())
+                + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
         );
 
         Some(save::Chip {
@@ -427,7 +429,9 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
-        crate::abd::MaterializedAutoBattleData::from_wram(&self.save.buf[self.save.shift + 0x5064..][..42 * 2])
+        crate::abd::MaterializedAutoBattleData::from_wram(
+            &self.save.buf[self.save.shift + 0x5064..][..42 * std::mem::size_of::<u16>()],
+        )
     }
 }
 
@@ -437,13 +441,15 @@ pub struct AutoBattleDataViewMut<'a> {
 
 impl<'a> AutoBattleDataViewMut<'a> {
     fn set_materialized(&mut self, materialized: &abd::MaterializedAutoBattleData) {
-        self.save.buf[self.save.shift + 0x5064..][..42 * 2].copy_from_slice(&bytemuck::pod_collect_to_vec(
-            &materialized
-                .as_slice()
-                .iter()
-                .map(|v| v.unwrap_or(0xffff))
-                .collect::<Vec<_>>(),
-        ));
+        self.save.buf[self.save.shift + 0x5064..][..42 * std::mem::size_of::<u16>()].copy_from_slice(
+            &bytemuck::pod_collect_to_vec(
+                &materialized
+                    .as_slice()
+                    .iter()
+                    .map(|v| v.unwrap_or(0xffff))
+                    .collect::<Vec<_>>(),
+            ),
+        );
     }
 }
 

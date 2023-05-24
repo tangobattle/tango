@@ -154,7 +154,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let id = self.id % 0x100;
 
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(pointer)[..4],
+            &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, id)?;
 
@@ -181,7 +181,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let id = self.id % 0x100;
 
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(pointer)[..4],
+            &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, id)?;
 
@@ -319,7 +319,7 @@ impl<'a> NavicustPart<'a> {
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
+            &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, self.id)?;
 
@@ -343,7 +343,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 
     fn description(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
+            &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, self.id)?;
 
@@ -416,13 +416,13 @@ impl Assets {
 
         let chip_icon_palette = rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                &mapper.get(offsets.chip_icon_palette_pointer)[..4],
+                &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
 
         let element_icon_palette = rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                &mapper.get(offsets.element_icon_palette_pointer)[..4],
+                &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
 
@@ -460,7 +460,8 @@ struct PatchCard56<'a> {
 impl<'a> PatchCard56<'a> {
     pub fn raw(&self) -> (RawPatchCard56Header, Vec<RawPatchCard56Effect>) {
         let buf = self.assets.mapper.get(self.assets.offsets.patch_card_data);
-        let [offset, next_offset] = bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[self.id * 2..][..4]);
+        let [offset, next_offset] =
+            bytemuck::pod_read_unaligned::<[u16; 2]>(&buf[self.id * 2..][..std::mem::size_of::<u32>()]);
         let buf = &buf[offset as usize..next_offset as usize];
 
         (
@@ -498,7 +499,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
         }
 
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
+            &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, self.id)?;
 
@@ -544,7 +545,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                         &self
                             .assets
                             .mapper
-                            .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
+                            .get(self.assets.offsets.patch_card_details_names_pointer)[..std::mem::size_of::<u32>()],
                     ));
                     msg::get_entry(&region, effect.id as usize)
                         .and_then(|entry| self.assets.msg_parser.parse(entry).ok())
@@ -622,7 +623,7 @@ impl rom::Assets for Assets {
         }
 
         let buf = self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.mapper.get(self.offsets.element_icons_pointer)[..4],
+            &self.mapper.get(self.offsets.element_icons_pointer)[..std::mem::size_of::<u32>()],
         ));
         Some(rom::apply_palette(
             rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),

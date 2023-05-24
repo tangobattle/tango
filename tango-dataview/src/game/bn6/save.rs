@@ -65,7 +65,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -114,7 +114,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
-        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -140,7 +140,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
     pub fn shift(&self) -> usize {
@@ -225,13 +225,13 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4]
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
             .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 
     fn bugfrags(&self) -> Option<u32> {
         Some(bytemuck::pod_read_unaligned::<u32>(
-            &self.buf[self.shift + 0x1be0..][..4],
+            &self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()],
         ))
     }
 
@@ -302,9 +302,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<u16>(
-            &self.save.buf
-                [self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
-                [..std::mem::size_of::<u16>()],
+            &self.save.buf[self.save.shift
+                + 0x2178
+                + folder_index * (30 * std::mem::size_of::<u16>())
+                + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
         );
 
         Some(save::Chip {
@@ -398,8 +399,10 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         };
 
-        self.save.buf[self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
-            [..std::mem::size_of::<u16>()]
+        self.save.buf[self.save.shift
+            + 0x2178
+            + folder_index * (30 * std::mem::size_of::<u16>())
+            + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
             .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u16>()]>(
                 chip.id as u16 | ((variant as u16) << 9),
             ));

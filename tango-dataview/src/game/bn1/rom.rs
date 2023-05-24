@@ -68,7 +68,7 @@ impl<'a> Chip<'a> {
 impl<'a> rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(self.assets.offsets.chip_names_pointer)[..4],
+            &self.assets.mapper.get(self.assets.offsets.chip_names_pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, self.id)?;
 
@@ -92,7 +92,7 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn description(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.assets.mapper.get(self.assets.offsets.chip_descriptions_pointer)[..4],
+            &self.assets.mapper.get(self.assets.offsets.chip_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
         let entry = msg::get_entry(&region, self.id)?;
 
@@ -172,12 +172,12 @@ impl Assets {
         let mapper = rom::MemoryMapper::new(rom, wram);
         let chip_icon_palette = rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                &mapper.get(offsets.chip_icon_palette_pointer)[..4],
+                &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
         let element_icon_palette = rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                &mapper.get(offsets.element_icon_palette_pointer)[..4],
+                &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
 
@@ -218,7 +218,7 @@ impl rom::Assets for Assets {
         }
 
         let buf = self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-            &self.mapper.get(self.offsets.element_icons_pointer)[..4],
+            &self.mapper.get(self.offsets.element_icons_pointer)[..std::mem::size_of::<u32>()],
         ));
         Some(rom::apply_palette(
             rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),

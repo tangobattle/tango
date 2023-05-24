@@ -38,7 +38,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -81,7 +81,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4]
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
             .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 }
@@ -113,9 +113,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<u16>(
-            &self.save.buf
-                [0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
-                [..std::mem::size_of::<u16>()],
+            &self.save.buf[0x7500
+                + self.save.current_navi() as usize * (30 * std::mem::size_of::<u16>())
+                + chip_index * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
         );
 
         Some(save::Chip {

@@ -44,7 +44,7 @@ impl Save {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
-        let save_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[CHECKSUM_OFFSET..][..4]);
+        let save_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]);
         let raw_checksum = compute_raw_checksum(&buf);
         let game_info = {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
@@ -82,7 +82,7 @@ impl Save {
 
     #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
     #[allow(dead_code)]
@@ -116,7 +116,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4]
+        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
             .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 }
@@ -161,8 +161,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
-            &self.save.buf[0x1410 + folder_index * (30 * 4) + chip_index * std::mem::size_of::<RawChip>()..]
-                [..std::mem::size_of::<RawChip>()],
+            &self.save.buf[0x1410
+                + folder_index * (30 * std::mem::size_of::<RawChip>())
+                + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
         Some(save::Chip {
