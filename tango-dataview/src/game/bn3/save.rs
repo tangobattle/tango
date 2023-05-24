@@ -126,6 +126,15 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawChip {
+    id: u16,
+    code: u16,
+}
+
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
+
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         3 // TODO
@@ -153,13 +162,14 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = 0x1410 + folder_index * (30 * 4) + chip_index * 4;
+        let raw = bytemuck::pod_read_unaligned::<RawChip>(
+            &self.save.buf[0x1410 + folder_index * (30 * 4) + chip_index * std::mem::size_of::<RawChip>()..]
+                [..std::mem::size_of::<RawChip>()],
+        );
 
         Some(save::Chip {
-            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]) as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
-                [byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..][..2]) as usize]
-                as char,
+            id: raw.id as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.code as usize] as char,
         })
     }
 }
@@ -167,6 +177,19 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 pub struct NavicustView<'a> {
     save: &'a Save,
 }
+
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawNavicustPart {
+    id_and_variant: u8,
+    _unk_01: u8,
+    col: u8,
+    row: u8,
+    rot: u8,
+    _unk_05: [u8; 3],
+}
+
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
 impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     fn width(&self) -> usize {
@@ -186,21 +209,24 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        let offset = 0x1300 + i * 8;
+        let raw = bytemuck::pod_read_unaligned::<RawNavicustPart>(
+            &self.save.buf[0x1300 + i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        );
 
-        let buf = &self.save.buf[offset..][..8];
-        let raw = buf[0];
-        if raw == 0 {
+        if raw.id_and_variant == 0 {
             return None;
         }
 
         Some(save::NavicustPart {
-            id: (raw / 4) as usize,
-            variant: (raw % 4) as usize,
-            col: buf[0x2],
-            row: buf[0x3],
-            rot: buf[0x4],
-            compressed: (self.save.buf[0x0310 + (raw >> 3) as usize] & (0x80 >> (raw >> 7))) != 0,
+            id: (raw.id_and_variant / 4) as usize,
+            variant: (raw.id_and_variant % 4) as usize,
+            col: raw.col,
+            row: raw.row,
+            rot: raw.rot,
+            compressed: (self.save.buf[0x0310 + (raw.id_and_variant >> 3) as usize]
+                & (0x80 >> (raw.id_and_variant >> 7)))
+                != 0,
         })
     }
 
