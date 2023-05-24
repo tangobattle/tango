@@ -1,4 +1,4 @@
-use crate::{msg, rom};
+mod msg;
 
 pub struct Offsets {
     chip_data: u32,
@@ -31,8 +31,8 @@ pub static AE2J_00_AC: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    msg_parser: msg::Parser,
-    mapper: rom::MemoryMapper,
+    msg_parser: crate::msg::Parser,
+    mapper: crate::rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
 }
@@ -69,7 +69,7 @@ impl<'a> Chip<'a> {
     }
 }
 
-impl<'a> rom::Chip for Chip<'a> {
+impl<'a> crate::rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
@@ -77,7 +77,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, id)?;
+        let entry = crate::msg::get_entry(&region, id)?;
 
         Some(
             self.assets
@@ -87,7 +87,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::Chunk::Text(s) => s,
+                        crate::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -104,7 +104,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, id)?;
+        let entry = crate::msg::get_entry(&region, id)?;
 
         Some(
             self.assets
@@ -114,7 +114,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::Chunk::Text(s) => s,
+                        crate::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -126,17 +126,22 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn icon(&self) -> image::RgbaImage {
         let raw = self.raw();
-        rom::apply_palette(
-            rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..crate::rom::TILE_BYTES * 4], 2)
+                .unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
         let raw = self.raw();
-        rom::apply_palette(
-            rom::read_merged_tiles(&self.assets.mapper.get(raw.image_ptr)[..rom::TILE_BYTES * 8 * 7], 8).unwrap(),
-            &rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(
+                &self.assets.mapper.get(raw.image_ptr)[..crate::rom::TILE_BYTES * 8 * 7],
+                8,
+            )
+            .unwrap(),
+            &crate::rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
         )
     }
 
@@ -155,8 +160,8 @@ impl<'a> rom::Chip for Chip<'a> {
         raw.element as usize
     }
 
-    fn class(&self) -> rom::ChipClass {
-        rom::ChipClass::Standard
+    fn class(&self) -> crate::rom::ChipClass {
+        crate::rom::ChipClass::Standard
     }
 
     fn dark(&self) -> bool {
@@ -180,13 +185,13 @@ impl<'a> rom::Chip for Chip<'a> {
 
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
-        let mapper = rom::MemoryMapper::new(rom, wram);
-        let chip_icon_palette = rom::read_palette(
+        let mapper = crate::rom::MemoryMapper::new(rom, wram);
+        let chip_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
-        let element_icon_palette = rom::read_palette(
+        let element_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
@@ -194,16 +199,7 @@ impl Assets {
 
         Self {
             offsets,
-            msg_parser: msg::Parser::builder()
-                .with_ignore_unknown(true)
-                .add_eof_rule(b"\xe7")
-                .add_charset_rules(charset, 0xe5)
-                .add_text_rule(b"\xe8", "\n")
-                .add_command_rule(b"\xeb", 0)
-                .add_command_rule(b"\xec\x00", 1)
-                .add_command_rule(b"\xf1\x02", 0)
-                .add_command_rule(b"\xf1\x03", 0)
-                .build(),
+            msg_parser: msg::parser(charset),
             mapper,
             chip_icon_palette,
             element_icon_palette,
@@ -211,8 +207,8 @@ impl Assets {
     }
 }
 
-impl rom::Assets for Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Chip + 'a>> {
+impl crate::rom::Assets for Assets {
+    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -239,8 +235,9 @@ impl rom::Assets for Assets {
         let buf = self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..std::mem::size_of::<u32>()],
         ));
-        Some(rom::apply_palette(
-            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),
+        Some(crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(&buf[id * crate::rom::TILE_BYTES * 4..][..crate::rom::TILE_BYTES * 4], 2)
+                .unwrap(),
             &self.element_icon_palette,
         ))
     }

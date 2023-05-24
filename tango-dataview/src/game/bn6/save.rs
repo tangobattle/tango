@@ -1,4 +1,4 @@
-use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
+use crate::save::{ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
 
 pub const SAVE_START_OFFSET: usize = 0x0100;
 pub const SAVE_SIZE: usize = 0x6710;
@@ -56,18 +56,18 @@ fn convert_us_to_jp(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, crate::save::Error> {
         let mut buf: [u8; SAVE_SIZE] = buf
             .get(SAVE_START_OFFSET..)
             .and_then(|buf| buf.get(..SAVE_SIZE))
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(save::Error::InvalidSize(buf.len()))?;
+            .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
 
-        save::mask_save(&mut buf[..], MASK_OFFSET);
+        crate::save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
-            return Err(save::Error::InvalidShift(shift));
+            return Err(crate::save::Error::InvalidShift(shift));
         }
 
         let game_info = match &buf[GAME_NAME_OFFSET..][..20] {
@@ -88,7 +88,7 @@ impl Save {
                 variant: Variant::Falzar,
             },
             n => {
-                return Err(save::Error::InvalidGameName(n.to_vec()));
+                return Err(crate::save::Error::InvalidGameName(n.to_vec()));
             }
         };
 
@@ -96,7 +96,7 @@ impl Save {
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
-            return Err(save::Error::ChecksumMismatch {
+            return Err(crate::save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
                 shift,
@@ -113,16 +113,16 @@ impl Save {
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, crate::save::Error> {
         let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
-            return Err(save::Error::InvalidShift(shift));
+            return Err(crate::save::Error::InvalidShift(shift));
         }
 
         let buf = buf
             .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(save::Error::InvalidSize(buf.len()))?;
+            .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
 
         let mut save = Self { buf, shift, game_info };
 
@@ -158,7 +158,7 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET)
+        crate::save::compute_save_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET)
             + match self.game_info.variant {
                 Variant::Gregar => 0x72,
                 Variant::Falzar => 0x18,
@@ -170,42 +170,42 @@ impl Save {
     }
 }
 
-impl save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+impl crate::save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn save::ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut + '_>> {
         Some(Box::new(ChipsViewMut { save: self }))
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
+    fn view_navicust(&self) -> Option<Box<dyn crate::save::NavicustView + '_>> {
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn save::NavicustViewMut + '_>> {
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn crate::save::NavicustViewMut + '_>> {
         Some(Box::new(NavicustViewMut { save: self }))
     }
 
-    fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
+    fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView> {
         if self.game_info.region != Region::JP {
             return None;
         }
-        Some(save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
+        Some(crate::save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
             save: self,
         })))
     }
 
-    fn view_patch_cards_mut(&mut self) -> Option<save::PatchCardsViewMut> {
+    fn view_patch_cards_mut(&mut self) -> Option<crate::save::PatchCardsViewMut> {
         if self.game_info.region != Region::JP {
             return None;
         }
-        Some(save::PatchCardsViewMut::PatchCard56s(Box::new(PatchCard56sViewMut {
-            save: self,
-        })))
+        Some(crate::save::PatchCardsViewMut::PatchCard56s(Box::new(
+            PatchCard56sViewMut { save: self },
+        )))
     }
 
-    // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
+    // fn view_navi(&self) -> Option<Box<dyn crate::save::NaviView + '_>> {
     //     Some(Box::new(NaviView { save: self }))
     // }
 
@@ -219,7 +219,7 @@ impl save::Save for Save {
     fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[SAVE_START_OFFSET..][..SAVE_SIZE].copy_from_slice(&self.as_raw_wram());
-        save::mask_save(&mut buf[SAVE_START_OFFSET..][..SAVE_SIZE], MASK_OFFSET);
+        crate::save::mask_save(&mut buf[SAVE_START_OFFSET..][..SAVE_SIZE], MASK_OFFSET);
         buf
     }
 
@@ -263,7 +263,7 @@ struct RawChip {
 }
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
-impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         self.save.buf[self.save.shift + 0x1c09] as usize
     }
@@ -304,7 +304,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
     }
 
-    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {
         if folder_index >= self.num_folders() || chip_index >= 30 {
             return None;
         }
@@ -316,7 +316,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
-        Some(save::Chip {
+        Some(crate::save::Chip {
             id: raw.id() as usize,
             code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.variant() as usize] as char,
         })
@@ -340,12 +340,12 @@ struct RawPatchCard {
 }
 const _: () = assert!(std::mem::size_of::<RawPatchCard>() == 0x1);
 
-impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
+impl<'a> crate::save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
         self.save.buf[self.save.shift + 0x65F0] as usize
     }
 
-    fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
+    fn patch_card(&self, slot: usize) -> Option<crate::save::PatchCard> {
         if slot >= self.count() {
             return None;
         }
@@ -355,7 +355,7 @@ impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
                 [..std::mem::size_of::<RawPatchCard>()],
         );
 
-        Some(save::PatchCard {
+        Some(crate::save::PatchCard {
             id: raw.id() as usize,
             enabled: !raw.disabled(),
         })
@@ -366,12 +366,12 @@ pub struct PatchCard56sViewMut<'a> {
     save: &'a mut Save,
 }
 
-impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
+impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
         self.save.buf[self.save.shift + 0x65F0] = count as u8;
     }
 
-    fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
+    fn set_patch_card(&mut self, slot: usize, patch_card: crate::save::PatchCard) -> bool {
         let view = PatchCard56sView { save: self.save };
         if slot >= view.count() {
             return false;
@@ -404,7 +404,7 @@ pub struct ChipsViewMut<'a> {
     save: &'a mut Save,
 }
 
-impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
         if folder_index >= (ChipsView { save: self.save }).num_folders() {
             return false;
@@ -414,7 +414,7 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         true
     }
 
-    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: save::Chip) -> bool {
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: crate::save::Chip) -> bool {
         if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
             return false;
         }
@@ -513,7 +513,7 @@ struct RawNavicustPart {
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
-impl<'a> save::NavicustView<'a> for NavicustView<'a> {
+impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
     fn width(&self) -> usize {
         7
     }
@@ -522,7 +522,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         7
     }
 
-    fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
+    fn navicust_part(&self, i: usize) -> Option<crate::save::NavicustPart> {
         if i >= self.count() {
             return None;
         }
@@ -536,7 +536,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        Some(save::NavicustPart {
+        Some(crate::save::NavicustPart {
             id: raw.id() as usize,
             variant: raw.variant() as usize,
             col: raw.col,
@@ -561,8 +561,8 @@ pub struct NavicustViewMut<'a> {
     save: &'a mut Save,
 }
 
-impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
-    fn set_navicust_part(&mut self, i: usize, part: save::NavicustPart) -> bool {
+impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
+    fn set_navicust_part(&mut self, i: usize, part: crate::save::NavicustPart) -> bool {
         if part.id >= super::NUM_NAVICUST_PARTS.0 || part.variant >= super::NUM_NAVICUST_PARTS.1 {
             return false;
         }
@@ -609,7 +609,7 @@ pub struct NaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::NaviView<'a> for NaviView<'a> {
+impl<'a> crate::save::NaviView<'a> for NaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[self.save.shift + 0x1b81] as usize
     }

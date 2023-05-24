@@ -1,5 +1,3 @@
-use crate::save;
-
 pub const SAVE_SIZE: usize = 0x3a78;
 pub const GAME_NAME_OFFSET: usize = 0x1198;
 pub const CHECKSUM_OFFSET: usize = 0x114c;
@@ -10,16 +8,16 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, crate::save::Error> {
         let save = Save::from_wram(buf)?;
         let n = &save.buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE2 20011016" {
-            return Err(save::Error::InvalidGameName(n.to_vec()));
+            return Err(crate::save::Error::InvalidGameName(n.to_vec()));
         }
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
-            return Err(save::Error::ChecksumMismatch {
+            return Err(crate::save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
                 attempt: 0,
@@ -30,12 +28,12 @@ impl Save {
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8]) -> Result<Self, save::Error> {
+    pub fn from_wram(buf: &[u8]) -> Result<Self, crate::save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(save::Error::InvalidSize(buf.len()))?,
+                .ok_or(crate::save::Error::InvalidSize(buf.len()))?,
         })
     }
 
@@ -44,12 +42,12 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
+        crate::save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 }
 
-impl save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+impl crate::save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
@@ -73,7 +71,7 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         3
     }
@@ -95,7 +93,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         None
     }
 
-    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {
         if folder_index >= self.num_folders() || chip_index >= 30 {
             return None;
         }
@@ -114,7 +112,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
-        Some(save::Chip {
+        Some(crate::save::Chip {
             id: raw.id as usize,
             code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.code as usize] as char,
         })

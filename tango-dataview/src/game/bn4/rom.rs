@@ -1,5 +1,4 @@
-use crate::{msg, rom};
-
+mod msg;
 mod patch_cards;
 
 pub struct Offsets {
@@ -83,26 +82,10 @@ pub static B4BE_00: Offsets = Offsets {
     patch_cards: patch_cards::EN_PATCH_CARDS,
 };
 
-const EREADER_NAME_COMMAND: &[u8] = b"\xff\x00";
-#[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
-struct EreaderNameCommand {
-    index: u8,
-}
-const _: () = assert!(std::mem::size_of::<EreaderNameCommand>() == 0x1);
-
-const EREADER_DESCRIPTION_COMMAND: &[u8] = b"\xff\x01";
-#[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
-struct EreaderDescriptionCommand {
-    index: u8,
-}
-const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
-
 pub struct Assets {
     offsets: &'static Offsets,
-    msg_parser: msg::Parser,
-    mapper: rom::MemoryMapper,
+    msg_parser: crate::msg::Parser,
+    mapper: crate::rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
 }
@@ -155,7 +138,7 @@ impl<'a> Chip<'a> {
     }
 }
 
-impl<'a> rom::Chip for Chip<'a> {
+impl<'a> crate::rom::Chip for Chip<'a> {
     fn name(&self) -> Option<String> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
@@ -163,7 +146,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, id)?;
+        let entry = crate::msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -172,9 +155,9 @@ impl<'a> rom::Chip for Chip<'a> {
             .into_iter()
             .map(|part| {
                 Some(match part {
-                    msg::Chunk::Text(s) => s,
-                    msg::Chunk::Command { op, params } if op == EREADER_NAME_COMMAND => {
-                        let cmd = bytemuck::pod_read_unaligned::<EreaderNameCommand>(&params);
+                    crate::msg::Chunk::Text(s) => s,
+                    crate::msg::Chunk::Command { op, params } if op == msg::EREADER_NAME_COMMAND => {
+                        let cmd = bytemuck::pod_read_unaligned::<msg::EreaderNameCommand>(&params);
                         if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                             (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
                                 as u32
@@ -184,7 +167,7 @@ impl<'a> rom::Chip for Chip<'a> {
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        msg::Chunk::Text(s) => s,
+                                        crate::msg::Chunk::Text(s) => s,
                                         _ => "".to_string(),
                                     }
                                     .chars()
@@ -208,7 +191,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, id)?;
+        let entry = crate::msg::get_entry(&region, id)?;
 
         self.assets
             .msg_parser
@@ -217,9 +200,9 @@ impl<'a> rom::Chip for Chip<'a> {
             .into_iter()
             .map(|part| {
                 Some(match part {
-                    msg::Chunk::Text(s) => s,
-                    msg::Chunk::Command { op, params } if op == EREADER_DESCRIPTION_COMMAND => {
-                        let cmd = bytemuck::pod_read_unaligned::<EreaderDescriptionCommand>(&params);
+                    crate::msg::Chunk::Text(s) => s,
+                    crate::msg::Chunk::Command { op, params } if op == msg::EREADER_DESCRIPTION_COMMAND => {
+                        let cmd = bytemuck::pod_read_unaligned::<msg::EreaderDescriptionCommand>(&params);
                         if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                             (super::save::EREADER_DESCRIPTION_OFFSET
                                 + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
@@ -230,7 +213,7 @@ impl<'a> rom::Chip for Chip<'a> {
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        msg::Chunk::Text(s) => s,
+                                        crate::msg::Chunk::Text(s) => s,
                                         _ => "".to_string(),
                                     }
                                     .chars()
@@ -249,17 +232,22 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn icon(&self) -> image::RgbaImage {
         let raw = self.raw();
-        rom::apply_palette(
-            rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..crate::rom::TILE_BYTES * 4], 2)
+                .unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
         let raw = self.raw();
-        rom::apply_palette(
-            rom::read_merged_tiles(&self.assets.mapper.get(raw.image_ptr)[..rom::TILE_BYTES * 7 * 6], 7).unwrap(),
-            &rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(
+                &self.assets.mapper.get(raw.image_ptr)[..crate::rom::TILE_BYTES * 7 * 6],
+                7,
+            )
+            .unwrap(),
+            &crate::rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
         )
     }
 
@@ -278,14 +266,14 @@ impl<'a> rom::Chip for Chip<'a> {
         raw.element as usize
     }
 
-    fn class(&self) -> rom::ChipClass {
+    fn class(&self) -> crate::rom::ChipClass {
         let raw = self.raw();
         match raw.class {
-            0 => rom::ChipClass::Standard,
-            1 => rom::ChipClass::Mega,
-            2 => rom::ChipClass::Giga,
-            4 => rom::ChipClass::ProgramAdvance,
-            _ => rom::ChipClass::None,
+            0 => crate::rom::ChipClass::Standard,
+            1 => crate::rom::ChipClass::Mega,
+            2 => crate::rom::ChipClass::Giga,
+            4 => crate::rom::ChipClass::ProgramAdvance,
+            _ => crate::rom::ChipClass::None,
         }
     }
 
@@ -343,12 +331,12 @@ impl<'a> NavicustPart<'a> {
     }
 }
 
-impl<'a> rom::NavicustPart for NavicustPart<'a> {
+impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, self.id)?;
+        let entry = crate::msg::get_entry(&region, self.id)?;
 
         Some(
             self.assets
@@ -358,7 +346,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match &part {
-                        msg::Chunk::Text(s) => s,
+                        crate::msg::Chunk::Text(s) => s,
                         _ => "",
                     }
                     .chars()
@@ -372,7 +360,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = msg::get_entry(&region, self.id)?;
+        let entry = crate::msg::get_entry(&region, self.id)?;
 
         Some(
             self.assets
@@ -382,7 +370,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        msg::Chunk::Text(s) => s,
+                        crate::msg::Chunk::Text(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -392,15 +380,15 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         )
     }
 
-    fn color(&self) -> Option<rom::NavicustPartColor> {
+    fn color(&self) -> Option<crate::rom::NavicustPartColor> {
         let raw = self.raw();
         Some(match raw.color {
-            1 => rom::NavicustPartColor::White,
-            2 => rom::NavicustPartColor::Pink,
-            3 => rom::NavicustPartColor::Yellow,
-            4 => rom::NavicustPartColor::Red,
-            5 => rom::NavicustPartColor::Blue,
-            6 => rom::NavicustPartColor::Green,
+            1 => crate::rom::NavicustPartColor::White,
+            2 => crate::rom::NavicustPartColor::Pink,
+            3 => crate::rom::NavicustPartColor::Yellow,
+            4 => crate::rom::NavicustPartColor::Red,
+            5 => crate::rom::NavicustPartColor::Blue,
+            6 => crate::rom::NavicustPartColor::Green,
             _ => {
                 return None;
             }
@@ -412,7 +400,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         raw.is_solid == 0
     }
 
-    fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
+    fn uncompressed_bitmap(&self) -> crate::rom::NavicustBitmap {
         let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
@@ -424,7 +412,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         .unwrap()
     }
 
-    fn compressed_bitmap(&self) -> rom::NavicustBitmap {
+    fn compressed_bitmap(&self) -> crate::rom::NavicustBitmap {
         let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
@@ -444,7 +432,7 @@ pub struct PatchCard4 {
     bug: Option<&'static str>,
 }
 
-impl rom::PatchCard4 for &PatchCard4 {
+impl crate::rom::PatchCard4 for &PatchCard4 {
     fn name(&self) -> Option<String> {
         Some(self.name.to_string())
     }
@@ -464,15 +452,15 @@ impl rom::PatchCard4 for &PatchCard4 {
 
 impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
-        let mapper = rom::MemoryMapper::new(rom, wram);
+        let mapper = crate::rom::MemoryMapper::new(rom, wram);
 
-        let chip_icon_palette = rom::read_palette(
+        let chip_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
         );
 
-        let element_icon_palette = rom::read_palette(
+        let element_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
             ))[..32],
@@ -480,24 +468,7 @@ impl Assets {
 
         Self {
             offsets,
-            msg_parser: msg::Parser::builder()
-                .with_ignore_unknown(true)
-                .add_eof_rule(b"\xe5")
-                .add_charset_rules(charset, 0xe4)
-                .add_command_rule(EREADER_NAME_COMMAND, std::mem::size_of::<EreaderNameCommand>())
-                .add_command_rule(
-                    EREADER_DESCRIPTION_COMMAND,
-                    std::mem::size_of::<EreaderDescriptionCommand>(),
-                )
-                .add_text_rule(b"\xe8", "\n")
-                .add_command_rule(b"\xe6", 1)
-                .add_command_rule(b"\xe7\x01", 0)
-                .add_command_rule(b"\xe7\x02", 0)
-                .add_command_rule(b"\xe7\x03", 0)
-                .add_command_rule(b"\xed\x00", 2)
-                .add_command_rule(b"\xf0\x00", 1)
-                .add_command_rule(b"\xfc\x06", 0)
-                .build(),
+            msg_parser: msg::parser(charset),
             mapper,
             chip_icon_palette,
             element_icon_palette,
@@ -505,8 +476,8 @@ impl Assets {
     }
 }
 
-impl rom::Assets for Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Chip + 'a>> {
+impl crate::rom::Assets for Assets {
+    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -529,13 +500,14 @@ impl rom::Assets for Assets {
         let buf = self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..std::mem::size_of::<u32>()],
         ));
-        Some(rom::apply_palette(
-            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),
+        Some(crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(&buf[id * crate::rom::TILE_BYTES * 4..][..crate::rom::TILE_BYTES * 4], 2)
+                .unwrap(),
             &self.element_icon_palette,
         ))
     }
 
-    fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn rom::NavicustPart + 'a>> {
+    fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
         let (max_id, max_variant) = self.num_navicust_parts();
         if id >= max_id || variant >= max_variant {
             return None;
@@ -551,11 +523,11 @@ impl rom::Assets for Assets {
         super::NUM_NAVICUST_PARTS
     }
 
-    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard4 + 'a>> {
+    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::PatchCard4 + 'a>> {
         self.offsets
             .patch_cards
             .get(id)
-            .map(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn rom::PatchCard4>))
+            .map(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn crate::rom::PatchCard4>))
             .flatten()
     }
 
@@ -563,8 +535,8 @@ impl rom::Assets for Assets {
         super::NUM_PATCH_CARD4S
     }
 
-    fn navicust_layout(&self) -> Option<rom::NavicustLayout> {
-        Some(rom::NavicustLayout {
+    fn navicust_layout(&self) -> Option<crate::rom::NavicustLayout> {
+        Some(crate::rom::NavicustLayout {
             command_line: 2,
             has_out_of_bounds: false,
             background: self.offsets.navicust_bg,

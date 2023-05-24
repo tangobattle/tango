@@ -1,5 +1,3 @@
-use crate::save;
-
 pub const SAVE_SIZE: usize = 0x57b0;
 pub const GAME_NAME_OFFSET: usize = 0x1e00;
 pub const CHECKSUM_OFFSET: usize = 0x1dd8;
@@ -29,19 +27,19 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8]) -> u32 {
-    save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
+    crate::save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
 }
 
 impl Save {
-    pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, crate::save::Error> {
         let buf: [u8; SAVE_SIZE] = buf
             .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
-            .ok_or(save::Error::InvalidSize(buf.len()))?;
+            .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
 
         let n = &buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE3 20021002" && n != b"BBN3 v0.5.0 20021002" {
-            return Err(save::Error::InvalidGameName(n.to_vec()));
+            return Err(crate::save::Error::InvalidGameName(n.to_vec()));
         }
 
         let save_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]);
@@ -54,7 +52,7 @@ impl Save {
                     Some(WHITE) => Variant::White,
                     Some(BLUE) => Variant::Blue,
                     _ => {
-                        return Err(save::Error::ChecksumMismatch {
+                        return Err(crate::save::Error::ChecksumMismatch {
                             actual: save_checksum,
                             expected: vec![raw_checksum + WHITE, raw_checksum + BLUE],
                             attempt: 0,
@@ -70,12 +68,12 @@ impl Save {
         Ok(save)
     }
 
-    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, crate::save::Error> {
         Ok(Self {
             buf: buf
                 .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
-                .ok_or(save::Error::InvalidSize(buf.len()))?,
+                .ok_or(crate::save::Error::InvalidSize(buf.len()))?,
             game_info,
         })
     }
@@ -95,16 +93,16 @@ impl Save {
     }
 }
 
-impl save::Save for Save {
+impl crate::save::Save for Save {
     fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 
-    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
+    fn view_navicust(&self) -> Option<Box<dyn crate::save::NavicustView + '_>> {
         Some(Box::new(NavicustView { save: self }))
     }
 
@@ -124,7 +122,7 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         3 // TODO
     }
@@ -146,7 +144,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         None
     }
 
-    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {
         if folder_index >= self.num_folders() || chip_index >= 30 {
             return None;
         }
@@ -165,7 +163,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
-        Some(save::Chip {
+        Some(crate::save::Chip {
             id: raw.id as usize,
             code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.code as usize] as char,
         })
@@ -190,7 +188,7 @@ struct RawNavicustPart {
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
-impl<'a> save::NavicustView<'a> for NavicustView<'a> {
+impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
     fn width(&self) -> usize {
         5
     }
@@ -203,7 +201,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         Some((self.save.buf[0x1881] & 0x3f) as usize)
     }
 
-    fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
+    fn navicust_part(&self, i: usize) -> Option<crate::save::NavicustPart> {
         if i >= self.count() {
             return None;
         }
@@ -217,7 +215,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        Some(save::NavicustPart {
+        Some(crate::save::NavicustPart {
             id: raw.id() as usize,
             variant: raw.variant() as usize,
             col: raw.col,
