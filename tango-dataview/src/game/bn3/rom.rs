@@ -96,11 +96,33 @@ struct Chip<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawChip {
+    codes: [u8; 6],
+    element: u8,
+    _family: u8,
+    _subfamily: u8,
+    _rarity: u8,
+    mb: u8,
+    _unk_0a: u8,
+    damage: u16,
+    library_number: u16,
+    _unk_0e: [u8; 3],
+    flags: u8,
+    icon_ptr: u32,
+    image_ptr: u32,
+    palette_ptr: u32,
+}
+
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x20);
+
 impl<'a> Chip<'a> {
-    fn raw_info(&'a self) -> [u8; 0x20] {
-        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x20..][..0x20]
-            .try_into()
-            .unwrap()
+    fn raw(&'a self) -> RawChip {
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * std::mem::size_of::<RawChip>()..]
+                [..std::mem::size_of::<RawChip>()],
+        )
     }
 }
 
@@ -162,43 +184,24 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn icon(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x14..][..4]))[..rom::TILE_BYTES * 4],
-                2,
-            )
-            .unwrap(),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
-        let raw = self.raw_info();
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x18..][..4]))[..rom::TILE_BYTES * 8 * 7],
-                8,
-            )
-            .unwrap(),
-            &rom::read_palette(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x1c..][..4]))[..32],
-            ),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.image_ptr)[..rom::TILE_BYTES * 8 * 7], 8).unwrap(),
+            &rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
         )
     }
 
     fn codes(&self) -> Vec<char> {
-        let raw = self.raw_info();
-        raw[0x00..][..6]
+        let raw = self.raw();
+        raw.codes
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -207,16 +210,15 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn element(&self) -> usize {
-        let raw = self.raw_info();
-        raw[0x06] as usize
+        let raw = self.raw();
+        raw.element as usize
     }
 
     fn class(&self) -> rom::ChipClass {
-        let raw = self.raw_info();
-        let flags = raw[0x13];
-        if flags & 0x02 != 0 {
+        let raw = self.raw();
+        if raw.flags & 0x02 != 0 {
             rom::ChipClass::Giga
-        } else if flags & 0x01 != 0 {
+        } else if raw.flags & 0x01 != 0 {
             rom::ChipClass::Mega
         } else {
             rom::ChipClass::Standard
@@ -228,23 +230,22 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn mb(&self) -> u8 {
-        let raw = self.raw_info();
-        raw[0x0a]
+        let raw = self.raw();
+        raw.mb
     }
 
     fn damage(&self) -> u32 {
-        let raw = self.raw_info();
-        let damage = byteorder::LittleEndian::read_u16(&raw[0x0c..][..2]) as u32;
-        if damage < 1000 {
-            damage
+        let raw = self.raw();
+        if raw.damage < 1000 {
+            raw.damage as u32
         } else {
             0
         }
     }
 
     fn library_sort_order(&self) -> Option<usize> {
-        let raw = self.raw_info();
-        Some(byteorder::LittleEndian::read_u16(&raw[0xe..][..2]) as usize)
+        let raw = self.raw();
+        Some(raw.library_number as usize)
     }
 }
 
@@ -254,12 +255,27 @@ struct NavicustPart<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+struct RawNavicustPart {
+    _unk_00: u8,
+    is_solid: u8,
+    _unk_02: u8,
+    color: u8,
+    _unk_05: [u8; 4],
+    uncompressed_bitmap_ptr: u32,
+    compressed_bitmap_ptr: u32,
+}
+
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
+
 impl<'a> NavicustPart<'a> {
-    fn raw_info(&'a self) -> [u8; 0x10] {
+    fn raw(&'a self) -> RawNavicustPart {
         let i = self.id * 4 + self.variant;
-        self.assets.mapper.get(self.assets.offsets.ncp_data)[i * 0x10..][..0x10]
-            .try_into()
-            .unwrap()
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.ncp_data)[i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        )
     }
 }
 
@@ -313,8 +329,8 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
-        let raw = self.raw_info();
-        Some(match raw[0x03] {
+        let raw = self.raw();
+        Some(match raw.color {
             1 => rom::NavicustPartColor::White,
             2 => rom::NavicustPartColor::Pink,
             3 => rom::NavicustPartColor::Yellow,
@@ -331,17 +347,15 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn is_solid(&self) -> bool {
-        let raw = self.raw_info();
-        raw[0x01] == 0
+        let raw = self.raw();
+        raw.is_solid == 0
     }
 
     fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x08..][..4]))[..25]
+            self.assets.mapper.get(raw.uncompressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -350,12 +364,10 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn compressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..][..4]))[..25]
+            self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),

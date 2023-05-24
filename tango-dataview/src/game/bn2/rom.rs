@@ -130,26 +130,24 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn icon(&self) -> image::RgbaImage {
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(&self.assets.mapper.get(self.raw().icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
 
     fn image(&self) -> image::RgbaImage {
+        let raw = self.raw();
         rom::apply_palette(
-            rom::read_merged_tiles(
-                &self.assets.mapper.get(self.raw().image_ptr)[..rom::TILE_BYTES * 8 * 7],
-                8,
-            )
-            .unwrap(),
-            &rom::read_palette(&self.assets.mapper.get(self.raw().palette_ptr)[..32]),
+            rom::read_merged_tiles(&self.assets.mapper.get(raw.image_ptr)[..rom::TILE_BYTES * 8 * 7], 8).unwrap(),
+            &rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
         )
     }
 
     fn codes(&self) -> Vec<char> {
-        self.raw()
-            .codes
+        let raw = self.raw();
+        raw.codes
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -158,7 +156,8 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn element(&self) -> usize {
-        self.raw().element as usize
+        let raw = self.raw();
+        raw.element as usize
     }
 
     fn class(&self) -> rom::ChipClass {
@@ -170,11 +169,13 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn mb(&self) -> u8 {
-        self.raw().mb
+        let raw = self.raw();
+        raw.mb
     }
 
     fn damage(&self) -> u32 {
-        self.raw().damage as u32
+        let raw = self.raw();
+        raw.damage as u32
     }
 
     fn library_sort_order(&self) -> Option<usize> {
