@@ -81,11 +81,10 @@ impl Parser {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
-            let (prefix, rule) = if let Some(rule) = self.rules.get_longest_common_prefix(buf) {
-                rule
-            } else {
-                (&buf[..1], &self.fallthrough_rule)
-            };
+            let (prefix, rule) = self
+                .rules
+                .get_longest_common_prefix(buf)
+                .unwrap_or_else(|| (&buf[..1], &self.fallthrough_rule));
 
             buf = &buf[prefix.len()..];
             chunks.push(match rule {
