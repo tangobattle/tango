@@ -40,7 +40,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        *bytemuck::from_bytes::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -65,7 +65,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        *bytemuck::from_bytes_mut::<u32>(&mut self.buf[CHECKSUM_OFFSET..][..4]) = checksum;
+        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
     }
 }
 

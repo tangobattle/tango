@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
 
 pub const SAVE_START_OFFSET: usize = 0x0100;
@@ -67,7 +65,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -116,7 +114,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
-        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -142,7 +140,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        *bytemuck::from_bytes::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
     }
 
     pub fn shift(&self) -> usize {
@@ -227,11 +225,13 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + CHECKSUM_OFFSET..][..4], checksum);
+        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
     }
 
     fn bugfrags(&self) -> Option<u32> {
-        Some(*bytemuck::from_bytes::<u32>(&self.buf[self.shift + 0x1be0..][..4]))
+        Some(bytemuck::pod_read_unaligned::<u32>(
+            &self.buf[self.shift + 0x1be0..][..4],
+        ))
     }
 
     fn set_bugfrags(&mut self, count: u32) -> bool {
@@ -239,11 +239,13 @@ impl save::Save for Save {
             return false;
         }
 
-        byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x1be0..][..4], count);
+        self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(count));
 
         // Anticheat...
-        let mask = *bytemuck::from_bytes::<u32>(&self.buf[self.shift + 0x18b8..][..4]);
-        byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x5030..][..4], mask ^ count);
+        let mask = bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + 0x18b8..][..std::mem::size_of::<u32>()]);
+        self.buf[self.shift + 0x5030..][..std::mem::size_of::<u32>()]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(mask ^ count));
 
         true
     }
@@ -298,8 +300,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * 2;
-        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]);
+        let raw = bytemuck::pod_read_unaligned::<u16>(
+            &self.save.buf
+                [self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
+                [..std::mem::size_of::<u16>()],
+        );
 
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
@@ -383,7 +388,6 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let offset = self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * 2;
         let variant = if let Some(variant) = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
             .iter()
             .position(|c| *c == chip.code as u8)
@@ -392,10 +396,11 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         } else {
             return false;
         };
-        byteorder::LittleEndian::write_u16(
-            &mut self.save.buf[offset..][..2],
-            chip.id as u16 | ((variant as u16) << 9),
-        );
+
+        self.save.buf[self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
+            [..std::mem::size_of::<u16>()]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(chip.id as u16 | ((variant as u16) << 9)));
+
         true
     }
 
@@ -454,6 +459,20 @@ pub struct NavicustView<'a> {
     save: &'a Save,
 }
 
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawNavicustPart {
+    id_and_variant: u8,
+    _unk_01: u8,
+    _unk_02: u8,
+    col: u8,
+    row: u8,
+    rot: u8,
+    compressed: u8,
+    _unk_07: u8,
+}
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
+
 impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     fn width(&self) -> usize {
         7
@@ -468,19 +487,18 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        let buf = &self.save.buf[self.save.shift + 0x4190 + i * 8..][..8];
-        let raw = buf[0];
-        if raw == 0 {
-            return None;
-        }
+        let raw = bytemuck::pod_read_unaligned::<RawNavicustPart>(
+            &self.save.buf[self.save.shift + 0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        );
 
         Some(save::NavicustPart {
-            id: (raw / 4) as usize,
-            variant: (raw % 4) as usize,
-            col: buf[0x3],
-            row: buf[0x4],
-            rot: buf[0x5],
-            compressed: buf[0x6] != 0,
+            id: (raw.id_and_variant / 4) as usize,
+            variant: (raw.id_and_variant % 4) as usize,
+            col: raw.col,
+            row: raw.row,
+            rot: raw.rot,
+            compressed: raw.compressed != 0,
         })
     }
 
@@ -508,12 +526,17 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
             return false;
         }
 
-        let buf = &mut self.save.buf[self.save.shift + 0x4190 + i * 8..][..8];
-        buf[0x0] = (part.id * 4 + part.variant) as u8;
-        buf[0x3] = part.col as u8;
-        buf[0x4] = part.row as u8;
-        buf[0x5] = part.rot as u8;
-        buf[0x6] = if part.compressed { 1 } else { 0 };
+        self.save.buf[self.save.shift + 0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
+            [..std::mem::size_of::<RawNavicustPart>()]
+            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
+                id_and_variant: (part.id * 4 + part.variant) as u8,
+                col: part.col,
+                row: part.row,
+                rot: part.rot,
+                compressed: if part.compressed { 1 } else { 0 },
+                ..Default::default()
+            }));
+
         true
     }
 

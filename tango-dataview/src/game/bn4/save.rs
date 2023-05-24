@@ -56,7 +56,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -70,7 +70,7 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let expected_checksum = *bytemuck::from_bytes::<u32>(&buf[shift + CHECKSUM_OFFSET..][..4]);
+            let expected_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[shift + CHECKSUM_OFFSET..][..4]);
             let raw_checksum = compute_raw_checksum(&buf, shift);
 
             let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
@@ -119,7 +119,7 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
 
-        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -128,7 +128,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        *bytemuck::from_bytes::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -195,7 +195,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        *bytemuck::from_bytes_mut::<u32>(&mut self.buf[CHECKSUM_OFFSET..][..4]) = checksum;
+        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
     }
 }
 
@@ -230,7 +230,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let raw = *bytemuck::from_bytes::<u16>(
+        let raw = bytemuck::pod_read_unaligned::<u16>(
             &self.save.buf
                 [self.save.shift + 0x262c + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
                 [..std::mem::size_of::<u16>()],
@@ -256,7 +256,7 @@ struct RawNavicustPart {
     row: u8,
     rot: u8,
     compressed: u8,
-    _unk_05: [u8; 2],
+    _unk_06: [u8; 2],
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
@@ -408,16 +408,18 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
         if id >= super::NUM_CHIPS {
             return None;
         }
-        let offset = 0x6f50 + id * 2;
-        Some(*bytemuck::from_bytes::<u16>(&self.save.buf[offset..][..2]) as usize)
+        Some(bytemuck::pod_read_unaligned::<u16>(
+            &self.save.buf[0x6f50 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
+        ) as usize)
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
         if id >= super::NUM_CHIPS {
             return None;
         }
-        let offset = 0x1bb0 + id * 2;
-        Some(*bytemuck::from_bytes::<u16>(&self.save.buf[offset..][..2]) as usize)
+        Some(bytemuck::pod_read_unaligned::<u16>(
+            &self.save.buf[0x1bb0 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()],
+        ) as usize)
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
@@ -434,8 +436,8 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         if id >= super::NUM_CHIPS {
             return false;
         }
-        let offset = 0x6f50 + id * 2;
-        *bytemuck::from_bytes_mut::<u16>(&mut self.save.buf[offset..][..2]) = count as u16;
+        self.save.buf[0x6f50 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(count));
         true
     }
 
@@ -443,8 +445,8 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         if id >= super::NUM_CHIPS {
             return false;
         }
-        let offset: usize = 0x1bb0 + id * 2;
-        *bytemuck::from_bytes_mut::<u16>(&mut self.save.buf[offset..][..2]) = count as u16;
+        self.save.buf[0x1bb0 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(count));
         true
     }
 

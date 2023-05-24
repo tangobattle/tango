@@ -74,10 +74,9 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        let region = self
-            .assets
-            .mapper
-            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
+        let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self.assets.mapper.get(pointer)[..4],
+        ));
         let entry = msg::get_entry(&region, id)?;
 
         Some(
@@ -102,10 +101,9 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        let region = self
-            .assets
-            .mapper
-            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
+        let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self.assets.mapper.get(pointer)[..4],
+        ));
         let entry = msg::get_entry(&region, id)?;
 
         Some(
@@ -184,12 +182,12 @@ impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(*bytemuck::from_bytes::<u32>(
+            &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..4],
             ))[..32],
         );
         let element_icon_palette = rom::read_palette(
-            &mapper.get(*bytemuck::from_bytes::<u32>(
+            &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..4],
             ))[..32],
         );
@@ -238,7 +236,7 @@ impl rom::Assets for Assets {
             return None;
         }
 
-        let buf = self.mapper.get(*bytemuck::from_bytes::<u32>(
+        let buf = self.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         Some(rom::apply_palette(

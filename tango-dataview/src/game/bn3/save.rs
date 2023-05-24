@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::save;
 
 pub const SAVE_SIZE: usize = 0x57b0;
@@ -46,7 +44,7 @@ impl Save {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
-        let save_checksum = *bytemuck::from_bytes::<u32>(&buf[CHECKSUM_OFFSET..][..4]);
+        let save_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[CHECKSUM_OFFSET..][..4]);
         let raw_checksum = compute_raw_checksum(&buf);
         let game_info = {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
@@ -84,7 +82,7 @@ impl Save {
 
     #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
-        *bytemuck::from_bytes::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     #[allow(dead_code)]
@@ -118,7 +116,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
+        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
     }
 }
 
