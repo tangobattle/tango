@@ -13,5 +13,5 @@ auto-battle-data-giga-chip = Giga Chip
 auto-battle-data-combos = Kombos
 auto-battle-data-program-advance = Program Advance
 auto-battle-data-unset = Nicht eingestellt
-copy-navicust-image-to-clipboard = Korpiere den NaviCust in die Zwischenablage
+copy-navicust-image-to-clipboard = Kopiere den NaviCust in die Zwischenablage
     .copied = Kopiert!
