@@ -1,7 +1,6 @@
 pub fn parser(charset: &[String]) -> crate::msg::Parser {
     crate::msg::Parser::builder()
-        .with_ignore_unknown(true)
-        .add_eof_rule(b"\xe5")
+        .add_stop_rule(b"\xe5")
         .add_charset_rules(charset, 0xe4)
         .add_text_rule(b"\xe8", "\n")
         .add_command_rule(b"\xe6", 1)

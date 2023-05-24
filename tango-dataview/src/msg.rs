@@ -1,5 +1,3 @@
-use std::io::Read;
-
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
@@ -9,34 +7,36 @@ pub enum Chunk<'a> {
 }
 
 enum Rule {
-    Text(String),
-    Command(usize),
-    Eof,
+    PushText(String),
+    PushCommand(usize),
+    Skip,
+    Error,
+    Stop,
 }
 
 pub struct ParserBuilder {
     rules: patricia_tree::PatriciaMap<Rule>,
-    ignore_unknown: bool,
+    fallthrough_rule: Rule,
 }
 
 impl ParserBuilder {
-    pub fn with_ignore_unknown(mut self, ignore_unknown: bool) -> Self {
-        self.ignore_unknown = ignore_unknown;
+    pub fn with_error_on_fallthrough(mut self, error_on_fallthrough: bool) -> Self {
+        self.fallthrough_rule = if error_on_fallthrough { Rule::Error } else { Rule::Skip };
         self
     }
 
-    pub fn add_eof_rule(mut self, pat: &[u8]) -> Self {
-        self.rules.insert(Box::from(pat), Rule::Eof);
+    pub fn add_stop_rule(mut self, pat: &[u8]) -> Self {
+        self.rules.insert(Box::from(pat), Rule::Stop);
         self
     }
 
     pub fn add_command_rule(mut self, pat: &[u8], len: usize) -> Self {
-        self.rules.insert(Box::from(pat), Rule::Command(len));
+        self.rules.insert(Box::from(pat), Rule::PushCommand(len));
         self
     }
 
     pub fn add_text_rule(mut self, pat: &[u8], s: &str) -> Self {
-        self.rules.insert(Box::from(pat), Rule::Text(s.to_string()));
+        self.rules.insert(Box::from(pat), Rule::PushText(s.to_string()));
         self
     }
 
@@ -59,21 +59,21 @@ impl ParserBuilder {
     pub fn build(self) -> Parser {
         Parser {
             rules: self.rules,
-            ignore_unknown: self.ignore_unknown,
+            fallthrough_rule: self.fallthrough_rule,
         }
     }
 }
 
 pub struct Parser {
     rules: patricia_tree::PatriciaMap<Rule>,
-    ignore_unknown: bool,
+    fallthrough_rule: Rule,
 }
 
 impl Parser {
     pub fn builder() -> ParserBuilder {
         ParserBuilder {
             rules: patricia_tree::PatriciaMap::new(),
-            ignore_unknown: false,
+            fallthrough_rule: Rule::Error,
         }
     }
 
@@ -84,22 +84,13 @@ impl Parser {
             let (prefix, rule) = if let Some(rule) = self.rules.get_longest_common_prefix(buf) {
                 rule
             } else {
-                let mut stray_byte = [0u8; 1];
-                buf.read(&mut stray_byte).unwrap();
-                if self.ignore_unknown {
-                    continue;
-                } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("unknown byte: {:02x}", stray_byte[0]),
-                    ));
-                }
+                (&buf[..1], &self.fallthrough_rule)
             };
 
             buf = &buf[prefix.len()..];
             chunks.push(match rule {
-                Rule::Text(t) => Chunk::Text(t.clone()),
-                Rule::Command(len) => {
+                Rule::PushText(t) => Chunk::Text(t.clone()),
+                Rule::PushCommand(len) => {
                     if buf.len() < *len {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::UnexpectedEof,
@@ -110,8 +101,17 @@ impl Parser {
                     buf = rest;
                     Chunk::Command { op: prefix, params }
                 }
-                Rule::Eof => {
+                Rule::Stop => {
                     break;
+                }
+                Rule::Skip => {
+                    continue;
+                }
+                Rule::Error => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("could not parse: {:02x?}", prefix),
+                    ));
                 }
             });
         }

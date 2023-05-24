@@ -28,8 +28,7 @@ const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 
 pub fn parser(charset: &[String]) -> crate::msg::Parser {
     crate::msg::Parser::builder()
-        .with_ignore_unknown(true)
-        .add_eof_rule(b"\xe6")
+        .add_stop_rule(b"\xe6")
         .add_charset_rules(charset, 0xe4)
         .add_text_rule(b"\xe9", "\n")
         .add_command_rule(PRINT_VAR_COMMAND, std::mem::size_of::<PrintVarCommand>())
