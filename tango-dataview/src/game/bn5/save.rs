@@ -440,8 +440,8 @@ impl<'a> crate::save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
         ) as usize)
     }
 
-    fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
-        crate::abd::MaterializedAutoBattleData::from_wram(
+    fn materialized(&self) -> crate::auto_battle_data::MaterializedAutoBattleData {
+        crate::auto_battle_data::MaterializedAutoBattleData::from_wram(
             &self.save.buf[self.save.shift + 0x554c..][..42 * std::mem::size_of::<u16>()],
         )
     }
@@ -452,7 +452,7 @@ pub struct AutoBattleDataViewMut<'a> {
 }
 
 impl<'a> AutoBattleDataViewMut<'a> {
-    fn set_materialized(&mut self, materialized: &crate::abd::MaterializedAutoBattleData) {
+    fn set_materialized(&mut self, materialized: &crate::auto_battle_data::MaterializedAutoBattleData) {
         self.save.buf[self.save.shift + 0x554c..][..42 * std::mem::size_of::<u16>()].copy_from_slice(
             &bytemuck::pod_collect_to_vec(
                 &materialized
@@ -485,12 +485,14 @@ impl<'a> crate::save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
     }
 
     fn clear_materialized(&mut self) {
-        self.set_materialized(&crate::abd::MaterializedAutoBattleData::empty());
+        self.set_materialized(&crate::auto_battle_data::MaterializedAutoBattleData::empty());
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
-        let materialized =
-            crate::abd::MaterializedAutoBattleData::materialize(&AutoBattleDataView { save: self.save }, assets);
+        let materialized = crate::auto_battle_data::MaterializedAutoBattleData::materialize(
+            &AutoBattleDataView { save: self.save },
+            assets,
+        );
         self.set_materialized(&materialized);
     }
 }

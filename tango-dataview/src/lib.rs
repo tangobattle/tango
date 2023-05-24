@@ -1,4 +1,4 @@
-pub mod abd;
+pub mod auto_battle_data;
 pub mod game;
 pub mod msg;
 pub mod navicust;

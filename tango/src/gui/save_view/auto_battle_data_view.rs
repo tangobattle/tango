@@ -6,7 +6,7 @@ use crate::{gui, i18n};
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
-    materialized: Option<tango_dataview::abd::MaterializedAutoBattleData>,
+    materialized: Option<tango_dataview::auto_battle_data::MaterializedAutoBattleData>,
 }
 
 impl State {
