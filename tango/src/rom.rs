@@ -140,8 +140,8 @@ impl<'a> tango_dataview::rom::Chip for OverridenChip<'a> {
         self.chip.mb()
     }
 
-    fn damage(&self) -> u32 {
-        self.chip.damage()
+    fn attack_power(&self) -> u32 {
+        self.chip.attack_power()
     }
 
     fn library_sort_order(&self) -> Option<usize> {

@@ -104,7 +104,7 @@ struct RawChip {
     _rarity: u8,
     mb: u8,
     _unk_0a: u8,
-    damage: u16,
+    attack_power: u16,
     library_number: u16,
     _unk_0e: [u8; 3],
 
@@ -233,10 +233,10 @@ impl<'a> rom::Chip for Chip<'a> {
         raw.mb
     }
 
-    fn damage(&self) -> u32 {
+    fn attack_power(&self) -> u32 {
         let raw = self.raw();
-        if raw.damage < 1000 {
-            raw.damage as u32
+        if raw.attack_power < 1000 {
+            raw.attack_power as u32
         } else {
             0
         }

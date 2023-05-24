@@ -48,7 +48,7 @@ struct RawChip {
     codes: [u8; 5],
     element: u8,
     _unk06: [u8; 6],
-    damage: u16,
+    attack_power: u16,
     _unk0e: [u8; 2],
     icon_ptr: u32,
     image_ptr: u32,
@@ -157,9 +157,9 @@ impl<'a> rom::Chip for Chip<'a> {
         0
     }
 
-    fn damage(&self) -> u32 {
+    fn attack_power(&self) -> u32 {
         let raw = self.raw();
-        raw.damage as u32
+        raw.attack_power as u32
     }
 
     fn library_sort_order(&self) -> Option<usize> {

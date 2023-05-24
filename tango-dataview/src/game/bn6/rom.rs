@@ -129,7 +129,7 @@ struct RawChip {
     _library_flags: [u8; 1],
     _lock_on_type: u8,
     _alphabet_sort: u16,
-    damage: u16,
+    attack_power: u16,
     library_sort_order: u16,
     _battle_chip_gate_usage: u8,
     _dark_chip_id: u8,
@@ -272,10 +272,10 @@ impl<'a> rom::Chip for Chip<'a> {
         raw.mb
     }
 
-    fn damage(&self) -> u32 {
+    fn attack_power(&self) -> u32 {
         let raw = self.raw();
-        if raw.damage < 1000 {
-            raw.damage as u32
+        if raw.attack_power < 1000 {
+            raw.attack_power as u32
         } else {
             0
         }

@@ -157,10 +157,10 @@ fn show_table(
                                     }
                                 });
                                 strip.cell(|ui| {
-                                    let damage = info.as_ref().map(|info| info.damage()).unwrap_or(0);
+                                    let attack_power = info.as_ref().map(|info| info.attack_power()).unwrap_or(0);
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if damage > 0 {
-                                            ui.strong(format!("{}", damage));
+                                        if attack_power > 0 {
+                                            ui.strong(format!("{}", attack_power));
                                         }
                                     });
                                 });

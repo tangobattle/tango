@@ -19,7 +19,7 @@ pub trait Chip {
     fn class(&self) -> ChipClass;
     fn dark(&self) -> bool;
     fn mb(&self) -> u8;
-    fn damage(&self) -> u32;
+    fn attack_power(&self) -> u32;
     fn library_sort_order(&self) -> Option<usize>;
 }
 
