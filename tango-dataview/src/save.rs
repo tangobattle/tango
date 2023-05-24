@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 pub trait SaveClone {
     fn clone_box(&self) -> Box<dyn Save + Sync + Send>;
 }
@@ -85,11 +83,11 @@ impl Clone for Box<dyn Save + Send + Sync> {
 }
 
 pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
-    let mask = byteorder::LittleEndian::read_u32(&buf[mask_offset..][..4]);
+    let mask = *bytemuck::from_bytes::<u32>(&buf[mask_offset..][..4]);
     for b in buf.iter_mut() {
         *b = *b ^ (mask as u8);
     }
-    byteorder::LittleEndian::write_u32(&mut buf[mask_offset..][..4], mask);
+    *bytemuck::from_bytes_mut::<u32>(&mut buf[mask_offset..][..4]) = mask;
 }
 
 pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {

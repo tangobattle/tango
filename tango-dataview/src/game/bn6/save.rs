@@ -67,7 +67,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -116,7 +116,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -142,7 +142,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
     }
 
     pub fn shift(&self) -> usize {
@@ -231,7 +231,7 @@ impl save::Save for Save {
     }
 
     fn bugfrags(&self) -> Option<u32> {
-        Some(byteorder::LittleEndian::read_u32(&self.buf[self.shift + 0x1be0..][..4]))
+        Some(*bytemuck::from_bytes::<u32>(&self.buf[self.shift + 0x1be0..][..4]))
     }
 
     fn set_bugfrags(&mut self, count: u32) -> bool {
@@ -242,7 +242,7 @@ impl save::Save for Save {
         byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x1be0..][..4], count);
 
         // Anticheat...
-        let mask = byteorder::LittleEndian::read_u32(&self.buf[self.shift + 0x18b8..][..4]);
+        let mask = *bytemuck::from_bytes::<u32>(&self.buf[self.shift + 0x18b8..][..4]);
         byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + 0x5030..][..4], mask ^ count);
 
         true

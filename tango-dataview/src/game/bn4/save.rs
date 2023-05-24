@@ -1,5 +1,3 @@
-use byteorder::{ByteOrder, WriteBytesExt};
-
 use crate::save::{self, NavicustView as _};
 
 pub const SAVE_SIZE: usize = 0x73d2;
@@ -58,7 +56,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -72,7 +70,7 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let expected_checksum = byteorder::LittleEndian::read_u32(&buf[shift + CHECKSUM_OFFSET..][..4]);
+            let expected_checksum = *bytemuck::from_bytes::<u32>(&buf[shift + CHECKSUM_OFFSET..][..4]);
             let raw_checksum = compute_raw_checksum(&buf, shift);
 
             let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
@@ -121,7 +119,7 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
 
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -130,7 +128,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -197,7 +195,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[self.shift + CHECKSUM_OFFSET..][..4], checksum);
+        *bytemuck::from_bytes_mut::<u32>(&mut self.buf[CHECKSUM_OFFSET..][..4]) = checksum;
     }
 }
 
@@ -232,8 +230,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = self.save.shift + 0x262c + folder_index * (30 * 2) + chip_index * 2;
-        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]);
+        let raw = *bytemuck::from_bytes::<u16>(
+            &self.save.buf
+                [self.save.shift + 0x262c + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
+                [..std::mem::size_of::<u16>()],
+        );
 
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
@@ -245,6 +246,19 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 pub struct NavicustView<'a> {
     save: &'a Save,
 }
+
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawNavicustPart {
+    id_and_variant: u8,
+    _unk_01: u8,
+    col: u8,
+    row: u8,
+    rot: u8,
+    compressed: u8,
+    _unk_05: [u8; 2],
+}
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
 impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     fn width(&self) -> usize {
@@ -260,19 +274,22 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        let buf = &self.save.buf[self.save.shift + 0x4564 + i * 8..][..8];
-        let raw = buf[0];
-        if raw == 0 {
+        let raw = bytemuck::pod_read_unaligned::<RawNavicustPart>(
+            &self.save.buf[self.save.shift + 0x4564 + i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        );
+
+        if raw.id_and_variant == 0 {
             return None;
         }
 
         Some(save::NavicustPart {
-            id: (raw / 4) as usize,
-            variant: (raw % 4) as usize,
-            col: buf[0x2],
-            row: buf[0x3],
-            rot: buf[0x4],
-            compressed: buf[0x5] != 0,
+            id: (raw.id_and_variant / 4) as usize,
+            variant: (raw.id_and_variant % 4) as usize,
+            col: raw.col,
+            row: raw.row,
+            rot: raw.rot,
+            compressed: raw.compressed != 0,
         })
     }
 
@@ -297,12 +314,17 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
             return false;
         }
 
-        let buf = &mut self.save.buf[self.save.shift + 0x4564 + i * 8..][..8];
-        buf[0x0] = (part.id * 4 + part.variant) as u8;
-        buf[0x2] = part.col as u8;
-        buf[0x3] = part.row as u8;
-        buf[0x4] = part.rot as u8;
-        buf[0x5] = if part.compressed { 1 } else { 0 };
+        self.save.buf[self.save.shift + 0x4564 + i * std::mem::size_of::<RawNavicustPart>()..]
+            [..std::mem::size_of::<RawNavicustPart>()]
+            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
+                id_and_variant: (part.id * 4 + part.variant) as u8,
+                col: part.col,
+                row: part.row,
+                rot: part.rot,
+                compressed: if part.compressed { 1 } else { 0 },
+                ..Default::default()
+            }));
+
         true
     }
 
@@ -387,7 +409,7 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
             return None;
         }
         let offset = 0x6f50 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]) as usize)
+        Some(*bytemuck::from_bytes::<u16>(&self.save.buf[offset..][..2]) as usize)
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
@@ -395,7 +417,7 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
             return None;
         }
         let offset = 0x1bb0 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]) as usize)
+        Some(*bytemuck::from_bytes::<u16>(&self.save.buf[offset..][..2]) as usize)
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
@@ -413,7 +435,7 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
             return false;
         }
         let offset = 0x6f50 + id * 2;
-        byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..][..2], count as u16);
+        *bytemuck::from_bytes_mut::<u16>(&mut self.save.buf[offset..][..2]) = count as u16;
         true
     }
 
@@ -422,21 +444,24 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
             return false;
         }
         let offset: usize = 0x1bb0 + id * 2;
-        byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..][..2], count as u16);
+        *bytemuck::from_bytes_mut::<u16>(&mut self.save.buf[offset..][..2]) = count as u16;
         true
     }
 
     fn clear_materialized(&mut self) {
-        self.save.buf[self.save.shift + 0x5064..][..42 * 2].copy_from_slice(&[0; 42 * 2]);
+        for raw in bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x5064..][..42 * 2]) {
+            *raw = 0xffff;
+        }
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized =
             crate::abd::MaterializedAutoBattleData::materialize(&AutoBattleDataView { save: self.save }, assets);
-        let mut buf = &mut self.save.buf[self.save.shift + 0x5064..][..42 * 2];
-        for v in materialized.as_slice() {
-            buf.write_u16::<byteorder::LittleEndian>(v.map(|v| v as u16).unwrap_or(0xffff))
-                .unwrap();
+        for (raw, v) in std::iter::zip(
+            bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x5064..][..42 * 2]),
+            materialized.as_slice(),
+        ) {
+            *raw = v.unwrap_or(0xffff) as u16;
         }
     }
 }

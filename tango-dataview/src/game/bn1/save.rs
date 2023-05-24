@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::save;
 
 pub const SAVE_SIZE: usize = 0x2308;
@@ -68,7 +66,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -98,22 +96,13 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
+        *bytemuck::from_bytes_mut::<u32>(&mut self.buf[CHECKSUM_OFFSET..][..4]) = checksum;
     }
 }
 
 pub struct ChipsView<'a> {
     save: &'a Save,
 }
-
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
-struct RawChip {
-    id: u8,
-    code: u8,
-}
-
-const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
@@ -136,6 +125,14 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         if folder_index >= 1 || chip_index >= 30 {
             return None;
         }
+
+        #[repr(packed, C)]
+        #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+        struct RawChip {
+            id: u8,
+            code: u8,
+        }
+        const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x01c0 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],

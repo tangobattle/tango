@@ -46,7 +46,7 @@ impl Save {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
 
-        let save_checksum = byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..][..4]);
+        let save_checksum = *bytemuck::from_bytes::<u32>(&buf[CHECKSUM_OFFSET..][..4]);
         let raw_checksum = compute_raw_checksum(&buf);
         let game_info = {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
@@ -84,7 +84,7 @@ impl Save {
 
     #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     #[allow(dead_code)]
@@ -126,15 +126,6 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
-struct RawChip {
-    id: u16,
-    code: u16,
-}
-
-const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
-
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         3 // TODO
@@ -162,6 +153,14 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
+        #[repr(packed, C)]
+        #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+        struct RawChip {
+            id: u16,
+            code: u16,
+        }
+        const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
+
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x1410 + folder_index * (30 * 4) + chip_index * std::mem::size_of::<RawChip>()..]
                 [..std::mem::size_of::<RawChip>()],
@@ -178,8 +177,8 @@ pub struct NavicustView<'a> {
     save: &'a Save,
 }
 
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawNavicustPart {
     id_and_variant: u8,
     _unk_01: u8,
@@ -188,7 +187,6 @@ struct RawNavicustPart {
     rot: u8,
     _unk_05: [u8; 3],
 }
-
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
 impl<'a> save::NavicustView<'a> for NavicustView<'a> {

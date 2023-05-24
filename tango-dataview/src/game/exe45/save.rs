@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::save;
 
 pub const SAVE_SIZE: usize = 0xc7a8;
@@ -40,7 +38,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -83,7 +81,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
+        *bytemuck::from_bytes_mut::<u32>(&mut self.buf[CHECKSUM_OFFSET..][..4]) = checksum;
     }
 }
 
@@ -113,8 +111,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = 0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
-        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]);
+        let raw = *bytemuck::from_bytes::<u16>(
+            &self.save.buf
+                [0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
+                [..std::mem::size_of::<u16>()],
+        );
 
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,

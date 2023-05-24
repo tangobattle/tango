@@ -49,7 +49,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -92,7 +92,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
-        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..][..4]) as usize;
+        let shift = *bytemuck::from_bytes::<u32>(&buf[SHIFT_OFFSET..][..4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             return Err(save::Error::InvalidShift(shift));
         }
@@ -112,7 +112,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
+        *bytemuck::from_bytes::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..4])
     }
 
     pub fn shift(&self) -> usize {
@@ -407,16 +407,19 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
     }
 
     fn clear_materialized(&mut self) {
-        self.save.buf[self.save.shift + 0x554c..][..42 * 2].copy_from_slice(&[0; 42 * 2]);
+        for raw in bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x554c..][..42 * 2]) {
+            *raw = 0xffff;
+        }
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized =
             crate::abd::MaterializedAutoBattleData::materialize(&AutoBattleDataView { save: self.save }, assets);
-        let mut buf = &mut self.save.buf[self.save.shift + 0x554c..][..42 * 2];
-        for v in materialized.as_slice() {
-            buf.write_u16::<byteorder::LittleEndian>(v.map(|v| v as u16).unwrap_or(0xffff))
-                .unwrap();
+        for (raw, v) in std::iter::zip(
+            bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x554c..][..42 * 2]),
+            materialized.as_slice(),
+        ) {
+            *raw = v.unwrap_or(0xffff) as u16;
         }
     }
 }

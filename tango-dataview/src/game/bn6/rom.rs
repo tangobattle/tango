@@ -125,7 +125,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         Some(
@@ -153,7 +153,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         self.assets
@@ -196,10 +196,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let raw = self.raw_info();
         rom::apply_palette(
             rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x20..][..4]))[..rom::TILE_BYTES * 4],
+                &self.assets.mapper.get(*bytemuck::from_bytes::<u32>(&raw[0x20..][..4]))[..rom::TILE_BYTES * 4],
                 2,
             )
             .unwrap(),
@@ -211,19 +208,11 @@ impl<'a> rom::Chip for Chip<'a> {
         let raw = self.raw_info();
         rom::apply_palette(
             rom::read_merged_tiles(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x24..][..4]))[..rom::TILE_BYTES * 7 * 6],
+                &self.assets.mapper.get(*bytemuck::from_bytes::<u32>(&raw[0x24..][..4]))[..rom::TILE_BYTES * 7 * 6],
                 7,
             )
             .unwrap(),
-            &rom::read_palette(
-                &self
-                    .assets
-                    .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x28..][..4]))[..32],
-            ),
+            &rom::read_palette(&self.assets.mapper.get(*bytemuck::from_bytes::<u32>(&raw[0x28..][..4]))[..32]),
         )
     }
 
@@ -295,7 +284,7 @@ impl<'a> NavicustPart<'a> {
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
-        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -319,7 +308,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn description(&self) -> Option<String> {
-        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -366,9 +355,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         let raw = self.raw_info();
         ndarray::Array2::from_shape_vec(
             (7, 7),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x08..][..4]))[..49]
+            self.assets.mapper.get(*bytemuck::from_bytes::<u32>(&raw[0x08..][..4]))[..49]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -380,9 +367,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         let raw = self.raw_info();
         ndarray::Array2::from_shape_vec(
             (7, 7),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..][..4]))[..49]
+            self.assets.mapper.get(*bytemuck::from_bytes::<u32>(&raw[0x0c..][..4]))[..49]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -396,13 +381,13 @@ impl Assets {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..4],
             ))[..32],
         );
 
         let element_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..4],
             ))[..32],
         );
@@ -453,7 +438,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
             return Some("".to_string());
         }
 
-        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -499,7 +484,7 @@ impl<'a> rom::PatchCard56 for PatchCard56<'a> {
                 crate::rom::PatchCard56Effect {
                     id,
                     name: {
-                        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
                             &self
                                 .assets
                                 .mapper
@@ -583,7 +568,7 @@ impl rom::Assets for Assets {
             return None;
         }
 
-        let buf = self.mapper.get(byteorder::LittleEndian::read_u32(
+        let buf = self.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         Some(rom::apply_palette(

@@ -1,5 +1,3 @@
-use byteorder::ReadBytesExt;
-
 pub struct MaterializedAutoBattleData([Option<usize>; 42]);
 
 fn materialize_section<'a>(
@@ -23,16 +21,11 @@ fn materialize_section<'a>(
 }
 
 impl MaterializedAutoBattleData {
-    pub fn from_wram(mut buf: &[u8]) -> Self {
+    pub fn from_wram(buf: &[u8]) -> Self {
         Self(
-            (0..42)
-                .map(|_| {
-                    let v = buf.read_u16::<byteorder::LittleEndian>().unwrap() as usize;
-                    if v == 0xffff {
-                        return None;
-                    }
-                    return Some(v);
-                })
+            bytemuck::cast_slice::<_, u16>(buf)
+                .into_iter()
+                .map(|v| if *v == 0xffff { None } else { Some(*v as usize) })
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),

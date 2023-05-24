@@ -1,4 +1,4 @@
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::ReadBytesExt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
@@ -170,7 +170,12 @@ pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {
 pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; 16] {
     [image::Rgba([0, 0, 0, 0])]
         .into_iter()
-        .chain((1..16).map(|i| bgr555_to_rgba(byteorder::LittleEndian::read_u16(&raw[i * 2..][..2]))))
+        .chain(
+            bytemuck::cast_slice::<_, u16>(raw)
+                .into_iter()
+                .skip(1)
+                .map(|v| bgr555_to_rgba(*v)),
+        )
         .collect::<Vec<_>>()
         .try_into()
         .unwrap()

@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::{msg, rom};
 
 mod patch_cards;
@@ -101,8 +99,8 @@ struct Chip<'a> {
     assets: &'a Assets,
 }
 
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawChip {
     codes: [u8; 4],
     _attack_element: u8,
@@ -130,7 +128,6 @@ struct RawChip {
     image_ptr: u32,
     palette_ptr: u32,
 }
-
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2c);
 
 impl<'a> Chip<'a> {
@@ -150,7 +147,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         self.assets
@@ -195,7 +192,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         self.assets
@@ -307,18 +304,33 @@ struct NavicustPart<'a> {
     assets: &'a Assets,
 }
 
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawNavicustPart {
+    _unk_00: u8,
+    is_solid: u8,
+    _unk_02: u8,
+    color: u8,
+    _unk_05: [u8; 4],
+    uncompressed_bitmap_ptr: u32,
+    compressed_bitmap_ptr: u32,
+}
+
+const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
+
 impl<'a> NavicustPart<'a> {
-    fn raw_info(&'a self) -> [u8; 0x10] {
+    fn raw(&'a self) -> RawNavicustPart {
         let i = self.id * 4 + self.variant;
-        self.assets.mapper.get(self.assets.offsets.ncp_data)[i * 0x10..][..0x10]
-            .try_into()
-            .unwrap()
+        bytemuck::pod_read_unaligned(
+            &self.assets.mapper.get(self.assets.offsets.ncp_data)[i * std::mem::size_of::<RawNavicustPart>()..]
+                [..std::mem::size_of::<RawNavicustPart>()],
+        )
     }
 }
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
-        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -342,7 +354,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn description(&self) -> Option<String> {
-        let region = self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -366,8 +378,8 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
-        let raw = self.raw_info();
-        Some(match raw[0x03] {
+        let raw = self.raw();
+        Some(match raw.color {
             1 => rom::NavicustPartColor::White,
             2 => rom::NavicustPartColor::Pink,
             3 => rom::NavicustPartColor::Yellow,
@@ -381,17 +393,15 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn is_solid(&self) -> bool {
-        let raw = self.raw_info();
-        raw[0x01] == 0
+        let raw = self.raw();
+        raw.is_solid == 0
     }
 
     fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x08..][..4]))[..25]
+            self.assets.mapper.get(raw.uncompressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -400,12 +410,10 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn compressed_bitmap(&self) -> rom::NavicustBitmap {
-        let raw = self.raw_info();
+        let raw = self.raw();
         ndarray::Array2::from_shape_vec(
             (5, 5),
-            self.assets
-                .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..][..4]))[..25]
+            self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -444,13 +452,13 @@ impl Assets {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..4],
             ))[..32],
         );
 
         let element_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..4],
             ))[..32],
         );
@@ -500,7 +508,7 @@ impl rom::Assets for Assets {
             return None;
         }
 
-        let buf = self.mapper.get(byteorder::LittleEndian::read_u32(
+        let buf = self.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         Some(rom::apply_palette(

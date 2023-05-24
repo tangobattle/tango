@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 use crate::{msg, rom};
 
 pub struct Offsets {
@@ -96,8 +94,8 @@ struct Chip<'a> {
     assets: &'a Assets,
 }
 
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawChip {
     codes: [u8; 6],
     element: u8,
@@ -114,7 +112,6 @@ struct RawChip {
     image_ptr: u32,
     palette_ptr: u32,
 }
-
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x20);
 
 impl<'a> Chip<'a> {
@@ -134,7 +131,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         Some(
@@ -162,7 +159,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let region = self
             .assets
             .mapper
-            .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4]));
+            .get(*bytemuck::from_bytes::<u32>(&self.assets.mapper.get(pointer)[..4]));
         let entry = msg::get_entry(&region, id)?;
 
         Some(
@@ -255,8 +252,8 @@ struct NavicustPart<'a> {
     assets: &'a Assets,
 }
 
-#[repr(packed)]
-#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawNavicustPart {
     _unk_00: u8,
     is_solid: u8,
@@ -266,7 +263,6 @@ struct RawNavicustPart {
     uncompressed_bitmap_ptr: u32,
     compressed_bitmap_ptr: u32,
 }
-
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
 impl<'a> NavicustPart<'a> {
@@ -281,7 +277,7 @@ impl<'a> NavicustPart<'a> {
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> Option<String> {
-        let region = &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = &self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -305,7 +301,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn description(&self) -> Option<String> {
-        let region = &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = &self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, self.id)?;
@@ -380,12 +376,12 @@ impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..4],
             ))[..32],
         );
         let element_icon_palette = rom::read_palette(
-            &mapper.get(byteorder::LittleEndian::read_u32(
+            &mapper.get(*bytemuck::from_bytes::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..4],
             ))[..32],
         );
@@ -421,7 +417,7 @@ impl<'a> rom::Style for Style<'a> {
         let typ = self.id >> 3;
         let element = self.id & 0x7;
 
-        let region = &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+        let region = &self.assets.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..4],
         ));
         let entry = msg::get_entry(&region, 128 + typ * 5 + element)?;
@@ -485,7 +481,7 @@ impl rom::Assets for Assets {
             return None;
         }
 
-        let buf = self.mapper.get(byteorder::LittleEndian::read_u32(
+        let buf = self.mapper.get(*bytemuck::from_bytes::<u32>(
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         let buf = &buf[0x1e0..];

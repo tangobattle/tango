@@ -1,4 +1,5 @@
-use byteorder::{ByteOrder, ReadBytesExt};
+use std::io::Read;
+
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
@@ -83,13 +84,14 @@ impl Parser {
             let (prefix, rule) = if let Some(rule) = self.rules.get_longest_common_prefix(buf) {
                 rule
             } else {
-                let stray_byte = buf.read_u8().unwrap();
+                let mut stray_byte = [0u8; 1];
+                buf.read(&mut stray_byte).unwrap();
                 if self.ignore_unknown {
                     continue;
                 } else {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("unknown byte: {:02x}", stray_byte),
+                        format!("unknown byte: {:02x}", stray_byte[0]),
                     ));
                 }
             };
@@ -138,9 +140,13 @@ impl Parser {
 }
 
 pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
-    let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..][..2]) as usize;
+    let (offset, next_offset) = match bytemuck::cast_slice::<_, u16>(&buf[i * 2..][..4]) {
+        &[offset, next_offset] => (offset, next_offset),
+        _ => unreachable!(),
+    };
 
-    let mut next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..][..2]) as usize;
+    let offset = offset as usize;
+    let mut next_offset = next_offset as usize;
     if next_offset < offset || next_offset > buf.len() {
         next_offset = buf.len();
     }
