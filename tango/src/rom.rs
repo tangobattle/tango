@@ -238,7 +238,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                     .map_or_else(|| e.name, Some),
                 parameter: e.parameter,
                 is_ability: e.is_ability,
-                is_debuff: e.is_ability,
+                is_debuff: e.is_debuff,
             })
             .collect()
     }
