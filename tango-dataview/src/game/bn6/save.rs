@@ -225,7 +225,8 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
+        self.buf[CHECKSUM_OFFSET..][..4]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 
     fn bugfrags(&self) -> Option<u32> {
@@ -240,12 +241,12 @@ impl save::Save for Save {
         }
 
         self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(count));
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(count));
 
         // Anticheat...
         let mask = bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + 0x18b8..][..std::mem::size_of::<u32>()]);
         self.buf[self.shift + 0x5030..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(mask ^ count));
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(mask ^ count));
 
         true
     }
@@ -399,7 +400,9 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
 
         self.save.buf[self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * std::mem::size_of::<u16>()..]
             [..std::mem::size_of::<u16>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(chip.id as u16 | ((variant as u16) << 9)));
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u16>()]>(
+                chip.id as u16 | ((variant as u16) << 9),
+            ));
 
         true
     }

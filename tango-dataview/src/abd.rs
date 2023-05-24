@@ -22,14 +22,25 @@ fn materialize_section<'a>(
 
 impl MaterializedAutoBattleData {
     pub fn from_wram(buf: &[u8]) -> Self {
+        #[repr(transparent)]
+        #[derive(Clone, Copy)]
+        struct RawMaterializedAutoBattleData([u16; 42]);
+        unsafe impl bytemuck::Pod for RawMaterializedAutoBattleData {}
+        unsafe impl bytemuck::Zeroable for RawMaterializedAutoBattleData {}
+
         Self(
-            bytemuck::cast_slice::<_, u16>(buf)
+            bytemuck::pod_read_unaligned::<RawMaterializedAutoBattleData>(buf)
+                .0
                 .into_iter()
-                .map(|v| if *v == 0xffff { None } else { Some(*v as usize) })
+                .map(|v| if v == 0xffff { None } else { Some(v as usize) })
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
         )
+    }
+
+    pub fn empty() -> Self {
+        Self([None; 42])
     }
 
     pub fn materialize(

@@ -1,4 +1,7 @@
-use crate::save::{self, NavicustView as _};
+use crate::{
+    abd,
+    save::{self, NavicustView as _},
+};
 
 pub const SAVE_SIZE: usize = 0x73d2;
 pub const MASK_OFFSET: usize = 0x1554;
@@ -195,7 +198,8 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..4].copy_from_slice(&bytemuck::cast::<_, [u8; 4]>(checksum));
+        self.buf[CHECKSUM_OFFSET..][..4]
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u32>()]>(checksum));
     }
 }
 
@@ -431,13 +435,25 @@ pub struct AutoBattleDataViewMut<'a> {
     save: &'a mut Save,
 }
 
+impl<'a> AutoBattleDataViewMut<'a> {
+    fn set_materialized(&mut self, materialized: &abd::MaterializedAutoBattleData) {
+        self.save.buf[self.save.shift + 0x5064..][..42 * 2].copy_from_slice(&bytemuck::pod_collect_to_vec(
+            &materialized
+                .as_slice()
+                .iter()
+                .map(|v| v.unwrap_or(0xffff))
+                .collect::<Vec<_>>(),
+        ));
+    }
+}
+
 impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool {
         if id >= super::NUM_CHIPS {
             return false;
         }
         self.save.buf[0x6f50 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(count));
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u16>()]>(count));
         true
     }
 
@@ -446,24 +462,17 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
             return false;
         }
         self.save.buf[0x1bb0 + id * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()]
-            .copy_from_slice(&bytemuck::cast::<_, [u8; 2]>(count));
+            .copy_from_slice(&bytemuck::cast::<_, [u8; std::mem::size_of::<u16>()]>(count));
         true
     }
 
     fn clear_materialized(&mut self) {
-        for raw in bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x5064..][..42 * 2]) {
-            *raw = 0xffff;
-        }
+        self.set_materialized(&abd::MaterializedAutoBattleData::empty());
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized =
             crate::abd::MaterializedAutoBattleData::materialize(&AutoBattleDataView { save: self.save }, assets);
-        for (raw, v) in std::iter::zip(
-            bytemuck::cast_slice_mut::<_, u16>(&mut self.save.buf[self.save.shift + 0x5064..][..42 * 2]),
-            materialized.as_slice(),
-        ) {
-            *raw = v.unwrap_or(0xffff) as u16;
-        }
+        self.set_materialized(&materialized);
     }
 }

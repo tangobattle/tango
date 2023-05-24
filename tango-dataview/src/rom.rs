@@ -171,10 +171,10 @@ pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; 16] {
     [image::Rgba([0, 0, 0, 0])]
         .into_iter()
         .chain(
-            bytemuck::cast_slice::<_, u16>(raw)
+            bytemuck::pod_read_unaligned::<[u16; 16]>(raw)
                 .into_iter()
                 .skip(1)
-                .map(|v| bgr555_to_rgba(*v)),
+                .map(|v| bgr555_to_rgba(v)),
         )
         .collect::<Vec<_>>()
         .try_into()
