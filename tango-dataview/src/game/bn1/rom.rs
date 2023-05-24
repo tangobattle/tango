@@ -46,7 +46,7 @@ struct Chip<'a> {
 
 impl<'a> Chip<'a> {
     fn raw_info(&'a self) -> [u8; 0x1c] {
-        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x1c..(self.id + 1) * 0x1c]
+        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x1c..][..0x1c]
             .try_into()
             .unwrap()
     }
@@ -108,7 +108,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x10..0x10 + 4]))[..rom::TILE_BYTES * 4],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x10..][..4]))[..rom::TILE_BYTES * 4],
                 2,
             )
             .unwrap(),
@@ -123,7 +123,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x14..0x14 + 4]))[..rom::TILE_BYTES * 8 * 7],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x14..][..4]))[..rom::TILE_BYTES * 8 * 7],
                 8,
             )
             .unwrap(),
@@ -131,14 +131,14 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x18..0x18 + 4]))[..32],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x18..][..4]))[..32],
             ),
         )
     }
 
     fn codes(&self) -> Vec<char> {
         let raw = self.raw_info();
-        raw[0x00..0x05]
+        raw[0x00..][..5]
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -165,7 +165,7 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn damage(&self) -> u32 {
         let raw = self.raw_info();
-        byteorder::LittleEndian::read_u16(&raw[0x0c..0x0c + 2]) as u32
+        byteorder::LittleEndian::read_u16(&raw[0x0c..][..2]) as u32
     }
 
     fn library_sort_order(&self) -> Option<usize> {
@@ -227,7 +227,7 @@ impl rom::Assets for Assets {
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         Some(rom::apply_palette(
-            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..(id + 1) * rom::TILE_BYTES * 4], 2).unwrap(),
+            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.element_icon_palette,
         ))
     }

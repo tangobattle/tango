@@ -14,7 +14,7 @@ pub struct Save {
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
         let save = Save::from_wram(buf)?;
-        let n = &save.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
+        let n = &save.buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE2 20011016" {
             return Err(save::Error::InvalidGameName(n.to_vec()));
         }
@@ -42,7 +42,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
+        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -67,7 +67,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
     }
 }
 
@@ -105,9 +105,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         let offset = 0x0ab0 + folder_index * (30 * 4) + chip_index * 4;
 
         Some(save::Chip {
-            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize,
+            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..][..2]) as usize,
             code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
-                [byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4]) as usize]
+                [byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..][..2]) as usize]
                 as char,
         })
     }

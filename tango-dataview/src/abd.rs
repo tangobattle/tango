@@ -99,15 +99,15 @@ impl MaterializedAutoBattleData {
     }
 
     pub fn secondary_standard_chips(&self) -> &[Option<usize>] {
-        &self.0[0..3]
+        &self.0[0..][..3]
     }
 
     pub fn standard_chips(&self) -> &[Option<usize>] {
-        &self.0[3..27]
+        &self.0[3..][..24]
     }
 
     pub fn mega_chips(&self) -> &[Option<usize>] {
-        &self.0[27..32]
+        &self.0[27..][..5]
     }
 
     pub fn giga_chip(&self) -> Option<usize> {
@@ -115,7 +115,7 @@ impl MaterializedAutoBattleData {
     }
 
     pub fn combos(&self) -> &[Option<usize>] {
-        &self.0[33..41]
+        &self.0[33..][..8]
     }
 
     pub fn program_advance(&self) -> Option<usize> {

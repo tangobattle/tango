@@ -170,7 +170,7 @@ pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {
 pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; 16] {
     [image::Rgba([0, 0, 0, 0])]
         .into_iter()
-        .chain((1..16).map(|i| bgr555_to_rgba(byteorder::LittleEndian::read_u16(&raw[(i * 2)..((i + 1) * 2)]))))
+        .chain((1..16).map(|i| bgr555_to_rgba(byteorder::LittleEndian::read_u16(&raw[i * 2..][..2]))))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap()

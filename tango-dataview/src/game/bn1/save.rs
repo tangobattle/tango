@@ -30,7 +30,7 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
 
-        let game_info = match &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
+        let game_info = match &buf[GAME_NAME_OFFSET..][..20] {
             b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
             b"ROCKMAN EXE 20010727" => GameInfo { region: Region::US },
             n => {
@@ -68,7 +68,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
+        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..][..4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -98,7 +98,7 @@ impl save::Save for Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..][..4], checksum);
     }
 }
 
@@ -128,9 +128,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
+        let offset = 0x01c0 + chip_index * 2;
         Some(save::Chip {
-            id: self.save.buf[0x01c0 + chip_index * 2] as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[self.save.buf[0x01c0 + chip_index * 2 + 1] as usize] as char,
+            id: self.save.buf[offset] as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[self.save.buf[offset + 1] as usize] as char,
         })
     }
 }

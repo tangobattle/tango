@@ -103,7 +103,7 @@ struct Chip<'a> {
 
 impl<'a> Chip<'a> {
     fn raw_info(&'a self) -> [u8; 0x2c] {
-        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x2c..(self.id + 1) * 0x2c]
+        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x2c..][..0x2c]
             .try_into()
             .unwrap()
     }
@@ -208,7 +208,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x20..0x20 + 4]))[..rom::TILE_BYTES * 4],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x20..][..4]))[..rom::TILE_BYTES * 4],
                 2,
             )
             .unwrap(),
@@ -223,7 +223,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x24..0x24 + 4]))[..rom::TILE_BYTES * 7 * 6],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x24..][..4]))[..rom::TILE_BYTES * 7 * 6],
                 7,
             )
             .unwrap(),
@@ -231,14 +231,14 @@ impl<'a> rom::Chip for Chip<'a> {
                 &self
                     .assets
                     .mapper
-                    .get(byteorder::LittleEndian::read_u32(&raw[0x28..0x28 + 4]))[..32],
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x28..][..4]))[..32],
             ),
         )
     }
 
     fn codes(&self) -> Vec<char> {
         let raw = self.raw_info();
-        raw[0x00..0x04]
+        raw[0x00..][..4]
             .iter()
             .cloned()
             .filter(|code| *code != 0xff)
@@ -275,7 +275,7 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn damage(&self) -> u32 {
         let raw = self.raw_info();
-        let damage = byteorder::LittleEndian::read_u16(&raw[0x1a..0x1a + 2]) as u32;
+        let damage = byteorder::LittleEndian::read_u16(&raw[0x1a..][..2]) as u32;
         if damage < 1000 {
             damage
         } else {
@@ -285,7 +285,7 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn library_sort_order(&self) -> Option<usize> {
         let raw = self.raw_info();
-        Some(byteorder::LittleEndian::read_u16(&raw[0x1c..0x1c + 2]) as usize)
+        Some(byteorder::LittleEndian::read_u16(&raw[0x1c..][..2]) as usize)
     }
 }
 
@@ -298,7 +298,7 @@ struct NavicustPart<'a> {
 impl<'a> NavicustPart<'a> {
     fn raw_info(&'a self) -> [u8; 0x10] {
         let i = self.id * 4 + self.variant;
-        self.assets.mapper.get(self.assets.offsets.ncp_data)[i * 0x10..(i + 1) * 0x10]
+        self.assets.mapper.get(self.assets.offsets.ncp_data)[i * 0x10..][..0x10]
             .try_into()
             .unwrap()
     }
@@ -379,7 +379,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             (5, 5),
             self.assets
                 .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x08..0x0c]))[..25]
+                .get(byteorder::LittleEndian::read_u32(&raw[0x08..][..4]))[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -393,7 +393,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             (5, 5),
             self.assets
                 .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..0x10]))[..25]
+                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..][..4]))[..25]
                 .iter()
                 .map(|x| *x != 0)
                 .collect(),
@@ -492,7 +492,7 @@ impl rom::Assets for Assets {
             &self.mapper.get(self.offsets.element_icons_pointer)[..4],
         ));
         Some(rom::apply_palette(
-            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..(id + 1) * rom::TILE_BYTES * 4], 2).unwrap(),
+            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..][..rom::TILE_BYTES * 4], 2).unwrap(),
             &self.element_icon_palette,
         ))
     }
