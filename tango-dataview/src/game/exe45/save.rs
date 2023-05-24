@@ -87,6 +87,15 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+struct RawChip {
+    #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
+    #[bitfield(name = "variant", ty = "u16", bits = "9..=15")]
+    id_and_variant: [u8; 2],
+}
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
+
 impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         1
@@ -108,17 +117,6 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         if folder_index >= 1 || chip_index >= 30 {
             return None;
         }
-
-        #[repr(transparent)]
-        #[derive(
-            bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct,
-        )]
-        struct RawChip {
-            #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
-            #[bitfield(name = "variant", ty = "u16", bits = "9..=15")]
-            id_and_variant: [u8; 2],
-        }
-        const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x7500

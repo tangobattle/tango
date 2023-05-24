@@ -122,6 +122,14 @@ pub struct ChipsView<'a> {
     save: &'a Save,
 }
 
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
+struct RawChip {
+    id: u16,
+    code: u16,
+}
+const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
+
 impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
         3 // TODO
@@ -148,14 +156,6 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         if folder_index >= self.num_folders() || chip_index >= 30 {
             return None;
         }
-
-        #[repr(packed, C)]
-        #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
-        struct RawChip {
-            id: u16,
-            code: u16,
-        }
-        const _: () = assert!(std::mem::size_of::<RawChip>() == 0x4);
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x1410
