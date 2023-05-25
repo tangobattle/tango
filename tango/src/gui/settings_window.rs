@@ -781,6 +781,17 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
                 ui.label(" • ");
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.label("100% saves: ");
+
+                    ui.hyperlink_to("ore4545", "https://github.com/ore4545");
+                });
+            });
+
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label(" • ");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
                     ui.label("Porting: ");
 
                     ui.hyperlink_to("ubergeek77", "https://github.com/ubergeek77");
