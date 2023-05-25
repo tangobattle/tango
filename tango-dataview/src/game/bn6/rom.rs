@@ -155,22 +155,41 @@ impl<'a> crate::rom::Chip for Chip<'a> {
         ));
         let entry = crate::msg::get_entry(&region, id)?;
 
-        Some(
-            self.assets
-                .msg_parser
-                .parse(entry)
-                .ok()?
-                .into_iter()
-                .flat_map(|part| {
-                    match part {
-                        crate::msg::Chunk::Text(s) => s,
+        self.assets
+            .msg_parser
+            .parse(entry)
+            .ok()?
+            .into_iter()
+            .map(|part| {
+                Some(match part {
+                    crate::msg::Chunk::Text(s) => s,
+                    crate::msg::Chunk::Command(command) => match command {
+                        msg::Command::EreaderNameCommand(cmd) => {
+                            if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
+                                (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
+                                    as u32
+                                    | 0x02000000,
+                            )) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            crate::msg::Chunk::Text(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                return None;
+                            }
+                        }
                         _ => "".to_string(),
-                    }
-                    .chars()
-                    .collect::<Vec<_>>()
+                    },
                 })
-                .collect::<String>(),
-        )
+            })
+            .collect::<Option<String>>()
     }
 
     fn description(&self) -> Option<String> {

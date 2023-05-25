@@ -7,6 +7,8 @@ pub const GAME_NAME_OFFSET: usize = 0x1c70;
 pub const CHECKSUM_OFFSET: usize = 0x1c6c;
 pub const SHIFT_OFFSET: usize = 0x1060;
 
+pub const EREADER_NAME_OFFSET: usize = 0x1186;
+pub const EREADER_NAME_SIZE: usize = 0x18;
 pub const EREADER_DESCRIPTION_OFFSET: usize = 0x07d6;
 pub const EREADER_DESCRIPTION_SIZE: usize = 0x64;
 

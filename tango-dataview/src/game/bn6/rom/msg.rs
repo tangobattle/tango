@@ -1,5 +1,6 @@
 pub enum Command {
     PrintVarCommand(PrintVarCommand),
+    EreaderNameCommand(EreaderNameCommand),
     EreaderDescriptionCommand(EreaderDescriptionCommand),
 }
 
@@ -16,6 +17,18 @@ const _: () = assert!(std::mem::size_of::<PrintVarCommand>() == 0x2);
 impl crate::msg::CommandBody<Command> for PrintVarCommand {
     fn into_wrapped(self) -> Command {
         Command::PrintVarCommand(self)
+    }
+}
+
+#[repr(packed, C)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy)]
+pub struct EreaderNameCommand {
+    pub index: u8,
+}
+const _: () = assert!(std::mem::size_of::<EreaderNameCommand>() == 0x1);
+impl crate::msg::CommandBody<Command> for EreaderNameCommand {
+    fn into_wrapped(self) -> Command {
+        Command::EreaderNameCommand(self)
     }
 }
 
