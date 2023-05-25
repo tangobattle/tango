@@ -1,31 +1,38 @@
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
-pub enum Chunk<'a> {
+pub enum Chunk<Command> {
     Text(String),
-    Command { op: &'a [u8], params: &'a [u8] },
+    Command(Command),
 }
 
-pub enum Rule {
+pub enum Rule<Command> {
     PushText(String),
-    PushCommand(usize),
-    Skip,
+    PushCommand(fn(&[u8]) -> Option<(Command, &[u8])>),
+    Skip(usize),
     Error,
     Stop,
 }
 
-pub struct ParserBuilder {
-    rules: patricia_tree::PatriciaMap<Rule>,
-    fallthrough_rule: Rule,
+pub trait CommandBody<Command>
+where
+    Self: bytemuck::AnyBitPattern,
+{
+    fn into_wrapped(self) -> Command;
 }
 
-impl ParserBuilder {
-    pub fn with_fallthrough_rule(mut self, rule: Rule) -> Self {
+pub struct ParserBuilder<Command> {
+    rules: patricia_tree::PatriciaMap<Rule<Command>>,
+    fallthrough_rule: Rule<Command>,
+}
+
+impl<Command> ParserBuilder<Command> {
+    pub fn with_fallthrough_rule(mut self, rule: Rule<Command>) -> Self {
         self.fallthrough_rule = rule;
         self
     }
 
-    pub fn add_rule(mut self, pat: &[u8], rule: Rule) -> Self {
+    pub fn add_rule(mut self, pat: &[u8], rule: Rule<Command>) -> Self {
         self.rules.insert(Box::from(pat), rule);
         self
     }
@@ -34,8 +41,26 @@ impl ParserBuilder {
         self.add_rule(pat, Rule::Stop)
     }
 
-    pub fn add_command_rule(self, pat: &[u8], len: usize) -> Self {
-        self.add_rule(pat, Rule::PushCommand(len))
+    pub fn add_skip_rule(self, pat: &[u8], n: usize) -> Self {
+        self.add_rule(pat, Rule::Skip(n))
+    }
+
+    pub fn add_command_rule<T>(self, pat: &[u8]) -> Self
+    where
+        T: CommandBody<Command>,
+    {
+        self.add_rule(
+            pat,
+            Rule::PushCommand(|buf| {
+                let len = std::mem::size_of::<T>();
+                if buf.len() < len {
+                    return None;
+                }
+                let (params, rest) = buf.split_at(len);
+                let body = bytemuck::pod_read_unaligned::<T>(params);
+                Some((body.into_wrapped(), rest))
+            }),
+        )
     }
 
     pub fn add_text_rule(self, pat: &[u8], s: &str) -> Self {
@@ -58,7 +83,7 @@ impl ParserBuilder {
         this
     }
 
-    pub fn build(self) -> Parser {
+    pub fn build(self) -> Parser<Command> {
         Parser {
             rules: self.rules,
             fallthrough_rule: self.fallthrough_rule,
@@ -66,12 +91,12 @@ impl ParserBuilder {
     }
 }
 
-pub struct Parser {
-    rules: patricia_tree::PatriciaMap<Rule>,
-    fallthrough_rule: Rule,
+pub struct Parser<Command> {
+    rules: patricia_tree::PatriciaMap<Rule<Command>>,
+    fallthrough_rule: Rule<Command>,
 }
 
-fn coalesce(chunks: Vec<Chunk>) -> Vec<Chunk> {
+fn coalesce<Command>(chunks: Vec<Chunk<Command>>) -> Vec<Chunk<Command>> {
     chunks
         .into_iter()
         .group_by(|chunk| matches!(chunk, Chunk::Text(_)))
@@ -93,15 +118,15 @@ fn coalesce(chunks: Vec<Chunk>) -> Vec<Chunk> {
         .collect::<Vec<_>>()
 }
 
-impl Parser {
-    pub fn builder() -> ParserBuilder {
+impl<Command> Parser<Command> {
+    pub fn builder() -> ParserBuilder<Command> {
         ParserBuilder {
             rules: patricia_tree::PatriciaMap::new(),
-            fallthrough_rule: Rule::Skip,
+            fallthrough_rule: Rule::Skip(0),
         }
     }
 
-    pub fn parse<'a>(&'a self, mut buf: &'a [u8]) -> Result<Vec<Chunk<'a>>, std::io::Error> {
+    pub fn parse(&self, mut buf: &[u8]) -> Result<Vec<Chunk<Command>>, std::io::Error> {
         let mut chunks = vec![];
 
         while !buf.is_empty() {
@@ -113,21 +138,23 @@ impl Parser {
             buf = &buf[prefix.len()..];
             chunks.push(match rule {
                 Rule::PushText(t) => Chunk::Text(t.clone()),
-                Rule::PushCommand(len) => {
-                    if buf.len() < *len {
+                Rule::PushCommand(read) => {
+                    let (wrapped, rest) = if let Some((wrapped, rest)) = read(buf) {
+                        (wrapped, rest)
+                    } else {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::UnexpectedEof,
-                            format!("not enough bytes for command: {} < {}", buf.len(), *len),
+                            format!("not enough bytes for command, {} remaining", buf.len()),
                         ));
-                    }
-                    let (params, rest) = buf.split_at(*len);
+                    };
                     buf = rest;
-                    Chunk::Command { op: prefix, params }
+                    Chunk::Command(wrapped)
                 }
                 Rule::Stop => {
                     break;
                 }
-                Rule::Skip => {
+                Rule::Skip(n) => {
+                    buf = &buf[*n..];
                     continue;
                 }
                 Rule::Error => {

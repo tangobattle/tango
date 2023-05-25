@@ -27,7 +27,7 @@ pub static BR4J_00: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    msg_parser: crate::msg::Parser,
+    msg_parser: msg::Parser,
     mapper: crate::rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],

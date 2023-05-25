@@ -84,7 +84,7 @@ pub static B4BE_00: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    msg_parser: crate::msg::Parser,
+    msg_parser: msg::Parser,
     mapper: crate::rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -156,29 +156,30 @@ impl<'a> crate::rom::Chip for Chip<'a> {
             .map(|part| {
                 Some(match part {
                     crate::msg::Chunk::Text(s) => s,
-                    crate::msg::Chunk::Command { op, params } if op == msg::EREADER_NAME_COMMAND => {
-                        let cmd = bytemuck::pod_read_unaligned::<msg::EreaderNameCommand>(&params);
-                        if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
-                            (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
-                                as u32
-                                | 0x02000000,
-                        )) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        crate::msg::Chunk::Text(s) => s,
-                                        _ => "".to_string(),
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect::<String>()
-                        } else {
-                            return None;
+                    crate::msg::Chunk::Command(command) => match command {
+                        msg::Command::EreaderNameCommand(cmd) => {
+                            if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
+                                (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
+                                    as u32
+                                    | 0x02000000,
+                            )) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            crate::msg::Chunk::Text(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                return None;
+                            }
                         }
-                    }
-                    _ => "".to_string(),
+                        _ => "".to_string(),
+                    },
                 })
             })
             .collect::<Option<String>>()
@@ -201,30 +202,31 @@ impl<'a> crate::rom::Chip for Chip<'a> {
             .map(|part| {
                 Some(match part {
                     crate::msg::Chunk::Text(s) => s,
-                    crate::msg::Chunk::Command { op, params } if op == msg::EREADER_DESCRIPTION_COMMAND => {
-                        let cmd = bytemuck::pod_read_unaligned::<msg::EreaderDescriptionCommand>(&params);
-                        if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
-                            (super::save::EREADER_DESCRIPTION_OFFSET
-                                + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
-                                as u32
-                                | 0x02000000,
-                        )) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        crate::msg::Chunk::Text(s) => s,
-                                        _ => "".to_string(),
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect::<String>()
-                        } else {
-                            return None;
+                    crate::msg::Chunk::Command(command) => match command {
+                        msg::Command::EreaderDescriptionCommand(cmd) => {
+                            if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
+                                (super::save::EREADER_DESCRIPTION_OFFSET
+                                    + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
+                                    as u32
+                                    | 0x02000000,
+                            )) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            crate::msg::Chunk::Text(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                return None;
+                            }
                         }
-                    }
-                    _ => "".to_string(),
+                        _ => "".to_string(),
+                    },
                 })
             })
             .collect::<Option<String>>()
