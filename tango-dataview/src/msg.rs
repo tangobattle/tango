@@ -8,7 +8,7 @@ pub enum Chunk<Command> {
 
 pub enum Rule<Command> {
     PushText(String),
-    PushCommand(fn(&[u8]) -> Option<(Command, &[u8])>),
+    ReadCommand(fn(&[u8]) -> Option<(Command, &[u8])>),
     Skip(usize),
     Error,
     Stop,
@@ -51,7 +51,7 @@ impl<Command> ParserBuilder<Command> {
     {
         self.add_rule(
             pat,
-            Rule::PushCommand(|buf| {
+            Rule::ReadCommand(|buf| {
                 let len = std::mem::size_of::<T>();
                 if buf.len() < len {
                     return None;
@@ -138,7 +138,7 @@ impl<Command> Parser<Command> {
             buf = &buf[prefix.len()..];
             chunks.push(match rule {
                 Rule::PushText(t) => Chunk::Text(t.clone()),
-                Rule::PushCommand(read) => {
+                Rule::ReadCommand(read) => {
                     let (wrapped, rest) = if let Some((wrapped, rest)) = read(buf) {
                         (wrapped, rest)
                     } else {
