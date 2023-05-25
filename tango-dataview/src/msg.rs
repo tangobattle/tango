@@ -8,7 +8,7 @@ pub enum Chunk<Command> {
 
 enum Rule<Command> {
     PushText(String),
-    ReadCommand(fn(&[u8]) -> Option<(Command, &[u8])>),
+    ReadCommand(fn(&mut dyn std::io::Read) -> Result<Command, std::io::Error>),
     Skip(usize),
     Error,
     Stop,
@@ -19,6 +19,15 @@ where
     Self: bytemuck::AnyBitPattern,
 {
     fn into_wrapped(self) -> Command;
+}
+
+fn read_wrapped_command<Command, Body>(r: &mut dyn std::io::Read) -> Result<Command, std::io::Error>
+where
+    Body: CommandBody<Command>,
+{
+    let mut buf = vec![0; std::mem::size_of::<Body>()];
+    r.read_exact(&mut buf)?;
+    Ok(bytemuck::pod_read_unaligned::<Body>(&buf).into_wrapped())
 }
 
 pub struct ParserBuilder<Command> {
@@ -55,22 +64,11 @@ impl<Command> ParserBuilder<Command> {
         self.add_rule(pat, Rule::Skip(n))
     }
 
-    pub fn add_command_rule<T>(self, pat: &[u8]) -> Self
+    pub fn add_command_rule<Body>(self, pat: &[u8]) -> Self
     where
-        T: CommandBody<Command>,
+        Body: CommandBody<Command>,
     {
-        self.add_rule(
-            pat,
-            Rule::ReadCommand(|buf| {
-                let len = std::mem::size_of::<T>();
-                if buf.len() < len {
-                    return None;
-                }
-                let (params, rest) = buf.split_at(len);
-                let body = bytemuck::pod_read_unaligned::<T>(params);
-                Some((body.into_wrapped(), rest))
-            }),
-        )
+        self.add_rule(pat, Rule::ReadCommand(|buf| read_wrapped_command::<Command, Body>(buf)))
     }
 
     pub fn add_text_rule(self, pat: &[u8], s: &str) -> Self {
@@ -148,18 +146,7 @@ impl<Command> Parser<Command> {
             buf = &buf[prefix.len()..];
             chunks.push(match rule {
                 Rule::PushText(t) => Chunk::Text(t.clone()),
-                Rule::ReadCommand(read) => {
-                    let (wrapped, rest) = if let Some((wrapped, rest)) = read(buf) {
-                        (wrapped, rest)
-                    } else {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            format!("not enough bytes for command, {} remaining", buf.len()),
-                        ));
-                    };
-                    buf = rest;
-                    Chunk::Command(wrapped)
-                }
+                Rule::ReadCommand(read) => Chunk::Command(read(&mut buf)?),
                 Rule::Stop => {
                     break;
                 }
