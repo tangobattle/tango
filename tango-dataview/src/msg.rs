@@ -30,19 +30,16 @@ impl ParserBuilder {
         self
     }
 
-    pub fn add_stop_rule(mut self, pat: &[u8]) -> Self {
-        self.rules.insert(Box::from(pat), Rule::Stop);
-        self
+    pub fn add_stop_rule(self, pat: &[u8]) -> Self {
+        self.add_rule(pat, Rule::Stop)
     }
 
-    pub fn add_command_rule(mut self, pat: &[u8], len: usize) -> Self {
-        self.rules.insert(Box::from(pat), Rule::PushCommand(len));
-        self
+    pub fn add_command_rule(self, pat: &[u8], len: usize) -> Self {
+        self.add_rule(pat, Rule::PushCommand(len))
     }
 
-    pub fn add_text_rule(mut self, pat: &[u8], s: &str) -> Self {
-        self.rules.insert(Box::from(pat), Rule::PushText(s.to_string()));
-        self
+    pub fn add_text_rule(self, pat: &[u8], s: &str) -> Self {
+        self.add_rule(pat, Rule::PushText(s.to_string()))
     }
 
     pub fn add_charset_rules(self, charset: &[String], extension_op_base: u8) -> Self {
