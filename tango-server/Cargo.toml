@@ -1,6 +1,6 @@
 [package]
 name = "tango-server"
-version = "4.0.37"
+version = "4.0.51"
 edition = "2021"
 
 [dependencies]

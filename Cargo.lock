@@ -5411,7 +5411,7 @@ dependencies = [
 
 [[package]]
 name = "tango"
-version = "4.0.50"
+version = "4.0.51"
 dependencies = [
  "anyhow",
  "arboard 2.1.1",
@@ -5508,7 +5508,7 @@ dependencies = [
 
 [[package]]
 name = "tango-dataview"
-version = "4.0.50"
+version = "4.0.51"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -5531,7 +5531,7 @@ dependencies = [
 
 [[package]]
 name = "tango-server"
-version = "4.0.37"
+version = "4.0.51"
 dependencies = [
  "anyhow",
  "async-trait",
