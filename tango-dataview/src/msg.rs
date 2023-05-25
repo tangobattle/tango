@@ -117,7 +117,7 @@ fn coalesce<Command>(chunks: Vec<Chunk<Command>>) -> Vec<Chunk<Command>> {
                     g.into_iter()
                         .map(|chunk| match chunk {
                             Chunk::Text(t) => t,
-                            Chunk::Command { .. } => unreachable!(),
+                            Chunk::Command(_) => unreachable!(),
                         })
                         .collect::<String>(),
                 )]
