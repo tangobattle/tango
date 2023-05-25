@@ -177,8 +177,8 @@ pub struct NavicustView<'a> {
 #[repr(packed, C)]
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawNavicustPart {
-    #[bitfield(name = "id", ty = "u8", bits = "0..=3")]
-    #[bitfield(name = "variant", ty = "u8", bits = "4..=7")]
+    #[bitfield(name = "variant", ty = "u8", bits = "0..=1")]
+    #[bitfield(name = "id", ty = "u8", bits = "2..=7")]
     id_and_variant: [u8; 1],
     _unk_01: u8,
     col: u8,

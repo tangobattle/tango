@@ -95,7 +95,7 @@ impl Parser {
     pub fn builder() -> ParserBuilder {
         ParserBuilder {
             rules: patricia_tree::PatriciaMap::new(),
-            fallthrough_rule: Rule::Error,
+            fallthrough_rule: Rule::Skip,
         }
     }
 
