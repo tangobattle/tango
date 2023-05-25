@@ -19,9 +19,19 @@ pub struct ParserBuilder {
     fallthrough_rule: Rule,
 }
 
+pub enum FallthroughBehavior {
+    Error,
+    Skip,
+    Replace,
+}
+
 impl ParserBuilder {
-    pub fn with_error_on_fallthrough(mut self, error_on_fallthrough: bool) -> Self {
-        self.fallthrough_rule = if error_on_fallthrough { Rule::Error } else { Rule::Skip };
+    pub fn with_fallthrough_behavior(mut self, behavior: FallthroughBehavior) -> Self {
+        self.fallthrough_rule = match behavior {
+            FallthroughBehavior::Error => Rule::Error,
+            FallthroughBehavior::Skip => Rule::Skip,
+            FallthroughBehavior::Replace => Rule::PushText("�".to_string()),
+        };
         self
     }
 
