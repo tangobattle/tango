@@ -6,7 +6,7 @@ pub enum Chunk<'a> {
     Command { op: &'a [u8], params: &'a [u8] },
 }
 
-enum Rule {
+pub enum Rule {
     PushText(String),
     PushCommand(usize),
     Skip,
@@ -19,19 +19,14 @@ pub struct ParserBuilder {
     fallthrough_rule: Rule,
 }
 
-pub enum FallthroughBehavior {
-    Error,
-    Skip,
-    Replace,
-}
-
 impl ParserBuilder {
-    pub fn with_fallthrough_behavior(mut self, behavior: FallthroughBehavior) -> Self {
-        self.fallthrough_rule = match behavior {
-            FallthroughBehavior::Error => Rule::Error,
-            FallthroughBehavior::Skip => Rule::Skip,
-            FallthroughBehavior::Replace => Rule::PushText("�".to_string()),
-        };
+    pub fn with_fallthrough_rule(mut self, rule: Rule) -> Self {
+        self.fallthrough_rule = rule;
+        self
+    }
+
+    pub fn add_rule(mut self, pat: &[u8], rule: Rule) -> Self {
+        self.rules.insert(Box::from(pat), rule);
         self
     }
 
