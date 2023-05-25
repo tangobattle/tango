@@ -48,6 +48,9 @@ impl Save {
         crate::save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
+        if shift != 0 {
+            return Err(crate::save::Error::InvalidShift(shift));
+        }
 
         let game_info = match &buf[GAME_NAME_OFFSET..][..20] {
             b"REXE5TOB 20041104 JP" => GameInfo {
@@ -88,7 +91,7 @@ impl Save {
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, crate::save::Error> {
         let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
-        if shift > 0x1fc || (shift & 3) != 0 {
+        if shift != 0 {
             return Err(crate::save::Error::InvalidShift(shift));
         }
 
