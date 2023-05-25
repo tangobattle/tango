@@ -24,12 +24,12 @@ impl crate::msg::CommandBody<Command> for PrintVarCommand {
 pub struct EreaderDescriptionCommand {
     pub index: u8,
 }
+const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 impl crate::msg::CommandBody<Command> for EreaderDescriptionCommand {
     fn into_wrapped(self) -> Command {
         Command::EreaderDescriptionCommand(self)
     }
 }
-const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 
 pub type Parser = crate::msg::Parser<Command>;
 
