@@ -288,7 +288,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         saves_scanner.clone(),
         patches_scanner.clone(),
         init_link_code,
-    );
+    )?;
 
     let mut patch_autoupdater = patch::Autoupdater::new(config.clone(), patches_scanner.clone());
     patch_autoupdater.set_enabled(config.read().enable_patch_autoupdate);

@@ -104,23 +104,43 @@ impl State {
         saves_scanner: save::Scanner,
         patches_scanner: patch::Scanner,
         init_link_code: Option<String>,
-    ) -> Self {
+    ) -> Result<Self, anyhow::Error> {
         let font_families = FontFamilies {
-            latn: FontFamily {
-                egui: egui::FontFamily::Name("Latn".into()),
-                raw: include_bytes!("fonts/NotoSans-Regular.ttf"),
+            latn: {
+                let raw = include_bytes!("fonts/NotoSans-Regular.ttf");
+                FontFamily {
+                    egui: egui::FontFamily::Name("Latn".into()),
+                    raw,
+                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
+                        .map_err(|e| anyhow::format_err!("{}", e))?,
+                }
             },
-            jpan: FontFamily {
-                egui: egui::FontFamily::Name("Jpan".into()),
-                raw: include_bytes!("fonts/NotoSansJP-Regular.otf"),
+            jpan: {
+                let raw = include_bytes!("fonts/NotoSansJP-Regular.otf");
+                FontFamily {
+                    egui: egui::FontFamily::Name("Jpan".into()),
+                    raw,
+                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
+                        .map_err(|e| anyhow::format_err!("{}", e))?,
+                }
             },
-            hans: FontFamily {
-                egui: egui::FontFamily::Name("Hans".into()),
-                raw: include_bytes!("fonts/NotoSansSC-Regular.otf"),
+            hans: {
+                let raw = include_bytes!("fonts/NotoSansSC-Regular.otf");
+                FontFamily {
+                    egui: egui::FontFamily::Name("Hans".into()),
+                    raw,
+                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
+                        .map_err(|e| anyhow::format_err!("{}", e))?,
+                }
             },
-            hant: FontFamily {
-                egui: egui::FontFamily::Name("Hant".into()),
-                raw: include_bytes!("fonts/NotoSansTC-Regular.otf"),
+            hant: {
+                let raw = include_bytes!("fonts/NotoSansTC-Regular.otf");
+                FontFamily {
+                    egui: egui::FontFamily::Name("Hant".into()),
+                    raw,
+                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
+                        .map_err(|e| anyhow::format_err!("{}", e))?,
+                }
             },
         };
 
@@ -136,7 +156,7 @@ impl State {
             ]),
         });
 
-        Self {
+        Ok(Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             selection: None,
@@ -199,7 +219,7 @@ impl State {
             current_language: None,
             discord_client,
             init_link_code,
-        }
+        })
     }
 }
 
@@ -211,6 +231,7 @@ struct Themes {
 pub struct FontFamily {
     pub egui: egui::FontFamily,
     pub raw: &'static [u8],
+    pub fontdue: fontdue::Font,
 }
 
 pub struct FontFamilies {
@@ -232,15 +253,24 @@ impl FontFamilies {
         }
     }
 
-    pub fn raw_for_language(&self, lang: &unic_langid::LanguageIdentifier) -> &[u8] {
+    pub fn fontdue_for_language(&self, lang: &unic_langid::LanguageIdentifier) -> &fontdue::Font {
         let mut lang = lang.clone();
         lang.maximize();
         match lang.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => self.jpan.raw,
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => self.hans.raw,
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => self.hant.raw,
-            _ => self.latn.raw,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => &self.jpan.fontdue,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => &self.hans.fontdue,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => &self.hant.fontdue,
+            _ => &self.latn.fontdue,
         }
+    }
+
+    pub fn all_fontdue(&self) -> Vec<&fontdue::Font> {
+        vec![
+            &self.latn.fontdue,
+            &self.jpan.fontdue,
+            &self.hans.fontdue,
+            &self.hant.fontdue,
+        ]
     }
 }
 

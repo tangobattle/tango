@@ -97,7 +97,7 @@ fn render_navicust<'a>(
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
-    raw_font: &[u8],
+    fonts: &[&fontdue::Font],
 ) -> image::RgbaImage {
     let body = render_navicust_body(materialized, navicust_layout, navicust_view, assets);
 
@@ -113,16 +113,15 @@ fn render_navicust<'a>(
         );
 
         if let Some(info) = assets.style(style) {
-            let font = fontdue::Font::from_bytes(raw_font, fontdue::FontSettings::default()).unwrap();
             let px = color_bar.height() as f32 * 2.0 / 3.0;
             let mut layout = fontdue::layout::Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown);
             layout.append(
-                &[&font],
+                fonts,
                 &fontdue::layout::TextStyle::new(&info.name().unwrap_or_else(|| "???".to_string()), px, 0),
             );
 
             for glyph in layout.glyphs() {
-                let (metrics, coverage) = font.rasterize(glyph.parent, px);
+                let (metrics, coverage) = fonts[glyph.font_index].rasterize(glyph.parent, px);
                 let g = image::RgbaImage::from_vec(
                     metrics.width as u32,
                     metrics.height as u32,
@@ -719,7 +718,10 @@ pub fn show<'a>(
                             &navicust_layout,
                             navicust_view,
                             assets,
-                            font_families.raw_for_language(game_lang),
+                            &[font_families.fontdue_for_language(lang)]
+                                .into_iter()
+                                .chain(font_families.all_fontdue().into_iter())
+                                .collect::<Vec<_>>(),
                         );
                         let texture = ui.ctx().load_texture(
                             "navicust",
