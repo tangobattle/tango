@@ -223,7 +223,7 @@ pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Option<PalettedImage> {
     Some(merge_tiles(&tiles, cols))
 }
 
-pub fn unlz77(mut r: impl std::io::Read) -> std::io::Result<Vec<u8>> {
+pub fn unlz77(r: &mut impl std::io::Read) -> std::io::Result<Vec<u8>> {
     let mut out = vec![];
 
     let header = r.read_u32::<byteorder::LittleEndian>()?;
@@ -286,7 +286,7 @@ impl MemoryMapper {
                 self.unlz77_cache
                     .lock()
                     .entry(start)
-                    .or_insert_with(|| unlz77(&self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec())
+                    .or_insert_with(|| unlz77(&mut &self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec())
                     .clone(),
             )
         } else {
