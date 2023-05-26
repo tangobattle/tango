@@ -23,6 +23,12 @@ pub struct Region {
     pub us: bool,
 }
 
+impl Region {
+    pub const JP: Self = Region { jp: true, us: false };
+    pub const US: Self = Region { jp: false, us: true };
+    pub const ANY: Self = Region { jp: true, us: true };
+}
+
 const fn checksum_start_for_variant(variant: Variant) -> u32 {
     match variant {
         Variant::RedSun => 0x16,
@@ -75,11 +81,11 @@ impl Save {
             let raw_checksum = compute_raw_checksum(&buf, shift);
 
             let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
-                Some(RED_SUN) => (Variant::RedSun, Region { us: true, jp: false }),
-                Some(BLUE_MOON) => (Variant::BlueMoon, Region { us: true, jp: false }),
+                Some(RED_SUN) => (Variant::RedSun, Region::US),
+                Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
                 None => match expected_checksum.checked_sub(raw_checksum - buf[0] as u32) {
-                    Some(RED_SUN) => (Variant::RedSun, Region { us: false, jp: true }),
-                    Some(BLUE_MOON) => (Variant::BlueMoon, Region { us: false, jp: true }),
+                    Some(RED_SUN) => (Variant::RedSun, Region::JP),
+                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
                     _ => {
                         return Err(crate::save::Error::ChecksumMismatch {
                             expected: vec![expected_checksum],
@@ -101,11 +107,7 @@ impl Save {
 
             GameInfo {
                 variant,
-                region: if buf[0] == 0 {
-                    Region { us: true, jp: true }
-                } else {
-                    region
-                },
+                region: if buf[0] == 0 { Region::ANY } else { region },
             }
         };
 
@@ -134,7 +136,7 @@ impl Save {
 
     pub fn compute_checksum(&self) -> u32 {
         compute_raw_checksum(&self.buf, self.shift) + checksum_start_for_variant(self.game_info.variant)
-            - if self.game_info.region == (Region { us: false, jp: true }) {
+            - if self.game_info.region == Region::JP {
                 self.buf[0] as u32
             } else {
                 0
