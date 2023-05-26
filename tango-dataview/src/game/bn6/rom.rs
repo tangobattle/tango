@@ -10,12 +10,14 @@ pub struct Offsets {
     ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
-    patch_card_data: u32,
-    patch_card_names_pointer: u32,
-    patch_card_details_names_pointer: u32,
     navi_names_pointer: u32,
     emblem_icons_pointer: u32,
     emblem_icons_palette_pointer: u32,
+    emblem_icons_offsets_pointer: u32,
+    emblem_icons_palette_offsets_pointer: u32,
+    patch_card_data: u32,
+    patch_card_names_pointer: u32,
+    patch_card_details_names_pointer: u32,
     navicust_bg: image::Rgba<u8>,
 }
 
@@ -24,84 +26,92 @@ const NAVICUST_BG_F: image::Rgba<u8> = image::Rgba([0xe7, 0x8c, 0x39, 0xff]);
 
 #[rustfmt::skip]
 pub static BR5J_00: Offsets = Offsets {
-    chip_data:                          0x080221bc,
-    chip_names_pointers:                0x08043274,
-    chip_descriptions_pointers:         0x08028164,
-    chip_icon_palette_pointer:          0x0801f144,
-    ncp_data:                           0x081460cc,
-    ncp_names_pointer:                  0x08043284,
-    ncp_descriptions_pointer:           0x08139240,
-    element_icon_palette_pointer:       0x081226e4,
-    element_icons_pointer:              0x081226dc,
-    navi_names_pointer:                 0x08043290,
-    emblem_icons_pointer:               0x08028594,
-    emblem_icons_palette_pointer:       0x08028598,
-    patch_card_data:                    0x08144778,
-    patch_card_names_pointer:           0x08130fe0,
-    patch_card_details_names_pointer:   0x08130fec,
+    chip_data:                            0x080221bc,
+    chip_names_pointers:                  0x08043274,
+    chip_descriptions_pointers:           0x08028164,
+    chip_icon_palette_pointer:            0x0801f144,
+    ncp_data:                             0x081460cc,
+    ncp_names_pointer:                    0x08043284,
+    ncp_descriptions_pointer:             0x08139240,
+    element_icon_palette_pointer:         0x081226e4,
+    element_icons_pointer:                0x081226dc,
+    navi_names_pointer:                   0x08043290,
+    emblem_icons_pointer:                 0x08028594,
+    emblem_icons_palette_pointer:         0x08028598,
+    emblem_icons_offsets_pointer:         0x080285ac,
+    emblem_icons_palette_offsets_pointer: 0x0802859c,
+    patch_card_data:                      0x08144778,
+    patch_card_names_pointer:             0x08130fe0,
+    patch_card_details_names_pointer:     0x08130fec,
 
     navicust_bg: NAVICUST_BG_G,
 };
 
 #[rustfmt::skip]
 pub static BR6J_00: Offsets = Offsets {
-    chip_data:                          0x080221bc,
-    chip_names_pointers:                0x080432a4,
-    chip_descriptions_pointers:         0x08028164,
-    chip_icon_palette_pointer:          0x0801f144,
-    ncp_data:                           0x08144300,
-    ncp_names_pointer:                  0x080432b4,
-    ncp_descriptions_pointer:           0x08137478,
-    element_icon_palette_pointer:       0x081213c4,
-    element_icons_pointer:              0x081213bc,
-    navi_names_pointer:                 0x080432c0,
-    emblem_icons_pointer:               0x08028594,
-    emblem_icons_palette_pointer:       0x08028598,
-    patch_card_data:                    0x081429b0,
-    patch_card_names_pointer:           0x0812f218,
-    patch_card_details_names_pointer:   0x0812f224,
+    chip_data:                            0x080221bc,
+    chip_names_pointers:                  0x080432a4,
+    chip_descriptions_pointers:           0x08028164,
+    chip_icon_palette_pointer:            0x0801f144,
+    ncp_data:                             0x08144300,
+    ncp_names_pointer:                    0x080432b4,
+    ncp_descriptions_pointer:             0x08137478,
+    element_icon_palette_pointer:         0x081213c4,
+    element_icons_pointer:                0x081213bc,
+    navi_names_pointer:                   0x080432c0,
+    emblem_icons_pointer:                 0x08028594,
+    emblem_icons_palette_pointer:         0x08028598,
+    emblem_icons_offsets_pointer:         0x080285ac,
+    emblem_icons_palette_offsets_pointer: 0x0802859c,
+    patch_card_data:                      0x081429b0,
+    patch_card_names_pointer:             0x0812f218,
+    patch_card_details_names_pointer:     0x0812f224,
 
     navicust_bg: NAVICUST_BG_F,
 };
 
 #[rustfmt::skip]
 pub static BR5E_00: Offsets = Offsets {
-    chip_data:                          0x08021da8,
-    chip_names_pointers:                0x08042038,
-    chip_descriptions_pointers:         0x08027d50,
-    chip_icon_palette_pointer:          0x0801ed20,
-    ncp_data:                           0x0813b22c,
-    ncp_names_pointer:                  0x08042048,
-    ncp_descriptions_pointer:           0x08130878,
-    element_icon_palette_pointer:       0x0811a9a4,
-    element_icons_pointer:              0x0811a99c,
-    navi_names_pointer:                 0x08042054,
-    emblem_icons_pointer:               0x08028180,
-    emblem_icons_palette_pointer:       0x08028184,
-    patch_card_data:                    0,
-    patch_card_names_pointer:           0,
-    patch_card_details_names_pointer:   0,
+    chip_data:                            0x08021da8,
+    chip_names_pointers:                  0x08042038,
+    chip_descriptions_pointers:           0x08027d50,
+    chip_icon_palette_pointer:            0x0801ed20,
+    ncp_data:                             0x0813b22c,
+    ncp_names_pointer:                    0x08042048,
+    ncp_descriptions_pointer:             0x08130878,
+    element_icon_palette_pointer:         0x0811a9a4,
+    element_icons_pointer:                0x0811a99c,
+    navi_names_pointer:                   0x08042054,
+    emblem_icons_pointer:                 0x08028180,
+    emblem_icons_offsets_pointer:         0x08028198,
+    emblem_icons_palette_pointer:         0x08028184,
+    emblem_icons_palette_offsets_pointer: 0x08028188,
+    patch_card_data:                      0,
+    patch_card_names_pointer:             0,
+    patch_card_details_names_pointer:     0,
 
     navicust_bg: NAVICUST_BG_G,
 };
 
 #[rustfmt::skip]
 pub static BR6E_00: Offsets = Offsets {
-    chip_data:                          0x08021da8,
-    chip_names_pointers:                0x08042068,
-    chip_descriptions_pointers:         0x08027d50,
-    chip_icon_palette_pointer:          0x0801ed20,
-    ncp_data:                           0x0813944c,
-    ncp_names_pointer:                  0x08042078,
-    ncp_descriptions_pointer:           0x0812ea9c,
-    element_icon_palette_pointer:       0x08119674,
-    element_icons_pointer:              0x0811966c,
-    navi_names_pointer:                 0x08042084,
-    emblem_icons_pointer:               0x08028180,
-    emblem_icons_palette_pointer:       0x08028184,
-    patch_card_data:                    0,
-    patch_card_names_pointer:           0,
-    patch_card_details_names_pointer:   0,
+    chip_data:                            0x08021da8,
+    chip_names_pointers:                  0x08042068,
+    chip_descriptions_pointers:           0x08027d50,
+    chip_icon_palette_pointer:            0x0801ed20,
+    ncp_data:                             0x0813944c,
+    ncp_names_pointer:                    0x08042078,
+    ncp_descriptions_pointer:             0x0812ea9c,
+    element_icon_palette_pointer:         0x08119674,
+    element_icons_pointer:                0x0811966c,
+    navi_names_pointer:                   0x08042084,
+    emblem_icons_pointer:                 0x08028180,
+    emblem_icons_offsets_pointer:         0x08028198,
+    emblem_icons_palette_pointer:         0x08028184,
+    emblem_icons_palette_offsets_pointer: 0x08028188,
+    patch_card_data:                      0,
+    patch_card_names_pointer:             0,
+    patch_card_details_names_pointer:     0,
 
     navicust_bg: NAVICUST_BG_F,
 };
@@ -661,14 +671,24 @@ impl<'a> crate::rom::Navi for Navi<'a> {
     }
 
     fn emblem(&self) -> image::RgbaImage {
-        const OFFSETS: [usize; super::NUM_NAVIS] = [0, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
-        let offset = OFFSETS.get(self.id).cloned().unwrap_or(0);
+        let icon_offsets = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self.assets.mapper.get(self.assets.offsets.emblem_icons_offsets_pointer)[..std::mem::size_of::<u32>()],
+        ))[..super::NUM_NAVIS];
+        let icon_offset = icon_offsets.get(self.id).cloned().unwrap_or(0) as usize;
+
+        let palette_offsets = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self
+                .assets
+                .mapper
+                .get(self.assets.offsets.emblem_icons_palette_offsets_pointer)[..std::mem::size_of::<u32>()],
+        ))[..super::NUM_NAVIS];
+        let palette_offset = palette_offsets.get(self.id).cloned().unwrap_or(0) as usize;
 
         crate::rom::apply_palette(
             crate::rom::read_merged_tiles(
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
                     &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointer)[..std::mem::size_of::<u32>()],
-                ))[crate::rom::TILE_BYTES * 4 * offset..][..crate::rom::TILE_BYTES * 4],
+                ))[crate::rom::TILE_BYTES * 4 * icon_offset..][..crate::rom::TILE_BYTES * 4],
                 2,
             )
             .unwrap(),
@@ -676,7 +696,7 @@ impl<'a> crate::rom::Navi for Navi<'a> {
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
                     &self.assets.mapper.get(self.assets.offsets.emblem_icons_palette_pointer)
                         [..std::mem::size_of::<u32>()],
-                ))[32 * offset..][..32],
+                ))[32 * palette_offset..][..32],
             ),
         )
     }
