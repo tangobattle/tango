@@ -182,7 +182,14 @@ impl crate::save::Save for Save {
     }
 
     fn view_navi(&self) -> Option<crate::save::NaviView> {
-        Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
+        Some({
+            let link_navi_view = LinkNaviView { save: self };
+            if link_navi_view.navi() != 0 {
+                crate::save::NaviView::LinkNavi(Box::new(link_navi_view))
+            } else {
+                crate::save::NaviView::Navicust(Box::new(NavicustView { save: self }))
+            }
+        })
     }
 
     fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
@@ -208,10 +215,6 @@ impl crate::save::Save for Save {
             PatchCard56sViewMut { save: self },
         )))
     }
-
-    // fn view_navi(&self) -> Option<Box<dyn crate::save::NaviView + '_>> {
-    //     Some(Box::new(LinkNaviView { save: self }))
-    // }
 
     fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
         match self.game_info.region {

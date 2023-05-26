@@ -8,8 +8,8 @@ pub struct Offsets {
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     navi_names_pointer: u32,
-    emblem_icons_pointers: u32,
-    emblem_icon_palette_pointers: u32,
+    emblem_icons_pointer: u32,
+    emblem_icon_palette_pointer: u32,
 }
 
 #[rustfmt::skip]
@@ -21,8 +21,8 @@ pub static BR4J_00: Offsets = Offsets {
     element_icons_pointer:          0x080d4c94,
     element_icon_palette_pointer:   0x080d4ca0,
     navi_names_pointer:             0x0805174c,
-    emblem_icons_pointers:          0x08021a50,
-    emblem_icon_palette_pointers:   0x080219f4,
+    emblem_icons_pointer:          0x08021a50,
+    emblem_icon_palette_pointer:   0x080219f4,
 };
 
 pub struct Assets {
@@ -234,16 +234,16 @@ impl<'a> crate::rom::Navi for Navi<'a> {
         crate::rom::apply_palette(
             crate::rom::read_merged_tiles(
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointers)[self.id * 4..]
-                        [..std::mem::size_of::<u32>()],
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointer)
+                        [self.id * std::mem::size_of::<u32>()..][..std::mem::size_of::<u32>()],
                 ))[..crate::rom::TILE_BYTES * 4],
                 2,
             )
             .unwrap(),
             &crate::rom::read_palette(
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-                    &self.assets.mapper.get(self.assets.offsets.emblem_icon_palette_pointers)[self.id * 4..]
-                        [..std::mem::size_of::<u32>()],
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icon_palette_pointer)
+                        [self.id * std::mem::size_of::<u32>()..][..std::mem::size_of::<u32>()],
                 ))[..32],
             ),
         )
