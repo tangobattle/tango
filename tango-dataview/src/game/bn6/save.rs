@@ -1,4 +1,4 @@
-use crate::save::{ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
+use crate::save::{ChipsView as _, LinkNaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
 
 pub const SAVE_START_OFFSET: usize = 0x0100;
 pub const SAVE_SIZE: usize = 0x6710;
@@ -181,12 +181,14 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsViewMut { save: self }))
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn crate::save::NavicustView + '_>> {
-        Some(Box::new(NavicustView { save: self }))
+    fn view_navi(&self) -> Option<crate::save::NaviView> {
+        Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn crate::save::NavicustViewMut + '_>> {
-        Some(Box::new(NavicustViewMut { save: self }))
+    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
+        Some(crate::save::NaviViewMut::Navicust(Box::new(NavicustViewMut {
+            save: self,
+        })))
     }
 
     fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView> {
@@ -208,7 +210,7 @@ impl crate::save::Save for Save {
     }
 
     // fn view_navi(&self) -> Option<Box<dyn crate::save::NaviView + '_>> {
-    //     Some(Box::new(NaviView { save: self }))
+    //     Some(Box::new(LinkNaviView { save: self }))
     // }
 
     fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
@@ -271,7 +273,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn equipped_folder_index(&self) -> usize {
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2d] as usize
     }
 
@@ -280,7 +282,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         let idx = self.save.buf[navi_stats_offset + 0x2e + folder_index];
         if idx >= 30 {
             None
@@ -294,7 +296,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
         let [idx1, idx2] = bytemuck::pod_read_unaligned::<[u8; 2]>(
             &self.save.buf[tag_chips_offset..][..std::mem::size_of::<[u8; 2]>()],
@@ -411,7 +413,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         if folder_index >= (ChipsView { save: self.save }).num_folders() {
             return false;
         }
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2d] = folder_index as u8;
         true
     }
@@ -458,7 +460,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             [0xff, 0xff]
         };
 
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         let tag_chips_offset = navi_stats_offset + 0x56 + folder_index * 2;
 
         self.save.buf[tag_chips_offset..][..std::mem::size_of::<[u8; 2]>()].copy_from_slice(bytemuck::bytes_of(&raw));
@@ -471,7 +473,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(LinkNaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2e + folder_index] = chip_index as u8;
         true
     }
@@ -607,11 +609,11 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
     }
 }
 
-pub struct NaviView<'a> {
+pub struct LinkNaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> crate::save::NaviView<'a> for NaviView<'a> {
+impl<'a> crate::save::LinkNaviView<'a> for LinkNaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[self.save.shift + 0x1b81] as usize
     }

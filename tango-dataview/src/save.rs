@@ -46,11 +46,11 @@ where
         None
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn NavicustView + '_>> {
+    fn view_navi(&self) -> Option<NaviView> {
         None
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn NavicustViewMut + '_>> {
+    fn view_navi_mut(&mut self) -> Option<NaviViewMut> {
         None
     }
 
@@ -59,10 +59,6 @@ where
     }
 
     fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut + '_>> {
-        None
-    }
-
-    fn view_navi(&self) -> Option<Box<dyn NaviView + '_>> {
         None
     }
 
@@ -167,8 +163,22 @@ pub trait PatchCard4sViewMut<'a> {
     fn set_patch_card(&mut self, slot: usize, patch_card: Option<PatchCard>) -> bool;
 }
 
-pub trait NaviView<'a> {
+pub enum NaviView<'a> {
+    LinkNavi(Box<dyn LinkNaviView<'a> + 'a>),
+    Navicust(Box<dyn NavicustView<'a> + 'a>),
+}
+
+pub enum NaviViewMut<'a> {
+    LinkNavi(Box<dyn LinkNaviViewMut<'a> + 'a>),
+    Navicust(Box<dyn NavicustViewMut<'a> + 'a>),
+}
+
+pub trait LinkNaviView<'a> {
     fn navi(&self) -> usize;
+}
+
+pub trait LinkNaviViewMut<'a> {
+    fn set_navi(&self, navi: usize) -> bool;
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]

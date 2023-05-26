@@ -131,12 +131,14 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn crate::save::NavicustView + '_>> {
-        Some(Box::new(NavicustView { save: self }))
+    fn view_navi(&self) -> Option<crate::save::NaviView> {
+        Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 
-    fn view_navicust_mut(&mut self) -> Option<Box<dyn crate::save::NavicustViewMut + '_>> {
-        Some(Box::new(NavicustViewMut { save: self }))
+    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
+        Some(crate::save::NaviViewMut::Navicust(Box::new(NavicustViewMut {
+            save: self,
+        })))
     }
 
     fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView> {
@@ -497,11 +499,11 @@ impl<'a> crate::save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
     }
 }
 
-pub struct NaviView<'a> {
+pub struct LinkNaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> crate::save::NaviView<'a> for NaviView<'a> {
+impl<'a> crate::save::LinkNaviView<'a> for LinkNaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[self.save.shift + 0x2940] as usize
     }

@@ -62,8 +62,8 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navi(&self) -> Option<Box<dyn crate::save::NaviView + '_>> {
-        Some(Box::new(NaviView { save: self }))
+    fn view_navi(&self) -> Option<crate::save::NaviView> {
+        Some(crate::save::NaviView::LinkNavi(Box::new(LinkNaviView { save: self })))
     }
 
     fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
@@ -131,11 +131,11 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     }
 }
 
-pub struct NaviView<'a> {
+pub struct LinkNaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> crate::save::NaviView<'a> for NaviView<'a> {
+impl<'a> crate::save::LinkNaviView<'a> for LinkNaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[0x4ad1] as usize
     }

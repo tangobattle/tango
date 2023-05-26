@@ -102,8 +102,8 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navicust(&self) -> Option<Box<dyn crate::save::NavicustView + '_>> {
-        Some(Box::new(NavicustView { save: self }))
+    fn view_navi(&self) -> Option<crate::save::NaviView> {
+        Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {

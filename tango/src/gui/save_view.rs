@@ -1,7 +1,6 @@
 mod auto_battle_data_view;
 mod folder_view;
 mod navi_view;
-mod navicust_view;
 mod patch_cards_view;
 
 use fluent_templates::Loader;
@@ -11,7 +10,6 @@ use crate::{gui, i18n};
 #[derive(PartialEq, Clone)]
 enum Tab {
     Navi,
-    Navicust,
     Folder,
     PatchCards,
     AutoBattleData,
@@ -20,7 +18,6 @@ enum Tab {
 pub struct State {
     tab: Option<Tab>,
     navi_view: navi_view::State,
-    navicust_view: navicust_view::State,
     folder_view: folder_view::State,
     patch_cards_view: patch_cards_view::State,
     auto_battle_data_view: auto_battle_data_view::State,
@@ -31,7 +28,6 @@ impl State {
         Self {
             tab: None,
             navi_view: navi_view::State::new(),
-            navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
             patch_cards_view: patch_cards_view::State::new(),
             auto_battle_data_view: auto_battle_data_view::State::new(),
@@ -52,7 +48,6 @@ pub fn show(
 ) {
     ui.vertical(|ui| {
         let navi_view = save.view_navi();
-        let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
         let patch_cards_view = save.view_patch_cards();
         let auto_battle_data_view = save.view_auto_battle_data();
@@ -60,9 +55,6 @@ pub fn show(
         let mut available_tabs = vec![];
         if navi_view.is_some() {
             available_tabs.push(Tab::Navi);
-        }
-        if navicust_view.is_some() {
-            available_tabs.push(Tab::Navicust);
         }
         if chips_view.is_some() {
             available_tabs.push(Tab::Folder);
@@ -92,7 +84,6 @@ pub fn show(
                                 lang,
                                 match tab {
                                     Tab::Navi => "save-tab-navi",
-                                    Tab::Navicust => "save-tab-navicust",
                                     Tab::Folder => "save-tab-folder",
                                     Tab::PatchCards => "save-tab-patch-cards",
                                     Tab::AutoBattleData => "save-tab-auto-battle-data",
@@ -120,23 +111,9 @@ pub fn show(
                         font_families,
                         lang,
                         game_lang,
-                        navi_view.as_ref(),
+                        &navi_view,
                         assets,
                         &mut state.navi_view,
-                    );
-                }
-            }
-            Some(Tab::Navicust) => {
-                if let Some(navicust_view) = navicust_view {
-                    navicust_view::show(
-                        ui,
-                        clipboard,
-                        font_families,
-                        lang,
-                        game_lang,
-                        navicust_view.as_ref(),
-                        assets,
-                        &mut state.navicust_view,
                         prefer_vertical,
                     );
                 }
