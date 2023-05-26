@@ -189,12 +189,13 @@ pub const TILE_WIDTH: usize = 8;
 pub const TILE_HEIGHT: usize = 8;
 pub const TILE_BYTES: usize = TILE_WIDTH * TILE_HEIGHT / 2;
 
-pub fn read_tile(raw: &[u8]) -> Option<PalettedImage> {
+pub fn read_tile(raw: &[u8]) -> Result<PalettedImage, std::io::Error> {
     image::ImageBuffer::from_vec(
         TILE_WIDTH as u32,
         TILE_HEIGHT as u32,
         raw.iter().flat_map(|v| vec![v & 0xf, v >> 4]).collect(),
     )
+    .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "buffer too small"))
 }
 
 pub fn merge_tiles(tiles: &[PalettedImage], cols: usize) -> PalettedImage {
@@ -227,12 +228,13 @@ pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaI
     .unwrap()
 }
 
-pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Option<PalettedImage> {
-    let tiles = raw
-        .chunks(TILE_BYTES)
-        .map(|raw_tile| read_tile(raw_tile))
-        .collect::<Option<Vec<_>>>()?;
-    Some(merge_tiles(&tiles, cols))
+pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Result<PalettedImage, std::io::Error> {
+    Ok(merge_tiles(
+        &raw.chunks(TILE_BYTES)
+            .map(|raw_tile| read_tile(raw_tile))
+            .collect::<Result<Vec<_>, _>>()?,
+        cols,
+    ))
 }
 
 pub fn unlz77(r: &mut impl std::io::Read) -> std::io::Result<Vec<u8>> {
