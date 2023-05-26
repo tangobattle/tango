@@ -185,8 +185,11 @@ impl<'a> crate::rom::Chip for Chip<'a> {
     fn icon(&self) -> image::RgbaImage {
         let raw = self.raw();
         crate::rom::apply_palette(
-            crate::rom::read_merged_tiles(&self.assets.mapper.get(raw.icon_ptr)[..crate::rom::TILE_BYTES * 4], 2)
-                .unwrap(),
+            crate::rom::read_merged_tiles(
+                &self.assets.mapper.get(raw.icon_ptr)[..crate::rom::TILE_BYTES * 2 * 2],
+                2,
+            )
+            .unwrap(),
             &self.assets.chip_icon_palette,
         )
     }
@@ -492,8 +495,11 @@ impl crate::rom::Assets for Assets {
         ));
         let buf = &buf[0x1e0..];
         Some(crate::rom::apply_palette(
-            crate::rom::read_merged_tiles(&buf[id * crate::rom::TILE_BYTES * 4..][..crate::rom::TILE_BYTES * 4], 2)
-                .unwrap(),
+            crate::rom::read_merged_tiles(
+                &buf[id * crate::rom::TILE_BYTES * 4..][..crate::rom::TILE_BYTES * 2 * 2],
+                2,
+            )
+            .unwrap(),
             &self.element_icon_palette,
         ))
     }
