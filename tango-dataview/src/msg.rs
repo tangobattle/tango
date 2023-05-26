@@ -168,19 +168,21 @@ impl<Command> Parser<Command> {
 }
 
 pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
-    let [offset, next_offset] = bytemuck::pod_read_unaligned::<[u16; 2]>(
-        &buf[i * std::mem::size_of::<u16>()..][..std::mem::size_of::<[u16; 2]>()],
-    );
+    let num_entries = (bytemuck::pod_read_unaligned::<u16>(&buf[..std::mem::size_of::<u16>()]) / 2) as usize;
 
-    let offset = offset as usize;
-    let mut next_offset = next_offset as usize;
+    let offset =
+        bytemuck::pod_read_unaligned::<u16>(&buf[i * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()])
+            as usize;
 
-    // While msgs have an entry offset table in the header, for msgs that are not LZ77 compressed and just in raw memory we don't know how long the last entry is.
-    // As such, we have to assume it's the full length of the buffer. Sometimes, this is the entire remainder of the ROM!
-    // For non-malformed msgs, we should encounter a stop rule way before then, though.
-    if next_offset < offset || next_offset > buf.len() {
-        next_offset = buf.len();
-    }
+    let next_offset = if i < num_entries - 1 {
+        bytemuck::pod_read_unaligned::<u16>(&buf[(i + 1) * std::mem::size_of::<u16>()..][..std::mem::size_of::<u16>()])
+            as usize
+    } else {
+        // While msgs have an entry offset table in the header, for msgs that are not LZ77 compressed and just in raw memory we don't know how long the last entry is.
+        // As such, we have to assume it's the full length of the buffer. Sometimes, this is the entire remainder of the ROM!
+        // For non-malformed msgs, we should encounter a stop rule way before then, though.
+        buf.len()
+    };
 
     buf.get(offset..next_offset)
 }
