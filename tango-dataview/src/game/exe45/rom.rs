@@ -29,8 +29,8 @@ pub struct Assets {
     offsets: &'static Offsets,
     msg_parser: msg::Parser,
     mapper: crate::rom::MemoryMapper,
-    chip_icon_palette: [image::Rgba<u8>; 16],
-    element_icon_palette: [image::Rgba<u8>; 16],
+    chip_icon_palette: crate::rom::Palette,
+    element_icon_palette: crate::rom::Palette,
 }
 
 struct Chip<'a> {
@@ -145,7 +145,9 @@ impl<'a> crate::rom::Chip for Chip<'a> {
                 7,
             )
             .unwrap(),
-            &crate::rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..crate::rom::PALETTE_BYTES]),
+            &bytemuck::pod_read_unaligned::<crate::rom::Palette>(
+                &self.assets.mapper.get(raw.palette_ptr)[..std::mem::size_of::<crate::rom::Palette>()],
+            ),
         )
     }
 
@@ -240,14 +242,14 @@ impl<'a> crate::rom::Navi for Navi<'a> {
                 2,
             )
             .unwrap(),
-            &crate::rom::read_palette(
+            &bytemuck::pod_read_unaligned::<crate::rom::Palette>(
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
                     &self
                         .assets
                         .mapper
                         .get(self.assets.offsets.emblem_icons_palette_pointers)[self.id * 4..]
                         [..std::mem::size_of::<u32>()],
-                ))[..crate::rom::PALETTE_BYTES],
+                ))[..std::mem::size_of::<crate::rom::Palette>()],
             ),
         )
     }
@@ -257,16 +259,16 @@ impl Assets {
     pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = crate::rom::MemoryMapper::new(rom, wram);
 
-        let chip_icon_palette = crate::rom::read_palette(
+        let chip_icon_palette = bytemuck::pod_read_unaligned::<crate::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..crate::rom::PALETTE_BYTES],
+            ))[..std::mem::size_of::<crate::rom::Palette>()],
         );
 
-        let element_icon_palette = crate::rom::read_palette(
+        let element_icon_palette = bytemuck::pod_read_unaligned::<crate::rom::Palette>(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..crate::rom::PALETTE_BYTES],
+            ))[..std::mem::size_of::<crate::rom::Palette>()],
         );
 
         Self {

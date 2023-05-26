@@ -169,22 +169,7 @@ impl BGR555 {
     }
 }
 
-pub const PALETTE_LENGTH: usize = 16;
-pub const PALETTE_BYTES: usize = std::mem::size_of::<[BGR555; PALETTE_LENGTH]>();
-
-pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; PALETTE_LENGTH] {
-    [image::Rgba([0, 0, 0, 0])]
-        .into_iter()
-        .chain(
-            bytemuck::pod_read_unaligned::<[BGR555; PALETTE_LENGTH]>(raw)
-                .into_iter()
-                .skip(1)
-                .map(|v| v.as_rgba8888()),
-        )
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap()
-}
+pub type Palette = [BGR555; 16];
 
 type PalettedImage = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
 
@@ -211,11 +196,21 @@ pub fn merge_tiles(tiles: &[PalettedImage], cols: usize) -> PalettedImage {
     img
 }
 
-pub fn apply_palette(paletted: PalettedImage, palette: &[image::Rgba<u8>; 16]) -> image::RgbaImage {
+pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaImage {
     image::ImageBuffer::from_vec(
         paletted.width(),
         paletted.height(),
-        paletted.into_iter().flat_map(|v| palette[*v as usize].0).collect(),
+        paletted
+            .into_iter()
+            .flat_map(|v| {
+                if *v > 0 {
+                    palette[*v as usize].as_rgba8888()
+                } else {
+                    image::Rgba([0, 0, 0, 0])
+                }
+                .0
+            })
+            .collect(),
     )
     .unwrap()
 }
