@@ -1,6 +1,5 @@
 save-tab-cover = カバー
 save-tab-navi = ナビ
-save-tab-navicust = ナビカスタマイザー
 save-tab-folder = チップフォルダ
 save-tab-patch-cards = 改造カード
 save-tab-auto-battle-data = ABD
