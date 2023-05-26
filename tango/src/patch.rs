@@ -230,7 +230,7 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
                 } else if let Some(captures) = SAVE_TEMPLATE_FILENAME_REGEX.captures(&filename) {
                     let rom_id = captures.get(1).unwrap().as_str().to_string();
                     let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
-                    let name = captures.get(3).unwrap().as_str().to_string();
+                    let name = captures.get(3).map(|v| v.as_str()).unwrap_or("").to_string();
                     (rom_id, revision, FileType::SaveTemplate(name))
                 } else {
                     continue;
