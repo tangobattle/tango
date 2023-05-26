@@ -151,14 +151,14 @@ pub trait Assets {
 
 #[repr(transparent)]
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
-pub struct BGR555 {
+pub struct Bgr555 {
     #[bitfield(name = "r", ty = "u8", bits = "0..=4")]
     #[bitfield(name = "g", ty = "u8", bits = "5..=9")]
     #[bitfield(name = "b", ty = "u8", bits = "10..=14")]
     raw: [u8; 2],
 }
 
-impl BGR555 {
+impl Bgr555 {
     pub fn as_rgba8888(&self) -> image::Rgba<u8> {
         image::Rgba([
             (self.r() << 3 | self.r() >> 2) as u8,
@@ -169,7 +169,7 @@ impl BGR555 {
     }
 }
 
-pub type Palette = [BGR555; 16];
+pub type Palette = [Bgr555; 16];
 
 type PalettedImage = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
 
