@@ -279,7 +279,7 @@ impl<'a> crate::rom::Chip for Chip<'a> {
                 7,
             )
             .unwrap(),
-            &crate::rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..32]),
+            &crate::rom::read_palette(&self.assets.mapper.get(raw.palette_ptr)[..crate::rom::PALETTE_BYTES]),
         )
     }
 
@@ -464,13 +464,13 @@ impl Assets {
         let chip_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.chip_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..32],
+            ))[..crate::rom::PALETTE_BYTES],
         );
 
         let element_icon_palette = crate::rom::read_palette(
             &mapper.get(bytemuck::pod_read_unaligned::<u32>(
                 &mapper.get(offsets.element_icon_palette_pointer)[..std::mem::size_of::<u32>()],
-            ))[..32],
+            ))[..crate::rom::PALETTE_BYTES],
         );
 
         Self {
@@ -701,7 +701,7 @@ impl<'a> crate::rom::Navi for Navi<'a> {
                 &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
                     &self.assets.mapper.get(self.assets.offsets.emblem_icons_palette_pointer)
                         [..std::mem::size_of::<u32>()],
-                ))[32 * palette_offset..][..32],
+                ))[crate::rom::PALETTE_BYTES * palette_offset..][..crate::rom::PALETTE_BYTES],
             ),
         )
     }

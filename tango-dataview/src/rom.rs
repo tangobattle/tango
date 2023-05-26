@@ -149,32 +149,37 @@ pub trait Assets {
     }
 }
 
-pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {
-    image::Rgba([
-        {
-            let r = c & 0b11111;
-            (r << 3 | r >> 2) as u8
-        },
-        {
-            let g = (c >> 5) & 0b11111;
-            (g << 3 | g >> 2) as u8
-        },
-        {
-            let b = (c >> 10) & 0b11111;
-            (b << 3 | b >> 2) as u8
-        },
-        0xff,
-    ])
+#[repr(transparent)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+pub struct BGR555 {
+    #[bitfield(name = "r", ty = "u8", bits = "0..=4")]
+    #[bitfield(name = "g", ty = "u8", bits = "5..=9")]
+    #[bitfield(name = "b", ty = "u8", bits = "10..=14")]
+    raw: [u8; 2],
 }
 
-pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; 16] {
+impl BGR555 {
+    pub fn as_rgba8888(&self) -> image::Rgba<u8> {
+        image::Rgba([
+            (self.r() << 3 | self.r() >> 2) as u8,
+            (self.g() << 3 | self.g() >> 2) as u8,
+            (self.b() << 3 | self.b() >> 2) as u8,
+            0xff,
+        ])
+    }
+}
+
+pub const PALETTE_LENGTH: usize = 16;
+pub const PALETTE_BYTES: usize = std::mem::size_of::<[BGR555; PALETTE_LENGTH]>();
+
+pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; PALETTE_LENGTH] {
     [image::Rgba([0, 0, 0, 0])]
         .into_iter()
         .chain(
-            bytemuck::pod_read_unaligned::<[u16; 16]>(raw)
+            bytemuck::pod_read_unaligned::<[BGR555; PALETTE_LENGTH]>(raw)
                 .into_iter()
                 .skip(1)
-                .map(|v| bgr555_to_rgba(v)),
+                .map(|v| v.as_rgba8888()),
         )
         .collect::<Vec<_>>()
         .try_into()
