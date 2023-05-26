@@ -174,6 +174,10 @@ pub fn get_entry(buf: &[u8], i: usize) -> Option<&[u8]> {
 
     let offset = offset as usize;
     let mut next_offset = next_offset as usize;
+
+    // While msgs have an entry offset table in the header, for msgs that are not LZ77 compressed and just in raw memory we don't know how long the last entry is.
+    // As such, we have to assume it's the full length of the buffer. Sometimes, this is the entire remainder of the ROM!
+    // For non-malformed msgs, we should encounter a stop rule way before then, though.
     if next_offset < offset || next_offset > buf.len() {
         next_offset = buf.len();
     }
