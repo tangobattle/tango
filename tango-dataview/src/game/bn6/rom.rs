@@ -14,6 +14,8 @@ pub struct Offsets {
     patch_card_names_pointer: u32,
     patch_card_details_names_pointer: u32,
     navi_names_pointer: u32,
+    emblem_icons_pointer: u32,
+    emblem_icons_palette_pointer: u32,
     navicust_bg: image::Rgba<u8>,
 }
 
@@ -32,6 +34,8 @@ pub static BR5J_00: Offsets = Offsets {
     element_icon_palette_pointer:       0x081226e4,
     element_icons_pointer:              0x081226dc,
     navi_names_pointer:                 0x08043290,
+    emblem_icons_pointer:               0x08028594,
+    emblem_icons_palette_pointer:       0x08028598,
     patch_card_data:                    0x08144778,
     patch_card_names_pointer:           0x08130fe0,
     patch_card_details_names_pointer:   0x08130fec,
@@ -51,6 +55,8 @@ pub static BR6J_00: Offsets = Offsets {
     element_icon_palette_pointer:       0x081213c4,
     element_icons_pointer:              0x081213bc,
     navi_names_pointer:                 0x080432c0,
+    emblem_icons_pointer:               0x08028594,
+    emblem_icons_palette_pointer:       0x08028598,
     patch_card_data:                    0x081429b0,
     patch_card_names_pointer:           0x0812f218,
     patch_card_details_names_pointer:   0x0812f224,
@@ -70,6 +76,8 @@ pub static BR5E_00: Offsets = Offsets {
     element_icon_palette_pointer:       0x0811a9a4,
     element_icons_pointer:              0x0811a99c,
     navi_names_pointer:                 0x08042054,
+    emblem_icons_pointer:               0x08028180,
+    emblem_icons_palette_pointer:       0x08028184,
     patch_card_data:                    0,
     patch_card_names_pointer:           0,
     patch_card_details_names_pointer:   0,
@@ -89,6 +97,8 @@ pub static BR6E_00: Offsets = Offsets {
     element_icon_palette_pointer:       0x08119674,
     element_icons_pointer:              0x0811966c,
     navi_names_pointer:                 0x08042084,
+    emblem_icons_pointer:               0x08028180,
+    emblem_icons_palette_pointer:       0x08028184,
     patch_card_data:                    0,
     patch_card_names_pointer:           0,
     patch_card_details_names_pointer:   0,
@@ -651,23 +661,28 @@ impl<'a> crate::rom::Navi for Navi<'a> {
     }
 
     fn emblem(&self) -> image::RgbaImage {
-        image::RgbaImage::new(16, 16)
-        // crate::rom::apply_palette(
-        //     crate::rom::read_merged_tiles(
-        //         &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-        //             &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointers)
-        //                 [self.id * std::mem::size_of::<u32>()..][..std::mem::size_of::<u32>()],
-        //         ))[..crate::rom::TILE_BYTES * 4],
-        //         2,
-        //     )
-        //     .unwrap(),
-        //     &crate::rom::read_palette(
-        //         &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
-        //             &self.assets.mapper.get(self.assets.offsets.emblem_icon_palette_pointers)
-        //                 [self.id * std::mem::size_of::<u32>()..][..std::mem::size_of::<u32>()],
-        //         ))[..32],
-        //     ),
-        // )
+        if self.assets.offsets.emblem_icons_pointer == 0 {
+            return image::RgbaImage::new(16, 16);
+        }
+
+        const OFFSETS: [usize; 12] = [0, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
+        let offset = OFFSETS.get(self.id).cloned().unwrap_or(0);
+
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(
+                &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointer)[..std::mem::size_of::<u32>()],
+                ))[crate::rom::TILE_BYTES * 4 * offset..][..crate::rom::TILE_BYTES * 4],
+                2,
+            )
+            .unwrap(),
+            &crate::rom::read_palette(
+                &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_palette_pointer)
+                        [..std::mem::size_of::<u32>()],
+                ))[32 * offset..][..32],
+            ),
+        )
     }
 }
 
