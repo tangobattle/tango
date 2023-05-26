@@ -661,11 +661,7 @@ impl<'a> crate::rom::Navi for Navi<'a> {
     }
 
     fn emblem(&self) -> image::RgbaImage {
-        if self.assets.offsets.emblem_icons_pointer == 0 {
-            return image::RgbaImage::new(16, 16);
-        }
-
-        const OFFSETS: [usize; 12] = [0, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
+        const OFFSETS: [usize; super::NUM_NAVIS] = [0, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
         let offset = OFFSETS.get(self.id).cloned().unwrap_or(0);
 
         crate::rom::apply_palette(

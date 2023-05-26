@@ -13,6 +13,9 @@ pub struct Offsets {
     patch_card_data: u32,
     patch_card_names_pointer: u32,
     patch_card_details_names_pointer: u32,
+    navi_names_pointer: u32,
+    emblem_icons_pointer: u32,
+    emblem_icons_palette_pointer: u32,
     navicust_bg: image::Rgba<u8>,
 }
 
@@ -33,6 +36,9 @@ pub static BRBJ_00: Offsets = Offsets {
     patch_card_data:                    0x0813842c,
     patch_card_names_pointer:           0x081373c4,
     patch_card_details_names_pointer:   0x081373d0,
+    navi_names_pointer:                 0x08040a84,
+    emblem_icons_pointer:               0x08023f74,
+    emblem_icons_palette_pointer:       0x08023f78,
 
     navicust_bg: NAVICUST_BG_TOB,
 };
@@ -51,6 +57,9 @@ pub static BRKJ_00: Offsets = Offsets {
     patch_card_data:                    0x08138514,
     patch_card_names_pointer:           0x081374ac,
     patch_card_details_names_pointer:   0x081374b8,
+    navi_names_pointer:                 0x08040a8c,
+    emblem_icons_pointer:               0x08023f78,
+    emblem_icons_palette_pointer:       0x08023f7c,
 
     navicust_bg: NAVICUST_BG_TOC,
 };
@@ -69,6 +78,9 @@ pub static BRBE_00: Offsets = Offsets {
     patch_card_data:                    0x08138874,
     patch_card_names_pointer:           0x0813780c,
     patch_card_details_names_pointer:   0x08137818,
+    navi_names_pointer:                 0x08040ba0,
+    emblem_icons_pointer:               0x08023fb8,
+    emblem_icons_palette_pointer:       0x08023fbc,
 
     navicust_bg: NAVICUST_BG_TOB,
 };
@@ -87,6 +99,9 @@ pub static BRKE_00: Offsets = Offsets {
     patch_card_data:                    0x0813895c,
     patch_card_names_pointer:           0x081378f4,
     patch_card_details_names_pointer:   0x08137900,
+    navi_names_pointer:                 0x08040ba8,
+    emblem_icons_pointer:               0x08023fbc,
+    emblem_icons_palette_pointer:       0x08023fc0,
 
     navicust_bg: NAVICUST_BG_TOC,
 };
@@ -619,6 +634,60 @@ impl<'a> crate::rom::PatchCard56 for PatchCard56<'a> {
     }
 }
 
+struct Navi<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+impl<'a> crate::rom::Navi for Navi<'a> {
+    fn name(&self) -> Option<String> {
+        let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self.assets.mapper.get(self.assets.offsets.navi_names_pointer)[..std::mem::size_of::<u32>()],
+        ));
+        let entry = crate::msg::get_entry(&region, self.id)?;
+
+        Some(
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        crate::msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
+        )
+    }
+
+    fn emblem(&self) -> image::RgbaImage {
+        let icon_offset = self.id.checked_sub(1).map(|v| v % 6 + 1).unwrap_or(0);
+
+        const PALETTE_OFFSETS: [usize; super::NUM_NAVIS] = [0, 0, 3, 4, 7, 1, 6, 0, 1, 2, 1, 1, 5];
+        let palette_offset = PALETTE_OFFSETS.get(self.id).cloned().unwrap_or(0);
+
+        crate::rom::apply_palette(
+            crate::rom::read_merged_tiles(
+                &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointer)[..std::mem::size_of::<u32>()],
+                ))[crate::rom::TILE_BYTES * 4 * icon_offset..][..crate::rom::TILE_BYTES * 4],
+                2,
+            )
+            .unwrap(),
+            &crate::rom::read_palette(
+                &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_palette_pointer)
+                        [..std::mem::size_of::<u32>()],
+                ))[32 * palette_offset..][..32],
+            ),
+        )
+    }
+}
+
 impl crate::rom::Assets for Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
         if id >= self.num_chips() {
@@ -629,6 +698,10 @@ impl crate::rom::Assets for Assets {
 
     fn num_chips(&self) -> usize {
         super::NUM_CHIPS
+    }
+
+    fn num_navis(&self) -> usize {
+        super::NUM_NAVIS
     }
 
     fn can_set_regular_chip(&self) -> bool {
@@ -687,6 +760,13 @@ impl crate::rom::Assets for Assets {
             has_out_of_bounds: false,
             background: self.offsets.navicust_bg,
         })
+    }
+
+    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Navi + 'a>> {
+        if id >= self.num_navis() {
+            return None;
+        }
+        Some(Box::new(Navi { id, assets: self }))
     }
 }
 

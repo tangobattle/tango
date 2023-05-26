@@ -1,4 +1,4 @@
-use crate::save::{NavicustView as _, PatchCard56sView as _};
+use crate::save::{LinkNaviView as _, NavicustView as _, PatchCard56sView as _};
 
 pub const SAVE_START_OFFSET: usize = 0x0100;
 pub const SAVE_SIZE: usize = 0x7c14;
@@ -132,7 +132,14 @@ impl crate::save::Save for Save {
     }
 
     fn view_navi(&self) -> Option<crate::save::NaviView> {
-        Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
+        Some({
+            let link_navi_view = LinkNaviView { save: self };
+            if link_navi_view.navi() != 0 {
+                crate::save::NaviView::LinkNavi(Box::new(link_navi_view))
+            } else {
+                crate::save::NaviView::Navicust(Box::new(NavicustView { save: self }))
+            }
+        })
     }
 
     fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
@@ -152,10 +159,6 @@ impl crate::save::Save for Save {
             PatchCard56sViewMut { save: self },
         )))
     }
-
-    // fn view_navi(&self) -> Option<Box<dyn crate::save::NaviView + '_>> {
-    //     Some(Box::new(NaviView { save: self }))
-    // }
 
     fn view_auto_battle_data(&self) -> Option<Box<dyn crate::save::AutoBattleDataView + '_>> {
         Some(Box::new(AutoBattleDataView { save: self }))
@@ -505,6 +508,6 @@ pub struct LinkNaviView<'a> {
 
 impl<'a> crate::save::LinkNaviView<'a> for LinkNaviView<'a> {
     fn navi(&self) -> usize {
-        self.save.buf[self.save.shift + 0x2940] as usize
+        self.save.buf[self.save.shift + 0x2941] as usize
     }
 }
