@@ -4,12 +4,18 @@ use fluent_templates::Loader;
 
 use crate::{game, gui, i18n, net, patch, rom, save};
 
+#[derive(Clone)]
+pub struct Selection {
+    pub game: &'static (dyn game::Game + Send + Sync),
+    pub save_path: Option<std::path::PathBuf>,
+}
+
 pub struct State {
-    selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>,
+    selection: Option<Selection>,
 }
 
 impl State {
-    pub fn new(selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>) -> Self {
+    pub fn new(selection: Option<Selection>) -> Self {
         Self { selection }
     }
 }
@@ -98,8 +104,8 @@ pub fn show(
                 let _ = open::that(saves_path);
             }
 
-            if let Some((game, _)) = show.as_mut().unwrap().selection {
-                let (family, variant) = game.family_and_variant();
+            if let Some(selection_state) = show.as_ref().unwrap().selection.as_ref() {
+                let (family, variant) = selection_state.game.family_and_variant();
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                     ui.horizontal(|ui| {
                         ui.with_layout(
@@ -132,8 +138,8 @@ pub fn show(
                         show.as_mut().unwrap().selection = None;
                     }
 
-                    if let Some(&(game, _)) = show.as_ref().unwrap().selection.as_ref() {
-                        let save_templates = game.save_templates();
+                    if let Some(selection_state) = show.as_ref().unwrap().selection.clone() {
+                        let save_templates = selection_state.game.save_templates().iter().collect::<Vec<_>>();
                         ui.add_enabled_ui(!save_templates.is_empty(), |ui| {
                             ui.menu_button(
                                 format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
@@ -152,7 +158,7 @@ pub fn show(
                                                             language,
                                                             &format!(
                                                                 "game-{}.save-{}",
-                                                                game.family_and_variant().0,
+                                                                selection_state.game.family_and_variant().0,
                                                                 name
                                                             )
                                                         )
@@ -166,23 +172,32 @@ pub fn show(
                                     }
 
                                     if let Some((name, save)) = menu_selection {
-                                        let (path, mut f) = match create_new_save(language, saves_path, game, name) {
-                                            Ok((path, f)) => (path, f),
-                                            Err(e) => {
-                                                log::error!("failed to create save: {}", e);
-                                                ui.close_menu();
-                                                return;
-                                            }
-                                        };
+                                        let (path, mut f) =
+                                            match create_new_save(language, saves_path, selection_state.game, name) {
+                                                Ok((path, f)) => (path, f),
+                                                Err(e) => {
+                                                    log::error!("failed to create save: {}", e);
+                                                    ui.close_menu();
+                                                    return;
+                                                }
+                                            };
 
                                         let (game, rom, patch) = if let Some(selection) = selection.take() {
-                                            if selection.game == game {
+                                            if selection.game == selection_state.game {
                                                 (selection.game, selection.rom, selection.patch)
                                             } else {
-                                                (game, roms.get(&game).unwrap().clone(), None)
+                                                (
+                                                    selection_state.game,
+                                                    roms.get(&selection_state.game).unwrap().clone(),
+                                                    None,
+                                                )
                                             }
                                         } else {
-                                            (game, roms.get(&game).unwrap().clone(), None)
+                                            (
+                                                selection_state.game,
+                                                roms.get(&selection_state.game).unwrap().clone(),
+                                                None,
+                                            )
                                         };
 
                                         let mut save = save.clone_box();
@@ -216,8 +231,8 @@ pub fn show(
 
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
-                            if let Some(saves) = saves.get(&game) {
+                        if let Some(selection_state) = show.as_ref().unwrap().selection.clone() {
+                            if let Some(saves) = saves.get(&selection_state.game) {
                                 for save in saves {
                                     let selected = selection
                                         .as_ref()
@@ -271,13 +286,21 @@ pub fn show(
                                                 }
 
                                                 let (game, rom, patch) = if let Some(selection) = selection.take() {
-                                                    if selection.game == game {
+                                                    if selection.game == selection_state.game {
                                                         (selection.game, selection.rom, selection.patch)
                                                     } else {
-                                                        (game, roms.get(&game).unwrap().clone(), None)
+                                                        (
+                                                            selection_state.game,
+                                                            roms.get(&selection_state.game).unwrap().clone(),
+                                                            None,
+                                                        )
                                                     }
                                                 } else {
-                                                    (game, roms.get(&game).unwrap().clone(), None)
+                                                    (
+                                                        selection_state.game,
+                                                        roms.get(&selection_state.game).unwrap().clone(),
+                                                        None,
+                                                    )
                                                 };
 
                                                 *show = None;
@@ -324,13 +347,21 @@ pub fn show(
                                         .clicked()
                                     {
                                         let (game, rom, patch) = if let Some(selection) = selection.take() {
-                                            if selection.game == game {
+                                            if selection.game == selection_state.game {
                                                 (selection.game, selection.rom, selection.patch)
                                             } else {
-                                                (game, roms.get(&game).unwrap().clone(), None)
+                                                (
+                                                    selection_state.game,
+                                                    roms.get(&selection_state.game).unwrap().clone(),
+                                                    None,
+                                                )
                                             }
                                         } else {
-                                            (game, roms.get(&game).unwrap().clone(), None)
+                                            (
+                                                selection_state.game,
+                                                roms.get(&selection_state.game).unwrap().clone(),
+                                                None,
+                                            )
                                         };
 
                                         *show = None;
@@ -416,7 +447,10 @@ pub fn show(
                                 }
 
                                 if resp.clicked() {
-                                    show.as_mut().unwrap().selection = Some((*game, None));
+                                    show.as_mut().unwrap().selection = Some(Selection {
+                                        game: *game,
+                                        save_path: None,
+                                    });
                                 }
                             }
                         }

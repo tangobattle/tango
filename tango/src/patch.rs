@@ -27,14 +27,17 @@ struct VersionMetadata {
     pub netplay_compatibility: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Version {
     pub rom_overrides: rom::Overrides,
     pub netplay_compatibility: String,
     pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
+    pub save_templates: std::collections::HashMap<
+        &'static (dyn game::Game + Send + Sync),
+        std::collections::BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>,
+    >,
 }
 
-#[derive(Debug)]
 pub struct Patch {
     pub path: std::path::PathBuf,
     pub title: String,
@@ -43,10 +46,6 @@ pub struct Patch {
     pub source: Option<String>,
     pub readme: Option<String>,
     pub versions: std::collections::HashMap<semver::Version, Version>,
-}
-
-lazy_static! {
-    static ref PATCH_FILENAME_REGEX: regex::Regex = regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
 pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
@@ -192,6 +191,7 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
             };
 
             let mut supported_games = std::collections::HashSet::new();
+            let mut save_templates = std::collections::HashMap::new();
 
             for entry in read_version_dir {
                 let entry = match entry {
@@ -210,14 +210,31 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
                         continue;
                     }
                 };
-                let captures = if let Some(captures) = PATCH_FILENAME_REGEX.captures(&filename) {
-                    captures
+
+                lazy_static! {
+                    static ref PATCH_FILENAME_REGEX: regex::Regex =
+                        regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
+                    static ref SAVE_TEMPLATE_FILENAME_REGEX: regex::Regex =
+                        regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?)).sav$").unwrap();
+                }
+
+                enum FileType {
+                    BpsPatch,
+                    SaveTemplate(String),
+                }
+
+                let (rom_id, revision, file_type) = if let Some(captures) = PATCH_FILENAME_REGEX.captures(&filename) {
+                    let rom_id = captures.get(1).unwrap().as_str().to_string();
+                    let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
+                    (rom_id, revision, FileType::BpsPatch)
+                } else if let Some(captures) = SAVE_TEMPLATE_FILENAME_REGEX.captures(&filename) {
+                    let rom_id = captures.get(1).unwrap().as_str().to_string();
+                    let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
+                    let name = captures.get(3).unwrap().as_str().to_string();
+                    (rom_id, revision, FileType::SaveTemplate(name))
                 } else {
                     continue;
                 };
-
-                let rom_id = captures.get(1).unwrap().as_str().to_string();
-                let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
 
                 let game = if let Some(game) = game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision) {
                     game
@@ -225,7 +242,27 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
                     continue;
                 };
 
-                supported_games.insert(game);
+                match file_type {
+                    FileType::BpsPatch => {
+                        supported_games.insert(game);
+                    }
+                    FileType::SaveTemplate(name) => {
+                        let save = match std::fs::read(&entry.path())
+                            .map_err(|e| e.into())
+                            .and_then(|raw| game.parse_save(&raw))
+                        {
+                            Ok(save) => save,
+                            Err(e) => {
+                                log::error!("failed to read save template: {:?}", e);
+                                continue;
+                            }
+                        };
+                        save_templates
+                            .entry(game)
+                            .or_insert_with(|| std::collections::BTreeMap::new())
+                            .insert(name, save);
+                    }
+                }
             }
 
             versions.insert(
@@ -234,6 +271,7 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
                     rom_overrides: version.rom_overrides,
                     netplay_compatibility: version.netplay_compatibility,
                     supported_games,
+                    save_templates,
                 },
             );
         }

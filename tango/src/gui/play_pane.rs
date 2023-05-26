@@ -1835,7 +1835,10 @@ pub fn show(
                             }
                         });
                         Some(gui::save_select_view::State::new(selection.as_ref().map(|selection| {
-                            (selection.game, Some(selection.save.path.to_path_buf()))
+                            gui::save_select_view::Selection {
+                                game: selection.game,
+                                save_path: Some(selection.save.path.to_path_buf()),
+                            }
                         })))
                     } else {
                         None
