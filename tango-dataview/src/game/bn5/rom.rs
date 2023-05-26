@@ -670,7 +670,15 @@ impl<'a> crate::rom::Navi for Navi<'a> {
     }
 
     fn emblem(&self) -> image::RgbaImage {
-        // TODO: Check this.
+        // In Team Colonel, this is implemented as:
+        //
+        //       cmp r0,#0x0
+        //       beq is_zero
+        //       sub r0,#0x6
+        //    .is_zero:
+        //        ; ...
+        //
+        // We just generalize it for both games like this.
         let icon_offset = self.id.checked_sub(1).map(|v| v % 6 + 1).unwrap_or(0);
 
         let palette_offsets = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
