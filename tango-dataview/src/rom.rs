@@ -1,4 +1,5 @@
 use byteorder::ReadBytesExt;
+use image::Pixel;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
@@ -159,30 +160,23 @@ pub struct Bgr555 {
 }
 
 impl Bgr555 {
-    pub fn as_rgba8888_mgba(&self) -> image::Rgba<u8> {
-        image::Rgba([
+    pub fn as_rgb888_mgba(&self) -> image::Rgb<u8> {
+        image::Rgb([
             (self.r() << 3 | self.r() >> 2) as u8,
             (self.g() << 3 | self.g() >> 2) as u8,
             (self.b() << 3 | self.b() >> 2) as u8,
-            0xff,
         ])
     }
 
-    pub fn as_rgba8888_nocash(&self) -> image::Rgba<u8> {
-        image::Rgba([
-            (self.r() << 3) as u8,
-            (self.g() << 3) as u8,
-            (self.b() << 3) as u8,
-            0xff,
-        ])
+    pub fn as_rgb888_nocash(&self) -> image::Rgb<u8> {
+        image::Rgb([(self.r() << 3) as u8, (self.g() << 3) as u8, (self.b() << 3) as u8])
     }
 
-    pub fn as_rgba8888(&self) -> image::Rgba<u8> {
-        image::Rgba([
+    pub fn as_rgb888(&self) -> image::Rgb<u8> {
+        image::Rgb([
             (self.r() as u16 * 0xff / 0x1f) as u8,
             (self.g() as u16 * 0xff / 0x1f) as u8,
             (self.b() as u16 * 0xff / 0x1f) as u8,
-            0xff,
         ])
     }
 }
@@ -222,7 +216,7 @@ pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaI
             .into_iter()
             .flat_map(|v| {
                 if *v > 0 {
-                    palette[*v as usize].as_rgba8888_mgba()
+                    palette[*v as usize].as_rgb888_mgba().to_rgba()
                 } else {
                     image::Rgba([0, 0, 0, 0])
                 }
