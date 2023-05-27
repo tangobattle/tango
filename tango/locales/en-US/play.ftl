@@ -31,6 +31,8 @@ select-save = Select save
     .rename-save = Rename
     .delete-save = Delete
     .duplicate-save = Duplicate
+    .default-save = Default
+    .from-patch-save = (from patch) {$name}
 
 new-save = New save
 
