@@ -837,28 +837,40 @@ pub fn show(
                                             }
                                         };
 
-                                        let (game, rom, patch) =
-                                            if let Some(committed_selection) = committed_selection.take() {
-                                                if committed_selection.game == selection_state.game {
-                                                    (
-                                                        committed_selection.game,
-                                                        committed_selection.rom,
-                                                        committed_selection.patch,
-                                                    )
-                                                } else {
-                                                    (
-                                                        selection_state.game,
-                                                        roms.get(&selection_state.game).unwrap().clone(),
-                                                        selection_state.patch.clone(),
-                                                    )
-                                                }
-                                            } else {
-                                                (
+                                        let (game, rom, patch) = if let Some(committed_selection) =
+                                            committed_selection.take().filter(|committed_selection| {
+                                                committed_selection.game == selection_state.game
+                                            }) {
+                                            (
+                                                committed_selection.game,
+                                                committed_selection.rom,
+                                                committed_selection.patch,
+                                            )
+                                        } else {
+                                            let mut rom = roms.get(&selection_state.game).unwrap().clone();
+                                            if let Some((name, version, _)) = selection_state.patch.as_ref() {
+                                                let (rom_code, revision) = selection_state.game.rom_code_and_revision();
+                                                rom = match patch::apply_patch_from_disk(
+                                                    &rom,
                                                     selection_state.game,
-                                                    roms.get(&selection_state.game).unwrap().clone(),
-                                                    selection_state.patch.clone(),
-                                                )
-                                            };
+                                                    &patches_path,
+                                                    &name,
+                                                    &version,
+                                                ) {
+                                                    Ok(r) => r,
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "failed to apply patch {}: {:?}: {:?}",
+                                                            name,
+                                                            (rom_code, revision),
+                                                            e
+                                                        );
+                                                        return;
+                                                    }
+                                                };
+                                            }
+                                            (selection_state.game, rom, selection_state.patch.clone())
+                                        };
 
                                         let mut save = save.clone_box();
                                         save.rebuild_checksum();
@@ -958,28 +970,41 @@ pub fn show(
                                                     return;
                                                 }
 
-                                                let (game, rom, patch) =
-                                                    if let Some(committed_selection) = committed_selection.take() {
-                                                        if committed_selection.game == selection_state.game {
-                                                            (
-                                                                committed_selection.game,
-                                                                committed_selection.rom,
-                                                                committed_selection.patch,
-                                                            )
-                                                        } else {
-                                                            (
-                                                                selection_state.game,
-                                                                roms.get(&selection_state.game).unwrap().clone(),
-                                                                selection_state.patch.clone(),
-                                                            )
-                                                        }
-                                                    } else {
-                                                        (
+                                                let (game, rom, patch) = if let Some(committed_selection) =
+                                                    committed_selection.take().filter(|committed_selection| {
+                                                        committed_selection.game == selection_state.game
+                                                    }) {
+                                                    (
+                                                        committed_selection.game,
+                                                        committed_selection.rom,
+                                                        committed_selection.patch,
+                                                    )
+                                                } else {
+                                                    let mut rom = roms.get(&selection_state.game).unwrap().clone();
+                                                    if let Some((name, version, _)) = selection_state.patch.as_ref() {
+                                                        let (rom_code, revision) =
+                                                            selection_state.game.rom_code_and_revision();
+                                                        rom = match patch::apply_patch_from_disk(
+                                                            &rom,
                                                             selection_state.game,
-                                                            roms.get(&selection_state.game).unwrap().clone(),
-                                                            selection_state.patch.clone(),
-                                                        )
-                                                    };
+                                                            &patches_path,
+                                                            &name,
+                                                            &version,
+                                                        ) {
+                                                            Ok(r) => r,
+                                                            Err(e) => {
+                                                                log::error!(
+                                                                    "failed to apply patch {}: {:?}: {:?}",
+                                                                    name,
+                                                                    (rom_code, revision),
+                                                                    e
+                                                                );
+                                                                return;
+                                                            }
+                                                        };
+                                                    }
+                                                    (selection_state.game, rom, selection_state.patch.clone())
+                                                };
 
                                                 *show = None;
                                                 *committed_selection = Some(gui::Selection::new(
@@ -1024,28 +1049,40 @@ pub fn show(
                                         })
                                         .clicked()
                                     {
-                                        let (game, rom, patch) =
-                                            if let Some(committed_selection) = committed_selection.take() {
-                                                if committed_selection.game == selection_state.game {
-                                                    (
-                                                        committed_selection.game,
-                                                        committed_selection.rom,
-                                                        committed_selection.patch,
-                                                    )
-                                                } else {
-                                                    (
-                                                        selection_state.game,
-                                                        roms.get(&selection_state.game).unwrap().clone(),
-                                                        selection_state.patch.clone(),
-                                                    )
-                                                }
-                                            } else {
-                                                (
+                                        let (game, rom, patch) = if let Some(committed_selection) =
+                                            committed_selection.take().filter(|committed_selection| {
+                                                committed_selection.game == selection_state.game
+                                            }) {
+                                            (
+                                                committed_selection.game,
+                                                committed_selection.rom,
+                                                committed_selection.patch,
+                                            )
+                                        } else {
+                                            let mut rom = roms.get(&selection_state.game).unwrap().clone();
+                                            if let Some((name, version, _)) = selection_state.patch.as_ref() {
+                                                let (rom_code, revision) = selection_state.game.rom_code_and_revision();
+                                                rom = match patch::apply_patch_from_disk(
+                                                    &rom,
                                                     selection_state.game,
-                                                    roms.get(&selection_state.game).unwrap().clone(),
-                                                    selection_state.patch.clone(),
-                                                )
-                                            };
+                                                    &patches_path,
+                                                    &name,
+                                                    &version,
+                                                ) {
+                                                    Ok(r) => r,
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "failed to apply patch {}: {:?}: {:?}",
+                                                            name,
+                                                            (rom_code, revision),
+                                                            e
+                                                        );
+                                                        return;
+                                                    }
+                                                };
+                                            }
+                                            (selection_state.game, rom, selection_state.patch.clone())
+                                        };
 
                                         *show = None;
                                         *committed_selection =
