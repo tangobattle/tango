@@ -718,7 +718,7 @@ pub fn show<'a>(
                             &navicust_layout,
                             navicust_view,
                             assets,
-                            &[font_families.fontdue_for_language(lang)]
+                            &[font_families.fontdue_for_language(game_lang)]
                                 .into_iter()
                                 .chain(font_families.all_fontdue().into_iter())
                                 .collect::<Vec<_>>(),
