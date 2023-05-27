@@ -98,8 +98,6 @@ pub fn show(
     patches_scanner: patch::Scanner,
     remote_settings: Option<&net::protocol::Settings>,
 ) {
-    let is_ready = false; // TODO
-
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();
     let patches = patches_scanner.read();
@@ -163,7 +161,7 @@ pub fn show(
             }
 
             const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
-            ui.add_enabled_ui(!is_ready && show.as_ref().unwrap().selection.is_some(), |ui| {
+            ui.add_enabled_ui(show.as_ref().unwrap().selection.is_some(), |ui| {
                 let warning = (|| {
                     let selection = if let Some(selection) = show.as_ref().unwrap().selection.as_ref() {
                         selection
@@ -451,28 +449,35 @@ pub fn show(
                                 };
 
                                 let patch = Some(((*name).clone(), version.clone(), version_metadata));
-                                if let Some(committed_selection) = committed_selection.as_mut() {
-                                    let rom = match patch::apply_patch_from_disk(
-                                        &rom,
-                                        selection.game,
-                                        &patches_path,
-                                        &name,
-                                        &version,
-                                    ) {
-                                        Ok(r) => r,
-                                        Err(e) => {
-                                            log::error!(
-                                                "failed to apply patch {}: {:?}: {:?}",
-                                                name,
-                                                (rom_code, revision),
-                                                e
-                                            );
-                                            return;
-                                        }
-                                    };
-
-                                    committed_selection.rom = rom;
-                                    committed_selection.patch = patch.clone();
+                                if committed_selection
+                                    .as_ref()
+                                    .map(|s| s.game == selection.game)
+                                    .unwrap_or(false)
+                                {
+                                    if let Some(committed_selection) = committed_selection.as_mut() {
+                                        let rom = match patch::apply_patch_from_disk(
+                                            &rom,
+                                            selection.game,
+                                            &patches_path,
+                                            &name,
+                                            &version,
+                                        ) {
+                                            Ok(r) => r,
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to apply patch {}: {:?}: {:?}",
+                                                    name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                return;
+                                            }
+                                        };
+                                        committed_selection.rom = rom;
+                                        committed_selection.patch = patch.clone();
+                                    }
+                                } else {
+                                    *committed_selection = None;
                                 }
                                 selection.patch = patch;
                             }
@@ -483,16 +488,14 @@ pub fn show(
                 }
 
                 ui.add_enabled_ui(
-                    !is_ready
-                        && show
-                            .as_ref()
-                            .unwrap()
-                            .selection
-                            .as_ref()
-                            .and_then(|selection| selection.patch.as_ref())
-                            .and_then(|patch| supported_patches.get(&patch.0))
-                            .map(|(_, vs)| !vs.is_empty())
-                            .unwrap_or(false),
+                    show.as_ref()
+                        .unwrap()
+                        .selection
+                        .as_ref()
+                        .and_then(|selection| selection.patch.as_ref())
+                        .and_then(|patch| supported_patches.get(&patch.0))
+                        .map(|(_, vs)| !vs.is_empty())
+                        .unwrap_or(false),
                     |ui| {
                         let warning = (|| {
                             let selection = if let Some(selection) = show.as_ref().unwrap().selection.as_ref() {
@@ -684,27 +687,35 @@ pub fn show(
 
                                         let patch = Some((patch_name.clone(), (*version).clone(), version_metadata));
 
-                                        if let Some(committed_selection) = committed_selection.as_mut() {
-                                            let rom = match patch::apply_patch_from_disk(
-                                                &rom,
-                                                selection.game,
-                                                &patches_path,
-                                                &patch_name,
-                                                &version,
-                                            ) {
-                                                Ok(r) => r,
-                                                Err(e) => {
-                                                    log::error!(
-                                                        "failed to apply patch {}: {:?}: {:?}",
-                                                        patch_name,
-                                                        (rom_code, revision),
-                                                        e
-                                                    );
-                                                    return;
-                                                }
-                                            };
-                                            committed_selection.rom = rom;
-                                            committed_selection.patch = patch.clone();
+                                        if committed_selection
+                                            .as_ref()
+                                            .map(|s| s.game == selection.game)
+                                            .unwrap_or(false)
+                                        {
+                                            if let Some(committed_selection) = committed_selection.as_mut() {
+                                                let rom = match patch::apply_patch_from_disk(
+                                                    &rom,
+                                                    selection.game,
+                                                    &patches_path,
+                                                    &patch_name,
+                                                    &version,
+                                                ) {
+                                                    Ok(r) => r,
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "failed to apply patch {}: {:?}: {:?}",
+                                                            patch_name,
+                                                            (rom_code, revision),
+                                                            e
+                                                        );
+                                                        return;
+                                                    }
+                                                };
+                                                committed_selection.rom = rom;
+                                                committed_selection.patch = patch.clone();
+                                            }
+                                        } else {
+                                            *committed_selection = None;
                                         }
                                         selection.patch = patch.clone();
                                     }
@@ -838,14 +849,14 @@ pub fn show(
                                                     (
                                                         selection_state.game,
                                                         roms.get(&selection_state.game).unwrap().clone(),
-                                                        None,
+                                                        selection_state.patch.clone(),
                                                     )
                                                 }
                                             } else {
                                                 (
                                                     selection_state.game,
                                                     roms.get(&selection_state.game).unwrap().clone(),
-                                                    None,
+                                                    selection_state.patch.clone(),
                                                 )
                                             };
 
@@ -959,14 +970,14 @@ pub fn show(
                                                             (
                                                                 selection_state.game,
                                                                 roms.get(&selection_state.game).unwrap().clone(),
-                                                                None,
+                                                                selection_state.patch.clone(),
                                                             )
                                                         }
                                                     } else {
                                                         (
                                                             selection_state.game,
                                                             roms.get(&selection_state.game).unwrap().clone(),
-                                                            None,
+                                                            selection_state.patch.clone(),
                                                         )
                                                     };
 
@@ -1025,14 +1036,14 @@ pub fn show(
                                                     (
                                                         selection_state.game,
                                                         roms.get(&selection_state.game).unwrap().clone(),
-                                                        None,
+                                                        selection_state.patch.clone(),
                                                     )
                                                 }
                                             } else {
                                                 (
                                                     selection_state.game,
                                                     roms.get(&selection_state.game).unwrap().clone(),
-                                                    None,
+                                                    selection_state.patch.clone(),
                                                 )
                                             };
 
