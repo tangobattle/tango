@@ -47,10 +47,10 @@ impl Backend {
 
         let not_current_gl_context = if let Some(ctx) = [
             glutin::context::ContextAttributesBuilder::new(),
+            glutin::context::ContextAttributesBuilder::new().with_context_api(glutin::context::ContextApi::Gles(None)),
             glutin::context::ContextAttributesBuilder::new().with_context_api(glutin::context::ContextApi::OpenGl(
                 Some(glutin::context::Version::new(2, 1)),
             )),
-            glutin::context::ContextAttributesBuilder::new().with_context_api(glutin::context::ContextApi::Gles(None)),
         ]
         .into_iter()
         .flat_map(|cab| {
