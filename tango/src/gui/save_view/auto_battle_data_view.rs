@@ -199,13 +199,13 @@ fn make_string(chips: &[Option<usize>], assets: &(dyn tango_dataview::rom::Asset
         .join("\n")
 }
 
-pub fn show<'a>(
+pub fn show(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    auto_battle_data_view: &dyn tango_dataview::save::AutoBattleDataView<'a>,
+    auto_battle_data_view: &dyn tango_dataview::save::AutoBattleDataView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {

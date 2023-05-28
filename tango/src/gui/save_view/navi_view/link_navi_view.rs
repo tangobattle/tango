@@ -16,13 +16,13 @@ impl State {
     }
 }
 
-pub fn show<'a>(
+pub fn show(
     ui: &mut egui::Ui,
     _clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     _lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navi_view: &dyn tango_dataview::save::LinkNaviView<'a>,
+    navi_view: &dyn tango_dataview::save::LinkNaviView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {

@@ -610,13 +610,13 @@ fn render_navicust_body<'a>(
     image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
-pub fn show<'a>(
+pub fn show(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
     prefer_vertical: bool,

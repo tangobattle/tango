@@ -307,7 +307,7 @@ pub fn show_patch_card56s<'a>(
     });
 }
 
-pub fn show<'a>(
+pub fn show(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
