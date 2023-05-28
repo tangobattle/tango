@@ -27,7 +27,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8]) -> u32 {
-    crate::save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
+    crate::save::compute_raw_checksum(buf, CHECKSUM_OFFSET)
 }
 
 impl Save {

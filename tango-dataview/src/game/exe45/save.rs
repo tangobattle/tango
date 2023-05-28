@@ -14,7 +14,7 @@ impl Save {
             .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
-        crate::save::mask_save(&mut buf[..], MASK_OFFSET);
+        crate::save::mask(&mut buf[..], MASK_OFFSET);
 
         let n = &buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
@@ -40,7 +40,7 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        crate::save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x38
+        crate::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x38
     }
 
     pub fn from_wram(buf: &[u8]) -> Result<Self, crate::save::Error> {
@@ -73,7 +73,7 @@ impl crate::save::Save for Save {
     fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
-        crate::save::mask_save(&mut buf[..SAVE_SIZE], MASK_OFFSET);
+        crate::save::mask(&mut buf[..SAVE_SIZE], MASK_OFFSET);
         buf
     }
 

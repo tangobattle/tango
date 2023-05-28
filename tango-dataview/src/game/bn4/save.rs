@@ -50,7 +50,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
-    crate::save::compute_save_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
+    crate::save::compute_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
 }
 
 impl Save {
@@ -60,7 +60,7 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
 
-        crate::save::mask_save(&mut buf[..], MASK_OFFSET);
+        crate::save::mask(&mut buf[..], MASK_OFFSET);
 
         let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
@@ -194,7 +194,7 @@ impl crate::save::Save for Save {
     fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
-        crate::save::mask_save(&mut buf[..SAVE_SIZE], MASK_OFFSET);
+        crate::save::mask(&mut buf[..SAVE_SIZE], MASK_OFFSET);
         buf
     }
 

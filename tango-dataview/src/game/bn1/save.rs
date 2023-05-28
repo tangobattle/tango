@@ -70,7 +70,7 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
+        save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 
     #[allow(dead_code)]

@@ -78,7 +78,7 @@ impl Clone for Box<dyn Save + Send + Sync> {
     }
 }
 
-pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
+pub fn mask(buf: &mut [u8], mask_offset: usize) {
     let mask = bytemuck::pod_read_unaligned::<u32>(&buf[mask_offset..][..std::mem::size_of::<u32>()]);
     for b in buf.iter_mut() {
         *b = *b ^ (mask as u8);
@@ -86,7 +86,7 @@ pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
     buf[mask_offset..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&mask));
 }
 
-pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
+pub fn compute_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
     buf.iter().map(|v| *v as u32).sum::<u32>()
         - buf[checksum_offset..][..std::mem::size_of::<u32>()]
             .iter()

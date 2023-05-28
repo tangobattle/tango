@@ -42,7 +42,7 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        crate::save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
+        crate::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 }
 
