@@ -57,7 +57,7 @@ impl Backend {
             let ca = cab.build(raw_window_handle);
             unsafe { gl_config.display().create_context(&gl_config, &ca) }
                 .map_err(|e| {
-                    log::error!("failed to create gl context with attributes {:?}: {}", ca, e);
+                    log::warn!("failed to create gl context with attributes {:?}: {}", ca, e);
                     e
                 })
                 .ok()
