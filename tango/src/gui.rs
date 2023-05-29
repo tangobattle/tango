@@ -341,13 +341,19 @@ pub fn show(
         log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
     }
 
-    ctx.set_visuals(match config.theme {
+    let is_dark = match config.theme {
         config::Theme::System => match dark_light::detect() {
-            dark_light::Mode::Light => state.themes.light.clone(),
-            dark_light::Mode::Dark => state.themes.dark.clone(),
+            dark_light::Mode::Light => false,
+            dark_light::Mode::Dark => true,
         },
-        config::Theme::Light => state.themes.light.clone(),
-        config::Theme::Dark => state.themes.dark.clone(),
+        config::Theme::Light => false,
+        config::Theme::Dark => true,
+    };
+
+    ctx.set_visuals(if is_dark {
+        state.themes.dark.clone()
+    } else {
+        state.themes.light.clone()
     });
 
     if config.nickname.is_none() {
