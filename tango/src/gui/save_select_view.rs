@@ -329,8 +329,9 @@ pub fn show(
                                 resp = resp.on_hover_text(warning.description(&language));
                             }
                             if resp.clicked() {
-                                if let Some(committed_selection) = committed_selection.as_mut() {
-                                    committed_selection.patch = None;
+                                if let Some(s) = committed_selection.take() {
+                                    let rom = roms.get(&s.game).unwrap().clone();
+                                    *committed_selection = Some(gui::Selection::new(s.game, s.save, None, rom));
                                 }
                                 selection.patch = None;
                             }
@@ -454,7 +455,7 @@ pub fn show(
                                     .map(|s| s.game == selection.game)
                                     .unwrap_or(false)
                                 {
-                                    if let Some(committed_selection) = committed_selection.as_mut() {
+                                    if let Some(gui::Selection { game, save, .. }) = committed_selection.take() {
                                         let rom = match patch::apply_patch_from_disk(
                                             &rom,
                                             selection.game,
@@ -473,8 +474,9 @@ pub fn show(
                                                 return;
                                             }
                                         };
-                                        committed_selection.rom = rom;
-                                        committed_selection.patch = patch.clone();
+
+                                        *committed_selection =
+                                            Some(gui::Selection::new(game, save, patch.clone(), rom));
                                     }
                                 } else {
                                     *committed_selection = None;
@@ -692,7 +694,8 @@ pub fn show(
                                             .map(|s| s.game == selection.game)
                                             .unwrap_or(false)
                                         {
-                                            if let Some(committed_selection) = committed_selection.as_mut() {
+                                            if let Some(gui::Selection { game, save, .. }) = committed_selection.take()
+                                            {
                                                 let rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection.game,
@@ -711,8 +714,9 @@ pub fn show(
                                                         return;
                                                     }
                                                 };
-                                                committed_selection.rom = rom;
-                                                committed_selection.patch = patch.clone();
+
+                                                *committed_selection =
+                                                    Some(gui::Selection::new(game, save, patch.clone(), rom));
                                             }
                                         } else {
                                             *committed_selection = None;
