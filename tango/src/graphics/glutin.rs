@@ -89,12 +89,15 @@ impl Backend {
 
         let gl_context = not_current_gl_context.make_current(&gl_surface).unwrap();
 
-        gl_surface
-            .set_swap_interval(
-                &gl_context,
-                glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
-            )
-            .unwrap();
+        if let Err(e) = gl_surface.set_swap_interval(
+            &gl_context,
+            glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
+        ) {
+            log::warn!(
+                "failed to set swap interval (may cause tearing or high GPU usage!): {}",
+                e
+            );
+        }
 
         let gl = std::sync::Arc::new(unsafe {
             glow::Context::from_loader_function(|s| gl_display.get_proc_address(&std::ffi::CString::new(s).unwrap()))
