@@ -21,7 +21,7 @@ impl Backend {
         wb: winit::window::WindowBuilder,
         event_loop: &winit::event_loop::EventLoopWindowTarget<T>,
     ) -> Result<Self, anyhow::Error> {
-        let (mut window, gl_config) = glutin_winit::DisplayBuilder::new()
+        let (window, gl_config) = glutin_winit::DisplayBuilder::new()
             .with_preference(glutin_winit::ApiPrefence::FallbackEgl)
             .with_window_builder(Some(wb.clone()))
             .build(
@@ -69,9 +69,10 @@ impl Backend {
             anyhow::bail!("all attempts at creating a gl context failed");
         };
 
-        let window = window.take().unwrap_or_else(|| {
-            glutin_winit::finalize_window(event_loop, wb.clone(), &gl_config).expect("failed to finalize glutin window")
-        });
+        let window = match window {
+            Some(window) => window,
+            None => glutin_winit::finalize_window(event_loop, wb.clone(), &gl_config)?,
+        };
 
         let (width, height): (u32, u32) = window.inner_size().into();
         let surface_attributes = glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
