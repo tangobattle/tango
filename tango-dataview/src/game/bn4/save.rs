@@ -55,7 +55,8 @@ fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
 const SHIFTABLE_REGION_START: usize = 0x2130;
 const SHIFTABLE_REGION_END: usize = 0x5e20;
 
-fn unapply_shift(shift: usize, buf: &mut [u8; SAVE_SIZE]) -> bool {
+fn unapply_shift(buf: &mut [u8; SAVE_SIZE]) {
+    let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
     buf.copy_within(
         SHIFTABLE_REGION_START + shift..SHIFTABLE_REGION_END + shift,
         SHIFTABLE_REGION_START,
@@ -64,11 +65,10 @@ fn unapply_shift(shift: usize, buf: &mut [u8; SAVE_SIZE]) -> bool {
         *p = 0;
     }
     buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&0u32));
-    true
 }
 
 #[allow(dead_code)]
-fn apply_shift(shift: usize, buf: &mut [u8; SAVE_SIZE]) -> bool {
+fn apply_shift(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
     buf.copy_within(
         SHIFTABLE_REGION_START..SHIFTABLE_REGION_END,
         SHIFTABLE_REGION_START + shift,
@@ -76,7 +76,7 @@ fn apply_shift(shift: usize, buf: &mut [u8; SAVE_SIZE]) -> bool {
     for p in &mut buf[SHIFTABLE_REGION_START..][..shift] {
         *p = 0;
     }
-    true
+    buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&(shift as u32)));
 }
 
 impl Save {
@@ -138,7 +138,7 @@ impl Save {
         };
 
         let mut save = Self { buf, game_info };
-        unapply_shift(shift, &mut save.buf);
+        unapply_shift(&mut save.buf);
         save.rebuild_checksum();
 
         Ok(save)
@@ -156,7 +156,7 @@ impl Save {
         }
 
         let mut save = Self { buf, game_info };
-        unapply_shift(shift, &mut save.buf);
+        unapply_shift(&mut save.buf);
         save.rebuild_checksum();
 
         Ok(save)
