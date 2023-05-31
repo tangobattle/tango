@@ -33,26 +33,30 @@ pub struct GameInfo {
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SAVE_SIZE],
-    shift: usize,
     game_info: GameInfo,
 }
 
-fn convert_jp_to_us(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
+const JP_SHIFTABLE_REGION_START: usize = 0x410c;
+const JP_SHIFTABLE_REGION_END: usize = 0x50fc;
+
+fn convert_jp_to_us(buf: &mut [u8; SAVE_SIZE]) {
     // Extend the shop data section.
-    let jp_start = shift + 0x410c;
-    let jp_end = shift + 0x50fc;
-    buf.copy_within(jp_start..jp_end, jp_start + 0x40);
-    for p in &mut buf[jp_start..jp_start + 0x40] {
+    buf.copy_within(
+        JP_SHIFTABLE_REGION_START..JP_SHIFTABLE_REGION_END,
+        JP_SHIFTABLE_REGION_START + 0x40,
+    );
+    for p in &mut buf[JP_SHIFTABLE_REGION_START..][..0x40] {
         *p = 0;
     }
 }
 
-fn convert_us_to_jp(shift: usize, buf: &mut [u8; SAVE_SIZE]) {
+fn convert_us_to_jp(buf: &mut [u8; SAVE_SIZE]) {
     // Truncate the shop data section.
-    let jp_start = shift + 0x410c;
-    let jp_end = shift + 0x50fc;
-    buf.copy_within(jp_start + 0x40..jp_end + 0x40, jp_start);
-    for p in &mut buf[jp_end..jp_end + 0x40] {
+    buf.copy_within(
+        JP_SHIFTABLE_REGION_START + 0x40..JP_SHIFTABLE_REGION_END + 0x40,
+        JP_SHIFTABLE_REGION_START,
+    );
+    for p in &mut buf[JP_SHIFTABLE_REGION_END..][..0x40] {
         *p = 0;
     }
 }
@@ -94,21 +98,21 @@ impl Save {
             }
         };
 
-        let mut save = Self { buf, shift, game_info };
+        let mut save = Self { buf, game_info };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
             return Err(crate::save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
-                shift,
+                shift: 0,
                 attempt: 0,
             });
         }
 
         // Saves are canonicalized into US format. This will also cause a checksum rebuild, unfortunately.
         if save.game_info.region == Region::JP {
-            convert_jp_to_us(shift, &mut save.buf);
+            convert_jp_to_us(&mut save.buf);
             save.rebuild_checksum();
         }
 
@@ -116,21 +120,16 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, crate::save::Error> {
-        let shift = bytemuck::pod_read_unaligned::<u32>(&buf[SHIFT_OFFSET..][..std::mem::size_of::<u32>()]) as usize;
-        if shift != 0 {
-            return Err(crate::save::Error::InvalidShift(shift));
-        }
-
         let buf = buf
             .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(crate::save::Error::InvalidSize(buf.len()))?;
 
-        let mut save = Self { buf, shift, game_info };
+        let mut save = Self { buf, game_info };
 
         // Saves are canonicalized into US format. This will also cause a checksum rebuild, unfortunately.
         if save.game_info.region == Region::JP {
-            convert_jp_to_us(shift, &mut save.buf);
+            convert_jp_to_us(&mut save.buf);
             save.rebuild_checksum();
         }
 
@@ -142,11 +141,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
-    }
-
-    pub fn shift(&self) -> usize {
-        self.shift
+        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
     pub fn as_us_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
@@ -155,12 +150,12 @@ impl Save {
 
     pub fn as_jp_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
         let mut buf = self.buf.clone();
-        convert_us_to_jp(self.shift, &mut buf);
+        convert_us_to_jp(&mut buf);
         std::borrow::Cow::Owned(buf.to_vec())
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        crate::save::compute_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET)
+        crate::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET)
             + match self.game_info.variant {
                 Variant::Gregar => 0x72,
                 Variant::Falzar => 0x18,
@@ -168,7 +163,7 @@ impl Save {
     }
 
     fn navi_stats_offset(&self, id: usize) -> usize {
-        self.shift + 0x47cc + 0x64 * if id == 0 { 0 } else { 1 }
+        0x47cc + 0x64 * if id == 0 { 0 } else { 1 }
     }
 }
 
@@ -237,7 +232,7 @@ impl crate::save::Save for Save {
 
     fn bugfrags(&self) -> Option<u32> {
         Some(bytemuck::pod_read_unaligned::<u32>(
-            &self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()],
+            &self.buf[0x1be0..][..std::mem::size_of::<u32>()],
         ))
     }
 
@@ -246,12 +241,11 @@ impl crate::save::Save for Save {
             return false;
         }
 
-        self.buf[self.shift + 0x1be0..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&count));
+        self.buf[0x1be0..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&count));
 
         // Anticheat...
-        let mask = bytemuck::pod_read_unaligned::<u32>(&self.buf[self.shift + 0x18b8..][..std::mem::size_of::<u32>()]);
-        self.buf[self.shift + 0x5030..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(bytemuck::bytes_of(&(mask ^ count)));
+        let mask = bytemuck::pod_read_unaligned::<u32>(&self.buf[0x18b8..][..std::mem::size_of::<u32>()]);
+        self.buf[0x5030..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&(mask ^ count)));
 
         true
     }
@@ -272,7 +266,7 @@ const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
 impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
-        self.save.buf[self.save.shift + 0x1c09] as usize
+        self.save.buf[0x1c09] as usize
     }
 
     fn equipped_folder_index(&self) -> usize {
@@ -317,8 +311,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
-            &self.save.buf[self.save.shift
-                + 0x2178
+            &self.save.buf[0x2178
                 + folder_index * (30 * std::mem::size_of::<RawChip>())
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
@@ -330,7 +323,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        Some(self.save.buf[self.save.shift + 0x2230 + id * 0xc + variant] as usize)
+        Some(self.save.buf[0x2230 + id * 0xc + variant] as usize)
     }
 }
 
@@ -349,7 +342,7 @@ const _: () = assert!(std::mem::size_of::<RawPatchCard>() == 0x1);
 
 impl<'a> crate::save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
-        self.save.buf[self.save.shift + 0x65F0] as usize
+        self.save.buf[0x65F0] as usize
     }
 
     fn patch_card(&self, slot: usize) -> Option<crate::save::PatchCard> {
@@ -358,7 +351,7 @@ impl<'a> crate::save::PatchCard56sView<'a> for PatchCard56sView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<RawPatchCard>(
-            &self.save.buf[self.save.shift + 0x6620 + slot * std::mem::size_of::<RawPatchCard>()..]
+            &self.save.buf[0x6620 + slot * std::mem::size_of::<RawPatchCard>()..]
                 [..std::mem::size_of::<RawPatchCard>()],
         );
 
@@ -375,7 +368,7 @@ pub struct PatchCard56sViewMut<'a> {
 
 impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
-        self.save.buf[self.save.shift + 0x65F0] = count as u8;
+        self.save.buf[0x65F0] = count as u8;
     }
 
     fn set_patch_card(&mut self, slot: usize, patch_card: crate::save::PatchCard) -> bool {
@@ -384,14 +377,12 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             return false;
         }
 
-        self.save.buf[self.save.shift + 0x6620 + slot..][..std::mem::size_of::<RawPatchCard>()].copy_from_slice(
-            bytemuck::bytes_of(&{
-                let mut raw = RawPatchCard::default();
-                raw.set_id(patch_card.id as u8);
-                raw.set_disabled(!patch_card.enabled);
-                raw
-            }),
-        );
+        self.save.buf[0x6620 + slot..][..std::mem::size_of::<RawPatchCard>()].copy_from_slice(bytemuck::bytes_of(&{
+            let mut raw = RawPatchCard::default();
+            raw.set_id(patch_card.id as u8);
+            raw.set_disabled(!patch_card.enabled);
+            raw
+        }));
 
         true
     }
@@ -402,7 +393,7 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.save.buf[self.save.shift + 0x5088 + id] = self.save.buf[self.save.shift + 0x06c0 + id] ^ mask;
+            self.save.buf[0x5088 + id] = self.save.buf[0x06c0 + id] ^ mask;
         }
     }
 }
@@ -435,8 +426,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         };
 
-        self.save.buf[self.save.shift
-            + 0x2178
+        self.save.buf[0x2178
             + folder_index * (30 * std::mem::size_of::<RawChip>())
             + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
             .copy_from_slice(bytemuck::bytes_of(&{
@@ -482,7 +472,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        self.save.buf[self.save.shift + 0x2230 + id * 0xc + variant] = count as u8;
+        self.save.buf[0x2230 + id * 0xc + variant] = count as u8;
         true
     }
 
@@ -492,10 +482,10 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             Variant::Falzar => 0x81,
         };
 
-        let base_offset = self.save.shift + 0x4c20;
+        let base_offset = 0x4c20;
 
         for id in 0..super::NUM_CHIPS {
-            self.save.buf[base_offset + id] = self.save.buf[self.save.shift + 0x08a0 + id] ^ mask;
+            self.save.buf[base_offset + id] = self.save.buf[0x08a0 + id] ^ mask;
         }
     }
 }
@@ -535,7 +525,7 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
         }
 
         let raw = bytemuck::pod_read_unaligned::<RawNavicustPart>(
-            &self.save.buf[self.save.shift + 0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
+            &self.save.buf[0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
                 [..std::mem::size_of::<RawNavicustPart>()],
         );
 
@@ -554,7 +544,7 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
     }
 
     fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
-        let offset = self.save.shift + 0x414c;
+        let offset = 0x414c;
 
         Some(crate::navicust::materialized_from_wram(
             &self.save.buf[offset..][..(self.height() * self.width())],
@@ -577,8 +567,7 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
             return false;
         }
 
-        self.save.buf[self.save.shift + 0x4190 + i * std::mem::size_of::<RawNavicustPart>()..]
-            [..std::mem::size_of::<RawNavicustPart>()]
+        self.save.buf[0x4190 + i * std::mem::size_of::<RawNavicustPart>()..][..std::mem::size_of::<RawNavicustPart>()]
             .copy_from_slice(bytemuck::bytes_of(&{
                 let mut raw = RawNavicustPart {
                     col: part.col,
@@ -596,12 +585,12 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
     }
 
     fn clear_materialized(&mut self) {
-        self.save.buf[self.save.shift + 0x4d48..][..0x44].copy_from_slice(&[0; 0x44]);
+        self.save.buf[0x4d48..][..0x44].copy_from_slice(&[0; 0x44]);
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, assets);
-        self.save.buf[self.save.shift + 0x4d48..][..0x44].copy_from_slice(
+        self.save.buf[0x4d48..][..0x44].copy_from_slice(
             &materialized
                 .into_iter()
                 .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
@@ -618,6 +607,6 @@ pub struct LinkNaviView<'a> {
 
 impl<'a> crate::save::LinkNaviView<'a> for LinkNaviView<'a> {
     fn navi(&self) -> usize {
-        self.save.buf[self.save.shift + 0x1b81] as usize
+        self.save.buf[0x1b81] as usize
     }
 }
