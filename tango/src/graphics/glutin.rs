@@ -82,13 +82,9 @@ impl Backend {
                 std::num::NonZeroU32::new(std::cmp::max(height, 1)).unwrap(),
             );
 
-        let gl_surface = unsafe {
-            gl_display
-                .create_window_surface(&gl_config, &surface_attributes)
-                .unwrap()
-        };
+        let gl_surface = unsafe { gl_display.create_window_surface(&gl_config, &surface_attributes) }?;
 
-        let gl_context = not_current_gl_context.make_current(&gl_surface).unwrap();
+        let gl_context = not_current_gl_context.make_current(&gl_surface)?;
 
         if let Err(e) = gl_surface.set_swap_interval(
             &gl_context,
