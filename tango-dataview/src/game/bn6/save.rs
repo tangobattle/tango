@@ -259,8 +259,8 @@ pub struct ChipsView<'a> {
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
     #[bitfield(name = "id", ty = "u16", bits = "0..=8")]
-    #[bitfield(name = "variant", ty = "u16", bits = "9..=15")]
-    id_and_variant: [u8; 2],
+    #[bitfield(name = "code", ty = "u16", bits = "9..=15")]
+    id_and_code: [u8; 2],
 }
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
 
@@ -318,7 +318,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
 
         Some(crate::save::Chip {
             id: raw.id() as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.variant() as usize] as char,
+            code: num::FromPrimitive::from_u16(raw.code())?,
         })
     }
 
@@ -417,22 +417,13 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let variant = if let Some(variant) = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
-            .iter()
-            .position(|c| *c == chip.code as u8)
-        {
-            variant
-        } else {
-            return false;
-        };
-
         self.save.buf[0x2178
             + folder_index * (30 * std::mem::size_of::<RawChip>())
             + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
             .copy_from_slice(bytemuck::bytes_of(&{
                 let mut raw = RawChip::default();
                 raw.set_id(chip.id as u16);
-                raw.set_variant(variant as u16);
+                raw.set_code(chip.code as u16);
                 raw
             }));
 

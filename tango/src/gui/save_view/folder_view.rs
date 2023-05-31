@@ -114,7 +114,7 @@ pub fn show(
                                 "{}\t{}\t",
                                 info.and_then(|info| info.as_ref().name())
                                     .unwrap_or_else(|| "???".to_string()),
-                                chip.code
+                                chip.code.to_string()
                             ));
                         } else {
                             buf.push_str("???");
@@ -290,7 +290,7 @@ pub fn show(
                                                     ),
                                                 );
                                                 layout_job.append(
-                                                    &format!(" {}", chip.code),
+                                                    &format!(" {}", chip.code.to_string()),
                                                     0.0,
                                                     egui::TextFormat::simple(
                                                         ui.style()

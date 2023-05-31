@@ -114,7 +114,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
 
         Some(crate::save::Chip {
             id: raw.id as usize,
-            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[raw.code as usize] as char,
+            code: num::FromPrimitive::from_u16(raw.code)?,
         })
     }
 }

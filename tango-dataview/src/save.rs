@@ -94,10 +94,76 @@ pub fn compute_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
             .sum::<u32>()
 }
 
+#[derive(num_derive::FromPrimitive, Clone, Copy, Debug, std::hash::Hash, Eq, PartialEq)]
+pub enum ChipCode {
+    A = 0,
+    B = 1,
+    C = 2,
+    D = 3,
+    E = 4,
+    F = 5,
+    G = 6,
+    H = 7,
+    I = 8,
+    J = 9,
+    K = 10,
+    L = 11,
+    M = 12,
+    N = 13,
+    O = 14,
+    P = 15,
+    Q = 16,
+    R = 17,
+    S = 18,
+    T = 19,
+    U = 20,
+    V = 21,
+    W = 22,
+    X = 23,
+    Y = 24,
+    Z = 25,
+    Star = 26,
+}
+
+impl ToString for ChipCode {
+    fn to_string(&self) -> String {
+        match self {
+            ChipCode::A => "A",
+            ChipCode::B => "B",
+            ChipCode::C => "C",
+            ChipCode::D => "D",
+            ChipCode::E => "E",
+            ChipCode::F => "F",
+            ChipCode::G => "G",
+            ChipCode::H => "H",
+            ChipCode::I => "I",
+            ChipCode::J => "J",
+            ChipCode::K => "K",
+            ChipCode::L => "L",
+            ChipCode::M => "M",
+            ChipCode::N => "N",
+            ChipCode::O => "O",
+            ChipCode::P => "P",
+            ChipCode::Q => "Q",
+            ChipCode::R => "R",
+            ChipCode::S => "S",
+            ChipCode::T => "T",
+            ChipCode::U => "U",
+            ChipCode::V => "V",
+            ChipCode::W => "W",
+            ChipCode::X => "X",
+            ChipCode::Y => "Y",
+            ChipCode::Z => "Z",
+            ChipCode::Star => "*",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
 pub struct Chip {
     pub id: usize,
-    pub code: char,
+    pub code: ChipCode,
 }
 
 pub trait ChipsView<'a> {
