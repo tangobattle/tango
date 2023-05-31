@@ -140,7 +140,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         Some(save::Chip {
             id: raw.id as usize,
-            code: num::FromPrimitive::from_u8(raw.code)?,
+            code: num_traits::FromPrimitive::from_u8(raw.code)?,
         })
     }
 }

@@ -281,7 +281,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
 
         Some(crate::save::Chip {
             id: raw.id() as usize,
-            code: num::FromPrimitive::from_u16(raw.code())?,
+            code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
     }
 }
