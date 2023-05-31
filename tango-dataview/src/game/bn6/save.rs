@@ -105,7 +105,7 @@ impl Save {
             return Err(crate::save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
-                shift: 0,
+                shift,
                 attempt: 0,
             });
         }
