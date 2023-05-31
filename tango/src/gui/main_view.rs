@@ -8,18 +8,22 @@ pub struct State {
     play_pane: gui::play_pane::State,
     patches_pane: gui::patches_pane::State,
     replays_pane: gui::replays_pane::State,
-    show_updater: bool,
+    updater: Option<gui::updater_window::State>,
 }
 
 impl State {
-    pub fn new(show_updater: bool) -> Self {
+    pub fn new(updater: bool) -> Self {
         Self {
             tab: Tab::Play,
             patch_selection: None,
             play_pane: gui::play_pane::State::new(),
             patches_pane: gui::patches_pane::State::new(),
             replays_pane: gui::replays_pane::State::new(),
-            show_updater,
+            updater: if updater {
+                Some(gui::updater_window::State::new())
+            } else {
+                None
+            },
         }
     }
 }
@@ -72,7 +76,7 @@ pub fn show(
                         updater::Status::UpToDate { .. } => {}
                         _ => {
                             if ui
-                                .selectable_label(state.show_updater, "🆕")
+                                .selectable_label(state.updater.is_some(), "🆕")
                                 .on_hover_text_at_pointer(match updater_status {
                                     updater::Status::ReadyToUpdate { .. } => i18n::LOCALES
                                         .lookup(&config.language, "updater-ready-to-update")
@@ -99,7 +103,11 @@ pub fn show(
                                 })
                                 .clicked()
                             {
-                                state.show_updater = !state.show_updater;
+                                state.updater = if state.updater.is_none() {
+                                    Some(gui::updater_window::State::new())
+                                } else {
+                                    None
+                                };
                             }
                         }
                     }
@@ -141,8 +149,8 @@ pub fn show(
         });
     });
 
-    if state.show_updater {
-        gui::updater_window::show(ctx, &mut state.show_updater, &config.language, updater);
+    if state.updater.is_some() {
+        gui::updater_window::show(ctx, &mut state.updater, &config.language, updater);
     }
 
     // If a join is requested, switch immediately to the play tab.

@@ -101,6 +101,7 @@ glutin-winit = "0.3"
 raw-window-handle = "0.5"
 pollster = '0.3'
 ndarray = "0.15"
+egui_commonmark = '0.7'
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.25"

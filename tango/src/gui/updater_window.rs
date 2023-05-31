@@ -2,15 +2,28 @@ use fluent_templates::Loader;
 
 use crate::{i18n, sync, updater};
 
+pub struct State {
+    commonmark_cache: egui_commonmark::CommonMarkCache,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            commonmark_cache: egui_commonmark::CommonMarkCache::default(),
+        }
+    }
+}
+
 pub fn show(
     ctx: &egui::Context,
-    open: &mut bool,
+    state: &mut Option<State>,
     language: &unic_langid::LanguageIdentifier,
     updater: &updater::Updater,
 ) {
+    let mut open = state.is_some();
     egui::Window::new(format!("🆕 {}", i18n::LOCALES.lookup(language, "updater").unwrap()))
         .id(egui::Id::new("updater-window"))
-        .open(open)
+        .open(&mut open)
         .show(ctx, |ui| {
             let status = sync::block_on(updater.status());
             let (is_loading, release) = match &status {
@@ -53,7 +66,11 @@ pub fn show(
                             });
                         } else {
                             if let Some(release) = release.as_ref() {
-                                ui.monospace(&release.info);
+                                egui_commonmark::CommonMarkViewer::new("release-info").show(
+                                    ui,
+                                    &mut state.as_mut().unwrap().commonmark_cache,
+                                    &release.info,
+                                );
                             } else {
                                 ui.label(i18n::LOCALES.lookup(language, "updater-no-info").unwrap());
                             }
@@ -89,4 +106,7 @@ pub fn show(
                 _ => {}
             }
         });
+    if !open {
+        *state = None;
+    }
 }

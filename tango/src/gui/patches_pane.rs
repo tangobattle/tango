@@ -2,17 +2,21 @@ use fluent_templates::Loader;
 
 use crate::{game, i18n, patch, sync};
 
-pub struct State {}
+pub struct State {
+    commonmark_cache: egui_commonmark::CommonMarkCache,
+}
 
 impl State {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            commonmark_cache: egui_commonmark::CommonMarkCache::default(),
+        }
     }
 }
 
 pub fn show(
     ui: &mut egui::Ui,
-    _state: &mut State,
+    state: &mut State,
     language: &unic_langid::LanguageIdentifier,
     repo_url: &str,
     starred_patches: &mut std::collections::HashSet<String>,
@@ -66,6 +70,7 @@ pub fn show(
                             .selectable_label(patch_selection.as_ref() == Some(name), name)
                             .clicked()
                         {
+                            state.commonmark_cache = egui_commonmark::CommonMarkCache::default();
                             *patch_selection = Some(name.to_owned());
                         }
                     }
@@ -211,7 +216,11 @@ pub fn show(
                             .auto_shrink([false, false])
                             .id_source("patch-window-readme")
                             .show(ui, |ui| {
-                                ui.monospace(patch.readme.clone().unwrap_or("".to_string()));
+                                egui_commonmark::CommonMarkViewer::new("patch-info").show(
+                                    ui,
+                                    &mut state.commonmark_cache,
+                                    patch.readme.as_ref().map(|v| v.as_str()).unwrap_or(""),
+                                );
                             });
                     });
                 });

@@ -1631,6 +1631,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_commonmark"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b891cabb86a21869cd81caaedd251b2a8cd814f9a61821ac1a85aa33cc4ba9f3"
+dependencies = [
+ "egui",
+ "image 0.24.3",
+ "pulldown-cmark",
+]
+
+[[package]]
 name = "egui_extras"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4302,6 +4313,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77a1a2f1f0a7ecff9c31abbe177637be0e97a0aef46cf8738ece09327985d998"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5431,6 +5453,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "egui_commonmark",
  "egui_extras",
  "egui_glow",
  "embed-resource",
