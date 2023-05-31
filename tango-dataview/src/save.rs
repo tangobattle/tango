@@ -125,9 +125,9 @@ pub enum ChipCode {
     Star = 26,
 }
 
-impl ToString for ChipCode {
-    fn to_string(&self) -> String {
-        match self {
+impl std::fmt::Display for ChipCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
             ChipCode::A => "A",
             ChipCode::B => "B",
             ChipCode::C => "C",
@@ -155,8 +155,7 @@ impl ToString for ChipCode {
             ChipCode::Y => "Y",
             ChipCode::Z => "Z",
             ChipCode::Star => "*",
-        }
-        .to_string()
+        })
     }
 }
 
