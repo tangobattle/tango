@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 datachannel = { version = "0.9", features = ["vendored"] }
-tokio = { version = "1.15.0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 thiserror = "1"
 log = "0.4"

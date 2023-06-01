@@ -4,7 +4,7 @@ version = "4.0.51"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.15.0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 env_logger = "0.9.0"
 log = "0.4"
