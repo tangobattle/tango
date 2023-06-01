@@ -9,7 +9,7 @@ pub struct PeerConnection {
 }
 
 impl PeerConnection {
-    pub fn new(config: RtcConfig) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>)> {
+    pub fn new(config: RtcConfig) -> Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), Error> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
         let pch = PeerConnectionHandler {
@@ -27,7 +27,7 @@ impl PeerConnection {
         ))
     }
 
-    pub fn create_data_channel(&mut self, label: &str, dc_init: DataChannelInit) -> anyhow::Result<DataChannel> {
+    pub fn create_data_channel(&mut self, label: &str, dc_init: DataChannelInit) -> Result<DataChannel, Error> {
         let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
         let (open_tx, open_rx) = tokio::sync::oneshot::channel();
         let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
@@ -47,12 +47,12 @@ impl PeerConnection {
         self.data_channel_rx.recv().await
     }
 
-    pub fn set_local_description(&mut self, sdp_type: SdpType) -> anyhow::Result<()> {
+    pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), Error> {
         self.peer_conn.set_local_description(sdp_type)?;
         Ok(())
     }
 
-    pub fn set_remote_description(&mut self, sess_desc: SessionDescription) -> anyhow::Result<()> {
+    pub fn set_remote_description(&mut self, sess_desc: SessionDescription) -> Result<(), Error> {
         self.peer_conn.set_remote_description(&sess_desc)?;
         Ok(())
     }
@@ -65,7 +65,7 @@ impl PeerConnection {
         self.peer_conn.remote_description()
     }
 
-    pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> anyhow::Result<()> {
+    pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> Result<(), Error> {
         self.peer_conn.add_remote_candidate(&cand)?;
         Ok(())
     }
@@ -152,6 +152,7 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
             .blocking_send(DataChannel { dc, message_rx, state });
     }
 }
+
 struct DataChannelState {
     open_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     error: Option<Error>,
@@ -246,17 +247,43 @@ struct DataChannelHandler {
     message_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
+    #[error("closed")]
     Closed,
+
+    #[error("underlying error: {0}")]
     UnderlyingError(String),
+
+    #[error("invalid argument")]
+    InvalidArg,
+
+    #[error("runtime")]
+    Runtime,
+
+    #[error("not available")]
+    NotAvailable,
+
+    #[error("too smal")]
+    TooSmall,
+
+    #[error("unknown")]
+    Unknown,
+
+    #[error("bad string: {0}")]
+    BadString(String),
 }
 
-impl std::error::Error for Error {}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+impl From<datachannel::Error> for Error {
+    fn from(value: datachannel::Error) -> Self {
+        match value {
+            datachannel::Error::InvalidArg => Error::InvalidArg,
+            datachannel::Error::Runtime => Error::Runtime,
+            datachannel::Error::NotAvailable => Error::NotAvailable,
+            datachannel::Error::TooSmall => Error::TooSmall,
+            datachannel::Error::Unkown => Error::Unknown,
+            datachannel::Error::BadString(s) => Error::BadString(s),
+        }
     }
 }
 

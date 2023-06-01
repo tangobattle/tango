@@ -163,6 +163,9 @@ pub enum Error {
     #[error("tungstenite: {0:?}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
 
+    #[error("datachannel: {0:?}")]
+    Datachannel(#[from] datachannel_wrapper::Error),
+
     #[error("prost decode error: {0:?}")]
     ProstDecode(#[from] prost::DecodeError),
 
