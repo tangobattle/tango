@@ -1,0 +1,9 @@
+[package]
+name = "bps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1"
+crc32fast = "1"
+thiserror = "1"

@@ -675,6 +675,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bps"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "crc32fast",
+ "thiserror",
+]
+
+[[package]]
 name = "bstr"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5439,6 +5448,7 @@ dependencies = [
  "arboard 2.1.1",
  "async-recursion 1.0.0",
  "bincode",
+ "bps",
  "bytemuck",
  "byteorder",
  "bytes 1.2.1",

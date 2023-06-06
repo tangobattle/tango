@@ -1,5 +1,3 @@
-pub mod bps;
-
 use futures::StreamExt;
 use itertools::Itertools;
 use tokio::io::AsyncWriteExt;
@@ -412,5 +410,5 @@ pub fn apply_patch_from_disk(
                 revision
             )),
     )?;
-    Ok(bps::apply(rom, &raw)?)
+    Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }
