@@ -90,7 +90,7 @@ thiserror = "1"
 time = { version = "0.3", features = ["formatting", "macros"] }
 tiny-skia = "0.7"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = { version = "0.16.1", features = [
+tokio-tungstenite = { version = "0.16", features = [
     "rustls-tls-webpki-roots",
 ] }
 tokio-util = "0.7"
