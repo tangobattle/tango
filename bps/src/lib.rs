@@ -3,10 +3,19 @@ use std::io::Read;
 use byteorder::ReadBytesExt;
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum DecodeError {
     #[error("invalid format")]
     InvalidHeader,
 
+    #[error("unexpected patch eof")]
+    UnexpectedPatchEOF,
+
+    #[error("invalid patch checksum, expected {0}")]
+    InvalidPatchChecksum(u32),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ApplyError {
     #[error("unexpected patch eof")]
     UnexpectedPatchEOF,
 
@@ -24,9 +33,6 @@ pub enum Error {
 
     #[error("invalid target checksum, expected {0}")]
     InvalidTargetChecksum(u32),
-
-    #[error("invalid patch checksum, expected {0}")]
-    InvalidPatchChecksum(u32),
 
     #[error("invalid action, got {0}")]
     InvalidAction(u8),
@@ -73,14 +79,16 @@ pub struct Patch<'a> {
 }
 
 impl<'a> Patch<'a> {
-    pub fn decode(mut patch: &'a [u8]) -> Result<Self, Error> {
+    pub fn decode(mut patch: &'a [u8]) -> Result<Self, DecodeError> {
         let actual_patch_checksum = crc32fast::hash(&patch[..patch.len() - 4]);
 
         // string "BPS1"
         let mut header = [0u8; 4];
-        patch.read_exact(&mut header).map_err(|_| Error::UnexpectedPatchEOF)?;
+        patch
+            .read_exact(&mut header)
+            .map_err(|_| DecodeError::UnexpectedPatchEOF)?;
         if &header != b"BPS1" {
-            return Err(Error::InvalidHeader);
+            return Err(DecodeError::InvalidHeader);
         }
 
         // (trailer)
@@ -95,24 +103,24 @@ impl<'a> Patch<'a> {
         // uint32 patch-checksum
         let patch_checksum = footer.read_u32::<byteorder::LittleEndian>().unwrap();
         if patch_checksum != actual_patch_checksum {
-            return Err(Error::InvalidPatchChecksum(patch_checksum));
+            return Err(DecodeError::InvalidPatchChecksum(patch_checksum));
         }
 
         // number source-size
-        let source_size = read_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?;
+        let source_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)?;
 
         // number target-size
-        let target_size = read_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?;
+        let target_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)?;
 
         // number metadata-size
-        let metadata_size = read_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?;
+        let metadata_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)?;
 
         // string metadata[metadata-size]
         let metadata = &patch[..metadata_size];
 
         let body = patch
             .get(metadata_size..patch.len() - 12)
-            .ok_or(Error::UnexpectedPatchEOF)?;
+            .ok_or(DecodeError::UnexpectedPatchEOF)?;
 
         Ok(Self {
             source_checksum,
@@ -125,13 +133,13 @@ impl<'a> Patch<'a> {
         })
     }
 
-    pub fn apply(&self, src: &[u8]) -> Result<Vec<u8>, Error> {
+    pub fn apply(&self, src: &[u8]) -> Result<Vec<u8>, ApplyError> {
         if self.source_checksum != crc32fast::hash(src) {
-            return Err(Error::InvalidSourceChecksum(self.source_checksum));
+            return Err(ApplyError::InvalidSourceChecksum(self.source_checksum));
         }
 
         if self.source_size != src.len() {
-            return Err(Error::InvalidLength(self.source_size));
+            return Err(ApplyError::InvalidLength(self.source_size));
         }
 
         let mut tgt = vec![0u8; self.target_size];
@@ -143,40 +151,45 @@ impl<'a> Patch<'a> {
         // repeat {
         let mut r = self.body;
         while !r.is_empty() {
-            let instr = read_vlq(&mut r).ok_or(Error::UnexpectedPatchEOF)?;
+            let instr = read_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?;
             let action = (instr & 3) as u8;
             let len = (instr >> 2) + 1;
             match action {
                 0 => {
                     // source read
                     tgt.get_mut(tgt_offset..tgt_offset + len)
-                        .ok_or(Error::UnexpectedTargetEOF)?
-                        .copy_from_slice(src.get(tgt_offset..tgt_offset + len).ok_or(Error::UnexpectedPatchEOF)?);
+                        .ok_or(ApplyError::UnexpectedTargetEOF)?
+                        .copy_from_slice(
+                            src.get(tgt_offset..tgt_offset + len)
+                                .ok_or(ApplyError::UnexpectedPatchEOF)?,
+                        );
                 }
                 1 => {
                     // target read
                     let mut buf = vec![0u8; len];
-                    r.read_exact(&mut buf).map_err(|_| Error::UnexpectedPatchEOF)?;
+                    r.read_exact(&mut buf).map_err(|_| ApplyError::UnexpectedPatchEOF)?;
                     tgt.get_mut(tgt_offset..tgt_offset + len)
-                        .ok_or(Error::UnexpectedTargetEOF)?
+                        .ok_or(ApplyError::UnexpectedTargetEOF)?
                         .copy_from_slice(&buf);
                 }
                 2 => {
                     // source copy
-                    src_rel_offset =
-                        (src_rel_offset as isize + read_signed_vlq(&mut r).ok_or(Error::UnexpectedPatchEOF)?) as usize;
+                    src_rel_offset = (src_rel_offset as isize
+                        + read_signed_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?)
+                        as usize;
                     tgt.get_mut(tgt_offset..tgt_offset + len)
-                        .ok_or(Error::UnexpectedTargetEOF)?
+                        .ok_or(ApplyError::UnexpectedTargetEOF)?
                         .copy_from_slice(
                             src.get(src_rel_offset..src_rel_offset + len)
-                                .ok_or(Error::UnexpectedSourceEOF)?,
+                                .ok_or(ApplyError::UnexpectedSourceEOF)?,
                         );
                     src_rel_offset += len;
                 }
                 3 => {
                     // target copy
-                    tgt_rel_offset =
-                        (tgt_rel_offset as isize + read_signed_vlq(&mut r).ok_or(Error::UnexpectedPatchEOF)?) as usize;
+                    tgt_rel_offset = (tgt_rel_offset as isize
+                        + read_signed_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?)
+                        as usize;
 
                     // This has to be done byte by byte, because newer output bytes may refer to older ones.
                     for i in tgt_offset..tgt_offset + len {
@@ -185,7 +198,7 @@ impl<'a> Patch<'a> {
                     }
                 }
                 action => {
-                    return Err(Error::InvalidAction(action));
+                    return Err(ApplyError::InvalidAction(action));
                 }
             }
             tgt_offset += len;
@@ -193,7 +206,7 @@ impl<'a> Patch<'a> {
         // }
 
         if self.target_checksum != crc32fast::hash(&tgt) {
-            return Err(Error::InvalidTargetChecksum(self.target_checksum));
+            return Err(ApplyError::InvalidTargetChecksum(self.target_checksum));
         }
 
         Ok(tgt)
