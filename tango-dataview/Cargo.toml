@@ -5,14 +5,14 @@ edition = "2021"
 license = "LGPL-3.0-or-later"
 
 [dependencies]
-byteorder = "1"
-thiserror = "1"
-image = { version = "0.24", default_features = false }
-parking_lot = "0.12"
-ndarray = "0.15"
-patricia_tree = "0.5"
-itertools = "0.6"
 bytemuck = { version = "1", features = ["derive"] }
+byteorder = "1"
 c2rust-bitfields = "0.17"
-num-traits = "0.2"
+image = { version = "0.24", default_features = false }
+itertools = "0.6"
+ndarray = "0.15"
 num-derive = "0.3"
+num-traits = "0.2"
+parking_lot = "0.12"
+patricia_tree = "0.5"
+thiserror = "1"

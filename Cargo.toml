@@ -1,16 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
+    "bps",
+    "datachannel-wrapper",
+    "hqx",
+    "input-helper",
     "mgba",
+    "mmpx",
     "tango",
     "tango-dataview",
     "tango-protos",
     "tango-server",
-    "datachannel-wrapper",
-    "hqx",
-    "mmpx",
-    "input-helper",
-    "bps",
 ]
 
 [patch.crates-io]
