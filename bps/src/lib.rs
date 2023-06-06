@@ -106,9 +106,10 @@ impl<'a> Patch<'a> {
 
         // number metadata-size
         let metadata_size = read_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?;
-        let metadata = &patch[..metadata_size];
 
         // string metadata[metadata-size]
+        let metadata = &patch[..metadata_size];
+
         let body = patch
             .get(metadata_size..patch.len() - 12)
             .ok_or(Error::UnexpectedPatchEOF)?;
