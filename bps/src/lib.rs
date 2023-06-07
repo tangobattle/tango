@@ -92,8 +92,8 @@ pub struct Instruction<'a> {
 pub enum Action<'a> {
     SourceRead,
     TargetRead { buf: &'a [u8] },
-    SourceCopy { range: std::ops::Range<usize> },
-    TargetCopy { range: std::ops::Range<usize> },
+    SourceCopy { offset: usize },
+    TargetCopy { offset: usize },
 }
 
 struct InstructionIterator<'a> {
@@ -139,9 +139,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         let src_rel_offset = self.src_rel_offset;
                         self.src_rel_offset += len;
 
-                        Action::SourceCopy {
-                            range: src_rel_offset..src_rel_offset + len,
-                        }
+                        Action::SourceCopy { offset: src_rel_offset }
                     }
                     3 => {
                         self.tgt_rel_offset = (self.tgt_rel_offset as isize
@@ -150,9 +148,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         let tgt_rel_offset = self.tgt_rel_offset;
                         self.tgt_rel_offset += len;
 
-                        Action::TargetCopy {
-                            range: tgt_rel_offset..tgt_rel_offset + len,
-                        }
+                        Action::TargetCopy { offset: tgt_rel_offset }
                     }
 
                     action => {
@@ -254,17 +250,19 @@ impl<'a> Patch<'a> {
                         .ok_or(ApplyError::UnexpectedTargetEOF)?
                         .copy_from_slice(&buf);
                 }
-                Action::SourceCopy { range } => {
+                Action::SourceCopy { offset } => {
+                    let len = instruction.tgt_range.len();
                     tgt.get_mut(instruction.tgt_range)
                         .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(src.get(range).ok_or(ApplyError::UnexpectedSourceEOF)?);
+                        .copy_from_slice(src.get(offset..offset + len).ok_or(ApplyError::UnexpectedSourceEOF)?);
                 }
-                Action::TargetCopy { range } => {
-                    if tgt.get_mut(range.clone()).is_none() || tgt.get(instruction.tgt_range.clone()).is_none() {
+                Action::TargetCopy { offset } => {
+                    let len = instruction.tgt_range.len();
+                    if tgt.get(instruction.tgt_range.clone()).is_none() || tgt.get(offset..offset + len).is_none() {
                         return Err(ApplyError::UnexpectedTargetEOF);
                     }
                     // This has to be done byte by byte, because newer output bytes may refer to older ones.
-                    for (i, j) in std::iter::zip(instruction.tgt_range, range) {
+                    for (i, j) in std::iter::zip(instruction.tgt_range, offset..) {
                         tgt[i] = tgt[j]
                     }
                 }
