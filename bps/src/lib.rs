@@ -15,7 +15,7 @@ pub enum DecodeError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum InstructionIteratorError {
+pub enum InstructionDecodeError {
     #[error("unexpected eof")]
     UnexpectedEOF,
 
@@ -25,8 +25,8 @@ pub enum InstructionIteratorError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApplyError {
-    #[error("instruction iterator error: {0}")]
-    InstructionIteratorError(#[from] InstructionIteratorError),
+    #[error("instruction decode error: {0}")]
+    InstructionDecodeError(#[from] InstructionDecodeError),
 
     #[error("unexpected source eof")]
     UnexpectedSourceEOF,
@@ -42,9 +42,6 @@ pub enum ApplyError {
 
     #[error("invalid target checksum, expected {0}")]
     InvalidTargetChecksum(u32),
-
-    #[error("invalid action, got {0}")]
-    InvalidAction(u8),
 }
 
 fn read_vlq(buf: &mut impl std::io::Read) -> Option<usize> {
@@ -107,7 +104,7 @@ struct InstructionIterator<'a> {
 }
 
 impl<'a> Iterator for InstructionIterator<'a> {
-    type Item = Result<Instruction<'a>, InstructionIteratorError>;
+    type Item = Result<Instruction<'a>, InstructionDecodeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buf.is_empty() {
@@ -115,7 +112,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
         }
 
         Some((|| {
-            let instr = read_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?;
+            let instr = read_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?;
             let action = (instr & 3) as u8;
             let len = (instr >> 2) + 1;
 
@@ -127,7 +124,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                     0 => Action::SourceRead,
                     1 => {
                         if self.buf.len() < len {
-                            return Err(InstructionIteratorError::UnexpectedEOF);
+                            return Err(InstructionDecodeError::UnexpectedEOF);
                         }
 
                         let (buf, rest) = self.buf.split_at(len);
@@ -137,7 +134,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                     }
                     2 => {
                         self.src_rel_offset = (self.src_rel_offset as isize
-                            + read_signed_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?)
+                            + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?)
                             as usize;
                         let src_rel_offset = self.src_rel_offset;
                         self.src_rel_offset += len;
@@ -148,7 +145,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                     }
                     3 => {
                         self.tgt_rel_offset = (self.tgt_rel_offset as isize
-                            + read_signed_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?)
+                            + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?)
                             as usize;
                         let tgt_rel_offset = self.tgt_rel_offset;
                         self.tgt_rel_offset += len;
@@ -159,7 +156,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                     }
 
                     action => {
-                        return Err(InstructionIteratorError::InvalidAction(action));
+                        return Err(InstructionDecodeError::InvalidAction(action));
                     }
                 },
                 tgt_range: tgt_offset..tgt_offset + len,
@@ -169,7 +166,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
 }
 
 impl<'a> Patch<'a> {
-    pub fn instructions(&self) -> impl Iterator<Item = Result<Instruction<'a>, InstructionIteratorError>> {
+    pub fn instructions(&self) -> impl Iterator<Item = Result<Instruction<'a>, InstructionDecodeError>> {
         InstructionIterator {
             buf: self.body,
             tgt_offset: 0,
