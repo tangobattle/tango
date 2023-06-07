@@ -15,9 +15,18 @@ pub enum DecodeError {
 }
 
 #[derive(thiserror::Error, Debug)]
+pub enum InstructionIteratorError {
+    #[error("unexpected eof")]
+    UnexpectedEOF,
+
+    #[error("invalid action, got {0}")]
+    InvalidAction(u8),
+}
+
+#[derive(thiserror::Error, Debug)]
 pub enum ApplyError {
-    #[error("unexpected patch eof")]
-    UnexpectedPatchEOF,
+    #[error("instruction iterator error: {0}")]
+    InstructionIteratorError(#[from] InstructionIteratorError),
 
     #[error("unexpected source eof")]
     UnexpectedSourceEOF,
@@ -78,7 +87,97 @@ pub struct Patch<'a> {
     pub body: &'a [u8],
 }
 
+pub struct Instruction<'a> {
+    pub tgt_range: std::ops::Range<usize>,
+    pub action: Action<'a>,
+}
+
+pub enum Action<'a> {
+    SourceRead,
+    TargetRead { buf: &'a [u8] },
+    SourceCopy { range: std::ops::Range<usize> },
+    TargetCopy { range: std::ops::Range<usize> },
+}
+
+struct InstructionIterator<'a> {
+    buf: &'a [u8],
+    tgt_offset: usize,
+    src_rel_offset: usize,
+    tgt_rel_offset: usize,
+}
+
+impl<'a> Iterator for InstructionIterator<'a> {
+    type Item = Result<Instruction<'a>, InstructionIteratorError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buf.is_empty() {
+            return None;
+        }
+
+        Some((|| {
+            let instr = read_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?;
+            let action = (instr & 3) as u8;
+            let len = (instr >> 2) + 1;
+
+            let tgt_offset = self.tgt_offset;
+            self.tgt_offset += len;
+
+            Ok(Instruction {
+                action: match action {
+                    0 => Action::SourceRead,
+                    1 => {
+                        if self.buf.len() < len {
+                            return Err(InstructionIteratorError::UnexpectedEOF);
+                        }
+
+                        let (buf, rest) = self.buf.split_at(len);
+                        self.buf = rest;
+
+                        Action::TargetRead { buf }
+                    }
+                    2 => {
+                        self.src_rel_offset = (self.src_rel_offset as isize
+                            + read_signed_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?)
+                            as usize;
+                        let src_rel_offset = self.src_rel_offset;
+                        self.src_rel_offset += len;
+
+                        Action::SourceCopy {
+                            range: src_rel_offset..src_rel_offset + len,
+                        }
+                    }
+                    3 => {
+                        self.tgt_rel_offset = (self.tgt_rel_offset as isize
+                            + read_signed_vlq(&mut self.buf).ok_or(InstructionIteratorError::UnexpectedEOF)?)
+                            as usize;
+                        let tgt_rel_offset = self.tgt_rel_offset;
+                        self.tgt_rel_offset += len;
+
+                        Action::TargetCopy {
+                            range: tgt_rel_offset..tgt_rel_offset + len,
+                        }
+                    }
+
+                    action => {
+                        return Err(InstructionIteratorError::InvalidAction(action));
+                    }
+                },
+                tgt_range: tgt_offset..tgt_offset + len,
+            })
+        })())
+    }
+}
+
 impl<'a> Patch<'a> {
+    pub fn instructions(&self) -> impl Iterator<Item = Result<Instruction<'a>, InstructionIteratorError>> {
+        InstructionIterator {
+            buf: self.body,
+            tgt_offset: 0,
+            src_rel_offset: 0,
+            tgt_rel_offset: 0,
+        }
+    }
+
     pub fn decode(mut patch: &'a [u8]) -> Result<Self, DecodeError> {
         let actual_patch_checksum = crc32fast::hash(&patch[..patch.len() - 4]);
 
@@ -144,64 +243,35 @@ impl<'a> Patch<'a> {
 
         let mut tgt = vec![0u8; self.target_size];
 
-        let mut tgt_offset = 0;
-        let mut src_rel_offset = 0;
-        let mut tgt_rel_offset = 0;
-
         // repeat {
-        let mut r = self.body;
-        while !r.is_empty() {
-            let instr = read_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?;
-            let action = (instr & 3) as u8;
-            let len = (instr >> 2) + 1;
-            match action {
-                0 => {
-                    // source read
-                    tgt.get_mut(tgt_offset..tgt_offset + len)
+        for instruction in self.instructions() {
+            let instruction = instruction?;
+            match instruction.action {
+                Action::SourceRead => {
+                    tgt.get_mut(instruction.tgt_range.clone())
                         .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(
-                            src.get(tgt_offset..tgt_offset + len)
-                                .ok_or(ApplyError::UnexpectedPatchEOF)?,
-                        );
+                        .copy_from_slice(src.get(instruction.tgt_range).ok_or(ApplyError::UnexpectedSourceEOF)?);
                 }
-                1 => {
-                    // target read
-                    let mut buf = vec![0u8; len];
-                    r.read_exact(&mut buf).map_err(|_| ApplyError::UnexpectedPatchEOF)?;
-                    tgt.get_mut(tgt_offset..tgt_offset + len)
+                Action::TargetRead { buf } => {
+                    tgt.get_mut(instruction.tgt_range)
                         .ok_or(ApplyError::UnexpectedTargetEOF)?
                         .copy_from_slice(&buf);
                 }
-                2 => {
-                    // source copy
-                    src_rel_offset = (src_rel_offset as isize
-                        + read_signed_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?)
-                        as usize;
-                    tgt.get_mut(tgt_offset..tgt_offset + len)
+                Action::SourceCopy { range } => {
+                    tgt.get_mut(instruction.tgt_range)
                         .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(
-                            src.get(src_rel_offset..src_rel_offset + len)
-                                .ok_or(ApplyError::UnexpectedSourceEOF)?,
-                        );
-                    src_rel_offset += len;
+                        .copy_from_slice(src.get(range).ok_or(ApplyError::UnexpectedSourceEOF)?);
                 }
-                3 => {
-                    // target copy
-                    tgt_rel_offset = (tgt_rel_offset as isize
-                        + read_signed_vlq(&mut r).ok_or(ApplyError::UnexpectedPatchEOF)?)
-                        as usize;
-
+                Action::TargetCopy { range } => {
+                    if tgt.get_mut(range.clone()).is_none() || tgt.get(instruction.tgt_range.clone()).is_none() {
+                        return Err(ApplyError::UnexpectedTargetEOF);
+                    }
                     // This has to be done byte by byte, because newer output bytes may refer to older ones.
-                    for i in tgt_offset..tgt_offset + len {
-                        tgt[i] = tgt[tgt_rel_offset];
-                        tgt_rel_offset += 1;
+                    for (i, j) in std::iter::zip(instruction.tgt_range, range) {
+                        tgt[i] = tgt[j]
                     }
                 }
-                action => {
-                    return Err(ApplyError::InvalidAction(action));
-                }
             }
-            tgt_offset += len;
         }
         // }
 
