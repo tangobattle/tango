@@ -44,7 +44,7 @@ pub enum ApplyError {
     InvalidTargetChecksum(u32),
 }
 
-fn read_vlq(buf: &mut impl std::io::Read) -> Option<u64> {
+fn read_vlq(buf: &mut impl std::io::Read) -> std::io::Result<u64> {
     // uint64 data = 0, shift = 1;
     let mut data = 0u64;
     let mut shift = 1u64;
@@ -52,7 +52,7 @@ fn read_vlq(buf: &mut impl std::io::Read) -> Option<u64> {
     // while(true) {
     loop {
         // uint8 x = read();
-        let x = buf.read_u8().ok()?;
+        let x = buf.read_u8()?;
         // data += (x & 0x7f) * shift;
         data += ((x & 0x7f) as u64) * shift;
         // if(x & 0x80) break;
@@ -66,12 +66,14 @@ fn read_vlq(buf: &mut impl std::io::Read) -> Option<u64> {
         // }
     }
     // return data;
-    return Some(data);
+    return Ok(data);
 }
 
-fn read_signed_vlq(buf: &mut impl std::io::Read) -> Option<i64> {
+fn read_signed_vlq(buf: &mut impl std::io::Read) -> std::io::Result<i64> {
     let v = read_vlq(buf)?;
-    Some((if (v & 1) != 0 { -1 } else { 1 }) * (v >> 1) as i64)
+    let is_neg = (v & 1) != 0;
+    let v = (v >> 1) as i64;
+    Ok(if is_neg { -v } else { v })
 }
 
 pub struct Patch<'a> {
@@ -113,7 +115,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
 
         Some(
             match (|| {
-                let instr = read_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?;
+                let instr = read_vlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)?;
                 let action = (instr & 3) as u8;
                 let len = ((instr >> 2) + 1) as usize;
 
@@ -135,8 +137,8 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         }
                         2 => {
                             self.src_rel_offset = (self.src_rel_offset as isize
-                                + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
-                                as usize;
+                                + read_signed_vlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)?
+                                    as isize) as usize;
                             let src_rel_offset = self.src_rel_offset;
                             self.src_rel_offset += len;
 
@@ -144,8 +146,8 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         }
                         3 => {
                             self.tgt_rel_offset = (self.tgt_rel_offset as isize
-                                + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
-                                as usize;
+                                + read_signed_vlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)?
+                                    as isize) as usize;
                             let tgt_rel_offset = self.tgt_rel_offset;
                             self.tgt_rel_offset += len;
 
@@ -208,13 +210,13 @@ impl<'a> Patch<'a> {
         }
 
         // number source-size
-        let source_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)? as usize;
+        let source_size = read_vlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // number target-size
-        let target_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)? as usize;
+        let target_size = read_vlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // number metadata-size
-        let metadata_size = read_vlq(&mut patch).ok_or(DecodeError::UnexpectedPatchEOF)? as usize;
+        let metadata_size = read_vlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // string metadata[metadata-size]
         let metadata = &patch[..metadata_size];
