@@ -63,8 +63,9 @@ fn read_vlq(buf: &mut impl std::io::Read) -> std::io::Result<u64> {
         shift <<= 7;
         // data += shift;
         data += shift;
-        // }
     }
+    // }
+
     // return data;
     return Ok(data);
 }
@@ -87,7 +88,8 @@ pub struct Patch<'a> {
 }
 
 pub struct Instruction<'a> {
-    pub tgt_range: std::ops::Range<usize>,
+    pub tgt_offset: usize,
+    pub len: usize,
     pub action: Action<'a>,
 }
 
@@ -96,6 +98,48 @@ pub enum Action<'a> {
     TargetRead { buf: &'a [u8] },
     SourceCopy { offset: usize },
     TargetCopy { offset: usize },
+}
+
+impl<'a> Instruction<'a> {
+    pub fn apply(&self, src: &[u8], tgt: &mut [u8]) -> Result<(), ApplyError> {
+        match self.action {
+            Action::SourceRead => {
+                tgt.get_mut(self.tgt_offset..self.tgt_offset + self.len)
+                    .ok_or(ApplyError::UnexpectedTargetEOF)?
+                    .copy_from_slice(
+                        src.get(self.tgt_offset..self.tgt_offset + self.len)
+                            .ok_or(ApplyError::UnexpectedSourceEOF)?,
+                    );
+            }
+            Action::TargetRead { buf } => {
+                tgt.get_mut(self.tgt_offset..self.tgt_offset + self.len)
+                    .ok_or(ApplyError::UnexpectedTargetEOF)?
+                    .copy_from_slice(&buf);
+            }
+            Action::SourceCopy { offset } => {
+                tgt.get_mut(self.tgt_offset..self.tgt_offset + self.len)
+                    .ok_or(ApplyError::UnexpectedTargetEOF)?
+                    .copy_from_slice(
+                        src.get(offset..offset + self.len)
+                            .ok_or(ApplyError::UnexpectedSourceEOF)?,
+                    );
+            }
+            Action::TargetCopy { offset } => {
+                if tgt.get(self.tgt_offset..self.tgt_offset + self.len).is_none()
+                    || tgt.get(offset..offset + self.len).is_none()
+                {
+                    return Err(ApplyError::UnexpectedTargetEOF);
+                }
+
+                // This has to be done byte by byte, because newer output bytes may refer to older ones.
+                for (i, j) in std::iter::zip(self.tgt_offset..self.tgt_offset + self.len, offset..) {
+                    tgt[i] = tgt[j]
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 struct InstructionIterator<'a> {
@@ -158,13 +202,19 @@ impl<'a> Iterator for InstructionIterator<'a> {
                             return Err(InstructionDecodeError::InvalidAction(action));
                         }
                     },
-                    tgt_range: tgt_offset..tgt_offset + len,
+                    tgt_offset,
+                    len: len,
                 })
             })() {
                 Ok(v) => Ok(v),
                 Err(e) => {
-                    // Clear the buffer so next time we will read None.
-                    self.buf = &[];
+                    // Clear state so we don't iterate any further.
+                    *self = InstructionIterator {
+                        buf: &[],
+                        tgt_offset: 0,
+                        src_rel_offset: 0,
+                        tgt_rel_offset: 0,
+                    };
                     Err(e)
                 }
             },
@@ -194,7 +244,7 @@ impl<'a> Patch<'a> {
             return Err(DecodeError::InvalidHeader);
         }
 
-        // (trailer)
+        // (footer)
         let mut footer = &patch[patch.len() - 12..];
 
         // uint32 source-checksum
@@ -237,47 +287,19 @@ impl<'a> Patch<'a> {
     }
 
     pub fn apply(&self, src: &[u8]) -> Result<Vec<u8>, ApplyError> {
-        if self.source_checksum != crc32fast::hash(src) {
-            return Err(ApplyError::InvalidSourceChecksum(self.source_checksum));
-        }
-
         if self.source_size != src.len() {
             return Err(ApplyError::InvalidLength(self.source_size));
+        }
+
+        if self.source_checksum != crc32fast::hash(src) {
+            return Err(ApplyError::InvalidSourceChecksum(self.source_checksum));
         }
 
         let mut tgt = vec![0u8; self.target_size];
 
         // repeat {
         for instruction in self.instructions() {
-            let instruction = instruction?;
-            match instruction.action {
-                Action::SourceRead => {
-                    tgt.get_mut(instruction.tgt_range.clone())
-                        .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(src.get(instruction.tgt_range).ok_or(ApplyError::UnexpectedSourceEOF)?);
-                }
-                Action::TargetRead { buf } => {
-                    tgt.get_mut(instruction.tgt_range)
-                        .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(&buf);
-                }
-                Action::SourceCopy { offset } => {
-                    let len = instruction.tgt_range.len();
-                    tgt.get_mut(instruction.tgt_range)
-                        .ok_or(ApplyError::UnexpectedTargetEOF)?
-                        .copy_from_slice(src.get(offset..offset + len).ok_or(ApplyError::UnexpectedSourceEOF)?);
-                }
-                Action::TargetCopy { offset } => {
-                    let len = instruction.tgt_range.len();
-                    if tgt.get(instruction.tgt_range.clone()).is_none() || tgt.get(offset..offset + len).is_none() {
-                        return Err(ApplyError::UnexpectedTargetEOF);
-                    }
-                    // This has to be done byte by byte, because newer output bytes may refer to older ones.
-                    for (i, j) in std::iter::zip(instruction.tgt_range, offset..) {
-                        tgt[i] = tgt[j]
-                    }
-                }
-            }
+            instruction?.apply(src, &mut tgt)?;
         }
         // }
 
