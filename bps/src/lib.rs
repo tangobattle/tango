@@ -111,53 +111,62 @@ impl<'a> Iterator for InstructionIterator<'a> {
             return None;
         }
 
-        Some((|| {
-            let instr = read_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?;
-            let action = (instr & 3) as u8;
-            let len = ((instr >> 2) + 1) as usize;
+        Some(
+            match (|| {
+                let instr = read_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)?;
+                let action = (instr & 3) as u8;
+                let len = ((instr >> 2) + 1) as usize;
 
-            let tgt_offset = self.tgt_offset;
-            self.tgt_offset += len;
+                let tgt_offset = self.tgt_offset;
+                self.tgt_offset += len;
 
-            Ok(Instruction {
-                action: match action {
-                    0 => Action::SourceRead,
-                    1 => {
-                        if self.buf.len() < len {
-                            return Err(InstructionDecodeError::UnexpectedEOF);
+                Ok(Instruction {
+                    action: match action {
+                        0 => Action::SourceRead,
+                        1 => {
+                            if self.buf.len() < len {
+                                return Err(InstructionDecodeError::UnexpectedEOF);
+                            }
+
+                            let (buf, rest) = self.buf.split_at(len);
+                            self.buf = rest;
+
+                            Action::TargetRead { buf }
+                        }
+                        2 => {
+                            self.src_rel_offset = (self.src_rel_offset as isize
+                                + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
+                                as usize;
+                            let src_rel_offset = self.src_rel_offset;
+                            self.src_rel_offset += len;
+
+                            Action::SourceCopy { offset: src_rel_offset }
+                        }
+                        3 => {
+                            self.tgt_rel_offset = (self.tgt_rel_offset as isize
+                                + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
+                                as usize;
+                            let tgt_rel_offset = self.tgt_rel_offset;
+                            self.tgt_rel_offset += len;
+
+                            Action::TargetCopy { offset: tgt_rel_offset }
                         }
 
-                        let (buf, rest) = self.buf.split_at(len);
-                        self.buf = rest;
-
-                        Action::TargetRead { buf }
-                    }
-                    2 => {
-                        self.src_rel_offset = (self.src_rel_offset as isize
-                            + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
-                            as usize;
-                        let src_rel_offset = self.src_rel_offset;
-                        self.src_rel_offset += len;
-
-                        Action::SourceCopy { offset: src_rel_offset }
-                    }
-                    3 => {
-                        self.tgt_rel_offset = (self.tgt_rel_offset as isize
-                            + read_signed_vlq(&mut self.buf).ok_or(InstructionDecodeError::UnexpectedEOF)? as isize)
-                            as usize;
-                        let tgt_rel_offset = self.tgt_rel_offset;
-                        self.tgt_rel_offset += len;
-
-                        Action::TargetCopy { offset: tgt_rel_offset }
-                    }
-
-                    action => {
-                        return Err(InstructionDecodeError::InvalidAction(action));
-                    }
-                },
-                tgt_range: tgt_offset..tgt_offset + len,
-            })
-        })())
+                        action => {
+                            return Err(InstructionDecodeError::InvalidAction(action));
+                        }
+                    },
+                    tgt_range: tgt_offset..tgt_offset + len,
+                })
+            })() {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    // Clear the buffer so next time we will read None.
+                    self.buf = &[];
+                    Err(e)
+                }
+            },
+        )
     }
 }
 
