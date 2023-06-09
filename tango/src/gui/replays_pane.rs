@@ -450,15 +450,11 @@ pub fn show(
                             clipboard,
                             font_families,
                             language,
-                            if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                                if let Some(language) = metadata.rom_overrides.language.as_ref() {
-                                    language
-                                } else {
-                                    &game_language
-                                }
-                            } else {
-                                &game_language
-                            },
+                            selection
+                                .patch
+                                .as_ref()
+                                .and_then(|(_, _, metadata)| metadata.rom_overrides.language.as_ref())
+                                .unwrap_or(&game_language),
                             selection.save.as_ref(),
                             assets.as_ref(),
                             &mut selection.save_view,
