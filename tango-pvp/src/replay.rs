@@ -1,3 +1,7 @@
+pub mod export;
+mod protos;
+mod replay10;
+
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use prost::Message;
@@ -5,9 +9,6 @@ use std::io::Read;
 use std::io::Write;
 pub trait ReadWriteSeek: std::io::Read + std::io::Write + std::io::Seek {}
 impl<T: std::io::Read + std::io::Write + std::io::Seek> ReadWriteSeek for T {}
-
-mod protos;
-mod replay10;
 
 pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;

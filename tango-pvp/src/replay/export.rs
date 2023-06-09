@@ -2,14 +2,11 @@ use byteorder::ByteOrder;
 use image::EncodableLayout;
 use tokio::io::AsyncWriteExt;
 
-use crate::{game, video};
-
 pub struct Settings {
     pub ffmpeg: Option<std::path::PathBuf>,
     pub ffmpeg_audio_flags: String,
     pub ffmpeg_video_flags: String,
     pub ffmpeg_mux_flags: String,
-    pub video_filter: String,
     pub disable_bgm: bool,
 }
 
@@ -28,9 +25,14 @@ impl Settings {
                 "-c:v libx264rgb -preset ultrafast -qp 0".to_string()
             },
             ffmpeg_mux_flags: "-movflags +faststart -strict -2".to_string(),
-            video_filter: "".to_string(),
             disable_bgm: false,
         }
+    }
+}
+
+fn fix_vbuf_alpha(vbuf: &mut [u8]) {
+    for chunk in vbuf.chunks_mut(4) {
+        chunk[3] = 0xff;
     }
 }
 
@@ -38,25 +40,19 @@ const SAMPLE_RATE: f64 = 48000.0;
 
 fn make_core_and_state(
     rom: &[u8],
-    replay: &tango_pvp::replay::Replay,
+    hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    replay: &crate::replay::Replay,
     settings: &Settings,
-) -> anyhow::Result<(mgba::core::Core, tango_pvp::stepper::State)> {
+) -> anyhow::Result<(mgba::core::Core, crate::stepper::State)> {
     let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
     core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
     core.as_mut().reset();
 
-    let game_info = replay
-        .metadata
-        .local_side
-        .as_ref()
-        .and_then(|side| side.game_info.as_ref())
-        .ok_or(anyhow::anyhow!("missing game info"))?;
-
     let input_pairs = replay.input_pairs.clone();
 
-    let stepper_state = tango_pvp::stepper::State::new(
+    let stepper_state = crate::stepper::State::new(
         (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
         replay.local_player_index,
         input_pairs,
@@ -64,10 +60,7 @@ fn make_core_and_state(
         Box::new(|| {}),
     );
     stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
-    let game = game::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8)
-        .ok_or(anyhow::anyhow!("game not found"))?;
 
-    let hooks = game.hooks();
     hooks.patch(core.as_mut());
     {
         let stepper_state = stepper_state.clone();
@@ -102,7 +95,7 @@ fn run_frame<'a>(core: &mut mgba::core::Core, samples: &'a mut [i16], emu_vbuf: 
     let samples = &samples[..(n * 2) as usize];
 
     emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
-    video::fix_vbuf_alpha(emu_vbuf);
+    fix_vbuf_alpha(emu_vbuf);
     samples
 }
 
@@ -212,25 +205,22 @@ fn make_mux_ffmpeg(
 
 pub async fn export(
     rom: &[u8],
-    replay: &tango_pvp::replay::Replay,
+    hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    replay: &crate::replay::Replay,
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
-    let (mut core, state) = make_core_and_state(rom, replay, settings)?;
+    let (mut core, state) = make_core_and_state(rom, hooks, replay, settings)?;
 
-    let filter = video::filter_by_name(&settings.video_filter).ok_or(anyhow::anyhow!("unknown filter"))?;
-    let (vbuf_width, vbuf_height) =
-        filter.output_size((mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize));
-    let mut emu_vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
+    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH as u32, mgba::gba::SCREEN_HEIGHT as u32);
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = make_video_ffmpeg(
         &settings.ffmpeg,
         video_output.path(),
-        vbuf_width,
-        vbuf_height,
+        mgba::gba::SCREEN_WIDTH as usize,
+        mgba::gba::SCREEN_HEIGHT as usize,
         &shell_words::split(&settings.ffmpeg_video_flags)?
             .into_iter()
             .map(|flag| std::ffi::OsString::from(flag))
@@ -261,14 +251,8 @@ pub async fn export(
             Err(err)?;
         }
 
-        let samples = run_frame(&mut core, &mut samples, &mut emu_vbuf);
-        filter.apply(
-            &emu_vbuf,
-            &mut vbuf,
-            (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
-        );
-
-        video_child.stdin.as_mut().unwrap().write_all(vbuf.as_slice()).await?;
+        let samples = run_frame(&mut core, &mut samples, &mut vbuf);
+        video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
 
         let mut audio_bytes = vec![0u8; samples.len() * 2];
         byteorder::LittleEndian::write_i16_into(&samples, &mut audio_bytes[..]);
@@ -298,8 +282,10 @@ pub async fn export(
 
 pub async fn export_twosided(
     local_rom: &[u8],
+    local_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
     remote_rom: &[u8],
-    replay: &tango_pvp::replay::Replay,
+    remote_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    replay: &crate::replay::Replay,
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
@@ -307,23 +293,19 @@ pub async fn export_twosided(
     let local_replay = replay.clone();
     let remote_replay = local_replay.clone().into_remote();
 
-    let (mut local_core, local_state) = make_core_and_state(local_rom, &local_replay, settings)?;
-    let (mut remote_core, remote_state) = make_core_and_state(remote_rom, &remote_replay, settings)?;
+    let (mut local_core, local_state) = make_core_and_state(local_rom, local_hooks, &local_replay, settings)?;
+    let (mut remote_core, remote_state) = make_core_and_state(remote_rom, remote_hooks, &remote_replay, settings)?;
 
-    let mut emu_vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-
-    let filter = video::filter_by_name(&settings.video_filter).ok_or(anyhow::anyhow!("unknown filter"))?;
-    let (vbuf_width, vbuf_height) =
-        filter.output_size((mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize));
-    let mut vbuf = image::RgbaImage::new(vbuf_width as u32, vbuf_height as u32);
-    let mut composed_vbuf = image::RgbaImage::new((vbuf_width * 2) as u32, vbuf_height as u32);
+    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH as u32, mgba::gba::SCREEN_HEIGHT as u32);
+    let mut composed_vbuf =
+        image::RgbaImage::new((mgba::gba::SCREEN_WIDTH * 2) as u32, mgba::gba::SCREEN_HEIGHT as u32);
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = make_video_ffmpeg(
         &settings.ffmpeg,
         video_output.path(),
-        vbuf_width * 2,
-        vbuf_height,
+        (mgba::gba::SCREEN_WIDTH * 2) as usize,
+        mgba::gba::SCREEN_HEIGHT as usize,
         &shell_words::split(&settings.ffmpeg_video_flags)?
             .into_iter()
             .map(|flag| std::ffi::OsString::from(flag))
@@ -391,12 +373,7 @@ pub async fn export_twosided(
             }
 
             {
-                let local_samples = run_frame(&mut local_core, &mut samples, &mut emu_vbuf);
-                filter.apply(
-                    &emu_vbuf,
-                    &mut vbuf,
-                    (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
-                );
+                let local_samples = run_frame(&mut local_core, &mut samples, &mut vbuf);
                 image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
                 let mut audio_bytes = vec![0u8; local_samples.len() * 2];
                 byteorder::LittleEndian::write_i16_into(&local_samples, &mut audio_bytes[..]);
@@ -409,13 +386,8 @@ pub async fn export_twosided(
             }
 
             {
-                let remote_samples = run_frame(&mut remote_core, &mut samples, &mut emu_vbuf);
-                filter.apply(
-                    &emu_vbuf,
-                    &mut vbuf,
-                    (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
-                );
-                image::imageops::replace(&mut composed_vbuf, &vbuf, vbuf_width as i64, 0);
+                let remote_samples = run_frame(&mut remote_core, &mut samples, &mut vbuf);
+                image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
                 let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
                 byteorder::LittleEndian::write_i16_into(&remote_samples, &mut audio_bytes[..]);
                 remote_audio_child
@@ -435,11 +407,11 @@ pub async fn export_twosided(
         }
 
         while local_state.lock_inner().current_tick() == current_tick {
-            run_frame(&mut local_core, &mut samples, &mut emu_vbuf);
+            run_frame(&mut local_core, &mut samples, &mut vbuf);
         }
 
         while remote_state.lock_inner().current_tick() == current_tick {
-            run_frame(&mut remote_core, &mut samples, &mut emu_vbuf);
+            run_frame(&mut remote_core, &mut samples, &mut vbuf);
         }
 
         progress_callback(current_tick as usize, total);

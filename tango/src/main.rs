@@ -19,7 +19,6 @@ mod input;
 mod net;
 mod patch;
 mod randomcode;
-mod replay;
 mod rom;
 mod save;
 mod scanner;

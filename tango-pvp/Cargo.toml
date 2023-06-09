@@ -8,6 +8,7 @@ anyhow = "1"
 async-trait = "0.1"
 byteorder = "1"
 log = "0.4"
+image = { version = "0.24", default_features = false }
 mgba = { path = "../mgba" }
 parking_lot = { version = "0.12" }
 prost = "0.10"
@@ -15,7 +16,9 @@ rand = "0.8"
 rand_pcg = { version = "0.3", features = ["serde1"] }
 serde = { version = "1", features = ["derive"] }
 serde_repr = "0.1"
+shell-words = "1"
 tango-dataview = { path = "../tango-dataview" }
+tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 zstd = "0.11"
