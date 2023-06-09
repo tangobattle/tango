@@ -49,17 +49,18 @@ pub enum Command {
     },
 }
 
-pub fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+pub async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
     let mut f = std::fs::File::open(&args.path)?;
     let replay = tango_pvp::replay::Replay::decode(&mut f)?;
 
     match args.command {
-        Command::Invert { output_path } => cmd_invert(replay, output_path),
-        Command::Metadata => cmd_metadata(replay),
-        Command::Wram => cmd_wram(replay),
-        Command::Text => cmd_text(replay),
+        Command::Invert { output_path } => cmd_invert(replay, output_path).await,
+        Command::Metadata => cmd_metadata(replay).await,
+        Command::Wram => cmd_wram(replay).await,
+        Command::Text => cmd_text(replay).await,
         Command::Export {
             ffmpeg,
             ffmpeg_audio_flags,
@@ -68,20 +69,23 @@ pub fn main() -> Result<(), anyhow::Error> {
             disable_bgm,
             rom_path,
             output_path,
-        } => cmd_export(
-            replay,
-            ffmpeg,
-            ffmpeg_audio_flags,
-            ffmpeg_video_flags,
-            ffmpeg_mux_flags,
-            disable_bgm,
-            rom_path,
-            output_path,
-        ),
+        } => {
+            cmd_export(
+                replay,
+                ffmpeg,
+                ffmpeg_audio_flags,
+                ffmpeg_video_flags,
+                ffmpeg_mux_flags,
+                disable_bgm,
+                rom_path,
+                output_path,
+            )
+            .await
+        }
     }
 }
 
-fn cmd_invert(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
+async fn cmd_invert(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
     let replay = replay.into_remote();
     let mut writer = tango_pvp::replay::Writer::new(
         Box::new(std::fs::File::create(&output_path)?),
@@ -98,7 +102,7 @@ fn cmd_invert(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf
     Ok(())
 }
 
-fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+async fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
             "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
@@ -108,20 +112,20 @@ fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+async fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer_pretty(&mut stdout, &replay.metadata)?;
     stdout.write_all(b"\n")?;
     Ok(())
 }
 
-fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+async fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(replay.local_state.wram())?;
     Ok(())
 }
 
-fn cmd_export(
+async fn cmd_export(
     replay: tango_pvp::replay::Replay,
     ffmpeg: std::path::PathBuf,
     ffmpeg_audio_flags: String,
@@ -131,10 +135,51 @@ fn cmd_export(
     rom_path: std::path::PathBuf,
     output_path: std::path::PathBuf,
 ) -> Result<(), anyhow::Error> {
+    let rom = std::fs::read(&rom_path)?;
+    let detected_game = tango_gamedb::detect(&rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+
+    let game_info: &tango_pvp::replay::metadata::GameInfo = replay
+        .metadata
+        .local_side
+        .as_ref()
+        .and_then(|side| side.game_info.as_ref())
+        .ok_or(anyhow::anyhow!("missing local game info"))?;
+    let game = tango_gamedb::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8).unwrap();
+
+    if game != detected_game {
+        return Err(anyhow::format_err!(
+            "expected game {:?}, got {:?}",
+            game.family_and_variant,
+            detected_game.family_and_variant
+        ));
+    }
+
+    let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game).unwrap();
+    let bar = indicatif::ProgressBar::new(0);
+
+    tango_pvp::replay::export::export(
+        &rom,
+        hooks,
+        &replay,
+        &output_path,
+        &tango_pvp::replay::export::Settings {
+            ffmpeg: Some(ffmpeg),
+            ffmpeg_audio_flags,
+            ffmpeg_video_flags,
+            ffmpeg_mux_flags,
+            disable_bgm,
+        },
+        move |current, total| {
+            bar.set_length(total as u64);
+            bar.set_position(current as u64);
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
-fn cmd_twosided_export(
+async fn cmd_twosided_export(
     replay: tango_pvp::replay::Replay,
     ffmpeg: std::path::PathBuf,
     ffmpeg_audio_flags: String,

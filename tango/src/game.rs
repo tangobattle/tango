@@ -276,17 +276,11 @@ pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static 
 }
 
 pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    tango_gamedb::GAMES
-        .iter()
-        .find(|g| g.family_and_variant == (family, variant))
-        .and_then(|g| game_from_gamedb_entry(*g))
+    tango_gamedb::find_by_family_and_variant(family, variant).and_then(|g| game_from_gamedb_entry(g))
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    tango_gamedb::GAMES
-        .iter()
-        .find(|g| g.rom_code_and_revision == (code, revision))
-        .and_then(|g| game_from_gamedb_entry(*g))
+    tango_gamedb::find_by_rom_info(code, revision).and_then(|g| game_from_gamedb_entry(g))
 }
 
 pub trait Game

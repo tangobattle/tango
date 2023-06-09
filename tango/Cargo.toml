@@ -62,7 +62,7 @@ oneshot = "0.1"
 open = "3"
 parking_lot = { version = "0.12" }
 png = "0.17"
-pollster = '0.3'
+pollster = "0.3"
 prost = "0.10"
 rand = "0.8"
 rand_pcg = { version = "0.3", features = ["serde1"] }
