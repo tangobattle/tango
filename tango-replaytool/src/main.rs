@@ -44,6 +44,7 @@ pub enum Command {
         #[clap(default_value = "false", long)]
         disable_bgm: bool,
 
+        rom_path: std::path::PathBuf,
         output_path: std::path::PathBuf,
     },
 }
@@ -65,6 +66,7 @@ pub fn main() -> Result<(), anyhow::Error> {
             ffmpeg_video_flags,
             ffmpeg_mux_flags,
             disable_bgm,
+            rom_path,
             output_path,
         } => cmd_export(
             replay,
@@ -73,6 +75,7 @@ pub fn main() -> Result<(), anyhow::Error> {
             ffmpeg_video_flags,
             ffmpeg_mux_flags,
             disable_bgm,
+            rom_path,
             output_path,
         ),
     }
@@ -125,6 +128,21 @@ fn cmd_export(
     ffmpeg_video_flags: String,
     ffmpeg_mux_flags: String,
     disable_bgm: bool,
+    rom_path: std::path::PathBuf,
+    output_path: std::path::PathBuf,
+) -> Result<(), anyhow::Error> {
+    Ok(())
+}
+
+fn cmd_twosided_export(
+    replay: tango_pvp::replay::Replay,
+    ffmpeg: std::path::PathBuf,
+    ffmpeg_audio_flags: String,
+    ffmpeg_video_flags: String,
+    ffmpeg_mux_flags: String,
+    disable_bgm: bool,
+    local_rom_path: std::path::PathBuf,
+    remote_rom_path: std::path::PathBuf,
     output_path: std::path::PathBuf,
 ) -> Result<(), anyhow::Error> {
     Ok(())
