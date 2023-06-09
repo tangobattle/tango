@@ -1,0 +1,13 @@
+[package]
+name = "tango-replay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1"
+prost = "0.10"
+serde = { version = "1", features = ["derive"] }
+zstd = "0.11"
+
+[build-dependencies]
+prost-build = "0.10"

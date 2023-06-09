@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, replay, replayer, rom, stats, video};
+use crate::{audio, battle, config, game, net, replayer, rom, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -320,7 +320,7 @@ impl Session {
         patch: Option<(String, semver::Version)>,
         rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        replay: &replay::Replay,
+        replay: &tango_replay::Replay,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -337,7 +337,7 @@ impl Session {
         let replayer_state = replayer::State::new(
             (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             replay.local_player_index,
-            input_pairs,
+            input_pairs.iter().map(|p| p.clone().into()).collect(),
             0,
             Box::new({
                 let completion_flag = completion_flag.clone();
@@ -364,7 +364,8 @@ impl Session {
 
         let local_state = replay.local_state.clone();
         thread.handle().run_on_core(move |mut core| {
-            core.load_state(&local_state).expect("load state");
+            core.load_state(&mgba::state::State::from_slice(&local_state))
+                .expect("load state");
         });
         thread.handle().unpause();
 

@@ -4,7 +4,6 @@ use crate::config;
 use crate::game;
 use crate::lockstep;
 use crate::net;
-use crate::replay;
 use crate::replayer;
 use crate::session;
 use crate::shadow;
@@ -342,21 +341,21 @@ impl Match {
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
             replay_filename,
-            replay_writer: Some(replay::Writer::new(
+            replay_writer: Some(tango_replay::Writer::new(
                 Box::new(replay_file),
-                replay::Metadata {
+                tango_replay::Metadata {
                     ts: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as u64,
                     link_code: self.link_code.clone(),
-                    local_side: Some(replay::metadata::Side {
+                    local_side: Some(tango_replay::metadata::Side {
                         nickname: self.local_settings.nickname.clone(),
-                        game_info: Some(replay::metadata::GameInfo {
+                        game_info: Some(tango_replay::metadata::GameInfo {
                             rom_family: local_game_settings.family_and_variant.0.to_string(),
                             rom_variant: local_game_settings.family_and_variant.1 as u32,
                             patch: if let Some(patch) = local_game_settings.patch.as_ref() {
-                                Some(replay::metadata::game_info::Patch {
+                                Some(tango_replay::metadata::game_info::Patch {
                                     name: patch.name.clone(),
                                     version: patch.version.to_string(),
                                 })
@@ -366,13 +365,13 @@ impl Match {
                         }),
                         reveal_setup: self.local_settings.reveal_setup,
                     }),
-                    remote_side: Some(replay::metadata::Side {
+                    remote_side: Some(tango_replay::metadata::Side {
                         nickname: self.remote_settings.nickname.clone(),
-                        game_info: Some(replay::metadata::GameInfo {
+                        game_info: Some(tango_replay::metadata::GameInfo {
                             rom_family: remote_game_settings.family_and_variant.0.to_string(),
                             rom_variant: remote_game_settings.family_and_variant.1 as u32,
                             patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
-                                Some(replay::metadata::game_info::Patch {
+                                Some(tango_replay::metadata::game_info::Patch {
                                     name: patch.name.clone(),
                                     version: patch.version.to_string(),
                                 })
@@ -413,7 +412,7 @@ pub struct Round {
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
     replay_filename: std::path::PathBuf,
-    replay_writer: Option<replay::Writer>,
+    replay_writer: Option<tango_replay::Writer>,
     replayer: replayer::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
@@ -442,12 +441,12 @@ impl Round {
         self.replay_writer
             .as_mut()
             .unwrap()
-            .write_state(&state)
+            .write_state(state.as_slice())
             .expect("write local state");
         self.replay_writer
             .as_mut()
             .unwrap()
-            .write_state(&remote_state)
+            .write_state(remote_state.as_slice())
             .expect("write remote state");
         self.committed_state = Some(CommittedState {
             state,
@@ -570,7 +569,7 @@ impl Round {
             {
                 if let Some(replay_writer) = self.replay_writer.as_mut() {
                     replay_writer
-                        .write_input(self.local_player_index, ip)
+                        .write_input(self.local_player_index, &ip.clone().into())
                         .expect("write input");
                 }
             }

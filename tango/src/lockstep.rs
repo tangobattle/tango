@@ -12,6 +12,28 @@ pub struct Input {
     pub packet: Vec<u8>,
 }
 
+impl From<tango_replay::Input> for Input {
+    fn from(value: tango_replay::Input) -> Self {
+        Self {
+            local_tick: value.local_tick,
+            remote_tick: value.remote_tick,
+            joyflags: value.joyflags,
+            packet: value.packet,
+        }
+    }
+}
+
+impl From<Input> for tango_replay::Input {
+    fn from(value: Input) -> Self {
+        Self {
+            local_tick: value.local_tick,
+            remote_tick: value.remote_tick,
+            joyflags: value.joyflags,
+            packet: value.packet,
+        }
+    }
+}
+
 impl Input {
     pub fn lag(&self) -> i32 {
         self.remote_tick as i32 - self.local_tick as i32
@@ -59,6 +81,24 @@ where
 {
     pub local: T,
     pub remote: U,
+}
+
+impl From<tango_replay::InputPair> for Pair<Input, Input> {
+    fn from(value: tango_replay::InputPair) -> Self {
+        Self {
+            local: value.local.into(),
+            remote: value.remote.into(),
+        }
+    }
+}
+
+impl From<Pair<Input, Input>> for tango_replay::InputPair {
+    fn from(value: Pair<Input, Input>) -> Self {
+        Self {
+            local: value.local.into(),
+            remote: value.remote.into(),
+        }
+    }
 }
 
 impl<T, U> PairQueue<T, U>

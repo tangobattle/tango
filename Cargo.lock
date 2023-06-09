@@ -5497,8 +5497,6 @@ dependencies = [
  "plist",
  "png 0.17.6",
  "pollster",
- "prost",
- "prost-build",
  "rand 0.8.5",
  "rand_pcg",
  "raw-window-handle",
@@ -5521,6 +5519,7 @@ dependencies = [
  "sys-locale",
  "tango-dataview",
  "tango-protos",
+ "tango-replay",
  "tempfile",
  "thiserror",
  "time 0.3.14",
@@ -5562,6 +5561,17 @@ version = "4.0.40"
 dependencies = [
  "prost",
  "prost-build",
+]
+
+[[package]]
+name = "tango-replay"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "prost",
+ "prost-build",
+ "serde",
+ "zstd",
 ]
 
 [[package]]

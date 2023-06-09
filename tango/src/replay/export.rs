@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 use image::EncodableLayout;
 use tokio::io::AsyncWriteExt;
 
-use crate::{game, replay, replayer, video};
+use crate::{game, replayer, video};
 
 pub struct Settings {
     pub ffmpeg: Option<std::path::PathBuf>,
@@ -38,7 +38,7 @@ const SAMPLE_RATE: f64 = 48000.0;
 
 fn make_core_and_state(
     rom: &[u8],
-    replay: &replay::Replay,
+    replay: &tango_replay::Replay,
     settings: &Settings,
 ) -> anyhow::Result<(mgba::core::Core, replayer::State)> {
     let mut core = mgba::core::Core::new_gba("tango")?;
@@ -59,7 +59,7 @@ fn make_core_and_state(
     let replayer_state = replayer::State::new(
         (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
         replay.local_player_index,
-        input_pairs,
+        input_pairs.iter().map(|p| p.clone().into()).collect(),
         0,
         Box::new(|| {}),
     );
@@ -76,7 +76,8 @@ fn make_core_and_state(
         traps.extend(hooks.replayer_playback_traps());
         core.set_traps(traps);
     }
-    core.as_mut().load_state(&replay.local_state)?;
+    core.as_mut()
+        .load_state(&mgba::state::State::from_slice(&replay.local_state))?;
 
     Ok((core, replayer_state))
 }
@@ -212,7 +213,7 @@ fn make_mux_ffmpeg(
 
 pub async fn export(
     rom: &[u8],
-    replay: &replay::Replay,
+    replay: &tango_replay::Replay,
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
@@ -299,7 +300,7 @@ pub async fn export(
 pub async fn export_twosided(
     local_rom: &[u8],
     remote_rom: &[u8],
-    replay: &replay::Replay,
+    replay: &tango_replay::Replay,
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),

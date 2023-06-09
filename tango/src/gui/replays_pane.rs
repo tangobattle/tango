@@ -1,11 +1,11 @@
 use fluent_templates::Loader;
 
-use crate::{audio, game, gui, i18n, patch, replay, rom, scanner, session, stats};
+use crate::{audio, game, gui, i18n, patch, rom, scanner, session, stats};
 
 struct Selection {
     path: std::path::PathBuf,
     game: &'static (dyn game::Game + Send + Sync),
-    replay: replay::Replay,
+    replay: tango_replay::Replay,
     save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
@@ -15,7 +15,7 @@ struct Selection {
 }
 
 pub struct State {
-    replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, replay::Metadata)>>,
+    replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, tango_replay::Metadata)>>,
     selection: Option<Selection>,
 }
 
@@ -55,7 +55,7 @@ impl State {
                             }
                         };
 
-                        let (num_inputs, metadata) = match replay::read_metadata(&mut f) {
+                        let (num_inputs, metadata) = match tango_replay::read_metadata(&mut f) {
                             Ok((n, metadata)) => (n, metadata),
                             Err(_) => {
                                 continue;
@@ -224,7 +224,7 @@ pub fn show(
                                 }
                             };
 
-                            let replay = match replay::Replay::decode(&mut f) {
+                            let replay = match tango_replay::Replay::decode(&mut f) {
                                 Ok(replay) => replay,
                                 Err(e) => {
                                     log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -232,7 +232,9 @@ pub fn show(
                                 }
                             };
 
-                            let save = match local_game.save_from_wram(replay.local_state.wram()) {
+                            let save = match local_game
+                                .save_from_wram(mgba::state::State::from_slice(&replay.local_state).wram())
+                            {
                                 Ok(save) => save,
                                 Err(e) => {
                                     log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -293,7 +295,7 @@ pub fn show(
 
                             let assets = match local_game.load_rom_assets(
                                 &local_rom,
-                                replay.local_state.wram(),
+                                mgba::state::State::from_slice(&replay.local_state).wram(),
                                 &patch
                                     .as_ref()
                                     .map(|(_, _, metadata)| metadata.rom_overrides.clone())
