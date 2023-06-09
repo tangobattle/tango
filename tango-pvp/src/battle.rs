@@ -3,7 +3,7 @@ use rand::Rng;
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub enum BattleResult {
+pub enum BattleOutcome {
     Loss,
     Win,
 }
@@ -18,7 +18,7 @@ pub struct CommittedState {
 pub struct RoundState {
     pub number: u8,
     pub round: Option<Round>,
-    pub last_result: Option<BattleResult>,
+    pub last_outcome: Option<BattleOutcome>,
 }
 
 impl RoundState {
@@ -34,8 +34,8 @@ impl RoundState {
         Ok(())
     }
 
-    pub fn set_last_result(&mut self, last_result: BattleResult) {
-        self.last_result = Some(last_result);
+    pub fn set_last_outcome(&mut self, last_outcome: BattleOutcome) {
+        self.last_outcome = Some(last_outcome);
     }
 }
 
@@ -89,10 +89,10 @@ impl Match {
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let did_polite_win_last_round = rng.gen::<bool>();
-        let last_result = if did_polite_win_last_round == is_offerer {
-            BattleResult::Win
+        let last_outcome = if did_polite_win_last_round == is_offerer {
+            BattleOutcome::Win
         } else {
-            BattleResult::Loss
+            BattleOutcome::Loss
         };
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(crate::shadow::Shadow::new(
@@ -101,7 +101,7 @@ impl Match {
                 remote_hooks,
                 match_type,
                 is_offerer,
-                last_result,
+                last_outcome,
                 rng.clone(),
             )?)),
             local_hooks,
@@ -114,7 +114,7 @@ impl Match {
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
-                last_result: Some(last_result),
+                last_outcome: Some(last_outcome),
             }),
             is_offerer,
             primary_thread_handle,
@@ -229,9 +229,9 @@ impl Match {
     pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
-        let local_player_index = match round_state.last_result.take().unwrap() {
-            BattleResult::Win => 0,
-            BattleResult::Loss => 1,
+        let local_player_index = match round_state.last_outcome.take().unwrap() {
+            BattleOutcome::Win => 0,
+            BattleOutcome::Loss => 1,
         };
         log::info!("starting round: local_player_index = {}", local_player_index);
 
@@ -355,7 +355,7 @@ impl Round {
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
-    ) -> anyhow::Result<Option<BattleResult>> {
+    ) -> anyhow::Result<Option<BattleOutcome>> {
         let local_tick = self.current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input.local_tick;
 
@@ -506,17 +506,17 @@ impl Round {
             }
         }
 
-        Ok(Some(match round_result.result {
-            crate::stepper::BattleResult::Draw => self.on_draw_result(),
-            crate::stepper::BattleResult::Loss => BattleResult::Loss,
-            crate::stepper::BattleResult::Win => BattleResult::Win,
+        Ok(Some(match round_result.outcome {
+            crate::stepper::BattleOutcome::Draw => self.on_draw_outcome(),
+            crate::stepper::BattleOutcome::Loss => BattleOutcome::Loss,
+            crate::stepper::BattleOutcome::Win => BattleOutcome::Win,
         }))
     }
 
-    pub fn on_draw_result(&self) -> BattleResult {
+    pub fn on_draw_outcome(&self) -> BattleOutcome {
         match self.local_player_index {
-            0 => BattleResult::Win,
-            1 => BattleResult::Loss,
+            0 => BattleOutcome::Win,
+            1 => BattleOutcome::Loss,
             _ => unreachable!(),
         }
     }

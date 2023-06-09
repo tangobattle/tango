@@ -258,7 +258,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     let mut round_state = crate::sync::block_on(match_.lock_round_state());
-                    round_state.set_last_result(crate::battle::BattleResult::Win);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
@@ -273,7 +273,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     let mut round_state = crate::sync::block_on(match_.lock_round_state());
-                    round_state.set_last_result(crate::battle::BattleResult::Loss);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
@@ -288,7 +288,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     let mut round_state = crate::sync::block_on(match_.lock_round_state());
-                    round_state.set_last_result(crate::battle::BattleResult::Win);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
@@ -303,7 +303,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     let mut round_state = crate::sync::block_on(match_.lock_round_state());
-                    round_state.set_last_result(crate::battle::BattleResult::Loss);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
@@ -320,9 +320,9 @@ impl crate::hooks::Hooks for Hooks {
                     let mut round_state = crate::sync::block_on(match_.lock_round_state());
                     let result = {
                         let round = round_state.round.as_ref().expect("round");
-                        round.on_draw_result()
+                        round.on_draw_outcome()
                     };
-                    round_state.set_last_result(result);
+                    round_state.set_last_outcome(result);
                 })
             }),
             (self.offsets.rom.round_set_ending, {
@@ -583,28 +583,28 @@ impl crate::hooks::Hooks for Hooks {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_| {
                     let mut round_state = shadow_state.lock_round_state();
-                    round_state.set_last_result(crate::battle::BattleResult::Loss);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_| {
                     let mut round_state = shadow_state.lock_round_state();
-                    round_state.set_last_result(crate::battle::BattleResult::Win);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_| {
                     let mut round_state = shadow_state.lock_round_state();
-                    round_state.set_last_result(crate::battle::BattleResult::Loss);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_| {
                     let mut round_state = shadow_state.lock_round_state();
-                    round_state.set_last_result(crate::battle::BattleResult::Win);
+                    round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
@@ -613,9 +613,9 @@ impl crate::hooks::Hooks for Hooks {
                     let mut round_state = shadow_state.lock_round_state();
                     let result = {
                         let round = round_state.round.as_mut().expect("round");
-                        round.on_draw_result()
+                        round.on_draw_outcome()
                     };
-                    round_state.set_last_result(result);
+                    round_state.set_last_outcome(result);
                 })
             }),
             (self.offsets.rom.round_start_ret, {
@@ -1079,35 +1079,35 @@ impl crate::hooks::Hooks for Hooks {
                 let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
                     let mut stepper_state = stepper_state.lock_inner();
-                    stepper_state.set_round_result(crate::stepper::BattleResult::Win);
+                    stepper_state.set_round_result(crate::stepper::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
                 let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
                     let mut stepper_state = stepper_state.lock_inner();
-                    stepper_state.set_round_result(crate::stepper::BattleResult::Loss);
+                    stepper_state.set_round_result(crate::stepper::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
                 let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
                     let mut stepper_state = stepper_state.lock_inner();
-                    stepper_state.set_round_result(crate::stepper::BattleResult::Win);
+                    stepper_state.set_round_result(crate::stepper::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
                     let mut stepper_state = stepper_state.lock_inner();
-                    stepper_state.set_round_result(crate::stepper::BattleResult::Loss);
+                    stepper_state.set_round_result(crate::stepper::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
                 let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
                     let mut stepper_state = stepper_state.lock_inner();
-                    stepper_state.set_round_result(crate::stepper::BattleResult::Draw);
+                    stepper_state.set_round_result(crate::stepper::BattleOutcome::Draw);
                 })
             }),
         ]

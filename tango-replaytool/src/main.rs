@@ -290,7 +290,7 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
     };
 
     if let Some(result) = result {
-        println!("{}", result.result as u8);
+        println!("{}", result.outcome as u8);
     } else {
         return Err(anyhow::anyhow!("failed to read round result"));
     }

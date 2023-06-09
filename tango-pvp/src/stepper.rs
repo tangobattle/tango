@@ -42,10 +42,10 @@ impl InnerState {
         self.match_type
     }
 
-    pub fn set_round_result(&mut self, result: BattleResult) {
+    pub fn set_round_result(&mut self, outcome: BattleOutcome) {
         self.round_result = Some(RoundResult {
             tick: self.current_tick,
-            result,
+            outcome,
         });
     }
 
@@ -176,7 +176,7 @@ pub struct FastforwardResult {
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
 #[repr(i8)]
-pub enum BattleResult {
+pub enum BattleOutcome {
     Draw = -1,
     Loss = 0,
     Win = 1,
@@ -192,7 +192,7 @@ enum RoundPhase {
 #[derive(Clone, Copy)]
 pub struct RoundResult {
     pub tick: u32,
-    pub result: BattleResult,
+    pub outcome: BattleOutcome,
 }
 
 pub struct Fastforwarder {

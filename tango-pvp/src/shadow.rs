@@ -8,10 +8,10 @@ pub struct Round {
 }
 
 impl Round {
-    pub fn on_draw_result(&self) -> crate::battle::BattleResult {
+    pub fn on_draw_outcome(&self) -> crate::battle::BattleOutcome {
         match self.local_player_index {
-            0 => crate::battle::BattleResult::Win,
-            1 => crate::battle::BattleResult::Loss,
+            0 => crate::battle::BattleOutcome::Win,
+            1 => crate::battle::BattleOutcome::Loss,
             _ => unreachable!(),
         }
     }
@@ -73,12 +73,12 @@ impl Round {
 
 pub struct RoundState {
     pub round: Option<Round>,
-    pub last_result: Option<crate::battle::BattleResult>,
+    pub last_outcome: Option<crate::battle::BattleOutcome>,
 }
 
 impl RoundState {
-    pub fn set_last_result(&mut self, last_result: crate::battle::BattleResult) {
-        self.last_result = Some(last_result);
+    pub fn set_last_outcome(&mut self, last_outcome: crate::battle::BattleOutcome) {
+        self.last_outcome = Some(last_outcome);
     }
 }
 
@@ -110,7 +110,7 @@ impl State {
         match_type: (u8, u8),
         is_offerer: bool,
         rng: rand_pcg::Mcg128Xsl64,
-        last_result: crate::battle::BattleResult,
+        last_outcome: crate::battle::BattleOutcome,
     ) -> State {
         State(std::sync::Arc::new(InnerState {
             match_type,
@@ -118,7 +118,7 @@ impl State {
             rng: parking_lot::Mutex::new(rng),
             round_state: parking_lot::Mutex::new(RoundState {
                 round: None,
-                last_result: Some(last_result),
+                last_outcome: Some(last_outcome),
             }),
             applied_state: parking_lot::Mutex::new(None),
             error: parking_lot::Mutex::new(None),
@@ -143,9 +143,9 @@ impl State {
 
     pub fn start_round(&self) {
         let mut round_state = self.0.round_state.lock();
-        let local_player_index = match round_state.last_result.take().unwrap() {
-            crate::battle::BattleResult::Win => 0,
-            crate::battle::BattleResult::Loss => 1,
+        let local_player_index = match round_state.last_outcome.take().unwrap() {
+            crate::battle::BattleOutcome::Win => 0,
+            crate::battle::BattleOutcome::Loss => 1,
         };
         log::info!("starting shadow round: local_player_index = {}", local_player_index);
         round_state.round = Some(Round {
@@ -180,7 +180,7 @@ impl Shadow {
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         is_offerer: bool,
-        battle_result: crate::battle::BattleResult,
+        battle_result: crate::battle::BattleOutcome,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
