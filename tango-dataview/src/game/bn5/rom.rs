@@ -418,7 +418,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn color(&self) -> Option<crate::rom::NavicustPartColor> {
-        let raw: RawNavicustPart = self.raw();
+        let raw = self.raw();
         Some(match raw.color {
             1 => crate::rom::NavicustPartColor::White,
             2 => crate::rom::NavicustPartColor::Yellow,

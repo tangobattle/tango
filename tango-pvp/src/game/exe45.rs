@@ -102,7 +102,7 @@ impl crate::hooks::Hooks for Hooks {
 
                     let mut rng = crate::sync::block_on(match_.lock_rng());
 
-                    let match_type: u32 = match_.match_type().0 as u32;
+                    let match_type = match_.match_type().0 as u32;
                     let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
 
                     let (battle_settings, background) =
@@ -386,7 +386,7 @@ impl crate::hooks::Hooks for Hooks {
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
 
-                        let match_type: u32 = shadow_state.match_type().0 as u32;
+                        let match_type = shadow_state.match_type().0 as u32;
                         let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
 
                         let (battle_settings, background) =

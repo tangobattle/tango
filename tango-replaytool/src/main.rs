@@ -138,7 +138,7 @@ async fn cmd_export(
     let rom = std::fs::read(&rom_path)?;
     let detected_game = tango_gamedb::detect(&rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
 
-    let game_info: &tango_pvp::replay::metadata::GameInfo = replay
+    let game_info = replay
         .metadata
         .local_side
         .as_ref()
