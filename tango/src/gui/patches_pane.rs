@@ -199,7 +199,7 @@ pub fn show(
                                     let mut games = version_info.supported_games.iter().cloned().collect::<Vec<_>>();
                                     game::sort_games(language, &mut games);
                                     for game in games.iter() {
-                                        let (family, variant) = game.family_and_variant();
+                                        let (family, variant) = game.gamedb_entry().family_and_variant;
                                         ui.label(
                                             i18n::LOCALES
                                                 .lookup(language, &format!("game-{}.variant-{}", family, variant))

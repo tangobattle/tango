@@ -60,7 +60,7 @@ fn create_new_save(
     patch: Option<&(String, semver::Version, patch::Version)>,
     name: &str,
 ) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
-    let (family, variant) = game.family_and_variant();
+    let (family, variant) = game.gamedb_entry().family_and_variant;
     let mut prefix = i18n::LOCALES
         .lookup(language, &format!("game-{}.variant-{}", family, variant))
         .unwrap();
@@ -116,7 +116,7 @@ pub fn show(
             }
 
             if let Some(selection_state) = show.as_ref().unwrap().selection.as_ref() {
-                let (family, variant) = selection_state.game.family_and_variant();
+                let (family, variant) = selection_state.game.gamedb_entry().family_and_variant;
                 let game_name = i18n::LOCALES
                     .lookup(language, &format!("game-{}.variant-{}", family, variant))
                     .unwrap();
@@ -208,7 +208,7 @@ pub fn show(
                             })
                             .unwrap_or_else(|| vec![])
                     } else {
-                        vec![selection.game.family_and_variant().0]
+                        vec![selection.game.gamedb_entry().family_and_variant.0]
                     };
 
                     if let Some(nc) = gui::play_pane::get_netplay_compatibility(
@@ -299,7 +299,7 @@ pub fn show(
                                     remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
                                     &patches,
                                 ) {
-                                    if nc != selection.game.family_and_variant().0 {
+                                    if nc != selection.game.gamedb_entry().family_and_variant.0 {
                                         return Some(gui::play_pane::Warning::Incompatible);
                                     }
                                 }
@@ -438,7 +438,7 @@ pub fn show(
                                 *patch_selection = Some(name.to_string());
 
                                 let rom = roms.get(&selection.game).unwrap().clone();
-                                let (rom_code, revision) = selection.game.rom_code_and_revision();
+                                let (rom_code, revision) = selection.game.gamedb_entry().rom_code_and_revision;
                                 let version = *supported_versions.first().unwrap();
 
                                 let version_metadata = if let Some(version_metadata) =
@@ -677,7 +677,7 @@ pub fn show(
                                     }
                                     if resp.clicked() {
                                         let rom = roms.get(&selection.game).unwrap().clone();
-                                        let (rom_code, revision) = selection.game.rom_code_and_revision();
+                                        let (rom_code, revision) = selection.game.gamedb_entry().rom_code_and_revision;
 
                                         let version_metadata = if let Some(version_metadata) =
                                             patches.get(&patch_name).and_then(|p| p.versions.get(version)).cloned()
@@ -807,7 +807,11 @@ pub fn show(
                                                                 language,
                                                                 &format!(
                                                                     "game-{}.save-{}",
-                                                                    selection_state.game.family_and_variant().0,
+                                                                    selection_state
+                                                                        .game
+                                                                        .gamedb_entry()
+                                                                        .family_and_variant
+                                                                        .0,
                                                                     name
                                                                 ),
                                                             )
@@ -853,7 +857,8 @@ pub fn show(
                                         } else {
                                             let mut rom = roms.get(&selection_state.game).unwrap().clone();
                                             if let Some((name, version, _)) = selection_state.patch.as_ref() {
-                                                let (rom_code, revision) = selection_state.game.rom_code_and_revision();
+                                                let (rom_code, revision) =
+                                                    selection_state.game.gamedb_entry().rom_code_and_revision;
                                                 rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection_state.game,
@@ -987,7 +992,7 @@ pub fn show(
                                                     let mut rom = roms.get(&selection_state.game).unwrap().clone();
                                                     if let Some((name, version, _)) = selection_state.patch.as_ref() {
                                                         let (rom_code, revision) =
-                                                            selection_state.game.rom_code_and_revision();
+                                                            selection_state.game.gamedb_entry().rom_code_and_revision;
                                                         rom = match patch::apply_patch_from_disk(
                                                             &rom,
                                                             selection_state.game,
@@ -1065,7 +1070,8 @@ pub fn show(
                                         } else {
                                             let mut rom = roms.get(&selection_state.game).unwrap().clone();
                                             if let Some((name, version, _)) = selection_state.patch.as_ref() {
-                                                let (rom_code, revision) = selection_state.game.rom_code_and_revision();
+                                                let (rom_code, revision) =
+                                                    selection_state.game.gamedb_entry().rom_code_and_revision;
                                                 rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection_state.game,
@@ -1101,7 +1107,7 @@ pub fn show(
                                 .map(|g| (true, g))
                                 .chain(games.iter().filter(|g| !roms.contains_key(*g)).map(|g| (false, g)))
                             {
-                                let (family, variant) = game.family_and_variant();
+                                let (family, variant) = game.gamedb_entry().family_and_variant;
 
                                 let selected = show
                                     .as_ref()
@@ -1118,11 +1124,9 @@ pub fn show(
                                         return None;
                                     };
 
-                                    if !remote_settings
-                                        .available_games
-                                        .iter()
-                                        .any(|(family, variant)| game.family_and_variant() == (family, *variant))
-                                    {
+                                    if !remote_settings.available_games.iter().any(|(family, variant)| {
+                                        game.gamedb_entry().family_and_variant == (family, *variant)
+                                    }) {
                                         return Some(gui::play_pane::Warning::NoRemoteROM(*game));
                                     }
 
