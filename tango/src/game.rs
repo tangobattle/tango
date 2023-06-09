@@ -30,29 +30,21 @@ impl std::fmt::Debug for &'static (dyn Game + Send + Sync) {
     }
 }
 
-pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
-    bn1::EXE1,
-    bn1::BN1,
-    bn2::EXE2,
-    bn2::BN2,
-    bn3::EXE3W,
-    bn3::EXE3B,
-    bn3::BN3W,
-    bn3::BN3B,
-    bn4::EXE4RS,
-    bn4::EXE4BM,
-    bn4::BN4RS,
-    bn4::BN4BM,
-    exe45::EXE45,
-    bn5::EXE5B,
-    bn5::EXE5C,
-    bn5::BN5P,
-    bn5::BN5C,
-    bn6::EXE6G,
-    bn6::EXE6F,
-    bn6::BN6G,
-    bn6::BN6F,
-];
+pub fn game_from_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dyn Game + Send + Sync)> {
+    Some(match entry.family_and_variant {
+        ("exe1", 0) => bn1::EXE1,
+        ("bn1", 0) => bn1::BN1,
+        ("exe2", 0) => bn2::EXE2,
+        ("bn2", 0) => bn2::BN2,
+        ("exe3", 0) => bn3::EXE3W,
+        ("exe3", 1) => bn3::EXE3B,
+        ("bn3", 0) => bn3::BN3W,
+        ("bn3", 1) => bn3::BN3B,
+        _ => {
+            return None;
+        }
+    })
+}
 
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
@@ -255,23 +247,26 @@ pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static 
 }
 
 pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static (dyn Game + Send + Sync)> {
-    let mut games = GAMES.to_vec();
+    let mut games = tango_gamedb::GAMES
+        .iter()
+        .flat_map(|g| game_from_gamedb_entry(*g))
+        .collect::<Vec<_>>();
     sort_games(lang, &mut games);
     games
 }
 
 pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    GAMES
+    tango_gamedb::GAMES
         .iter()
-        .find(|game| game.gamedb_entry().family_and_variant == (family, variant))
-        .map(|g| *g)
+        .find(|g| g.family_and_variant == (family, variant))
+        .and_then(|g| game_from_gamedb_entry(*g))
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    GAMES
+    tango_gamedb::GAMES
         .iter()
-        .find(|game| game.gamedb_entry().rom_code_and_revision == (code, revision))
-        .map(|g| *g)
+        .find(|g| g.rom_code_and_revision == (code, revision))
+        .and_then(|g| game_from_gamedb_entry(*g))
 }
 
 pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::Error> {
