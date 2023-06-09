@@ -239,15 +239,15 @@ pub fn show(
                                     .local_side
                                     .as_ref()
                                     .and_then(|side| side.game_info.as_ref())
-                                    .ok_or(anyhow::anyhow!("missing game info")).unwrap();
+                                    .ok_or(anyhow::anyhow!("missing local game info")).unwrap();
                                 let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
 
                                 let remote_game_info = replay
                                     .metadata
-                                    .local_side
+                                    .remote_side
                                     .as_ref()
                                     .and_then(|side| side.game_info.as_ref())
-                                    .ok_or(anyhow::anyhow!("missing game info")).unwrap();
+                                    .ok_or(anyhow::anyhow!("missing remote game info")).unwrap();
                                 let remote_game = crate::game::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8).unwrap();
 
                                 tokio::select! {
@@ -263,7 +263,7 @@ pub fn show(
                                     .local_side
                                     .as_ref()
                                     .and_then(|side| side.game_info.as_ref())
-                                    .ok_or(anyhow::anyhow!("missing game info")).unwrap();
+                                    .ok_or(anyhow::anyhow!("missing local game info")).unwrap();
                                 let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
 
                                 tokio::select! {
