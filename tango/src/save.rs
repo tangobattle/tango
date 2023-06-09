@@ -38,7 +38,7 @@ pub fn scan_saves(
         for game in game::GAMES.iter() {
             match game.parse_save(&buf) {
                 Ok(save) => {
-                    log::info!("{}: {:?}", path.display(), game.family_and_variant());
+                    log::info!("{}: {:?}", path.display(), game.gamedb_entry().family_and_variant);
                     let saves = paths.entry(*game).or_insert_with(|| vec![]);
                     saves.push(ScannedSave {
                         path: path.to_path_buf(),
@@ -58,7 +58,7 @@ pub fn scan_saves(
                 path.display(),
                 errors
                     .iter()
-                    .map(|(k, v)| format!("{:?}: {}", k.family_and_variant(), v))
+                    .map(|(k, v)| format!("{:?}: {}", k.gamedb_entry().family_and_variant, v))
                     .collect::<Vec<_>>()
                     .join("\n")
             );

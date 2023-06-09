@@ -399,7 +399,7 @@ pub fn apply_patch_from_disk(
         anyhow::bail!("attempted path traversal in patch name");
     }
 
-    let (rom_code, revision) = game.rom_code_and_revision();
+    let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision;
     let raw = std::fs::read(
         patches_path
             .join(&patch_name)

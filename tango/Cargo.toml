@@ -85,6 +85,7 @@ steamlocate = "1"
 subtle = "2"
 sys-locale = "0.2"
 tango-dataview = { path = "../tango-dataview" }
+tango-gamedb = { path = "../tango-gamedb" }
 tango-protos = { path = "../tango-protos" }
 tango-pvp = { path = "../tango-pvp" }
 tempfile = "3"

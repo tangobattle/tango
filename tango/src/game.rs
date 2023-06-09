@@ -124,7 +124,7 @@ fn scan_bnlc_rom_archive(
                     "bnlc: {}/{}: {:?}",
                     path.display(),
                     entry_path.display(),
-                    game.family_and_variant()
+                    game.gamedb_entry().family_and_variant
                 );
                 game
             }
@@ -208,7 +208,11 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
 
         let game = match detect(&rom) {
             Ok(game) => {
-                log::info!("roms folder: {}: {:?}", path.display(), game.family_and_variant());
+                log::info!(
+                    "roms folder: {}: {:?}",
+                    path.display(),
+                    game.gamedb_entry().family_and_variant
+                );
                 game
             }
             Err(e) => {
@@ -230,11 +234,22 @@ pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (
     roms
 }
 
+pub fn region_to_language(region: tango_gamedb::Region) -> unic_langid::LanguageIdentifier {
+    match region {
+        tango_gamedb::Region::US => unic_langid::langid!("en-US"),
+        tango_gamedb::Region::JP => unic_langid::langid!("ja-JP"),
+    }
+}
+
 pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static (dyn Game + Send + Sync)]) {
     games.sort_by_key(|g| {
         (
-            if g.language().matches(lang, true, true) { 0 } else { 1 },
-            g.family_and_variant(),
+            if region_to_language(g.gamedb_entry().region).matches(lang, true, true) {
+                0
+            } else {
+                1
+            },
+            g.gamedb_entry().family_and_variant,
         )
     });
 }
@@ -248,14 +263,14 @@ pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static 
 pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES
         .iter()
-        .find(|game| game.family_and_variant() == (family, variant))
+        .find(|game| game.gamedb_entry().family_and_variant == (family, variant))
         .map(|g| *g)
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES
         .iter()
-        .find(|game| game.rom_code_and_revision() == (code, revision))
+        .find(|game| game.gamedb_entry().rom_code_and_revision == (code, revision))
         .map(|g| *g)
 }
 
@@ -267,10 +282,10 @@ pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::E
     let rom_revision = rom.get(0xbc).ok_or(anyhow::anyhow!("out of range"))?;
     let game = find_by_rom_info(rom_code, *rom_revision).ok_or(anyhow::anyhow!("unknown game"))?;
     let crc32 = crc32fast::hash(rom);
-    if crc32 != game.expected_crc32() {
+    if crc32 != game.gamedb_entry().crc32 {
         anyhow::bail!(
             "mismatched crc32: expected {:08x}, got {:08x}",
-            game.expected_crc32(),
+            game.gamedb_entry().crc32,
             crc32
         );
     }
@@ -281,10 +296,7 @@ pub trait Game
 where
     Self: Any,
 {
-    fn family_and_variant(&self) -> (&str, u8);
-    fn language(&self) -> unic_langid::LanguageIdentifier;
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
-    fn expected_crc32(&self) -> u32;
+    fn gamedb_entry(&self) -> &tango_gamedb::Game;
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
