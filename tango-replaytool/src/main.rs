@@ -44,7 +44,11 @@ pub enum Command {
         #[clap(default_value = "false", long)]
         disable_bgm: bool,
 
-        rom_path: std::path::PathBuf,
+        local_rom_path: std::path::PathBuf,
+
+        #[clap(default_value = "None", long)]
+        remote_rom_path: Option<std::path::PathBuf>,
+
         output_path: std::path::PathBuf,
     },
 }
@@ -67,7 +71,8 @@ pub async fn main() -> Result<(), anyhow::Error> {
             ffmpeg_video_flags,
             ffmpeg_mux_flags,
             disable_bgm,
-            rom_path,
+            local_rom_path,
+            remote_rom_path,
             output_path,
         } => {
             cmd_export(
@@ -77,7 +82,8 @@ pub async fn main() -> Result<(), anyhow::Error> {
                 ffmpeg_video_flags,
                 ffmpeg_mux_flags,
                 disable_bgm,
-                rom_path,
+                local_rom_path,
+                remote_rom_path,
                 output_path,
             )
             .await
@@ -132,63 +138,79 @@ async fn cmd_export(
     ffmpeg_video_flags: String,
     ffmpeg_mux_flags: String,
     disable_bgm: bool,
-    rom_path: std::path::PathBuf,
+    local_rom_path: std::path::PathBuf,
+    remote_rom_path: Option<std::path::PathBuf>,
     output_path: std::path::PathBuf,
 ) -> Result<(), anyhow::Error> {
-    let rom = std::fs::read(&rom_path)?;
-    let detected_game = tango_gamedb::detect(&rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+    let bar: indicatif::ProgressBar = indicatif::ProgressBar::new(0);
+    let cb = move |current, total| {
+        bar.set_length(total as u64);
+        bar.set_position(current as u64);
+    };
 
-    let game_info = replay
+    let settings = tango_pvp::replay::export::Settings {
+        ffmpeg: Some(ffmpeg),
+        ffmpeg_audio_flags,
+        ffmpeg_video_flags,
+        ffmpeg_mux_flags,
+        disable_bgm,
+    };
+
+    let local_rom = std::fs::read(&local_rom_path)?;
+    let local_detected_game = tango_gamedb::detect(&local_rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+    let local_game_info = replay
         .metadata
         .local_side
         .as_ref()
         .and_then(|side| side.game_info.as_ref())
         .ok_or(anyhow::anyhow!("missing local game info"))?;
-    let game = tango_gamedb::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8).unwrap();
-
-    if game != detected_game {
+    let local_game =
+        tango_gamedb::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8)
+            .unwrap();
+    let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game).unwrap();
+    if local_game != local_detected_game {
         return Err(anyhow::format_err!(
             "expected game {:?}, got {:?}",
-            game.family_and_variant,
-            detected_game.family_and_variant
+            local_game.family_and_variant,
+            local_detected_game.family_and_variant
         ));
     }
 
-    let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game).unwrap();
-    let bar = indicatif::ProgressBar::new(0);
+    if let Some(remote_rom_path) = remote_rom_path {
+        let remote_rom = std::fs::read(&remote_rom_path)?;
+        let remote_detected_game = tango_gamedb::detect(&remote_rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+        let remote_game_info = replay
+            .metadata
+            .remote_side
+            .as_ref()
+            .and_then(|side| side.game_info.as_ref())
+            .ok_or(anyhow::anyhow!("missing remote game info"))?;
+        let remote_game =
+            tango_gamedb::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8)
+                .unwrap();
+        let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game).unwrap();
+        if remote_game != remote_detected_game {
+            return Err(anyhow::format_err!(
+                "expected game {:?}, got {:?}",
+                remote_game.family_and_variant,
+                remote_detected_game.family_and_variant
+            ));
+        }
 
-    tango_pvp::replay::export::export(
-        &rom,
-        hooks,
-        &replay,
-        &output_path,
-        &tango_pvp::replay::export::Settings {
-            ffmpeg: Some(ffmpeg),
-            ffmpeg_audio_flags,
-            ffmpeg_video_flags,
-            ffmpeg_mux_flags,
-            disable_bgm,
-        },
-        move |current, total| {
-            bar.set_length(total as u64);
-            bar.set_position(current as u64);
-        },
-    )
-    .await?;
+        tango_pvp::replay::export::export_twosided(
+            &local_rom,
+            local_hooks,
+            &remote_rom,
+            remote_hooks,
+            &replay,
+            &output_path,
+            &settings,
+            cb,
+        )
+        .await?;
+    } else {
+        tango_pvp::replay::export::export(&local_rom, local_hooks, &replay, &output_path, &settings, cb).await?;
+    }
 
-    Ok(())
-}
-
-async fn cmd_twosided_export(
-    replay: tango_pvp::replay::Replay,
-    ffmpeg: std::path::PathBuf,
-    ffmpeg_audio_flags: String,
-    ffmpeg_video_flags: String,
-    ffmpeg_mux_flags: String,
-    disable_bgm: bool,
-    local_rom_path: std::path::PathBuf,
-    remote_rom_path: std::path::PathBuf,
-    output_path: std::path::PathBuf,
-) -> Result<(), anyhow::Error> {
     Ok(())
 }
