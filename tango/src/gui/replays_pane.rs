@@ -198,7 +198,10 @@ pub fn show(
                                             i18n::LOCALES
                                                 .lookup(
                                                     language,
-                                                    &format!("game-{}.short", local_game.family_and_variant().0),
+                                                    &format!(
+                                                        "game-{}.short",
+                                                        local_game.gamedb_entry().family_and_variant.0
+                                                    ),
                                                 )
                                                 .unwrap()
                                                 .into(),
@@ -265,7 +268,7 @@ pub fn show(
                                     continue;
                                 };
 
-                                let (rom_code, revision) = local_game.rom_code_and_revision();
+                                let (rom_code, revision) = local_game.gamedb_entry().rom_code_and_revision;
 
                                 local_rom = match patch::apply_patch_from_disk(
                                     &local_rom,
@@ -316,7 +319,7 @@ pub fn show(
                                             return None;
                                         };
 
-                                        let (rom_code, revision) = remote_game.rom_code_and_revision();
+                                        let (rom_code, revision) = remote_game.gamedb_entry().rom_code_and_revision;
 
                                         rom = match patch::apply_patch_from_disk(
                                             &rom,
@@ -441,7 +444,7 @@ pub fn show(
                         });
                     });
                     if let Some(assets) = selection.assets.as_ref() {
-                        let game_language = selection.game.language();
+                        let game_language = crate::game::region_to_language(selection.game.gamedb_entry().region);
                         gui::save_view::show(
                             ui,
                             false,

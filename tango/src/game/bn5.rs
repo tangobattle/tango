@@ -6,20 +6,8 @@ struct EXE5BImpl;
 pub const EXE5B: &'static (dyn game::Game + Send + Sync) = &EXE5BImpl {};
 
 impl game::Game for EXE5BImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BRBJ", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe5", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xc73f23c0
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::BRBJ_00
     }
 
     fn match_types(&self) -> &[usize] {
@@ -108,20 +96,8 @@ struct EXE5CImpl;
 pub const EXE5C: &'static (dyn game::Game + Send + Sync) = &EXE5CImpl {};
 
 impl game::Game for EXE5CImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BRKJ", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe5", 1)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0x16842635
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::BRKJ_00
     }
 
     fn match_types(&self) -> &[usize] {
@@ -210,20 +186,8 @@ struct BN5PImpl;
 pub const BN5P: &'static (dyn game::Game + Send + Sync) = &BN5PImpl {};
 
 impl game::Game for BN5PImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BRBE", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("bn5", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("en-US")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xa73e83a4
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::BRBE_00
     }
 
     fn match_types(&self) -> &[usize] {
@@ -312,20 +276,8 @@ struct BN5CImpl;
 pub const BN5C: &'static (dyn game::Game + Send + Sync) = &BN5CImpl {};
 
 impl game::Game for BN5CImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BRKE", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("bn5", 1)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("en-US")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xa552f683
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::BRKE_00
     }
 
     fn match_types(&self) -> &[usize] {

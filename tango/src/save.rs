@@ -35,11 +35,14 @@ pub fn scan_saves(
 
         let mut ok = false;
         let mut errors = vec![];
-        for game in game::GAMES.iter() {
+        for game in tango_gamedb::GAMES
+            .iter()
+            .flat_map(|g| crate::game::game_from_gamedb_entry(*g))
+        {
             match game.parse_save(&buf) {
                 Ok(save) => {
-                    log::info!("{}: {:?}", path.display(), game.family_and_variant());
-                    let saves = paths.entry(*game).or_insert_with(|| vec![]);
+                    log::info!("{}: {:?}", path.display(), game.gamedb_entry().family_and_variant);
+                    let saves = paths.entry(game).or_insert_with(|| vec![]);
                     saves.push(ScannedSave {
                         path: path.to_path_buf(),
                         save,
@@ -47,7 +50,7 @@ pub fn scan_saves(
                     ok = true;
                 }
                 Err(e) => {
-                    errors.push((*game, e));
+                    errors.push((game, e));
                 }
             }
         }
@@ -58,7 +61,7 @@ pub fn scan_saves(
                 path.display(),
                 errors
                     .iter()
-                    .map(|(k, v)| format!("{:?}: {}", k.family_and_variant(), v))
+                    .map(|(k, v)| format!("{:?}: {}", k.gamedb_entry().family_and_variant, v))
                     .collect::<Vec<_>>()
                     .join("\n")
             );

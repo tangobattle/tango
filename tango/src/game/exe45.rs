@@ -6,20 +6,8 @@ struct EXE45Impl;
 pub const EXE45: &'static (dyn game::Game + Send + Sync) = &EXE45Impl {};
 
 impl game::Game for EXE45Impl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BR4J", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe45", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xa646601b
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::BR4J_00
     }
 
     fn match_types(&self) -> &[usize] {

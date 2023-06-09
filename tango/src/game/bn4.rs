@@ -6,20 +6,8 @@ struct EXE4RSImpl;
 pub const EXE4RS: &'static (dyn game::Game + Send + Sync) = &EXE4RSImpl {};
 
 impl game::Game for EXE4RSImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"B4WJ", 0x01)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe4", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xcf0e8b05
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::B4WJ_01
     }
 
     fn match_types(&self) -> &[usize] {
@@ -123,20 +111,8 @@ struct EXE4BMImpl;
 pub const EXE4BM: &'static (dyn game::Game + Send + Sync) = &EXE4BMImpl {};
 
 impl game::Game for EXE4BMImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"B4BJ", 0x01)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe4", 1)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0x709bbf07
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::B4BJ_01
     }
 
     fn match_types(&self) -> &[usize] {
@@ -240,20 +216,8 @@ struct BN4RSImpl;
 pub const BN4RS: &'static (dyn game::Game + Send + Sync) = &BN4RSImpl {};
 
 impl game::Game for BN4RSImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"B4WE", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("bn4", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("en-US")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0x2120695c
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::B4WE_00
     }
 
     fn match_types(&self) -> &[usize] {
@@ -357,20 +321,8 @@ struct BN4BMImpl;
 pub const BN4BM: &'static (dyn game::Game + Send + Sync) = &BN4BMImpl {};
 
 impl game::Game for BN4BMImpl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"B4BE", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("bn4", 1)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("en-US")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0x758a46e9
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::B4BE_00
     }
 
     fn match_types(&self) -> &[usize] {

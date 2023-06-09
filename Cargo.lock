@@ -5520,6 +5520,7 @@ dependencies = [
  "subtle",
  "sys-locale",
  "tango-dataview",
+ "tango-gamedb",
  "tango-protos",
  "tango-pvp",
  "tempfile",

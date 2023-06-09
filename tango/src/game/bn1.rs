@@ -6,20 +6,8 @@ struct EXE1Impl;
 pub const EXE1: &'static (dyn game::Game + Send + Sync) = &EXE1Impl {};
 
 impl game::Game for EXE1Impl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"AREJ", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("exe1", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("ja-JP")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0xd9516e50
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::AREJ_00
     }
 
     fn match_types(&self) -> &[usize] {
@@ -93,20 +81,8 @@ struct BN1Impl;
 pub const BN1: &'static (dyn game::Game + Send + Sync) = &BN1Impl {};
 
 impl game::Game for BN1Impl {
-    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"AREE", 0x00)
-    }
-
-    fn family_and_variant(&self) -> (&str, u8) {
-        ("bn1", 0)
-    }
-
-    fn language(&self) -> unic_langid::LanguageIdentifier {
-        unic_langid::langid!("en-US")
-    }
-
-    fn expected_crc32(&self) -> u32 {
-        0x1d347971
+    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+        &tango_gamedb::AREE_00
     }
 
     fn match_types(&self) -> &[usize] {

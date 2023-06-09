@@ -335,7 +335,7 @@ impl Session {
                     game_lang: local_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| game.language()),
+                        .unwrap_or_else(|| crate::game::region_to_language(game.gamedb_entry().region)),
                     save: local_save,
                     assets,
                 })
@@ -347,7 +347,7 @@ impl Session {
                     game_lang: remote_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| game.language()),
+                        .unwrap_or_else(|| crate::game::region_to_language(game.gamedb_entry().region)),
                     save: remote_save,
                     assets,
                 })
