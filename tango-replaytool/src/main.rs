@@ -59,6 +59,7 @@ pub enum Command {
 #[tokio::main]
 pub async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
+    mgba::log::init();
 
     let mut f = std::fs::File::open(&args.path)?;
     let replay = tango_pvp::replay::Replay::decode(&mut f)?;
@@ -264,24 +265,29 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
     core.as_mut().load_state(&replay.local_state)?;
 
     loop {
-        let mut stepper_state = stepper_state.lock_inner();
-
-        if stepper_state.input_pairs_left() == 0 || stepper_state.is_round_ended() {
-            break;
+        {
+            let stepper_state = stepper_state.lock_inner();
+            if stepper_state.is_round_ended() {
+                // This may end up running forever...
+                break;
+            }
         }
 
         core.as_mut().run_frame();
 
-        if let Some(err) = stepper_state.take_error() {
-            Err(err)?;
+        if let Some(err) = stepper_state.lock_inner().take_error() {
+            return Err(err);
         }
     }
 
     {
         let stepper_state = stepper_state.lock_inner();
-        if let Some(result) = stepper_state.round_result() {
-            println!("{}", result.result as u8);
-        }
+        let result = if let Some(result) = stepper_state.round_result() {
+            result
+        } else {
+            return Err(anyhow::anyhow!("failed to read round result"));
+        };
+        println!("{}", result.result as u8);
     }
 
     Ok(())
