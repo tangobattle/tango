@@ -23,6 +23,29 @@ pub enum Command {
 
     /// Dump replay in text format.
     Text,
+
+    /// Export to video.
+    Export {
+        #[clap(default_value = "ffmpeg", long)]
+        ffmpeg: std::path::PathBuf,
+
+        #[clap(default_value = "-c:a aac -ar 48000 -b:a 384k -ac 2", long)]
+        ffmpeg_audio_flags: String,
+
+        #[clap(
+            default_value = "-c:v libx264 -vf scale=iw*5:ih*5:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2",
+            long
+        )]
+        ffmpeg_video_flags: String,
+
+        #[clap(default_value = "-movflags +faststart -strict -2", long)]
+        ffmpeg_mux_flags: String,
+
+        #[clap(default_value = "false", long)]
+        disable_bgm: bool,
+
+        output_path: std::path::PathBuf,
+    },
 }
 
 pub fn main() -> Result<(), anyhow::Error> {
@@ -36,6 +59,22 @@ pub fn main() -> Result<(), anyhow::Error> {
         Command::Metadata => cmd_metadata(replay),
         Command::Wram => cmd_wram(replay),
         Command::Text => cmd_text(replay),
+        Command::Export {
+            ffmpeg,
+            ffmpeg_audio_flags,
+            ffmpeg_video_flags,
+            ffmpeg_mux_flags,
+            disable_bgm,
+            output_path,
+        } => cmd_export(
+            replay,
+            ffmpeg,
+            ffmpeg_audio_flags,
+            ffmpeg_video_flags,
+            ffmpeg_mux_flags,
+            disable_bgm,
+            output_path,
+        ),
     }
 }
 
@@ -76,5 +115,17 @@ fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> 
 fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(replay.local_state.wram())?;
+    Ok(())
+}
+
+fn cmd_export(
+    replay: tango_pvp::replay::Replay,
+    ffmpeg: std::path::PathBuf,
+    ffmpeg_audio_flags: String,
+    ffmpeg_video_flags: String,
+    ffmpeg_mux_flags: String,
+    disable_bgm: bool,
+    output_path: std::path::PathBuf,
+) -> Result<(), anyhow::Error> {
     Ok(())
 }
