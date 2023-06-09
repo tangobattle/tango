@@ -5520,7 +5520,7 @@ dependencies = [
  "sys-locale",
  "tango-dataview",
  "tango-protos",
- "tango-replay",
+ "tango-pvp",
  "tempfile",
  "thiserror",
  "time 0.3.14",
@@ -5565,10 +5565,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-replay"
+name = "tango-pvp"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "mgba",
  "prost",
  "prost-build",
  "serde",

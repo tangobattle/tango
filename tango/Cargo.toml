@@ -85,7 +85,7 @@ subtle = "2"
 sys-locale = "0.2"
 tango-dataview = { path = "../tango-dataview" }
 tango-protos = { path = "../tango-protos" }
-tango-replay = { path = "../tango-replay" }
+tango-pvp = { path = "../tango-pvp" }
 tempfile = "3"
 thiserror = "1"
 time = { version = "0.3", features = ["formatting", "macros"] }

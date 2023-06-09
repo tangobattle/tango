@@ -21,7 +21,7 @@ impl State {
         &mut self,
         local_rom: Vec<u8>,
         remote_rom: Option<Vec<u8>>,
-        replay: tango_replay::Replay,
+        replay: tango_pvp::replay::Replay,
         path: std::path::PathBuf,
     ) {
         let id = self.next_id;
@@ -52,7 +52,7 @@ pub struct ChildState {
     output_path: std::path::PathBuf,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
-    replay: tango_replay::Replay,
+    replay: tango_pvp::replay::Replay,
     path: std::path::PathBuf,
     scale: Option<usize>,
     disable_bgm: bool,

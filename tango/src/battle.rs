@@ -2,7 +2,6 @@ use rand::Rng;
 
 use crate::config;
 use crate::game;
-use crate::lockstep;
 use crate::net;
 use crate::replayer;
 use crate::session;
@@ -231,7 +230,7 @@ impl Match {
                                 anyhow::bail!("remote overflowed our input buffer");
                             }
 
-                            round.add_remote_input(lockstep::PartialInput {
+                            round.add_remote_input(tango_pvp::input::PartialInput {
                                 local_tick: input.local_tick,
                                 remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
                                 joyflags: input.joyflags as u16,
@@ -303,13 +302,13 @@ impl Match {
         };
 
         const MAX_QUEUE_LENGTH: usize = 300;
-        let mut iq = lockstep::PairQueue::new(MAX_QUEUE_LENGTH, input_delay);
+        let mut iq = tango_pvp::input::PairQueue::new(MAX_QUEUE_LENGTH, input_delay);
         log::info!("filling {} ticks of input delay", input_delay);
 
         {
             let mut sender = self.sender.lock().await;
             for i in 0..input_delay {
-                iq.add_local_input(lockstep::PartialInput {
+                iq.add_local_input(tango_pvp::input::PartialInput {
                     local_tick: i,
                     remote_tick: 0,
                     joyflags: 0,
@@ -331,7 +330,7 @@ impl Match {
             current_tick: 0,
             dtick: 0,
             iq,
-            last_committed_remote_input: lockstep::Input {
+            last_committed_remote_input: tango_pvp::input::Input {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
@@ -341,21 +340,21 @@ impl Match {
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
             replay_filename,
-            replay_writer: Some(tango_replay::Writer::new(
+            replay_writer: Some(tango_pvp::replay::Writer::new(
                 Box::new(replay_file),
-                tango_replay::Metadata {
+                tango_pvp::replay::Metadata {
                     ts: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as u64,
                     link_code: self.link_code.clone(),
-                    local_side: Some(tango_replay::metadata::Side {
+                    local_side: Some(tango_pvp::replay::metadata::Side {
                         nickname: self.local_settings.nickname.clone(),
-                        game_info: Some(tango_replay::metadata::GameInfo {
+                        game_info: Some(tango_pvp::replay::metadata::GameInfo {
                             rom_family: local_game_settings.family_and_variant.0.to_string(),
                             rom_variant: local_game_settings.family_and_variant.1 as u32,
                             patch: if let Some(patch) = local_game_settings.patch.as_ref() {
-                                Some(tango_replay::metadata::game_info::Patch {
+                                Some(tango_pvp::replay::metadata::game_info::Patch {
                                     name: patch.name.clone(),
                                     version: patch.version.to_string(),
                                 })
@@ -365,13 +364,13 @@ impl Match {
                         }),
                         reveal_setup: self.local_settings.reveal_setup,
                     }),
-                    remote_side: Some(tango_replay::metadata::Side {
+                    remote_side: Some(tango_pvp::replay::metadata::Side {
                         nickname: self.remote_settings.nickname.clone(),
-                        game_info: Some(tango_replay::metadata::GameInfo {
+                        game_info: Some(tango_pvp::replay::metadata::GameInfo {
                             rom_family: remote_game_settings.family_and_variant.0.to_string(),
                             rom_variant: remote_game_settings.family_and_variant.1 as u32,
                             patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
-                                Some(tango_replay::metadata::game_info::Patch {
+                                Some(tango_pvp::replay::metadata::game_info::Patch {
                                     name: patch.name.clone(),
                                     version: patch.version.to_string(),
                                 })
@@ -406,13 +405,13 @@ pub struct Round {
     local_player_index: u8,
     current_tick: u32,
     dtick: i32,
-    iq: lockstep::PairQueue<lockstep::PartialInput, lockstep::PartialInput>,
-    last_committed_remote_input: lockstep::Input,
+    iq: tango_pvp::input::PairQueue<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>,
+    last_committed_remote_input: tango_pvp::input::Input,
     first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
     replay_filename: std::path::PathBuf,
-    replay_writer: Option<tango_replay::Writer>,
+    replay_writer: Option<tango_pvp::replay::Writer>,
     replayer: replayer::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
@@ -434,22 +433,22 @@ impl Round {
 
     pub fn set_first_committed_state(
         &mut self,
-        state: mgba::state::State,
+        local_state: mgba::state::State,
         remote_state: mgba::state::State,
         first_packet: &[u8],
     ) {
         self.replay_writer
             .as_mut()
             .unwrap()
-            .write_state(state.as_slice())
+            .write_state(&local_state)
             .expect("write local state");
         self.replay_writer
             .as_mut()
             .unwrap()
-            .write_state(remote_state.as_slice())
+            .write_state(&remote_state)
             .expect("write remote state");
         self.committed_state = Some(CommittedState {
-            state,
+            state: local_state,
             tick: 0,
             packet: first_packet.to_vec(),
         });
@@ -487,7 +486,7 @@ impl Round {
             )
             .await?;
 
-        self.add_local_input(lockstep::PartialInput {
+        self.add_local_input(tango_pvp::input::PartialInput {
             local_tick,
             remote_tick,
             joyflags,
@@ -505,9 +504,9 @@ impl Round {
             .chain(predict_required.into_iter().map(|local| {
                 let local_tick = local.local_tick;
                 let remote_tick = local.remote_tick;
-                lockstep::Pair {
+                tango_pvp::input::Pair {
                     local,
-                    remote: lockstep::PartialInput {
+                    remote: tango_pvp::input::PartialInput {
                         local_tick,
                         remote_tick,
                         joyflags: {
@@ -523,7 +522,7 @@ impl Round {
                     },
                 }
             }))
-            .collect::<Vec<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>>();
+            .collect::<Vec<tango_pvp::input::Pair<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>>>();
         let last_local_input = input_pairs.last().unwrap().local.clone();
 
         let ff_result = self.replayer.fastforward(
@@ -669,12 +668,12 @@ impl Round {
         self.iq.remote_queue_length()
     }
 
-    pub fn add_local_input(&mut self, input: lockstep::PartialInput) {
+    pub fn add_local_input(&mut self, input: tango_pvp::input::PartialInput) {
         log::debug!("local input: {:?}", input);
         self.iq.add_local_input(input);
     }
 
-    pub fn add_remote_input(&mut self, input: lockstep::PartialInput) {
+    pub fn add_remote_input(&mut self, input: tango_pvp::input::PartialInput) {
         log::debug!("remote input: {:?}", input);
         self.iq.add_remote_input(input);
     }

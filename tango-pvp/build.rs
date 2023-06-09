@@ -13,7 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "tango.replay.protos.replay11.Metadata.GameInfo.Patch",
         "#[derive(serde::Serialize)]",
     );
-    prost_config.compile_protos(&["src/protos/replay11.proto", "src/protos/replay10.proto"], &["src/"])?;
+    prost_config.compile_protos(
+        &["src/replay/protos/replay11.proto", "src/replay/protos/replay10.proto"],
+        &["src/"],
+    )?;
 
     Ok(())
 }

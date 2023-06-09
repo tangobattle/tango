@@ -21,27 +21,13 @@ const HEADER: &[u8] = b"TOOT";
 const VERSION: u8 = 0x11;
 
 #[derive(Clone)]
-pub struct Input {
-    pub local_tick: u32,
-    pub remote_tick: u32,
-    pub joyflags: u16,
-    pub packet: Vec<u8>,
-}
-
-#[derive(Clone)]
-pub struct InputPair {
-    pub local: Input,
-    pub remote: Input,
-}
-
-#[derive(Clone)]
 pub struct Replay {
     pub is_complete: bool,
     pub metadata: Metadata,
     pub local_player_index: u8,
-    pub local_state: Vec<u8>,
-    pub remote_state: Vec<u8>,
-    pub input_pairs: Vec<InputPair>,
+    pub local_state: mgba::state::State,
+    pub remote_state: mgba::state::State,
+    pub input_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
 }
 
 fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
@@ -95,9 +81,11 @@ impl Replay {
 
         let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut local_state)?;
+        let local_state = mgba::state::State::from_slice(&local_state);
 
         let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut remote_state)?;
+        let remote_state = mgba::state::State::from_slice(&remote_state);
 
         let mut input_pairs = vec![];
 
@@ -113,7 +101,7 @@ impl Replay {
                 break;
             };
 
-            let mut p1_input = Input {
+            let mut p1_input = crate::input::Input {
                 local_tick,
                 remote_tick,
                 joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
@@ -127,7 +115,7 @@ impl Replay {
                 break;
             }
 
-            let mut p2_input = Input {
+            let mut p2_input = crate::input::Input {
                 local_tick,
                 remote_tick: local_tick,
                 joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
@@ -147,7 +135,7 @@ impl Replay {
                 (p2_input, p1_input)
             };
 
-            input_pairs.push(InputPair { local, remote });
+            input_pairs.push(crate::input::Pair { local, remote });
         }
 
         Ok(Self {
@@ -184,17 +172,21 @@ impl Writer {
         })
     }
 
-    pub fn write_state(&mut self, state: &[u8]) -> std::io::Result<()> {
+    pub fn write_state(&mut self, state: &mgba::state::State) -> std::io::Result<()> {
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u32::<byteorder::LittleEndian>(state.len() as u32)?;
-        self.encoder.as_mut().unwrap().write_all(state)?;
+            .write_u32::<byteorder::LittleEndian>(state.as_slice().len() as u32)?;
+        self.encoder.as_mut().unwrap().write_all(state.as_slice())?;
         self.encoder.as_mut().unwrap().flush()?;
         Ok(())
     }
 
-    pub fn write_input(&mut self, local_player_index: u8, ip: &InputPair) -> std::io::Result<()> {
+    pub fn write_input(
+        &mut self,
+        local_player_index: u8,
+        ip: &crate::input::Pair<crate::input::Input, crate::input::Input>,
+    ) -> std::io::Result<()> {
         self.encoder
             .as_mut()
             .unwrap()

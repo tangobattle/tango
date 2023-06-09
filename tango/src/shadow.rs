@@ -1,11 +1,11 @@
-use crate::{battle, game, lockstep};
+use crate::{battle, game};
 
 pub struct Round {
     current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
-    pending_shadow_input: Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>>,
-    pending_remote_packet: Option<lockstep::Packet>,
+    pending_shadow_input: Option<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>>,
+    pending_remote_packet: Option<tango_pvp::input::Packet>,
     input_injected: bool,
 }
 
@@ -36,7 +36,7 @@ impl Round {
 
     pub fn set_first_committed_state(&mut self, state: mgba::state::State, packet: &[u8]) {
         self.first_committed_state = Some(state);
-        self.pending_remote_packet = Some(lockstep::Packet {
+        self.pending_remote_packet = Some(tango_pvp::input::Packet {
             tick: 0,
             packet: packet.to_vec(),
         });
@@ -46,19 +46,23 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub fn take_shadow_input(&mut self) -> Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
+    pub fn take_shadow_input(
+        &mut self,
+    ) -> Option<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>> {
         self.pending_shadow_input.take()
     }
 
     pub fn set_remote_packet(&mut self, tick: u32, packet: Vec<u8>) {
-        self.pending_remote_packet = Some(lockstep::Packet { tick, packet });
+        self.pending_remote_packet = Some(tango_pvp::input::Packet { tick, packet });
     }
 
-    pub fn peek_remote_packet(&self) -> Option<lockstep::Packet> {
+    pub fn peek_remote_packet(&self) -> Option<tango_pvp::input::Packet> {
         self.pending_remote_packet.clone()
     }
 
-    pub fn peek_shadow_input(&mut self) -> &Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
+    pub fn peek_shadow_input(
+        &mut self,
+    ) -> &Option<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>> {
         &self.pending_shadow_input
     }
 
@@ -250,8 +254,8 @@ impl Shadow {
 
     pub fn apply_input(
         &mut self,
-        ip: lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
-    ) -> anyhow::Result<lockstep::Packet> {
+        ip: tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>,
+    ) -> anyhow::Result<tango_pvp::input::Packet> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");

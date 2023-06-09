@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{battle, game, lockstep, replayer, session, shadow, sync};
+use crate::{battle, game, replayer, session, shadow, sync};
 
 pub struct Hooks {
     offsets: &'static offsets::Offsets,
@@ -813,7 +813,7 @@ impl game::Hooks for Hooks {
                     core,
                     replayer_state.remote_player_index() as u32,
                     &replayer_state
-                        .apply_shadow_input(lockstep::Pair {
+                        .apply_shadow_input(tango_pvp::input::Pair {
                             local: ip.local.with_packet(local_packet.packet),
                             remote: ip.remote,
                         })

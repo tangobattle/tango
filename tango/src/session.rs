@@ -320,7 +320,7 @@ impl Session {
         patch: Option<(String, semver::Version)>,
         rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        replay: &tango_replay::Replay,
+        replay: &tango_pvp::replay::Replay,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -364,8 +364,7 @@ impl Session {
 
         let local_state = replay.local_state.clone();
         thread.handle().run_on_core(move |mut core| {
-            core.load_state(&mgba::state::State::from_slice(&local_state))
-                .expect("load state");
+            core.load_state(&local_state).expect("load state");
         });
         thread.handle().unpause();
 

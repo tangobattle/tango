@@ -1,10 +1,11 @@
 [package]
-name = "tango-replay"
+name = "tango-pvp"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 byteorder = "1"
+mgba = { path = "../mgba" }
 prost = "0.10"
 serde = { version = "1", features = ["derive"] }
 zstd = "0.11"
