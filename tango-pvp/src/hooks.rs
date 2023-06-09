@@ -3,6 +3,10 @@ pub struct CompletionToken {
 }
 
 impl CompletionToken {
+    pub fn new(flag: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        Self { flag }
+    }
+
     pub fn complete(&self) {
         self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
     }
@@ -13,12 +17,11 @@ pub trait Hooks {
 
     fn common_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
-    fn replayer_traps(&self, replayer_state: crate::replayer::State)
-        -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
+    fn stepper_traps(&self, stepper_state: crate::stepper::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
     fn shadow_traps(&self, shadow_state: crate::shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
-    fn replayer_playback_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
+    fn stepper_replay_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![]
     }
 

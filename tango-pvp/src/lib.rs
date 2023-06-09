@@ -4,6 +4,6 @@ pub mod hooks;
 pub mod input;
 pub mod net;
 pub mod replay;
-pub mod replayer;
 pub mod shadow;
+pub mod stepper;
 pub mod sync;

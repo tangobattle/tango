@@ -1,41 +1,5 @@
 use rand::Rng;
 
-pub struct LatencyCounter {
-    marks: std::collections::VecDeque<std::time::Duration>,
-    window_size: usize,
-}
-
-impl LatencyCounter {
-    pub fn new(window_size: usize) -> Self {
-        Self {
-            marks: std::collections::VecDeque::with_capacity(window_size),
-            window_size,
-        }
-    }
-
-    pub fn mark(&mut self, d: std::time::Duration) {
-        while self.marks.len() >= self.window_size {
-            self.marks.pop_front();
-        }
-        self.marks.push_back(d);
-    }
-
-    #[allow(dead_code)]
-    pub fn mean(&self) -> std::time::Duration {
-        self.marks.iter().sum::<std::time::Duration>() / self.marks.len() as u32
-    }
-
-    pub fn median(&self) -> std::time::Duration {
-        if self.marks.is_empty() {
-            return std::time::Duration::ZERO;
-        }
-
-        let mut marks = self.marks.iter().collect::<Vec<_>>();
-        let (_, v, _) = marks.select_nth_unstable(self.marks.len() / 2);
-        **v
-    }
-}
-
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -79,7 +43,7 @@ pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<crate::shadow::Shadow>>,
     rom: Vec<u8>,
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    sender: std::sync::Arc<tokio::sync::Mutex<Box<dyn crate::net::Sender>>>,
+    sender: std::sync::Arc<tokio::sync::Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     match_type: (u8, u8),
@@ -89,7 +53,15 @@ pub struct Match {
     primary_thread_handle: mgba::thread::Handle,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
-    connection_latency_counter: tokio::sync::Mutex<LatencyCounter>,
+    replay_writer_factory: Box<
+        dyn Fn(
+                /* round_number */ u8,
+                /* local_player_index */ u8,
+            ) -> std::io::Result<Option<crate::replay::Writer>>
+            + Send
+            + Sync,
+    >,
+    on_replay_complete: std::sync::Arc<dyn Fn(&mut dyn std::io::Read) -> anyhow::Result<()> + Send + Sync>,
 }
 
 impl Match {
@@ -98,7 +70,7 @@ impl Match {
         local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         cancellation_token: tokio_util::sync::CancellationToken,
-        sender: Box<dyn crate::net::Sender>,
+        sender: Box<dyn crate::net::Sender + Send + Sync>,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
@@ -106,6 +78,14 @@ impl Match {
         remote_save: &(dyn tango_dataview::save::Save + Send + Sync),
         match_type: (u8, u8),
         input_delay: u32,
+        replay_writer_factory: impl Fn(
+                /* round_number */ u8,
+                /* local_player_index */ u8,
+            ) -> std::io::Result<Option<crate::replay::Writer>>
+            + Send
+            + Sync
+            + 'static,
+        on_replay_complete: impl Fn(&mut dyn std::io::Read) -> anyhow::Result<()> + Send + Sync + 'static,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let did_polite_win_last_round = rng.gen::<bool>();
@@ -140,7 +120,8 @@ impl Match {
             primary_thread_handle,
             round_started_tx,
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
-            connection_latency_counter: tokio::sync::Mutex::new(LatencyCounter::new(5)),
+            replay_writer_factory: Box::new(replay_writer_factory),
+            on_replay_complete: std::sync::Arc::new(on_replay_complete),
         });
         Ok(match_)
     }
@@ -161,11 +142,7 @@ impl Match {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
-    pub async fn latency(&self) -> std::time::Duration {
-        self.connection_latency_counter.lock().await.median()
-    }
-
-    pub async fn run(&self, mut receiver: Box<dyn crate::net::Receiver>) -> anyhow::Result<()> {
+    pub async fn run(&self, mut receiver: Box<dyn crate::net::Receiver + Send + Sync>) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         loop {
             let input = receiver.receive().await?;
@@ -258,7 +235,7 @@ impl Match {
         };
         log::info!("starting round: local_player_index = {}", local_player_index);
 
-        // TODO: Replay writer.
+        let replay_writer = (self.replay_writer_factory)(round_state.number, local_player_index)?;
 
         log::info!("preparing round state");
 
@@ -277,7 +254,7 @@ impl Match {
                     joyflags: 0,
                 });
                 sender
-                    .send_input(&crate::net::Input {
+                    .send(&crate::net::Input {
                         round_number: round_state.number,
                         local_tick: i,
                         tick_diff: 0,
@@ -303,15 +280,17 @@ impl Match {
             first_state_committed_local_packet: Some(first_state_committed_local_packet),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
-            replayer: crate::replayer::Fastforwarder::new(
+            stepper: crate::stepper::Fastforwarder::new(
                 &self.rom,
                 self.local_hooks,
                 self.match_type,
                 local_player_index,
             )?,
+            replay_writer,
             primary_thread_handle: self.primary_thread_handle.clone(),
             sender: self.sender.clone(),
             shadow: self.shadow.clone(),
+            on_replay_complete: self.on_replay_complete.clone(),
         });
         self.round_started_tx.send(round_state.number).await?;
         log::info!("round has started");
@@ -330,10 +309,12 @@ pub struct Round {
     first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
-    replayer: crate::replayer::Fastforwarder,
+    stepper: crate::stepper::Fastforwarder,
+    replay_writer: Option<crate::replay::Writer>,
     primary_thread_handle: mgba::thread::Handle,
-    sender: std::sync::Arc<tokio::sync::Mutex<Box<dyn crate::net::Sender>>>,
+    sender: std::sync::Arc<tokio::sync::Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: std::sync::Arc<parking_lot::Mutex<crate::shadow::Shadow>>,
+    on_replay_complete: std::sync::Arc<dyn Fn(&mut dyn std::io::Read) -> anyhow::Result<()> + Send + Sync>,
 }
 
 impl Round {
@@ -352,10 +333,14 @@ impl Round {
     pub fn set_first_committed_state(
         &mut self,
         local_state: mgba::state::State,
-        _remote_state: mgba::state::State,
+        remote_state: mgba::state::State,
         first_packet: &[u8],
     ) {
-        // TODO: Replay writer.
+        if let Some(replay_writer) = self.replay_writer.as_mut() {
+            replay_writer.write_state(&local_state).expect("write local state");
+            replay_writer.write_state(&remote_state).expect("write remote state");
+        }
+
         self.committed_state = Some(CommittedState {
             state: local_state,
             tick: 0,
@@ -387,7 +372,7 @@ impl Round {
         self.sender
             .lock()
             .await
-            .send_input(&crate::net::Input {
+            .send(&crate::net::Input {
                 round_number: self.number,
                 local_tick,
                 tick_diff: (remote_tick as i32 - local_tick as i32) as i8,
@@ -434,7 +419,7 @@ impl Round {
             .collect::<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>>();
         let last_local_input = input_pairs.last().unwrap().local.clone();
 
-        let ff_result = self.replayer.fastforward(
+        let ff_result = self.stepper.fastforward(
             &last_committed_state.state,
             input_pairs,
             last_committed_state.tick,
@@ -475,7 +460,11 @@ impl Round {
                 .map(|rr| ip.local.local_tick < rr.tick)
                 .unwrap_or(true)
             {
-                // TODO: Replay writer.
+                if let Some(replay_writer) = self.replay_writer.as_mut() {
+                    replay_writer
+                        .write_input(self.local_player_index, &ip.clone().into())
+                        .expect("write input");
+                }
             }
             self.last_committed_remote_input = ip.remote.clone();
         }
@@ -503,12 +492,24 @@ impl Round {
             return Ok(None);
         }
 
-        // TODO: Replay writer.
+        if let Some(replay_writer) = self.replay_writer.take() {
+            let mut r = replay_writer.finish()?;
+            log::info!(
+                "replay finished at {:x} (real tick {:x})",
+                round_result.tick,
+                self.current_tick
+            );
+
+            r.seek(std::io::SeekFrom::Start(0))?;
+            if let Err(e) = (self.on_replay_complete)(&mut r) {
+                log::error!("on_replay_complete failed: {}", e);
+            }
+        }
 
         Ok(Some(match round_result.result {
-            crate::replayer::BattleResult::Draw => self.on_draw_result(),
-            crate::replayer::BattleResult::Loss => BattleResult::Loss,
-            crate::replayer::BattleResult::Win => BattleResult::Win,
+            crate::stepper::BattleResult::Draw => self.on_draw_result(),
+            crate::stepper::BattleResult::Loss => BattleResult::Loss,
+            crate::stepper::BattleResult::Win => BattleResult::Win,
         }))
     }
 

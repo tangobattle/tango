@@ -1,27 +1,20 @@
-use crate::battle;
-use crate::game;
-
 pub struct InnerState {
     disable_bgm: bool,
     current_tick: u32,
     local_player_index: u8,
-    input_pairs: std::collections::VecDeque<
-        tango_pvp::input::Pair<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>,
-    >,
-    output_pairs: Vec<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::Input>>,
+    input_pairs: std::collections::VecDeque<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>,
+    output_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
     apply_shadow_input: Box<
-        dyn FnMut(
-                tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>,
-            ) -> anyhow::Result<Vec<u8>>
+        dyn FnMut(crate::input::Pair<crate::input::Input, crate::input::PartialInput>) -> anyhow::Result<Vec<u8>>
             + Sync
             + Send,
     >,
     match_type: (u8, u8),
-    local_packet: Option<tango_pvp::input::Packet>,
+    local_packet: Option<crate::input::Packet>,
     commit_tick: u32,
-    committed_state: Option<battle::CommittedState>,
+    committed_state: Option<crate::battle::CommittedState>,
     dirty_tick: u32,
-    dirty_state: Option<battle::CommittedState>,
+    dirty_state: Option<crate::battle::CommittedState>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     on_round_ended: Option<Box<dyn FnOnce() + Send>>,
@@ -64,14 +57,14 @@ impl InnerState {
                 self.current_tick, local_packet.tick
             );
         }
-        self.committed_state = Some(battle::CommittedState {
+        self.committed_state = Some(crate::battle::CommittedState {
             tick: self.current_tick,
             state,
             packet: local_packet.packet,
         });
     }
 
-    pub fn take_committed_state(&mut self) -> Option<battle::CommittedState> {
+    pub fn take_committed_state(&mut self) -> Option<crate::battle::CommittedState> {
         self.committed_state.take()
     }
 
@@ -87,7 +80,7 @@ impl InnerState {
                 self.current_tick, local_packet.tick
             );
         }
-        self.dirty_state = Some(battle::CommittedState {
+        self.dirty_state = Some(crate::battle::CommittedState {
             tick: self.current_tick,
             state,
             packet: local_packet.packet,
@@ -96,22 +89,22 @@ impl InnerState {
 
     pub fn peek_input_pair(
         &self,
-    ) -> Option<&tango_pvp::input::Pair<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>> {
+    ) -> Option<&crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>> {
         self.input_pairs.front()
     }
 
     pub fn pop_input_pair(
         &mut self,
-    ) -> Option<tango_pvp::input::Pair<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>> {
+    ) -> Option<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>> {
         self.input_pairs.pop_front()
     }
 
     pub fn apply_shadow_input(
         &mut self,
-        input: tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>,
+        input: crate::input::Pair<crate::input::Input, crate::input::PartialInput>,
     ) -> anyhow::Result<Vec<u8>> {
         let remote_packet = (self.apply_shadow_input)(input.clone())?;
-        self.output_pairs.push(tango_pvp::input::Pair {
+        self.output_pairs.push(crate::input::Pair {
             local: input.local,
             remote: input.remote.with_packet(remote_packet.clone()),
         });
@@ -119,10 +112,10 @@ impl InnerState {
     }
 
     pub fn set_local_packet(&mut self, tick: u32, packet: Vec<u8>) {
-        self.local_packet = Some(tango_pvp::input::Packet { tick, packet });
+        self.local_packet = Some(crate::input::Packet { tick, packet });
     }
 
-    pub fn peek_local_packet(&mut self) -> Option<&tango_pvp::input::Packet> {
+    pub fn peek_local_packet(&mut self) -> Option<&crate::input::Packet> {
         self.local_packet.as_ref()
     }
 
@@ -175,10 +168,10 @@ impl InnerState {
 }
 
 pub struct FastforwardResult {
-    pub committed_state: battle::CommittedState,
-    pub dirty_state: battle::CommittedState,
+    pub committed_state: crate::battle::CommittedState,
+    pub dirty_state: crate::battle::CommittedState,
     pub round_result: Option<RoundResult>,
-    pub output_pairs: Vec<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::Input>>,
+    pub output_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -205,7 +198,7 @@ pub struct RoundResult {
 pub struct Fastforwarder {
     core: mgba::core::Core,
     state: State,
-    hooks: &'static (dyn game::Hooks + Send + Sync),
+    hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     match_type: (u8, u8),
     local_player_index: u8,
 }
@@ -217,11 +210,11 @@ impl State {
     pub fn new(
         match_type: (u8, u8),
         local_player_index: u8,
-        input_pairs: Vec<tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::Input>>,
+        input_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
         commit_tick: u32,
         on_round_ended: Box<dyn FnOnce() + Send>,
     ) -> State {
-        let local_packet = input_pairs.first().map(|ip| tango_pvp::input::Packet {
+        let local_packet = input_pairs.first().map(|ip| crate::input::Packet {
             tick: ip.local.local_tick,
             packet: ip.local.packet.clone(),
         });
@@ -231,13 +224,13 @@ impl State {
             local_player_index,
             input_pairs: input_pairs
                 .iter()
-                .map(|ip| tango_pvp::input::Pair {
-                    local: tango_pvp::input::PartialInput {
+                .map(|ip| crate::input::Pair {
+                    local: crate::input::PartialInput {
                         local_tick: ip.local.local_tick,
                         remote_tick: ip.local.remote_tick,
                         joyflags: ip.local.joyflags,
                     },
-                    remote: tango_pvp::input::PartialInput {
+                    remote: crate::input::PartialInput {
                         local_tick: ip.remote.local_tick,
                         remote_tick: ip.remote.remote_tick,
                         joyflags: ip.remote.joyflags,
@@ -277,7 +270,7 @@ impl State {
 impl Fastforwarder {
     pub fn new(
         rom: &[u8],
-        hooks: &'static (dyn game::Hooks + Send + Sync),
+        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
@@ -289,7 +282,7 @@ impl Fastforwarder {
         let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
 
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.replayer_traps(state.clone()));
+        traps.extend(hooks.stepper_traps(state.clone()));
         core.set_traps(traps);
         core.as_mut().reset();
 
@@ -305,15 +298,13 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        input_pairs: Vec<tango_pvp::input::Pair<tango_pvp::input::PartialInput, tango_pvp::input::PartialInput>>,
+        input_pairs: Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>,
         current_tick: u32,
         commit_tick: u32,
         dirty_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<
-            dyn FnMut(
-                    tango_pvp::input::Pair<tango_pvp::input::Input, tango_pvp::input::PartialInput>,
-                ) -> anyhow::Result<Vec<u8>>
+            dyn FnMut(crate::input::Pair<crate::input::Input, crate::input::PartialInput>) -> anyhow::Result<Vec<u8>>
                 + Sync
                 + Send,
         >,
@@ -329,7 +320,7 @@ impl Fastforwarder {
             output_pairs: vec![],
             apply_shadow_input,
             match_type: self.match_type,
-            local_packet: Some(tango_pvp::input::Packet {
+            local_packet: Some(crate::input::Packet {
                 tick: current_tick,
                 packet: last_local_packet.to_vec(),
             }),

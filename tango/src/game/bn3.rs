@@ -1,5 +1,3 @@
-mod hooks;
-
 use crate::game;
 
 const MATCH_TYPES: &[usize] = &[4, 1];
@@ -470,8 +468,8 @@ impl game::Game for EXE3WImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::A6BJ_01
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn3::A6BJ_01
     }
 
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -546,8 +544,8 @@ impl game::Game for EXE3BImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::A3XJ_01
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn3::A3XJ_01
     }
 
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -622,8 +620,8 @@ impl game::Game for BN3WImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::A6BE_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn3::A6BE_00
     }
 
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -698,8 +696,8 @@ impl game::Game for BN3BImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::A3XE_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn3::A3XE_00
     }
 
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

@@ -101,22 +101,6 @@ impl Sender {
         self.send_packet(&protocol::Packet::StartMatch(protocol::StartMatch {}))
             .await
     }
-
-    pub async fn send_input(
-        &mut self,
-        round_number: u8,
-        local_tick: u32,
-        tick_diff: i8,
-        joyflags: u16,
-    ) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Input(protocol::Input {
-            round_number,
-            local_tick,
-            tick_diff,
-            joyflags,
-        }))
-        .await
-    }
 }
 
 pub struct Receiver {
@@ -144,6 +128,80 @@ impl Receiver {
             Ok(p) => Ok(p),
             Err(e) => {
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+            }
+        }
+    }
+}
+
+pub struct PvpSender {
+    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+}
+
+impl PvpSender {
+    pub fn new(sender: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
+        Self { sender }
+    }
+}
+
+#[async_trait::async_trait]
+impl tango_pvp::net::Sender for PvpSender {
+    async fn send(&mut self, input: &tango_pvp::net::Input) -> std::io::Result<()> {
+        self.sender
+            .lock()
+            .await
+            .send_packet(&protocol::Packet::Input(input.clone()))
+            .await
+    }
+}
+
+pub struct PvpReceiver {
+    receiver: Receiver,
+    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+    latency_counter: std::sync::Arc<tokio::sync::Mutex<crate::stats::LatencyCounter>>,
+    ping_timer: tokio::time::Interval,
+}
+
+impl PvpReceiver {
+    pub fn new(
+        receiver: Receiver,
+        sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+        latency_counter: std::sync::Arc<tokio::sync::Mutex<crate::stats::LatencyCounter>>,
+    ) -> Self {
+        Self {
+            receiver,
+            sender,
+            latency_counter,
+            ping_timer: tokio::time::interval(PING_INTERVAL),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl tango_pvp::net::Receiver for PvpReceiver {
+    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Input> {
+        loop {
+            tokio::select! {
+                _ = self.ping_timer.tick() => {
+                    self.sender.lock().await.send_ping(std::time::SystemTime::now()).await?;
+                }
+                p = self.receiver.receive() => {
+                    match p? {
+                        protocol::Packet::Ping(ping) => {
+                            self.sender.lock().await.send_pong(ping.ts).await?;
+                        }
+                        protocol::Packet::Pong(pong) => {
+                            if let Ok(dt) = std::time::SystemTime::now().duration_since(pong.ts) {
+                                self.latency_counter.lock().await.mark(dt);
+                            }
+                        }
+                        protocol::Packet::Input(input) => {
+                            return Ok(input);
+                        }
+                        p => {
+                            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("invalid packet: {:?}", p)))
+                        },
+                    }
+                }
             }
         }
     }

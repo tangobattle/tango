@@ -746,27 +746,24 @@ impl crate::hooks::Hooks for Hooks {
         ]
     }
 
-    fn replayer_traps(
-        &self,
-        replayer_state: crate::replayer::State,
-    ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
+    fn stepper_traps(&self, stepper_state: crate::stepper::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let munger = self.munger();
-            let replayer_state = replayer_state.clone();
+            let stepper_state = stepper_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let mut replayer_state = replayer_state.lock_inner();
+                let mut stepper_state = stepper_state.lock_inner();
 
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                if replayer_state.is_round_ending() {
+                if stepper_state.is_round_ending() {
                     return;
                 }
 
-                let current_tick = replayer_state.current_tick();
+                let current_tick = stepper_state.current_tick();
 
-                let ip = if let Some(ip) = replayer_state.pop_input_pair() {
+                let ip = if let Some(ip) = stepper_state.pop_input_pair() {
                     ip
                 } else {
                     let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -777,7 +774,7 @@ impl crate::hooks::Hooks for Hooks {
                 };
 
                 if ip.local.local_tick != ip.remote.local_tick {
-                    replayer_state.set_anyhow_error(anyhow::anyhow!(
+                    stepper_state.set_anyhow_error(anyhow::anyhow!(
                         "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
                         current_tick,
                         ip.local.local_tick,
@@ -787,7 +784,7 @@ impl crate::hooks::Hooks for Hooks {
                 }
 
                 if ip.local.local_tick != current_tick {
-                    replayer_state.set_anyhow_error(anyhow::anyhow!(
+                    stepper_state.set_anyhow_error(anyhow::anyhow!(
                         "copy input data: input tick != in battle tick: {} != {}",
                         ip.local.local_tick,
                         current_tick,
@@ -795,9 +792,9 @@ impl crate::hooks::Hooks for Hooks {
                     return;
                 }
 
-                let local_packet = replayer_state.peek_local_packet().unwrap().clone();
+                let local_packet = stepper_state.peek_local_packet().unwrap().clone();
                 if local_packet.tick != current_tick {
-                    replayer_state.set_anyhow_error(anyhow::anyhow!(
+                    stepper_state.set_anyhow_error(anyhow::anyhow!(
                         "copy input data: local packet tick != in battle tick: {} != {}",
                         local_packet.tick,
                         current_tick,
@@ -807,13 +804,13 @@ impl crate::hooks::Hooks for Hooks {
 
                 munger.set_rx_packet(
                     core,
-                    replayer_state.local_player_index() as u32,
+                    stepper_state.local_player_index() as u32,
                     &local_packet.packet.clone().try_into().unwrap(),
                 );
                 munger.set_rx_packet(
                     core,
-                    replayer_state.remote_player_index() as u32,
-                    &replayer_state
+                    stepper_state.remote_player_index() as u32,
+                    &stepper_state
                         .apply_shadow_input(crate::input::Pair {
                             local: ip.local.with_packet(local_packet.packet),
                             remote: ip.remote,
@@ -822,16 +819,16 @@ impl crate::hooks::Hooks for Hooks {
                         .try_into()
                         .unwrap(),
                 );
-                replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
+                stepper_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
             })
         };
 
         vec![
             (self.offsets.rom.battle_start_play_music_call, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |mut core| {
-                    let replayer_state = replayer_state.lock_inner();
-                    if !replayer_state.disable_bgm() {
+                    let stepper_state = stepper_state.lock_inner();
+                    if !stepper_state.disable_bgm() {
                         return;
                     }
                     let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
@@ -839,51 +836,51 @@ impl crate::hooks::Hooks for Hooks {
                 })
             }),
             (self.offsets.rom.battle_is_p2_ret, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |mut core| {
-                    let replayer_state = replayer_state.lock_inner();
+                    let stepper_state = stepper_state.lock_inner();
                     core.gba_mut()
                         .cpu_mut()
-                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                        .set_gpr(0, stepper_state.local_player_index() as i32);
                 })
             }),
             (self.offsets.rom.link_is_p2_ret, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |mut core| {
-                    let replayer_state = replayer_state.lock_inner();
+                    let stepper_state = stepper_state.lock_inner();
                     core.gba_mut()
                         .cpu_mut()
-                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                        .set_gpr(0, stepper_state.local_player_index() as i32);
                 })
             }),
             (self.offsets.rom.round_ending_entry, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_core| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    if replayer_state.is_round_ending() {
+                    let mut stepper_state = stepper_state.lock_inner();
+                    if stepper_state.is_round_ending() {
                         return;
                     }
-                    replayer_state.set_round_ending();
+                    stepper_state.set_round_ending();
                 })
             }),
             (self.offsets.rom.round_end_entry, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_core| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_ended();
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_ended();
                 })
             }),
             (self.offsets.rom.main_read_joyflags, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |mut core| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    let current_tick = replayer_state.current_tick();
+                    let mut stepper_state = stepper_state.lock_inner();
+                    let current_tick = stepper_state.current_tick();
 
-                    if current_tick == replayer_state.commit_tick() {
-                        replayer_state.set_committed_state(core.save_state().expect("save committed state"));
+                    if current_tick == stepper_state.commit_tick() {
+                        stepper_state.set_committed_state(core.save_state().expect("save committed state"));
                     }
 
-                    let ip = match replayer_state.peek_input_pair() {
+                    let ip = match stepper_state.peek_input_pair() {
                         Some(ip) => ip.clone(),
                         None => {
                             return;
@@ -891,7 +888,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     if ip.local.local_tick != ip.remote.local_tick {
-                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                        stepper_state.set_anyhow_error(anyhow::anyhow!(
                             "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
                             current_tick,
                             ip.local.local_tick,
@@ -901,7 +898,7 @@ impl crate::hooks::Hooks for Hooks {
                     }
 
                     if ip.local.local_tick != current_tick {
-                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                        stepper_state.set_anyhow_error(anyhow::anyhow!(
                             "read joyflags: input tick != in battle tick: {} != {}",
                             ip.local.local_tick,
                             current_tick,
@@ -911,8 +908,8 @@ impl crate::hooks::Hooks for Hooks {
 
                     core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                    if current_tick == replayer_state.dirty_tick() {
-                        replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    if current_tick == stepper_state.dirty_tick() {
+                        stepper_state.set_dirty_state(core.save_state().expect("save dirty state"));
                     }
                 })
             }),
@@ -935,45 +932,45 @@ impl crate::hooks::Hooks for Hooks {
                 }),
             ),
             (self.offsets.rom.round_call_jump_table_ret, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.increment_current_tick();
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.increment_current_tick();
                 })
             }),
             (self.offsets.rom.round_end_set_win, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_result(crate::replayer::BattleResult::Win);
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_result(crate::stepper::BattleResult::Win);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_result(crate::replayer::BattleResult::Loss);
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_result(crate::stepper::BattleResult::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_result(crate::replayer::BattleResult::Win);
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_result(crate::stepper::BattleResult::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_result(crate::replayer::BattleResult::Loss);
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_result(crate::stepper::BattleResult::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
-                let replayer_state = replayer_state.clone();
+                let stepper_state = stepper_state.clone();
                 Box::new(move |_| {
-                    let mut replayer_state = replayer_state.lock_inner();
-                    replayer_state.set_round_result(crate::replayer::BattleResult::Draw);
+                    let mut stepper_state = stepper_state.lock_inner();
+                    stepper_state.set_round_result(crate::stepper::BattleResult::Draw);
                 })
             }),
         ]

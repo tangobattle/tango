@@ -1,5 +1,3 @@
-mod hooks;
-
 use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1];
@@ -60,8 +58,8 @@ impl game::Game for EXE2Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::AE2J_00_AC
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn2::AE2J_00_AC
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -123,8 +121,8 @@ impl game::Game for BN2Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::AE2E_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn2::AE2E_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

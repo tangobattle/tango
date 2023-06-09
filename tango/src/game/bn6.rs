@@ -1,5 +1,3 @@
-mod hooks;
-
 use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1, 1];
@@ -28,8 +26,8 @@ impl game::Game for EXE6GImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::BR5J_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn6::BR5J_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -197,8 +195,8 @@ impl game::Game for EXE6FImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::BR6J_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn6::BR6J_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -366,8 +364,8 @@ impl game::Game for BN6GImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::BR5E_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn6::BR5E_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -535,8 +533,8 @@ impl game::Game for BN6FImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::BR6E_00
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn6::BR6E_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

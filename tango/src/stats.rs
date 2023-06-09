@@ -32,12 +32,12 @@ impl Counter {
     }
 }
 
-pub struct DeltaCounter {
+pub struct LatencyCounter {
     marks: std::collections::VecDeque<std::time::Duration>,
     window_size: usize,
 }
 
-impl DeltaCounter {
+impl LatencyCounter {
     pub fn new(window_size: usize) -> Self {
         Self {
             marks: std::collections::VecDeque::with_capacity(window_size),

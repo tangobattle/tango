@@ -5447,6 +5447,7 @@ dependencies = [
  "anyhow",
  "arboard 2.1.1",
  "async-recursion 1.0.0",
+ "async-trait",
  "bincode",
  "bps",
  "bytemuck",

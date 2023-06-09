@@ -3,8 +3,8 @@ use byteorder::WriteBytesExt;
 use prost::Message;
 use std::io::Read;
 use std::io::Write;
-pub trait WriteSeek: std::io::Write + std::io::Seek {}
-impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
+pub trait ReadWriteSeek: std::io::Read + std::io::Write + std::io::Seek {}
+impl<T: std::io::Read + std::io::Write + std::io::Seek> ReadWriteSeek for T {}
 
 mod protos;
 mod replay10;
@@ -13,7 +13,7 @@ pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
 
 pub struct Writer {
-    encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>>,
+    encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn ReadWriteSeek + Send>>>,
     num_inputs: u32,
 }
 
@@ -151,7 +151,7 @@ impl Replay {
 
 impl Writer {
     pub fn new(
-        mut writer: Box<dyn WriteSeek + Send>,
+        mut writer: impl ReadWriteSeek + Send + 'static,
         metadata: Metadata,
         local_player_index: u8,
         raw_input_size: u8,
@@ -162,7 +162,7 @@ impl Writer {
         let raw_metadata = metadata.encode_to_vec();
         writer.write_u32::<byteorder::LittleEndian>(raw_metadata.len() as u32)?;
         writer.write_all(&raw_metadata[..])?;
-        let mut encoder = zstd::Encoder::new(writer, 3)?;
+        let mut encoder = zstd::Encoder::new(Box::new(writer) as Box<dyn ReadWriteSeek + Send>, 3)?;
         encoder.write_u8(local_player_index)?;
         encoder.write_u8(raw_input_size)?;
         encoder.flush()?;
@@ -217,7 +217,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn finish(mut self) -> std::io::Result<Box<dyn WriteSeek + Send>> {
+    pub fn finish(mut self) -> std::io::Result<Box<dyn ReadWriteSeek + Send>> {
         let mut w = self.encoder.take().unwrap().finish()?;
         w.seek(std::io::SeekFrom::Start((HEADER.len() + 1) as u64))?;
         w.write_u32::<byteorder::LittleEndian>(self.num_inputs)?;

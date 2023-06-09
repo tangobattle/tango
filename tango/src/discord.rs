@@ -92,7 +92,6 @@ pub fn make_in_lobby_activity(
 }
 
 pub fn make_in_progress_activity(
-    link_code: &str,
     start_time: std::time::SystemTime,
     lang: &unic_langid::LanguageIdentifier,
     game_info: Option<GameInfo>,
@@ -100,7 +99,7 @@ pub fn make_in_progress_activity(
     rpc::activity::Activity {
         state: Some(i18n::LOCALES.lookup(lang, "discord-presence-in-progress").unwrap()),
         party: Some(rpc::activity::Party {
-            id: Some(format!("party:{}", link_code)),
+            id: None,
             size: Some([2, 2]),
         }),
         timestamps: Some(rpc::activity::Timestamps {

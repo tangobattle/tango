@@ -1,6 +1,6 @@
 use std::{any::Any, io::Read};
 
-use crate::{battle, replayer, rom, session, shadow};
+use crate::rom;
 
 mod bn1;
 mod bn2;
@@ -286,7 +286,7 @@ where
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
     fn expected_crc32(&self) -> u32;
     fn match_types(&self) -> &[usize];
-    fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(
@@ -298,33 +298,4 @@ where
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         &[][..]
     }
-}
-
-pub trait Hooks {
-    fn patch(&self, _core: mgba::core::CoreMutRef) {}
-
-    fn common_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
-
-    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
-
-    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
-
-    fn replayer_playback_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
-        vec![]
-    }
-
-    fn primary_traps(
-        &self,
-        joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
-        completion_token: session::CompletionToken,
-    ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
-
-    fn packet_size(&self) -> usize {
-        return 0x10;
-    }
-
-    fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
-
-    fn predict_rx(&self, _rx: &mut Vec<u8>) {}
 }

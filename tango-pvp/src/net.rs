@@ -8,7 +8,7 @@ pub struct Input {
 
 #[async_trait::async_trait]
 pub trait Sender {
-    async fn send_input(&mut self, input: &Input) -> std::io::Result<()>;
+    async fn send(&mut self, input: &Input) -> std::io::Result<()>;
 }
 
 #[async_trait::async_trait]

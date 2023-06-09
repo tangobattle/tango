@@ -141,13 +141,8 @@ pub fn show(
                 )),
             )));
         }
-        session::Mode::PvP(pvp) => {
+        session::Mode::PvP(_) => {
             discord_client.set_current_activity(Some(discord::make_in_progress_activity(
-                pvp.match_
-                    .blocking_lock()
-                    .as_ref()
-                    .map(|match_| match_.link_code())
-                    .unwrap_or(""),
                 session.start_time(),
                 language,
                 Some(discord::make_game_info(
@@ -339,7 +334,7 @@ fn show_status_bar(
                         return (0.0, None, None);
                     };
 
-                    let latency = sync::block_on(match_.latency());
+                    let latency = sync::block_on(pvp.latency());
 
                     let round_state = sync::block_on(match_.lock_round_state());
                     let round = if let Some(round) = round_state.round.as_ref() {

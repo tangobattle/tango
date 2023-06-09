@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, replayer, rom, stats, video};
+use crate::{audio, config, game, net, rom, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -30,19 +30,17 @@ pub struct Session {
     own_setup: Option<Setup>,
 }
 
-pub struct CompletionToken {
-    flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-impl CompletionToken {
-    pub fn complete(&self) {
-        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
 pub struct PvP {
-    pub match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
+    pub match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<tango_pvp::battle::Match>>>>,
     cancellation_token: tokio_util::sync::CancellationToken,
+    latency_counter: std::sync::Arc<tokio::sync::Mutex<crate::stats::LatencyCounter>>,
+    _peer_conn: datachannel_wrapper::PeerConnection,
+}
+
+impl PvP {
+    pub async fn latency(&self) -> std::time::Duration {
+        self.latency_counter.lock().await.median()
+    }
 }
 
 pub struct SinglePlayer {}
@@ -101,9 +99,7 @@ impl Session {
         traps.extend(hooks.primary_traps(
             joyflags.clone(),
             match_.clone(),
-            CompletionToken {
-                flag: completion_flag.clone(),
-            },
+            tango_pvp::hooks::CompletionToken::new(completion_flag.clone()),
         ));
         core.set_traps(
             traps
@@ -125,33 +121,148 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
+        let sender = std::sync::Arc::new(tokio::sync::Mutex::new(sender));
+        let latency_counter = std::sync::Arc::new(tokio::sync::Mutex::new(crate::stats::LatencyCounter::new(5)));
+
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         let match_ = match_.clone();
         *match_.try_lock().unwrap() = Some({
-            let inner_match = battle::Match::new(
-                config,
-                link_code,
-                netplay_compatibility,
+            let config = config.read();
+            let replays_path = config.replays_path();
+            let link_code = link_code.clone();
+            let netplay_compatibility = netplay_compatibility.clone();
+            let local_settings = local_settings.clone();
+            let remote_settings = remote_settings.clone();
+            let replaycollector_endpoint = config.replaycollector_endpoint.clone();
+            let inner_match = tango_pvp::battle::Match::new(
                 local_rom.to_vec(),
-                local_game,
-                local_settings,
-                remote_settings,
+                local_game.hooks(),
+                remote_game.hooks(),
                 cancellation_token.clone(),
-                sender,
-                peer_conn,
+                Box::new(crate::net::PvpSender::new(sender.clone())),
                 rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                 is_offerer,
                 thread.handle(),
                 remote_rom,
                 remote_save.as_ref(),
-                replays_path,
                 match_type,
+                config.input_delay,
+                move |round_number, local_player_index| {
+                    const TIME_DESCRIPTION: &[time::format_description::FormatItem<'_>] = time::macros::format_description!(
+                        "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
+                    );
+                    let replay_filename = replays_path.join(format!(
+                        "{}.tangoreplay",
+                        format!(
+                            "{}-{}-{}-vs-{}-round{}-p{}",
+                            time::OffsetDateTime::from(std::time::SystemTime::now())
+                                .format(TIME_DESCRIPTION)
+                                .expect("format time"),
+                            link_code,
+                            netplay_compatibility,
+                            remote_settings.nickname,
+                            round_number,
+                            local_player_index + 1
+                        )
+                        .chars()
+                        .filter(|c| "/\\?%*:|\"<>. ".chars().all(|c2| c2 != *c))
+                        .collect::<String>()
+                    ));
+                    log::info!("open replay: {}", replay_filename.display());
+
+                    let local_game_settings = local_settings.game_info.as_ref().unwrap();
+                    let remote_game_settings = remote_settings.game_info.as_ref().unwrap();
+
+                    let replay_file = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&replay_filename)?;
+                    Ok(Some(tango_pvp::replay::Writer::new(
+                        replay_file,
+                        tango_pvp::replay::Metadata {
+                            ts: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64,
+                            link_code: link_code.clone(),
+                            local_side: Some(tango_pvp::replay::metadata::Side {
+                                nickname: local_settings.nickname.clone(),
+                                game_info: Some(tango_pvp::replay::metadata::GameInfo {
+                                    rom_family: local_game_settings.family_and_variant.0.to_string(),
+                                    rom_variant: local_game_settings.family_and_variant.1 as u32,
+                                    patch: if let Some(patch) = local_game_settings.patch.as_ref() {
+                                        Some(tango_pvp::replay::metadata::game_info::Patch {
+                                            name: patch.name.clone(),
+                                            version: patch.version.to_string(),
+                                        })
+                                    } else {
+                                        None
+                                    },
+                                }),
+                                reveal_setup: local_settings.reveal_setup,
+                            }),
+                            remote_side: Some(tango_pvp::replay::metadata::Side {
+                                nickname: remote_settings.nickname.clone(),
+                                game_info: Some(tango_pvp::replay::metadata::GameInfo {
+                                    rom_family: remote_game_settings.family_and_variant.0.to_string(),
+                                    rom_variant: remote_game_settings.family_and_variant.1 as u32,
+                                    patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
+                                        Some(tango_pvp::replay::metadata::game_info::Patch {
+                                            name: patch.name.clone(),
+                                            version: patch.version.to_string(),
+                                        })
+                                    } else {
+                                        None
+                                    },
+                                }),
+                                reveal_setup: remote_settings.reveal_setup,
+                            }),
+                            round: round_number as u32,
+                            match_type: match_type.0 as u32,
+                            match_subtype: match_type.1 as u32,
+                        },
+                        local_player_index,
+                        hooks.packet_size() as u8,
+                    )?))
+                },
+                move |r| {
+                    if replaycollector_endpoint.is_empty() {
+                        return Ok(());
+                    }
+
+                    let mut buf = vec![];
+                    r.read_to_end(&mut buf)?;
+
+                    let replaycollector_endpoint = replaycollector_endpoint.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = (move || async move {
+                            let client = reqwest::Client::new();
+                            client
+                                .post(replaycollector_endpoint)
+                                .header("Content-Type", "application/x-tango-replay")
+                                .body(buf)
+                                .send()
+                                .await?
+                                .error_for_status()?;
+                            Ok::<(), anyhow::Error>(())
+                        })()
+                        .await
+                        {
+                            log::error!("failed to submit replay: {:?}", e);
+                        }
+                    });
+
+                    Ok(())
+                },
             )
             .expect("new match");
 
             {
                 let match_ = match_.clone();
                 let inner_match = inner_match.clone();
+                let receiver = Box::new(crate::net::PvpReceiver::new(
+                    receiver,
+                    sender.clone(),
+                    latency_counter.clone(),
+                ));
                 tokio::task::spawn(async move {
                     tokio::select! {
                         r = inner_match.run(receiver) => {
@@ -212,6 +323,8 @@ impl Session {
             mode: Mode::PvP(PvP {
                 match_,
                 cancellation_token,
+                _peer_conn: peer_conn,
+                latency_counter,
             }),
             completion_flag,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -334,7 +447,7 @@ impl Session {
 
         let replay_is_complete = replay.is_complete;
         let input_pairs = replay.input_pairs.clone();
-        let replayer_state = replayer::State::new(
+        let stepper_state = tango_pvp::stepper::State::new(
             (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             replay.local_player_index,
             input_pairs.iter().map(|p| p.clone().into()).collect(),
@@ -347,8 +460,8 @@ impl Session {
             }),
         );
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.replayer_traps(replayer_state.clone()));
-        traps.extend(hooks.replayer_playback_traps());
+        traps.extend(hooks.stepper_traps(stepper_state.clone()));
+        traps.extend(hooks.stepper_replay_traps());
         core.set_traps(traps);
 
         let thread = mgba::thread::Thread::new(core);
@@ -378,7 +491,7 @@ impl Session {
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
             let completion_flag = completion_flag.clone();
-            let replayer_state = replayer_state.clone();
+            let stepper_state = stepper_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
             move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
@@ -386,7 +499,7 @@ impl Session {
                 video::fix_vbuf_alpha(&mut *vbuf);
                 emu_tps_counter.lock().mark();
 
-                if !replay_is_complete && replayer_state.lock_inner().input_pairs_left() == 0 {
+                if !replay_is_complete && stepper_state.lock_inner().input_pairs_left() == 0 {
                     completion_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
 

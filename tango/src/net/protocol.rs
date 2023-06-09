@@ -30,7 +30,7 @@ pub enum Packet {
     StartMatch(StartMatch),
 
     // In match.
-    Input(Input),
+    Input(tango_pvp::net::Input),
 }
 
 impl Packet {

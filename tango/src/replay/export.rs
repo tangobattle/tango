@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 use image::EncodableLayout;
 use tokio::io::AsyncWriteExt;
 
-use crate::{game, replayer, video};
+use crate::{game, video};
 
 pub struct Settings {
     pub ffmpeg: Option<std::path::PathBuf>,
@@ -40,7 +40,7 @@ fn make_core_and_state(
     rom: &[u8],
     replay: &tango_pvp::replay::Replay,
     settings: &Settings,
-) -> anyhow::Result<(mgba::core::Core, replayer::State)> {
+) -> anyhow::Result<(mgba::core::Core, tango_pvp::stepper::State)> {
     let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
@@ -56,29 +56,29 @@ fn make_core_and_state(
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = replayer::State::new(
+    let stepper_state = tango_pvp::stepper::State::new(
         (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
         replay.local_player_index,
         input_pairs,
         0,
         Box::new(|| {}),
     );
-    replayer_state.lock_inner().set_disable_bgm(settings.disable_bgm);
+    stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
     let game = game::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8)
         .ok_or(anyhow::anyhow!("game not found"))?;
 
     let hooks = game.hooks();
     hooks.patch(core.as_mut());
     {
-        let replayer_state = replayer_state.clone();
+        let stepper_state = stepper_state.clone();
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.replayer_traps(replayer_state.clone()));
-        traps.extend(hooks.replayer_playback_traps());
+        traps.extend(hooks.stepper_traps(stepper_state.clone()));
+        traps.extend(hooks.stepper_replay_traps());
         core.set_traps(traps);
     }
     core.as_mut().load_state(&replay.local_state)?;
 
-    Ok((core, replayer_state))
+    Ok((core, stepper_state))
 }
 
 fn run_frame<'a>(core: &mut mgba::core::Core, samples: &'a mut [i16], emu_vbuf: &mut [u8]) -> &'a [i16] {
