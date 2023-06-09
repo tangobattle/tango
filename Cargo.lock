@@ -5568,11 +5568,21 @@ dependencies = [
 name = "tango-pvp"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "byteorder",
+ "log",
  "mgba",
+ "parking_lot",
  "prost",
  "prost-build",
+ "rand 0.8.5",
+ "rand_pcg",
  "serde",
+ "serde_repr",
+ "tango-dataview",
+ "tokio",
+ "tokio-util",
  "zstd",
 ]
 

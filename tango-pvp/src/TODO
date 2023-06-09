@@ -1,0 +1,219 @@
+
+// Need to submit replay to replay collector.
+let replaycollector_endpoint = self.config.read().replaycollector_endpoint.clone();
+if !replaycollector_endpoint.is_empty() {
+    tokio::spawn({
+        let replay_path = self.replay_filename.clone();
+        async move {
+            if let Err(e) = {
+                let replay_path = replay_path.clone();
+                (move || async move {
+                    let client = reqwest::Client::new();
+                    let replay_file = tokio::fs::File::open(&replay_path).await?;
+
+                    client
+                        .post(replaycollector_endpoint)
+                        .header("Content-Type", "application/x-tango-replay")
+                        .body(replay_file)
+                        .send()
+                        .await?
+                        .error_for_status()?;
+
+                    Ok::<(), anyhow::Error>(())
+                })()
+                .await
+            } {
+                log::error!("failed to submit replay {}: {:?}", replay_path.display(), e);
+            }
+        }
+    });
+}
+
+let replay_filename = self.replays_path.join(format!(
+    "{}.tangoreplay",
+    format!(
+        "{}-{}-{}-vs-{}-round{}-p{}",
+        time::OffsetDateTime::from(std::time::SystemTime::now())
+            .format(time::macros::format_description!(
+                "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
+            ))
+            .expect("format time"),
+        self.link_code,
+        self.netplay_compatiblity,
+        self.remote_settings.nickname,
+        round_state.number,
+        local_player_index + 1
+    )
+    .chars()
+    .filter(|c| "/\\?%*:|\"<>. ".chars().all(|c2| c2 != *c))
+    .collect::<String>()
+));
+log::info!("open replay: {}", replay_filename.display());
+
+let replay_file = std::fs::File::create(&replay_filename)?;
+
+
+replay_filename,
+replay_writer: Some(crate::replay::Writer::new(
+    Box::new(replay_file),
+    crate::replay::Metadata {
+        ts: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
+        link_code: self.link_code.clone(),
+        local_side: Some(crate::replay::metadata::Side {
+            nickname: self.local_settings.nickname.clone(),
+            game_info: Some(crate::replay::metadata::GameInfo {
+                rom_family: local_game_settings.family_and_variant.0.to_string(),
+                rom_variant: local_game_settings.family_and_variant.1 as u32,
+                patch: if let Some(patch) = local_game_settings.patch.as_ref() {
+                    Some(crate::replay::metadata::game_info::Patch {
+                        name: patch.name.clone(),
+                        version: patch.version.to_string(),
+                    })
+                } else {
+                    None
+                },
+            }),
+            reveal_setup: self.local_settings.reveal_setup,
+        }),
+        remote_side: Some(crate::replay::metadata::Side {
+            nickname: self.remote_settings.nickname.clone(),
+            game_info: Some(crate::replay::metadata::GameInfo {
+                rom_family: remote_game_settings.family_and_variant.0.to_string(),
+                rom_variant: remote_game_settings.family_and_variant.1 as u32,
+                patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
+                    Some(crate::replay::metadata::game_info::Patch {
+                        name: patch.name.clone(),
+                        version: patch.version.to_string(),
+                    })
+                } else {
+                    None
+                },
+            }),
+            reveal_setup: self.remote_settings.reveal_setup,
+        }),
+        round: round_state.number as u32,
+        match_type: self.match_type.0 as u32,
+        match_subtype: self.match_type.1 as u32,
+    },
+    local_player_index,
+    hooks.packet_size() as u8,
+)?),
+
+self.replay_writer
+.as_mut()
+.unwrap()
+.write_state(&local_state)
+.expect("write local state");
+self.replay_writer
+.as_mut()
+.unwrap()
+.write_state(&remote_state)
+.expect("write remote state");
+
+
+if let Some(replay_writer) = self.replay_writer.as_mut() {
+    replay_writer
+        .write_input(self.local_player_index, &ip.clone().into())
+        .expect("write input");
+}
+
+
+if let Some(replay_writer) = self.replay_writer.take() {
+    replay_writer.finish().expect("finish");
+    log::info!(
+        "replay finished at {:x} (real tick {:x})",
+        round_result.tick,
+        self.current_tick
+    );
+
+    // TODO: Add hook for replay collector submission.
+}
+
+
+let mut ping_timer = tokio::time::interval(net::PING_INTERVAL);
+'l: loop {
+    tokio::select! {
+        _ = ping_timer.tick() => {
+            self.sender.lock().await.send_ping(std::time::SystemTime::now()).await?;
+        }
+        p = receiver.receive() => {
+            match p? {
+                net::protocol::Packet::Ping(ping) => {
+                    self.sender.lock().await.send_pong(ping.ts).await?;
+                }
+                net::protocol::Packet::Pong(pong) => {
+                    if let Ok(dt) = std::time::SystemTime::now().duration_since(pong.ts) {
+                        self.connection_latency_counter.lock().await.mark(dt);
+                    }
+                }
+                net::protocol::Packet::Input(input) => {
+                    // We need to wait for the next round to start to avoid dropping inputs on the floor.
+                    if input.round_number != last_round_number {
+                        let round_number =
+                            if let Some(number) = self.round_started_rx.lock().await.recv().await {
+                                number
+                            } else {
+                                break 'l;
+                            };
+                        assert!(round_number == input.round_number);
+                        last_round_number = input.round_number;
+                    }
+
+                    // We need to wait for the first state to be committed before we can add remote input.
+                    //
+                    // This is because we don't know what tick to add the input at, and the input queue has not been filled up with delay frames yet.
+                    let first_state_committed_rx = {
+                        let mut round_state = self.round_state.lock().await;
+
+                        if input.round_number != round_state.number {
+                            log::error!(
+                                "round number mismatch, dropping input: this is probably bad!"
+                            );
+                            continue 'l;
+                        }
+
+                        let round = match &mut round_state.round {
+                            None => {
+                                log::info!("no round in progress, dropping input");
+                                continue 'l;
+                            }
+                            Some(b) => b,
+                        };
+                        round.first_state_committed_rx.take()
+                    };
+                    if let Some(first_state_committed_rx) = first_state_committed_rx {
+                        first_state_committed_rx.await.unwrap();
+                    }
+
+                    let mut round_state = self.round_state.lock().await;
+                    if input.round_number != round_state.number {
+                        log::error!("round number mismatch, dropping input: this is probably bad!");
+                        continue 'l;
+                    }
+
+                    let round = match &mut round_state.round {
+                        None => {
+                            log::info!("no round in progress, dropping input");
+                            continue 'l;
+                        }
+                        Some(b) => b,
+                    };
+
+                    if !round.iq.can_add_remote_input() {
+                        anyhow::bail!("remote overflowed our input buffer");
+                    }
+
+                    round.add_remote_input(crate::input::PartialInput {
+                        local_tick: input.local_tick,
+                        remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
+                        joyflags: input.joyflags as u16,
+                    });
+                }
+                p => anyhow::bail!("unknown packet: {:?}", p),
+            }
+        }
+    }
+}
