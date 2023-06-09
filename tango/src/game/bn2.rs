@@ -46,10 +46,6 @@ impl game::Game for EXE2Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn2::AE2J_00_AC
-    }
-
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(tango_dataview::game::bn2::save::Save::new(data)?))
     }
@@ -95,10 +91,6 @@ impl game::Game for BN2Impl {
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn2::AE2E_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

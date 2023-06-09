@@ -14,10 +14,6 @@ impl game::Game for EXE1Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn1::AREJ_00
-    }
-
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn1::save::Save::new(data)?;
         if save.game_info()
@@ -87,10 +83,6 @@ impl game::Game for BN1Impl {
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn1::AREE_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

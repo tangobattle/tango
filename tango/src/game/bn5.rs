@@ -14,10 +14,6 @@ impl game::Game for EXE5BImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn5::BRBJ_00
-    }
-
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn5::save::Save::new(data)?;
         if save.game_info()
@@ -102,10 +98,6 @@ impl game::Game for EXE5CImpl {
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn5::BRKJ_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
@@ -194,10 +186,6 @@ impl game::Game for BN5PImpl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn5::BRBE_00
-    }
-
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         let save = tango_dataview::game::bn5::save::Save::new(data)?;
         if save.game_info()
@@ -282,10 +270,6 @@ impl game::Game for BN5CImpl {
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::bn5::BRKE_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {

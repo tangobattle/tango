@@ -86,16 +86,16 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = local_game.hooks();
-        hooks.patch(core.as_mut());
+        let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
+        local_hooks.patch(core.as_mut());
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
-        let mut traps = hooks.common_traps();
+        let mut traps = local_hooks.common_traps();
 
         let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        traps.extend(hooks.primary_traps(
+        traps.extend(local_hooks.primary_traps(
             joyflags.clone(),
             match_.clone(),
             tango_pvp::hooks::CompletionToken::new(completion_flag.clone()),
@@ -135,8 +135,8 @@ impl Session {
             let replaycollector_endpoint = config.replaycollector_endpoint.clone();
             let inner_match = tango_pvp::battle::Match::new(
                 local_rom.to_vec(),
-                local_game.hooks(),
-                remote_game.hooks(),
+                local_hooks,
+                tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap(),
                 cancellation_token.clone(),
                 Box::new(crate::net::PvpSender::new(sender.clone())),
                 rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
@@ -218,7 +218,7 @@ impl Session {
                             match_subtype: match_type.1 as u32,
                         },
                         local_player_index,
-                        hooks.packet_size() as u8,
+                        local_hooks.packet_size() as u8,
                     )?))
                 },
                 move |r| {
@@ -375,7 +375,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = game.hooks();
+        let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
         hooks.patch(core.as_mut());
 
         let thread = mgba::thread::Thread::new(core);
@@ -439,7 +439,7 @@ impl Session {
 
         core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
-        let hooks = game.hooks();
+        let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
         hooks.patch(core.as_mut());
 
         let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

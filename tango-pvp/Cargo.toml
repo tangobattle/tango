@@ -18,6 +18,7 @@ serde = { version = "1", features = ["derive"] }
 serde_repr = "0.1"
 shell-words = "1"
 tango-dataview = { path = "../tango-dataview" }
+tango-gamedb = { path = "../tango-gamedb" }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

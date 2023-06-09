@@ -241,6 +241,7 @@ pub fn show(
                                     .and_then(|side| side.game_info.as_ref())
                                     .ok_or(anyhow::anyhow!("missing local game info")).unwrap();
                                 let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
+                                let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
                                 let remote_game_info = replay
                                     .metadata
@@ -249,9 +250,10 @@ pub fn show(
                                     .and_then(|side| side.game_info.as_ref())
                                     .ok_or(anyhow::anyhow!("missing remote game info")).unwrap();
                                 let remote_game = crate::game::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8).unwrap();
+                                let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
 
                                 tokio::select! {
-                                    r = tango_pvp::replay::export::export_twosided(&local_rom, local_game.hooks(), remote_rom.as_ref().unwrap(), remote_game.hooks(), &replay, &path, &settings, cb) => {
+                                    r = tango_pvp::replay::export::export_twosided(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replay, &path, &settings, cb) => {
                                         *result.lock() = Some(r);
                                         egui_ctx.request_repaint();
                                     }
@@ -265,9 +267,10 @@ pub fn show(
                                     .and_then(|side| side.game_info.as_ref())
                                     .ok_or(anyhow::anyhow!("missing local game info")).unwrap();
                                 let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
+                                let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
                                 tokio::select! {
-                                    r = tango_pvp::replay::export::export(&local_rom, local_game.hooks(), &replay, &path, &settings, cb) => {
+                                    r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replay, &path, &settings, cb) => {
                                         *result.lock() = Some(r);
                                         egui_ctx.request_repaint();
                                     }

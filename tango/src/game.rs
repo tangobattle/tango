@@ -34,25 +34,32 @@ pub fn game_from_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dy
     Some(match entry.family_and_variant {
         ("exe1", 0) => bn1::EXE1,
         ("bn1", 0) => bn1::BN1,
+
         ("exe2", 0) => bn2::EXE2,
         ("bn2", 0) => bn2::BN2,
+
         ("exe3", 0) => bn3::EXE3W,
         ("exe3", 1) => bn3::EXE3B,
         ("bn3", 0) => bn3::BN3W,
         ("bn3", 1) => bn3::BN3B,
+
         ("exe4", 0) => bn4::EXE4RS,
         ("exe4", 1) => bn4::EXE4BM,
         ("bn4", 0) => bn4::BN4RS,
         ("bn4", 1) => bn4::BN4BM,
+
         ("exe5", 0) => bn5::EXE5B,
         ("exe5", 1) => bn5::EXE5C,
         ("bn5", 0) => bn5::BN5P,
         ("bn5", 1) => bn5::BN5C,
+
         ("exe6", 0) => bn6::EXE6G,
         ("exe6", 1) => bn6::EXE6F,
         ("bn6", 0) => bn6::BN6G,
         ("bn6", 1) => bn6::BN6F,
+
         ("exe45", 0) => exe45::EXE45,
+
         _ => {
             return None;
         }
@@ -288,7 +295,6 @@ where
 {
     fn gamedb_entry(&self) -> &tango_gamedb::Game;
     fn match_types(&self) -> &[usize];
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(

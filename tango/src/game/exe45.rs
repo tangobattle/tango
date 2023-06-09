@@ -14,10 +14,6 @@ impl game::Game for EXE45Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
-        &tango_pvp::game::exe45::BR4J_00
-    }
-
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(tango_dataview::game::exe45::save::Save::new(data)?))
     }
