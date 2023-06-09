@@ -1,6 +1,14 @@
+use clap::Parser;
 use std::io::Write;
 
-use crate::config;
+#[derive(clap::Parser)]
+struct Args {
+    /// Path to replay.
+    path: std::path::PathBuf,
+
+    #[command(subcommand)]
+    command: Command,
+}
 
 #[derive(clap::Subcommand)]
 pub enum Command {
@@ -17,23 +25,21 @@ pub enum Command {
     Text,
 }
 
-pub fn main(config: config::Config, path: std::path::PathBuf, command: Command) -> Result<(), anyhow::Error> {
-    let mut f = std::fs::File::open(&path)?;
+pub fn main() -> Result<(), anyhow::Error> {
+    let args = Args::parse();
+
+    let mut f = std::fs::File::open(&args.path)?;
     let replay = tango_pvp::replay::Replay::decode(&mut f)?;
 
-    match command {
-        Command::Invert { output_path } => cmd_invert(config, replay, output_path),
-        Command::Metadata => cmd_metadata(config, replay),
-        Command::Wram => cmd_wram(config, replay),
-        Command::Text => cmd_text(config, replay),
+    match args.command {
+        Command::Invert { output_path } => cmd_invert(replay, output_path),
+        Command::Metadata => cmd_metadata(replay),
+        Command::Wram => cmd_wram(replay),
+        Command::Text => cmd_text(replay),
     }
 }
 
-fn cmd_invert(
-    _config: config::Config,
-    replay: tango_pvp::replay::Replay,
-    output_path: std::path::PathBuf,
-) -> Result<(), anyhow::Error> {
+fn cmd_invert(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
     let replay = replay.into_remote();
     let mut writer = tango_pvp::replay::Writer::new(
         Box::new(std::fs::File::create(&output_path)?),
@@ -50,7 +56,7 @@ fn cmd_invert(
     Ok(())
 }
 
-fn cmd_text(_config: config::Config, replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
             "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
@@ -60,14 +66,14 @@ fn cmd_text(_config: config::Config, replay: tango_pvp::replay::Replay) -> Resul
     Ok(())
 }
 
-fn cmd_metadata(_config: config::Config, replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer_pretty(&mut stdout, &replay.metadata)?;
     stdout.write_all(b"\n")?;
     Ok(())
 }
 
-fn cmd_wram(_config: config::Config, replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(replay.local_state.wram())?;
     Ok(())

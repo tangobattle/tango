@@ -11,6 +11,7 @@ members = [
     "tango-dataview",
     "tango-protos",
     "tango-pvp",
+    "tango-replaytool",
     "tango-server",
 ]
 

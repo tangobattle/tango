@@ -20,7 +20,6 @@ mod net;
 mod patch;
 mod randomcode;
 mod replay;
-mod replaytool;
 mod rom;
 mod save;
 mod scanner;
@@ -43,15 +42,6 @@ struct Args {
 
 #[derive(clap::Subcommand)]
 enum Command {
-    /// Manipulate replays.
-    Replay {
-        /// Path to replay.
-        path: std::path::PathBuf,
-
-        #[command(subcommand)]
-        command: replaytool::Command,
-    },
-
     /// Join.
     Join {
         /// Link code to join.
@@ -68,14 +58,6 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;
-
-    let args = Args::parse();
-    match args.command {
-        Some(Command::Replay { path, command }) => {
-            return replaytool::main(config, path, command);
-        }
-        _ => {}
-    }
 
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)

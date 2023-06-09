@@ -5588,6 +5588,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-replaytool"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 4.0.12",
+ "serde_json",
+ "tango-pvp",
+]
+
+[[package]]
 name = "tango-server"
 version = "4.0.51"
 dependencies = [
