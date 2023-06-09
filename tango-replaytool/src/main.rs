@@ -266,28 +266,33 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
 
     loop {
         {
-            let stepper_state = stepper_state.lock_inner();
-            if stepper_state.is_round_ended() {
-                // This may end up running forever...
+            let mut stepper_state = stepper_state.lock_inner();
+            if let Some(err) = stepper_state.take_error() {
+                return Err(err);
+            }
+            if stepper_state.input_pairs_left() == 0 {
                 break;
             }
         }
 
         core.as_mut().run_frame();
-
-        if let Some(err) = stepper_state.lock_inner().take_error() {
-            return Err(err);
-        }
     }
 
-    {
-        let stepper_state = stepper_state.lock_inner();
-        let result = if let Some(result) = stepper_state.round_result() {
-            result
-        } else {
-            return Err(anyhow::anyhow!("failed to read round result"));
-        };
+    // The result is one frame past the last frame.
+    core.as_mut().run_frame();
+
+    let result = {
+        let mut stepper_state = stepper_state.lock_inner();
+        if let Some(err) = stepper_state.take_error() {
+            return Err(err);
+        }
+        stepper_state.round_result()
+    };
+
+    if let Some(result) = result {
         println!("{}", result.result as u8);
+    } else {
+        return Err(anyhow::anyhow!("failed to read round result"));
     }
 
     Ok(())
