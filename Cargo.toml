@@ -9,6 +9,7 @@ members = [
     "mmpx",
     "tango",
     "tango-dataview",
+    "tango-gamedb",
     "tango-protos",
     "tango-pvp",
     "tango-replaytool",
