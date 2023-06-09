@@ -51,6 +51,9 @@ pub enum Command {
 
         output_path: std::path::PathBuf,
     },
+
+    /// Evaluate the result of a replay.
+    Eval { rom_path: std::path::PathBuf },
 }
 
 #[tokio::main]
@@ -88,6 +91,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
             )
             .await
         }
+        Command::Eval { rom_path } => cmd_eval(replay, rom_path).await,
     }
 }
 
@@ -210,6 +214,74 @@ async fn cmd_export(
         .await?;
     } else {
         tango_pvp::replay::export::export(&local_rom, local_hooks, &replay, &output_path, &settings, cb).await?;
+    }
+
+    Ok(())
+}
+
+async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
+    let mut core = mgba::core::Core::new_gba("tango")?;
+
+    let rom = std::fs::read(&rom_path)?;
+    let detected_game = tango_gamedb::detect(&rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+    let game_info = replay
+        .metadata
+        .local_side
+        .as_ref()
+        .and_then(|side| side.game_info.as_ref())
+        .ok_or(anyhow::anyhow!("missing local game info"))?;
+    let game = tango_gamedb::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8).unwrap();
+    let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game).unwrap();
+    if game != detected_game {
+        return Err(anyhow::format_err!(
+            "expected game {:?}, got {:?}",
+            game.family_and_variant,
+            detected_game.family_and_variant
+        ));
+    }
+
+    let vf = mgba::vfile::VFile::open_memory(&rom);
+    core.as_mut().load_rom(vf)?;
+    core.as_mut().reset();
+
+    let input_pairs = replay.input_pairs.clone();
+
+    let stepper_state = tango_pvp::stepper::State::new(
+        (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
+
+    hooks.patch(core.as_mut());
+    {
+        let stepper_state = stepper_state.clone();
+        let mut traps = hooks.common_traps();
+        traps.extend(hooks.stepper_traps(stepper_state.clone()));
+        core.set_traps(traps);
+    }
+    core.as_mut().load_state(&replay.local_state)?;
+
+    loop {
+        let mut stepper_state = stepper_state.lock_inner();
+
+        if stepper_state.input_pairs_left() == 0 || stepper_state.is_round_ended() {
+            break;
+        }
+
+        core.as_mut().run_frame();
+
+        if let Some(err) = stepper_state.take_error() {
+            Err(err)?;
+        }
+    }
+
+    {
+        let stepper_state = stepper_state.lock_inner();
+        if let Some(result) = stepper_state.round_result() {
+            println!("{}", result.result as u8);
+        }
     }
 
     Ok(())
