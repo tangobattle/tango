@@ -188,3 +188,14 @@ pub const GAMES: &[&Game] = &[
     &BR6E_00,
     &BR4J_00,
 ];
+
+pub fn detect(rom: &[u8]) -> Option<&'static Game> {
+    let code = rom.get(0xac..0xac + 4)?.try_into().unwrap();
+    let revision = *rom.get(0xbc)?;
+    let entry = GAMES.iter().find(|g| g.rom_code_and_revision == (code, revision))?;
+    let crc32 = crc32fast::hash(rom);
+    if crc32 != entry.crc32 {
+        return None;
+    }
+    Some(*entry)
+}

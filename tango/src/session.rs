@@ -86,8 +86,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
-        let hooks = game.hooks();
+        let hooks = local_game.hooks();
         hooks.patch(core.as_mut());
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
@@ -335,7 +334,7 @@ impl Session {
                     game_lang: local_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(game.gamedb_entry().region)),
+                        .unwrap_or_else(|| crate::game::region_to_language(local_game.gamedb_entry().region)),
                     save: local_save,
                     assets,
                 })
@@ -347,7 +346,7 @@ impl Session {
                     game_lang: remote_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(game.gamedb_entry().region)),
+                        .unwrap_or_else(|| crate::game::region_to_language(remote_game.gamedb_entry().region)),
                     save: remote_save,
                     assets,
                 })

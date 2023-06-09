@@ -123,8 +123,8 @@ fn scan_bnlc_rom_archive(
             log::error!("bnlc: {}/{}: {}", path.display(), entry_path.display(), e);
             continue;
         }
-        let game = match detect(&rom) {
-            Ok(game) => {
+        let game = match tango_gamedb::detect(&rom).and_then(|entry| game_from_gamedb_entry(entry)) {
+            Some(game) => {
                 log::info!(
                     "bnlc: {}/{}: {:?}",
                     path.display(),
@@ -133,8 +133,8 @@ fn scan_bnlc_rom_archive(
                 );
                 game
             }
-            Err(e) => {
-                log::warn!("bnlc: {}/{}: {}", path.display(), entry_path.display(), e);
+            None => {
+                log::warn!("bnlc: {}/{}: not ok", path.display(), entry_path.display());
                 continue;
             }
         };
@@ -211,8 +211,8 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
             }
         };
 
-        let game = match detect(&rom) {
-            Ok(game) => {
+        let game = match tango_gamedb::detect(&rom).and_then(|entry| game_from_gamedb_entry(entry)) {
+            Some(game) => {
                 log::info!(
                     "roms folder: {}: {:?}",
                     path.display(),
@@ -220,8 +220,8 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
                 );
                 game
             }
-            Err(e) => {
-                log::warn!("roms folder: {}: {}", path.display(), e);
+            None => {
+                log::warn!("roms folder: {}: not ok", path.display());
                 continue;
             }
         };
@@ -280,24 +280,6 @@ pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Ga
         .iter()
         .find(|g| g.rom_code_and_revision == (code, revision))
         .and_then(|g| game_from_gamedb_entry(*g))
-}
-
-pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::Error> {
-    let rom_code = rom
-        .get(0xac..0xac + 4)
-        .ok_or(anyhow::anyhow!("out of range"))?
-        .try_into()?;
-    let rom_revision = rom.get(0xbc).ok_or(anyhow::anyhow!("out of range"))?;
-    let game = find_by_rom_info(rom_code, *rom_revision).ok_or(anyhow::anyhow!("unknown game"))?;
-    let crc32 = crc32fast::hash(rom);
-    if crc32 != game.gamedb_entry().crc32 {
-        anyhow::bail!(
-            "mismatched crc32: expected {:08x}, got {:08x}",
-            game.gamedb_entry().crc32,
-            crc32
-        );
-    }
-    Ok(game)
 }
 
 pub trait Game

@@ -5561,6 +5561,9 @@ dependencies = [
 [[package]]
 name = "tango-gamedb"
 version = "0.1.0"
+dependencies = [
+ "crc32fast",
+]
 
 [[package]]
 name = "tango-protos"
