@@ -11,6 +11,7 @@ pub struct Game {
     pub region: Region,
 }
 
+// BN1
 pub const AREJ_00: Game = Game {
     family_and_variant: ("exe1", 0),
     rom_code_and_revision: (b"AREJ", 0x00),
@@ -25,6 +26,7 @@ pub const AREE_00: Game = Game {
     region: Region::US,
 };
 
+// BN2
 pub const AE2J_00_AC: Game = Game {
     family_and_variant: ("exe2", 0),
     rom_code_and_revision: (b"AE2J", 0x00),
@@ -39,4 +41,50 @@ pub const AE2E_00: Game = Game {
     region: Region::US,
 };
 
-pub const GAMES: &[&Game] = &[&AREJ_00, &AREE_00, &AE2J_00_AC, &AE2E_00];
+// BN3
+pub const A6BJ_01: Game = Game {
+    family_and_variant: ("exe3", 0),
+    rom_code_and_revision: (b"A6BJ", 0x01),
+    crc32: 0xe48e6bc9,
+    region: Region::JP,
+};
+
+pub const A3XJ_01: Game = Game {
+    family_and_variant: ("exe3", 1),
+    rom_code_and_revision: (b"A3XJ", 0x01),
+    crc32: 0xfd57493b,
+    region: Region::JP,
+};
+
+pub const A6BE_00: Game = Game {
+    family_and_variant: ("bn3", 0),
+    rom_code_and_revision: (b"A6BE", 0x00),
+    crc32: 0x0be4410a,
+    region: Region::US,
+};
+
+pub const A3XE_00: Game = Game {
+    family_and_variant: ("bn3", 1),
+    rom_code_and_revision: (b"A3XE", 0x01),
+    crc32: 0xc0c780f9,
+    region: Region::US,
+};
+
+// BN4
+
+// BN5
+
+// BN6
+
+// EXE4.5
+
+pub const GAMES: &[&Game] = &[
+    &AREJ_00,
+    &AREE_00,
+    &AE2J_00_AC,
+    &AE2E_00,
+    &A6BJ_01,
+    &A3XJ_01,
+    &A6BE_00,
+    &A3XE_00,
+];
