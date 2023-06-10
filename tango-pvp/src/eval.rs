@@ -37,6 +37,11 @@ pub async fn eval(
             if stepper_state.input_pairs_left() == 0 {
                 break;
             }
+
+            // For old-style replays, we don't have a precise ending, so we have to just take the result.
+            if let Some(result) = stepper_state.round_result() {
+                return Ok((result, core.as_mut().save_state()?));
+            }
         }
 
         core.as_mut().run_frame();
