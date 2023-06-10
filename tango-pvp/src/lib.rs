@@ -1,4 +1,5 @@
 pub mod battle;
+pub mod eval;
 pub mod game;
 pub mod hooks;
 pub mod input;
