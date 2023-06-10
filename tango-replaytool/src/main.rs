@@ -6,14 +6,18 @@ struct Args {
     /// Path to replay.
     path: std::path::PathBuf,
 
+    /// Invert the replay?
+    #[clap(default_value = "true", long)]
+    invert: bool,
+
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(clap::Subcommand)]
 pub enum Command {
-    /// Swap sides of the replay.
-    Invert { output_path: std::path::PathBuf },
+    /// Copy the replay.
+    Copy { output_path: std::path::PathBuf },
 
     /// Dump replay metadata.
     Metadata,
@@ -62,10 +66,14 @@ pub async fn main() -> Result<(), anyhow::Error> {
     mgba::log::init();
 
     let mut f = std::fs::File::open(&args.path)?;
-    let replay = tango_pvp::replay::Replay::decode(&mut f)?;
+    let mut replay = tango_pvp::replay::Replay::decode(&mut f)?;
+
+    if args.invert {
+        replay = replay.into_remote();
+    }
 
     match args.command {
-        Command::Invert { output_path } => cmd_invert(replay, output_path).await,
+        Command::Copy { output_path } => cmd_copy(replay, output_path).await,
         Command::Metadata => cmd_metadata(replay).await,
         Command::Wram => cmd_wram(replay).await,
         Command::Text => cmd_text(replay).await,
@@ -96,8 +104,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-async fn cmd_invert(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
-    let replay = replay.into_remote();
+async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
     let mut writer = tango_pvp::replay::Writer::new(
         Box::new(std::fs::File::create(&output_path)?),
         replay.metadata,
