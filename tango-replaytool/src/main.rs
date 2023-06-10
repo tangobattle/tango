@@ -239,7 +239,7 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
         ));
     }
 
-    let result = tango_pvp::eval::eval(replay, &rom, hooks).await?;
+    let (result, _) = tango_pvp::eval::eval(&replay, &rom, hooks).await?;
     println!("{}", result.outcome as u8);
 
     Ok(())

@@ -2,7 +2,7 @@ pub async fn eval(
     replay: &crate::replay::Replay,
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Sync + Send),
-) -> Result<crate::stepper::RoundResult, anyhow::Error> {
+) -> Result<(crate::stepper::RoundResult, mgba::state::State), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango")?;
 
     let vf = mgba::vfile::VFile::open_memory(&rom);
@@ -59,5 +59,5 @@ pub async fn eval(
         return Err(anyhow::anyhow!("failed to read round result"));
     };
 
-    Ok(result)
+    Ok((result, core.as_mut().save_state()?))
 }
