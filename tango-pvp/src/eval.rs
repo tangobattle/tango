@@ -46,10 +46,7 @@ pub async fn eval(
     core.as_mut().run_frame();
 
     let result = {
-        let mut stepper_state = stepper_state.lock_inner();
-        if let Some(err) = stepper_state.take_error() {
-            return Err(err);
-        }
+        let stepper_state = stepper_state.lock_inner();
         stepper_state.round_result()
     };
 
