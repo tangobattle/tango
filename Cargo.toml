@@ -9,6 +9,7 @@ members = [
     "mmpx",
     "tango",
     "tango-dataview",
+    "tango-filesync",
     "tango-gamedb",
     "tango-protos",
     "tango-pvp",

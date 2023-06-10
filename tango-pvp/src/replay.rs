@@ -18,8 +18,8 @@ pub struct Writer {
     num_inputs: u32,
 }
 
-const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x11;
+pub const HEADER: &[u8] = b"TOOT";
+pub const VERSION: u8 = 0x11;
 
 #[derive(Clone)]
 pub struct Replay {

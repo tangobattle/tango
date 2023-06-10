@@ -5490,7 +5490,6 @@ version = "4.0.57"
 dependencies = [
  "anyhow",
  "arboard 2.1.1",
- "async-recursion 1.0.0",
  "async-trait",
  "bincode",
  "bps",
@@ -5564,6 +5563,7 @@ dependencies = [
  "subtle",
  "sys-locale",
  "tango-dataview",
+ "tango-filesync",
  "tango-gamedb",
  "tango-protos",
  "tango-pvp",
@@ -5600,6 +5600,18 @@ dependencies = [
  "parking_lot",
  "patricia_tree",
  "thiserror",
+]
+
+[[package]]
+name = "tango-filesync"
+version = "0.1.0"
+dependencies = [
+ "async-recursion 1.0.0",
+ "futures",
+ "serde",
+ "serde-hex",
+ "sha2 0.10.5",
+ "tokio",
 ]
 
 [[package]]

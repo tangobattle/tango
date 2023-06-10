@@ -15,7 +15,6 @@ wgpu = ["dep:wgpu", "dep:egui-wgpu"]
 [dependencies]
 anyhow = "1"
 arboard = "2"
-async-recursion = "1"
 async-trait = "0.1"
 bincode = "1"
 bps = { path = "../bps" }
@@ -85,6 +84,7 @@ steamlocate = "1"
 subtle = "2"
 sys-locale = "0.2"
 tango-dataview = { path = "../tango-dataview" }
+tango-filesync = { path = "../tango-filesync" }
 tango-gamedb = { path = "../tango-gamedb" }
 tango-protos = { path = "../tango-protos" }
 tango-pvp = { path = "../tango-pvp" }

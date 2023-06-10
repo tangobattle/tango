@@ -10,7 +10,6 @@ extern crate lazy_static;
 mod audio;
 mod config;
 mod discord;
-mod filesync;
 mod game;
 mod graphics;
 mod gui;

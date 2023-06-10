@@ -2,7 +2,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use tokio::io::AsyncWriteExt;
 
-use crate::{config, filesync, game, rom, scanner, sync};
+use crate::{config, game, rom, scanner, sync};
 
 #[derive(serde::Deserialize, Debug)]
 struct Metadata {
@@ -60,7 +60,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                     .header("User-Agent", "tango")
                     .send()
                     .await?
-                    .json::<filesync::Entries>()
+                    .json::<tango_filesync::Entries>()
                     .await?,
             )
         })(),
@@ -68,7 +68,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
     .await??;
 
     let root = root.to_path_buf();
-    filesync::sync(
+    tango_filesync::sync(
         &root,
         &entries,
         {
