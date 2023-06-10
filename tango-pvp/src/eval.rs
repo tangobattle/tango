@@ -1,5 +1,5 @@
 pub async fn eval(
-    replay: crate::replay::Replay,
+    replay: &crate::replay::Replay,
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Sync + Send),
 ) -> Result<crate::stepper::RoundResult, anyhow::Error> {
