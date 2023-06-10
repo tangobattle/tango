@@ -174,7 +174,7 @@ pub struct FastforwardResult {
     pub output_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
 }
 
-#[derive(Clone, Copy, serde_repr::Serialize_repr)]
+#[derive(Clone, Copy, PartialEq, serde_repr::Serialize_repr)]
 #[repr(i8)]
 pub enum BattleOutcome {
     Draw = -1,
