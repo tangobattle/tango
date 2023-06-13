@@ -407,7 +407,7 @@ impl<'a> crate::save::PatchCard4sView<'a> for PatchCard4sView<'a> {
         let enabled = if id < super::NUM_PATCH_CARD4S {
             true
         } else {
-            id = self.save.buf[0x464c + 7 + slot] as usize;
+            id = self.save.buf[0x4653 + slot] as usize;
             if id >= super::NUM_PATCH_CARD4S {
                 return None;
             }
@@ -436,7 +436,7 @@ impl<'a> crate::save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
         }
 
         self.save.buf[0x464c + slot] = 0xff;
-        self.save.buf[0x464c + 7 + slot] = 0xff;
+        self.save.buf[0x4653 + slot] = 0xff;
 
         if let Some(patch_card) = patch_card {
             self.save.buf[0x464c + if patch_card.enabled { 0 } else { 7 } + slot] = patch_card.id as u8;
