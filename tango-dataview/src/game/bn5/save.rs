@@ -296,7 +296,7 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Protoman => 0x43,
             Variant::Colonel => 0x8d,
         };
-        for id in 0..super::NUM_PATCH_CARD56S {
+        for id in 0..0x200 {
             self.save.buf[0x60dc + id] = self.save.buf[0x1220 + id] ^ mask;
         }
     }

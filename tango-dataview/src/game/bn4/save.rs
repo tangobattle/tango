@@ -450,7 +450,7 @@ impl<'a> crate::save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
             Variant::BlueMoon => 0x31,
             Variant::RedSun => 0x43,
         };
-        for id in 0..super::NUM_PATCH_CARD4S {
+        for id in 0..0x100 {
             self.save.buf[0x5d14 + id] = self.save.buf[0x03d0 + id] ^ mask;
         }
     }

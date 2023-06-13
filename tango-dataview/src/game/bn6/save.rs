@@ -392,7 +392,7 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Gregar => 0x43,
             Variant::Falzar => 0x8d,
         };
-        for id in 0..super::NUM_PATCH_CARD56S {
+        for id in 0..0x200 {
             self.save.buf[0x5038 + id] = self.save.buf[0x0670 + id] ^ mask;
         }
     }
@@ -472,7 +472,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             Variant::Gregar => 0x17,
             Variant::Falzar => 0x81,
         };
-        for id in 0..super::NUM_CHIPS {
+        for id in 0..0x200 {
             self.save.buf[0x4c20 + id] = self.save.buf[0x08a0 + id] ^ mask;
         }
     }
