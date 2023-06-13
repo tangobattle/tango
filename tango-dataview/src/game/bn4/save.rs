@@ -444,6 +444,16 @@ impl<'a> crate::save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
 
         true
     }
+
+    fn rebuild_anticheat(&mut self) {
+        let mask = match self.save.game_info.variant {
+            Variant::BlueMoon => 0x31,
+            Variant::RedSun => 0x43,
+        };
+        for id in 0..super::NUM_PATCH_CARD4S {
+            self.save.buf[0x5d14 + id] = self.save.buf[0x03d0 + id] ^ mask;
+        }
+    }
 }
 
 pub struct AutoBattleDataView<'a> {

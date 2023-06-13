@@ -472,11 +472,8 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             Variant::Gregar => 0x17,
             Variant::Falzar => 0x81,
         };
-
-        let base_offset = 0x4c20;
-
         for id in 0..super::NUM_CHIPS {
-            self.save.buf[base_offset + id] = self.save.buf[0x08a0 + id] ^ mask;
+            self.save.buf[0x4c20 + id] = self.save.buf[0x08a0 + id] ^ mask;
         }
     }
 }
