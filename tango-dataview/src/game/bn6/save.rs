@@ -393,7 +393,7 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.save.buf[0x5088 + id] = self.save.buf[0x06c0 + id] ^ mask;
+            self.save.buf[0x5038 + id] = self.save.buf[0x0670 + id] ^ mask;
         }
     }
 }
