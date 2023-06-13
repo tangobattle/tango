@@ -106,7 +106,7 @@ impl crate::save::Save for Save {
         Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 
-    fn to_sram_dump(&self) -> Vec<u8> {
+    fn as_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
         buf

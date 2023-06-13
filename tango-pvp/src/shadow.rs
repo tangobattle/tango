@@ -187,7 +187,7 @@ impl Shadow {
 
         core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&save.to_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::open_memory(&save.as_sram_dump()))?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 

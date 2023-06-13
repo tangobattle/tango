@@ -884,7 +884,7 @@ pub fn show(
                                         let mut save = save.clone_box();
                                         save.rebuild_checksum();
 
-                                        if let Err(e) = f.write_all(&save.to_sram_dump()) {
+                                        if let Err(e) = f.write_all(&save.as_sram_dump()) {
                                             log::error!("failed to write save: {}", e);
                                             ui.close_menu();
                                             return;
@@ -973,7 +973,7 @@ pub fn show(
                                                     }
                                                 };
 
-                                                if let Err(e) = f.write_all(&save.save.to_sram_dump()) {
+                                                if let Err(e) = f.write_all(&save.save.as_sram_dump()) {
                                                     log::error!("failed to write save: {}", e);
                                                     ui.close_menu();
                                                     return;

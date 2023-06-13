@@ -220,7 +220,7 @@ impl crate::save::Save for Save {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 
-    fn to_sram_dump(&self) -> Vec<u8> {
+    fn as_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
         crate::save::mask(&mut buf[..SAVE_SIZE], MASK_OFFSET);

@@ -218,7 +218,7 @@ impl crate::save::Save for Save {
         }
     }
 
-    fn to_sram_dump(&self) -> Vec<u8> {
+    fn as_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[SAVE_START_OFFSET..][..SAVE_SIZE].copy_from_slice(&self.as_raw_wram());
         crate::save::mask(&mut buf[SAVE_START_OFFSET..][..SAVE_SIZE], MASK_OFFSET);

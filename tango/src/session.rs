@@ -82,7 +82,7 @@ impl Session {
 
         core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&local_save.to_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::open_memory(&local_save.as_sram_dump()))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
