@@ -1,4 +1,4 @@
-use crate::save::{LinkNaviView as _, NavicustView as _, PatchCard56sView as _};
+use crate::save::{ChipsView as _, LinkNaviView as _, NavicustView as _, PatchCard56sView as _};
 
 pub const SAVE_START_OFFSET: usize = 0x0100;
 pub const SAVE_SIZE: usize = 0x7c14;
@@ -123,6 +123,10 @@ impl Save {
 impl crate::save::Save for Save {
     fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
+    }
+
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut + '_>> {
+        Some(Box::new(ChipsViewMut { save: self }))
     }
 
     fn view_navi(&self) -> Option<crate::save::NaviView> {
@@ -298,6 +302,66 @@ impl<'a> crate::save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         };
         for id in 0..0x200 {
             self.save.buf[0x60dc + id] = self.save.buf[0x1220 + id] ^ mask;
+        }
+    }
+}
+
+pub struct ChipsViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+    fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() {
+            return false;
+        }
+        self.save.buf[0x52d5] = folder_index as u8;
+        true
+    }
+
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: crate::save::Chip) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        self.save.buf[0x2df4
+            + folder_index * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&{
+                let mut raw = RawChip::default();
+                raw.set_id(chip.id as u16);
+                raw.set_code(chip.code as u16);
+                raw
+            }));
+
+        true
+    }
+
+    fn set_tag_chip_indexes(&mut self, _folder_index: usize, _chip_indexes: Option<[usize; 2]>) -> bool {
+        false
+    }
+
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        self.save.buf[0x52d6 + folder_index] = chip_index as u8;
+        true
+    }
+
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        self.save.buf[0x2eb8 + id * 0xc + variant] = count as u8;
+        true
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        let mask = match self.save.game_info.variant {
+            Variant::Protoman => 0x17,
+            Variant::Colonel => 0x81,
+        };
+        for id in 0..0x200 {
+            self.save.buf[0x5cc4 + id] = self.save.buf[0x1440 + id] ^ mask;
         }
     }
 }
