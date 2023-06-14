@@ -439,7 +439,7 @@ impl<'a> crate::save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
         self.save.buf[0x4653 + slot] = 0xff;
 
         if let Some(patch_card) = patch_card {
-            self.save.buf[0x464c + if patch_card.enabled { 0 } else { 7 } + slot] = patch_card.id as u8;
+            self.save.buf[if patch_card.enabled { 0x464c } else { 0x4653 } + slot] = patch_card.id as u8;
         }
 
         true
