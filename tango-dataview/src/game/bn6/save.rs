@@ -36,16 +36,13 @@ pub struct Save {
     game_info: GameInfo,
 }
 
-const JP_SHIFTABLE_REGION_START: usize = 0x410c;
-const JP_SHIFTABLE_REGION_END: usize = 0x50fc;
+const JP_SHOP_REGION_END: usize = 0x410c;
+const SHIFTABLE_REGION_END: usize = 0x50fc;
 
 fn convert_jp_to_us(buf: &mut [u8; SAVE_SIZE]) {
     // Extend the shop data section.
-    buf.copy_within(
-        JP_SHIFTABLE_REGION_START..JP_SHIFTABLE_REGION_END,
-        JP_SHIFTABLE_REGION_START + 0x40,
-    );
-    for p in &mut buf[JP_SHIFTABLE_REGION_START..][..0x40] {
+    buf.copy_within(JP_SHOP_REGION_END..SHIFTABLE_REGION_END, JP_SHOP_REGION_END + 0x40);
+    for p in &mut buf[JP_SHOP_REGION_END..][..0x40] {
         *p = 0;
     }
 }
@@ -53,10 +50,10 @@ fn convert_jp_to_us(buf: &mut [u8; SAVE_SIZE]) {
 fn convert_us_to_jp(buf: &mut [u8; SAVE_SIZE]) {
     // Truncate the shop data section.
     buf.copy_within(
-        JP_SHIFTABLE_REGION_START + 0x40..JP_SHIFTABLE_REGION_END + 0x40,
-        JP_SHIFTABLE_REGION_START,
+        JP_SHOP_REGION_END + 0x40..SHIFTABLE_REGION_END + 0x40,
+        JP_SHOP_REGION_END,
     );
-    for p in &mut buf[JP_SHIFTABLE_REGION_END..][..0x40] {
+    for p in &mut buf[SHIFTABLE_REGION_END..][..0x40] {
         *p = 0;
     }
 }
