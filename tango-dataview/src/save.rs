@@ -301,12 +301,11 @@ pub enum Error {
     #[error("invalid game name: {0:02x?}")]
     InvalidGameName(Vec<u8>),
 
-    #[error("invalid checksum: {actual:08x} not in {expected:08x?} (shift: {shift}, attempt: {attempt})")]
+    #[error("invalid checksum: {actual:08x} not in {expected:08x?} (shift: {shift})")]
     ChecksumMismatch {
         expected: Vec<u32>,
         actual: u32,
         shift: usize,
-        attempt: usize,
     },
 
     #[error("invalid shift: {0}")]

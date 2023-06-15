@@ -81,7 +81,6 @@ impl Save {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
                 shift,
-                attempt: 0,
             });
         }
 

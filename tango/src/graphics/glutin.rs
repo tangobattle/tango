@@ -28,7 +28,6 @@ impl Backend {
                 event_loop,
                 glutin::config::ConfigTemplateBuilder::new()
                     .prefer_hardware_accelerated(None)
-                    .with_multisampling(0)
                     .with_depth_size(0)
                     .with_stencil_size(0)
                     .with_transparency(false),

@@ -109,26 +109,24 @@ impl Save {
             let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
                 Some(RED_SUN) => (Variant::RedSun, Region::US),
                 Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
-                None => match expected_checksum.checked_sub(raw_checksum - buf[0] as u32) {
+                _ => match expected_checksum.checked_sub(raw_checksum - buf[0] as u32) {
                     Some(RED_SUN) => (Variant::RedSun, Region::JP),
                     Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
+                    Some(_) => {
+                        return Err(crate::save::Error::ChecksumMismatch {
+                            expected: vec![expected_checksum, raw_checksum - buf[0] as u32],
+                            actual: raw_checksum,
+                            shift,
+                        });
+                    }
                     _ => {
                         return Err(crate::save::Error::ChecksumMismatch {
                             expected: vec![expected_checksum],
                             actual: raw_checksum,
                             shift,
-                            attempt: 1,
                         });
                     }
                 },
-                _ => {
-                    return Err(crate::save::Error::ChecksumMismatch {
-                        expected: vec![expected_checksum],
-                        actual: raw_checksum,
-                        shift,
-                        attempt: 0,
-                    });
-                }
             };
 
             GameInfo {

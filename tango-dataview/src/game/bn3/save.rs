@@ -55,7 +55,6 @@ impl Save {
                         return Err(crate::save::Error::ChecksumMismatch {
                             actual: save_checksum,
                             expected: vec![raw_checksum + WHITE, raw_checksum + BLUE],
-                            attempt: 0,
                             shift: 0,
                         });
                     }

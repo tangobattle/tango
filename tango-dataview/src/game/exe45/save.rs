@@ -30,7 +30,6 @@ impl Save {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
                 shift: 0,
-                attempt: 0,
             });
         }
 
