@@ -112,9 +112,9 @@ impl Save {
                 _ => match expected_checksum.checked_sub(raw_checksum - buf[0] as u32) {
                     Some(RED_SUN) => (Variant::RedSun, Region::JP),
                     Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
-                    Some(_) => {
+                    Some(expected_jp_checksum) => {
                         return Err(crate::save::Error::ChecksumMismatch {
-                            expected: vec![expected_checksum, raw_checksum - buf[0] as u32],
+                            expected: vec![expected_checksum, expected_jp_checksum],
                             actual: raw_checksum,
                             shift,
                         });
