@@ -335,7 +335,7 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        self.save.buf[0x26f0 + id * 0xc + variant] = count as u8;
+        self.save.buf[0x26e4 + id * 0xc + variant] = count as u8;
         true
     }
 
