@@ -31,7 +31,7 @@ pub struct Replay {
     pub input_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
 }
 
-fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
+pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
         0x10 => replay10::decode_metadata(&raw[..])?,
         0x11 => protos::replay11::Metadata::decode(&raw[..])?,
