@@ -1,3 +1,5 @@
+use crate::save::LinkNaviView as _;
+
 pub const SAVE_SIZE: usize = 0xc7a8;
 pub const MASK_OFFSET: usize = 0x3c84;
 pub const GAME_NAME_OFFSET: usize = 0x4ba8;
@@ -50,10 +52,6 @@ impl Save {
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(crate::save::Error::InvalidSize(buf.len()))?,
         })
-    }
-
-    pub fn current_navi(&self) -> u8 {
-        self.buf[0x4ad1]
     }
 }
 
@@ -120,7 +118,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x7500
-                + self.save.current_navi() as usize * (30 * std::mem::size_of::<RawChip>())
+                + LinkNaviView { save: self.save }.navi() as usize * (30 * std::mem::size_of::<RawChip>())
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 
