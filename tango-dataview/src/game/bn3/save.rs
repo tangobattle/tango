@@ -220,8 +220,8 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: (self.save.buf[0x0310 + (raw.id_and_variant[0] >> 3) as usize]
-                & (0x80 >> (raw.id_and_variant[0] >> 7)))
+            compressed: (self.save.buf[0x0310 + raw.id_and_variant[0] as usize >> 3]
+                & 0x80 >> (raw.id_and_variant[0] & 0x7))
                 != 0,
         })
     }
