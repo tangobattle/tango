@@ -24,16 +24,16 @@ unsafe extern "C" fn c_log<VaList>(
         buf.resize(n + 1, 0);
     }
 
-    let cstr = match std::ffi::CString::new(buf) {
+    let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }.to_string_lossy();
+    let message = match std::ffi::CString::new(buf) {
         Ok(r) => r,
         Err(err) => {
             let nul_pos = err.nul_position();
             std::ffi::CString::new(&err.into_vec()[0..nul_pos]).unwrap()
         }
-    };
-
-    let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }.to_string_lossy();
-    let message = cstr.to_string_lossy().to_string();
+    }
+    .to_string_lossy()
+    .to_string();
 
     log::log!(
         match level {
@@ -62,13 +62,13 @@ unsafe impl Sync for Logger {}
 unsafe impl Send for Logger {}
 
 pub fn init() {
-    static LOG_FILTER: once_cell::sync::Lazy<LogFilter> = once_cell::sync::Lazy::new(|| unsafe {
-        let mut log_filter = std::mem::zeroed::<mgba_sys::mLogFilter>();
-        mgba_sys::mLogFilterInit(&mut log_filter);
-        LogFilter(log_filter)
-    });
-
     static LOGGER: once_cell::sync::Lazy<Logger> = once_cell::sync::Lazy::new(|| {
+        static LOG_FILTER: once_cell::sync::Lazy<LogFilter> = once_cell::sync::Lazy::new(|| unsafe {
+            let mut log_filter = std::mem::zeroed::<mgba_sys::mLogFilter>();
+            mgba_sys::mLogFilterInit(&mut log_filter);
+            LogFilter(log_filter)
+        });
+
         Logger(mgba_sys::mLogger {
             log: Some(c_log),
             filter: &LOG_FILTER.0 as *const _ as *mut _,
