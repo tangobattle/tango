@@ -27,9 +27,35 @@ unsafe extern "C" fn c_log<VaList>(
     category: i32,
     level: u32,
     fmt: *const std::os::raw::c_char,
-    args: *mut VaList,
+    args: VaList,
 ) {
-    LOG_FUNC.lock().as_ref()(category, level, vsprintf::vsprintf(fmt, args).unwrap());
+    const INITIAL_BUF_SIZE: usize = 512;
+    let mut buf = vec![0u8; INITIAL_BUF_SIZE];
+
+    let mut done = false;
+    while !done {
+        let n: usize = mgba_sys::vsnprintf(
+            buf.as_mut_ptr() as *mut _,
+            buf.len() as u64,
+            fmt,
+            std::mem::transmute_copy(&args),
+        )
+        .try_into()
+        .unwrap();
+
+        done = n + 1 <= buf.len();
+        buf.resize(n + 1, 0);
+    }
+
+    let cstr = match std::ffi::CString::new(buf) {
+        Ok(r) => r,
+        Err(err) => {
+            let nul_pos = err.nul_position();
+            std::ffi::CString::new(&err.into_vec()[0..nul_pos]).unwrap()
+        }
+    };
+
+    LOG_FUNC.lock().as_ref()(category, level, cstr.to_string_lossy().to_string());
 }
 
 pub fn init() {

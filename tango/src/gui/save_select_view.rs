@@ -70,7 +70,6 @@ fn create_new_save(
         prefix.push_str(&format!("{} v{}", name, version));
     }
 
-    prefix = prefix.replace(":", "");
     if !name.is_empty() {
         prefix.push_str(" - ");
         prefix.push_str(
@@ -79,6 +78,7 @@ fn create_new_save(
                 .unwrap(),
         );
     }
+    prefix = prefix.replace(":", "").replace("/", " ");
     prefix.push_str(".sav");
 
     Ok(create_next_file(&saves_path.join(prefix))?)

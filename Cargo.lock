@@ -3295,7 +3295,6 @@ dependencies = [
  "mgba-sys",
  "parking_lot",
  "send_wrapper",
- "vsprintf",
 ]
 
 [[package]]
@@ -6379,16 +6378,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "vsprintf"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aec2f81b75ca063294776b4f7e8da71d1d5ae81c2b1b149c8d89969230265d63"
-dependencies = [
- "cc",
- "libc",
-]
 
 [[package]]
 name = "vswhom"

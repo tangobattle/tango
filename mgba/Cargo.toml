@@ -11,7 +11,6 @@ log = "0.4"
 mgba-sys = { path = "mgba-sys" }
 parking_lot = "0.12"
 send_wrapper = "0.5"
-vsprintf = "2"
 
 [build-dependencies]
 bindgen = "0.57"
