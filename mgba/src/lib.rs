@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-
 pub mod arm_core;
 pub mod blip;
 pub mod core;

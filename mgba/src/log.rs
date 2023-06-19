@@ -1,27 +1,3 @@
-use const_zero::const_zero;
-
-lazy_static! {
-    static ref MLOG_FILTER: send_wrapper::SendWrapper<parking_lot::Mutex<mgba_sys::mLogFilter>> = {
-        let mut ptr = unsafe { const_zero!(mgba_sys::mLogFilter) };
-        unsafe {
-            mgba_sys::mLogFilterInit(&mut ptr);
-        }
-        send_wrapper::SendWrapper::new(parking_lot::Mutex::new(ptr))
-    };
-    static ref MLOGGER: send_wrapper::SendWrapper<parking_lot::Mutex<mgba_sys::mLogger>> =
-        send_wrapper::SendWrapper::new(parking_lot::Mutex::new(mgba_sys::mLogger {
-            log: Some(c_log),
-            filter: &mut *MLOG_FILTER.lock(),
-        }));
-    static ref LOG_FUNC: send_wrapper::SendWrapper<parking_lot::Mutex<Box<dyn Fn(i32, u32, String)>>> =
-        send_wrapper::SendWrapper::new(parking_lot::Mutex::new(Box::new(&|category, _level, message| {
-            let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }
-                .to_str()
-                .unwrap();
-            log::info!("{}: {}", category_name, message);
-        })));
-}
-
 unsafe extern "C" fn c_log<VaList>(
     _logger: *mut mgba_sys::mLogger,
     category: i32,
@@ -29,11 +5,10 @@ unsafe extern "C" fn c_log<VaList>(
     fmt: *const std::os::raw::c_char,
     args: VaList,
 ) {
-    const INITIAL_BUF_SIZE: usize = 512;
+    const INITIAL_BUF_SIZE: usize = 1;
     let mut buf = vec![0u8; INITIAL_BUF_SIZE];
 
-    let mut done = false;
-    while !done {
+    loop {
         let n: usize = mgba_sys::vsnprintf(
             buf.as_mut_ptr() as *mut _,
             buf.len() as u64,
@@ -43,7 +18,9 @@ unsafe extern "C" fn c_log<VaList>(
         .try_into()
         .unwrap();
 
-        done = n + 1 <= buf.len();
+        if n + 1 <= buf.len() {
+            break;
+        }
         buf.resize(n + 1, 0);
     }
 
@@ -55,11 +32,50 @@ unsafe extern "C" fn c_log<VaList>(
         }
     };
 
-    LOG_FUNC.lock().as_ref()(category, level, cstr.to_string_lossy().to_string());
+    let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }.to_string_lossy();
+    let message = cstr.to_string_lossy().to_string();
+
+    log::log!(
+        match level {
+            mgba_sys::mLogLevel_mLOG_STUB => log::Level::Trace,
+            mgba_sys::mLogLevel_mLOG_DEBUG => log::Level::Debug,
+            mgba_sys::mLogLevel_mLOG_INFO => log::Level::Info,
+            mgba_sys::mLogLevel_mLOG_WARN => log::Level::Warn,
+            mgba_sys::mLogLevel_mLOG_ERROR | mgba_sys::mLogLevel_mLOG_FATAL | mgba_sys::mLogLevel_mLOG_GAME_ERROR =>
+                log::Level::Error,
+            _ => log::Level::Info,
+        },
+        "{}: {}",
+        category_name,
+        message
+    );
 }
 
+#[repr(transparent)]
+struct LogFilter(mgba_sys::mLogFilter);
+unsafe impl Sync for LogFilter {}
+unsafe impl Send for LogFilter {}
+
+#[repr(transparent)]
+struct Logger(mgba_sys::mLogger);
+unsafe impl Sync for Logger {}
+unsafe impl Send for Logger {}
+
 pub fn init() {
+    static LOG_FILTER: once_cell::sync::Lazy<LogFilter> = once_cell::sync::Lazy::new(|| unsafe {
+        let mut log_filter = std::mem::zeroed::<mgba_sys::mLogFilter>();
+        mgba_sys::mLogFilterInit(&mut log_filter);
+        LogFilter(log_filter)
+    });
+
+    static LOGGER: once_cell::sync::Lazy<Logger> = once_cell::sync::Lazy::new(|| {
+        Logger(mgba_sys::mLogger {
+            log: Some(c_log),
+            filter: &LOG_FILTER.0 as *const _ as *mut _,
+        })
+    });
+
     unsafe {
-        mgba_sys::mLogSetDefaultLogger(&mut *MLOGGER.lock());
+        mgba_sys::mLogSetDefaultLogger(&LOGGER.0 as *const _ as *mut _);
     }
 }
