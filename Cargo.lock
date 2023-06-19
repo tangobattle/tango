@@ -5647,7 +5647,6 @@ dependencies = [
  "anyhow",
  "clap 4.0.12",
  "indicatif",
- "mgba",
  "serde_json",
  "tango-gamedb",
  "tango-pvp",
