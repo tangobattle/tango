@@ -2,6 +2,7 @@ pub async fn eval(
     replay: &crate::replay::Replay,
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Sync + Send),
+    extra_traps: impl FnOnce() -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> + Send + Sync,
 ) -> Result<(crate::stepper::RoundResult, mgba::state::State), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango")?;
 
@@ -24,6 +25,7 @@ pub async fn eval(
         let stepper_state = stepper_state.clone();
         let mut traps = hooks.common_traps();
         traps.extend(hooks.stepper_traps(stepper_state.clone()));
+        traps.extend(extra_traps());
         core.set_traps(traps);
     }
     core.as_mut().load_state(&replay.local_state)?;
