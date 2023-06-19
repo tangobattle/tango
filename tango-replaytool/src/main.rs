@@ -63,7 +63,6 @@ pub enum Command {
 #[tokio::main]
 pub async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
-    mgba::log::init();
 
     let mut f = std::fs::File::open(&args.path)?;
     let mut replay = tango_pvp::replay::Replay::decode(&mut f)?;

@@ -153,8 +153,6 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     config.save()?;
     let config = std::sync::Arc::new(parking_lot::RwLock::new(config));
 
-    mgba::log::init();
-
     let updater_path = config::get_updater_path().unwrap();
     let _ = std::fs::create_dir_all(&updater_path);
     let mut updater = updater::Updater::new(&updater_path, config.clone());

@@ -61,7 +61,7 @@ struct Logger(mgba_sys::mLogger);
 unsafe impl Sync for Logger {}
 unsafe impl Send for Logger {}
 
-pub fn init() {
+pub(crate) fn init() {
     static LOGGER: once_cell::sync::Lazy<Logger> = once_cell::sync::Lazy::new(|| {
         static LOG_FILTER: once_cell::sync::Lazy<LogFilter> = once_cell::sync::Lazy::new(|| unsafe {
             let mut log_filter = std::mem::zeroed::<mgba_sys::mLogFilter>();
@@ -75,7 +75,8 @@ pub fn init() {
         })
     });
 
-    unsafe {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| unsafe {
         mgba_sys::mLogSetDefaultLogger(&LOGGER.0 as *const _ as *mut _);
-    }
+    });
 }

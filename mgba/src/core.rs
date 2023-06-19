@@ -15,6 +15,8 @@ unsafe impl Send for Core {}
 
 impl Core {
     pub fn new_gba(config_name: &str) -> anyhow::Result<Self> {
+        super::log::init();
+
         let ptr = unsafe { mgba_sys::GBACoreCreate() };
         if ptr.is_null() {
             anyhow::bail!("failed to create core");
