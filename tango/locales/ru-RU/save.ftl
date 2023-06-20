@@ -1,6 +1,5 @@
 save-tab-cover = Покрытие
 save-tab-navi = Нави
-save-tab-navicust = НавиКаст
 save-tab-folder = Папка
 save-tab-patch-cards = Мод карты
 save-tab-auto-battle-data = Данные автобоя

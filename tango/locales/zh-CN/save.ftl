@@ -1,6 +1,5 @@
 save-tab-cover = 封面
 save-tab-navi = 领航员
-save-tab-navicust = 个性化
 save-tab-folder = 芯片夹
 save-tab-patch-cards = 改造卡
 save-tab-auto-battle-data = ABD
