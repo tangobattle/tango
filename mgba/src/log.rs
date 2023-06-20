@@ -1,11 +1,5 @@
-unsafe extern "C" fn c_log<VaList>(
-    _logger: *mut mgba_sys::mLogger,
-    category: i32,
-    level: u32,
-    fmt: *const std::os::raw::c_char,
-    args: VaList,
-) {
-    const INITIAL_BUF_SIZE: usize = 1;
+unsafe fn vsprintf<VaList>(fmt: *const std::os::raw::c_char, args: VaList) -> std::ffi::CString {
+    const INITIAL_BUF_SIZE: usize = 512;
     let mut buf = vec![0u8; INITIAL_BUF_SIZE];
 
     loop {
@@ -24,17 +18,22 @@ unsafe extern "C" fn c_log<VaList>(
         buf.resize(n + 1, 0);
     }
 
-    let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }.to_string_lossy();
-    let message = match std::ffi::CString::new(buf) {
+    match std::ffi::CString::new(vsprintf(fmt, args)) {
         Ok(r) => r,
         Err(err) => {
             let nul_pos = err.nul_position();
             std::ffi::CString::new(&err.into_vec()[0..nul_pos]).unwrap()
         }
     }
-    .to_string_lossy()
-    .to_string();
+}
 
+unsafe extern "C" fn c_log<VaList>(
+    _logger: *mut mgba_sys::mLogger,
+    category: i32,
+    level: u32,
+    fmt: *const std::os::raw::c_char,
+    args: VaList,
+) {
     log::log!(
         match level {
             mgba_sys::mLogLevel_mLOG_STUB => log::Level::Trace,
@@ -46,8 +45,8 @@ unsafe extern "C" fn c_log<VaList>(
             _ => log::Level::Info,
         },
         "{}: {}",
-        category_name,
-        message
+        std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)).to_string_lossy(),
+        vsprintf(fmt, args).to_string_lossy()
     );
 }
 
