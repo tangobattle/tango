@@ -9,7 +9,7 @@ where
     arr
 }
 
-fn rotate<'a, T>(arr: &'a ndarray::Array2<T>, num: usize) -> std::borrow::Cow<'a, ndarray::Array2<T>>
+fn rotate<T>(arr: &ndarray::Array2<T>, num: usize) -> std::borrow::Cow<ndarray::Array2<T>>
 where
     T: Clone,
 {
