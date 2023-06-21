@@ -462,7 +462,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
 }
 
 impl Assets {
-    pub fn new(offsets: &'static Offsets, charset: &[String], rom: Vec<u8>, wram: Vec<u8>) -> Self {
+    pub fn new(offsets: &'static Offsets, charset: &[&str], rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = crate::rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = bytemuck::pod_read_unaligned::<crate::rom::Palette>(

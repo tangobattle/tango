@@ -42,12 +42,11 @@ impl game::Game for EXE4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WJ_01,
-                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
-                    tango_dataview::game::bn4::rom::JA_CHARSET
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                }),
+                &overrides
+                    .charset
+                    .as_ref()
+                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
+                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn4::rom::JA_CHARSET)),
                 rom.to_vec(),
                 wram.to_vec(),
             ),
@@ -143,12 +142,11 @@ impl game::Game for EXE4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BJ_01,
-                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
-                    tango_dataview::game::bn4::rom::JA_CHARSET
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                }),
+                &overrides
+                    .charset
+                    .as_ref()
+                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
+                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn4::rom::JA_CHARSET)),
                 rom.to_vec(),
                 wram.to_vec(),
             ),
@@ -244,12 +242,11 @@ impl game::Game for BN4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WE_00,
-                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
-                    tango_dataview::game::bn4::rom::EN_CHARSET
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                }),
+                &overrides
+                    .charset
+                    .as_ref()
+                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
+                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn4::rom::EN_CHARSET)),
                 rom.to_vec(),
                 wram.to_vec(),
             ),
@@ -345,12 +342,11 @@ impl game::Game for BN4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BE_00,
-                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
-                    tango_dataview::game::bn4::rom::EN_CHARSET
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                }),
+                &overrides
+                    .charset
+                    .as_ref()
+                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
+                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn4::rom::EN_CHARSET)),
                 rom.to_vec(),
                 wram.to_vec(),
             ),

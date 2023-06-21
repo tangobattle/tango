@@ -75,7 +75,7 @@ impl<Command> ParserBuilder<Command> {
         self.add_rule(pat, Rule::PushText(s.to_string()))
     }
 
-    pub fn add_charset_rules(self, charset: &[String], extension_op_base: u8) -> Self {
+    pub fn add_charset_rules(self, charset: &[&str], extension_op_base: u8) -> Self {
         let mut this = self;
         for (i, c) in charset.iter().enumerate() {
             if i < extension_op_base as usize {

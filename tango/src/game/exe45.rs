@@ -31,12 +31,11 @@ impl game::Game for EXE45Impl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::exe45::rom::Assets::new(
                 &tango_dataview::game::exe45::rom::BR4J_00,
-                &overrides.charset.as_ref().cloned().unwrap_or_else(|| {
-                    tango_dataview::game::exe45::rom::CHARSET
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                }),
+                &overrides
+                    .charset
+                    .as_ref()
+                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
+                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::exe45::rom::CHARSET)),
                 rom.to_vec(),
                 wram.to_vec(),
             ),
