@@ -24,7 +24,7 @@ pub struct Session {
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     mode: Mode,
-    completion_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    completion_token: tango_pvp::hooks::CompletionToken,
     pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
     opponent_setup: Option<Setup>,
     own_setup: Option<Setup>,
@@ -93,13 +93,9 @@ impl Session {
         let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
         let mut traps = local_hooks.common_traps();
 
-        let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let completion_token = tango_pvp::hooks::CompletionToken::new();
 
-        traps.extend(local_hooks.primary_traps(
-            joyflags.clone(),
-            match_.clone(),
-            tango_pvp::hooks::CompletionToken::new(completion_flag.clone()),
-        ));
+        traps.extend(local_hooks.primary_traps(joyflags.clone(), match_.clone(), completion_token.clone()));
         core.set_traps(
             traps
                 .into_iter()
@@ -292,7 +288,7 @@ impl Session {
                 as usize
         ]));
         thread.set_frame_callback({
-            let completion_flag = completion_flag.clone();
+            let completion_token = completion_token.clone();
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
@@ -303,7 +299,7 @@ impl Session {
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
 
-                if completion_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                if completion_token.is_complete() {
                     thread_handle.pause();
                 }
             }
@@ -325,7 +321,7 @@ impl Session {
                 _peer_conn: peer_conn,
                 latency_counter,
             }),
-            completion_flag,
+            completion_token,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             own_setup: {
                 let assets =
@@ -420,7 +416,7 @@ impl Session {
             joyflags,
             mode: Mode::SinglePlayer(SinglePlayer {}),
             pause_on_next_frame,
-            completion_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            completion_token: tango_pvp::hooks::CompletionToken::new(),
             own_setup: None,
             opponent_setup: None,
         })
@@ -442,7 +438,7 @@ impl Session {
         let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
         hooks.patch(core.as_mut());
 
-        let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let completion_token = tango_pvp::hooks::CompletionToken::new();
 
         let replay_is_complete = replay.is_complete;
         let input_pairs = replay.input_pairs.clone();
@@ -452,9 +448,9 @@ impl Session {
             input_pairs.iter().map(|p| p.clone().into()).collect(),
             0,
             Box::new({
-                let completion_flag = completion_flag.clone();
+                let completion_token = completion_token.clone();
                 move || {
-                    completion_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    completion_token.complete();
                 }
             }),
         );
@@ -489,7 +485,7 @@ impl Session {
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
-            let completion_flag = completion_flag.clone();
+            let completion_token = completion_token.clone();
             let stepper_state = stepper_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
             move |_core, video_buffer, mut thread_handle| {
@@ -499,11 +495,11 @@ impl Session {
                 emu_tps_counter.lock().mark();
 
                 if !replay_is_complete && stepper_state.lock_inner().input_pairs_left() == 0 {
-                    completion_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    completion_token.complete();
                 }
 
                 if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst)
-                    || completion_flag.load(std::sync::atomic::Ordering::SeqCst)
+                    || completion_token.is_complete()
                 {
                     thread_handle.pause();
                 }
@@ -518,7 +514,7 @@ impl Session {
             thread,
             joyflags: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             mode: Mode::Replayer,
-            completion_flag,
+            completion_token,
             pause_on_next_frame,
             own_setup: None,
             opponent_setup: None,
@@ -526,7 +522,7 @@ impl Session {
     }
 
     pub fn completed(&self) -> bool {
-        self.completion_flag.load(std::sync::atomic::Ordering::SeqCst)
+        self.completion_token.is_complete()
     }
 
     pub fn mode(&self) -> &Mode {

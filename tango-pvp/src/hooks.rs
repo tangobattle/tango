@@ -1,10 +1,17 @@
+#[derive(Clone)]
 pub struct CompletionToken {
     flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl CompletionToken {
-    pub fn new(flag: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
-        Self { flag }
+    pub fn new() -> Self {
+        Self {
+            flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn complete(&self) {
