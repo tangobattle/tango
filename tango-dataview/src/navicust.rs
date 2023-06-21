@@ -34,19 +34,16 @@ fn ncp_bitmap(info: &dyn crate::rom::NavicustPart, compressed: bool, rot: u8) ->
 
 pub type MaterializedNavicust = ndarray::Array2<Option<usize>>;
 
-pub fn materialized_from_wram(buf: &[u8], height: usize, width: usize) -> MaterializedNavicust {
-    ndarray::Array2::from_shape_vec(
-        (height, width),
-        buf.iter().map(|v| v.checked_sub(1).map(|v| v as usize)).collect(),
-    )
-    .unwrap()
+pub fn materialized_from_wram(buf: &[u8], size: [usize; 2]) -> MaterializedNavicust {
+    ndarray::Array2::from_shape_vec(size, buf.iter().map(|v| v.checked_sub(1).map(|v| v as usize)).collect()).unwrap()
 }
 
 pub fn materialize<'a>(
     navicust_view: &dyn crate::save::NavicustView<'a>,
+    max_size: [usize; 2],
     assets: &dyn crate::rom::Assets,
 ) -> MaterializedNavicust {
-    let mut materialized = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
+    let mut materialized = ndarray::Array2::from_elem(max_size, None);
     for i in 0..navicust_view.count() {
         let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
             ncp

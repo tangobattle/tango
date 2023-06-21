@@ -186,12 +186,8 @@ struct RawNavicustPart {
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
 impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
-    fn width(&self) -> usize {
-        5
-    }
-
-    fn height(&self) -> usize {
-        5
+    fn size(&self) -> [usize; 2] {
+        [5, 5]
     }
 
     fn style(&self) -> Option<usize> {
@@ -221,7 +217,7 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
         })
     }
 
-    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
-        None
+    fn materialized(&self) -> crate::navicust::MaterializedNavicust {
+        crate::navicust::materialized_from_wram(&self.save.buf[0x1d90..][..(5 * 5)], [5, 5])
     }
 }

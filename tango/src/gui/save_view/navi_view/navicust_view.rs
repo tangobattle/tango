@@ -710,9 +710,7 @@ pub fn show(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let materialized = navicust_view
-                            .materialized()
-                            .unwrap_or_else(|| tango_dataview::navicust::materialize(navicust_view, assets));
+                        let materialized = navicust_view.materialized();
                         let image = render_navicust(
                             &materialized,
                             &navicust_layout,

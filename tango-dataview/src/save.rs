@@ -263,10 +263,9 @@ pub trait NavicustView<'a> {
     fn style(&self) -> Option<usize> {
         None
     }
-    fn width(&self) -> usize;
-    fn height(&self) -> usize;
+    fn size(&self) -> [usize; 2];
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
-    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust>;
+    fn materialized(&self) -> crate::navicust::MaterializedNavicust;
 }
 
 pub trait NavicustViewMut<'a> {

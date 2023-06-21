@@ -383,12 +383,8 @@ struct RawNavicustPart {
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
 impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
-    fn width(&self) -> usize {
-        5
-    }
-
-    fn height(&self) -> usize {
-        5
+    fn size(&self) -> [usize; 2] {
+        [5, 5]
     }
 
     fn navicust_part(&self, i: usize) -> Option<crate::save::NavicustPart> {
@@ -414,14 +410,8 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
         })
     }
 
-    fn materialized(&self) -> Option<crate::navicust::MaterializedNavicust> {
-        let offset = 0x4d48;
-
-        Some(crate::navicust::materialized_from_wram(
-            &self.save.buf[offset..][..(self.height() * self.width())],
-            self.height(),
-            self.width(),
-        ))
+    fn materialized(&self) -> crate::navicust::MaterializedNavicust {
+        crate::navicust::materialized_from_wram(&self.save.buf[0x4d48..][..(5 * 5)], [5, 5])
     }
 }
 
@@ -456,7 +446,7 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
-        let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, assets);
+        let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, [5, 5], assets);
         self.save.buf[0x4d48..][..0x24].copy_from_slice(
             &materialized
                 .into_iter()
