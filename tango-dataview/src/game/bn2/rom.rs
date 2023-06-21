@@ -61,7 +61,7 @@ struct RawChip {
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x20);
 
 impl<'a> Chip<'a> {
-    fn raw(&'a self) -> RawChip {
+    fn raw(&self) -> RawChip {
         bytemuck::pod_read_unaligned(
             &self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * std::mem::size_of::<RawChip>()..]
                 [..std::mem::size_of::<RawChip>()],
@@ -213,7 +213,7 @@ impl Assets {
 }
 
 impl crate::rom::Assets for Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
+    fn chip(&self, id: usize) -> Option<Box<dyn crate::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }

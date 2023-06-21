@@ -83,7 +83,7 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 

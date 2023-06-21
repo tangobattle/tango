@@ -285,7 +285,7 @@ impl Assets {
 }
 
 impl crate::rom::Assets for Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
+    fn chip(&self, id: usize) -> Option<Box<dyn crate::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -318,7 +318,7 @@ impl crate::rom::Assets for Assets {
         ))
     }
 
-    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Navi + 'a>> {
+    fn navi(&self, id: usize) -> Option<Box<dyn crate::rom::Navi + '_>> {
         if id >= self.num_navis() {
             return None;
         }

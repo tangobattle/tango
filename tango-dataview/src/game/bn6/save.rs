@@ -140,11 +140,11 @@ impl Save {
         bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
-    pub fn as_us_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+    pub fn as_us_wram(&self) -> std::borrow::Cow<[u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 
-    pub fn as_jp_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+    pub fn as_jp_wram(&self) -> std::borrow::Cow<[u8]> {
         let mut buf = self.buf.clone();
         convert_us_to_jp(&mut buf);
         std::borrow::Cow::Owned(buf.to_vec())
@@ -207,7 +207,7 @@ impl crate::save::Save for Save {
         )))
     }
 
-    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
         match self.game_info.region {
             Region::US => self.as_us_wram(),
             Region::JP => self.as_jp_wram(),

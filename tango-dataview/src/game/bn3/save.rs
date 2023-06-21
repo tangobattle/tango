@@ -93,7 +93,7 @@ impl Save {
 }
 
 impl crate::save::Save for Save {
-    fn as_raw_wram<'a>(&'a self) -> std::borrow::Cow<'a, [u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 

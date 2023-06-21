@@ -94,7 +94,7 @@ pub struct NavicustLayout {
 }
 
 pub trait Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn Chip + 'a>>;
+    fn chip(&self, id: usize) -> Option<Box<dyn Chip + '_>>;
     fn num_chips(&self) -> usize;
     fn can_set_regular_chip(&self) -> bool {
         false
@@ -109,35 +109,35 @@ pub trait Assets {
         true
     }
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage>;
-    fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn PatchCard56 + 'a>> {
+    fn patch_card56(&self, id: usize) -> Option<Box<dyn PatchCard56 + '_>> {
         let _ = id;
         None
     }
     fn num_patch_card56s(&self) -> usize {
         0
     }
-    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn PatchCard4 + 'a>> {
+    fn patch_card4(&self, id: usize) -> Option<Box<dyn PatchCard4 + '_>> {
         let _ = id;
         None
     }
     fn num_patch_card4s(&self) -> usize {
         0
     }
-    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn NavicustPart + 'a>> {
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn NavicustPart + '_>> {
         let _ = id;
         None
     }
     fn num_navicust_parts(&self) -> usize {
         0
     }
-    fn style<'a>(&'a self, id: usize) -> Option<Box<dyn Style + 'a>> {
+    fn style(&self, id: usize) -> Option<Box<dyn Style + '_>> {
         let _ = id;
         None
     }
     fn num_styles(&self) -> usize {
         0
     }
-    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn Navi + 'a>> {
+    fn navi(&self, id: usize) -> Option<Box<dyn Navi + '_>> {
         let _ = id;
         None
     }
@@ -289,7 +289,7 @@ impl MemoryMapper {
         }
     }
 
-    pub fn get<'a>(&'a self, start: u32) -> std::borrow::Cow<'a, [u8]> {
+    pub fn get(&self, start: u32) -> std::borrow::Cow<[u8]> {
         if start >= 0x02000000 && start < 0x04000000 {
             std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])
         } else if start >= 0x08000000 && start < 0x0a000000 {

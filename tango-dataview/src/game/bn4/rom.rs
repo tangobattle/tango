@@ -130,7 +130,7 @@ struct RawChip {
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2c);
 
 impl<'a> Chip<'a> {
-    fn raw(&'a self) -> RawChip {
+    fn raw(&self) -> RawChip {
         bytemuck::pod_read_unaligned(
             &self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * std::mem::size_of::<RawChip>()..]
                 [..std::mem::size_of::<RawChip>()],
@@ -328,7 +328,7 @@ struct RawNavicustPart {
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
 impl<'a> NavicustPart<'a> {
-    fn raw(&'a self) -> RawNavicustPart {
+    fn raw(&self) -> RawNavicustPart {
         bytemuck::pod_read_unaligned(
             &self.assets.mapper.get(self.assets.offsets.ncp_data)[self.id * std::mem::size_of::<RawNavicustPart>()..]
                 [..std::mem::size_of::<RawNavicustPart>()],
@@ -482,7 +482,7 @@ impl Assets {
 }
 
 impl crate::rom::Assets for Assets {
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
+    fn chip(&self, id: usize) -> Option<Box<dyn crate::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
         }
@@ -515,7 +515,7 @@ impl crate::rom::Assets for Assets {
         ))
     }
 
-    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + '_>> {
         if id >= self.num_navicust_parts() {
             return None;
         }
@@ -526,7 +526,7 @@ impl crate::rom::Assets for Assets {
         super::NUM_NAVICUST_PARTS
     }
 
-    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::PatchCard4 + 'a>> {
+    fn patch_card4(&self, id: usize) -> Option<Box<dyn crate::rom::PatchCard4 + '_>> {
         self.offsets
             .patch_cards
             .get(id)

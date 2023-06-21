@@ -502,7 +502,7 @@ impl crate::rom::Assets for Assets {
         ))
     }
 
-    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
+    fn navicust_part(&self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + '_>> {
         if id >= self.num_navicust_parts() {
             return None;
         }

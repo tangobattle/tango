@@ -38,8 +38,8 @@ pub fn materialized_from_wram(buf: &[u8], size: [usize; 2]) -> MaterializedNavic
     ndarray::Array2::from_shape_vec(size, buf.iter().map(|v| v.checked_sub(1).map(|v| v as usize)).collect()).unwrap()
 }
 
-pub fn materialize<'a>(
-    navicust_view: &dyn crate::save::NavicustView<'a>,
+pub fn materialize(
+    navicust_view: &dyn crate::save::NavicustView,
     max_size: [usize; 2],
     assets: &dyn crate::rom::Assets,
 ) -> MaterializedNavicust {
