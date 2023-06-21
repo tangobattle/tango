@@ -72,7 +72,9 @@ impl<'a> AudioGuard<'a> {
 
 impl<'a> Drop for AudioGuard<'a> {
     fn drop(&mut self) {
-        self.sync_mut().consume_audio()
+        unsafe {
+            mgba_sys::mCoreSyncConsumeAudio(self.sync.ptr);
+        }
     }
 }
 
@@ -156,11 +158,13 @@ impl Handle {
 
     pub fn lock_audio(&self) -> AudioGuard {
         let mut thread = self.thread.lock();
-        let mut sync = sync::SyncMutRef {
+        let sync = sync::SyncMutRef {
             ptr: unsafe { &mut (*thread.raw.impl_).sync as *mut _ },
             _lifetime: std::marker::PhantomData,
         };
-        sync.lock_audio();
+        unsafe {
+            mgba_sys::mCoreSyncLockAudio(sync.ptr);
+        }
         AudioGuard { sync, thread }
     }
 

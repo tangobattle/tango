@@ -31,16 +31,4 @@ impl<'a> SyncMutRef<'a> {
             (*self.ptr).fpsTarget = fps_target;
         }
     }
-
-    pub fn lock_audio(&mut self) {
-        unsafe {
-            mgba_sys::mCoreSyncLockAudio(self.ptr);
-        }
-    }
-
-    pub fn consume_audio(&mut self) {
-        unsafe {
-            mgba_sys::mCoreSyncConsumeAudio(self.ptr);
-        }
-    }
 }
