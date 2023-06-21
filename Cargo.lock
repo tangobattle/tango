@@ -3280,13 +3280,13 @@ dependencies = [
 name = "mgba"
 version = "4.0.32"
 dependencies = [
- "anyhow",
  "bindgen 0.57.0",
  "cmake",
  "log",
  "mgba-sys",
  "once_cell",
  "parking_lot",
+ "thiserror",
 ]
 
 [[package]]

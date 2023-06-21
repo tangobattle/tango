@@ -102,9 +102,9 @@ impl Thread {
         Handle { thread: self.0.clone() }
     }
 
-    pub fn start(&self) -> anyhow::Result<()> {
+    pub fn start(&self) -> Result<(), crate::Error> {
         if !unsafe { mgba_sys::mCoreThreadStart(&mut self.0.lock().raw) } {
-            anyhow::bail!("failed to start thread");
+            return Err(crate::Error::CallFailed("mCoreThreadStart"));
         }
         Ok(())
     }

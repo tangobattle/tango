@@ -4,11 +4,11 @@ version = "4.0.32"
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
 log = "0.4"
 mgba-sys = { path = "mgba-sys" }
 once_cell = "1"
 parking_lot = "0.12"
+thiserror = "1"
 
 [build-dependencies]
 bindgen = "0.57"

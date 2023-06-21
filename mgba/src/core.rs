@@ -14,12 +14,12 @@ pub struct Core {
 unsafe impl Send for Core {}
 
 impl Core {
-    pub fn new_gba(config_name: &str) -> anyhow::Result<Self> {
+    pub fn new_gba(config_name: &str) -> Result<Self, crate::Error> {
         super::log::init();
 
         let ptr = unsafe { mgba_sys::GBACoreCreate() };
         if ptr.is_null() {
-            anyhow::bail!("failed to create core");
+            return Err(crate::Error::CallFailed("GBACoreCreate"));
         }
         unsafe {
             {
@@ -178,22 +178,6 @@ impl<'a> CoreMutRef<'a> {
         }
     }
 
-    pub fn full_rom_name(&mut self) -> [u8; 16] {
-        let mut buf = [0u8; 16];
-        self.raw_read_range(0x080000a0, -1, &mut buf[..]);
-        buf
-    }
-
-    pub fn rom_code(&mut self) -> [u8; 4] {
-        let mut buf = [0u8; 4];
-        self.raw_read_range(0x080000ac, -1, &mut buf[..]);
-        buf
-    }
-
-    pub fn rom_revision(&mut self) -> u8 {
-        self.raw_read_8(0x080000bc, -1)
-    }
-
     pub fn gba_mut(&mut self) -> gba::GBAMutRef {
         gba::GBAMutRef {
             ptr: unsafe { (*self.ptr).board as *mut mgba_sys::GBA },
@@ -201,35 +185,28 @@ impl<'a> CoreMutRef<'a> {
         }
     }
 
-    pub fn load_rom(&mut self, mut vf: vfile::VFile) -> anyhow::Result<()> {
+    pub fn load_rom(&mut self, mut vf: vfile::VFile) -> Result<(), crate::Error> {
         if !unsafe { (*self.ptr).loadROM.unwrap()(self.ptr, vf.release()) } {
-            anyhow::bail!("failed to load rom")
+            return Err(crate::Error::CallFailed("mCore.loadROM"));
         }
         Ok(())
     }
 
-    pub fn load_save(&mut self, mut vf: vfile::VFile) -> anyhow::Result<()> {
+    pub fn load_save(&mut self, mut vf: vfile::VFile) -> Result<(), crate::Error> {
         if !unsafe { (*self.ptr).loadSave.unwrap()(self.ptr, vf.release()) } {
-            anyhow::bail!("failed to load save")
+            return Err(crate::Error::CallFailed("mCore.loadSave"));
         }
         Ok(())
     }
 
-    pub fn load_patch(&mut self, mut vf: vfile::VFile) -> anyhow::Result<()> {
-        if !unsafe { (*self.ptr).loadPatch.unwrap()(self.ptr, vf.release()) } {
-            anyhow::bail!("failed to load patch")
-        }
-        Ok(())
-    }
-
-    pub fn load_state(&mut self, state: &state::State) -> anyhow::Result<()> {
+    pub fn load_state(&mut self, state: &state::State) -> Result<(), crate::Error> {
         if !unsafe { (*self.ptr).loadState.unwrap()(self.ptr, &*state.0 as *const _ as *const std::os::raw::c_void) } {
-            anyhow::bail!("failed to load state");
+            return Err(crate::Error::CallFailed("mCore.loadState"));
         }
         Ok(())
     }
 
-    pub fn save_state(&self) -> anyhow::Result<state::State> {
+    pub fn save_state(&self) -> Result<state::State, crate::Error> {
         unsafe {
             let layout = std::alloc::Layout::new::<mgba_sys::GBASerializedState>();
             let ptr = std::alloc::alloc(layout);
@@ -238,7 +215,7 @@ impl<'a> CoreMutRef<'a> {
             }
             let mut state = state::State(Box::from_raw(ptr as *mut _ as *mut mgba_sys::GBASerializedState));
             if !(*self.ptr).saveState.unwrap()(self.ptr, &mut *state.0 as *mut _ as *mut std::os::raw::c_void) {
-                anyhow::bail!("failed to save state");
+                return Err(crate::Error::CallFailed("mCore.saveState"));
             }
             Ok(state)
         }
