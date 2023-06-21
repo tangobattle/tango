@@ -286,12 +286,8 @@ where
         self.assets.num_patch_card4s()
     }
 
-    fn navicust_part<'a>(
-        &'a self,
-        id: usize,
-        variant: usize,
-    ) -> Option<Box<dyn tango_dataview::rom::NavicustPart + 'a>> {
-        self.assets.navicust_part(id, variant).map(|navicust_part| {
+    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::NavicustPart + 'a>> {
+        self.assets.navicust_part(id).map(|navicust_part| {
             Box::new(OverridenNavicustPart {
                 navicust_part,
                 id,
@@ -300,7 +296,7 @@ where
         })
     }
 
-    fn num_navicust_parts(&self) -> (usize, usize) {
+    fn num_navicust_parts(&self) -> usize {
         self.assets.num_navicust_parts()
     }
 

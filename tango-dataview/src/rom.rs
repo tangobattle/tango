@@ -123,13 +123,12 @@ pub trait Assets {
     fn num_patch_card4s(&self) -> usize {
         0
     }
-    fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn NavicustPart + 'a>> {
+    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn NavicustPart + 'a>> {
         let _ = id;
-        let _ = variant;
         None
     }
-    fn num_navicust_parts(&self) -> (usize, usize) {
-        (0, 0)
+    fn num_navicust_parts(&self) -> usize {
+        0
     }
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn Style + 'a>> {
         let _ = id;

@@ -174,11 +174,9 @@ pub struct NavicustView<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawNavicustPart {
-    #[bitfield(name = "variant", ty = "u8", bits = "0..=1")]
-    #[bitfield(name = "id", ty = "u8", bits = "2..=7")]
-    id_and_variant: [u8; 1],
+    id: u8,
     _unk_01: u8,
     col: u8,
     row: u8,
@@ -210,19 +208,16 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
                 [..std::mem::size_of::<RawNavicustPart>()],
         );
 
-        if raw.id() == 0 {
+        if raw.id == 0 {
             return None;
         }
 
         Some(crate::save::NavicustPart {
-            id: raw.id() as usize,
-            variant: raw.variant() as usize,
+            id: raw.id as usize,
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: (self.save.buf[0x0310 + raw.id_and_variant[0] as usize >> 3]
-                & 0x80 >> (raw.id_and_variant[0] & 0x7))
-                != 0,
+            compressed: (self.save.buf[0x0310 + raw.id as usize >> 3] & 0x80 >> (raw.id & 0x7)) != 0,
         })
     }
 

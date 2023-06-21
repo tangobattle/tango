@@ -169,7 +169,7 @@ fn gather_ncp_colors<'a>(
                 return vec![];
             };
 
-            let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+            let info = if let Some(info) = assets.navicust_part(ncp.id) {
                 info
             } else {
                 return vec![];
@@ -490,7 +490,7 @@ fn render_navicust_body<'a>(
             continue;
         };
 
-        let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+        let info = if let Some(info) = assets.navicust_part(ncp.id) {
             info
         } else {
             continue;
@@ -631,7 +631,7 @@ pub fn show(
         .flat_map(|i| {
             navicust_view.navicust_part(i).and_then(|ncp| {
                 assets
-                    .navicust_part(ncp.id, ncp.variant)
+                    .navicust_part(ncp.id)
                     .and_then(|info| info.color().map(|color| (info, color)))
             })
         })
@@ -761,7 +761,7 @@ pub fn show(
                                 if let Some(ncp_i) = materialized[[ty as usize, tx as usize]] {
                                     if let Some(info) = navicust_view
                                         .navicust_part(ncp_i)
-                                        .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))
+                                        .and_then(|ncp| assets.navicust_part(ncp.id))
                                     {
                                         resp.on_hover_text_at_pointer(
                                             egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))

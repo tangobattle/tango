@@ -342,7 +342,6 @@ impl<'a> crate::rom::Chip for Chip<'a> {
 
 struct NavicustPart<'a> {
     id: usize,
-    variant: usize,
     assets: &'a Assets,
 }
 
@@ -361,9 +360,8 @@ const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
 impl<'a> NavicustPart<'a> {
     fn raw(&'a self) -> RawNavicustPart {
-        let i = self.id * 4 + self.variant;
         bytemuck::pod_read_unaligned(
-            &self.assets.mapper.get(self.assets.offsets.ncp_data)[i * std::mem::size_of::<RawNavicustPart>()..]
+            &self.assets.mapper.get(self.assets.offsets.ncp_data)[self.id * std::mem::size_of::<RawNavicustPart>()..]
                 [..std::mem::size_of::<RawNavicustPart>()],
         )
     }
@@ -374,7 +372,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = crate::msg::get_entry(&region, self.id)?;
+        let entry = crate::msg::get_entry(&region, self.id / 4)?;
 
         Some(
             self.assets
@@ -398,7 +396,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         let region = self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = crate::msg::get_entry(&region, self.id)?;
+        let entry = crate::msg::get_entry(&region, self.id / 4)?;
 
         Some(
             self.assets
@@ -754,19 +752,14 @@ impl crate::rom::Assets for Assets {
         ))
     }
 
-    fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
-        let (max_id, max_variant) = self.num_navicust_parts();
-        if id >= max_id || variant >= max_variant {
+    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
+        if id >= self.num_navicust_parts() {
             return None;
         }
-        Some(Box::new(NavicustPart {
-            id,
-            variant,
-            assets: self,
-        }))
+        Some(Box::new(NavicustPart { id, assets: self }))
     }
 
-    fn num_navicust_parts(&self) -> (usize, usize) {
+    fn num_navicust_parts(&self) -> usize {
         super::NUM_NAVICUST_PARTS
     }
 

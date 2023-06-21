@@ -250,7 +250,6 @@ pub trait LinkNaviViewMut<'a> {
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
 pub struct NavicustPart {
     pub id: usize,
-    pub variant: usize,
     pub col: u8,
     pub row: u8,
     pub rot: u8,

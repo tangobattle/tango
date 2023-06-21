@@ -54,7 +54,7 @@ pub fn materialize<'a>(
             continue;
         };
 
-        let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+        let info = if let Some(info) = assets.navicust_part(ncp.id) {
             info
         } else {
             continue;

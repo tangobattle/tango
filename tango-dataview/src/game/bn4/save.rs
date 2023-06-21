@@ -353,11 +353,9 @@ pub struct NavicustView<'a> {
 }
 
 #[repr(packed, C)]
-#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
+#[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawNavicustPart {
-    #[bitfield(name = "variant", ty = "u8", bits = "0..=1")]
-    #[bitfield(name = "id", ty = "u8", bits = "2..=7")]
-    id_and_variant: [u8; 1],
+    id: u8,
     _unk_01: u8,
     col: u8,
     row: u8,
@@ -386,13 +384,12 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
                 [..std::mem::size_of::<RawNavicustPart>()],
         );
 
-        if raw.id() == 0 {
+        if raw.id == 0 {
             return None;
         }
 
         Some(crate::save::NavicustPart {
-            id: raw.id() as usize,
-            variant: raw.variant() as usize,
+            id: raw.id as usize,
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
@@ -414,7 +411,7 @@ pub struct NavicustViewMut<'a> {
 }
 impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
     fn set_navicust_part(&mut self, i: usize, part: crate::save::NavicustPart) -> bool {
-        if part.id >= super::NUM_NAVICUST_PARTS.0 || part.variant >= super::NUM_NAVICUST_PARTS.1 {
+        if part.id >= super::NUM_NAVICUST_PARTS {
             return false;
         }
         if i >= (NavicustView { save: self.save }).count() {
@@ -422,17 +419,13 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         }
 
         self.save.buf[0x4564 + i * std::mem::size_of::<RawNavicustPart>()..][..std::mem::size_of::<RawNavicustPart>()]
-            .copy_from_slice(bytemuck::bytes_of(&{
-                let mut raw = RawNavicustPart {
-                    col: part.col,
-                    row: part.row,
-                    rot: part.rot,
-                    compressed: if part.compressed { 1 } else { 0 },
-                    ..Default::default()
-                };
-                raw.set_id(part.id as u8);
-                raw.set_variant(part.variant as u8);
-                raw
+            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
+                id: part.id as u8,
+                col: part.col,
+                row: part.row,
+                rot: part.rot,
+                compressed: if part.compressed { 1 } else { 0 },
+                ..Default::default()
             }));
 
         true
