@@ -2,16 +2,16 @@ pub mod hqx;
 pub mod mmpx;
 
 pub trait Filter {
-    fn output_size(&self, size: (usize, usize)) -> (usize, usize);
-    fn apply(&self, input: &[u8], output: &mut [u8], size: (usize, usize));
+    fn output_size(&self, size: [usize; 2]) -> [usize; 2];
+    fn apply(&self, input: &[u8], output: &mut [u8], size: [usize; 2]);
 }
 
 pub struct NullFilter;
 impl Filter for NullFilter {
-    fn output_size(&self, size: (usize, usize)) -> (usize, usize) {
+    fn output_size(&self, size: [usize; 2]) -> [usize; 2] {
         size
     }
-    fn apply(&self, input: &[u8], output: &mut [u8], _size: (usize, usize)) {
+    fn apply(&self, input: &[u8], output: &mut [u8], _size: [usize; 2]) {
         output.copy_from_slice(input)
     }
 }

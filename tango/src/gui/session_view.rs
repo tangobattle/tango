@@ -51,8 +51,8 @@ fn show_emulator(
     let video_filter = video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
 
     // Apply stupid video scaling filter that only mint wants 🥴
-    let (vbuf_width, vbuf_height) =
-        video_filter.output_size((mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize));
+    let [vbuf_width, vbuf_height] =
+        video_filter.output_size([mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize]);
 
     let vbuf = if !vbuf
         .as_ref()
@@ -68,7 +68,7 @@ fn show_emulator(
     video_filter.apply(
         &session.lock_vbuf(),
         bytemuck::cast_slice_mut(&mut vbuf.image.pixels[..]),
-        (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
+        [mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize],
     );
 
     vbuf.texture.set(vbuf.image.clone(), egui::TextureOptions::NEAREST);
