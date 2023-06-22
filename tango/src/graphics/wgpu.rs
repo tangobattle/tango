@@ -83,10 +83,7 @@ impl graphics::Backend for Backend {
         &self.egui_ctx
     }
 
-    fn run<'b>(
-        &mut self,
-        mut run_ui: Box<dyn FnMut(&winit::window::Window, &egui::Context) + 'b>,
-    ) -> std::time::Duration {
+    fn run(&mut self, mut run_ui: Box<dyn FnMut(&winit::window::Window, &egui::Context) + '_>) -> std::time::Duration {
         let egui::FullOutput {
             platform_output,
             repaint_after,

@@ -144,10 +144,7 @@ impl graphics::Backend for Backend {
         &self.egui_glow.egui_ctx
     }
 
-    fn run<'a>(
-        &mut self,
-        mut run_ui: Box<dyn FnMut(&winit::window::Window, &egui::Context) + 'a>,
-    ) -> std::time::Duration {
+    fn run(&mut self, mut run_ui: Box<dyn FnMut(&winit::window::Window, &egui::Context) + '_>) -> std::time::Duration {
         self.egui_glow.run(&self.window, |ui| run_ui(&self.window, ui))
     }
 
