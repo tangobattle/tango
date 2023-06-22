@@ -266,8 +266,8 @@ impl crate::hooks::Hooks for Hooks {
                         return;
                     }
 
-                    crate::sync::block_on(round_state.end_round()).expect("end round");
-                    crate::sync::block_on(match_.advance_shadow_until_round_end()).expect("advance shadow");
+                    round_state.end_round().expect("end round");
+                    match_.advance_shadow_until_round_end().expect("advance shadow");
                 })
             }),
             (self.offsets.rom.round_start_ret, {
@@ -355,7 +355,8 @@ impl crate::hooks::Hooks for Hooks {
 
                         round.set_first_committed_state(
                             core.save_state().expect("save state"),
-                            crate::sync::block_on(match_.advance_shadow_until_first_committed_state())
+                            match_
+                                .advance_shadow_until_first_committed_state()
                                 .expect("shadow save state"),
                             &munger.tx_packet(core),
                         );

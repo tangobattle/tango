@@ -22,7 +22,7 @@ pub struct RoundState {
 }
 
 impl RoundState {
-    pub async fn end_round(&mut self) -> anyhow::Result<()> {
+    pub fn end_round(&mut self) -> anyhow::Result<()> {
         match self.round.take() {
             Some(round) => {
                 log::info!("round ended at {:x}", round.current_tick);
@@ -134,11 +134,11 @@ impl Match {
         self.cancellation_token.cancelled()
     }
 
-    pub async fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {
+    pub fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {
         self.shadow.lock().advance_until_round_end()
     }
 
-    pub async fn advance_shadow_until_first_committed_state(&self) -> anyhow::Result<mgba::state::State> {
+    pub fn advance_shadow_until_first_committed_state(&self) -> anyhow::Result<mgba::state::State> {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
