@@ -758,12 +758,9 @@ impl crate::hooks::Hooks for Hooks {
     }
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
-        match rx[0] {
-            0x80 => {
-                let tick = byteorder::LittleEndian::read_u32(&rx[0xc..0x10]);
-                byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], tick + 1);
-            }
-            _ => {}
+        if rx[0] == 0x80 {
+            let tick = byteorder::LittleEndian::read_u32(&rx[0xc..0x10]);
+            byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], tick + 1);
         }
     }
 
