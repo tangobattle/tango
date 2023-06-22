@@ -327,7 +327,7 @@ fn show_status_bar(
                         return (0.0, None, None);
                     };
 
-                    let match_ = sync::block_on(pvp.match_.lock());
+                    let match_ = pvp.match_.blocking_lock();
                     let match_ = if let Some(match_) = &*match_ {
                         match_
                     } else {
@@ -336,7 +336,7 @@ fn show_status_bar(
 
                     let latency = sync::block_on(pvp.latency());
 
-                    let round_state = sync::block_on(match_.lock_round_state());
+                    let round_state = match_.lock_round_state();
                     let round = if let Some(round) = round_state.round.as_ref() {
                         round
                     } else {

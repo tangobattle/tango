@@ -210,12 +210,12 @@ impl Match {
         Ok(())
     }
 
-    pub async fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, RoundState> {
-        self.round_state.lock().await
+    pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, RoundState> {
+        self.round_state.blocking_lock()
     }
 
-    pub async fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
-        self.rng.lock().await
+    pub fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
+        self.rng.blocking_lock()
     }
 
     pub fn match_type(&self) -> (u8, u8) {

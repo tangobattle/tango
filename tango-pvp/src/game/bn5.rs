@@ -79,7 +79,7 @@ impl crate::hooks::Hooks for Hooks {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 Box::new(move |core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -93,7 +93,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.round_end_set_win, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -101,14 +101,14 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -116,14 +116,14 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -131,14 +131,14 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     round_state.set_last_outcome(crate::battle::BattleOutcome::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -146,14 +146,14 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     round_state.set_last_outcome(crate::battle::BattleOutcome::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -161,7 +161,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     let result = {
                         let round = round_state.round.as_ref().expect("round");
                         round.on_draw_outcome()
@@ -172,7 +172,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.round_set_ending, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -180,7 +180,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
                     round_state.end_round().expect("end round");
                     match_.advance_shadow_until_round_end().expect("advance shadow");
                 })
@@ -188,7 +188,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.round_start_ret, {
                 let match_ = match_.clone();
                 Box::new(move |_core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -201,7 +201,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.battle_is_p2_tst, {
                 let match_ = match_.clone();
                 Box::new(move |mut core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -209,7 +209,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let round_state = crate::sync::block_on(match_.lock_round_state());
+                    let round_state = match_.lock_round_state();
                     let round = round_state.round.as_ref().expect("round");
 
                     core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -218,7 +218,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.link_is_p2_ret, {
                 let match_ = match_.clone();
                 Box::new(move |mut core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -226,7 +226,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let round_state = crate::sync::block_on(match_.lock_round_state());
+                    let round_state = match_.lock_round_state();
                     let round = round_state.round.as_ref().expect("round");
 
                     core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -245,7 +245,7 @@ impl crate::hooks::Hooks for Hooks {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 Box::new(move |core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -253,7 +253,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut rng = crate::sync::block_on(match_.lock_rng());
+                    let mut rng = match_.lock_rng();
                     let (battle_settings, background) =
                         random_battle_settings_and_background(match_.match_type().1 == 1, &mut *rng);
                     munger.set_battle_settings_and_background(core, battle_settings, background);
@@ -271,21 +271,14 @@ impl crate::hooks::Hooks for Hooks {
                 Box::new(move |mut core| {
                     let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    munger.set_copy_data_input_state(
-                        core,
-                        if crate::sync::block_on(match_.lock()).is_some() {
-                            2
-                        } else {
-                            4
-                        },
-                    );
+                    munger.set_copy_data_input_state(core, if match_.blocking_lock().is_some() { 2 } else { 4 });
                 })
             }),
             (self.offsets.rom.main_read_joyflags, {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 Box::new(move |core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -293,7 +286,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
 
                     let round = match round_state.round.as_mut() {
                         Some(round) => round,
@@ -303,7 +296,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     if !round.has_committed_state() {
-                        let mut rng = crate::sync::block_on(match_.lock_rng());
+                        let mut rng = match_.lock_rng();
 
                         // rng1 is the local rng, it should not be synced.
                         // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
@@ -362,7 +355,7 @@ impl crate::hooks::Hooks for Hooks {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 Box::new(move |core| {
-                    let match_ = crate::sync::block_on(match_.lock());
+                    let match_ = match_.blocking_lock();
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -370,7 +363,7 @@ impl crate::hooks::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = crate::sync::block_on(match_.lock_round_state());
+                    let mut round_state = match_.lock_round_state();
 
                     let round = match round_state.round.as_mut() {
                         Some(round) => round,
