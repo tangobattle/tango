@@ -1,7 +1,9 @@
 mod httputil;
 
+use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
+use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(clap::Parser)]
@@ -78,6 +80,7 @@ async fn handle_request(
                 let (tx, rx) = websocket.split();
                 let user_state = std::sync::Arc::new(UserState {
                     tx: Sender(tokio::sync::Mutex::new(tx)),
+                    latencies: tokio::sync::Mutex::new(std::collections::BinaryHeap::new()),
                     ip: remote_ip,
                 });
 
@@ -135,19 +138,6 @@ impl Receiver {
     async fn recv(&mut self) -> Option<Result<tungstenite::Message, tungstenite::Error>> {
         self.0.next().await
     }
-
-    async fn recv_binary(&mut self) -> Option<Result<Vec<u8>, tungstenite::Error>> {
-        Some(self.recv().await?.and_then(|msg| {
-            match msg {
-                tungstenite::Message::Binary(buf) => Ok(buf),
-                _ => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("received a non-binary message: {}", msg),
-                )
-                .into()),
-            }
-        }))
-    }
 }
 
 async fn handle_connection(
@@ -155,19 +145,48 @@ async fn handle_connection(
     user_state: std::sync::Arc<UserState>,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
+    // Send list of users.
+
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
     loop {
         tokio::select! {
-            msg = rx.recv() => {
-                let msg = if let Some(msg) = msg {
-                    msg?
+            msg = tokio::time::timeout(std::time::Duration::from_secs(60), rx.recv()) => {
+                let msg = if let Some(msg) = msg? {
+                    msg
                 } else {
+                    // Stream was closed.
                     return Ok(());
-                };
+                }?;
+
+                match msg {
+                    tungstenite::Message::Binary(buf) => {
+                        let packet = nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?;
+                        // TODO
+                    },
+                    tungstenite::Message::Pong(buf) => {
+                        let unix_ts_ms = buf.as_slice().read_u64::<byteorder::LittleEndian>()?;
+                        let ts = std::time::UNIX_EPOCH + std::time::Duration::from_millis(unix_ts_ms);
+                        let now = std::time::SystemTime::now();
+
+                        // Record time.
+                        let mut latencies = user_state.latencies.lock().await;
+                        const MAX_LATENCIES: usize = 9;
+                        latencies.shrink_to(MAX_LATENCIES);
+                        latencies.push(now.duration_since(ts)?);
+                    },
+                    _ => {
+                        return Err(anyhow::anyhow!("cannot handle this message: {}", msg));
+                    }
+                }
             }
 
             _ = ping_interval.tick() => {
+                let now = std::time::SystemTime::now();
+                let unix_ts_ms = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                let mut buf = vec![];
+                buf.write_u64::<byteorder::LittleEndian>(unix_ts_ms).unwrap();
+                user_state.tx.send(tungstenite::Message::Ping(buf)).await?;
             }
         }
     }
@@ -175,6 +194,7 @@ async fn handle_connection(
 
 struct UserState {
     tx: Sender,
+    latencies: tokio::sync::Mutex<std::collections::BinaryHeap<std::time::Duration>>,
     ip: std::net::IpAddr,
 }
 

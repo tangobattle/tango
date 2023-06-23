@@ -3501,6 +3501,9 @@ dependencies = [
 name = "nettai-client"
 version = "0.1.0"
 dependencies = [
+ "bytes 1.2.1",
+ "prost",
+ "prost-build",
  "tokio",
  "tokio-tungstenite 0.16.1",
 ]
@@ -3510,12 +3513,16 @@ name = "nettai-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "byteorder",
+ "bytes 1.2.1",
  "clap 4.0.12",
  "futures-util",
  "hyper",
  "hyper-tungstenite",
  "log",
+ "nettai-client",
  "once_cell",
+ "prost",
  "routerify",
  "semver 1.0.13",
  "tokio",
