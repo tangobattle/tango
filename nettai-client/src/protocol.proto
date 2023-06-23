@@ -2,4 +2,7 @@ syntax = "proto3";
 
 package nettai.protocol;
 
-message Packet {}
+message Packet {
+  message Hello {}
+  oneof which { Hello hello = 1; }
+}

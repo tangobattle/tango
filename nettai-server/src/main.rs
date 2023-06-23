@@ -161,8 +161,15 @@ async fn handle_connection(
 
                 match msg {
                     tungstenite::Message::Binary(buf) => {
-                        let packet = nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?;
-                        // TODO
+                        let which = if let Some(which) = nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?.which {
+                            which
+                        } else {
+                            return Ok(());
+                        };
+
+                        match which {
+                            nettai_client::protocol::packet::Which::Hello(_) => todo!(),
+                        }
                     },
                     tungstenite::Message::Pong(buf) => {
                         let unix_ts_ms = buf.as_slice().read_u64::<byteorder::LittleEndian>()?;
