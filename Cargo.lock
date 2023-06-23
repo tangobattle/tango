@@ -3498,6 +3498,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nettai-client"
+version = "0.1.0"
+
+[[package]]
+name = "nettai-server"
+version = "0.1.0"
+
+[[package]]
 name = "nix"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
