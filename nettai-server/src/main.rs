@@ -75,7 +75,7 @@ async fn handle_request(
 
     let server_state = request.data::<std::sync::Arc<ServerState>>().unwrap().clone();
 
-    let user_id = if let Some(user_id) = server_state.available_ids.lock().await.pop_front() {
+    let current_user_id = if let Some(user_id) = server_state.available_ids.lock().await.pop_front() {
         user_id
     } else {
         return Ok(hyper::Response::builder()
@@ -103,12 +103,25 @@ async fn handle_request(
                     ip: remote_ip,
                 });
 
+                // Broadcast connect.
+                let _ = server_state
+                    .broadcast_message(nettai_client::protocol::Packet {
+                        which: Some(nettai_client::protocol::packet::Which::Users(
+                            nettai_client::protocol::packet::Users {
+                                entries: vec![nettai_client::protocol::packet::users::Entry {
+                                    user_id: current_user_id,
+                                    info: Some(user_state.info()),
+                                }],
+                            },
+                        )),
+                    })
+                    .await;
+
                 {
                     let mut users = server_state.users.lock().await;
-                    users.insert(user_id, user_state.clone());
+                    users.insert(current_user_id, user_state.clone());
                 }
-
-                handle_connection(server_state.clone(), user_id, user_state.clone(), Receiver(rx)).await?;
+                handle_connection(server_state.clone(), current_user_id, user_state.clone(), Receiver(rx)).await?;
 
                 Ok::<_, anyhow::Error>(())
             })()
@@ -117,8 +130,22 @@ async fn handle_request(
             log::error!("connection error for {}: {}", remote_ip, e);
         }
 
-        server_state.users.lock().await.remove(&user_id);
-        server_state.available_ids.lock().await.push_back(user_id);
+        server_state.users.lock().await.remove(&current_user_id);
+        server_state.available_ids.lock().await.push_back(current_user_id);
+
+        // Broadcast disconnect.
+        let _ = server_state
+            .broadcast_message(nettai_client::protocol::Packet {
+                which: Some(nettai_client::protocol::packet::Which::Users(
+                    nettai_client::protocol::packet::Users {
+                        entries: vec![nettai_client::protocol::packet::users::Entry {
+                            user_id: current_user_id,
+                            info: None,
+                        }],
+                    },
+                )),
+            })
+            .await;
     });
 
     Ok(response)
@@ -157,7 +184,7 @@ impl Receiver {
 
 async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
-    user_id: u64,
+    current_user_id: u64,
     user_state: std::sync::Arc<UserState>,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
@@ -166,7 +193,9 @@ async fn handle_connection(
         .tx
         .send_message(nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
-                nettai_client::protocol::packet::Hello { user_id },
+                nettai_client::protocol::packet::Hello {
+                    user_id: current_user_id,
+                },
             )),
         })
         .await?;
@@ -181,9 +210,9 @@ async fn handle_connection(
                         let users = server_state.users.lock().await;
                         users
                             .iter()
-                            .map(|(id, _)| nettai_client::protocol::packet::users::Entry {
-                                user_id: *id,
-                                info: Some(nettai_client::protocol::Info {}),
+                            .map(|(&user_id, user_state)| nettai_client::protocol::packet::users::Entry {
+                                user_id,
+                                info: Some(user_state.info()),
                             })
                             .collect()
                     },
@@ -251,9 +280,26 @@ struct UserState {
     ip: std::net::IpAddr,
 }
 
+impl UserState {
+    fn info() -> nettai_client::protocol::UserInfo {
+        nettai_client::protocol::UserInfo {}
+    }
+}
+
 struct ServerState {
     available_ids: tokio::sync::Mutex<std::collections::VecDeque<u64>>,
     users: tokio::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<UserState>>>,
+}
+
+impl ServerState {
+    async fn broadcast_message(&self, msg: impl prost::Message + Clone) -> Result<(), tungstenite::Error> {
+        let users = self.users.lock().await;
+        futures_util::future::join_all(users.iter().map(|(_, u)| u.tx.send_message(msg.clone())))
+            .await
+            .into_iter()
+            .collect::<Result<_, _>>()?;
+        Ok(())
+    }
 }
 
 #[tokio::main]

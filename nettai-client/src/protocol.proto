@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package nettai.protocol;
 
-message Info {}
+message UserInfo {}
 
 message Packet {
   message Hello { uint64 user_id = 1; }
@@ -10,7 +10,7 @@ message Packet {
   message Users {
     message Entry {
       uint64 user_id = 1;
-      Info info = 2;
+      UserInfo info = 2;
     }
     repeated Entry entries = 1;
   }
