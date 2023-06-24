@@ -9,6 +9,7 @@ use routerify::ext::RequestExt;
 #[derive(clap::Parser)]
 struct Args {
     bind_addr: std::net::SocketAddr,
+    max_users: u64,
     use_x_real_ip: bool,
 }
 
@@ -68,12 +69,24 @@ async fn handle_request(
 
     let server_state = request.data::<std::sync::Arc<ServerState>>().unwrap().clone();
 
-    tokio::spawn(async move {
-        let mut user_id = None;
+    let user_id = if let Some(user_id) = server_state.available_ids.lock().await.pop_front() {
+        user_id
+    } else {
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+            .body(
+                hyper::StatusCode::SERVICE_UNAVAILABLE
+                    .canonical_reason()
+                    .unwrap()
+                    .into(),
+            )?);
+    };
 
+    // No returns must occur between this and spawning, otherwise the allocated ID will be lost.
+
+    tokio::spawn(async move {
         if let Err(e) = {
             let server_state = server_state.clone();
-            let user_id = &mut user_id;
             (|| async move {
                 let websocket = websocket.await?;
 
@@ -84,18 +97,12 @@ async fn handle_request(
                     ip: remote_ip,
                 });
 
-                *user_id = Some(
-                    server_state
-                        .next_user_id
-                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
-                );
-
                 {
                     let mut users = server_state.users.lock().await;
-                    users.insert(user_id.unwrap(), user_state.clone());
+                    users.insert(user_id, user_state.clone());
                 }
 
-                handle_connection(server_state.clone(), user_state.clone(), Receiver(rx)).await?;
+                handle_connection(server_state.clone(), user_id, user_state.clone(), Receiver(rx)).await?;
 
                 Ok::<_, anyhow::Error>(())
             })()
@@ -104,10 +111,8 @@ async fn handle_request(
             log::error!("connection error for {}: {}", remote_ip, e);
         }
 
-        if let Some(user_id) = user_id {
-            let mut users = server_state.users.lock().await;
-            users.remove(&user_id);
-        }
+        server_state.users.lock().await.remove(&user_id);
+        server_state.available_ids.lock().await.push_back(user_id);
     });
 
     Ok(response)
@@ -130,6 +135,10 @@ impl Sender {
     async fn send_binary(&self, buf: Vec<u8>) -> Result<(), tungstenite::Error> {
         self.0.lock().await.send(tungstenite::Message::Binary(buf)).await
     }
+
+    async fn send_message(&self, msg: impl prost::Message) -> Result<(), tungstenite::Error> {
+        self.send_binary(msg.encode_to_vec()).await
+    }
 }
 
 struct Receiver(futures_util::stream::SplitStream<hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>>);
@@ -142,9 +151,20 @@ impl Receiver {
 
 async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
+    user_id: u64,
     user_state: std::sync::Arc<UserState>,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
+    // Send Hello.
+    user_state
+        .tx
+        .send_message(nettai_client::protocol::Packet {
+            which: Some(nettai_client::protocol::packet::Which::Hello(
+                nettai_client::protocol::packet::Hello { user_id },
+            )),
+        })
+        .await?;
+
     // Send list of users.
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -161,14 +181,10 @@ async fn handle_connection(
 
                 match msg {
                     tungstenite::Message::Binary(buf) => {
-                        let which = if let Some(which) = nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?.which {
-                            which
-                        } else {
-                            return Ok(());
-                        };
-
-                        match which {
-                            nettai_client::protocol::packet::Which::Hello(_) => todo!(),
+                        match nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?.which.ok_or_else(|| anyhow::anyhow!("unknown packet"))? {
+                            msg => {
+                                return Err(anyhow::format_err!("unknown packet: {:?}", msg));
+                            },
                         }
                     },
                     tungstenite::Message::Pong(buf) => {
@@ -206,15 +222,15 @@ struct UserState {
 }
 
 struct ServerState {
-    next_user_id: std::sync::atomic::AtomicUsize,
-    users: tokio::sync::Mutex<std::collections::HashMap<usize, std::sync::Arc<UserState>>>,
+    available_ids: tokio::sync::Mutex<std::collections::VecDeque<u64>>,
+    users: tokio::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<UserState>>>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
     let server_state = std::sync::Arc::new(ServerState {
-        next_user_id: std::sync::atomic::AtomicUsize::new(0),
+        available_ids: tokio::sync::Mutex::new((0..args.max_users).collect()),
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
