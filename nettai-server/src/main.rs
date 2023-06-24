@@ -9,8 +9,13 @@ use routerify::ext::RequestExt;
 
 #[derive(clap::Parser)]
 struct Args {
+    #[clap(long, default_value = "[::]:5432")]
     bind_addr: std::net::SocketAddr,
+
+    #[clap(long, default_value = "1000")]
     max_users: u64,
+
+    #[clap(long, default_value = "true")]
     use_x_real_ip: bool,
 }
 
@@ -166,7 +171,26 @@ async fn handle_connection(
         })
         .await?;
 
-    // Send list of users.
+    // Send initial list of users.
+    user_state
+        .tx
+        .send_message(nettai_client::protocol::Packet {
+            which: Some(nettai_client::protocol::packet::Which::Users(
+                nettai_client::protocol::packet::Users {
+                    entries: {
+                        let users = server_state.users.lock().await;
+                        users
+                            .iter()
+                            .map(|(id, _)| nettai_client::protocol::packet::users::Entry {
+                                user_id: *id,
+                                info: Some(nettai_client::protocol::Info {}),
+                            })
+                            .collect()
+                    },
+                },
+            )),
+        })
+        .await?;
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
@@ -182,12 +206,16 @@ async fn handle_connection(
 
                 match msg {
                     tungstenite::Message::Binary(buf) => {
-                        match nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?.which.ok_or_else(|| anyhow::anyhow!("unknown packet"))? {
+                        match nettai_client::protocol::Packet::decode(&mut bytes::Bytes::from(buf))?
+                            .which
+                            .ok_or_else(|| anyhow::anyhow!("unknown packet"))?
+                        {
                             msg => {
                                 return Err(anyhow::format_err!("unknown packet: {:?}", msg));
-                            },
+                            }
                         }
-                    },
+                    }
+
                     tungstenite::Message::Pong(buf) => {
                         let unix_ts_ms = buf.as_slice().read_u64::<byteorder::LittleEndian>()?;
                         let ts = std::time::UNIX_EPOCH + std::time::Duration::from_millis(unix_ts_ms);
@@ -198,7 +226,8 @@ async fn handle_connection(
                         const MAX_LATENCIES: usize = 9;
                         latencies.shrink_to(MAX_LATENCIES);
                         latencies.push(now.duration_since(ts)?);
-                    },
+                    }
+
                     _ => {
                         return Err(anyhow::anyhow!("cannot handle this message: {}", msg));
                     }
@@ -229,11 +258,18 @@ struct ServerState {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    env_logger::Builder::from_default_env()
+        .filter(Some("nettai_server"), log::LevelFilter::Info)
+        .init();
+
     let args = Args::parse();
-    let mut available_ids = (0..args.max_users).collect::<Vec<_>>();
-    available_ids.shuffle(&mut rand::thread_rng());
+
     let server_state = std::sync::Arc::new(ServerState {
-        available_ids: tokio::sync::Mutex::new(std::collections::VecDeque::from(available_ids)),
+        available_ids: tokio::sync::Mutex::new(std::collections::VecDeque::from({
+            let mut available_ids = (0..args.max_users).collect::<Vec<_>>();
+            available_ids.shuffle(&mut rand::thread_rng());
+            available_ids
+        })),
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
@@ -248,6 +284,10 @@ async fn main() -> Result<(), anyhow::Error> {
             .unwrap(),
     )
     .unwrap();
-    hyper::Server::bind(&args.bind_addr).serve(service).await?;
+
+    let server = hyper::Server::bind(&args.bind_addr).serve(service);
+    log::info!("listening on: {}", server.local_addr());
+    server.await?;
+
     Ok(())
 }

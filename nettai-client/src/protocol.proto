@@ -2,8 +2,21 @@ syntax = "proto3";
 
 package nettai.protocol;
 
+message Info {}
+
 message Packet {
   message Hello { uint64 user_id = 1; }
 
-  oneof which { Hello hello = 1; }
+  message Users {
+    message Entry {
+      uint64 user_id = 1;
+      Info info = 2;
+    }
+    repeated Entry entries = 1;
+  }
+
+  oneof which {
+    Hello hello = 1;
+    Users users = 2;
+  }
 }
