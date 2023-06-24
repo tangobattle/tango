@@ -102,11 +102,12 @@ async fn handle_request(
                     .into(),
             )?);
     };
-    let current_user_id = id_allocation.id;
-
-    // No returns must occur between this and spawning, otherwise the allocated ID will be lost.
 
     tokio::spawn(async move {
+        // Preserve ID allocation.
+        let id_allocation = id_allocation;
+        let current_user_id = id_allocation.id;
+
         if let Err(e) = {
             let server_state = server_state.clone();
             (|| async move {
