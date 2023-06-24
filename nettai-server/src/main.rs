@@ -4,6 +4,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
+use rand::seq::SliceRandom;
 use routerify::ext::RequestExt;
 
 #[derive(clap::Parser)]
@@ -229,8 +230,10 @@ struct ServerState {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
+    let mut available_ids = (0..args.max_users).collect::<Vec<_>>();
+    available_ids.shuffle(&mut rand::thread_rng());
     let server_state = std::sync::Arc::new(ServerState {
-        available_ids: tokio::sync::Mutex::new((0..args.max_users).collect()),
+        available_ids: tokio::sync::Mutex::new(std::collections::VecDeque::from(available_ids)),
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 

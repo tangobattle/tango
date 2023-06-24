@@ -17,6 +17,7 @@ log = "0.4"
 nettai-client = { path = "../nettai-client" }
 once_cell = "1"
 prost = "0.10"
+rand = "0.8"
 routerify = "3"
 semver = "1"
 tokio = { version = "1", features = ["full"] }

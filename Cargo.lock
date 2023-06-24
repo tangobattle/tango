@@ -3523,6 +3523,7 @@ dependencies = [
  "nettai-client",
  "once_cell",
  "prost",
+ "rand 0.8.5",
  "routerify",
  "semver 1.0.13",
  "tokio",
