@@ -22,6 +22,21 @@ struct Args {
 static CLIENT_VERSION_REQUIREMENT: once_cell::sync::Lazy<semver::VersionReq> =
     once_cell::sync::Lazy::new(|| semver::VersionReq::parse("*").unwrap());
 
+struct IdAllocation {
+    id: u64,
+    server_state: std::sync::Arc<ServerState>,
+}
+
+impl Drop for IdAllocation {
+    fn drop(&mut self) {
+        let id = self.id;
+        let server_state = self.server_state.clone();
+        tokio::task::spawn(async move {
+            server_state.available_ids.lock().await.push_back(id);
+        });
+    }
+}
+
 async fn handle_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
@@ -75,8 +90,8 @@ async fn handle_request(
 
     let server_state = request.data::<std::sync::Arc<ServerState>>().unwrap().clone();
 
-    let current_user_id = if let Some(user_id) = server_state.available_ids.lock().await.pop_front() {
-        user_id
+    let id_allocation = if let Some(id_allocation) = server_state.allocate_id().await {
+        id_allocation
     } else {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
@@ -87,6 +102,7 @@ async fn handle_request(
                     .into(),
             )?);
     };
+    let current_user_id = id_allocation.id;
 
     // No returns must occur between this and spawning, otherwise the allocated ID will be lost.
 
@@ -131,7 +147,6 @@ async fn handle_request(
         }
 
         server_state.users.lock().await.remove(&current_user_id);
-        server_state.available_ids.lock().await.push_back(current_user_id);
 
         // Broadcast disconnect.
         let _ = server_state
@@ -301,6 +316,14 @@ impl ServerState {
             .into_iter()
             .collect::<Result<_, _>>()?;
         Ok(())
+    }
+
+    async fn allocate_id(self: &std::sync::Arc<Self>) -> Option<IdAllocation> {
+        let id = self.available_ids.lock().await.pop_front()?;
+        Some(IdAllocation {
+            id,
+            server_state: self.clone(),
+        })
     }
 }
 
