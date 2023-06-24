@@ -122,7 +122,7 @@ async fn handle_request(
 
                 // Broadcast connect.
                 let _ = server_state
-                    .broadcast_message(nettai_client::protocol::Packet {
+                    .broadcast_message(&nettai_client::protocol::Packet {
                         which: Some(nettai_client::protocol::packet::Which::Users(
                             nettai_client::protocol::packet::Users {
                                 entries: vec![nettai_client::protocol::packet::users::Entry {
@@ -151,7 +151,7 @@ async fn handle_request(
 
         // Broadcast disconnect.
         let _ = server_state
-            .broadcast_message(nettai_client::protocol::Packet {
+            .broadcast_message(&nettai_client::protocol::Packet {
                 which: Some(nettai_client::protocol::packet::Which::Users(
                     nettai_client::protocol::packet::Users {
                         entries: vec![nettai_client::protocol::packet::users::Entry {
@@ -185,7 +185,7 @@ impl Sender {
         self.0.lock().await.send(tungstenite::Message::Binary(buf)).await
     }
 
-    async fn send_message(&self, msg: impl prost::Message) -> Result<(), tungstenite::Error> {
+    async fn send_message(&self, msg: &impl prost::Message) -> Result<(), tungstenite::Error> {
         self.send_binary(msg.encode_to_vec()).await
     }
 }
@@ -207,7 +207,7 @@ async fn handle_connection(
     // Send Hello.
     user_state
         .tx
-        .send_message(nettai_client::protocol::Packet {
+        .send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
                     user_id: current_user_id,
@@ -219,7 +219,7 @@ async fn handle_connection(
     // Send initial list of users.
     user_state
         .tx
-        .send_message(nettai_client::protocol::Packet {
+        .send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Users(
                 nettai_client::protocol::packet::Users {
                     entries: {
@@ -310,9 +310,10 @@ struct ServerState {
 }
 
 impl ServerState {
-    async fn broadcast_message(&self, msg: impl prost::Message + Clone) -> Result<(), tungstenite::Error> {
+    async fn broadcast_message(&self, msg: &impl prost::Message) -> Result<(), tungstenite::Error> {
         let users = self.users.lock().await;
-        futures_util::future::join_all(users.iter().map(|(_, u)| u.tx.send_message(msg.clone())))
+        let raw = msg.encode_to_vec();
+        futures_util::future::join_all(users.iter().map(|(_, u)| u.tx.send_binary(raw.clone())))
             .await
             .into_iter()
             .collect::<Result<_, _>>()?;
