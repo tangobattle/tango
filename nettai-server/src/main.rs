@@ -253,8 +253,10 @@ async fn handle_connection(
                         // Record time.
                         let mut latencies = user_state.latencies.lock().await;
                         const MAX_LATENCIES: usize = 9;
-                        latencies.shrink_to(MAX_LATENCIES);
-                        latencies.push(now.duration_since(ts)?);
+                        while latencies.len() >= MAX_LATENCIES {
+                            latencies.pop_front();
+                        }
+                        latencies.push_back(now.duration_since(ts)?);
                     }
 
                     _ => {
@@ -276,7 +278,7 @@ async fn handle_connection(
 
 struct UserState {
     tx: Sender,
-    latencies: tokio::sync::Mutex<std::collections::BinaryHeap<std::time::Duration>>,
+    latencies: tokio::sync::Mutex<std::collections::VecDeque<std::time::Duration>>,
     ip: std::net::IpAddr,
 }
 
