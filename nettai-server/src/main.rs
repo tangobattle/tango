@@ -99,7 +99,7 @@ async fn handle_request(
                 let (tx, rx) = websocket.split();
                 let user_state = std::sync::Arc::new(UserState {
                     tx: Sender(tokio::sync::Mutex::new(tx)),
-                    latencies: tokio::sync::Mutex::new(std::collections::BinaryHeap::new()),
+                    latencies: tokio::sync::Mutex::new(std::collections::VecDeque::new()),
                     ip: remote_ip,
                 });
 
