@@ -281,7 +281,7 @@ struct UserState {
 }
 
 impl UserState {
-    fn info() -> nettai_client::protocol::UserInfo {
+    fn info(&self) -> nettai_client::protocol::UserInfo {
         nettai_client::protocol::UserInfo {}
     }
 }
