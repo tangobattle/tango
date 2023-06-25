@@ -1,3 +1,4 @@
+use base64::Engine;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -44,7 +45,7 @@ async fn handle_request(
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.split_once(' '))
         .filter(|(scheme, _)| *scheme == "Nettai")
-        .map(|(_, token)| token)
+        .and_then(|(_, token)| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(token).ok())
     {
         token
     } else {
