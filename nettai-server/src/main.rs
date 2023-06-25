@@ -2,7 +2,6 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
-use rand::seq::SliceRandom;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -18,21 +17,6 @@ struct Args {
 
 static CLIENT_VERSION_REQUIREMENT: once_cell::sync::Lazy<semver::VersionReq> =
     once_cell::sync::Lazy::new(|| semver::VersionReq::parse("*").unwrap());
-
-struct IdAllocation {
-    id: u64,
-    server_state: std::sync::Arc<ServerState>,
-}
-
-impl Drop for IdAllocation {
-    fn drop(&mut self) {
-        let id = self.id;
-        let server_state = self.server_state.clone();
-        tokio::task::spawn(async move {
-            server_state.available_ids.lock().await.push_back(id);
-        });
-    }
-}
 
 async fn handle_request(
     server_state: std::sync::Arc<ServerState>,
@@ -83,26 +67,12 @@ async fn handle_request(
         }),
     )?;
 
-    let id_allocation = if let Some(id_allocation) = server_state.allocate_id().await {
-        id_allocation
-    } else {
-        return Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-            .body(
-                hyper::StatusCode::SERVICE_UNAVAILABLE
-                    .canonical_reason()
-                    .unwrap()
-                    .into(),
-            )?);
-    };
-
     tokio::spawn(async move {
-        // Preserve ID allocation.
-        let id_allocation = id_allocation;
-        let current_user_id = id_allocation.id;
+        let current_user_id = vec![]; // TODO
 
         if let Err(e) = {
             let server_state = server_state.clone();
+            let current_user_id = current_user_id.clone();
             (|| async move {
                 let websocket = websocket.await?;
 
@@ -119,7 +89,7 @@ async fn handle_request(
                         which: Some(nettai_client::protocol::packet::Which::Users(
                             nettai_client::protocol::packet::Users {
                                 entries: vec![nettai_client::protocol::packet::users::Entry {
-                                    user_id: current_user_id,
+                                    user_id: current_user_id.clone(),
                                     info: Some(user_state.info()),
                                 }],
                             },
@@ -129,9 +99,15 @@ async fn handle_request(
 
                 {
                     let mut users = server_state.users.lock().await;
-                    users.insert(current_user_id, user_state.clone());
+                    users.insert(current_user_id.clone(), user_state.clone());
                 }
-                handle_connection(server_state.clone(), current_user_id, user_state.clone(), Receiver(rx)).await?;
+                handle_connection(
+                    server_state.clone(),
+                    current_user_id.as_slice(),
+                    user_state.clone(),
+                    Receiver(rx),
+                )
+                .await?;
 
                 Ok::<_, anyhow::Error>(())
             })()
@@ -193,7 +169,7 @@ impl Receiver {
 
 async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
-    current_user_id: u64,
+    current_user_id: &[u8],
     user_state: std::sync::Arc<UserState>,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
@@ -203,7 +179,7 @@ async fn handle_connection(
         .send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
-                    user_id: current_user_id,
+                    user_id: current_user_id.to_vec(),
                 },
             )),
         })
@@ -219,8 +195,8 @@ async fn handle_connection(
                         let users = server_state.users.lock().await;
                         users
                             .iter()
-                            .map(|(&user_id, user_state)| nettai_client::protocol::packet::users::Entry {
-                                user_id,
+                            .map(|(user_id, user_state)| nettai_client::protocol::packet::users::Entry {
+                                user_id: user_id.clone(),
                                 info: Some(user_state.info()),
                             })
                             .collect()
@@ -298,8 +274,7 @@ impl UserState {
 }
 
 struct ServerState {
-    available_ids: tokio::sync::Mutex<std::collections::VecDeque<u64>>,
-    users: tokio::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<UserState>>>,
+    users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
 }
 
 impl ServerState {
@@ -312,14 +287,6 @@ impl ServerState {
             .collect::<Result<_, _>>()?;
         Ok(())
     }
-
-    async fn allocate_id(self: &std::sync::Arc<Self>) -> Option<IdAllocation> {
-        let id = self.available_ids.lock().await.pop_front()?;
-        Some(IdAllocation {
-            id,
-            server_state: self.clone(),
-        })
-    }
 }
 
 #[tokio::main]
@@ -331,15 +298,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
     let server_state = std::sync::Arc::new(ServerState {
-        available_ids: tokio::sync::Mutex::new(std::collections::VecDeque::from({
-            let mut available_ids = (0..args.max_users).collect::<Vec<_>>();
-            available_ids.shuffle(&mut rand::thread_rng());
-            available_ids
-        })),
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
     let incoming = hyper::server::conn::AddrIncoming::bind(&args.bind_addr)?;
+    log::info!("listening on: {}", incoming.local_addr());
+
     let server = hyper::Server::builder(incoming).serve(hyper::service::make_service_fn(
         move |stream: &hyper::server::conn::AddrStream| {
             let server_state = server_state.clone();
@@ -368,7 +332,6 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         },
     ));
-    log::info!("listening on: {}", server.local_addr());
     server.await?;
 
     Ok(())

@@ -5,11 +5,11 @@ package nettai.protocol;
 message UserInfo {}
 
 message Packet {
-  message Hello { uint64 user_id = 1; }
+  message Hello { bytes user_id = 1; }
 
   message Users {
     message Entry {
-      uint64 user_id = 1;
+      bytes user_id = 1;
       UserInfo info = 2;
     }
     repeated Entry entries = 1;
