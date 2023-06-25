@@ -43,7 +43,8 @@ async fn handle_request(
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.split_once(' '))
-        .and_then(|(scheme, token)| if scheme == "Nettai" { Some(token) } else { None })
+        .filter(|(scheme, _)| *scheme == "Nettai")
+        .map(|(_, token)| token)
     {
         token
     } else {
@@ -101,6 +102,7 @@ async fn handle_request(
                     let mut users = server_state.users.lock().await;
                     users.insert(current_user_id.clone(), user_state.clone());
                 }
+
                 handle_connection(
                     server_state.clone(),
                     current_user_id.as_slice(),
