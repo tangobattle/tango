@@ -316,16 +316,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     let server_state = server_state.clone();
                     async move {
                         let remote_ip = if args.use_x_real_ip {
-                            if let Some(ip) = request
+                            request
                                 .headers()
                                 .get("X-Real-IP")
-                                .and_then(|h| h.to_str().ok())
-                                .and_then(|v| v.parse().ok())
-                            {
-                                ip
-                            } else {
-                                return Err(anyhow::anyhow!("could not parse X-Real-IP"));
-                            }
+                                .ok_or_else(|| anyhow::anyhow!("missing X-Real-IP header"))?
+                                .to_str()?
+                                .parse()?
                         } else {
                             raw_remote_ip
                         };
