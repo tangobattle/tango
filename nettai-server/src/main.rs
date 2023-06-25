@@ -1,11 +1,8 @@
-mod httputil;
-
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use rand::seq::SliceRandom;
-use routerify::ext::RequestExt;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -38,6 +35,8 @@ impl Drop for IdAllocation {
 }
 
 async fn handle_request(
+    server_state: std::sync::Arc<ServerState>,
+    remote_ip: std::net::IpAddr,
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
     // Browsers cannot set headers on Websocket requests, so this prevents browsers from trivially opening up nettai connections.
@@ -55,22 +54,18 @@ async fn handle_request(
             .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
     }
 
-    let remote_ip = if let Some(remote_ip) = request
-        .data::<httputil::RealIPGetter>()
-        .unwrap()
-        .get_remote_real_ip(&request)
+    let token = if let Some(token) = request
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.split_once(' '))
+        .and_then(|(scheme, token)| if scheme == "Nettai" { Some(token) } else { None })
     {
-        remote_ip
+        token
     } else {
         return Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(
-                hyper::StatusCode::INTERNAL_SERVER_ERROR
-                    .canonical_reason()
-                    .unwrap()
-                    .into(),
-            )
-            .unwrap());
+            .status(hyper::StatusCode::UNAUTHORIZED)
+            .body(hyper::StatusCode::UNAUTHORIZED.canonical_reason().unwrap().into())?);
     };
 
     if !hyper_tungstenite::is_upgrade_request(&request) {
@@ -87,8 +82,6 @@ async fn handle_request(
             ..Default::default()
         }),
     )?;
-
-    let server_state = request.data::<std::sync::Arc<ServerState>>().unwrap().clone();
 
     let id_allocation = if let Some(id_allocation) = server_state.allocate_id().await {
         id_allocation
@@ -346,19 +339,35 @@ async fn main() -> Result<(), anyhow::Error> {
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
-    let real_ip_getter = httputil::RealIPGetter::new(args.use_x_real_ip);
-
-    let service = routerify::RouterService::new(
-        routerify::Router::builder()
-            .data(real_ip_getter)
-            .data(server_state)
-            .get("/", handle_request)
-            .build()
-            .unwrap(),
-    )
-    .unwrap();
-
-    let server = hyper::Server::bind(&args.bind_addr).serve(service);
+    let incoming = hyper::server::conn::AddrIncoming::bind(&args.bind_addr)?;
+    let server = hyper::Server::builder(incoming).serve(hyper::service::make_service_fn(
+        move |stream: &hyper::server::conn::AddrStream| {
+            let server_state = server_state.clone();
+            let raw_remote_ip = stream.remote_addr().ip();
+            async move {
+                Ok::<_, anyhow::Error>(hyper::service::service_fn(move |request| {
+                    let server_state = server_state.clone();
+                    async move {
+                        let remote_ip = if args.use_x_real_ip {
+                            if let Some(ip) = request
+                                .headers()
+                                .get("X-Real-IP")
+                                .and_then(|h| h.to_str().ok())
+                                .and_then(|v| v.parse().ok())
+                            {
+                                ip
+                            } else {
+                                return Err(anyhow::anyhow!("could not parse X-Real-IP"));
+                            }
+                        } else {
+                            raw_remote_ip
+                        };
+                        handle_request(server_state, remote_ip, request).await
+                    }
+                }))
+            }
+        },
+    ));
     log::info!("listening on: {}", server.local_addr());
     server.await?;
 

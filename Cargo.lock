@@ -3526,7 +3526,6 @@ dependencies = [
  "once_cell",
  "prost",
  "rand 0.8.5",
- "routerify",
  "semver 1.0.13",
  "tokio",
  "tungstenite 0.17.3",
