@@ -54,6 +54,8 @@ async fn handle_request(
             .body(hyper::StatusCode::UNAUTHORIZED.canonical_reason().unwrap().into())?);
     };
 
+    // Resolve user ID from token.
+
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
@@ -85,20 +87,6 @@ async fn handle_request(
                     ip: remote_ip,
                 });
 
-                // Broadcast connect.
-                let _ = server_state
-                    .broadcast_message(&nettai_client::protocol::Packet {
-                        which: Some(nettai_client::protocol::packet::Which::Users(
-                            nettai_client::protocol::packet::Users {
-                                entries: vec![nettai_client::protocol::packet::users::Entry {
-                                    user_id: current_user_id.clone(),
-                                    info: Some(user_state.info()),
-                                }],
-                            },
-                        )),
-                    })
-                    .await;
-
                 {
                     let mut users = server_state.users.lock().await;
                     users.insert(current_user_id.clone(), user_state.clone());
@@ -120,20 +108,6 @@ async fn handle_request(
         }
 
         server_state.users.lock().await.remove(&current_user_id);
-
-        // Broadcast disconnect.
-        let _ = server_state
-            .broadcast_message(&nettai_client::protocol::Packet {
-                which: Some(nettai_client::protocol::packet::Which::Users(
-                    nettai_client::protocol::packet::Users {
-                        entries: vec![nettai_client::protocol::packet::users::Entry {
-                            user_id: current_user_id,
-                            info: None,
-                        }],
-                    },
-                )),
-            })
-            .await;
     });
 
     Ok(response)
@@ -183,27 +157,6 @@ async fn handle_connection(
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
                     user_id: current_user_id.to_vec(),
-                },
-            )),
-        })
-        .await?;
-
-    // Send initial list of users.
-    user_state
-        .tx
-        .send_message(&nettai_client::protocol::Packet {
-            which: Some(nettai_client::protocol::packet::Which::Users(
-                nettai_client::protocol::packet::Users {
-                    entries: {
-                        let users = server_state.users.lock().await;
-                        users
-                            .iter()
-                            .map(|(user_id, user_state)| nettai_client::protocol::packet::users::Entry {
-                                user_id: user_id.clone(),
-                                info: Some(user_state.info()),
-                            })
-                            .collect()
-                    },
                 },
             )),
         })
@@ -278,18 +231,6 @@ impl UserState {
 
 struct ServerState {
     users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
-}
-
-impl ServerState {
-    async fn broadcast_message(&self, msg: &impl prost::Message) -> Result<(), tungstenite::Error> {
-        let users = self.users.lock().await;
-        let raw = msg.encode_to_vec();
-        futures_util::future::join_all(users.iter().map(|(_, u)| u.tx.send_binary(raw.clone())))
-            .await
-            .into_iter()
-            .collect::<Result<_, _>>()?;
-        Ok(())
-    }
 }
 
 #[tokio::main]

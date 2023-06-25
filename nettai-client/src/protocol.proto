@@ -7,16 +7,5 @@ message UserInfo {}
 message Packet {
   message Hello { bytes user_id = 1; }
 
-  message Users {
-    message Entry {
-      bytes user_id = 1;
-      UserInfo info = 2;
-    }
-    repeated Entry entries = 1;
-  }
-
-  oneof which {
-    Hello hello = 1;
-    Users users = 2;
-  }
+  oneof which { Hello hello = 1; }
 }
