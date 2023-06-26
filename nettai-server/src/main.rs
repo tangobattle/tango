@@ -73,14 +73,18 @@ async fn handle_request(
 
                 let user_id = {
                     let mut users = server_state.users.lock().await;
-                    let user_id = loop {
+                    loop {
                         let user_id = randomcode::generate().into_bytes();
-                        if !users.contains_key(&user_id) {
-                            break user_id;
+                        match users.entry(user_id.clone()) {
+                            std::collections::hash_map::Entry::Occupied(_) => {
+                                continue;
+                            }
+                            std::collections::hash_map::Entry::Vacant(e) => {
+                                e.insert(user_state.clone());
+                                break user_id;
+                            }
                         }
-                    };
-                    users.insert(user_id.clone(), user_state.clone());
-                    user_id
+                    }
                 };
                 *current_user_id = Some(user_id.clone());
 
