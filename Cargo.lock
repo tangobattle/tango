@@ -3512,6 +3512,7 @@ dependencies = [
  "futures-util",
  "prost",
  "prost-build",
+ "thiserror",
  "tokio",
  "tokio-tungstenite 0.17.2",
  "tungstenite 0.17.3",
