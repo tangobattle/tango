@@ -511,6 +511,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "base64"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
+
+[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3507,6 +3513,7 @@ dependencies = [
 name = "nettai-client"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.2",
  "bytes 1.2.1",
  "futures",
  "futures-util",
@@ -3524,12 +3531,15 @@ name = "nettai-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.2",
+ "bincode",
  "byteorder",
  "bytes 1.2.1",
  "clap 4.0.12",
  "env_logger 0.9.0",
  "futures",
  "futures-util",
+ "hmac 0.12.1",
  "hyper",
  "hyper-tungstenite",
  "log",
@@ -3538,6 +3548,8 @@ dependencies = [
  "prost",
  "rand 0.4.6",
  "semver 1.0.13",
+ "serde",
+ "sha3",
  "tokio",
  "tungstenite 0.17.3",
 ]

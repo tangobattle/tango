@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.21"
 bytes = "1"
 futures = "0.3"
 futures-util = "0.3"

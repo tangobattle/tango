@@ -1,5 +1,6 @@
 pub mod protocol;
 
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tungstenite::client::IntoClientRequest;
@@ -53,27 +54,38 @@ pub enum Error {
 
 pub struct Client {
     user_id: Vec<u8>,
-    tx: Sender,
+    resumption_token: Vec<u8>,
+    tx: std::sync::Arc<Sender>,
     drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
-    pub async fn new(addr: &str) -> Result<Self, Error> {
+    pub async fn new(addr: &str, resumption_token: Vec<u8>) -> Result<Self, Error> {
         let mut req = addr.into_client_request()?;
         req.headers_mut().append(
             "X-Nettai-Version",
             tungstenite::http::HeaderValue::from_str(&env!("CARGO_PKG_VERSION")).unwrap(),
         );
+        if !resumption_token.is_empty() {
+            req.headers_mut().append(
+                "Authorization",
+                tungstenite::http::HeaderValue::from_str(&format!(
+                    "Nettai-Resumption {}",
+                    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&resumption_token)
+                ))
+                .unwrap(),
+            );
+        }
 
         let (stream, _) = tokio_tungstenite::connect_async(req).await?;
 
         let (tx, rx) = stream.split();
 
-        let tx = Sender(tokio::sync::Mutex::new(tx));
+        let tx = std::sync::Arc::new(Sender(tokio::sync::Mutex::new(tx)));
         let mut rx = Receiver(rx);
 
         // Receive the Hello message.
-        let user_id = match rx
+        let hello = match rx
             .recv()
             .await
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream closed"))??
@@ -81,7 +93,7 @@ impl Client {
             tungstenite::Message::Binary(msg) => protocol::Packet::decode(&mut bytes::Bytes::from(msg))?
                 .which
                 .and_then(|which| match which {
-                    protocol::packet::Which::Hello(hello) => Some(hello.user_id),
+                    protocol::packet::Which::Hello(hello) => Some(hello),
                     _ => None,
                 })
                 .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "unexpected packet"))?,
@@ -92,24 +104,44 @@ impl Client {
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         tokio::spawn({
+            let tx = tx.clone();
             let cancellation_token = cancellation_token.clone();
             async move {
-                loop {
-                    tokio::select! {
-                        msg = rx.recv() => {
-                            // TODO: Something with the message.
-                        }
+                if let Err(e) = (|| async move {
+                    loop {
+                        tokio::select! {
+                            msg = rx.recv() => {
+                                let msg = if let Some(msg) = msg {
+                                    msg
+                                } else {
+                                    return Ok::<_, Error>(());
+                                }?;
 
-                        _ = cancellation_token.cancelled() => {
-                            return;
+                                match msg {
+                                    tungstenite::Message::Binary(_) => todo!(),
+                                    tungstenite::Message::Ping(buf) => {
+                                        tx.send(tungstenite::Message::Pong(buf)).await?;
+                                    },
+                                    _ => todo!(),
+                                }
+                            }
+                            _ = cancellation_token.cancelled() => {
+                                return Ok(());
+                            }
                         }
                     }
+                })()
+                .await
+                {
+                    // Do something with the error.
+                    let _ = e;
                 }
             }
         });
 
         Ok(Client {
-            user_id,
+            user_id: hello.user_id,
+            resumption_token: hello.resumption_token,
             tx,
             drop_guard: cancellation_token.drop_guard(),
         })

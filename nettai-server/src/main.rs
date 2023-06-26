@@ -1,9 +1,12 @@
 mod randomcode;
 
+use base64::Engine;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
+use hmac::Mac;
 use prost::Message;
+use sha3::Sha3_256;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -15,6 +18,9 @@ struct Args {
 
     #[clap(long, default_value = "true")]
     use_x_real_ip: bool,
+
+    #[clap(long)]
+    resumption_token_key: String,
 }
 
 static CLIENT_VERSION_REQUIREMENT: once_cell::sync::Lazy<semver::VersionReq> =
@@ -40,6 +46,24 @@ async fn handle_request(
             .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
     }
 
+    let mut current_user_id = request
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split_once(' '))
+        .filter(|(k, _)| *k == "Nettai-Resumption")
+        .and_then(|(_, v)| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(v).ok())
+        .and_then(|v| bincode::deserialize::<ResumptionToken>(&v).ok())
+        .filter(|token| {
+            let mut hmac =
+                hmac::Hmac::<Sha3_256>::new_from_slice(server_state.resumption_token_key.as_bytes()).unwrap();
+            hmac.update(&token.user_id);
+            hmac.finalize().into_bytes().as_slice() == token.user_id
+        })
+        .map(|token| token.user_id);
+
+    // TODO: Check resumption token.
+
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
@@ -56,8 +80,6 @@ async fn handle_request(
     )?;
 
     tokio::spawn(async move {
-        let mut current_user_id = None;
-
         if let Err(e) = {
             let server_state = server_state.clone();
             let current_user_id = &mut current_user_id;
@@ -73,15 +95,21 @@ async fn handle_request(
 
                 let user_id = {
                     let mut users = server_state.users.lock().await;
-                    loop {
-                        let user_id = randomcode::generate().into_bytes();
-                        match users.entry(user_id.clone()) {
-                            std::collections::hash_map::Entry::Occupied(_) => {
-                                continue;
-                            }
-                            std::collections::hash_map::Entry::Vacant(e) => {
-                                e.insert(user_state.clone());
-                                break user_id;
+
+                    if let Some(user_id) = current_user_id.as_ref() {
+                        users.insert(user_id.clone(), user_state.clone());
+                        user_id.clone()
+                    } else {
+                        loop {
+                            let user_id = randomcode::generate().into_bytes();
+                            match users.entry(user_id.clone()) {
+                                std::collections::hash_map::Entry::Occupied(_) => {
+                                    continue;
+                                }
+                                std::collections::hash_map::Entry::Vacant(e) => {
+                                    e.insert(user_state.clone());
+                                    break user_id;
+                                }
                             }
                         }
                     }
@@ -142,6 +170,12 @@ impl Receiver {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ResumptionToken {
+    user_id: Vec<u8>,
+    sig: Vec<u8>,
+}
+
 async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
     current_user_id: &[u8],
@@ -149,12 +183,22 @@ async fn handle_connection(
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
     // Send Hello.
+    let resumption_token = {
+        let mut hmac = hmac::Hmac::<sha3::Sha3_256>::new_from_slice(server_state.resumption_token_key.as_bytes())?;
+        hmac.update(current_user_id);
+        ResumptionToken {
+            user_id: current_user_id.to_vec(),
+            sig: hmac.finalize().into_bytes().to_vec(),
+        }
+    };
+
     user_state
         .tx
         .send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
                     user_id: current_user_id.to_vec(),
+                    resumption_token: bincode::serialize(&resumption_token).unwrap(),
                 },
             )),
         })
@@ -222,6 +266,7 @@ struct UserState {
 }
 
 struct ServerState {
+    resumption_token_key: String,
     users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
 }
 
@@ -234,6 +279,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
     let server_state = std::sync::Arc::new(ServerState {
+        resumption_token_key: args.resumption_token_key,
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
