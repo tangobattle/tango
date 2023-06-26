@@ -54,6 +54,7 @@ pub enum Error {
 pub struct Client {
     user_id: Vec<u8>,
     tx: Sender,
+    drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
@@ -89,6 +90,28 @@ impl Client {
             }
         };
 
-        Ok(Client { user_id, tx })
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
+        tokio::spawn({
+            let cancellation_token = cancellation_token.clone();
+            async move {
+                loop {
+                    tokio::select! {
+                        msg = rx.recv() => {
+                            // TODO: Something with the message.
+                        }
+
+                        _ = cancellation_token.cancelled() => {
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(Client {
+            user_id,
+            tx,
+            drop_guard: cancellation_token.drop_guard(),
+        })
     }
 }
