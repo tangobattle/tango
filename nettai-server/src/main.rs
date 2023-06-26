@@ -55,30 +55,38 @@ async fn handle_request(
         }),
     )?;
 
-    let current_user_id = server_state.generate_user_id().await;
-
     tokio::spawn(async move {
+        let mut current_user_id = None;
+
         if let Err(e) = {
             let server_state = server_state.clone();
-            let current_user_id = current_user_id.clone();
+            let current_user_id = &mut current_user_id;
             (|| async move {
                 let websocket = websocket.await?;
 
                 let (tx, rx) = websocket.split();
-                let user_state = std::sync::Arc::new(UserState {
+                let user_state: std::sync::Arc<UserState> = std::sync::Arc::new(UserState {
                     tx: Sender(tokio::sync::Mutex::new(tx)),
                     latencies: tokio::sync::Mutex::new(std::collections::VecDeque::new()),
                     ip: remote_ip,
                 });
 
-                {
+                let user_id = {
                     let mut users = server_state.users.lock().await;
-                    users.insert(current_user_id.clone(), user_state.clone());
-                }
+                    let user_id = loop {
+                        let user_id = randomcode::generate().into_bytes();
+                        if !users.contains_key(&user_id) {
+                            break user_id;
+                        }
+                    };
+                    users.insert(user_id.clone(), user_state.clone());
+                    user_id
+                };
+                *current_user_id = Some(user_id.clone());
 
                 handle_connection(
                     server_state.clone(),
-                    current_user_id.as_slice(),
+                    user_id.as_slice(),
                     user_state.clone(),
                     Receiver(rx),
                 )
@@ -91,7 +99,9 @@ async fn handle_request(
             log::error!("connection error for {}: {}", remote_ip, e);
         }
 
-        server_state.users.lock().await.remove(&current_user_id);
+        if let Some(current_user_id) = current_user_id {
+            server_state.users.lock().await.remove(&current_user_id);
+        }
     });
 
     Ok(response)
@@ -209,18 +219,6 @@ struct UserState {
 
 struct ServerState {
     users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
-}
-
-impl ServerState {
-    async fn generate_user_id(&self) -> Vec<u8> {
-        let users = self.users.lock().await;
-        loop {
-            let code = randomcode::generate().into_bytes();
-            if !users.contains_key(&code) {
-                return code;
-            }
-        }
-    }
 }
 
 #[tokio::main]
