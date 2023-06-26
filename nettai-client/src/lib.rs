@@ -123,8 +123,10 @@ impl Session {
 
                     match msg {
                         tungstenite::Message::Binary(_) => todo!(),
-                        tungstenite::Message::Ping(buf) => {
-                            self.tx.send(tungstenite::Message::Pong(buf)).await?;
+                        tungstenite::Message::Ping(_) => {
+                            // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
+                            // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
+                            // This means you should not respond to ping frames manually.
                         },
                         _ => todo!(),
                     }
