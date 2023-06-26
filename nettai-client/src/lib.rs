@@ -52,15 +52,15 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-pub struct Client {
+struct Session {
     user_id: Vec<u8>,
     ticket: Vec<u8>,
     tx: std::sync::Arc<Sender>,
-    _drop_guard: tokio_util::sync::DropGuard,
+    rx: tokio::sync::Mutex<Receiver>,
 }
 
-impl Client {
-    pub async fn new(addr: &str, ticket: Vec<u8>) -> Result<Self, Error> {
+impl Session {
+    async fn new(addr: &str, ticket: Vec<u8>) -> Result<Self, Error> {
         let mut req = addr.into_client_request()?;
         req.headers_mut().append(
             "X-Nettai-Version",
@@ -102,48 +102,88 @@ impl Client {
             }
         };
 
-        let cancellation_token = tokio_util::sync::CancellationToken::new();
-        tokio::spawn({
-            let tx = tx.clone();
-            let cancellation_token = cancellation_token.clone();
-            async move {
-                if let Err(e) = (|| async move {
-                    loop {
-                        tokio::select! {
-                            msg = rx.recv() => {
-                                let msg = if let Some(msg) = msg {
-                                    msg
-                                } else {
-                                    return Ok::<_, Error>(());
-                                }?;
+        Ok(Self {
+            user_id: hello.user_id,
+            ticket: hello.ticket,
+            tx,
+            rx: tokio::sync::Mutex::new(rx),
+        })
+    }
 
-                                match msg {
-                                    tungstenite::Message::Binary(_) => todo!(),
-                                    tungstenite::Message::Ping(buf) => {
-                                        tx.send(tungstenite::Message::Pong(buf)).await?;
-                                    },
-                                    _ => todo!(),
-                                }
-                            }
-                            _ = cancellation_token.cancelled() => {
-                                return Ok(());
+    async fn run_loop(&self) -> Result<(), Error> {
+        let mut rx = self.rx.lock().await;
+        loop {
+            tokio::select! {
+                msg = rx.recv() => {
+                    let msg = if let Some(msg) = msg {
+                        msg
+                    } else {
+                        return Ok::<_, Error>(());
+                    }?;
+
+                    match msg {
+                        tungstenite::Message::Binary(_) => todo!(),
+                        tungstenite::Message::Ping(buf) => {
+                            self.tx.send(tungstenite::Message::Pong(buf)).await?;
+                        },
+                        _ => todo!(),
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub struct Client {
+    session: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<Session>>>>,
+    _drop_guard: tokio_util::sync::DropGuard,
+}
+
+impl Client {
+    pub async fn new(addr: &str, mut ticket: Vec<u8>) -> Result<Self, Error> {
+        let session = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
+
+        tokio::spawn({
+            let addr = addr.to_string();
+            let session = session.clone();
+            let cancellation_token = cancellation_token.clone();
+
+            async move {
+                loop {
+                    tokio::select! {
+                        r = async {
+                            let sess = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
+                                Ok(Session::new(&addr, ticket.clone()).await?)
+                            })
+                            .await?;
+                            ticket = sess.ticket.clone();
+                            let sess = std::sync::Arc::new(sess);
+                            *session.lock().await = Some(sess.clone());
+                            sess.run_loop().await?;
+                            Ok::<_, Error>(())
+                        } => {
+                            if let Err(e) = r {
+                                // Log the error.
+                                log::error!("error in client session: {}", e);
                             }
                         }
+
+                        _ = cancellation_token.cancelled() => {
+                            return;
+                        }
                     }
-                })()
-                .await
-                {
-                    // Do something with the error.
-                    let _ = e;
                 }
             }
         });
 
-        Ok(Client {
-            user_id: hello.user_id,
-            ticket: hello.ticket,
-            tx,
+        Ok(Self {
+            session,
             _drop_guard: cancellation_token.drop_guard(),
         })
+    }
+
+    pub async fn user_id(&self) -> Option<Vec<u8>> {
+        self.session.lock().await.as_ref().map(|s| s.user_id.clone())
     }
 }
