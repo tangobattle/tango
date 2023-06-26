@@ -175,9 +175,11 @@ impl Client {
                         }
 
                         _ = cancellation_token.cancelled() => {
+                            *session.lock().await = None;
                             return;
                         }
                     }
+                    *session.lock().await = None;
                 }
             }
         });

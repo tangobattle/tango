@@ -10,13 +10,13 @@ use sha3::Sha3_256;
 
 #[derive(clap::Parser)]
 struct Args {
-    #[clap(long, default_value = "[::]:5432")]
+    #[clap(long, default_value = "[::]:9898")]
     bind_addr: std::net::SocketAddr,
 
     #[clap(long, default_value = "1000")]
     max_users: u64,
 
-    #[clap(long, default_value = "true")]
+    #[clap(long, default_value = "false")]
     use_x_real_ip: bool,
 
     #[clap(long)]
@@ -31,8 +31,10 @@ async fn handle_request(
     remote_ip: std::net::IpAddr,
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    println!("{:?}", request.headers());
+
     // Browsers cannot set headers on Websocket requests, so this prevents browsers from trivially opening up nettai connections.
-    let client_version = if let Some(client_version) = request.headers().get("X-Nettai-Client-Version") {
+    let client_version = if let Some(client_version) = request.headers().get("X-Nettai-Version") {
         semver::Version::parse(client_version.to_str()?)?
     } else {
         return Ok(hyper::Response::builder()
