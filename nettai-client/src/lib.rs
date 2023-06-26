@@ -54,24 +54,24 @@ pub enum Error {
 
 pub struct Client {
     user_id: Vec<u8>,
-    resumption_token: Vec<u8>,
+    ticket: Vec<u8>,
     tx: std::sync::Arc<Sender>,
     _drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
-    pub async fn new(addr: &str, resumption_token: Vec<u8>) -> Result<Self, Error> {
+    pub async fn new(addr: &str, ticket: Vec<u8>) -> Result<Self, Error> {
         let mut req = addr.into_client_request()?;
         req.headers_mut().append(
             "X-Nettai-Version",
             tungstenite::http::HeaderValue::from_str(&env!("CARGO_PKG_VERSION")).unwrap(),
         );
-        if !resumption_token.is_empty() {
+        if !ticket.is_empty() {
             req.headers_mut().append(
                 "Authorization",
                 tungstenite::http::HeaderValue::from_str(&format!(
                     "Nettai-Resumption {}",
-                    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&resumption_token)
+                    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&ticket)
                 ))
                 .unwrap(),
             );
@@ -141,7 +141,7 @@ impl Client {
 
         Ok(Client {
             user_id: hello.user_id,
-            resumption_token: hello.resumption_token,
+            ticket: hello.ticket,
             tx,
             _drop_guard: cancellation_token.drop_guard(),
         })

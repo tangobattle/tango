@@ -5,7 +5,7 @@ package nettai.protocol;
 message Packet {
   message Hello {
     bytes user_id = 1;
-    bytes resumption_token = 2;
+    bytes ticket = 2;
   }
 
   oneof which { Hello hello = 1; }
