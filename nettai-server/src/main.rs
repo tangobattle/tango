@@ -182,6 +182,8 @@ async fn handle_connection(
     user_state: std::sync::Arc<UserState>,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
+    // TODO: Handle top-down cancellation with a drop guard.
+
     // Send Hello.
     let resumption_token = {
         let mut hmac = hmac::Hmac::<sha3::Sha3_256>::new_from_slice(server_state.resumption_token_key.as_bytes())?;
