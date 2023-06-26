@@ -54,12 +54,12 @@ async fn handle_request(
         .filter(|(k, _)| *k == "Nettai-Ticket")
         .and_then(|(_, v)| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(v).ok())
         .and_then(|v| bincode::deserialize::<Ticket>(&v).ok())
-        .filter(|token| {
+        .filter(|ticket| {
             let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(server_state.ticket_key.as_bytes()).unwrap();
-            hmac.update(&token.user_id);
-            hmac.finalize().into_bytes().as_slice() == token.user_id
+            hmac.update(&ticket.user_id);
+            hmac.finalize().into_bytes().as_slice() == ticket.user_id
         })
-        .map(|token| token.user_id);
+        .map(|ticket| ticket.user_id);
 
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
