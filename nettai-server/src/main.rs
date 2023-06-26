@@ -198,17 +198,18 @@ async fn handle_connection(
         }
     };
 
-    user_state
-        .tx
-        .send_message(&nettai_client::protocol::Packet {
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        user_state.tx.send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
                     user_id: current_user_id.to_vec(),
                     ticket: bincode::serialize(&ticket).unwrap(),
                 },
             )),
-        })
-        .await?;
+        }),
+    )
+    .await??;
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
@@ -259,7 +260,7 @@ async fn handle_connection(
                 let unix_ts_ms = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
                 let mut buf = vec![];
                 buf.write_u64::<byteorder::LittleEndian>(unix_ts_ms).unwrap();
-                user_state.tx.send(tungstenite::Message::Ping(buf)).await?;
+                tokio::time::timeout(std::time::Duration::from_secs(60), user_state.tx.send(tungstenite::Message::Ping(buf))).await??;
             }
 
             _ = cancellation_token.cancelled() => {
@@ -303,31 +304,32 @@ async fn main() -> Result<(), anyhow::Error> {
     let incoming = hyper::server::conn::AddrIncoming::bind(&args.bind_addr)?;
     log::info!("listening on: {}", incoming.local_addr());
 
-    let server = hyper::Server::builder(incoming).serve(hyper::service::make_service_fn(
-        move |stream: &hyper::server::conn::AddrStream| {
-            let server_state = server_state.clone();
-            let raw_remote_ip = stream.remote_addr().ip();
-            async move {
-                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |request| {
-                    let server_state = server_state.clone();
-                    async move {
-                        let remote_ip = if args.use_x_real_ip {
-                            request
-                                .headers()
-                                .get("X-Real-IP")
-                                .ok_or_else(|| anyhow::anyhow!("missing X-Real-IP header"))?
-                                .to_str()?
-                                .parse()?
-                        } else {
-                            raw_remote_ip
-                        };
-                        handle_request(server_state, remote_ip, request).await
-                    }
-                }))
-            }
-        },
-    ));
-    server.await?;
+    hyper::Server::builder(incoming)
+        .serve(hyper::service::make_service_fn(
+            move |stream: &hyper::server::conn::AddrStream| {
+                let server_state = server_state.clone();
+                let raw_remote_ip = stream.remote_addr().ip();
+                async move {
+                    Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |request| {
+                        let server_state = server_state.clone();
+                        async move {
+                            let remote_ip = if args.use_x_real_ip {
+                                request
+                                    .headers()
+                                    .get("X-Real-IP")
+                                    .ok_or_else(|| anyhow::anyhow!("missing X-Real-IP header"))?
+                                    .to_str()?
+                                    .parse()?
+                            } else {
+                                raw_remote_ip
+                            };
+                            handle_request(server_state, remote_ip, request).await
+                        }
+                    }))
+                }
+            },
+        ))
+        .await?;
 
     Ok(())
 }

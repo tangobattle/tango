@@ -50,6 +50,9 @@ pub enum Error {
 
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("timeout: {0}")]
+    Timeout(#[from] tokio::time::error::Elapsed),
 }
 
 struct Session {
@@ -114,8 +117,8 @@ impl Session {
         let mut rx = self.rx.lock().await;
         loop {
             tokio::select! {
-                msg = rx.recv() => {
-                    let msg = if let Some(msg) = msg {
+                msg = tokio::time::timeout(std::time::Duration::from_secs(60), rx.recv()) => {
+                    let msg = if let Some(msg) = msg? {
                         msg
                     } else {
                         return Ok::<_, Error>(());
@@ -156,9 +159,9 @@ impl Client {
                     tokio::select! {
                         r = async {
                             let sess = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
-                                Ok(Session::new(&addr, ticket.clone()).await?)
+                                Ok(tokio::time::timeout(std::time::Duration::from_secs(60), Session::new(&addr, ticket.clone())).await?)
                             })
-                            .await?;
+                            .await??;
                             ticket = sess.ticket.clone();
                             let sess = std::sync::Arc::new(sess);
                             *session.lock().await = Some(sess.clone());
