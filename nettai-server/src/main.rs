@@ -55,7 +55,7 @@ async fn handle_request(
         .and_then(|(_, v)| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(v).ok())
         .and_then(|v| bincode::deserialize::<Ticket>(&v).ok())
         .filter(|ticket| {
-            let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(server_state.ticket_key.as_bytes()).unwrap();
+            let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(&server_state.ticket_key).unwrap();
             hmac.update(&ticket.user_id);
             hmac.finalize().into_bytes().as_slice() == ticket.user_id
         })
@@ -190,7 +190,7 @@ async fn handle_connection(
 ) -> Result<(), anyhow::Error> {
     // Send Hello.
     let ticket = {
-        let mut hmac = hmac::Hmac::<sha3::Sha3_256>::new_from_slice(server_state.ticket_key.as_bytes())?;
+        let mut hmac = hmac::Hmac::<sha3::Sha3_256>::new_from_slice(&server_state.ticket_key)?;
         hmac.update(current_user_id);
         Ticket {
             user_id: current_user_id.to_vec(),
@@ -282,7 +282,7 @@ struct ServerStateUserEntry {
 }
 
 struct ServerState {
-    ticket_key: String,
+    ticket_key: Vec<u8>,
     users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, ServerStateUserEntry>>,
 }
 
@@ -294,10 +294,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let args = Args::parse();
 
-    assert!(args.ticket_key.len() >= 32, "ticket key must be at least 32 bytes long");
+    let ticket_key = args.ticket_key.into_bytes();
+
+    assert!(ticket_key.len() >= 32, "ticket key must be at least 32 bytes long");
 
     let server_state = std::sync::Arc::new(ServerState {
-        ticket_key: args.ticket_key,
+        ticket_key,
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
