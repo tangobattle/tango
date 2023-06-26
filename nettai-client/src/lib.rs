@@ -53,6 +53,7 @@ pub enum Error {
 
 pub struct Client {
     user_id: Vec<u8>,
+    tx: Sender,
 }
 
 impl Client {
@@ -67,11 +68,11 @@ impl Client {
 
         let (tx, rx) = stream.split();
 
-        let sender = Sender(tokio::sync::Mutex::new(tx));
-        let mut receiver = Receiver(rx);
+        let tx = Sender(tokio::sync::Mutex::new(tx));
+        let mut rx = Receiver(rx);
 
         // Receive the Hello message.
-        let user_id = match receiver
+        let user_id = match rx
             .recv()
             .await
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream closed"))??
@@ -88,6 +89,6 @@ impl Client {
             }
         };
 
-        Ok(Client { user_id })
+        Ok(Client { user_id, tx })
     }
 }
