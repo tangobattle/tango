@@ -293,6 +293,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let args = Args::parse();
 
+    assert!(args.ticket_key.len() >= 32, "ticket key must be at least 32 bytes long");
+
     let server_state = std::sync::Arc::new(ServerState {
         ticket_key: args.ticket_key,
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
