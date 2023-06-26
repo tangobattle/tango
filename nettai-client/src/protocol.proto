@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package nettai.protocol;
 
-message UserInfo {}
-
 message Packet {
   message Hello { bytes user_id = 1; }
 

@@ -1,4 +1,5 @@
-use base64::Engine;
+mod randomcode;
+
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -39,23 +40,6 @@ async fn handle_request(
             .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
     }
 
-    let token = if let Some(token) = request
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.split_once(' '))
-        .filter(|(scheme, _)| *scheme == "Nettai")
-        .and_then(|(_, token)| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(token).ok())
-    {
-        token
-    } else {
-        return Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::UNAUTHORIZED)
-            .body(hyper::StatusCode::UNAUTHORIZED.canonical_reason().unwrap().into())?);
-    };
-
-    // Resolve user ID from token.
-
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
@@ -71,9 +55,9 @@ async fn handle_request(
         }),
     )?;
 
-    tokio::spawn(async move {
-        let current_user_id = vec![]; // TODO
+    let current_user_id = server_state.generate_user_id().await;
 
+    tokio::spawn(async move {
         if let Err(e) = {
             let server_state = server_state.clone();
             let current_user_id = current_user_id.clone();
@@ -223,14 +207,20 @@ struct UserState {
     ip: std::net::IpAddr,
 }
 
-impl UserState {
-    fn info(&self) -> nettai_client::protocol::UserInfo {
-        nettai_client::protocol::UserInfo {}
-    }
-}
-
 struct ServerState {
     users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
+}
+
+impl ServerState {
+    async fn generate_user_id(&self) -> Vec<u8> {
+        let users = self.users.lock().await;
+        loop {
+            let code = randomcode::generate().into_bytes();
+            if !users.contains_key(&code) {
+                return code;
+            }
+        }
+    }
 }
 
 #[tokio::main]
