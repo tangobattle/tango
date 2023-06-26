@@ -56,7 +56,7 @@ pub struct Client {
     user_id: Vec<u8>,
     resumption_token: Vec<u8>,
     tx: std::sync::Arc<Sender>,
-    drop_guard: tokio_util::sync::DropGuard,
+    _drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
@@ -143,7 +143,7 @@ impl Client {
             user_id: hello.user_id,
             resumption_token: hello.resumption_token,
             tx,
-            drop_guard: cancellation_token.drop_guard(),
+            _drop_guard: cancellation_token.drop_guard(),
         })
     }
 }

@@ -3551,6 +3551,7 @@ dependencies = [
  "serde",
  "sha3",
  "tokio",
+ "tokio-util",
  "tungstenite 0.17.3",
 ]
 

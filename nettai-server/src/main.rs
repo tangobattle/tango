@@ -93,11 +93,18 @@ async fn handle_request(
                     ip: remote_ip,
                 });
 
+                let cancellation_token = tokio_util::sync::CancellationToken::new();
+                let drop_guard = cancellation_token.clone().drop_guard();
+
                 let user_id = {
                     let mut users = server_state.users.lock().await;
+                    let entry = ServerStateUserEntry {
+                        user: user_state.clone(),
+                        _drop_guard: drop_guard,
+                    };
 
                     if let Some(user_id) = current_user_id.as_ref() {
-                        users.insert(user_id.clone(), user_state.clone());
+                        users.insert(user_id.clone(), entry);
                         user_id.clone()
                     } else {
                         loop {
@@ -107,7 +114,7 @@ async fn handle_request(
                                     continue;
                                 }
                                 std::collections::hash_map::Entry::Vacant(e) => {
-                                    e.insert(user_state.clone());
+                                    e.insert(entry);
                                     break user_id;
                                 }
                             }
@@ -120,6 +127,7 @@ async fn handle_request(
                     server_state.clone(),
                     user_id.as_slice(),
                     user_state.clone(),
+                    cancellation_token,
                     Receiver(rx),
                 )
                 .await?;
@@ -180,10 +188,9 @@ async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
     current_user_id: &[u8],
     user_state: std::sync::Arc<UserState>,
+    cancellation_token: tokio_util::sync::CancellationToken,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
-    // TODO: Handle top-down cancellation with a drop guard.
-
     // Send Hello.
     let resumption_token = {
         let mut hmac = hmac::Hmac::<sha3::Sha3_256>::new_from_slice(server_state.resumption_token_key.as_bytes())?;
@@ -257,6 +264,10 @@ async fn handle_connection(
                 buf.write_u64::<byteorder::LittleEndian>(unix_ts_ms).unwrap();
                 user_state.tx.send(tungstenite::Message::Ping(buf)).await?;
             }
+
+            _ = cancellation_token.cancelled() => {
+                return Ok(());
+            }
         }
     }
 }
@@ -267,9 +278,14 @@ struct UserState {
     ip: std::net::IpAddr,
 }
 
+struct ServerStateUserEntry {
+    user: std::sync::Arc<UserState>,
+    _drop_guard: tokio_util::sync::DropGuard,
+}
+
 struct ServerState {
     resumption_token_key: String,
-    users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, std::sync::Arc<UserState>>>,
+    users: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, ServerStateUserEntry>>,
 }
 
 #[tokio::main]
@@ -293,7 +309,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let server_state = server_state.clone();
             let raw_remote_ip = stream.remote_addr().ip();
             async move {
-                Ok::<_, anyhow::Error>(hyper::service::service_fn(move |request| {
+                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |request| {
                     let server_state = server_state.clone();
                     async move {
                         let remote_ip = if args.use_x_real_ip {
