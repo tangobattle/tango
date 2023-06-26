@@ -70,7 +70,7 @@ impl Client {
             req.headers_mut().append(
                 "Authorization",
                 tungstenite::http::HeaderValue::from_str(&format!(
-                    "Nettai-Resumption {}",
+                    "Nettai-Ticket {}",
                     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&ticket)
                 ))
                 .unwrap(),
