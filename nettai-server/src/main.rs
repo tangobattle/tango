@@ -31,8 +31,6 @@ async fn handle_request(
     remote_ip: std::net::IpAddr,
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    println!("{:?}", request.headers());
-
     // Browsers cannot set headers on Websocket requests, so this prevents browsers from trivially opening up nettai connections.
     let client_version = if let Some(client_version) = request.headers().get("X-Nettai-Version") {
         semver::Version::parse(client_version.to_str()?)?
@@ -59,7 +57,7 @@ async fn handle_request(
         .filter(|ticket| {
             let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(&server_state.ticket_key).unwrap();
             hmac.update(&ticket.user_id);
-            hmac.finalize().into_bytes().as_slice() == ticket.user_id
+            hmac.finalize().into_bytes().as_slice() == ticket.sig
         })
         .map(|ticket| ticket.user_id);
 
@@ -177,7 +175,7 @@ impl Receiver {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 struct Ticket {
     user_id: Vec<u8>,
     sig: Vec<u8>,
