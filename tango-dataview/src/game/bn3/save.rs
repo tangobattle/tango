@@ -90,6 +90,10 @@ impl Save {
     pub fn game_info(&self) -> &GameInfo {
         &self.game_info
     }
+
+    fn flag(&self, i: usize) -> bool {
+        (self.buf[i as usize >> 3] & 0x80 >> (i & 0x7)) != 0
+    }
 }
 
 impl crate::save::Save for Save {
@@ -213,7 +217,7 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: (self.save.buf[0x0310 + raw.id as usize >> 3] & 0x80 >> (raw.id & 0x7)) != 0,
+            compressed: self.save.flag(0x0310 + raw.id as usize),
         })
     }
 
