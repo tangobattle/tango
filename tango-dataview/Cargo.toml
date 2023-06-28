@@ -5,6 +5,7 @@ edition = "2021"
 license = "LGPL-3.0-or-later"
 
 [dependencies]
+bitvec = "1"
 bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
 c2rust-bitfields = "0.17"

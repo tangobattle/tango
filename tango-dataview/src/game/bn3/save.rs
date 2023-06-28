@@ -1,3 +1,5 @@
+use bitvec::view::BitView;
+
 pub const SAVE_SIZE: usize = 0x57b0;
 pub const GAME_NAME_OFFSET: usize = 0x1e00;
 pub const CHECKSUM_OFFSET: usize = 0x1dd8;
@@ -92,11 +94,13 @@ impl Save {
     }
 
     fn flag(&self, i: usize) -> bool {
-        (self.buf[0x0030 + i / 8] & (1 << 7 >> (i % 8))) != 0
+        self.buf[0x0030 + i / 8].view_bits::<bitvec::order::Msb0>()[i % 8]
     }
 
     fn set_flag(&mut self, i: usize, v: bool) {
-        self.buf[0x0030 + i / 8] = (self.buf[0x0030 + i / 8] & !(1 << 7 >> (i % 8))) | ((v as u8) << 7 >> (i % 8));
+        self.buf[0x0030 + i / 8]
+            .view_bits_mut::<bitvec::order::Msb0>()
+            .set(i % 8, v)
     }
 }
 
