@@ -5,6 +5,9 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use prost::Message;
 use tungstenite::client::IntoClientRequest;
 
+#[derive(Debug, Clone, std::hash::Hash, PartialEq, Eq)]
+pub struct UserId(Vec<u8>);
+
 struct Sender(
     tokio::sync::Mutex<
         futures_util::stream::SplitSink<
@@ -62,7 +65,7 @@ struct Pending {
 }
 
 struct Session {
-    user_id: Vec<u8>,
+    user_id: UserId,
     ticket: Vec<u8>,
     tx: std::sync::Arc<Sender>,
     rx: tokio::sync::Mutex<Receiver>,
@@ -113,7 +116,7 @@ impl Session {
         };
 
         Ok(Self {
-            user_id: hello.user_id,
+            user_id: UserId(hello.user_id),
             ticket: hello.ticket,
             tx,
             rx: tokio::sync::Mutex::new(rx),
@@ -257,7 +260,7 @@ impl Client {
         }
     }
 
-    pub async fn user_id(&self) -> Vec<u8> {
+    pub async fn user_id(&self) -> UserId {
         self.wait_for_session().await.user_id.clone()
     }
 
