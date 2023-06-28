@@ -64,7 +64,7 @@ struct Pending {
     answer_sdp: Option<String>,
 }
 
-struct Session {
+struct Connection {
     user_id: UserId,
     ticket: Vec<u8>,
     tx: std::sync::Arc<Sender>,
@@ -72,7 +72,7 @@ struct Session {
     requests: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, Pending>>,
 }
 
-impl Session {
+impl Connection {
     async fn new(addr: &str, ticket: Vec<u8>) -> Result<Self, Error> {
         let mut req = addr.into_client_request()?;
         req.headers_mut().append(
@@ -169,22 +169,22 @@ impl Session {
     }
 }
 
-enum MaybeSession {
-    Session(std::sync::Arc<Session>),
-    AwaitingSession(std::sync::Arc<tokio::sync::Notify>),
+enum MaybeConnection {
+    Ready(std::sync::Arc<Connection>),
+    Waiting(std::sync::Arc<tokio::sync::Notify>),
 }
 
-impl MaybeSession {
+impl MaybeConnection {
     fn new() -> Self {
-        Self::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()))
+        Self::Waiting(std::sync::Arc::new(tokio::sync::Notify::new()))
     }
 
-    fn set(&mut self, session: Option<std::sync::Arc<Session>>) {
-        match session {
-            Some(session) => {
-                let mut maybe_session = MaybeSession::Session(session);
+    fn set(&mut self, conn: Option<std::sync::Arc<Connection>>) {
+        match conn {
+            Some(conn) => {
+                let mut maybe_session = MaybeConnection::Ready(conn);
                 std::mem::swap(self, &mut maybe_session);
-                if let MaybeSession::AwaitingSession(notify) = maybe_session {
+                if let MaybeConnection::Waiting(notify) = maybe_session {
                     notify.notify_waiters();
                 }
             }
@@ -196,64 +196,64 @@ impl MaybeSession {
 }
 
 pub struct Client {
-    session: std::sync::Arc<tokio::sync::Mutex<MaybeSession>>,
+    connection: std::sync::Arc<tokio::sync::Mutex<MaybeConnection>>,
     _drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
     pub async fn new(addr: &str, mut ticket: Vec<u8>) -> Result<Self, Error> {
-        let session = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeSession::new()));
+        let connection = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeConnection::new()));
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         tokio::spawn({
             let addr = addr.to_string();
-            let session = session.clone();
+            let connection = connection.clone();
             let cancellation_token = cancellation_token.clone();
 
             async move {
                 loop {
                     tokio::select! {
                         r = async {
-                            let sess = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
-                                Ok(tokio::time::timeout(std::time::Duration::from_secs(60), Session::new(&addr, ticket.clone())).await?)
+                            let conn = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
+                                Ok(tokio::time::timeout(std::time::Duration::from_secs(60), Connection::new(&addr, ticket.clone())).await?)
                             })
                             .await??;
-                            ticket = sess.ticket.clone();
-                            let sess = std::sync::Arc::new(sess);
-                            session.lock().await.set(Some(sess.clone()));
-                            sess.run_loop().await?;
+                            ticket = conn.ticket.clone();
+                            let conn = std::sync::Arc::new(conn);
+                            connection.lock().await.set(Some(conn.clone()));
+                            conn.run_loop().await?;
                             Ok::<_, Error>(())
                         } => {
                             if let Err(e) = r {
                                 // Log the error.
-                                log::error!("error in client session: {}", e);
+                                log::error!("error in client connection: {}", e);
                             }
                         }
 
                         _ = cancellation_token.cancelled() => {
-                            session.lock().await.set(None);
+                            connection.lock().await.set(None);
                             return;
                         }
                     }
-                    session.lock().await.set(None);
+                    connection.lock().await.set(None);
                 }
             }
         });
 
         Ok(Self {
-            session,
+            connection,
             _drop_guard: cancellation_token.drop_guard(),
         })
     }
 
-    async fn wait_for_session(&self) -> std::sync::Arc<Session> {
+    async fn wait_for_conn(&self) -> std::sync::Arc<Connection> {
         loop {
             let notify = {
-                match &*self.session.lock().await {
-                    MaybeSession::Session(session) => {
-                        return session.clone();
+                match &*self.connection.lock().await {
+                    MaybeConnection::Ready(conn) => {
+                        return conn.clone();
                     }
-                    MaybeSession::AwaitingSession(notify) => notify.clone(),
+                    MaybeConnection::Waiting(notify) => notify.clone(),
                 }
             };
             notify.notified().await
@@ -261,7 +261,7 @@ impl Client {
     }
 
     pub async fn user_id(&self) -> UserId {
-        self.wait_for_session().await.user_id.clone()
+        self.wait_for_conn().await.user_id.clone()
     }
 
     pub async fn connect(&self, target_user_id: &[u8]) -> Connecting {
