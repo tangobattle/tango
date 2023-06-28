@@ -60,7 +60,7 @@ async fn handle_request(
         .filter(|ticket| {
             let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(&server_state.ticket_key).unwrap();
             hmac.update(&ticket.user_id.0);
-            hmac.finalize().into_bytes().as_slice() == ticket.sig
+            hmac.verify_slice(&ticket.sig).map(|_| true).unwrap_or(false)
         })
         .map(|ticket| ticket.user_id);
 
@@ -322,7 +322,6 @@ async fn handle_connection(
                                             continue;
                                         }
 
-                                        // TODO: Keep track of state.
                                         remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                             which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
                                                 user_id: current_user_id.0.clone(),
