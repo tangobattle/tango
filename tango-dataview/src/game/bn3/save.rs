@@ -92,7 +92,11 @@ impl Save {
     }
 
     fn flag(&self, i: usize) -> bool {
-        (self.buf[i as usize >> 3] & 0x80 >> (i & 0x7)) != 0
+        (self.buf[i / 8] & (0b10000000 >> (i % 8))) != 0
+    }
+
+    fn set_flag(&mut self, i: usize, v: bool) {
+        self.buf[i / 8] = (self.buf[i / 8] & !(0b10000000 >> (i % 8))) | (((v as u8) << 7) >> (i % 8));
     }
 }
 
