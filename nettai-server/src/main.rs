@@ -60,7 +60,7 @@ async fn handle_request(
         .filter(|ticket| {
             let mut hmac = hmac::Hmac::<Sha3_256>::new_from_slice(&server_state.ticket_key).unwrap();
             hmac.update(&ticket.user_id.0);
-            hmac.verify_slice(&ticket.sig).map(|_| true).unwrap_or(false)
+            hmac.verify_slice(&ticket.sig).is_ok()
         })
         .map(|ticket| ticket.user_id);
 
