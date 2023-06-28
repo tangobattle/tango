@@ -172,11 +172,22 @@ enum MaybeSession {
 }
 
 impl MaybeSession {
-    fn set(&mut self, session: std::sync::Arc<Session>) {
-        let mut maybe_session = MaybeSession::Session(session);
-        std::mem::swap(self, &mut maybe_session);
-        if let MaybeSession::AwaitingSession(notify) = maybe_session {
-            notify.notify_waiters();
+    fn new() -> Self {
+        Self::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()))
+    }
+
+    fn set(&mut self, session: Option<std::sync::Arc<Session>>) {
+        match session {
+            Some(session) => {
+                let mut maybe_session = MaybeSession::Session(session);
+                std::mem::swap(self, &mut maybe_session);
+                if let MaybeSession::AwaitingSession(notify) = maybe_session {
+                    notify.notify_waiters();
+                }
+            }
+            None => {
+                *self = Self::new();
+            }
         }
     }
 }
@@ -188,9 +199,7 @@ pub struct Client {
 
 impl Client {
     pub async fn new(addr: &str, mut ticket: Vec<u8>) -> Result<Self, Error> {
-        let session = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeSession::AwaitingSession(
-            std::sync::Arc::new(tokio::sync::Notify::new()),
-        )));
+        let session = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeSession::new()));
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         tokio::spawn({
@@ -208,7 +217,7 @@ impl Client {
                             .await??;
                             ticket = sess.ticket.clone();
                             let sess = std::sync::Arc::new(sess);
-                            session.lock().await.set(sess.clone());
+                            session.lock().await.set(Some(sess.clone()));
                             sess.run_loop().await?;
                             Ok::<_, Error>(())
                         } => {
@@ -219,12 +228,11 @@ impl Client {
                         }
 
                         _ = cancellation_token.cancelled() => {
-                            *session.lock().await = MaybeSession::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()));
+                            session.lock().await.set(None);
                             return;
                         }
                     }
-                    *session.lock().await =
-                        MaybeSession::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()));
+                    session.lock().await.set(None);
                 }
             }
         });
