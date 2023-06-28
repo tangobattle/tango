@@ -196,18 +196,18 @@ impl MaybeConnection {
 }
 
 pub struct Client {
-    connection: std::sync::Arc<tokio::sync::Mutex<MaybeConnection>>,
+    maybe_conn: std::sync::Arc<tokio::sync::Mutex<MaybeConnection>>,
     _drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
     pub async fn new(addr: &str, mut ticket: Vec<u8>) -> Result<Self, Error> {
-        let connection = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeConnection::new()));
+        let maybe_conn = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeConnection::new()));
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         tokio::spawn({
             let addr = addr.to_string();
-            let connection = connection.clone();
+            let maybe_conn = maybe_conn.clone();
             let cancellation_token = cancellation_token.clone();
 
             async move {
@@ -220,7 +220,7 @@ impl Client {
                             .await??;
                             ticket = conn.ticket.clone();
                             let conn = std::sync::Arc::new(conn);
-                            connection.lock().await.set(Some(conn.clone()));
+                            maybe_conn.lock().await.set(Some(conn.clone()));
                             conn.run_loop().await?;
                             Ok::<_, Error>(())
                         } => {
@@ -231,17 +231,17 @@ impl Client {
                         }
 
                         _ = cancellation_token.cancelled() => {
-                            connection.lock().await.set(None);
+                            maybe_conn.lock().await.set(None);
                             return;
                         }
                     }
-                    connection.lock().await.set(None);
+                    maybe_conn.lock().await.set(None);
                 }
             }
         });
 
         Ok(Self {
-            connection,
+            maybe_conn,
             _drop_guard: cancellation_token.drop_guard(),
         })
     }
@@ -249,7 +249,7 @@ impl Client {
     async fn wait_for_conn(&self) -> std::sync::Arc<Connection> {
         loop {
             let notify = {
-                match &*self.connection.lock().await {
+                match &*self.maybe_conn.lock().await {
                     MaybeConnection::Ready(conn) => {
                         return conn.clone();
                     }
