@@ -173,13 +173,9 @@ enum MaybeSession {
 
 impl MaybeSession {
     fn set(&mut self, session: std::sync::Arc<Session>) {
-        let notify = if let MaybeSession::AwaitingSession(notify) = &self {
-            Some(notify.clone())
-        } else {
-            None
-        };
-        *self = MaybeSession::Session(session.clone());
-        if let Some(notify) = notify {
+        let mut maybe_session = MaybeSession::Session(session);
+        std::mem::swap(self, &mut maybe_session);
+        if let MaybeSession::AwaitingSession(notify) = maybe_session {
             notify.notify_waiters();
         }
     }
