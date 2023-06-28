@@ -92,11 +92,11 @@ impl Save {
     }
 
     fn flag(&self, i: usize) -> bool {
-        (self.buf[i / 8] & (1 << 7 >> (i % 8))) != 0
+        (self.buf[0x30 + i / 8] & (1 << 7 >> (i % 8))) != 0
     }
 
     fn set_flag(&mut self, i: usize, v: bool) {
-        self.buf[i / 8] = (self.buf[i / 8] & !(1 << 7 >> (i % 8))) | ((v as u8) << 7 >> (i % 8));
+        self.buf[0x30 + i / 8] = (self.buf[0x30 + i / 8] & !(1 << 7 >> (i % 8))) | ((v as u8) << 7 >> (i % 8));
     }
 }
 
@@ -221,7 +221,7 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: self.save.flag(0x0310 + raw.id as usize),
+            compressed: self.save.flag(0x02e0 + raw.id as usize),
         })
     }
 
