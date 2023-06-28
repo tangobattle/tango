@@ -257,14 +257,17 @@ async fn handle_connection(
 
                                 match {
                                     let mut state = remote_user.state.lock().await;
-                                    if let UserState::AcceptingOffers { received_offers_from } = &mut *state {
-                                        if !received_offers_from.insert(current_user_id.clone()) {
-                                            Err(nettai_client::protocol::packet::answer::reject::Reason::AlreadyOffered)
-                                        } else {
-                                            Ok(())
+                                    match &mut *state {
+                                        UserState::AcceptingOffers { received_offers_from } => {
+                                            if !received_offers_from.insert(current_user_id.clone()) {
+                                                Err(nettai_client::protocol::packet::answer::reject::Reason::AlreadyOffered)
+                                            } else {
+                                                Ok(())
+                                            }
                                         }
-                                    } else {
-                                        Err(nettai_client::protocol::packet::answer::reject::Reason::Busy)
+                                        UserState::Busy => {
+                                            Err(nettai_client::protocol::packet::answer::reject::Reason::Busy)
+                                        }
                                     }
                                 } {
                                     Ok(_) => {
