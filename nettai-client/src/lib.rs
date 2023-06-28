@@ -171,6 +171,15 @@ enum MaybeSession {
     AwaitingSession(std::sync::Arc<tokio::sync::Notify>),
 }
 
+impl MaybeSession {
+    fn set(&mut self, session: std::sync::Arc<Session>) {
+        if let MaybeSession::AwaitingSession(notify) = &self {
+            notify.notify_waiters();
+        }
+        *self = MaybeSession::Session(session.clone());
+    }
+}
+
 pub struct Client {
     session: std::sync::Arc<tokio::sync::Mutex<MaybeSession>>,
     _drop_guard: tokio_util::sync::DropGuard,
@@ -198,13 +207,7 @@ impl Client {
                             .await??;
                             ticket = sess.ticket.clone();
                             let sess = std::sync::Arc::new(sess);
-                            {
-                                let mut session = session.lock().await;
-                                if let MaybeSession::AwaitingSession(notify) = &*session {
-                                    notify.notify_waiters();
-                                }
-                                *session = MaybeSession::Session(sess.clone());
-                            }
+                            session.lock().await.set(sess.clone());
                             sess.run_loop().await?;
                             Ok::<_, Error>(())
                         } => {
