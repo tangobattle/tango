@@ -88,6 +88,7 @@ async fn handle_request(
                     tx: Sender(tokio::sync::Mutex::new(tx)),
                     latencies: tokio::sync::Mutex::new(std::collections::VecDeque::new()),
                     ip: remote_ip,
+                    received_offers_from: tokio::sync::Mutex::new(Some(std::collections::HashSet::new())),
                 });
 
                 let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -229,6 +230,102 @@ async fn handle_connection(
                             .which
                             .ok_or_else(|| anyhow::anyhow!("unknown packet"))?
                         {
+                            nettai_client::protocol::packet::Which::Offer(offer) => {
+                                let remote_user_state = {
+                                    let users = server_state.users.lock().await;
+                                    users.get(&offer.user_id).map(|entry| entry.user.clone())
+                                };
+
+                                let remote_user_state = if let Some(remote_user_state) = remote_user_state {
+                                    remote_user_state
+                                } else {
+                                    user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                        which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
+                                            user_id: current_user_id.to_vec(),
+                                            which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
+                                                reason: nettai_client::protocol::packet::answer::reject::Reason::Unavailable as i32,
+                                            })),
+                                        }))
+                                    }).await?;
+                                    continue;
+                                };
+
+                                match {
+                                    let mut received_offers_from = remote_user_state.received_offers_from.lock().await;
+                                    if let Some(received_offers_from) = received_offers_from.as_mut() {
+                                        if !received_offers_from.insert(current_user_id.to_vec()) {
+                                            Err(nettai_client::protocol::packet::answer::reject::Reason::AlreadyOffered)
+                                        } else {
+                                            Ok(())
+                                        }
+                                    } else {
+                                        Err(nettai_client::protocol::packet::answer::reject::Reason::Busy)
+                                    }
+                                } {
+                                    Ok(_) => {
+                                        remote_user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                            which: Some(nettai_client::protocol::packet::Which::Offer(nettai_client::protocol::packet::Offer {
+                                                user_id: current_user_id.to_vec(),
+                                                sdp: offer.sdp,
+                                            }))
+                                        }).await?;
+                                    }
+
+                                    Err(reason) => {
+                                        user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                            which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
+                                                user_id: current_user_id.to_vec(),
+                                                which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
+                                                    reason: reason as i32,
+                                                })),
+                                            }))
+                                        }).await?;
+                                    }
+                                }
+                            }
+
+                            nettai_client::protocol::packet::Which::Answer(answer) => {
+                                let remote_user_state = {
+                                    let users = server_state.users.lock().await;
+                                    let entry = if let Some(entry) = users.get(&answer.user_id) {
+                                        entry
+                                    } else {
+                                        continue;
+                                    };
+                                    entry.user.clone()
+                                };
+                                let which = if let Some(which) = answer.which {
+                                    which
+                                } else {
+                                    continue;
+                                };
+                                match which {
+                                    nettai_client::protocol::packet::answer::Which::Sdp(sdp) => {
+                                        remote_user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                            which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
+                                                user_id: current_user_id.to_vec(),
+                                                which: Some(nettai_client::protocol::packet::answer::Which::Sdp(nettai_client::protocol::packet::answer::Sdp { sdp: sdp.sdp })),
+                                            }))
+                                        }).await?;
+                                    },
+                                    nettai_client::protocol::packet::answer::Which::Reject(reject) => {
+                                        if reject.reason != nettai_client::protocol::packet::answer::reject::Reason::Declined as i32 {
+                                            // Only allow Declined as a valid rejection reason.
+                                            continue;
+                                        }
+
+                                        // TODO: Keep track of state.
+                                        remote_user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                            which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
+                                                user_id: current_user_id.to_vec(),
+                                                which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
+                                                    reason: nettai_client::protocol::packet::answer::reject::Reason::Declined as i32,
+                                                })),
+                                            }))
+                                        }).await?;
+                                    },
+                                }
+                            }
                             msg => {
                                 return Err(anyhow::format_err!("unknown packet: {:?}", msg));
                             }
@@ -274,6 +371,7 @@ struct UserState {
     tx: Sender,
     latencies: tokio::sync::Mutex<std::collections::VecDeque<std::time::Duration>>,
     ip: std::net::IpAddr,
+    received_offers_from: tokio::sync::Mutex<Option<std::collections::HashSet<Vec<u8>>>>,
 }
 
 struct ServerStateUserEntry {

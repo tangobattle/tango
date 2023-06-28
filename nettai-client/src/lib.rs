@@ -1,7 +1,7 @@
 pub mod protocol;
 
 use base64::Engine;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt};
 use prost::Message;
 use tungstenite::client::IntoClientRequest;
 
@@ -55,11 +55,18 @@ pub enum Error {
     Timeout(#[from] tokio::time::error::Elapsed),
 }
 
+#[derive(Default)]
+struct Pending {
+    offer_sdp: Option<String>,
+    answer_sdp: Option<String>,
+}
+
 struct Session {
     user_id: Vec<u8>,
     ticket: Vec<u8>,
     tx: std::sync::Arc<Sender>,
     rx: tokio::sync::Mutex<Receiver>,
+    requests: tokio::sync::Mutex<std::collections::HashMap<Vec<u8>, Pending>>,
 }
 
 impl Session {
@@ -110,6 +117,7 @@ impl Session {
             ticket: hello.ticket,
             tx,
             rx: tokio::sync::Mutex::new(rx),
+            requests: tokio::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -125,7 +133,26 @@ impl Session {
                     }?;
 
                     match msg {
-                        tungstenite::Message::Binary(_) => todo!(),
+                        tungstenite::Message::Binary(buf) => {
+                            match protocol::Packet::decode(&mut bytes::Bytes::from(buf))?
+                                .which
+                                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "unexpected packet"))?
+                            {
+                                protocol::packet::Which::Offer(offer) => {
+                                    let mut requests = self.requests.lock().await;
+                                    let mut pending = requests.entry(offer.user_id.clone()).or_default();
+                                    pending.offer_sdp = Some(offer.sdp);
+                                }
+                                protocol::packet::Which::Answer(answer) => {
+                                    let mut requests = self.requests.lock().await;
+                                    let mut pending = requests.entry(answer.user_id.clone()).or_default();
+                                }
+                                msg => {
+                                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("unexpected packet: {:?}", msg)).into());
+                                }
+                            }
+
+                        },
                         tungstenite::Message::Ping(_) => {
                             // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
                             // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
@@ -139,14 +166,21 @@ impl Session {
     }
 }
 
+enum MaybeSession {
+    Session(std::sync::Arc<Session>),
+    AwaitingSession(std::sync::Arc<tokio::sync::Notify>),
+}
+
 pub struct Client {
-    session: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<Session>>>>,
+    session: std::sync::Arc<tokio::sync::Mutex<MaybeSession>>,
     _drop_guard: tokio_util::sync::DropGuard,
 }
 
 impl Client {
     pub async fn new(addr: &str, mut ticket: Vec<u8>) -> Result<Self, Error> {
-        let session = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let session = std::sync::Arc::new(tokio::sync::Mutex::new(MaybeSession::AwaitingSession(
+            std::sync::Arc::new(tokio::sync::Notify::new()),
+        )));
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         tokio::spawn({
@@ -164,7 +198,13 @@ impl Client {
                             .await??;
                             ticket = sess.ticket.clone();
                             let sess = std::sync::Arc::new(sess);
-                            *session.lock().await = Some(sess.clone());
+                            {
+                                let mut session = session.lock().await;
+                                if let MaybeSession::AwaitingSession(notify) = &*session {
+                                    notify.notify_waiters();
+                                }
+                                *session = MaybeSession::Session(sess.clone());
+                            }
                             sess.run_loop().await?;
                             Ok::<_, Error>(())
                         } => {
@@ -175,11 +215,12 @@ impl Client {
                         }
 
                         _ = cancellation_token.cancelled() => {
-                            *session.lock().await = None;
+                            *session.lock().await = MaybeSession::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()));
                             return;
                         }
                     }
-                    *session.lock().await = None;
+                    *session.lock().await =
+                        MaybeSession::AwaitingSession(std::sync::Arc::new(tokio::sync::Notify::new()));
                 }
             }
         });
@@ -190,7 +231,57 @@ impl Client {
         })
     }
 
-    pub async fn user_id(&self) -> Option<Vec<u8>> {
-        self.session.lock().await.as_ref().map(|s| s.user_id.clone())
+    async fn wait_for_session(&self) -> std::sync::Arc<Session> {
+        loop {
+            let notify = {
+                match &*self.session.lock().await {
+                    MaybeSession::Session(session) => {
+                        return session.clone();
+                    }
+                    MaybeSession::AwaitingSession(notify) => notify.clone(),
+                }
+            };
+            notify.notified().await
+        }
+    }
+
+    pub async fn user_id(&self) -> Vec<u8> {
+        self.wait_for_session().await.user_id.clone()
+    }
+
+    pub async fn connect(&self, target_user_id: &[u8]) -> Connecting {
+        // There are two states we can be in:
+        // - There is no offer from the remote, in which case we must offer ourselves.
+        // - There is an offer from the remote, in which case we must answer.
+        //
+        // However, in the first case, we may encounter glare: that is, the remote offered but at the time of our connection we did not get their offer.
+        // In this case, the server will send us their offer and we must rollback to accept it and answer.
+        let target_user_id = target_user_id.to_vec();
+        Connecting {
+            target_user_id,
+            fut: Box::pin(async {
+                //
+                Ok(())
+            }),
+        }
+    }
+}
+
+pub struct Connecting {
+    target_user_id: Vec<u8>,
+    fut: futures_util::future::BoxFuture<'static, Result<(), Error>>,
+}
+
+impl Connecting {
+    pub fn target_user_id(&self) -> &[u8] {
+        &self.target_user_id
+    }
+}
+
+impl std::future::Future for Connecting {
+    type Output = Result<(), Error>;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        self.fut.poll_unpin(cx)
     }
 }
