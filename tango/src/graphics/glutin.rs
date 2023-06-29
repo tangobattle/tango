@@ -159,10 +159,13 @@ impl graphics::Backend for Backend {
                     );
                 }
             }
-            winit::event::WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+            winit::event::WindowEvent::ScaleFactorChanged {
+                new_inner_size,
+                scale_factor,
+            } => {
                 self.egui_glow
                     .egui_winit
-                    .set_pixels_per_point(self.window.scale_factor() as f32 * self.ui_scale);
+                    .set_pixels_per_point(*scale_factor as f32 * self.ui_scale);
                 self.gl_surface.resize(
                     &self.gl_context,
                     new_inner_size.width.try_into().unwrap(),

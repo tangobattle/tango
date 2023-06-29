@@ -109,8 +109,12 @@ impl graphics::Backend for Backend {
                         .on_window_resized(physical_size.width, physical_size.height);
                 }
             }
-            winit::event::WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                self.egui_winit.set_pixels_per_point(self.window.scale_factor() as f32);
+            winit::event::WindowEvent::ScaleFactorChanged {
+                new_inner_size,
+                scale_factor,
+            } => {
+                self.egui_winit
+                    .set_pixels_per_point(*scale_factor as f32 * self.ui_scale);
                 self.painter
                     .on_window_resized(new_inner_size.width, new_inner_size.height);
             }
