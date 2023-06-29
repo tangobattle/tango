@@ -91,9 +91,6 @@ async fn handle_request(
                     tx: Sender(tokio::sync::Mutex::new(tx)),
                     latencies: tokio::sync::Mutex::new(std::collections::VecDeque::new()),
                     ip: remote_ip,
-                    state: tokio::sync::Mutex::new(UserState::AcceptingOffers {
-                        received_offers_from: std::collections::HashSet::new(),
-                    }),
                 });
 
                 let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -190,7 +187,7 @@ struct Ticket {
 async fn handle_connection(
     server_state: std::sync::Arc<ServerState>,
     current_user_id: &UserId,
-    user_state: std::sync::Arc<User>,
+    current_user: std::sync::Arc<User>,
     cancellation_token: tokio_util::sync::CancellationToken,
     mut rx: Receiver,
 ) -> Result<(), anyhow::Error> {
@@ -206,7 +203,7 @@ async fn handle_connection(
 
     tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        user_state.tx.send_message(&nettai_client::protocol::Packet {
+        current_user.tx.send_message(&nettai_client::protocol::Packet {
             which: Some(nettai_client::protocol::packet::Which::Hello(
                 nettai_client::protocol::packet::Hello {
                     user_id: current_user_id.0.clone(),
@@ -244,7 +241,7 @@ async fn handle_connection(
                                 let remote_user = if let Some(remote_user) = remote_user {
                                     remote_user
                                 } else {
-                                    user_state.tx.send_message(&nettai_client::protocol::Packet {
+                                    current_user.tx.send_message(&nettai_client::protocol::Packet {
                                         which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
                                             user_id: current_user_id.0.clone(),
                                             which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
@@ -255,40 +252,26 @@ async fn handle_connection(
                                     continue;
                                 };
 
-                                match {
-                                    let mut state = remote_user.state.lock().await;
-                                    match &mut *state {
-                                        UserState::AcceptingOffers { received_offers_from } => {
-                                            if !received_offers_from.insert(current_user_id.clone()) {
-                                                Err(nettai_client::protocol::packet::answer::reject::Reason::AlreadyOffered)
-                                            } else {
-                                                Ok(())
-                                            }
-                                        }
-                                        UserState::Busy => {
-                                            Err(nettai_client::protocol::packet::answer::reject::Reason::Busy)
-                                        }
-                                    }
+                                if {
+                                    let mut pending_offers = server_state.pending_offers.lock().await;
+                                    // !pending_offers.insert((current_user_id.clone(), remote_user_id.c))
+                                    true
                                 } {
-                                    Ok(_) => {
-                                        remote_user.tx.send_message(&nettai_client::protocol::Packet {
-                                            which: Some(nettai_client::protocol::packet::Which::Offer(nettai_client::protocol::packet::Offer {
-                                                user_id: current_user_id.0.clone(),
-                                                sdp: offer.sdp,
-                                            }))
-                                        }).await?;
-                                    }
-
-                                    Err(reason) => {
-                                        user_state.tx.send_message(&nettai_client::protocol::Packet {
-                                            which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
-                                                user_id: current_user_id.0.clone(),
-                                                which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
-                                                    reason: reason as i32,
-                                                })),
-                                            }))
-                                        }).await?;
-                                    }
+                                    remote_user.tx.send_message(&nettai_client::protocol::Packet {
+                                        which: Some(nettai_client::protocol::packet::Which::Offer(nettai_client::protocol::packet::Offer {
+                                            user_id: current_user_id.0.clone(),
+                                            sdp: offer.sdp,
+                                        }))
+                                    }).await?;
+                                } else {
+                                    current_user.tx.send_message(&nettai_client::protocol::Packet {
+                                        which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
+                                            user_id: current_user_id.0.clone(),
+                                            which: Some(nettai_client::protocol::packet::answer::Which::Reject(nettai_client::protocol::packet::answer::Reject {
+                                                reason: nettai_client::protocol::packet::answer::reject::Reason::AlreadyOffered as i32,
+                                            })),
+                                        }))
+                                    }).await?;
                                 }
                             }
 
@@ -309,6 +292,8 @@ async fn handle_connection(
                                 };
                                 match which {
                                     nettai_client::protocol::packet::answer::Which::Sdp(sdp) => {
+                                        // Clear offer stuff.
+
                                         remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                             which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
                                                 user_id: current_user_id.0.clone(),
@@ -321,6 +306,8 @@ async fn handle_connection(
                                             // Only allow Declined as a valid rejection reason.
                                             continue;
                                         }
+
+                                        // Clear offer stuff.
 
                                         remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                             which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
@@ -345,7 +332,7 @@ async fn handle_connection(
                         let now = std::time::SystemTime::now();
 
                         // Record time.
-                        let mut latencies = user_state.latencies.lock().await;
+                        let mut latencies = current_user.latencies.lock().await;
                         const MAX_LATENCIES: usize = 9;
                         while latencies.len() >= MAX_LATENCIES {
                             latencies.pop_front();
@@ -364,7 +351,7 @@ async fn handle_connection(
                 let unix_ts_ms = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
                 let mut buf = vec![];
                 buf.write_u64::<byteorder::LittleEndian>(unix_ts_ms).unwrap();
-                tokio::time::timeout(std::time::Duration::from_secs(60), user_state.tx.send(tungstenite::Message::Ping(buf))).await??;
+                tokio::time::timeout(std::time::Duration::from_secs(60), current_user.tx.send(tungstenite::Message::Ping(buf))).await??;
             }
 
             _ = cancellation_token.cancelled() => {
@@ -374,18 +361,10 @@ async fn handle_connection(
     }
 }
 
-enum UserState {
-    AcceptingOffers {
-        received_offers_from: std::collections::HashSet<UserId>,
-    },
-    Busy,
-}
-
 struct User {
     tx: Sender,
     latencies: tokio::sync::Mutex<std::collections::VecDeque<std::time::Duration>>,
     ip: std::net::IpAddr,
-    state: tokio::sync::Mutex<UserState>,
 }
 
 struct ServerStateUserEntry {
@@ -396,6 +375,7 @@ struct ServerStateUserEntry {
 struct ServerState {
     ticket_key: Vec<u8>,
     users: tokio::sync::Mutex<std::collections::HashMap<UserId, ServerStateUserEntry>>,
+    pending_offers: tokio::sync::Mutex<std::collections::HashSet<(UserId, UserId)>>,
 }
 
 #[tokio::main]
@@ -413,6 +393,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let server_state = std::sync::Arc::new(ServerState {
         ticket_key,
         users: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+        pending_offers: tokio::sync::Mutex::new(std::collections::HashSet::new()),
     });
 
     let incoming = hyper::server::conn::AddrIncoming::bind(&args.bind_addr)?;

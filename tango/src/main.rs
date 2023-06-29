@@ -193,7 +193,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         config::GraphicsBackend::Wgpu => Box::new(graphics::wgpu::Backend::new(window_builder, &event_loop)?),
     };
     gfx_backend.set_ui_scale(config.read().ui_scale_percent as f32 / 100.0);
-    gfx_backend.run(Box::new(|_, _| {}));
+    gfx_backend.run(&mut |_, _| {});
     gfx_backend.paint();
 
     let egui_ctx = gfx_backend.egui_ctx();
@@ -273,9 +273,8 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         let old_config = next_config.clone();
 
         let mut redraw = || {
-            let repaint_after = gfx_backend.run(Box::new(|window, ctx| {
-                gui::show(ctx, &mut next_config, window, &input_state, &mut state, &updater)
-            }));
+            let repaint_after = gfx_backend
+                .run(&mut (|window, ctx| gui::show(ctx, &mut next_config, window, &input_state, &mut state, &updater)));
 
             if repaint_after.is_zero() {
                 gfx_backend.window().request_redraw();

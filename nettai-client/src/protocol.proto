@@ -19,10 +19,9 @@ message Packet {
       enum Reason {
         UNKNOWN = 0;
         DECLINED = 1;
-        BUSY = 2;
-        TIMED_OUT = 3;
-        UNAVAILABLE = 4;
-        ALREADY_OFFERED = 5;
+        TIMED_OUT = 2;
+        UNAVAILABLE = 3;
+        ALREADY_OFFERED = 4;
       }
       Reason reason = 1;
     }
