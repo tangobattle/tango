@@ -23,7 +23,7 @@ struct Args {
     ticket_key: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, std::hash::Hash, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct UserId(Vec<u8>);
 
 static CLIENT_VERSION_REQUIREMENT: once_cell::sync::Lazy<semver::VersionReq> =
@@ -141,6 +141,10 @@ async fn handle_request(
 
         if let Some(current_user_id) = current_user_id {
             server_state.users.lock().await.remove(&current_user_id);
+            {
+                let mut pending_offers = server_state.pending_offers.lock().await;
+                pending_offers.retain(|(id1, id2)| id1 != &current_user_id && id2 != &current_user_id);
+            }
         }
     });
 
@@ -233,9 +237,11 @@ async fn handle_connection(
                             .ok_or_else(|| anyhow::anyhow!("unknown packet"))?
                         {
                             nettai_client::protocol::packet::Which::Offer(offer) => {
+                                let remote_user_id = UserId(offer.user_id);
+
                                 let remote_user = {
                                     let users = server_state.users.lock().await;
-                                    users.get(&UserId(offer.user_id)).map(|entry| entry.user.clone())
+                                    users.get(&remote_user_id).map(|entry| entry.user.clone())
                                 };
 
                                 let remote_user = if let Some(remote_user) = remote_user {
@@ -254,8 +260,11 @@ async fn handle_connection(
 
                                 if {
                                     let mut pending_offers = server_state.pending_offers.lock().await;
-                                    // !pending_offers.insert((current_user_id.clone(), remote_user_id.c))
-                                    true
+                                    !pending_offers.insert(if current_user_id < &remote_user_id {
+                                        (current_user_id.clone(), remote_user_id.clone())
+                                    } else {
+                                        (remote_user_id.clone(), current_user_id.clone())
+                                    })
                                 } {
                                     remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                         which: Some(nettai_client::protocol::packet::Which::Offer(nettai_client::protocol::packet::Offer {
@@ -276,9 +285,11 @@ async fn handle_connection(
                             }
 
                             nettai_client::protocol::packet::Which::Answer(answer) => {
+                                let remote_user_id = UserId(answer.user_id);
+
                                 let remote_user = {
                                     let users = server_state.users.lock().await;
-                                    let entry = if let Some(entry) = users.get(&UserId(answer.user_id)) {
+                                    let entry = if let Some(entry) = users.get(&remote_user_id) {
                                         entry
                                     } else {
                                         continue;
@@ -292,8 +303,6 @@ async fn handle_connection(
                                 };
                                 match which {
                                     nettai_client::protocol::packet::answer::Which::Sdp(sdp) => {
-                                        // Clear offer stuff.
-
                                         remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                             which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
                                                 user_id: current_user_id.0.clone(),
@@ -307,7 +316,6 @@ async fn handle_connection(
                                             continue;
                                         }
 
-                                        // Clear offer stuff.
 
                                         remote_user.tx.send_message(&nettai_client::protocol::Packet {
                                             which: Some(nettai_client::protocol::packet::Which::Answer(nettai_client::protocol::packet::Answer {
@@ -319,7 +327,16 @@ async fn handle_connection(
                                         }).await?;
                                     },
                                 }
-                            }
+
+                                {
+                                    let mut pending_offers = server_state.pending_offers.lock().await;
+                                    pending_offers.remove(&if current_user_id < &remote_user_id {
+                                        (current_user_id.clone(), remote_user_id)
+                                    } else {
+                                        (remote_user_id, current_user_id.clone())
+                                    });
+                                }
+                        }
                             msg => {
                                 return Err(anyhow::format_err!("unknown packet: {:?}", msg));
                             }
