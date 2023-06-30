@@ -749,23 +749,29 @@ pub fn show(
                     }
 
                     if let Some(selection_state) = show.as_ref().unwrap().selection.clone() {
-                        let mut save_templates = selection_state
-                            .game
-                            .save_templates()
-                            .iter()
-                            .map(|(name, save)| (*name, *save, false))
-                            .collect::<Vec<_>>();
-
-                        if let Some((_, _, patch_version)) = selection_state.patch.as_ref() {
-                            if let Some(patch_save_templates) = patch_version.save_templates.get(&selection_state.game)
-                            {
-                                save_templates.extend(
-                                    patch_save_templates
-                                        .iter()
-                                        .map(|(name, save)| (name.as_str(), save.as_ref(), true)),
-                                );
-                            }
-                        }
+                        let (from_patch, save_templates) = if let Some(save_templates) = selection_state
+                            .patch
+                            .as_ref()
+                            .and_then(|(_, _, patch_version)| patch_version.save_templates.get(&selection_state.game))
+                        {
+                            (
+                                true,
+                                save_templates
+                                    .iter()
+                                    .map(|(name, save)| (name.as_str(), save.as_ref()))
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            (
+                                false,
+                                selection_state
+                                    .game
+                                    .save_templates()
+                                    .iter()
+                                    .map(|(name, save)| (*name, *save))
+                                    .collect::<Vec<_>>(),
+                            )
+                        };
 
                         ui.add_enabled_ui(!save_templates.is_empty(), |ui| {
                             ui.menu_button(
@@ -774,9 +780,9 @@ pub fn show(
                                     let mut menu_selection = None;
 
                                     if save_templates.len() == 1 {
-                                        menu_selection = save_templates.first().map(|(name, save, _)| (*name, *save));
+                                        menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
                                     } else {
-                                        for (name, save, from_patch) in save_templates {
+                                        for (name, save) in save_templates {
                                             if ui
                                                 .button(format!(
                                                     "{}",
