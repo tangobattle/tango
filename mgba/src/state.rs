@@ -49,18 +49,8 @@ impl State {
         &self.0 as *const _ as *const u8
     }
 
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        &mut self.0 as *mut _ as *mut u8
-    }
-
     pub fn as_slice(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.as_ptr(), std::mem::size_of::<mgba_sys::GBASerializedState>()) }
-    }
-
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        unsafe {
-            std::slice::from_raw_parts_mut(self.as_mut_ptr(), std::mem::size_of::<mgba_sys::GBASerializedState>())
-        }
     }
 
     pub fn new_uninit() -> Box<std::mem::MaybeUninit<Self>> {
