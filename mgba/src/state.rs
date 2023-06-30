@@ -50,7 +50,7 @@ impl State {
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.as_ptr(), std::mem::size_of::<mgba_sys::GBASerializedState>()) }
+        unsafe { std::slice::from_raw_parts(self.as_ptr(), std::mem::size_of::<Self>()) }
     }
 
     pub fn new_uninit() -> Box<std::mem::MaybeUninit<Self>> {
@@ -64,11 +64,8 @@ impl State {
     pub fn from_slice(slice: &[u8]) -> Box<Self> {
         let mut state = Self::new_uninit();
         unsafe {
-            std::slice::from_raw_parts_mut(
-                state.as_mut_ptr() as *mut _,
-                std::mem::size_of::<mgba_sys::GBASerializedState>(),
-            )
-            .copy_from_slice(slice);
+            std::slice::from_raw_parts_mut(state.as_mut_ptr() as *mut _, std::mem::size_of::<Self>())
+                .copy_from_slice(slice);
             Box::from_raw(Box::into_raw(state) as *mut _)
         }
     }
