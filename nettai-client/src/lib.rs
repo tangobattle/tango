@@ -189,7 +189,9 @@ impl MaybeConnection {
                 }
             }
             None => {
-                *self = Self::new();
+                if !matches!(*self, MaybeConnection::Waiting(_)) {
+                    *self = Self::new();
+                }
             }
         }
     }
@@ -228,6 +230,7 @@ impl Client {
                                 // Log the error.
                                 log::error!("error in client connection: {}", e);
                             }
+                            maybe_conn.lock().await.set(None);
                         }
 
                         _ = cancellation_token.cancelled() => {
@@ -235,7 +238,6 @@ impl Client {
                             return;
                         }
                     }
-                    maybe_conn.lock().await.set(None);
                 }
             }
         });
@@ -256,7 +258,7 @@ impl Client {
                     MaybeConnection::Waiting(notify) => notify.clone(),
                 }
             };
-            notify.notified().await
+            notify.notified().await;
         }
     }
 
