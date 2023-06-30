@@ -200,24 +200,24 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn load_state(&mut self, state: &state::State) -> Result<(), crate::Error> {
-        if !unsafe { (*self.ptr).loadState.unwrap()(self.ptr, &*state.0 as *const _ as *const std::os::raw::c_void) } {
+        if !unsafe { (*self.ptr).loadState.unwrap()(self.ptr, state.as_ptr() as *const _) } {
             return Err(crate::Error::CallFailed("mCore.loadState"));
         }
         Ok(())
     }
 
-    pub fn save_state(&self) -> Result<state::State, crate::Error> {
+    pub fn save_state(&self) -> Result<Box<state::State>, crate::Error> {
         unsafe {
             let layout = std::alloc::Layout::new::<mgba_sys::GBASerializedState>();
             let ptr = std::alloc::alloc(layout);
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            let mut state = state::State(Box::from_raw(ptr as *mut _ as *mut mgba_sys::GBASerializedState));
-            if !(*self.ptr).saveState.unwrap()(self.ptr, &mut *state.0 as *mut _ as *mut std::os::raw::c_void) {
+            let mut state = state::State::new_uninit();
+            if !(*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) {
                 return Err(crate::Error::CallFailed("mCore.saveState"));
             }
-            Ok(state)
+            Ok(Box::from_raw(Box::into_raw(state) as *mut _))
         }
     }
 

@@ -1,7 +1,7 @@
 pub struct Round {
     current_tick: u32,
     local_player_index: u8,
-    first_committed_state: Option<mgba::state::State>,
+    first_committed_state: Option<Box<mgba::state::State>>,
     pending_shadow_input: Option<crate::input::Pair<crate::input::Input, crate::input::PartialInput>>,
     pending_remote_packet: Option<crate::input::Packet>,
     input_injected: bool,
@@ -32,7 +32,7 @@ impl Round {
         1 - self.local_player_index
     }
 
-    pub fn set_first_committed_state(&mut self, state: mgba::state::State, packet: &[u8]) {
+    pub fn set_first_committed_state(&mut self, state: Box<mgba::state::State>, packet: &[u8]) {
         self.first_committed_state = Some(state);
         self.pending_remote_packet = Some(crate::input::Packet {
             tick: 0,
@@ -84,7 +84,7 @@ impl RoundState {
 
 struct AppliedState {
     tick: u32,
-    state: mgba::state::State,
+    state: Box<mgba::state::State>,
 }
 
 struct InnerState {
@@ -168,7 +168,7 @@ impl State {
         *self.0.error.lock() = Some(err);
     }
 
-    pub fn set_applied_state(&self, state: mgba::state::State, tick: u32) {
+    pub fn set_applied_state(&self, state: Box<mgba::state::State>, tick: u32) {
         *self.0.applied_state.lock() = Some(AppliedState { tick, state });
     }
 }
@@ -201,7 +201,7 @@ impl Shadow {
         Ok(Shadow { core, hooks, state })
     }
 
-    pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<mgba::state::State> {
+    pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<Box<mgba::state::State>> {
         log::info!("advancing shadow until first committed state");
         loop {
             self.core.as_mut().run_loop();

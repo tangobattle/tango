@@ -1,6 +1,6 @@
 #[derive(Clone)]
 #[repr(transparent)]
-pub struct State(pub(super) Box<mgba_sys::GBASerializedState>);
+pub struct State(pub(super) mgba_sys::GBASerializedState);
 
 unsafe impl Send for State {}
 
@@ -45,25 +45,41 @@ impl State {
         &self.0.pram
     }
 
+    pub fn as_ptr(&self) -> *const u8 {
+        &self.0 as *const _ as *const u8
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        &mut self.0 as *mut _ as *mut u8
+    }
+
     pub fn as_slice(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.as_ptr(), std::mem::size_of::<mgba_sys::GBASerializedState>()) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
         unsafe {
-            std::slice::from_raw_parts(
-                &*self.0 as *const mgba_sys::GBASerializedState as *const u8,
-                std::mem::size_of::<mgba_sys::GBASerializedState>(),
-            )
+            std::slice::from_raw_parts_mut(self.as_mut_ptr(), std::mem::size_of::<mgba_sys::GBASerializedState>())
         }
     }
 
-    pub fn from_slice(slice: &[u8]) -> Self {
+    pub fn new_uninit() -> Box<std::mem::MaybeUninit<Self>> {
         unsafe {
-            let layout = std::alloc::Layout::new::<mgba_sys::GBASerializedState>();
+            let layout = std::alloc::Layout::new::<Self>();
             let ptr = std::alloc::alloc(layout);
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-            let slice2 = std::slice::from_raw_parts_mut(ptr, std::mem::size_of::<mgba_sys::GBASerializedState>());
-            slice2.copy_from_slice(slice);
-            Self(Box::from_raw(ptr as *mut _ as *mut mgba_sys::GBASerializedState))
+            Box::from_raw(ptr as *mut _)
+        }
+    }
+
+    pub fn from_slice(slice: &[u8]) -> Box<Self> {
+        let mut state = Self::new_uninit();
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                state.as_mut_ptr() as *mut _,
+                std::mem::size_of::<mgba_sys::GBASerializedState>(),
+            )
+            .copy_from_slice(slice);
+            Box::from_raw(Box::into_raw(state) as *mut _)
         }
     }
 }

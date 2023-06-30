@@ -3,7 +3,7 @@ pub async fn eval(
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Sync + Send),
     extra_traps: impl FnOnce() -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> + Send + Sync,
-) -> Result<(crate::stepper::RoundResult, mgba::state::State), anyhow::Error> {
+) -> Result<(crate::stepper::RoundResult, Box<mgba::state::State>), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango")?;
 
     let vf = mgba::vfile::VFile::open_memory(&rom);

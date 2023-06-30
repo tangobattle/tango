@@ -49,7 +49,7 @@ impl InnerState {
         });
     }
 
-    pub fn set_committed_state(&mut self, state: mgba::state::State) {
+    pub fn set_committed_state(&mut self, state: Box<mgba::state::State>) {
         let local_packet = self.local_packet.clone().unwrap();
         if self.current_tick != local_packet.tick {
             panic!(
@@ -72,7 +72,7 @@ impl InnerState {
         self.dirty_tick
     }
 
-    pub fn set_dirty_state(&mut self, state: mgba::state::State) {
+    pub fn set_dirty_state(&mut self, state: Box<mgba::state::State>) {
         let local_packet = self.local_packet.clone().unwrap();
         if self.current_tick != local_packet.tick {
             panic!(

@@ -10,7 +10,7 @@ pub enum BattleOutcome {
 
 #[derive(Clone)]
 pub struct CommittedState {
-    pub state: mgba::state::State,
+    pub state: Box<mgba::state::State>,
     pub tick: u32,
     pub packet: Vec<u8>,
 }
@@ -138,7 +138,7 @@ impl Match {
         self.shadow.lock().advance_until_round_end()
     }
 
-    pub fn advance_shadow_until_first_committed_state(&self) -> anyhow::Result<mgba::state::State> {
+    pub fn advance_shadow_until_first_committed_state(&self) -> anyhow::Result<Box<mgba::state::State>> {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
@@ -332,8 +332,8 @@ impl Round {
 
     pub fn set_first_committed_state(
         &mut self,
-        local_state: mgba::state::State,
-        remote_state: mgba::state::State,
+        local_state: Box<mgba::state::State>,
+        remote_state: Box<mgba::state::State>,
         first_packet: &[u8],
     ) {
         if let Some(replay_writer) = self.replay_writer.as_mut() {

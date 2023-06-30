@@ -26,8 +26,8 @@ pub struct Replay {
     pub is_complete: bool,
     pub metadata: Metadata,
     pub local_player_index: u8,
-    pub local_state: mgba::state::State,
-    pub remote_state: mgba::state::State,
+    pub local_state: Box<mgba::state::State>,
+    pub remote_state: Box<mgba::state::State>,
     pub input_pairs: Vec<crate::input::Pair<crate::input::Input, crate::input::Input>>,
 }
 
