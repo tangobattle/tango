@@ -231,9 +231,15 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         if !game_controller.is_game_controller(which) {
             continue;
         }
-        let controller = game_controller.open(which).unwrap();
-        log::info!("controller added: {}", controller.name());
-        controllers.insert(which, controller);
+        match game_controller.open(which) {
+            Ok(controller) => {
+                log::info!("controller added: {}", controller.name());
+                controllers.insert(which, controller);
+            }
+            Err(e) => {
+                log::info!("failed to add controller: {}", e);
+            }
+        }
     }
 
     let discord_client = discord::Client::new();
@@ -370,13 +376,19 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                     match sdl_event {
                         sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                             if game_controller.is_game_controller(which) {
-                                let controller = game_controller.open(which).unwrap();
-                                log::info!("controller added: {}", controller.name());
-                                controllers.insert(which, controller);
-                                input_state.handle_controller_connected(
-                                    which,
-                                    sdl2::sys::SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX as usize,
-                                );
+                                match game_controller.open(which) {
+                                    Ok(controller) => {
+                                        log::info!("controller added: {}", controller.name());
+                                        controllers.insert(which, controller);
+                                        input_state.handle_controller_connected(
+                                            which,
+                                            sdl2::sys::SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX as usize,
+                                        );
+                                    }
+                                    Err(e) => {
+                                        log::info!("failed to add controller: {}", e);
+                                    }
+                                }
                             }
                         }
                         sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
