@@ -1288,8 +1288,10 @@ fn show_bottom_pane(
                         .lookup(&config.language, "connection-error-remote-protocol-version-too-old")
                         .unwrap(),
                     ConnectionError::Signaling(net::signaling::Error::ServerAbort(
-                        tango_protos::matchmaking::packet::Abort { reason },
-                    )) if *reason == tango_protos::matchmaking::packet::abort::Reason::ProtocolVersionTooOld as i32 => {
+                        tango_net::proto::signaling::packet::Abort { reason },
+                    )) if *reason
+                        == tango_net::proto::signaling::packet::abort::Reason::ProtocolVersionTooOld as i32 =>
+                    {
                         i18n::LOCALES
                             .lookup(&config.language, "connection-error-protocol-version-too-old")
                             .unwrap()

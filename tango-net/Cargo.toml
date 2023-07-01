@@ -1,6 +1,6 @@
 [package]
-name = "tango-protos"
-version = "4.0.40"
+name = "tango-net"
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]

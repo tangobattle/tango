@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tango.matchmaking;
+package tango.signaling;
 
 message Packet {
   message Hello {

@@ -5585,7 +5585,7 @@ dependencies = [
  "tango-dataview",
  "tango-filesync",
  "tango-gamedb",
- "tango-protos",
+ "tango-net",
  "tango-pvp",
  "tempfile",
  "thiserror",
@@ -5643,8 +5643,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-protos"
-version = "4.0.40"
+name = "tango-net"
+version = "0.1.0"
 dependencies = [
  "prost",
  "prost-build",
@@ -5713,7 +5713,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.5",
- "tango-protos",
+ "tango-net",
  "tokio",
  "tungstenite 0.17.3",
  "url",

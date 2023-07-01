@@ -11,7 +11,7 @@ members = [
     "tango-dataview",
     "tango-filesync",
     "tango-gamedb",
-    "tango-protos",
+    "tango-net",
     "tango-pvp",
     "tango-replaytool",
     "tango-server",

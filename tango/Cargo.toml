@@ -86,7 +86,7 @@ sys-locale = "0.2"
 tango-dataview = { path = "../tango-dataview" }
 tango-filesync = { path = "../tango-filesync" }
 tango-gamedb = { path = "../tango-gamedb" }
-tango-protos = { path = "../tango-protos" }
+tango-net = { path = "../tango-net" }
 tango-pvp = { path = "../tango-pvp" }
 tempfile = "3"
 thiserror = "1"

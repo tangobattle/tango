@@ -72,12 +72,12 @@ pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Resu
     };
 
     let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-        tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
+        tango_net::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
     } else {
         anyhow::bail!("invalid packet");
     };
 
-    let hello = if let Some(tango_protos::matchmaking::packet::Which::Hello(hello)) = packet.which {
+    let hello = if let Some(tango_net::proto::signaling::packet::Which::Hello(hello)) = packet.which {
         hello
     } else {
         anyhow::bail!("invalid packet");
@@ -135,9 +135,9 @@ pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Resu
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
-            tango_protos::matchmaking::Packet {
-                which: Some(tango_protos::matchmaking::packet::Which::Start(
-                    tango_protos::matchmaking::packet::Start {
+            tango_net::proto::signaling::Packet {
+                which: Some(tango_net::proto::signaling::packet::Which::Start(
+                    tango_net::proto::signaling::packet::Start {
                         protocol_version: crate::net::protocol::VERSION as u32,
                         offer_sdp: peer_conn.local_description().unwrap().sdp.to_string(),
                     },
@@ -158,7 +158,7 @@ pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Resu
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("signaling abort: {0:?}")]
-    ServerAbort(tango_protos::matchmaking::packet::Abort),
+    ServerAbort(tango_net::proto::signaling::packet::Abort),
 
     #[error("tungstenite: {0:?}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
@@ -182,7 +182,7 @@ pub enum Error {
     InvalidPacket(tokio_tungstenite::tungstenite::Message),
 
     #[error("unexpected packet: {0:?}")]
-    UnexpectedPacket(tango_protos::matchmaking::Packet),
+    UnexpectedPacket(tango_net::proto::signaling::Packet),
 
     #[error("peer connection unexpectedly disconnected")]
     PeerConnectionDisconnected,
@@ -206,16 +206,16 @@ impl PendingConnection {
             };
 
             let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-                tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
+                tango_net::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
             } else {
                 return Err(Error::InvalidPacket(raw));
             };
 
             match &packet.which {
-                Some(tango_protos::matchmaking::packet::Which::Abort(abort)) => {
+                Some(tango_net::proto::signaling::packet::Which::Abort(abort)) => {
                     return Err(Error::ServerAbort(abort.clone()))
                 }
-                Some(tango_protos::matchmaking::packet::Which::Offer(offer)) => {
+                Some(tango_net::proto::signaling::packet::Which::Offer(offer)) => {
                     log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
                     self.peer_conn
@@ -229,9 +229,9 @@ impl PendingConnection {
                     let local_description = self.peer_conn.local_description().unwrap();
                     self.signaling_stream
                         .send(tokio_tungstenite::tungstenite::Message::Binary(
-                            tango_protos::matchmaking::Packet {
-                                which: Some(tango_protos::matchmaking::packet::Which::Answer(
-                                    tango_protos::matchmaking::packet::Answer {
+                            tango_net::proto::signaling::Packet {
+                                which: Some(tango_net::proto::signaling::packet::Which::Answer(
+                                    tango_net::proto::signaling::packet::Answer {
                                         sdp: local_description.sdp.to_string(),
                                     },
                                 )),
@@ -242,7 +242,7 @@ impl PendingConnection {
                     log::info!("sent answer to impolite side");
                     break;
                 }
-                Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
+                Some(tango_net::proto::signaling::packet::Which::Answer(answer)) => {
                     log::info!("received an answer, this is the impolite side");
 
                     self.peer_conn

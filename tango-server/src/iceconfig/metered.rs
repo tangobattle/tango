@@ -24,7 +24,7 @@ impl super::Backend for Backend {
     async fn get(
         &self,
         _remote_ip: &std::net::IpAddr,
-    ) -> anyhow::Result<Vec<tango_protos::matchmaking::packet::hello::IceServer>> {
+    ) -> anyhow::Result<Vec<tango_net::proto::signaling::packet::hello::IceServer>> {
         let client = reqwest::Client::new();
 
         let resp = client
@@ -40,7 +40,7 @@ impl super::Backend for Backend {
 
         Ok(resp
             .into_iter()
-            .map(|ice_server| tango_protos::matchmaking::packet::hello::IceServer {
+            .map(|ice_server| tango_net::proto::signaling::packet::hello::IceServer {
                 credential: ice_server.credential,
                 username: ice_server.username,
                 urls: ice_server.urls.into_iter().collect(),
