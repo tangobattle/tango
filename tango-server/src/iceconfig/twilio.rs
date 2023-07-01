@@ -75,7 +75,7 @@ impl super::Backend for Backend {
     async fn get(
         &self,
         _remote_ip: &std::net::IpAddr,
-    ) -> anyhow::Result<Vec<tango_net::proto::signaling::packet::hello::IceServer>> {
+    ) -> anyhow::Result<Vec<tango_signaling::proto::signaling::packet::hello::IceServer>> {
         let key = hmac::Hmac::<sha2::Sha256>::new_from_slice(&self.api_secret.as_bytes())?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
@@ -120,13 +120,13 @@ impl super::Backend for Backend {
             .network_traversal_service
             .ice_servers
             .into_iter()
-            .map(|ice_server| tango_net::proto::signaling::packet::hello::IceServer {
+            .map(|ice_server| tango_signaling::proto::signaling::packet::hello::IceServer {
                 credential: Some(ice_server.credential),
                 username: Some(ice_server.username),
                 urls: vec![ice_server.urls],
             })
             .collect::<Vec<_>>();
-        ice_servers.push(tango_net::proto::signaling::packet::hello::IceServer {
+        ice_servers.push(tango_signaling::proto::signaling::packet::hello::IceServer {
             credential: None,
             username: None,
             urls: vec!["stun:global.stun.twilio.com:3478".to_string()],

@@ -11,10 +11,10 @@ members = [
     "tango-dataview",
     "tango-filesync",
     "tango-gamedb",
-    "tango-net",
     "tango-pvp",
     "tango-replaytool",
     "tango-server",
+    "tango-signaling",
 ]
 
 [patch.crates-io]

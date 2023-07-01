@@ -31,7 +31,7 @@ impl super::Backend for Backend {
     async fn get(
         &self,
         remote_ip: &std::net::IpAddr,
-    ) -> anyhow::Result<Vec<tango_net::proto::signaling::packet::hello::IceServer>> {
+    ) -> anyhow::Result<Vec<tango_signaling::proto::signaling::packet::hello::IceServer>> {
         let opentok_session_id = self
             .opentok
             .create_session(opentok_server::SessionOptions {
@@ -65,7 +65,7 @@ impl super::Backend for Backend {
         Ok(session
             .ice_servers
             .into_iter()
-            .map(|ice_server| tango_net::proto::signaling::packet::hello::IceServer {
+            .map(|ice_server| tango_signaling::proto::signaling::packet::hello::IceServer {
                 credential: ice_server.credential,
                 username: ice_server.username,
                 urls: vec![ice_server.url],

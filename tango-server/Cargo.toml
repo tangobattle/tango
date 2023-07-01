@@ -24,7 +24,7 @@ routerify = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tango-net = { path = "../tango-net" }
+tango-signaling = { path = "../tango-signaling" }
 tokio = { version = "1", features = ["full"] }
 tungstenite = "0.17"
 url = "2"

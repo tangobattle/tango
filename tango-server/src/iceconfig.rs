@@ -7,5 +7,5 @@ pub trait Backend {
     async fn get(
         &self,
         remote_ip: &std::net::IpAddr,
-    ) -> anyhow::Result<Vec<tango_net::proto::signaling::packet::hello::IceServer>>;
+    ) -> anyhow::Result<Vec<tango_signaling::proto::signaling::packet::hello::IceServer>>;
 }

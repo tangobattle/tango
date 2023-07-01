@@ -55,34 +55,34 @@ impl Server {
         };
 
         tx.send(tungstenite::Message::Binary(
-            tango_net::proto::signaling::Packet {
-                which: Some(tango_net::proto::signaling::packet::Which::Hello(
-                    tango_net::proto::signaling::packet::Hello {
+            tango_signaling::proto::signaling::Packet {
+                which: Some(tango_signaling::proto::signaling::packet::Which::Hello(
+                    tango_signaling::proto::signaling::packet::Hello {
                         ice_servers: if let Some(ice_servers) = ice_servers {
                             ice_servers
                         } else {
                             vec![
-                                tango_net::proto::signaling::packet::hello::IceServer {
+                                tango_signaling::proto::signaling::packet::hello::IceServer {
                                     username: None,
                                     credential: None,
                                     urls: vec!["stun:stun.l.google.com:19302".to_string()],
                                 },
-                                tango_net::proto::signaling::packet::hello::IceServer {
+                                tango_signaling::proto::signaling::packet::hello::IceServer {
                                     username: None,
                                     credential: None,
                                     urls: vec!["stun:stun1.l.google.com:19302".to_string()],
                                 },
-                                tango_net::proto::signaling::packet::hello::IceServer {
+                                tango_signaling::proto::signaling::packet::hello::IceServer {
                                     username: None,
                                     credential: None,
                                     urls: vec!["stun:stun2.l.google.com:19302".to_string()],
                                 },
-                                tango_net::proto::signaling::packet::hello::IceServer {
+                                tango_signaling::proto::signaling::packet::hello::IceServer {
                                     username: None,
                                     credential: None,
                                     urls: vec!["stun:stun3.l.google.com:19302".to_string()],
                                 },
-                                tango_net::proto::signaling::packet::hello::IceServer {
+                                tango_signaling::proto::signaling::packet::hello::IceServer {
                                     username: None,
                                     credential: None,
                                     urls: vec!["stun:stun4.l.google.com:19302".to_string()],
@@ -108,7 +108,7 @@ impl Server {
                 loop {
                     let msg = match rx.try_next().await? {
                         Some(tungstenite::Message::Binary(d)) => {
-                            tango_net::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+                            tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
                         }
                         Some(tungstenite::Message::Close(_)) | None => {
                             break;
@@ -119,7 +119,7 @@ impl Server {
                     };
                     log::debug!("received message: {:?}", msg);
                     match msg.which {
-                        Some(tango_net::proto::signaling::packet::Which::Start(start)) => {
+                        Some(tango_signaling::proto::signaling::packet::Which::Start(start)) => {
                             let mut sessions = sessions.lock().await;
                             session = Some(if let Some(session) = sessions.remove(session_id) {
                                 session
@@ -155,9 +155,9 @@ impl Server {
                             if me == 1 {
                                 session.sinks[me]
                                     .send(tungstenite::Message::Binary(
-                                        tango_net::proto::signaling::Packet {
-                                            which: Some(tango_net::proto::signaling::packet::Which::Offer(
-                                                tango_net::proto::signaling::packet::Offer { sdp: offer_sdp },
+                                        tango_signaling::proto::signaling::Packet {
+                                            which: Some(tango_signaling::proto::signaling::packet::Which::Offer(
+                                                tango_signaling::proto::signaling::packet::Offer { sdp: offer_sdp },
                                             )),
                                         }
                                         .encode_to_vec(),
@@ -165,10 +165,10 @@ impl Server {
                                     .await?;
                             }
                         }
-                        Some(tango_net::proto::signaling::packet::Which::Offer(_)) => {
+                        Some(tango_signaling::proto::signaling::packet::Which::Offer(_)) => {
                             anyhow::bail!("received offer from client: only the server may send offers");
                         }
-                        Some(tango_net::proto::signaling::packet::Which::Answer(answer)) => {
+                        Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => {
                             let session = match session.as_ref() {
                                 Some(session) => session,
                                 None => {
@@ -178,9 +178,9 @@ impl Server {
                             let mut session = session.lock().await;
                             session.sinks[0]
                                 .send(tungstenite::Message::Binary(
-                                    tango_net::proto::signaling::Packet {
-                                        which: Some(tango_net::proto::signaling::packet::Which::Answer(
-                                            tango_net::proto::signaling::packet::Answer { sdp: answer.sdp },
+                                    tango_signaling::proto::signaling::Packet {
+                                        which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
+                                            tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
                                         )),
                                     }
                                     .encode_to_vec(),

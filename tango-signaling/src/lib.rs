@@ -111,7 +111,7 @@ pub async fn connect(
     req.headers_mut().append(
         "User-Agent",
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!(
-            "tango-net/{}",
+            "tango-signaling/{}",
             env!("CARGO_PKG_VERSION")
         ))
         .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
