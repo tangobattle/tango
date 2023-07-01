@@ -7,8 +7,6 @@ members = [
     "input-helper",
     "mgba",
     "mmpx",
-    "nettai-client",
-    "nettai-server",
     "tango",
     "tango-dataview",
     "tango-filesync",
