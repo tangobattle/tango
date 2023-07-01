@@ -5596,8 +5596,6 @@ dependencies = [
  "tokio-util",
  "toml",
  "unic-langid",
- "url",
- "urlencoding",
  "walkdir",
  "wgpu",
  "winit",
@@ -5646,8 +5644,18 @@ dependencies = [
 name = "tango-net"
 version = "0.1.0"
 dependencies = [
+ "bytes 1.2.1",
+ "datachannel-wrapper",
+ "futures",
+ "futures-util",
+ "log",
  "prost",
  "prost-build",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.16.1",
+ "url",
+ "urlencoding",
 ]
 
 [[package]]

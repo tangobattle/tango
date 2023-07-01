@@ -1,5 +1,4 @@
 pub mod protocol;
-pub mod signaling;
 
 pub const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 

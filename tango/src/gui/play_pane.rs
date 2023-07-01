@@ -630,10 +630,11 @@ async fn run_connection_task(
                     };
                     let pending_conn = tokio::time::timeout(
                         OPEN_TIMEOUT,
-                        net::signaling::open(
+                        tango_net::connect(
                             &matchmaking_addr,
                             &link_code,
                             use_relay,
+                            crate::net::protocol::VERSION as u32,
                         ),
                     )
                     .await.map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))??;
@@ -884,7 +885,7 @@ enum ConnectionError {
     Negotiation(#[from] net::NegotiationError),
 
     #[error(transparent)]
-    Signaling(#[from] net::signaling::Error),
+    Signaling(#[from] tango_net::Error),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -1287,10 +1288,8 @@ fn show_bottom_pane(
                     ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooOld) => i18n::LOCALES
                         .lookup(&config.language, "connection-error-remote-protocol-version-too-old")
                         .unwrap(),
-                    ConnectionError::Signaling(net::signaling::Error::ServerAbort(
-                        tango_net::proto::signaling::packet::Abort { reason },
-                    )) if *reason
-                        == tango_net::proto::signaling::packet::abort::Reason::ProtocolVersionTooOld as i32 =>
+                    ConnectionError::Signaling(tango_net::Error::ServerAbort(reason)) if *reason
+                        == tango_net::AbortReason::ProtocolVersionTooOld as i32 =>
                     {
                         i18n::LOCALES
                             .lookup(&config.language, "connection-error-protocol-version-too-old")

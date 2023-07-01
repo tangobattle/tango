@@ -4,7 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytes = "1"
+datachannel-wrapper = { path = "../datachannel-wrapper" }
+futures = "0.3"
+futures-util = "0.3"
+log = "0.4"
 prost = "0.10"
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"] }
+url = "2"
+urlencoding = "2"
 
 [build-dependencies]
 prost-build = "0.10"

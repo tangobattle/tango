@@ -93,14 +93,10 @@ thiserror = "1"
 time = { version = "0.3", features = ["formatting", "macros"] }
 tiny-skia = "0.7"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = { version = "0.16", features = [
-    "rustls-tls-webpki-roots",
-] }
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"] }
 tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.5"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
-url = "2"
-urlencoding = "2"
 walkdir = "2"
 wgpu = { version = "0.15", optional = true, features = ["angle"] }
 winit = { version = "0.28", features = ["serde"] }
