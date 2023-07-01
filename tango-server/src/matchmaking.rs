@@ -104,7 +104,6 @@ impl Server {
             (move || async move {
                 let mut session = None;
                 let mut tx = Some(tx);
-                let mut me: usize;
 
                 loop {
                     let msg = match rx.try_next().await? {
@@ -145,7 +144,7 @@ impl Server {
                             *session_id_for_cleanup.lock().await = Some(session_id);
                             let offer_sdp = session.offer_sdp.to_string();
 
-                            me = session.sinks.len();
+                            let me = session.sinks.len();
                             let tx = if let Some(tx) = tx.take() {
                                 tx
                             } else {
