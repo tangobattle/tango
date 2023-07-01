@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango_signaling_server"), log::LevelFilter::Info)
         .init();
-    log::info!("welcome to tango-server {}!", env!("CARGO_PKG_VERSION"));
+    log::info!("welcome to {} {}!", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     let config = Config::init_from_env().unwrap();
     let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
     let addr = config.listen_addr.parse()?;
