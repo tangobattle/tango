@@ -166,7 +166,7 @@ pub struct DataChannel {
 
 async fn dc_send(
     state: &std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    dc: &mut Box<datachannel::RtcDataChannel<DataChannelHandler>>,
+    dc: &mut datachannel::RtcDataChannel<DataChannelHandler>,
     msg: &[u8],
 ) -> Result<(), Error> {
     let mut state = state.lock().await;
