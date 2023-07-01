@@ -1,4 +1,4 @@
-
+use futures_util::FutureExt;
 use futures_util::SinkExt;
 use futures_util::TryStreamExt;
 use prost::Message;
@@ -47,7 +47,7 @@ async fn create_data_channel(
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("signaling abort: {0:?}")]
-    ServerAbort(i32),
+    ServerAbort(AbortReason),
 
     #[error("tungstenite: {0:?}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
@@ -87,10 +87,10 @@ pub enum Error {
 }
 
 pub struct Connecting {
-    signaling_stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    dc: datachannel_wrapper::DataChannel,
-    event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-    peer_conn: datachannel_wrapper::PeerConnection,
+    fut: futures_util::future::BoxFuture<
+        'static,
+        Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
+    >,
 }
 
 pub async fn connect(
@@ -183,7 +183,7 @@ pub async fn connect(
     if use_relay == Some(true) {
         rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
     }
-    let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
+    let (dc, mut event_rx, mut peer_conn) = create_data_channel(rtc_config).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -200,114 +200,112 @@ pub async fn connect(
         .await?;
 
     Ok(Connecting {
-        signaling_stream,
-        dc,
-        event_rx,
-        peer_conn,
-    })
-}
+        fut: Box::pin((move || async move {
+            loop {
+                let raw = if let Some(raw) = signaling_stream.try_next().await? {
+                    raw
+                } else {
+                    return Err(Error::StreamEndedEarly);
+                };
 
-impl Connecting {
-    pub async fn connect(
-        mut self,
-    ) -> Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error> {
-        loop {
-            let raw = if let Some(raw) = self.signaling_stream.try_next().await? {
-                raw
-            } else {
-                return Err(Error::StreamEndedEarly);
-            };
+                let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
+                    crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+                } else {
+                    return Err(Error::InvalidPacket(raw));
+                };
 
-            let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-                crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
-            } else {
-                return Err(Error::InvalidPacket(raw));
-            };
+                match &packet.which {
+                    Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
+                        return Err(Error::ServerAbort(
+                            AbortReason::from_i32(abort.reason).unwrap_or_default(),
+                        ))
+                    }
+                    Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
+                        log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
-            match &packet.which {
-                Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
-                    return Err(Error::ServerAbort(abort.reason))
-                }
-                Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
-                    log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
-
-                    self.peer_conn
-                        .set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                    self.peer_conn
-                        .set_remote_description(datachannel_wrapper::SessionDescription {
+                        peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
+                        peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Offer,
                             sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
                         })?;
 
-                    let local_description = self.peer_conn.local_description().unwrap();
-                    self.signaling_stream
-                        .send(tokio_tungstenite::tungstenite::Message::Binary(
-                            crate::proto::signaling::Packet {
-                                which: Some(crate::proto::signaling::packet::Which::Answer(
-                                    crate::proto::signaling::packet::Answer {
-                                        sdp: local_description.sdp.to_string(),
-                                    },
-                                )),
-                            }
-                            .encode_to_vec(),
-                        ))
-                        .await?;
-                    log::info!("sent answer to impolite side");
-                    break;
-                }
-                Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
-                    log::info!("received an answer, this is the impolite side");
+                        let local_description = peer_conn.local_description().unwrap();
+                        signaling_stream
+                            .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                crate::proto::signaling::Packet {
+                                    which: Some(crate::proto::signaling::packet::Which::Answer(
+                                        crate::proto::signaling::packet::Answer {
+                                            sdp: local_description.sdp.to_string(),
+                                        },
+                                    )),
+                                }
+                                .encode_to_vec(),
+                            ))
+                            .await?;
+                        log::info!("sent answer to impolite side");
+                        break;
+                    }
+                    Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
+                        log::info!("received an answer, this is the impolite side");
 
-                    self.peer_conn
-                        .set_remote_description(datachannel_wrapper::SessionDescription {
+                        peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Answer,
                             sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
                         })?;
-                    break;
-                }
-                _ => {
-                    return Err(Error::UnexpectedPacket(packet));
+                        break;
+                    }
+                    _ => {
+                        return Err(Error::UnexpectedPacket(packet));
+                    }
                 }
             }
-        }
 
-        self.signaling_stream.close(None).await?;
+            signaling_stream.close(None).await?;
 
-        log::debug!(
-            "local sdp (type = {:?}): {}",
-            self.peer_conn.local_description().expect("local sdp").sdp_type,
-            self.peer_conn.local_description().expect("local sdp").sdp
-        );
-        log::debug!(
-            "remote sdp (type = {:?}): {}",
-            self.peer_conn.remote_description().expect("remote sdp").sdp_type,
-            self.peer_conn.remote_description().expect("remote sdp").sdp
-        );
+            log::debug!(
+                "local sdp (type = {:?}): {}",
+                peer_conn.local_description().expect("local sdp").sdp_type,
+                peer_conn.local_description().expect("local sdp").sdp
+            );
+            log::debug!(
+                "remote sdp (type = {:?}): {}",
+                peer_conn.remote_description().expect("remote sdp").sdp_type,
+                peer_conn.remote_description().expect("remote sdp").sdp
+            );
 
-        loop {
-            match self.event_rx.recv().await {
-                Some(signal) => match signal {
-                    datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
-                        datachannel_wrapper::ConnectionState::Connected => {
-                            break;
-                        }
-                        datachannel_wrapper::ConnectionState::Disconnected => {
-                            return Err(Error::PeerConnectionDisconnected);
-                        }
-                        datachannel_wrapper::ConnectionState::Failed => {
-                            return Err(Error::PeerConnectionFailed);
-                        }
-                        datachannel_wrapper::ConnectionState::Closed => {
-                            return Err(Error::PeerConnectionClosed);
-                        }
+            loop {
+                match event_rx.recv().await {
+                    Some(signal) => match signal {
+                        datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
+                            datachannel_wrapper::ConnectionState::Connected => {
+                                break;
+                            }
+                            datachannel_wrapper::ConnectionState::Disconnected => {
+                                return Err(Error::PeerConnectionDisconnected);
+                            }
+                            datachannel_wrapper::ConnectionState::Failed => {
+                                return Err(Error::PeerConnectionFailed);
+                            }
+                            datachannel_wrapper::ConnectionState::Closed => {
+                                return Err(Error::PeerConnectionClosed);
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     },
-                    _ => {}
-                },
-                None => unreachable!(),
+                    None => unreachable!(),
+                }
             }
-        }
 
-        Ok((self.dc, self.peer_conn))
+            Ok((dc, peer_conn))
+        })()),
+    })
+}
+
+impl std::future::Future for Connecting {
+    type Output = Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        self.fut.poll_unpin(cx)
     }
 }

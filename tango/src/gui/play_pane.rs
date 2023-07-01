@@ -646,7 +646,7 @@ async fn run_connection_task(
                                 cancellation_token.clone(),
                         });
 
-                    let (dc, peer_conn) = pending_conn.connect().await?;
+                    let (dc, peer_conn) = pending_conn.await?;
                     let (dc_tx, dc_rx) = dc.split();
                     let mut sender = net::Sender::new(dc_tx);
                     let mut receiver = net::Receiver::new(dc_rx);
@@ -1288,8 +1288,8 @@ fn show_bottom_pane(
                     ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooOld) => i18n::LOCALES
                         .lookup(&config.language, "connection-error-remote-protocol-version-too-old")
                         .unwrap(),
-                    ConnectionError::Signaling(tango_signaling::Error::ServerAbort(reason)) if *reason
-                        == tango_signaling::AbortReason::ProtocolVersionTooOld as i32 =>
+                    ConnectionError::Signaling(tango_signaling::Error::ServerAbort(reason))
+                        if *reason == tango_signaling::AbortReason::ProtocolVersionTooOld as i32 =>
                     {
                         i18n::LOCALES
                             .lookup(&config.language, "connection-error-protocol-version-too-old")
