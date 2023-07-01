@@ -3,18 +3,23 @@ name = "tango-signaling"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["client"]
+client = ["dep:datachannel-wrapper", "dep:url", "dep:urlencoding", "dep:tokio-tungstenite"]
+proto = []
+
 [dependencies]
 bytes = "1"
-datachannel-wrapper = { path = "../datachannel-wrapper" }
+datachannel-wrapper = { path = "../datachannel-wrapper", optional = true }
 futures = "0.3"
 futures-util = "0.3"
 log = "0.4"
 prost = "0.10"
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"] }
-url = "2"
-urlencoding = "2"
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"], optional = true }
+url = { version = "2", optional = true }
+urlencoding = { version = "2", optional = true }
 
 [build-dependencies]
 prost-build = "0.10"
