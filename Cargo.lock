@@ -5680,7 +5680,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-server"
+name = "tango-signaling"
+version = "0.1.0"
+dependencies = [
+ "bytes 1.2.1",
+ "datachannel-wrapper",
+ "futures",
+ "futures-util",
+ "log",
+ "prost",
+ "prost-build",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.16.1",
+ "url",
+ "urlencoding",
+]
+
+[[package]]
+name = "tango-signaling-server"
 version = "4.0.51"
 dependencies = [
  "anyhow",
@@ -5707,24 +5725,6 @@ dependencies = [
  "tokio",
  "tungstenite 0.17.3",
  "url",
-]
-
-[[package]]
-name = "tango-signaling"
-version = "0.1.0"
-dependencies = [
- "bytes 1.2.1",
- "datachannel-wrapper",
- "futures",
- "futures-util",
- "log",
- "prost",
- "prost-build",
- "thiserror",
- "tokio",
- "tokio-tungstenite 0.16.1",
- "url",
- "urlencoding",
 ]
 
 [[package]]

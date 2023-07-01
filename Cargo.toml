@@ -13,8 +13,8 @@ members = [
     "tango-gamedb",
     "tango-pvp",
     "tango-replaytool",
-    "tango-server",
     "tango-signaling",
+    "tango-signaling-server",
 ]
 
 [patch.crates-io]

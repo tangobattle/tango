@@ -134,7 +134,7 @@ fn router(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_default_env()
-        .filter(Some("tango_server"), log::LevelFilter::Info)
+        .filter(Some("tango_signaling_server"), log::LevelFilter::Info)
         .init();
     log::info!("welcome to tango-server {}!", env!("CARGO_PKG_VERSION"));
     let config = Config::init_from_env().unwrap();

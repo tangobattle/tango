@@ -1,5 +1,5 @@
 [package]
-name = "tango-server"
+name = "tango-signaling-server"
 version = "4.0.51"
 edition = "2021"
 
