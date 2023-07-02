@@ -1447,7 +1447,6 @@ version = "0.1.0"
 dependencies = [
  "datachannel",
  "log",
- "thiserror",
  "tokio",
 ]
 

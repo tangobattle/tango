@@ -14,7 +14,7 @@ async fn create_data_channel(
         tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
     ),
-    datachannel_wrapper::Error,
+    std::io::Error,
 > {
     let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
 
@@ -52,8 +52,8 @@ pub enum Error {
     #[error("tungstenite: {0:?}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
 
-    #[error("datachannel: {0:?}")]
-    Datachannel(#[from] datachannel_wrapper::Error),
+    #[error("io: {0:?}")]
+    Io(#[from] std::io::Error),
 
     #[error("prost decode error: {0:?}")]
     ProstDecode(#[from] prost::DecodeError),

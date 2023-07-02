@@ -9,7 +9,7 @@ pub struct PeerConnection {
 }
 
 impl PeerConnection {
-    pub fn new(config: RtcConfig) -> Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), Error> {
+    pub fn new(config: RtcConfig) -> Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
         let pch = PeerConnectionHandler {
@@ -17,7 +17,7 @@ impl PeerConnection {
             pending_dc_receiver: None,
             data_channel_tx,
         };
-        let peer_conn = datachannel::RtcPeerConnection::new(&config, pch)?;
+        let peer_conn = datachannel::RtcPeerConnection::new(&config, pch).map_err(datachannel_error_to_io_error)?;
         Ok((
             PeerConnection {
                 peer_conn,
@@ -27,7 +27,11 @@ impl PeerConnection {
         ))
     }
 
-    pub fn create_data_channel(&mut self, label: &str, dc_init: DataChannelInit) -> Result<DataChannel, Error> {
+    pub fn create_data_channel(
+        &mut self,
+        label: &str,
+        dc_init: DataChannelInit,
+    ) -> Result<DataChannel, std::io::Error> {
         let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
         let (open_tx, open_rx) = tokio::sync::oneshot::channel();
         let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
@@ -39,7 +43,10 @@ impl PeerConnection {
             open_tx: Some(open_tx),
             state: state.clone(),
         };
-        let dc = self.peer_conn.create_data_channel_ex(label, dch, &dc_init)?;
+        let dc = self
+            .peer_conn
+            .create_data_channel_ex(label, dch, &dc_init)
+            .map_err(datachannel_error_to_io_error)?;
         Ok(DataChannel {
             sender: DataChannelSender { state, dc },
             receiver: DataChannelReceiver { message_rx },
@@ -50,13 +57,17 @@ impl PeerConnection {
         self.data_channel_rx.recv().await
     }
 
-    pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), Error> {
-        self.peer_conn.set_local_description(sdp_type)?;
+    pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), std::io::Error> {
+        self.peer_conn
+            .set_local_description(sdp_type)
+            .map_err(datachannel_error_to_io_error)?;
         Ok(())
     }
 
-    pub fn set_remote_description(&mut self, sess_desc: SessionDescription) -> Result<(), Error> {
-        self.peer_conn.set_remote_description(&sess_desc)?;
+    pub fn set_remote_description(&mut self, sess_desc: SessionDescription) -> Result<(), std::io::Error> {
+        self.peer_conn
+            .set_remote_description(&sess_desc)
+            .map_err(datachannel_error_to_io_error)?;
         Ok(())
     }
 
@@ -68,8 +79,10 @@ impl PeerConnection {
         self.peer_conn.remote_description()
     }
 
-    pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> Result<(), Error> {
-        self.peer_conn.add_remote_candidate(&cand)?;
+    pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> Result<(), std::io::Error> {
+        self.peer_conn
+            .add_remote_candidate(&cand)
+            .map_err(datachannel_error_to_io_error)?;
         Ok(())
     }
 }
@@ -159,7 +172,7 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
 
 struct DataChannelState {
     open_rx: Option<tokio::sync::oneshot::Receiver<()>>,
-    error: Option<Error>,
+    error: Option<String>,
 }
 
 pub struct DataChannel {
@@ -168,7 +181,7 @@ pub struct DataChannel {
 }
 
 impl DataChannel {
-    pub async fn send(&mut self, msg: &[u8]) -> Result<(), Error> {
+    pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
         self.sender.send(msg).await
     }
 
@@ -187,19 +200,19 @@ pub struct DataChannelSender {
 }
 
 impl DataChannelSender {
-    pub async fn send(&mut self, msg: &[u8]) -> Result<(), Error> {
+    pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
         let mut state = self.state.lock().await;
         if let Some(err) = &state.error {
-            return Err(err.clone());
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, err.clone()));
         }
 
         if let Some(open_rx) = state.open_rx.take() {
-            open_rx.await.map_err(|_| Error::Closed)?;
+            open_rx
+                .await
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
         }
 
-        self.dc
-            .send(msg)
-            .map_err(|e| Error::UnderlyingError(format!("{:?}", e)))?;
+        self.dc.send(msg).map_err(datachannel_error_to_io_error)?;
         Ok(())
     }
 
@@ -228,42 +241,15 @@ struct DataChannelHandler {
     message_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum Error {
-    #[error("closed")]
-    Closed,
-
-    #[error("underlying error: {0}")]
-    UnderlyingError(String),
-
-    #[error("invalid argument")]
-    InvalidArg,
-
-    #[error("runtime")]
-    Runtime,
-
-    #[error("not available")]
-    NotAvailable,
-
-    #[error("too smal")]
-    TooSmall,
-
-    #[error("unknown")]
-    Unknown,
-
-    #[error("bad string: {0}")]
-    BadString(String),
-}
-
-impl From<datachannel::Error> for Error {
-    fn from(value: datachannel::Error) -> Self {
-        match value {
-            datachannel::Error::InvalidArg => Error::InvalidArg,
-            datachannel::Error::Runtime => Error::Runtime,
-            datachannel::Error::NotAvailable => Error::NotAvailable,
-            datachannel::Error::TooSmall => Error::TooSmall,
-            datachannel::Error::Unkown => Error::Unknown,
-            datachannel::Error::BadString(s) => Error::BadString(s),
+fn datachannel_error_to_io_error(err: datachannel::Error) -> std::io::Error {
+    match err {
+        datachannel::Error::InvalidArg => std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid argument"),
+        datachannel::Error::Runtime => std::io::Error::new(std::io::ErrorKind::Other, "runtime error"),
+        datachannel::Error::NotAvailable => std::io::Error::new(std::io::ErrorKind::WouldBlock, "not available"),
+        datachannel::Error::TooSmall => std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too small"),
+        datachannel::Error::Unkown => std::io::Error::new(std::io::ErrorKind::Other, "unknown"),
+        datachannel::Error::BadString(s) => {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("bad string: {}", s))
         }
     }
 }
@@ -278,7 +264,7 @@ impl datachannel::DataChannelHandler for DataChannelHandler {
     }
 
     fn on_error(&mut self, err: &str) {
-        let _ = self.state.blocking_lock().error = Some(Error::UnderlyingError(err.to_owned()));
+        let _ = self.state.blocking_lock().error = Some(err.to_owned());
     }
 
     fn on_message(&mut self, msg: &[u8]) {
