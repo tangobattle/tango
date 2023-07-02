@@ -40,7 +40,10 @@ impl PeerConnection {
             state: state.clone(),
         };
         let dc = self.peer_conn.create_data_channel_ex(label, dch, &dc_init)?;
-        Ok(DataChannel { dc, message_rx, state })
+        Ok(DataChannel {
+            sender: DataChannelSender { state, dc },
+            receiver: DataChannelReceiver { message_rx },
+        })
     }
 
     pub async fn accept(&mut self) -> Option<DataChannel> {
@@ -147,9 +150,10 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
 
     fn on_data_channel(&mut self, dc: Box<datachannel::RtcDataChannel<Self::DCH>>) {
         let (message_rx, state) = self.pending_dc_receiver.take().unwrap();
-        let _ = self
-            .data_channel_tx
-            .blocking_send(DataChannel { dc, message_rx, state });
+        let _ = self.data_channel_tx.blocking_send(DataChannel {
+            sender: DataChannelSender { state, dc },
+            receiver: DataChannelReceiver { message_rx },
+        });
     }
 }
 
@@ -159,52 +163,21 @@ struct DataChannelState {
 }
 
 pub struct DataChannel {
-    state: std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    message_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    dc: Box<datachannel::RtcDataChannel<DataChannelHandler>>,
-}
-
-async fn dc_send(
-    state: &std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    dc: &mut datachannel::RtcDataChannel<DataChannelHandler>,
-    msg: &[u8],
-) -> Result<(), Error> {
-    let mut state = state.lock().await;
-    if let Some(err) = &state.error {
-        return Err(err.clone());
-    }
-
-    if let Some(open_rx) = state.open_rx.take() {
-        open_rx.await.map_err(|_| Error::Closed)?;
-    }
-
-    dc.send(msg).map_err(|e| Error::UnderlyingError(format!("{:?}", e)))?;
-    Ok(())
-}
-
-async fn dc_receive(message_rx: &mut tokio::sync::mpsc::Receiver<Vec<u8>>) -> Option<Vec<u8>> {
-    message_rx.recv().await
+    sender: DataChannelSender,
+    receiver: DataChannelReceiver,
 }
 
 impl DataChannel {
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), Error> {
-        dc_send(&self.state, &mut self.dc, msg).await
+        self.sender.send(msg).await
     }
 
     pub async fn receive(&mut self) -> Option<Vec<u8>> {
-        dc_receive(&mut self.message_rx).await
+        self.receiver.receive().await
     }
 
     pub fn split(self) -> (DataChannelSender, DataChannelReceiver) {
-        (
-            DataChannelSender {
-                state: self.state,
-                dc: self.dc,
-            },
-            DataChannelReceiver {
-                message_rx: self.message_rx,
-            },
-        )
+        (self.sender, self.receiver)
     }
 }
 
@@ -215,15 +188,23 @@ pub struct DataChannelSender {
 
 impl DataChannelSender {
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), Error> {
-        dc_send(&self.state, &mut self.dc, msg).await
+        let mut state = self.state.lock().await;
+        if let Some(err) = &state.error {
+            return Err(err.clone());
+        }
+
+        if let Some(open_rx) = state.open_rx.take() {
+            open_rx.await.map_err(|_| Error::Closed)?;
+        }
+
+        self.dc
+            .send(msg)
+            .map_err(|e| Error::UnderlyingError(format!("{:?}", e)))?;
+        Ok(())
     }
 
-    pub fn unsplit(self, rx: DataChannelReceiver) -> DataChannel {
-        DataChannel {
-            state: self.state,
-            message_rx: rx.message_rx,
-            dc: self.dc,
-        }
+    pub fn unsplit(self, receiver: DataChannelReceiver) -> DataChannel {
+        DataChannel { sender: self, receiver }
     }
 }
 
@@ -233,7 +214,7 @@ pub struct DataChannelReceiver {
 
 impl DataChannelReceiver {
     pub async fn receive(&mut self) -> Option<Vec<u8>> {
-        dc_receive(&mut self.message_rx).await
+        self.message_rx.recv().await
     }
 
     pub fn unsplit(self, tx: DataChannelSender) -> DataChannel {
