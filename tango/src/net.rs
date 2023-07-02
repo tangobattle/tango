@@ -51,15 +51,8 @@ impl Sender {
     }
 
     async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
-        match self.dc_tx.send(p.serialize().unwrap().as_slice()).await {
-            Ok(()) => Ok(()),
-            Err(datachannel_wrapper::Error::Closed) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "unexpected eof"));
-            }
-            Err(e) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
-            }
-        }
+        self.dc_tx.send(p.serialize().unwrap().as_slice()).await?;
+        Ok(())
     }
 
     pub async fn send_hello(&mut self) -> std::io::Result<()> {
