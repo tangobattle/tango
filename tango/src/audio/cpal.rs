@@ -76,9 +76,9 @@ fn realign_samples(buf: &mut [i16], channels: u16) {
     // Monophonic downmix.
     if channels == 1 {
         for i in 0..(buf.len() / 2) {
-            let l = buf[i as usize * 2] as i32;
-            let r = buf[i as usize * 2 + 1] as i32;
-            buf[i as usize] = ((l + r) / 2) as i16;
+            let l = buf[i as usize * 2];
+            let r = buf[i as usize * 2 + 1];
+            buf[i as usize] = l + (r - l) / 2;
         }
         return;
     }
