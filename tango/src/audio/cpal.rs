@@ -37,8 +37,9 @@ where
             *x = T::from(y);
         }
         if data.len() > n * channels as usize {
+            let silence = T::from(&(0 as i16));
             for x in data[n * channels as usize..].iter_mut() {
-                *x = T::from(&(0 as i16));
+                *x = silence;
             }
         }
     }
