@@ -55,34 +55,34 @@ fn open_stream(
 
     Ok(match sample_format {
         cpal::SampleFormat::U8 => {
-            device.build_output_stream(&config, make_data_callback::<u8>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<u8>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::U16 => {
-            device.build_output_stream(&config, make_data_callback::<u16>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<u16>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::U32 => {
-            device.build_output_stream(&config, make_data_callback::<u32>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<u32>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::U64 => {
-            device.build_output_stream(&config, make_data_callback::<u64>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<u64>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::I8 => {
-            device.build_output_stream(&config, make_data_callback::<i8>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<i8>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::I16 => {
-            device.build_output_stream(&config, make_data_callback::<i16>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<i16>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::I32 => {
-            device.build_output_stream(&config, make_data_callback::<i32>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<i32>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::I64 => {
-            device.build_output_stream(&config, make_data_callback::<i64>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<i64>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::F32 => {
-            device.build_output_stream(&config, make_data_callback::<f32>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<f32>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::F64 => {
-            device.build_output_stream(&config, make_data_callback::<f64>(stream, channels), error_callback, None)
+            device.build_output_stream(config, make_data_callback::<f64>(stream, channels), error_callback, None)
         }
         _ => {
             return Err(anyhow::format_err!("unsupported sample format: {}", sample_format));
