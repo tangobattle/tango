@@ -144,11 +144,8 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let _enter_guard = rt.enter();
 
-    let mut show_update_info = false;
-    if config.last_version != version::current() {
-        config.last_version = version::current();
-        show_update_info = true;
-    }
+    let show_update_info = config.last_version != version::current();
+    config.last_version = version::current();
 
     config.save()?;
     let config = std::sync::Arc::new(parking_lot::RwLock::new(config));
