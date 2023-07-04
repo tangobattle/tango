@@ -1,4 +1,5 @@
 use crate::audio;
+use sdl2::audio::AudioFormatNum;
 
 pub struct StreamWrapper(Box<dyn audio::Stream + Send + 'static>);
 
@@ -8,7 +9,6 @@ impl sdl2::audio::AudioCallback for StreamWrapper {
     fn callback(&mut self, buf: &mut [i16]) {
         let frame_count = self.0.fill(bytemuck::cast_slice_mut(buf));
         for x in &mut buf[frame_count * audio::NUM_CHANNELS..] {
-            use sdl2::audio::AudioFormatNum;
             *x = Self::Channel::SILENCE;
         }
     }

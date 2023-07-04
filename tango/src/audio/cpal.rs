@@ -33,13 +33,14 @@ where
             &mut buf[..data.len() / channels as usize * audio::NUM_CHANNELS],
         ));
         realign_samples(&mut buf, channels);
-        for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
-            *x = y.to_sample();
-        }
-        if data.len() > n * channels as usize {
-            for x in data[n * channels as usize..].iter_mut() {
-                *x = T::EQUILIBRIUM;
-            }
+        for (dst, src) in std::iter::zip(
+            data.iter_mut(),
+            buf[..n * channels as usize]
+                .iter()
+                .map(|v| v.to_sample())
+                .chain(std::iter::repeat(T::EQUILIBRIUM)),
+        ) {
+            *dst = src;
         }
     }
 }
@@ -57,33 +58,57 @@ fn open_stream(
         cpal::SampleFormat::U8 => {
             device.build_output_stream(config, make_data_callback::<u8>(stream, channels), error_callback, None)
         }
-        cpal::SampleFormat::U16 => {
-            device.build_output_stream(config, make_data_callback::<u16>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::U32 => {
-            device.build_output_stream(config, make_data_callback::<u32>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::U64 => {
-            device.build_output_stream(config, make_data_callback::<u64>(stream, channels), error_callback, None)
-        }
+        cpal::SampleFormat::U16 => device.build_output_stream(
+            config,
+            make_data_callback::<u16>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::U32 => device.build_output_stream(
+            config,
+            make_data_callback::<u32>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::U64 => device.build_output_stream(
+            config,
+            make_data_callback::<u64>(stream, channels),
+            error_callback,
+            None,
+        ),
         cpal::SampleFormat::I8 => {
             device.build_output_stream(config, make_data_callback::<i8>(stream, channels), error_callback, None)
         }
-        cpal::SampleFormat::I16 => {
-            device.build_output_stream(config, make_data_callback::<i16>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::I32 => {
-            device.build_output_stream(config, make_data_callback::<i32>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::I64 => {
-            device.build_output_stream(config, make_data_callback::<i64>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::F32 => {
-            device.build_output_stream(config, make_data_callback::<f32>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::F64 => {
-            device.build_output_stream(config, make_data_callback::<f64>(stream, channels), error_callback, None)
-        }
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            config,
+            make_data_callback::<i16>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::I32 => device.build_output_stream(
+            config,
+            make_data_callback::<i32>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::I64 => device.build_output_stream(
+            config,
+            make_data_callback::<i64>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            config,
+            make_data_callback::<f32>(stream, channels),
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::F64 => device.build_output_stream(
+            config,
+            make_data_callback::<f64>(stream, channels),
+            error_callback,
+            None,
+        ),
         _ => {
             return Err(anyhow::format_err!("unsupported sample format: {}", sample_format));
         }
