@@ -1,5 +1,5 @@
 use crate::audio;
-use cpal::traits::DeviceTrait;
+use cpal::{traits::DeviceTrait, Sample};
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
@@ -17,88 +17,52 @@ fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::Supported
     Ok(supported_config)
 }
 
+fn make_data_callback<T>(
+    mut stream: impl audio::Stream + Send + 'static,
+    channels: u16,
+) -> impl FnMut(&mut [T], &cpal::OutputCallbackInfo) + Send + 'static
+where
+    T: cpal::Sample,
+{
+    let mut buf = vec![];
+    move |data, _| {
+        if data.len() * 2 > buf.len() {
+            buf = vec![0i16; data.len() * 2];
+        }
+        let n = stream.fill(bytemuck::cast_slice_mut(
+            &mut buf[..data.len() / channels as usize * audio::NUM_CHANNELS],
+        ));
+        realign_samples(&mut buf, channels);
+        for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
+            *x = T::from(y);
+        }
+        if data.len() > n * channels as usize {
+            for x in data[n * channels as usize..].iter_mut() {
+                *x = T::from(&(0 as i16));
+            }
+        }
+    }
+}
+
 fn open_stream(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     sample_format: cpal::SampleFormat,
-    mut stream: impl audio::Stream + Send + 'static,
+    stream: impl audio::Stream + Send + 'static,
 ) -> Result<cpal::Stream, anyhow::Error> {
     let error_callback = |err| log::error!("audio stream error: {}", err);
     let channels = config.channels;
 
     Ok(match sample_format {
-        cpal::SampleFormat::U16 => device.build_output_stream(
-            &config,
-            {
-                let mut buf = vec![];
-                move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
-                    if data.len() * 2 > buf.len() {
-                        buf = vec![0i16; data.len() * 2];
-                    }
-                    let n = stream.fill(bytemuck::cast_slice_mut(
-                        &mut buf[..data.len() / channels as usize * audio::NUM_CHANNELS],
-                    ));
-                    realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
-                        *x = (std::num::Wrapping(*y as u16) + std::num::Wrapping(32768)).0;
-                    }
-                    if data.len() > n * channels as usize {
-                        for x in data[n * channels as usize..].iter_mut() {
-                            *x = 32768;
-                        }
-                    }
-                }
-            },
-            error_callback,
-        ),
-        cpal::SampleFormat::I16 => device.build_output_stream(
-            &config,
-            {
-                let mut buf = vec![];
-                move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    if data.len() * 2 > buf.len() {
-                        buf = vec![0i16; data.len() * 2];
-                    }
-                    let n = stream.fill(bytemuck::cast_slice_mut(
-                        &mut buf[..data.len() / channels as usize * audio::NUM_CHANNELS],
-                    ));
-                    realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
-                        *x = *y;
-                    }
-                    if data.len() > n * channels as usize {
-                        for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0;
-                        }
-                    }
-                }
-            },
-            error_callback,
-        ),
-        cpal::SampleFormat::F32 => device.build_output_stream(
-            &config,
-            {
-                let mut buf = vec![];
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    if data.len() * 2 > buf.len() {
-                        buf = vec![0i16; data.len() * 2];
-                    }
-                    let n = stream.fill(bytemuck::cast_slice_mut(
-                        &mut buf[..data.len() / channels as usize * audio::NUM_CHANNELS],
-                    ));
-                    realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
-                        *x = *y as f32 / 32768.0;
-                    }
-                    if data.len() > n * channels as usize {
-                        for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0.0;
-                        }
-                    }
-                }
-            },
-            error_callback,
-        ),
+        cpal::SampleFormat::U16 => {
+            device.build_output_stream(&config, make_data_callback::<u16>(stream, channels), error_callback)
+        }
+        cpal::SampleFormat::I16 => {
+            device.build_output_stream(&config, make_data_callback::<i16>(stream, channels), error_callback)
+        }
+        cpal::SampleFormat::F32 => {
+            device.build_output_stream(&config, make_data_callback::<f32>(stream, channels), error_callback)
+        }
     }?)
 }
 
