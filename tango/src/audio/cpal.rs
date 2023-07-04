@@ -1,5 +1,5 @@
 use crate::audio;
-use cpal::traits::DeviceTrait;
+use cpal::{traits::DeviceTrait, Sample};
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
@@ -22,7 +22,7 @@ fn make_data_callback<T>(
     channels: u16,
 ) -> impl FnMut(&mut [T], &cpal::OutputCallbackInfo) + Send + 'static
 where
-    T: cpal::Sample,
+    T: cpal::Sample + cpal::FromSample<i16>,
 {
     let mut buf = vec![];
     move |data, _| {
@@ -34,12 +34,11 @@ where
         ));
         realign_samples(&mut buf, channels);
         for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
-            *x = T::from(y);
+            *x = y.to_sample();
         }
         if data.len() > n * channels as usize {
-            let silence = T::from(&(0 as i16));
             for x in data[n * channels as usize..].iter_mut() {
-                *x = silence;
+                *x = T::EQUILIBRIUM;
             }
         }
     }
@@ -55,14 +54,38 @@ fn open_stream(
     let channels = config.channels;
 
     Ok(match sample_format {
+        cpal::SampleFormat::U8 => {
+            device.build_output_stream(&config, make_data_callback::<u8>(stream, channels), error_callback, None)
+        }
         cpal::SampleFormat::U16 => {
-            device.build_output_stream(&config, make_data_callback::<u16>(stream, channels), error_callback)
+            device.build_output_stream(&config, make_data_callback::<u16>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::U32 => {
+            device.build_output_stream(&config, make_data_callback::<u32>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::U64 => {
+            device.build_output_stream(&config, make_data_callback::<u64>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::I8 => {
+            device.build_output_stream(&config, make_data_callback::<i8>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::I16 => {
-            device.build_output_stream(&config, make_data_callback::<i16>(stream, channels), error_callback)
+            device.build_output_stream(&config, make_data_callback::<i16>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::I32 => {
+            device.build_output_stream(&config, make_data_callback::<i32>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::I64 => {
+            device.build_output_stream(&config, make_data_callback::<i64>(stream, channels), error_callback, None)
         }
         cpal::SampleFormat::F32 => {
-            device.build_output_stream(&config, make_data_callback::<f32>(stream, channels), error_callback)
+            device.build_output_stream(&config, make_data_callback::<f32>(stream, channels), error_callback, None)
+        }
+        cpal::SampleFormat::F64 => {
+            device.build_output_stream(&config, make_data_callback::<f64>(stream, channels), error_callback, None)
+        }
+        _ => {
+            return Err(anyhow::format_err!("unsupported sample format: {}", sample_format));
         }
     }?)
 }
