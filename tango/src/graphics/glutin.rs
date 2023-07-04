@@ -177,3 +177,9 @@ impl graphics::Backend for Backend {
         self.egui_glow.on_event(event)
     }
 }
+
+impl Drop for Backend {
+    fn drop(&mut self) {
+        self.egui_glow.destroy();
+    }
+}
