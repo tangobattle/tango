@@ -1,5 +1,5 @@
 use crate::audio;
-use cpal::{traits::DeviceTrait, Sample};
+use cpal::traits::DeviceTrait;
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
