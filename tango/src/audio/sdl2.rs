@@ -16,7 +16,7 @@ impl sdl2::audio::AudioCallback for StreamWrapper {
 
 pub struct Backend {
     _audio: sdl2::AudioSubsystem,
-    _audio_device: sdl2::audio::AudioDevice<StreamWrapper>,
+    audio_device: sdl2::audio::AudioDevice<StreamWrapper>,
 }
 
 impl Backend {
@@ -37,13 +37,13 @@ impl Backend {
         audio_device.resume();
         Ok(Self {
             _audio: audio,
-            _audio_device: audio_device,
+            audio_device,
         })
     }
 }
 
 impl audio::Backend for Backend {
     fn sample_rate(&self) -> u32 {
-        48000
+        self.audio_device.spec().freq as u32
     }
 }
