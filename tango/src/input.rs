@@ -1,12 +1,6 @@
 use serde::Deserialize;
 
-pub struct StateTypes;
-impl input_helper::StateTypes for StateTypes {
-    type Key = winit::event::VirtualKeyCode;
-    type Button = sdl2::controller::Button;
-}
-
-pub type State = input_helper::State<StateTypes>;
+pub type State = input_helper::State<winit::event::VirtualKeyCode, sdl2::controller::Button>;
 
 fn serialize_sdl2_button<S>(v: &sdl2::controller::Button, serializer: S) -> Result<S::Ok, S::Error>
 where
