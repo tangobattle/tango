@@ -67,7 +67,7 @@ fn read_vlq(buf: &mut impl std::io::Read) -> std::io::Result<u64> {
     // }
 
     // return data;
-    return Ok(data);
+    Ok(data)
 }
 
 fn read_signed_vlq(buf: &mut impl std::io::Read) -> std::io::Result<i64> {
