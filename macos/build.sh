@@ -12,7 +12,7 @@ cleanup
 mkdir Tango.app{,/Contents{,/{MacOS,Resources}}}
 
 # Generate an appropriate Info.plist.
-"$(dirname "${BASH_SOURCE[0]}")/generate_info_plist.py" >Tango.app/Contents/Info.plist
+tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/Info.plist.mako" >Tango.app/Contents/Info.plist
 
 # Create icon.
 mkdir Tango.iconset
