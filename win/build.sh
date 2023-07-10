@@ -26,6 +26,7 @@ cargo build --bin tango --release --target x86_64-pc-windows-gnu
 # Build installer.
 mkdir tango_win_workdir
 tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/installer.nsi.mako" >tango_win_workdir/installer.nsi
+
 pushd tango_win_workdir
 
 cp ../tango/icon.ico .
