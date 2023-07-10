@@ -33,13 +33,13 @@ cp ../tango/icon.ico .
 cp ../target/x86_64-pc-windows-gnu/release/tango.exe .
 cp {/usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll,/usr/lib/gcc/x86_64-w64-mingw32/10-posix/{libgcc_s_seh-1.dll,libstdc++-6.dll}} .
 
-ANGLE_ZIP_URL="https://github.com/google/gfbuild-angle/releases/download/github%2Fgoogle%2Fgfbuild-angle%2Ff810e998993290f049bbdad4fae975e4867100ad/gfbuild-angle-f810e998993290f049bbdad4fae975e4867100ad-Windows_x64_Release.zip"
+angle_zip_url="https://github.com/google/gfbuild-angle/releases/download/github%2Fgoogle%2Fgfbuild-angle%2Ff810e998993290f049bbdad4fae975e4867100ad/gfbuild-angle-f810e998993290f049bbdad4fae975e4867100ad-Windows_x64_Release.zip"
 mkdir angle
-wget -O - "${ANGLE_ZIP_URL}" | bsdtar -Cangle -xvf- lib/{libEGL.dll,libGLESv2.dll}
+wget -O - "${angle_zip_url}" | bsdtar -Cangle -xvf- lib/{libEGL.dll,libGLESv2.dll}
 cp angle/lib/{libEGL.dll,libGLESv2.dll} .
 
-FFMPEG="https://github.com/eugeneware/ffmpeg-static/releases/download/b5.0.1/win32-x64"
-wget -O ffmpeg.exe "${FFMPEG}"
+ffmpeg_version="6.0"
+wget -O ffmpeg.exe "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/win32-x64"
 
 makensis installer.nsi
 popd

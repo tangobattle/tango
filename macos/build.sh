@@ -34,12 +34,11 @@ cargo build --bin tango --target=aarch64-apple-darwin --release
 cargo build --bin tango --target=x86_64-apple-darwin --release
 lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -output Tango.app/Contents/MacOS/tango
 
-FFMPEG_ARM64="https://github.com/eugeneware/ffmpeg-static/releases/download/b5.0.1/darwin-arm64"
-FFMPEG_X64="https://github.com/eugeneware/ffmpeg-static/releases/download/b5.0.1/darwin-x64"
+ffmpeg_version="6.0"
 
 mkdir -p tango_macos_workdir
-wget -O tango_macos_workdir/ffmpeg-arm64 "${FFMPEG_ARM64}"
-wget -O tango_macos_workdir/ffmpeg-x64 "${FFMPEG_X64}"
+wget -O tango_macos_workdir/ffmpeg-arm64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/darwin-arm64"
+wget -O tango_macos_workdir/ffmpeg-x64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/darwin-x64"
 lipo -create tango_macos_workdir/ffmpeg-{arm64,x64} -output Tango.app/Contents/MacOS/ffmpeg
 chmod a+x Tango.app/Contents/MacOS/ffmpeg
 
