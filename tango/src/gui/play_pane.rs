@@ -615,7 +615,7 @@ async fn run_connection_task(
             r = {
                 let connection_task = connection_task.clone();
                 let cancellation_token = cancellation_token.clone();
-                (move || async move {
+                async move {
                     *connection_task.lock().await =
                         Some(ConnectionTask::InProgress {
                             state: ConnectionState::Signaling,
@@ -861,8 +861,7 @@ async fn run_connection_task(
                     *connection_task.lock().await = None;
 
                     Ok(())
-                })(
-                )
+                }
             }
             => {
                 r

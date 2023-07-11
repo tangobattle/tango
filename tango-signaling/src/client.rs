@@ -197,7 +197,7 @@ pub async fn connect(
         .await?;
 
     Ok(Connecting {
-        fut: Box::pin((move || async move {
+        fut: Box::pin(async move {
             loop {
                 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
                 let raw = if let Some(raw) = tokio::time::timeout(TIMEOUT, signaling_stream.try_next())
@@ -308,7 +308,7 @@ pub async fn connect(
             }
 
             Ok((dc, peer_conn))
-        })()),
+        }),
     })
 }
 

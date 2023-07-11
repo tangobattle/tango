@@ -106,7 +106,7 @@ impl Server {
         let r = {
             let sessions = self.sessions.clone();
             let session_id_for_cleanup = session_id_for_cleanup.clone();
-            (move || async move {
+            async move {
                 let mut session = None;
                 let tx = std::sync::Arc::new(tokio::sync::Mutex::new(tx));
 
@@ -208,7 +208,7 @@ impl Server {
                     }
                 }
                 Ok(())
-            })()
+            }
             .await
         };
 
