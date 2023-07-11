@@ -26,7 +26,7 @@ cp "target/${target_arch}-unknown-linux-gnu/release/tango" "tango_linux_workdir/
 # Bundle ffmpeg.
 ffmpeg_version="6.0"
 
-wget "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/linux-x64" -O "tango_linux_workdir/${target_arch}/bin/ffmpeg"
+wget "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-linux-x64" -O "tango_linux_workdir/${target_arch}/bin/ffmpeg"
 chmod a+x "tango_linux_workdir/${target_arch}/bin/ffmpeg"
 
 # Build AppImage.

@@ -37,8 +37,8 @@ lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -ou
 ffmpeg_version="6.0"
 
 mkdir -p tango_macos_workdir
-wget -O tango_macos_workdir/ffmpeg-arm64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/darwin-arm64"
-wget -O tango_macos_workdir/ffmpeg-x64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/darwin-x64"
+wget -O tango_macos_workdir/ffmpeg-arm64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-darwin-arm64"
+wget -O tango_macos_workdir/ffmpeg-x64 "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-darwin-x64"
 lipo -create tango_macos_workdir/ffmpeg-{arm64,x64} -output Tango.app/Contents/MacOS/ffmpeg
 chmod a+x Tango.app/Contents/MacOS/ffmpeg
 

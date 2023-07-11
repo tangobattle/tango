@@ -39,7 +39,7 @@ wget -O - "${angle_zip_url}" | bsdtar -Cangle -xvf- lib/{libEGL.dll,libGLESv2.dl
 cp angle/lib/{libEGL.dll,libGLESv2.dll} .
 
 ffmpeg_version="6.0"
-wget -O ffmpeg.exe "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/win32-x64"
+wget -O ffmpeg.exe "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-win32-x64"
 
 makensis installer.nsi
 popd
