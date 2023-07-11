@@ -32,7 +32,7 @@ jobs:
                   sudo ln -s /usr/x86_64-w64-mingw32/lib/libshell32.a /usr/x86_64-w64-mingw32/lib/libShell32.a
 
             - run: >
-                  sudo pip3 install semver==3.0.0-dev3 toml
+                  sudo pip3 install semver==3.0.0-dev3 toml mako
 
             - uses: dtolnay/rust-toolchain@stable
               with:
@@ -78,7 +78,7 @@ jobs:
                   key: darwin-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo pip3 install semver==3.0.0-dev3 toml dmgbuild pyobjc-framework-Quartz
+                  sudo pip3 install semver==3.0.0-dev3 toml dmgbuild pyobjc-framework-Quartz mako
 
             - uses: dtolnay/rust-toolchain@stable
               with:
@@ -114,6 +114,9 @@ jobs:
                       ~/.cargo/git
                       core/target
                   key: linux-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - run: >
+                  sudo pip3 install semver==3.0.0-dev3 toml mako
 
             - uses: dtolnay/rust-toolchain@stable
               with:
