@@ -67,9 +67,6 @@ pub enum Error {
     #[error("sdp parse error: {0:?}")]
     SdpParse(#[from] datachannel_wrapper::sdp::error::SdpParserError),
 
-    #[error("stream ended early")]
-    StreamEndedEarly,
-
     #[error("invalid packet")]
     InvalidPacket(tokio_tungstenite::tungstenite::Message),
 
@@ -120,7 +117,7 @@ pub async fn connect(
     let raw = if let Some(raw) = signaling_stream.try_next().await? {
         raw
     } else {
-        return Err(Error::StreamEndedEarly);
+        return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into());
     };
 
     let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
@@ -202,16 +199,29 @@ pub async fn connect(
     Ok(Connecting {
         fut: Box::pin((move || async move {
             loop {
-                let raw = if let Some(raw) = signaling_stream.try_next().await? {
+                const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+                let raw = if let Some(raw) = tokio::time::timeout(TIMEOUT, signaling_stream.try_next())
+                    .await
+                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))??
+                {
                     raw
                 } else {
-                    return Err(Error::StreamEndedEarly);
+                    return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into());
                 };
 
-                let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-                    crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
-                } else {
-                    return Err(Error::InvalidPacket(raw));
+                let packet = match raw {
+                    tokio_tungstenite::tungstenite::Message::Binary(d) => {
+                        crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+                    }
+                    tokio_tungstenite::tungstenite::Message::Ping(_) => {
+                        // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
+                        // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
+                        // This means you should not respond to ping frames manually.
+                        continue;
+                    }
+                    _ => {
+                        return Err(Error::InvalidPacket(raw));
+                    }
                 };
 
                 match &packet.which {
