@@ -16,14 +16,14 @@ impl<'a> GBARef<'a> {
     pub fn cpu(&self) -> arm_core::ARMCoreRef<'a> {
         arm_core::ARMCoreRef {
             ptr: unsafe { (*self.ptr).cpu },
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 
     pub fn timing(&self) -> timing::TimingRef {
         timing::TimingRef {
             ptr: unsafe { &(*self.ptr).timing },
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 
@@ -38,7 +38,7 @@ impl<'a> GBARef<'a> {
         } else {
             Some(sync::SyncRef {
                 ptr: sync_ptr,
-                _lifetime: self._lifetime,
+                _lifetime: std::marker::PhantomData,
             })
         }
     }
@@ -55,7 +55,7 @@ impl<'a> GBAMutRef<'a> {
     pub fn as_ref(&self) -> GBARef {
         GBARef {
             ptr: self.ptr,
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 
@@ -68,7 +68,7 @@ impl<'a> GBAMutRef<'a> {
     pub fn cpu_mut(&self) -> arm_core::ARMCoreMutRef<'a> {
         arm_core::ARMCoreMutRef {
             ptr: unsafe { (*self.ptr).cpu },
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 
@@ -79,7 +79,7 @@ impl<'a> GBAMutRef<'a> {
         } else {
             Some(sync::SyncMutRef {
                 ptr: sync_ptr,
-                _lifetime: self._lifetime,
+                _lifetime: std::marker::PhantomData,
             })
         }
     }

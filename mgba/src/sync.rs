@@ -22,7 +22,7 @@ impl<'a> SyncMutRef<'a> {
     pub fn as_ref(&self) -> SyncRef {
         SyncRef {
             ptr: self.ptr,
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 

@@ -174,7 +174,7 @@ impl<'a> CoreMutRef<'a> {
     pub fn as_ref(&self) -> CoreRef {
         CoreRef {
             ptr: self.ptr,
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 

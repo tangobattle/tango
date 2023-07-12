@@ -49,7 +49,7 @@ impl<'a> ARMCoreMutRef<'a> {
     pub fn as_ref(&self) -> ARMCoreRef {
         ARMCoreRef {
             ptr: self.ptr,
-            _lifetime: self._lifetime,
+            _lifetime: std::marker::PhantomData,
         }
     }
 
