@@ -113,6 +113,8 @@ impl Server {
                 const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
                 let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
 
+                const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
                 loop {
                     tokio::select! {
                         _ = ping_timer.tick() => {
@@ -121,8 +123,8 @@ impl Server {
                             buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)?;
                             tx.lock().await.send(tungstenite::Message::Ping(buf)).await?;
                         }
-                         msg = rx.try_next() => {
-                            let msg = match msg? {
+                         msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
+                            let msg = match msg?? {
                                 Some(tungstenite::Message::Binary(d)) => {
                                     tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
                                 }
