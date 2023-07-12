@@ -138,6 +138,7 @@ impl Server {
                                     anyhow::bail!("unexpected message: {:?}", m);
                                 }
                             };
+                            ping_timer.reset();
                             log::debug!("received message: {:?}", msg);
                             match msg.which {
                                 Some(tango_signaling::proto::signaling::packet::Which::Start(start)) => {
