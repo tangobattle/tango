@@ -44,37 +44,47 @@ pub enum ApplyError {
     InvalidTargetChecksum(u32),
 }
 
-fn read_uvlq(buf: &mut impl std::io::Read) -> std::io::Result<u64> {
-    // uint64 data = 0, shift = 1;
-    let mut data = 0u64;
-    let mut shift = 1u64;
-
-    // while(true) {
-    loop {
-        // uint8 x = read();
-        let x = buf.read_u8()?;
-        // data += (x & 0x7f) * shift;
-        data += ((x & 0x7f) as u64) * shift;
-        // if(x & 0x80) break;
-        if x & 0x80 != 0 {
-            break;
-        }
-        // shift <<= 7;
-        shift <<= 7;
-        // data += shift;
-        data += shift;
-    }
-    // }
-
-    // return data;
-    Ok(data)
+trait ReadVlqExt {
+    fn read_uvlq(&mut self) -> std::io::Result<u64>;
+    fn read_ivlq(&mut self) -> std::io::Result<i64>;
 }
 
-fn read_ivlq(buf: &mut impl std::io::Read) -> std::io::Result<i64> {
-    let v = read_uvlq(buf)?;
-    let is_neg = (v & 1) != 0;
-    let v = (v >> 1) as i64;
-    Ok(if is_neg { -v } else { v })
+impl<T> ReadVlqExt for T
+where
+    T: std::io::Read,
+{
+    fn read_uvlq(&mut self) -> std::io::Result<u64> {
+        // uint64 data = 0, shift = 1;
+        let mut data = 0u64;
+        let mut shift = 1u64;
+
+        // while(true) {
+        loop {
+            // uint8 x = read();
+            let x = self.read_u8()?;
+            // data += (x & 0x7f) * shift;
+            data += ((x & 0x7f) as u64) * shift;
+            // if(x & 0x80) break;
+            if x & 0x80 != 0 {
+                break;
+            }
+            // shift <<= 7;
+            shift <<= 7;
+            // data += shift;
+            data += shift;
+        }
+        // }
+
+        // return data;
+        Ok(data)
+    }
+
+    fn read_ivlq(&mut self) -> std::io::Result<i64> {
+        let v = self.read_uvlq()?;
+        let is_neg = (v & 1) != 0;
+        let v = (v >> 1) as i64;
+        Ok(if is_neg { -v } else { v })
+    }
 }
 
 pub struct Patch<'a> {
@@ -159,7 +169,10 @@ impl<'a> Iterator for InstructionIterator<'a> {
 
         Some(
             match (|| {
-                let instr = read_uvlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)?;
+                let instr = self
+                    .buf
+                    .read_uvlq()
+                    .map_err(|_| InstructionDecodeError::UnexpectedEOF)?;
                 let action = (instr & 3) as u8;
                 let len = ((instr >> 2) + 1) as usize;
 
@@ -181,8 +194,11 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         }
                         2 => {
                             self.src_rel_offset = (self.src_rel_offset as isize
-                                + read_ivlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)? as isize)
-                                as usize;
+                                + self
+                                    .buf
+                                    .read_ivlq()
+                                    .map_err(|_| InstructionDecodeError::UnexpectedEOF)?
+                                    as isize) as usize;
                             let src_rel_offset = self.src_rel_offset;
                             self.src_rel_offset += len;
 
@@ -190,8 +206,11 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         }
                         3 => {
                             self.tgt_rel_offset = (self.tgt_rel_offset as isize
-                                + read_ivlq(&mut self.buf).map_err(|_| InstructionDecodeError::UnexpectedEOF)? as isize)
-                                as usize;
+                                + self
+                                    .buf
+                                    .read_ivlq()
+                                    .map_err(|_| InstructionDecodeError::UnexpectedEOF)?
+                                    as isize) as usize;
                             let tgt_rel_offset = self.tgt_rel_offset;
                             self.tgt_rel_offset += len;
 
@@ -260,13 +279,13 @@ impl<'a> Patch<'a> {
         }
 
         // number source-size
-        let source_size = read_uvlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let source_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // number target-size
-        let target_size = read_uvlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let target_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // number metadata-size
-        let metadata_size = read_uvlq(&mut patch).map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let metadata_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
 
         // string metadata[metadata-size]
         let metadata = &patch[..metadata_size];
