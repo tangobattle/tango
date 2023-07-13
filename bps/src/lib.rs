@@ -44,7 +44,10 @@ pub enum ApplyError {
     InvalidTargetChecksum(u32),
 }
 
-trait ReadVlqExt {
+trait ReadVlqExt
+where
+    Self: std::io::Read,
+{
     fn read_uvlq(&mut self) -> std::io::Result<u64>;
     fn read_ivlq(&mut self) -> std::io::Result<i64>;
 }
