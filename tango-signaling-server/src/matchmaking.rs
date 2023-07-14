@@ -172,11 +172,12 @@ impl Server {
                 }
 
                 msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
-                    let msg = match msg?? {
+                    let answer = match msg?? {
                         Some(tungstenite::Message::Binary(d)) => {
-                            tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
-                                .which
-                                .ok_or_else(|| anyhow::format_err!("no which"))?
+                            match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
+                                Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => answer,
+                                m => anyhow::bail!("unexpected message: {:?}", m),
+                            }
                         }
                         Some(tungstenite::Message::Pong(_)) => {
                             continue;
@@ -186,15 +187,6 @@ impl Server {
                         }
                         m => {
                             anyhow::bail!("unexpected message: {:?}", m);
-                        }
-                    };
-
-                    let answer = match msg {
-                        tango_signaling::proto::signaling::packet::Which::Answer(answer) => {
-                            answer
-                        }
-                        p => {
-                            anyhow::bail!("unacceptable packet: {:?}", p);
                         }
                     };
 
