@@ -8,22 +8,18 @@ const ICECONFIG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10
 
 struct Session {
     offer_sdp: String,
-    sinks: Vec<
-        std::sync::Arc<
-            tokio::sync::Mutex<
-                futures_util::stream::SplitSink<
-                    hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
-                    tungstenite::Message,
-                >,
+    offerer_tx: std::sync::Arc<
+        tokio::sync::Mutex<
+            futures_util::stream::SplitSink<
+                hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+                tungstenite::Message,
             >,
         >,
     >,
 }
 
 pub struct Server {
-    sessions: std::sync::Arc<
-        tokio::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Session>>>>,
-    >,
+    sessions: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Session>>>,
     iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
 }
 
@@ -36,6 +32,18 @@ impl Server {
     }
 
     pub async fn handle_stream(
+        &self,
+        ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+        remote_ip: std::net::IpAddr,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
+        let r = self.handle_stream_inner(ws, remote_ip, session_id).await;
+        let mut sessions = self.sessions.lock().await;
+        sessions.remove(session_id);
+        r
+    }
+
+    async fn handle_stream_inner(
         &self,
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
         remote_ip: std::net::IpAddr,
@@ -101,125 +109,118 @@ impl Server {
         ))
         .await?;
 
-        let session_id_for_cleanup = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-        let r = {
-            let sessions = self.sessions.clone();
-            let session_id_for_cleanup = session_id_for_cleanup.clone();
-            async move {
-                let mut session = None;
-                let tx = std::sync::Arc::new(tokio::sync::Mutex::new(tx));
+        // Wait for start message.
+        let start = match tokio::time::timeout(RX_TIMEOUT, rx.try_next())
+            .await??
+            .ok_or_else(|| anyhow::format_err!("unexpected end of stream"))?
+        {
+            tungstenite::Message::Binary(d) => {
+                match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
+                    Some(tango_signaling::proto::signaling::packet::Which::Start(start)) => start,
+                    m => anyhow::bail!("unexpected message: {:?}", m),
+                }
+            }
+            m => {
+                anyhow::bail!("unexpected message: {:?}", m);
+            }
+        };
 
-                const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-                let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
+        let tx = std::sync::Arc::new(tokio::sync::Mutex::new(tx));
 
-                const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-
-                loop {
-                    tokio::select! {
-                        _ = ping_timer.tick() => {
-                            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-                            let mut buf = vec![];
-                            buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)?;
-                            tx.lock().await.send(tungstenite::Message::Ping(buf)).await?;
+        let offerer_tx = {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(session) = sessions.remove(session_id) {
+                tx.lock()
+                    .await
+                    .send(tungstenite::Message::Binary(
+                        tango_signaling::proto::signaling::Packet {
+                            which: Some(tango_signaling::proto::signaling::packet::Which::Offer(
+                                tango_signaling::proto::signaling::packet::Offer {
+                                    sdp: session.offer_sdp.clone(),
+                                },
+                            )),
                         }
-                         msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
-                            let msg = match msg?? {
-                                Some(tungstenite::Message::Binary(d)) => {
-                                    tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
-                                }
-                                Some(tungstenite::Message::Pong(_)) => {
-                                    continue;
-                                }
-                                Some(tungstenite::Message::Close(_)) | None => {
-                                    break;
-                                }
-                                Some(m) => {
-                                    anyhow::bail!("unexpected message: {:?}", m);
-                                }
+                        .encode_to_vec(),
+                    ))
+                    .await?;
+
+                Some(session.offerer_tx)
+            } else {
+                sessions.insert(
+                    session_id.to_string(),
+                    Session {
+                        offer_sdp: start.offer_sdp,
+                        offerer_tx: std::sync::Arc::clone(&tx),
+                    },
+                );
+                None
+            }
+        };
+
+        const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
+
+        loop {
+            tokio::select! {
+                _ = ping_timer.tick() => {
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+                    let mut buf = vec![];
+                    buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)?;
+                    tx.lock().await.send(tungstenite::Message::Ping(buf)).await?;
+                }
+
+                msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
+                    let msg = match msg?? {
+                        Some(tungstenite::Message::Binary(d)) => {
+                            tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+                                .which
+                                .ok_or_else(|| anyhow::format_err!("no which"))?
+                        }
+                        Some(tungstenite::Message::Pong(_)) => {
+                            continue;
+                        }
+                        Some(tungstenite::Message::Close(_)) | None => {
+                            break;
+                        }
+                        m => {
+                            anyhow::bail!("unexpected message: {:?}", m);
+                        }
+                    };
+                    ping_timer.reset();
+                    log::debug!("received message: {:?}", msg);
+
+                    match msg {
+                        tango_signaling::proto::signaling::packet::Which::Answer(answer) => {
+                            let offerer_tx = if let Some(offerer_tx) = offerer_tx.as_ref() {
+                                offerer_tx
+                            } else {
+                                anyhow::bail!("unexpected answer from offerer");
                             };
-                            ping_timer.reset();
-                            log::debug!("received message: {:?}", msg);
-                            match msg.which {
-                                Some(tango_signaling::proto::signaling::packet::Which::Start(start)) => {
-                                    let mut sessions = sessions.lock().await;
-                                    session = Some(if let Some(session) = sessions.remove(session_id) {
-                                        session
-                                    } else {
-                                        sessions
-                                            .entry(session_id.to_string())
-                                            .or_insert_with(|| {
-                                                std::sync::Arc::new(tokio::sync::Mutex::new(Session {
-                                                    offer_sdp: start.offer_sdp.clone(),
-                                                    sinks: vec![],
-                                                }))
-                                            })
-                                            .clone()
-                                    });
 
-                                    let session = if let Some(session) = session.as_ref() {
-                                        session
-                                    } else {
-                                        anyhow::bail!("no such session");
-                                    };
-
-                                    let mut session = session.lock().await;
-                                    *session_id_for_cleanup.lock().await = Some(session_id);
-                                    let offer_sdp = session.offer_sdp.to_string();
-
-                                    let me = session.sinks.len();
-                                    session.sinks.push(std::sync::Arc::clone(&tx));
-
-                                    if me == 1 {
-                                        tx.lock().await
-                                            .send(tungstenite::Message::Binary(
-                                                tango_signaling::proto::signaling::Packet {
-                                                    which: Some(tango_signaling::proto::signaling::packet::Which::Offer(
-                                                        tango_signaling::proto::signaling::packet::Offer { sdp: offer_sdp },
-                                                    )),
-                                                }
-                                                .encode_to_vec(),
-                                            ))
-                                            .await?;
+                            let mut offerer_tx = offerer_tx.lock().await;
+                            offerer_tx
+                                .send(tungstenite::Message::Binary(
+                                    tango_signaling::proto::signaling::Packet {
+                                        which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
+                                            tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
+                                        )),
                                     }
-                                }
-                                Some(tango_signaling::proto::signaling::packet::Which::Offer(_)) => {
-                                    anyhow::bail!("received offer from client: only the server may send offers");
-                                }
-                                Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => {
-                                    let session = match session.as_ref() {
-                                        Some(session) => session,
-                                        None => {
-                                            anyhow::bail!("no session active");
-                                        }
-                                    };
-                                    let session = session.lock().await;
-                                    session.sinks[0].lock().await
-                                        .send(tungstenite::Message::Binary(
-                                            tango_signaling::proto::signaling::Packet {
-                                                which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
-                                                    tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
-                                                )),
-                                            }
-                                            .encode_to_vec(),
-                                        ))
-                                        .await?;
-                                }
-                                p => anyhow::bail!("unknown packet: {:?}", p),
-                            }
+                                    .encode_to_vec(),
+                                ))
+                                .await?;
+                            offerer_tx.close().await?;
+                            break;
+                        }
+                        p => {
+                            anyhow::bail!("unacceptable packet: {:?}", p);
                         }
                     }
                 }
-                Ok(())
             }
-            .await
-        };
-
-        if let Some(session_id) = *session_id_for_cleanup.lock().await {
-            let mut sessions = self.sessions.lock().await;
-            sessions.remove(session_id);
         }
 
-        r
+        Ok(())
     }
 }
