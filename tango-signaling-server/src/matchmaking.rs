@@ -19,14 +19,14 @@ struct Session {
 }
 
 pub struct Server {
-    sessions: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Session>>>,
+    sessions: tokio::sync::Mutex<std::collections::HashMap<String, Session>>,
     iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
 }
 
 impl Server {
     pub fn new(iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>) -> Server {
         Server {
-            sessions: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            sessions: tokio::sync::Mutex::new(std::collections::HashMap::new()),
             iceconfig_backend,
         }
     }
