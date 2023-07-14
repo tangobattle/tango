@@ -162,7 +162,7 @@ impl Server {
         const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
         let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
 
-        loop {
+        let answer = loop {
             tokio::select! {
                 _ = ping_timer.tick() => {
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
@@ -172,10 +172,12 @@ impl Server {
                 }
 
                 msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
-                    let answer = match msg?? {
+                    match msg?? {
                         Some(tungstenite::Message::Binary(d)) => {
                             match tango_signaling::proto::signaling::Packet::decode(d.as_slice())?.which {
-                                Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => answer,
+                                Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => {
+                                    break answer;
+                                },
                                 m => anyhow::bail!("unexpected message: {:?}", m),
                             }
                         }
@@ -188,29 +190,30 @@ impl Server {
                         m => {
                             anyhow::bail!("unexpected message: {:?}", m);
                         }
-                    };
-
-                    let offerer_tx = if let Some(offerer_tx) = offerer_tx {
-                        offerer_tx
-                    } else {
-                        anyhow::bail!("unexpected answer from offerer");
-                    };
-
-                    let mut offerer_tx = offerer_tx.lock().await;
-                    offerer_tx
-                        .send(tungstenite::Message::Binary(
-                            tango_signaling::proto::signaling::Packet {
-                                which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
-                                    tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
-                                )),
-                            }
-                            .encode_to_vec(),
-                        ))
-                        .await?;
-                    offerer_tx.close().await?;
-                    return Ok(());
+                    }
                 }
             }
-        }
+        };
+
+        let offerer_tx = if let Some(offerer_tx) = offerer_tx {
+            offerer_tx
+        } else {
+            anyhow::bail!("unexpected answer from offerer");
+        };
+
+        let mut offerer_tx = offerer_tx.lock().await;
+        offerer_tx
+            .send(tungstenite::Message::Binary(
+                tango_signaling::proto::signaling::Packet {
+                    which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
+                        tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
+                    )),
+                }
+                .encode_to_vec(),
+            ))
+            .await?;
+        offerer_tx.close().await?;
+
+        Ok(())
     }
 }
