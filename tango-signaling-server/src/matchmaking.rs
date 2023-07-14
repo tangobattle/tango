@@ -117,7 +117,7 @@ impl Server {
             .ok_or_else(|| anyhow::format_err!("unexpected end of stream"))?
         {
             tungstenite::Message::Binary(d) => {
-                match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
+                match tango_signaling::proto::signaling::Packet::decode(d.as_slice())?.which {
                     Some(tango_signaling::proto::signaling::packet::Which::Start(start)) => start,
                     m => anyhow::bail!("unexpected message: {:?}", m),
                 }
@@ -174,7 +174,7 @@ impl Server {
                 msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
                     let answer = match msg?? {
                         Some(tungstenite::Message::Binary(d)) => {
-                            match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
+                            match tango_signaling::proto::signaling::Packet::decode(d.as_slice())?.which {
                                 Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => answer,
                                 m => anyhow::bail!("unexpected message: {:?}", m),
                             }

@@ -121,7 +121,7 @@ pub async fn connect(
     };
 
     let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-        crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+        crate::proto::signaling::Packet::decode(d.as_slice())?
     } else {
         return Err(Error::InvalidPacket(raw));
     };
@@ -211,7 +211,7 @@ pub async fn connect(
 
                 let packet = match raw {
                     tokio_tungstenite::tungstenite::Message::Binary(d) => {
-                        crate::proto::signaling::Packet::decode(bytes::Bytes::from(d))?
+                        crate::proto::signaling::Packet::decode(d.as_slice())?
                     }
                     tokio_tungstenite::tungstenite::Message::Ping(_) => {
                         // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
