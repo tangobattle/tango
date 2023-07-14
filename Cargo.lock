@@ -5722,6 +5722,7 @@ dependencies = [
  "sha2 0.10.5",
  "tango-signaling",
  "tokio",
+ "tokio-util",
  "tungstenite 0.17.3",
  "url",
 ]
