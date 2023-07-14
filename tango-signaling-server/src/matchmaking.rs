@@ -67,49 +67,53 @@ impl Server {
             None
         };
 
-        tx.send(tungstenite::Message::Binary(
-            tango_signaling::proto::signaling::Packet {
-                which: Some(tango_signaling::proto::signaling::packet::Which::Hello(
-                    tango_signaling::proto::signaling::packet::Hello {
-                        ice_servers: if let Some(ice_servers) = ice_servers {
-                            ice_servers
-                        } else {
-                            vec![
-                                tango_signaling::proto::signaling::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun.l.google.com:19302".to_string()],
-                                },
-                                tango_signaling::proto::signaling::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun1.l.google.com:19302".to_string()],
-                                },
-                                tango_signaling::proto::signaling::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun2.l.google.com:19302".to_string()],
-                                },
-                                tango_signaling::proto::signaling::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun3.l.google.com:19302".to_string()],
-                                },
-                                tango_signaling::proto::signaling::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun4.l.google.com:19302".to_string()],
-                                },
-                            ]
+        tokio::time::timeout(
+            TX_TIMEOUT,
+            tx.send(tungstenite::Message::Binary(
+                tango_signaling::proto::signaling::Packet {
+                    which: Some(tango_signaling::proto::signaling::packet::Which::Hello(
+                        tango_signaling::proto::signaling::packet::Hello {
+                            ice_servers: if let Some(ice_servers) = ice_servers {
+                                ice_servers
+                            } else {
+                                vec![
+                                    tango_signaling::proto::signaling::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun.l.google.com:19302".to_string()],
+                                    },
+                                    tango_signaling::proto::signaling::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun1.l.google.com:19302".to_string()],
+                                    },
+                                    tango_signaling::proto::signaling::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun2.l.google.com:19302".to_string()],
+                                    },
+                                    tango_signaling::proto::signaling::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun3.l.google.com:19302".to_string()],
+                                    },
+                                    tango_signaling::proto::signaling::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun4.l.google.com:19302".to_string()],
+                                    },
+                                ]
+                            },
                         },
-                    },
-                )),
-            }
-            .encode_to_vec(),
-        ))
-        .await?;
+                    )),
+                }
+                .encode_to_vec(),
+            )),
+        )
+        .await??;
 
         const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+        const TX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
         // Wait for start message.
         let start = match tokio::time::timeout(RX_TIMEOUT, rx.try_next())
@@ -132,9 +136,9 @@ impl Server {
         let offerer_tx = {
             let mut sessions = self.sessions.lock().await;
             if let Some(session) = sessions.remove(session_id) {
-                tx.lock()
-                    .await
-                    .send(tungstenite::Message::Binary(
+                tokio::time::timeout(
+                    TX_TIMEOUT,
+                    tx.lock().await.send(tungstenite::Message::Binary(
                         tango_signaling::proto::signaling::Packet {
                             which: Some(tango_signaling::proto::signaling::packet::Which::Offer(
                                 tango_signaling::proto::signaling::packet::Offer {
@@ -143,8 +147,9 @@ impl Server {
                             )),
                         }
                         .encode_to_vec(),
-                    ))
-                    .await?;
+                    )),
+                )
+                .await??;
 
                 Some(session.offerer_tx)
             } else {
@@ -168,7 +173,7 @@ impl Server {
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
                     let mut buf = vec![];
                     buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)?;
-                    tx.lock().await.send(tungstenite::Message::Ping(buf)).await?;
+                    tokio::time::timeout(TX_TIMEOUT, tx.lock().await.send(tungstenite::Message::Ping(buf))).await??;
                 }
 
                 msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
@@ -202,17 +207,19 @@ impl Server {
         };
 
         let mut offerer_tx = offerer_tx.lock().await;
-        offerer_tx
-            .send(tungstenite::Message::Binary(
+        tokio::time::timeout(
+            TX_TIMEOUT,
+            offerer_tx.send(tungstenite::Message::Binary(
                 tango_signaling::proto::signaling::Packet {
                     which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
                         tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
                     )),
                 }
                 .encode_to_vec(),
-            ))
-            .await?;
-        offerer_tx.close().await?;
+            )),
+        )
+        .await??;
+        tokio::time::timeout(TX_TIMEOUT, offerer_tx.close()).await??;
 
         Ok(())
     }
