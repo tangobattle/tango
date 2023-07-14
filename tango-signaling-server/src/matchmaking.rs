@@ -190,7 +190,7 @@ impl Server {
                         }
                     };
 
-                    let offerer_tx = if let Some(offerer_tx) = offerer_tx.as_ref() {
+                    let offerer_tx = if let Some(offerer_tx) = offerer_tx {
                         offerer_tx
                     } else {
                         anyhow::bail!("unexpected answer from offerer");
