@@ -159,74 +159,58 @@ impl Server {
             }
         };
 
-        let cancellation_token = tokio_util::sync::CancellationToken::new();
-        tokio::spawn({
-            let cancellation_token = cancellation_token.clone();
-            async move {
-                const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-                let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
-                loop {
-                    tokio::select! {
-                        _ = async {
-                            ping_timer.tick().await;
-                            let now = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap();
-                            let mut buf = vec![];
-                            buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)
-                                .unwrap();
-                            let _ = tx.lock().await.send(tungstenite::Message::Ping(buf)).await;
-                        } => { }
-                        _ = cancellation_token.cancelled() => {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-        let _drop_guard = cancellation_token.drop_guard();
+        const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let mut ping_timer = tokio::time::interval(PING_TIMEOUT);
 
-        let answer = loop {
-            match tokio::time::timeout(RX_TIMEOUT, rx.try_next()).await?? {
-                Some(tungstenite::Message::Binary(d)) => {
-                    match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
-                        Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => {
-                            break answer;
+        loop {
+            tokio::select! {
+                _ = ping_timer.tick() => {
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+                    let mut buf = vec![];
+                    buf.write_u64::<byteorder::LittleEndian>(now.as_millis() as u64)?;
+                    tx.lock().await.send(tungstenite::Message::Ping(buf)).await?;
+                }
+
+                msg = tokio::time::timeout(RX_TIMEOUT, rx.try_next()) => {
+                    let answer = match msg?? {
+                        Some(tungstenite::Message::Binary(d)) => {
+                            match tango_signaling::proto::signaling::Packet::decode(bytes::Bytes::from(d))?.which {
+                                Some(tango_signaling::proto::signaling::packet::Which::Answer(answer)) => answer,
+                                m => anyhow::bail!("unexpected message: {:?}", m),
+                            }
                         }
-                        m => anyhow::bail!("unexpected message: {:?}", m),
-                    }
-                }
-                Some(tungstenite::Message::Pong(_)) => {
-                    continue;
-                }
-                Some(tungstenite::Message::Close(_)) | None => {
+                        Some(tungstenite::Message::Pong(_)) => {
+                            continue;
+                        }
+                        Some(tungstenite::Message::Close(_)) | None => {
+                            return Ok(());
+                        }
+                        m => {
+                            anyhow::bail!("unexpected message: {:?}", m);
+                        }
+                    };
+
+                    let offerer_tx = if let Some(offerer_tx) = offerer_tx {
+                        offerer_tx
+                    } else {
+                        anyhow::bail!("unexpected answer from offerer");
+                    };
+
+                    let mut offerer_tx = offerer_tx.lock().await;
+                    offerer_tx
+                        .send(tungstenite::Message::Binary(
+                            tango_signaling::proto::signaling::Packet {
+                                which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
+                                    tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
+                                )),
+                            }
+                            .encode_to_vec(),
+                        ))
+                        .await?;
+                    offerer_tx.close().await?;
                     return Ok(());
                 }
-                m => {
-                    anyhow::bail!("unexpected message: {:?}", m);
-                }
-            };
-        };
-
-        let offerer_tx = if let Some(offerer_tx) = offerer_tx {
-            offerer_tx
-        } else {
-            anyhow::bail!("unexpected answer from offerer");
-        };
-
-        let mut offerer_tx = offerer_tx.lock().await;
-        offerer_tx
-            .send(tungstenite::Message::Binary(
-                tango_signaling::proto::signaling::Packet {
-                    which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
-                        tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
-                    )),
-                }
-                .encode_to_vec(),
-            ))
-            .await?;
-        offerer_tx.close().await?;
-
-        Ok(())
+            }
+        }
     }
 }

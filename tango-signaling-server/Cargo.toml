@@ -27,6 +27,5 @@ serde_json = "1"
 sha2 = "0.10"
 tango-signaling = { path = "../tango-signaling", default-features = false, features = ["proto"] }
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
 tungstenite = "0.17"
 url = "2"
