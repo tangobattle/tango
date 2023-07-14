@@ -182,45 +182,43 @@ impl Server {
                             continue;
                         }
                         Some(tungstenite::Message::Close(_)) | None => {
-                            break;
+                            return Ok(());
                         }
                         m => {
                             anyhow::bail!("unexpected message: {:?}", m);
                         }
                     };
-                    ping_timer.reset();
-                    log::debug!("received message: {:?}", msg);
 
-                    match msg {
+                    let answer = match msg {
                         tango_signaling::proto::signaling::packet::Which::Answer(answer) => {
-                            let offerer_tx = if let Some(offerer_tx) = offerer_tx.as_ref() {
-                                offerer_tx
-                            } else {
-                                anyhow::bail!("unexpected answer from offerer");
-                            };
-
-                            let mut offerer_tx = offerer_tx.lock().await;
-                            offerer_tx
-                                .send(tungstenite::Message::Binary(
-                                    tango_signaling::proto::signaling::Packet {
-                                        which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
-                                            tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
-                                        )),
-                                    }
-                                    .encode_to_vec(),
-                                ))
-                                .await?;
-                            offerer_tx.close().await?;
-                            break;
+                            answer
                         }
                         p => {
                             anyhow::bail!("unacceptable packet: {:?}", p);
                         }
-                    }
+                    };
+
+                    let offerer_tx = if let Some(offerer_tx) = offerer_tx.as_ref() {
+                        offerer_tx
+                    } else {
+                        anyhow::bail!("unexpected answer from offerer");
+                    };
+
+                    let mut offerer_tx = offerer_tx.lock().await;
+                    offerer_tx
+                        .send(tungstenite::Message::Binary(
+                            tango_signaling::proto::signaling::Packet {
+                                which: Some(tango_signaling::proto::signaling::packet::Which::Answer(
+                                    tango_signaling::proto::signaling::packet::Answer { sdp: answer.sdp },
+                                )),
+                            }
+                            .encode_to_vec(),
+                        ))
+                        .await?;
+                    offerer_tx.close().await?;
+                    return Ok(());
                 }
             }
         }
-
-        Ok(())
     }
 }
