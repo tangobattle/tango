@@ -52,13 +52,13 @@ impl Server {
         let (mut tx, mut rx) = ws.split();
 
         let ice_servers = if let Some(backend) = self.iceconfig_backend.as_ref() {
-            match tokio::time::timeout(ICECONFIG_TIMEOUT, backend.get(&remote_ip)).await {
-                Ok(Ok(ice_servers)) => Some(ice_servers),
-                Err(_) => {
-                    log::error!("requesting ICE servers timed out");
-                    None
-                }
-                Ok(Err(e)) => {
+            match tokio::time::timeout(ICECONFIG_TIMEOUT, backend.get(&remote_ip))
+                .await
+                .map_err(|e| anyhow::Error::from(e))
+                .and_then(|r| r)
+            {
+                Ok(ice_servers) => Some(ice_servers),
+                Err(e) => {
                     log::error!("failed to request ICE servers: {:?}", e);
                     None
                 }
