@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = ["client"]
-client = ["dep:datachannel-wrapper", "dep:url", "dep:urlencoding", "dep:tokio-tungstenite"]
+client = ["dep:datachannel-wrapper", "dep:url", "dep:urlencoding", "dep:tokio-tungstenite", "dep:tokio"]
 proto = []
 
 [dependencies]
@@ -15,7 +15,7 @@ futures-util = "0.3"
 log = "0.4"
 prost = "0.10"
 thiserror = "1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full"], optional = true }
 tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"], optional = true }
 url = { version = "2", optional = true }
 urlencoding = { version = "2", optional = true }
