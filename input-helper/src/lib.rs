@@ -51,11 +51,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct State<Key, Button>
-where
-    Key: std::hash::Hash + Eq + Copy + Clone,
-    Button: std::hash::Hash + Eq + Copy + Clone,
-{
+pub struct State<Key, Button> {
     keys_held: std::collections::HashSet<Key>,
     last_keys_held: std::collections::HashSet<Key>,
     controllers: std::collections::HashMap<u32, ControllerState<Button>>,

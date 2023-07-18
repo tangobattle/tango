@@ -48,11 +48,7 @@ pub struct PairQueue<T, U> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Pair<T, U>
-where
-    T: Clone,
-    U: Clone,
-{
+pub struct Pair<T, U> {
     pub local: T,
     pub remote: U,
 }
