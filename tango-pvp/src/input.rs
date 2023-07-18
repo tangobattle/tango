@@ -40,23 +40,23 @@ impl PartialInput {
     }
 }
 
-pub struct PairQueue<T, U> {
-    local_queue: std::collections::VecDeque<T>,
-    remote_queue: std::collections::VecDeque<U>,
+pub struct PairQueue<LocalInput, RemoteInput> {
+    local_queue: std::collections::VecDeque<LocalInput>,
+    remote_queue: std::collections::VecDeque<RemoteInput>,
     local_delay: u32,
     max_length: usize,
 }
 
 #[derive(Clone, Debug)]
-pub struct Pair<T, U> {
-    pub local: T,
-    pub remote: U,
+pub struct Pair<LocalInput, RemoteInput> {
+    pub local: LocalInput,
+    pub remote: RemoteInput,
 }
 
-impl<T, U> PairQueue<T, U>
+impl<LocalInput, RemoteInput> PairQueue<LocalInput, RemoteInput>
 where
-    T: Clone,
-    U: Clone,
+    LocalInput: Clone,
+    RemoteInput: Clone,
 {
     pub fn new(capacity: usize, local_delay: u32) -> Self {
         PairQueue {
@@ -67,7 +67,7 @@ where
         }
     }
 
-    pub fn add_local_input(&mut self, v: T) {
+    pub fn add_local_input(&mut self, v: LocalInput) {
         self.local_queue.push_back(v);
     }
 
@@ -75,7 +75,7 @@ where
         self.local_queue.len() < self.max_length
     }
 
-    pub fn add_remote_input(&mut self, v: U) {
+    pub fn add_remote_input(&mut self, v: RemoteInput) {
         self.remote_queue.push_back(v);
     }
 
@@ -95,7 +95,7 @@ where
         self.remote_queue.len()
     }
 
-    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<T, U>>, Vec<T>) {
+    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<LocalInput, RemoteInput>>, Vec<LocalInput>) {
         let to_commit = {
             let n = std::cmp::max(
                 std::cmp::min(
