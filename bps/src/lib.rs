@@ -7,11 +7,11 @@ pub enum DecodeError {
     #[error("invalid format")]
     InvalidHeader,
 
-    #[error("unexpected patch eof")]
-    UnexpectedPatchEOF,
+    #[error("unexpected eof")]
+    UnexpectedEOF,
 
-    #[error("invalid patch checksum, expected {0}")]
-    InvalidPatchChecksum(u32),
+    #[error("invalid checksum, expected {0}")]
+    InvalidChecksum(u32),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -259,9 +259,7 @@ impl<'a> Patch<'a> {
 
         // string "BPS1"
         let mut header = [0u8; 4];
-        patch
-            .read_exact(&mut header)
-            .map_err(|_| DecodeError::UnexpectedPatchEOF)?;
+        patch.read_exact(&mut header).map_err(|_| DecodeError::UnexpectedEOF)?;
         if &header != b"BPS1" {
             return Err(DecodeError::InvalidHeader);
         }
@@ -278,24 +276,24 @@ impl<'a> Patch<'a> {
         // uint32 patch-checksum
         let patch_checksum = footer.read_u32::<byteorder::LittleEndian>().unwrap();
         if patch_checksum != actual_patch_checksum {
-            return Err(DecodeError::InvalidPatchChecksum(patch_checksum));
+            return Err(DecodeError::InvalidChecksum(patch_checksum));
         }
 
         // number source-size
-        let source_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let source_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedEOF)? as usize;
 
         // number target-size
-        let target_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let target_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedEOF)? as usize;
 
         // number metadata-size
-        let metadata_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedPatchEOF)? as usize;
+        let metadata_size = patch.read_uvlq().map_err(|_| DecodeError::UnexpectedEOF)? as usize;
 
         // string metadata[metadata-size]
         let metadata = &patch[..metadata_size];
 
         let body = patch
             .get(metadata_size..patch.len() - 12)
-            .ok_or(DecodeError::UnexpectedPatchEOF)?;
+            .ok_or(DecodeError::UnexpectedEOF)?;
 
         Ok(Self {
             source_checksum,
