@@ -1,8 +1,5 @@
 #[derive(Clone)]
-pub struct ControllerState<Button>
-where
-    Button: std::hash::Hash + Eq + Copy + Clone,
-{
+pub struct ControllerState<Button> {
     buttons_held: std::collections::HashSet<Button>,
     last_buttons_held: std::collections::HashSet<Button>,
     axes: Vec<i16>,

@@ -40,11 +40,7 @@ impl PartialInput {
     }
 }
 
-pub struct PairQueue<T, U>
-where
-    T: Clone,
-    U: Clone,
-{
+pub struct PairQueue<T, U> {
     local_queue: std::collections::VecDeque<T>,
     remote_queue: std::collections::VecDeque<U>,
     local_delay: u32,
