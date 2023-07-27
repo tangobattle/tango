@@ -112,6 +112,11 @@ pub async fn connect(
         ))
         .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
     );
+    req.headers_mut().append(
+        "X-Tango-Protocol-Version",
+        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("{:x}", protocol_version))
+            .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
+    );
     let (mut signaling_stream, _) = tokio_tungstenite::connect_async(req).await?;
 
     let raw = if let Some(raw) = signaling_stream.try_next().await? {
