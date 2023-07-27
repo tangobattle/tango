@@ -131,15 +131,14 @@ impl Server {
             }
         };
 
-        const EXPECTED_PROTOCOL_VERSION: u8 = 0x37;
-        if start.protocol_version as u8 != EXPECTED_PROTOCOL_VERSION {
+        if start.protocol_version as u8 != super::EXPECTED_PROTOCOL_VERSION {
             tokio::time::timeout(
                 TX_TIMEOUT,
                 tx.send(tungstenite::Message::Binary(
                     tango_signaling::proto::signaling::Packet {
                         which: Some(tango_signaling::proto::signaling::packet::Which::Abort(
                             tango_signaling::proto::signaling::packet::Abort {
-                                reason: if (start.protocol_version as u8) < EXPECTED_PROTOCOL_VERSION {
+                                reason: if (start.protocol_version as u8) < super::EXPECTED_PROTOCOL_VERSION {
                                     tango_signaling::proto::signaling::packet::abort::Reason::ProtocolVersionTooOld
                                 } else {
                                     tango_signaling::proto::signaling::packet::abort::Reason::ProtocolVersionTooNew

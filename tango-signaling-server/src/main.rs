@@ -2,6 +2,7 @@ mod httputil;
 mod iceconfig;
 mod matchmaking;
 use envconfig::Envconfig;
+use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(Envconfig)]
@@ -49,6 +50,8 @@ async fn handle_healthcheck_request(
         .unwrap());
 }
 
+pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x37;
+
 async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
@@ -79,6 +82,29 @@ async fn handle_matchmaking_request(
             .body(hyper::Body::from("missing session_id"))
             .unwrap());
     };
+
+    let protocol_version = request
+        .headers()
+        .get("X-Tango-Protocol-Version")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| u32::from_str_radix(v, 16).ok());
+    if let Some(protocol_version) = protocol_version {
+        if protocol_version as u8 != EXPECTED_PROTOCOL_VERSION {
+            return Ok(hyper::Response::builder()
+                .status(hyper::StatusCode::BAD_REQUEST)
+                .body(hyper::Body::from(
+                    tango_signaling::proto::signaling::packet::Abort {
+                        reason: if (protocol_version as u8) < EXPECTED_PROTOCOL_VERSION {
+                            tango_signaling::proto::signaling::packet::abort::Reason::ProtocolVersionTooOld
+                        } else {
+                            tango_signaling::proto::signaling::packet::abort::Reason::ProtocolVersionTooNew
+                        } as i32,
+                    }
+                    .encode_to_vec(),
+                ))
+                .unwrap());
+        }
+    }
 
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
