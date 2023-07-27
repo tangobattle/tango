@@ -229,11 +229,13 @@ impl State {
                         local_tick: ip.local.local_tick,
                         remote_tick: ip.local.remote_tick,
                         joyflags: ip.local.joyflags,
+                        dt: ip.local.dt,
                     },
                     remote: crate::input::PartialInput {
                         local_tick: ip.remote.local_tick,
                         remote_tick: ip.remote.remote_tick,
                         joyflags: ip.remote.joyflags,
+                        dt: ip.remote.dt,
                     },
                 })
                 .collect(),

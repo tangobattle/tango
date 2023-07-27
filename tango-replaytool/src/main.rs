@@ -122,8 +122,14 @@ async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::Pat
 async fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
-            "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
-            ip.local.local_tick, ip.local.joyflags, ip.local.packet, ip.remote.joyflags, ip.remote.packet,
+            "tick = {:08x?}, l = {:?} {:02x} {:02x?}, r = {:?} {:02x} {:02x?}",
+            ip.local.local_tick,
+            ip.local.dt,
+            ip.local.joyflags,
+            ip.local.packet,
+            ip.remote.dt,
+            ip.remote.joyflags,
+            ip.remote.packet,
         );
     }
     Ok(())

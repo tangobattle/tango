@@ -21,32 +21,31 @@ unsafe extern "C" fn c_log<VaList>(
     // );
 }
 
-#[repr(transparent)]
-struct LogFilter(mgba_sys::mLogFilter);
-unsafe impl Sync for LogFilter {}
-unsafe impl Send for LogFilter {}
-
-#[repr(transparent)]
-struct Logger(mgba_sys::mLogger);
+pub struct Logger {
+    logger: mgba_sys::mLogger,
+    _log_filter: Box<mgba_sys::mLogFilter>,
+}
 unsafe impl Sync for Logger {}
 unsafe impl Send for Logger {}
 
-pub(crate) fn init() {
-    static LOGGER: once_cell::sync::Lazy<Logger> = once_cell::sync::Lazy::new(|| {
-        static LOG_FILTER: once_cell::sync::Lazy<LogFilter> = once_cell::sync::Lazy::new(|| unsafe {
-            let mut log_filter = std::mem::zeroed::<mgba_sys::mLogFilter>();
-            mgba_sys::mLogFilterInit(&mut log_filter);
-            LogFilter(log_filter)
-        });
+impl Logger {
+    pub fn new() -> Logger {
+        let log_filter = unsafe {
+            let mut log_filter = Box::new(std::mem::zeroed::<mgba_sys::mLogFilter>());
+            mgba_sys::mLogFilterInit(log_filter.as_mut() as *mut _);
+            log_filter
+        };
 
-        Logger(mgba_sys::mLogger {
-            log: Some(c_log),
-            filter: &LOG_FILTER.0 as *const _ as *mut _,
-        })
-    });
+        Self {
+            logger: mgba_sys::mLogger {
+                log: Some(c_log),
+                filter: log_filter.as_ref() as *const _ as *mut _,
+            },
+            _log_filter: log_filter,
+        }
+    }
 
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| unsafe {
-        mgba_sys::mLogSetDefaultLogger(&LOGGER.0 as *const _ as *mut _);
-    });
+    pub fn as_mlogger_ptr(&self) -> *const mgba_sys::mLogger {
+        &self.logger as *const _
+    }
 }

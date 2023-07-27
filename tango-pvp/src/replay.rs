@@ -1,6 +1,5 @@
 pub mod export;
 mod protos;
-mod replay10;
 
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -19,7 +18,7 @@ pub struct Writer {
 }
 
 pub const HEADER: &[u8] = b"TOOT";
-pub const VERSION: u8 = 0x11;
+pub const VERSION: u8 = 0x12;
 
 #[derive(Clone)]
 pub struct Replay {
@@ -33,8 +32,7 @@ pub struct Replay {
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
-        0x10 => replay10::decode_metadata(&raw[..])?,
-        0x11 => protos::replay11::Metadata::decode(&raw[..])?,
+        VERSION => protos::replay11::Metadata::decode(&raw[..])?,
         _ => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -60,7 +58,6 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), st
 }
 
 impl Replay {
-    #[allow(dead_code)]
     pub fn into_remote(mut self) -> Self {
         std::mem::swap(&mut self.metadata.local_side, &mut self.metadata.remote_side);
         self.local_player_index = 1 - self.local_player_index;
@@ -101,6 +98,11 @@ impl Replay {
             } else {
                 break;
             };
+            let dt = std::time::Duration::from_millis(if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
+                v
+            } else {
+                break;
+            } as u64);
 
             let mut p1_input = crate::input::Input {
                 local_tick,
@@ -111,6 +113,7 @@ impl Replay {
                     break;
                 },
                 packet: vec![0u8; input_raw_size],
+                dt,
             };
             if zr.read_exact(&mut p1_input.packet).is_err() {
                 break;
@@ -125,6 +128,7 @@ impl Replay {
                     break;
                 },
                 packet: vec![0u8; input_raw_size],
+                dt,
             };
             if zr.read_exact(&mut p2_input.packet).is_err() {
                 break;
@@ -196,6 +200,11 @@ impl Writer {
             .as_mut()
             .unwrap()
             .write_u32::<byteorder::LittleEndian>(ip.local.remote_tick)?;
+
+        self.encoder
+            .as_mut()
+            .unwrap()
+            .write_u16::<byteorder::LittleEndian>(ip.local.dt.as_millis() as u16)?;
 
         let (p1, p2) = if local_player_index == 0 {
             (&ip.local, &ip.remote)

@@ -200,11 +200,14 @@ impl Match {
                 anyhow::bail!("remote overflowed our input buffer");
             }
 
+            let now = std::time::Instant::now();
             round.add_remote_input(crate::input::PartialInput {
                 local_tick: input.local_tick,
                 remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
                 joyflags: input.joyflags as u16,
+                dt: now - round.last_remote_input_time,
             });
+            round.last_remote_input_time = now;
         }
 
         Ok(())
@@ -252,6 +255,7 @@ impl Match {
                     local_tick: i,
                     remote_tick: 0,
                     joyflags: 0,
+                    dt: std::time::Duration::ZERO,
                 });
                 sender
                     .send(&crate::net::Input {
@@ -264,6 +268,7 @@ impl Match {
             }
         }
 
+        let now = std::time::Instant::now();
         round_state.round = Some(Round {
             hooks: self.local_hooks,
             number: round_state.number,
@@ -276,6 +281,7 @@ impl Match {
                 remote_tick: 0,
                 joyflags: 0,
                 packet: vec![0u8; self.local_hooks.packet_size()],
+                dt: std::time::Duration::ZERO,
             },
             first_state_committed_local_packet: Some(first_state_committed_local_packet),
             first_state_committed_rx: Some(first_state_committed_rx),
@@ -291,6 +297,8 @@ impl Match {
             sender: self.sender.clone(),
             shadow: self.shadow.clone(),
             on_replay_complete: self.on_replay_complete.clone(),
+            last_local_input_time: now,
+            last_remote_input_time: now,
         });
         self.round_started_tx.send(round_state.number).await?;
         log::info!("round has started");
@@ -315,6 +323,8 @@ pub struct Round {
     sender: std::sync::Arc<tokio::sync::Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: std::sync::Arc<parking_lot::Mutex<crate::shadow::Shadow>>,
     on_replay_complete: std::sync::Arc<dyn Fn(&mut dyn std::io::Read) -> anyhow::Result<()> + Send + Sync>,
+    last_local_input_time: std::time::Instant,
+    last_remote_input_time: std::time::Instant,
 }
 
 impl Round {
@@ -380,11 +390,14 @@ impl Round {
             })
             .await?;
 
+        let now = std::time::Instant::now();
         self.add_local_input(crate::input::PartialInput {
             local_tick,
             remote_tick,
             joyflags,
+            dt: now - self.last_local_input_time,
         });
+        self.last_local_input_time = now;
 
         let (committable, predict_required) = self.iq.consume_and_peek_local();
 
@@ -398,6 +411,7 @@ impl Round {
             .chain(predict_required.into_iter().map(|local| {
                 let local_tick = local.local_tick;
                 let remote_tick = local.remote_tick;
+                let dt = local.dt;
                 crate::input::Pair {
                     local,
                     remote: crate::input::PartialInput {
@@ -413,6 +427,7 @@ impl Round {
                             }
                             joyflags
                         },
+                        dt,
                     },
                 }
             }))

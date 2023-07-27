@@ -15,8 +15,6 @@ unsafe impl Send for Core {}
 
 impl Core {
     pub fn new_gba(config_name: &str) -> Result<Self, crate::Error> {
-        super::log::init();
-
         let ptr = unsafe { mgba_sys::GBACoreCreate() };
         if ptr.is_null() {
             return Err(crate::Error::CallFailed("GBACoreCreate"));
@@ -44,7 +42,10 @@ impl Core {
     }
 
     pub fn enable_video_buffer(&mut self) {
-        let (width, height) = self.as_ref().desired_video_dimensions();
+        let mut width: u32 = 0;
+        let mut height: u32 = 0;
+        unsafe { (*self.ptr).desiredVideoDimensions.unwrap()(self.ptr, &mut width, &mut height) };
+
         let mut buffer = vec![0u8; (width * height * 4) as usize];
         unsafe {
             (*self.ptr).setVideoBuffer.unwrap()(
@@ -100,13 +101,6 @@ unsafe impl<'a> Send for CoreRef<'a> {}
 impl<'a> CoreRef<'a> {
     pub fn frequency(&self) -> i32 {
         unsafe { (*self.ptr).frequency.unwrap()(self.ptr) }
-    }
-
-    pub fn desired_video_dimensions(&self) -> (u32, u32) {
-        let mut width: u32 = 0;
-        let mut height: u32 = 0;
-        unsafe { (*self.ptr).desiredVideoDimensions.unwrap()(self.ptr, &mut width, &mut height) };
-        (width, height)
     }
 
     pub fn gba(&self) -> gba::GBARef {

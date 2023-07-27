@@ -17,6 +17,7 @@ pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>);
 
 struct ThreadImpl {
     core: core::Core,
+    _logger: Box<super::log::Logger>,
     raw: mgba_sys::mCoreThread,
     frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static>>,
     current_callback: std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
@@ -81,14 +82,17 @@ impl<'a> Drop for AudioGuard<'a> {
 impl Thread {
     pub fn new(core: core::Core) -> Self {
         let core_ptr = core.ptr;
+        let logger = Box::new(super::log::Logger::new());
+        let logger_ptr = logger.as_mlogger_ptr();
         let mut t = Box::new(ThreadImpl {
             core,
             raw: unsafe { std::mem::zeroed::<mgba_sys::mCoreThread>() },
             frame_callback: None,
             current_callback: std::cell::RefCell::new(None),
+            _logger: logger,
         });
         t.raw.core = core_ptr;
-        t.raw.logger.d = unsafe { *mgba_sys::mLogGetContext() };
+        t.raw.logger.logger = logger_ptr as *mut _;
         t.raw.userData = &mut *t as *mut _ as *mut std::os::raw::c_void;
         t.raw.frameCallback = Some(c_frame_callback);
         Thread(std::sync::Arc::new(parking_lot::Mutex::new(t)))

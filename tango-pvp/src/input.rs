@@ -10,6 +10,7 @@ pub struct Input {
     pub remote_tick: u32,
     pub joyflags: u16,
     pub packet: Vec<u8>,
+    pub dt: std::time::Duration,
 }
 
 impl Input {
@@ -23,6 +24,7 @@ pub struct PartialInput {
     pub local_tick: u32,
     pub remote_tick: u32,
     pub joyflags: u16,
+    pub dt: std::time::Duration,
 }
 
 impl PartialInput {
@@ -35,6 +37,7 @@ impl PartialInput {
             local_tick: self.local_tick,
             remote_tick: self.remote_tick,
             joyflags: self.joyflags,
+            dt: self.dt,
             packet,
         }
     }
