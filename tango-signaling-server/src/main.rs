@@ -79,7 +79,12 @@ async fn handle_matchmaking_request(
     } else {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::Body::from("missing session_id"))
+            .body(hyper::Body::from(
+                tango_signaling::proto::signaling::packet::Abort {
+                    reason: tango_signaling::proto::signaling::packet::abort::Reason::MissingSessionId as i32,
+                }
+                .encode_to_vec(),
+            ))
             .unwrap());
     };
 
@@ -109,7 +114,13 @@ async fn handle_matchmaking_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
+            .body(hyper::Body::from(
+                tango_signaling::proto::signaling::packet::Abort {
+                    reason: tango_signaling::proto::signaling::packet::abort::Reason::NotUpgrade as i32,
+                }
+                .encode_to_vec(),
+            ))
+            .unwrap());
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(

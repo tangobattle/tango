@@ -26,6 +26,8 @@ message Packet {
       REASON_UNKNOWN = 0;
       REASON_PROTOCOL_VERSION_TOO_OLD = 1;
       REASON_PROTOCOL_VERSION_TOO_NEW = 2;
+      REASON_MISSING_SESSION_ID = 3;
+      REASON_NOT_UPGRADE = 4;
     }
 
     Reason reason = 1;
