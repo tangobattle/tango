@@ -5684,6 +5684,7 @@ dependencies = [
  "datachannel-wrapper",
  "futures",
  "futures-util",
+ "http",
  "log",
  "prost",
  "prost-build",

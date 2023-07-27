@@ -117,7 +117,20 @@ pub async fn connect(
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("{:x}", protocol_version))
             .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
     );
-    let (mut signaling_stream, _) = tokio_tungstenite::connect_async(req).await?;
+    let mut signaling_stream = match tokio_tungstenite::connect_async(req).await {
+        Ok((signaling_stream, _)) => signaling_stream,
+        Err(tokio_tungstenite::tungstenite::Error::Http(e)) if e.status() == http::StatusCode::BAD_REQUEST => {
+            let abort = crate::proto::signaling::packet::Abort::decode(
+                e.body().as_ref().map(|b| b.as_bytes()).unwrap_or_default(),
+            )?;
+            return Err(Error::ServerAbort(
+                AbortReason::from_i32(abort.reason).unwrap_or_default(),
+            ));
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
 
     let raw = if let Some(raw) = signaling_stream.try_next().await? {
         raw
