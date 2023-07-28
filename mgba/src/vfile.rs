@@ -43,8 +43,7 @@ unsafe extern "C" fn vfile_seek(
     offset: mgba_sys::off_t,
     whence: ::std::os::raw::c_int,
 ) -> mgba_sys::off_t {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.seek(match whence as u32 {
         mgba_sys::SEEK_SET => std::io::SeekFrom::Start(offset as u64),
         mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset as i64),
@@ -62,8 +61,7 @@ unsafe extern "C" fn vfile_read(
     buffer: *mut ::std::os::raw::c_void,
     size: mgba_sys::size_t,
 ) -> mgba_sys::ssize_t {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.read(std::slice::from_raw_parts_mut(buffer as *mut u8, size as usize))
         .map(|v| v as mgba_sys::ssize_t)
         .unwrap_or(-1)
@@ -74,8 +72,7 @@ unsafe extern "C" fn vfile_write(
     buffer: *const ::std::os::raw::c_void,
     size: mgba_sys::size_t,
 ) -> mgba_sys::ssize_t {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.write(std::slice::from_raw_parts(buffer as *mut u8, size as usize))
         .map(|v| v as mgba_sys::ssize_t)
         .unwrap_or(-1)
@@ -86,8 +83,7 @@ unsafe extern "C" fn vfile_map(
     size: mgba_sys::size_t,
     _flags: ::std::os::raw::c_int,
 ) -> *mut ::std::os::raw::c_void {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
     let mut buf = vec![0u8; size as usize];
@@ -106,8 +102,7 @@ unsafe extern "C" fn vfile_unmap(
     memory: *mut ::std::os::raw::c_void,
     size: mgba_sys::size_t,
 ) {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
     let buf = Vec::from_raw_parts(memory as *mut u8, size as usize, size as usize);
@@ -116,14 +111,12 @@ unsafe extern "C" fn vfile_unmap(
 }
 
 unsafe extern "C" fn vfile_truncate(vf: *mut mgba_sys::VFile, size: mgba_sys::size_t) {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     let _ = f.truncate(size as u64);
 }
 
 unsafe extern "C" fn vfile_size(vf: *mut mgba_sys::VFile) -> mgba_sys::ssize_t {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
     let len = f.seek(std::io::SeekFrom::End(0)).unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
@@ -135,8 +128,7 @@ unsafe extern "C" fn vfile_sync(
     _buffer: *mut ::std::os::raw::c_void,
     _size: mgba_sys::size_t,
 ) -> bool {
-    let vf = vf as *mut VFile;
-    let f = vf.as_mut().unwrap().f.as_mut();
+    let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.sync_data().is_ok()
 }
 
