@@ -18,7 +18,7 @@ impl VFileOps for std::fs::File {
 
 impl VFileOps for std::io::Cursor<Vec<u8>> {
     fn truncate(&mut self, size: u64) -> Result<(), std::io::Error> {
-        self.get_mut().truncate(size as usize);
+        self.get_mut().resize(size as usize, 0);
         Ok(())
     }
 
