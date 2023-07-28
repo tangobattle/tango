@@ -80,9 +80,10 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&local_save.as_sram_dump()))?;
+            .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
+        core.as_mut()
+            .load_save(mgba::vfile::VFile::from_vec(local_save.as_sram_dump()))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
@@ -357,15 +358,15 @@ impl Session {
         game: &'static (dyn game::Game + Send + Sync),
         patch: Option<(String, semver::Version)>,
         rom: &[u8],
-        save_path: &std::path::Path,
+        save_file: std::fs::File,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
 
-        let save_vf = mgba::vfile::VFile::open(save_path, mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR)?;
+        let save_vf = mgba::vfile::VFile::from_file(save_file);
 
         core.as_mut().load_save(save_vf)?;
 
@@ -433,7 +434,7 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
 
         let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
         hooks.patch(core.as_mut());

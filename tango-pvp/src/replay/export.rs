@@ -47,7 +47,7 @@ fn make_core_and_state(
     let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
-    core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+    core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
     core.as_mut().reset();
 
     let input_pairs = replay.input_pairs.clone();

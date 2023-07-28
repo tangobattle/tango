@@ -1615,6 +1615,12 @@ fn show_bottom_pane(
                                 .patch
                                 .as_ref()
                                 .map(|(name, version, _)| (name.clone(), version.clone()));
+                            let save_file = std::fs::OpenOptions::new()
+                                .create(true)
+                                .write(true)
+                                .read(true)
+                                .open(save_path)
+                                .unwrap();
 
                             // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
                             tokio::task::spawn_blocking(move || {
@@ -1624,7 +1630,7 @@ fn show_bottom_pane(
                                         game,
                                         patch,
                                         &rom,
-                                        &save_path,
+                                        save_file,
                                         emu_tps_counter,
                                     )
                                     .unwrap(),

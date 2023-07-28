@@ -277,7 +277,7 @@ impl Fastforwarder {
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
-        let rom_vf = mgba::vfile::VFile::open_memory(rom);
+        let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
         core.as_mut().load_rom(rom_vf)?;
         hooks.patch(core.as_mut());
 

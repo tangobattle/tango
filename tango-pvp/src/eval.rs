@@ -6,7 +6,7 @@ pub async fn eval(
 ) -> Result<(crate::stepper::RoundResult, Box<mgba::state::State>), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango")?;
 
-    let vf = mgba::vfile::VFile::open_memory(&rom);
+    let vf = mgba::vfile::VFile::from_vec(rom.to_vec());
     core.as_mut().load_rom(vf)?;
     core.as_mut().reset();
 

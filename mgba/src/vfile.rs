@@ -1,56 +1,172 @@
-#[repr(transparent)]
-pub struct VFile(*mut mgba_sys::VFile);
-
-pub mod flags {
-    pub const O_RDONLY: u32 = mgba_sys::O_RDONLY;
-    pub const O_WRONLY: u32 = mgba_sys::O_WRONLY;
-    pub const O_RDWR: u32 = mgba_sys::O_RDWR;
-    pub const O_APPEND: u32 = mgba_sys::O_APPEND;
-    pub const O_CREAT: u32 = mgba_sys::O_CREAT;
-    pub const O_TRUNC: u32 = mgba_sys::O_TRUNC;
-    pub const O_EXCL: u32 = mgba_sys::O_EXCL;
+trait VFileOps
+where
+    Self: std::io::Read + std::io::Write + std::io::Seek,
+{
+    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error>;
+    fn sync_data(&self) -> Result<(), std::io::Error>;
 }
+
+impl VFileOps for std::fs::File {
+    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error> {
+        std::fs::File::set_len(&self, size)
+    }
+
+    fn sync_data(&self) -> Result<(), std::io::Error> {
+        std::fs::File::sync_data(&self)
+    }
+}
+
+impl VFileOps for std::io::Cursor<Vec<u8>> {
+    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error> {
+        self.get_mut().truncate(size as usize);
+        Ok(())
+    }
+
+    fn sync_data(&self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+}
+
+#[repr(C)]
+pub struct VFile {
+    vfile: mgba_sys::VFile,
+    f: Box<dyn VFileOps>,
+}
+
+unsafe extern "C" fn vfile_close(vf: *mut mgba_sys::VFile) -> bool {
+    drop(Box::from_raw(vf as *mut VFile));
+    true
+}
+
+unsafe extern "C" fn vfile_seek(
+    vf: *mut mgba_sys::VFile,
+    offset: mgba_sys::off_t,
+    whence: ::std::os::raw::c_int,
+) -> mgba_sys::off_t {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    f.seek(match whence as u32 {
+        mgba_sys::SEEK_SET => std::io::SeekFrom::Start(offset as u64),
+        mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset as i64),
+        mgba_sys::SEEK_END => std::io::SeekFrom::End(offset as i64),
+        _ => {
+            return -1;
+        }
+    })
+    .map(|v| v as mgba_sys::off_t)
+    .unwrap_or(-1)
+}
+
+unsafe extern "C" fn vfile_read(
+    vf: *mut mgba_sys::VFile,
+    buffer: *mut ::std::os::raw::c_void,
+    size: mgba_sys::size_t,
+) -> mgba_sys::ssize_t {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let buf = std::slice::from_raw_parts_mut(buffer as *mut u8, size as usize);
+    f.read(buf).map(|v| v as mgba_sys::ssize_t).unwrap_or(-1)
+}
+
+unsafe extern "C" fn vfile_write(
+    vf: *mut mgba_sys::VFile,
+    buffer: *const ::std::os::raw::c_void,
+    size: mgba_sys::size_t,
+) -> mgba_sys::ssize_t {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let buf = std::slice::from_raw_parts(buffer as *mut u8, size as usize);
+    f.write(buf).map(|v| v as mgba_sys::ssize_t).unwrap_or(-1)
+}
+
+unsafe extern "C" fn vfile_map(
+    vf: *mut mgba_sys::VFile,
+    size: mgba_sys::size_t,
+    _flags: ::std::os::raw::c_int,
+) -> *mut ::std::os::raw::c_void {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
+    let mut buf = vec![0u8; size as usize];
+    if !f.read_exact(&mut buf).is_ok() {
+        assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
+        return std::ptr::null_mut();
+    }
+    assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
+    let ptr = buf.as_mut_ptr();
+    std::mem::forget(buf);
+    ptr as *mut _
+}
+
+unsafe extern "C" fn vfile_unmap(
+    vf: *mut mgba_sys::VFile,
+    memory: *mut ::std::os::raw::c_void,
+    size: mgba_sys::size_t,
+) {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
+    let buf = Vec::from_raw_parts(memory as *mut u8, size as usize, size as usize);
+    assert!(f.write_all(&buf).is_ok());
+    assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
+}
+
+unsafe extern "C" fn vfile_truncate(vf: *mut mgba_sys::VFile, size: mgba_sys::size_t) {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let _ = f.truncate(size as u64);
+}
+
+unsafe extern "C" fn vfile_size(vf: *mut mgba_sys::VFile) -> mgba_sys::ssize_t {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    let len = f.seek(std::io::SeekFrom::End(0)).unwrap();
+    assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
+    len as mgba_sys::ssize_t
+}
+
+unsafe extern "C" fn vfile_sync(
+    vf: *mut mgba_sys::VFile,
+    _buffer: *mut ::std::os::raw::c_void,
+    _size: mgba_sys::size_t,
+) -> bool {
+    let vf = vf as *mut VFile;
+    let f = vf.as_mut().unwrap().f.as_mut();
+    f.sync_data().is_ok()
+}
+
+const VFILE_OPS: mgba_sys::VFile = mgba_sys::VFile {
+    close: Some(vfile_close as _),
+    seek: Some(vfile_seek as _),
+    read: Some(vfile_read as _),
+    readline: Some(mgba_sys::VFileReadline),
+    write: Some(vfile_write as _),
+    map: Some(vfile_map as _),
+    unmap: Some(vfile_unmap as _),
+    truncate: Some(vfile_truncate as _),
+    size: Some(vfile_size as _),
+    sync: Some(vfile_sync as _),
+};
 
 impl VFile {
-    pub fn open(path: &std::path::Path, flags: u32) -> Result<Self, crate::Error> {
-        let ptr = match path.to_str() {
-            Some(path) => unsafe {
-                // On Windows, VFileOpenFD will call MultiByteToWideChar then _wopen, so we can just pass it a UTF-8 string.
-                // On every other platform, we just use UTF-8 strings directly because they're not silly like Windows.
-                let path_cstr = std::ffi::CString::new(path.as_bytes()).unwrap();
-                mgba_sys::VFileOpen(path_cstr.as_ptr(), flags as i32)
-            },
-            None => std::ptr::null_mut(),
-        };
-        if ptr.is_null() {
-            return Err(crate::Error::CallFailed("VFileOpen"));
+    pub fn from_file(f: std::fs::File) -> Self {
+        Self {
+            vfile: VFILE_OPS,
+            f: Box::new(f),
         }
-        Ok(VFile(ptr))
     }
 
-    pub fn open_memory(buf: &[u8]) -> Self {
-        VFile(unsafe {
-            mgba_sys::VFileMemChunk(
-                buf as *const _ as *const std::ffi::c_void,
-                buf.len() as mgba_sys::size_t,
-            )
-        })
+    pub fn from_vec(v: Vec<u8>) -> Self {
+        Self {
+            vfile: VFILE_OPS,
+            f: Box::new(std::io::Cursor::new(v)),
+        }
     }
 
-    pub(super) unsafe fn release(&mut self) -> *mut mgba_sys::VFile {
-        let ptr = self.0;
-        self.0 = std::ptr::null_mut();
-        ptr
-    }
-}
-
-impl Drop for VFile {
-    fn drop(&mut self) {
-        if self.0.is_null() {
-            return;
-        }
-        unsafe {
-            (*self.0).close.unwrap()(self.0);
-        }
+    pub(super) fn into_raw(self) -> *mut mgba_sys::VFile {
+        Box::into_raw(Box::new(self)) as *mut _ as *mut mgba_sys::VFile
     }
 }

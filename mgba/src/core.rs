@@ -179,15 +179,15 @@ impl<'a> CoreMutRef<'a> {
         }
     }
 
-    pub fn load_rom(&mut self, mut vf: vfile::VFile) -> Result<(), crate::Error> {
-        if !unsafe { (*self.ptr).loadROM.unwrap()(self.ptr, vf.release()) } {
+    pub fn load_rom(&mut self, vf: vfile::VFile) -> Result<(), crate::Error> {
+        if !unsafe { (*self.ptr).loadROM.unwrap()(self.ptr, vf.into_raw()) } {
             return Err(crate::Error::CallFailed("mCore.loadROM"));
         }
         Ok(())
     }
 
-    pub fn load_save(&mut self, mut vf: vfile::VFile) -> Result<(), crate::Error> {
-        if !unsafe { (*self.ptr).loadSave.unwrap()(self.ptr, vf.release()) } {
+    pub fn load_save(&mut self, vf: vfile::VFile) -> Result<(), crate::Error> {
+        if !unsafe { (*self.ptr).loadSave.unwrap()(self.ptr, vf.into_raw()) } {
             return Err(crate::Error::CallFailed("mCore.loadSave"));
         }
         Ok(())

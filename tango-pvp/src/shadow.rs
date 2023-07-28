@@ -185,9 +185,9 @@ impl Shadow {
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
 
-        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&save.as_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::from_vec(save.as_sram_dump()))?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 
