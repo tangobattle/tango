@@ -64,8 +64,9 @@ unsafe extern "C" fn vfile_read(
 ) -> mgba_sys::ssize_t {
     let vf = vf as *mut VFile;
     let f = vf.as_mut().unwrap().f.as_mut();
-    let buf = std::slice::from_raw_parts_mut(buffer as *mut u8, size as usize);
-    f.read(buf).map(|v| v as mgba_sys::ssize_t).unwrap_or(-1)
+    f.read(std::slice::from_raw_parts_mut(buffer as *mut u8, size as usize))
+        .map(|v| v as mgba_sys::ssize_t)
+        .unwrap_or(-1)
 }
 
 unsafe extern "C" fn vfile_write(
@@ -75,8 +76,9 @@ unsafe extern "C" fn vfile_write(
 ) -> mgba_sys::ssize_t {
     let vf = vf as *mut VFile;
     let f = vf.as_mut().unwrap().f.as_mut();
-    let buf = std::slice::from_raw_parts(buffer as *mut u8, size as usize);
-    f.write(buf).map(|v| v as mgba_sys::ssize_t).unwrap_or(-1)
+    f.write(std::slice::from_raw_parts(buffer as *mut u8, size as usize))
+        .map(|v| v as mgba_sys::ssize_t)
+        .unwrap_or(-1)
 }
 
 unsafe extern "C" fn vfile_map(
