@@ -2,12 +2,12 @@ trait VFileOps
 where
     Self: std::io::Read + std::io::Write + std::io::Seek,
 {
-    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error>;
+    fn resize(&mut self, size: u64) -> Result<(), std::io::Error>;
     fn sync_data(&self) -> Result<(), std::io::Error>;
 }
 
 impl VFileOps for std::fs::File {
-    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error> {
+    fn resize(&mut self, size: u64) -> Result<(), std::io::Error> {
         std::fs::File::set_len(&self, size)
     }
 
@@ -17,7 +17,7 @@ impl VFileOps for std::fs::File {
 }
 
 impl VFileOps for std::io::Cursor<Vec<u8>> {
-    fn truncate(&mut self, size: u64) -> Result<(), std::io::Error> {
+    fn resize(&mut self, size: u64) -> Result<(), std::io::Error> {
         self.get_mut().resize(size as usize, 0);
         Ok(())
     }
@@ -112,7 +112,7 @@ unsafe extern "C" fn vfile_unmap(
 
 unsafe extern "C" fn vfile_truncate(vf: *mut mgba_sys::VFile, size: mgba_sys::size_t) {
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
-    let _ = f.truncate(size as u64);
+    let _ = f.resize(size as u64);
 }
 
 unsafe extern "C" fn vfile_size(vf: *mut mgba_sys::VFile) -> mgba_sys::ssize_t {
