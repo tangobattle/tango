@@ -1,9 +1,7 @@
 welcome-heading = ¡Bienvenido a Tango!
 welcome-description = Debes completar unos pocos pasos antes de empezar a jugar.
-welcome-step-1 = Agrega tus ROMs
-welcome-step-1-description = Asegúrate de que sean ROMs pristinas, sin parchar. Si tienes la Mega Man Battler Network Legacy Collection instalada en Steam, Tango la utilizará automáticamente.
-welcome-step-2 = Agrega tus partidas guardadas
-welcome-step-2-description = Asegurate de que sean compatibles con los juegos que agregaste a la carpeta de ROMs. Deberían ser .sav o .sa1.
+welcome-step-1 = Detectar Mega Man Battle Network Legacy Collection
+welcome-step-1-description = Debes tener Mega Man Battle Network Legacy Collection instalada en Steam.
 welcome-step-3 = Elige un apojo
 welcome-step-3-description = Puedes cambiarlo en cualquier momento.
 welcome-open-folder = Abrir carpeta

@@ -1,9 +1,7 @@
 welcome-heading = 欢迎使用Tango！
 welcome-description = 在你开始游戏之前，你只需要完成几个步骤。
-welcome-step-1 = 添加你的ROM
-welcome-step-1-description = 确保ROM是原始没打补丁的。如果你在Steam上安装了《ROCKMAN EXE 合集》，Tango将自动使用来代替。
-welcome-step-2 = 添加你的游戏存档
-welcome-step-2-description = 确保游戏存档与你放在ROM文件夹中的游戏兼容。游戏存档应该是.sav或.sa1文件。
+welcome-step-1 = 检测ROCKMAN EXE合集
+welcome-step-1-description = 你必须在Steam上安装ROCKMAN EXE合集。
 welcome-step-3 = 设置你的昵称
 welcome-step-3-description = 你可以随时改变你的昵称。
 welcome-open-folder = 打开文件夹
