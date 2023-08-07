@@ -161,8 +161,7 @@ impl Default for Config {
             last_version: version,
             use_relay: None,
             speed_change_percent: 300,
-            // TODO: Set this to false.
-            allow_detached_roms: true,
+            allow_detached_roms: false,
             starred_patches: Default::default(),
         }
     }
