@@ -271,7 +271,6 @@ impl Config {
 
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
         std::fs::create_dir_all(&self.saves_path())?;
-        std::fs::create_dir_all(&self.roms_path())?;
         std::fs::create_dir_all(&self.replays_path())?;
         std::fs::create_dir_all(&self.patches_path())?;
         std::fs::create_dir_all(&self.logs_path())?;

@@ -61,19 +61,7 @@ pub fn show(
                                 .lookup(&config.language, "welcome-step-1-description")
                                 .unwrap(),
                         );
-                        if !config.language.matches(&unic_langid::langid!("ja"), false, true) {
-                            ui.monospace(format!("{}", config.roms_path().display()));
-                        }
                         ui.horizontal(|ui| {
-                            if !config.language.matches(&unic_langid::langid!("ja"), false, true) {
-                                // Hide this for JP.
-                                if ui
-                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
-                                    .clicked()
-                                {
-                                    let _ = open::that(&config.roms_path());
-                                }
-                            }
                             ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
                                 if ui
                                     .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())

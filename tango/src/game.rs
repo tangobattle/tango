@@ -242,7 +242,9 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
 pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
     roms.extend(scan_bnlc_steam_roms());
-    roms.extend(scan_non_bnlc_roms(path));
+    if std::fs::metadata(path).is_ok() {
+        roms.extend(scan_non_bnlc_roms(path));
+    }
     roms
 }
 
