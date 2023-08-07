@@ -68,10 +68,11 @@ pub fn show(
                                     .clicked()
                                 {
                                     let roms_path = config.roms_path();
+                                    let allow_detached_roms = config.allow_detached_roms;
                                     let roms_scanner = roms_scanner.clone();
                                     let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {
-                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
+                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path, allow_detached_roms)));
                                         egui_ctx.request_repaint();
                                     });
                                 }

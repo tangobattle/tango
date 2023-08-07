@@ -248,7 +248,8 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         let roms_path = config.read().roms_path();
         let saves_path = config.read().saves_path();
         let patches_path = config.read().patches_path();
-        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+        let allow_detached_roms: bool = config.read().allow_detached_roms;
+        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path, allow_detached_roms)));
         saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
         patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
     }

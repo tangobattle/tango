@@ -192,7 +192,10 @@ fn scan_bnlc_rom_archives(
     roms
 }
 
-fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+fn scan_non_bnlc_roms(
+    path: &std::path::Path,
+    allow_detached_roms: bool,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
@@ -218,7 +221,10 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
             }
         };
 
-        let game = match tango_gamedb::detect(&rom).and_then(|entry| game_from_gamedb_entry(entry)) {
+        let game = match tango_gamedb::detect(&rom)
+            .filter(|game| allow_detached_roms || *game == &tango_gamedb::BR4J_00)
+            .and_then(|entry| game_from_gamedb_entry(entry))
+        {
             Some(game) => {
                 log::info!(
                     "roms folder: {}: {:?}",
@@ -239,11 +245,14 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
     roms
 }
 
-pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+pub fn scan_roms(
+    path: &std::path::Path,
+    allow_detached_roms: bool,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
     roms.extend(scan_bnlc_steam_roms());
     if std::fs::metadata(path).is_ok() {
-        roms.extend(scan_non_bnlc_roms(path));
+        roms.extend(scan_non_bnlc_roms(path, allow_detached_roms));
     }
     roms
 }

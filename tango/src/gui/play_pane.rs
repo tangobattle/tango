@@ -1834,10 +1834,11 @@ pub fn show(
                             let roms_scanner = roms_scanner.clone();
                             let saves_scanner = saves_scanner.clone();
                             let roms_path = config.roms_path();
+                            let allow_detached_roms = config.allow_detached_roms;
                             let saves_path = config.saves_path();
                             let egui_ctx = ui.ctx().clone();
                             move || {
-                                roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+                                roms_scanner.rescan(move || Some(game::scan_roms(&roms_path, allow_detached_roms)));
                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                 egui_ctx.request_repaint();
                             }

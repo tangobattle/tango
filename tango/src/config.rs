@@ -80,6 +80,10 @@ where
     buf.parse().map_err(serde::de::Error::custom)
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Config {
@@ -119,6 +123,8 @@ pub struct Config {
     pub use_relay: Option<bool>,
     pub speed_change_percent: u32,
     pub starred_patches: std::collections::HashSet<String>,
+    #[serde(skip_serializing_if = "is_false")]
+    pub allow_detached_roms: bool,
 }
 
 impl Default for Config {
@@ -155,6 +161,8 @@ impl Default for Config {
             last_version: version,
             use_relay: None,
             speed_change_percent: 300,
+            // TODO: Set this to false.
+            allow_detached_roms: true,
             starred_patches: Default::default(),
         }
     }
