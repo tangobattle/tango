@@ -229,7 +229,7 @@ impl Config {
 
     pub fn load_or_create() -> Result<Self, anyhow::Error> {
         let config_path = get_config_path()?;
-        let mut config = match std::fs::File::open(&config_path) {
+        let config = match std::fs::File::open(&config_path) {
             Ok(mut file) => {
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
