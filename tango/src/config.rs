@@ -126,8 +126,6 @@ pub struct Config {
     #[serde(skip_serializing_if = "is_false")]
     pub either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser:
         bool,
-    #[serde(skip_serializing_if = "is_false")]
-    pub allow_detached_roms: bool,
 }
 
 impl Default for Config {
@@ -164,7 +162,6 @@ impl Default for Config {
             last_version: version,
             use_relay: None,
             speed_change_percent: 300,
-            allow_detached_roms: false,
             either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser: false,
             starred_patches: Default::default(),
         }
@@ -249,10 +246,12 @@ impl Config {
                 return Err(e.into());
             }
         };
-        if config.allow_detached_roms {
-            // Migrate the name of this setting.
+        if !cfg!(target_os = "macos")
+            && semver::VersionReq::parse("<=4.1.2")
+                .unwrap()
+                .matches(&config.last_version)
+        {
             config.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser = true;
-            config.allow_detached_roms = false;
         }
         Ok(config)
     }
