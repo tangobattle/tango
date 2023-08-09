@@ -68,7 +68,7 @@ pub fn show(
                                     .clicked()
                                 {
                                     let roms_path = config.roms_path();
-                                    let allow_detached_roms = config.allow_detached_roms;
+                                    let allow_detached_roms = config.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser;
                                     let roms_scanner = roms_scanner.clone();
                                     let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {

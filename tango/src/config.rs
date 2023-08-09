@@ -124,6 +124,9 @@ pub struct Config {
     pub speed_change_percent: u32,
     pub starred_patches: std::collections::HashSet<String>,
     #[serde(skip_serializing_if = "is_false")]
+    pub either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser:
+        bool,
+    #[serde(skip_serializing_if = "is_false")]
     pub allow_detached_roms: bool,
 }
 
@@ -162,6 +165,7 @@ impl Default for Config {
             use_relay: None,
             speed_change_percent: 300,
             allow_detached_roms: false,
+            either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser: false,
             starred_patches: Default::default(),
         }
     }
@@ -228,21 +232,29 @@ impl Config {
 
     pub fn load_or_create() -> Result<Self, anyhow::Error> {
         let config_path = get_config_path()?;
-        match std::fs::File::open(&config_path) {
+        let mut config = match std::fs::File::open(&config_path) {
             Ok(mut file) => {
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
                 match serde_json::from_str(&contents) {
-                    Ok(config) => Ok(config),
+                    Ok(config) => config,
                     Err(err) => {
                         log::error!("error loading config, creating new config: {}", err);
-                        Self::create()
+                        Self::create()?
                     }
                 }
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Self::create(),
-            Err(e) => Err(e.into()),
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Self::create()?,
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+        if config.allow_detached_roms {
+            // Migrate the name of this setting.
+            config.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser = true;
+            config.allow_detached_roms = false;
         }
+        Ok(config)
     }
 
     pub fn save(&self) -> Result<(), anyhow::Error> {
