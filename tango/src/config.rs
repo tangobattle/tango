@@ -246,15 +246,6 @@ impl Config {
                 return Err(e.into());
             }
         };
-        if !cfg!(target_os = "macos") {
-            if std::time::SystemTime::now()
-                < std::time::UNIX_EPOCH
-                    .checked_add(std::time::Duration::from_secs(1692082800))
-                    .unwrap()
-            {
-                config.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser = true;
-            }
-        }
         Ok(config)
     }
 
