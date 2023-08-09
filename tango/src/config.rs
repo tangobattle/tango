@@ -292,9 +292,21 @@ impl Config {
         std::fs::create_dir_all(&self.saves_path())?;
         std::fs::create_dir_all(&self.replays_path())?;
         std::fs::create_dir_all(&self.patches_path())?;
+        std::fs::create_dir_all(&self.roms_path())?;
         std::fs::create_dir_all(&self.logs_path())?;
         std::fs::create_dir_all(&self.crashstates_path())?;
         Ok(())
+    }
+
+    pub fn allow_detached_roms(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            // macOS users don't have any other option.
+            return true;
+        }
+
+        #[allow(unreachable_code)]
+        self.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser
     }
 }
 

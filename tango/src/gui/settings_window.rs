@@ -679,7 +679,7 @@ fn show_advanced_tab(
                                 let roms_path = config.roms_path();
                                 let saves_path = config.saves_path();
                                 let patches_path = config.patches_path();
-                                let allow_detached_roms = config.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser;
+                                let allow_detached_roms = config.allow_detached_roms();
                                 move || {
                                     roms_scanner.rescan(move || Some(game::scan_roms(&roms_path, allow_detached_roms)));
                                     saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
