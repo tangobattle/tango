@@ -291,6 +291,7 @@ impl Config {
     }
 
     pub fn allow_detached_roms(&self) -> bool {
+        return true;
         cfg!(target_os = "macos") || self.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser
     }
 }
