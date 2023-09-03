@@ -50,7 +50,7 @@ async fn handle_healthcheck_request(
         .unwrap());
 }
 
-pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3a;
+pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3b;
 
 async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,

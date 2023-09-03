@@ -136,12 +136,6 @@ fn main() -> Result<(), anyhow::Error> {
 fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
-    if config
-        .either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser
-    {
-        log::error!("tango is tainted due to detached roms being enabled!");
-    }
-
     let init_link_code = match args.command {
         Some(Command::Join { link_code }) => Some(link_code),
         _ => None,
@@ -254,8 +248,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         let roms_path = config.read().roms_path();
         let saves_path = config.read().saves_path();
         let patches_path = config.read().patches_path();
-        let allow_detached_roms: bool = config.read().allow_detached_roms();
-        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path, allow_detached_roms)));
+        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
         saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
         patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
     }

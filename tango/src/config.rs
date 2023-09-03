@@ -123,9 +123,6 @@ pub struct Config {
     pub use_relay: Option<bool>,
     pub speed_change_percent: u32,
     pub starred_patches: std::collections::HashSet<String>,
-    #[serde(skip_serializing_if = "is_false")]
-    pub either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser:
-        bool,
 }
 
 impl Default for Config {
@@ -162,7 +159,6 @@ impl Default for Config {
             last_version: version,
             use_relay: None,
             speed_change_percent: 300,
-            either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser: false,
             starred_patches: Default::default(),
         }
     }
@@ -288,11 +284,6 @@ impl Config {
         std::fs::create_dir_all(&self.logs_path())?;
         std::fs::create_dir_all(&self.crashstates_path())?;
         Ok(())
-    }
-
-    pub fn allow_detached_roms(&self) -> bool {
-        return true;
-        cfg!(target_os = "macos") || self.either_i_am_one_of_five_people_who_actually_dumped_their_carts_or_i_am_pirating_this_game_and_i_am_a_huge_loser
     }
 }
 

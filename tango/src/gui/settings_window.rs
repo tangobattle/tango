@@ -679,9 +679,8 @@ fn show_advanced_tab(
                                 let roms_path = config.roms_path();
                                 let saves_path = config.saves_path();
                                 let patches_path = config.patches_path();
-                                let allow_detached_roms = config.allow_detached_roms();
                                 move || {
-                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path, allow_detached_roms)));
+                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
                                     saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                     patches_scanner
                                         .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));

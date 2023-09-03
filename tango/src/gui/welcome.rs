@@ -33,7 +33,6 @@ pub fn show(
             ui.add_space(8.0);
 
             let has_roms = !roms_scanner.read().is_empty();
-            const ALLOW_WELCOME_WITH_DETACHED_ROMS: bool = cfg!(target_os = "macos");
 
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -54,14 +53,14 @@ pub fn show(
                         } else {
                             ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
                         }
-                        ui.strong(if !ALLOW_WELCOME_WITH_DETACHED_ROMS {
+                        ui.strong(if !crate::game::ALLOW_DETACHED_ROMS {
                             i18n::LOCALES.lookup(&config.language, "welcome-step-1").unwrap()
                         } else {
                             i18n::LOCALES.lookup(&config.language, "welcome-step-1-roms").unwrap()
                         });
                     });
                     if !has_roms {
-                        ui.label(if !ALLOW_WELCOME_WITH_DETACHED_ROMS {
+                        ui.label(if !crate::game::ALLOW_DETACHED_ROMS {
                             i18n::LOCALES
                                 .lookup(&config.language, "welcome-step-1-description")
                                 .unwrap()
@@ -70,11 +69,11 @@ pub fn show(
                                 .lookup(&config.language, "welcome-step-1-description-roms")
                                 .unwrap()
                         });
-                        if ALLOW_WELCOME_WITH_DETACHED_ROMS {
+                        if crate::game::ALLOW_DETACHED_ROMS {
                             ui.monospace(format!("{}", config.roms_path().display()));
                         }
                         ui.horizontal(|ui| {
-                            if ALLOW_WELCOME_WITH_DETACHED_ROMS {
+                            if crate::game::ALLOW_DETACHED_ROMS {
                                 if ui
                                     .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
                                     .clicked()
@@ -88,11 +87,10 @@ pub fn show(
                                     .clicked()
                                 {
                                     let roms_path = config.roms_path();
-                                    let allow_detached_roms = config.allow_detached_roms();
                                     let roms_scanner = roms_scanner.clone();
                                     let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {
-                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path, allow_detached_roms)));
+                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
                                         egui_ctx.request_repaint();
                                     });
                                 }
