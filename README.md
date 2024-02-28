@@ -1,7 +1,7 @@
 > [!WARNING] 
 > **Tango is no longer actively supported by the author.**
 > 
-> **There are no further updates expected to Tango.** If you wish to become the maintainer of Tango, please email <90592158+bigfarts@users.noreply.github.com>.
+> **There are no further updates expected to Tango.** If you wish to become the maintainer of Tango, please email <merry.bowl9875@fastmail.com>.
 
 # Tango
 
