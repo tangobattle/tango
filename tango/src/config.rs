@@ -80,10 +80,6 @@ where
     buf.parse().map_err(serde::de::Error::custom)
 }
 
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Config {
@@ -225,7 +221,7 @@ impl Config {
 
     pub fn load_or_create() -> Result<Self, anyhow::Error> {
         let config_path = get_config_path()?;
-        let config = match std::fs::File::open(&config_path) {
+        let config = match std::fs::File::open(config_path) {
             Ok(mut file) => {
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
@@ -277,12 +273,12 @@ impl Config {
     }
 
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
-        std::fs::create_dir_all(&self.saves_path())?;
-        std::fs::create_dir_all(&self.replays_path())?;
-        std::fs::create_dir_all(&self.patches_path())?;
-        std::fs::create_dir_all(&self.roms_path())?;
-        std::fs::create_dir_all(&self.logs_path())?;
-        std::fs::create_dir_all(&self.crashstates_path())?;
+        std::fs::create_dir_all(self.saves_path())?;
+        std::fs::create_dir_all(self.replays_path())?;
+        std::fs::create_dir_all(self.patches_path())?;
+        std::fs::create_dir_all(self.roms_path())?;
+        std::fs::create_dir_all(self.logs_path())?;
+        std::fs::create_dir_all(self.crashstates_path())?;
         Ok(())
     }
 }

@@ -339,7 +339,7 @@ impl Fastforwarder {
         loop {
             {
                 let mut inner_state_guard = self.state.0.lock();
-                let mut inner_state = inner_state_guard.as_mut().unwrap();
+                let inner_state = inner_state_guard.as_mut().unwrap();
                 if inner_state.committed_state.is_some() && inner_state.dirty_state.is_some() {
                     let state = inner_state_guard.take().expect("state");
                     return Ok(FastforwardResult {
@@ -353,7 +353,7 @@ impl Fastforwarder {
             }
             self.core.as_mut().run_loop();
             let mut inner_state = self.state.0.lock();
-            if let Some(_) = inner_state.as_ref().expect("state").error {
+            if inner_state.as_ref().expect("state").error.is_some() {
                 let state = inner_state.take().expect("state");
                 return Err(anyhow::format_err!("replayer: {}", state.error.expect("error")));
             }

@@ -69,9 +69,7 @@ pub fn game_from_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dy
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
-    let mut steamdir = if let Some(steamdir) = steamlocate::SteamDir::locate() {
-        steamdir
-    } else {
+    let Some(mut steamdir) = steamlocate::SteamDir::locate() else {
         return roms;
     };
 
@@ -114,14 +112,12 @@ fn scan_bnlc_rom_archive(
     for i in 0..za.len() {
         let mut entry = za.by_index(i).unwrap();
 
-        let entry_path = if let Some(entry_path) = entry.enclosed_name() {
-            entry_path.to_owned()
-        } else {
+        let Some(entry_path) = entry.enclosed_name().map(|path| path.to_owned()) else {
             log::error!("bnlc: {}({}): failed to get path name", path.display(), i);
             continue;
         };
 
-        if entry_path.extension() != Some(&std::ffi::OsStr::new("srl")) {
+        if entry_path.extension() != Some(std::ffi::OsStr::new("srl")) {
             continue;
         }
 
@@ -130,21 +126,18 @@ fn scan_bnlc_rom_archive(
             log::error!("bnlc: {}/{}: {}", path.display(), entry_path.display(), e);
             continue;
         }
-        let game = match tango_gamedb::detect(&rom).and_then(|entry| game_from_gamedb_entry(entry)) {
-            Some(game) => {
-                log::info!(
-                    "bnlc: {}/{}: {:?}",
-                    path.display(),
-                    entry_path.display(),
-                    game.gamedb_entry().family_and_variant
-                );
-                game
-            }
-            None => {
-                log::warn!("bnlc: {}/{}: not ok", path.display(), entry_path.display());
-                continue;
-            }
+        let Some(game) = tango_gamedb::detect(&rom).and_then(game_from_gamedb_entry) else {
+            log::warn!("bnlc: {}/{}: not ok", path.display(), entry_path.display());
+            continue;
         };
+
+        log::info!(
+            "bnlc: {}/{}: {:?}",
+            path.display(),
+            entry_path.display(),
+            game.gamedb_entry().family_and_variant
+        );
+
         roms.insert(game, rom);
     }
     roms
@@ -156,7 +149,7 @@ fn scan_bnlc_rom_archives(
     let mut roms = std::collections::HashMap::new();
 
     let data_path = lc_path.join("exe").join("data");
-    let read_dir = match std::fs::read_dir(&data_path) {
+    let read_dir = match std::fs::read_dir(data_path) {
         Ok(read_dir) => read_dir,
         Err(e) => {
             log::warn!("bnlc: {}: {}", lc_path.display(), e);
@@ -182,7 +175,7 @@ fn scan_bnlc_rom_archives(
 
         if file_name == std::ffi::OsStr::new("exe.dat")
             || !file_name.to_string_lossy().starts_with("exe")
-            || entry_path.extension() != Some(&std::ffi::OsStr::new("dat"))
+            || entry_path.extension() != Some(std::ffi::OsStr::new("dat"))
         {
             continue;
         }
@@ -218,20 +211,16 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
             }
         };
 
-        let game = match tango_gamedb::detect(&rom).and_then(game_from_gamedb_entry) {
-            Some(game) => {
-                log::info!(
-                    "roms folder: {}: {:?}",
-                    path.display(),
-                    game.gamedb_entry().family_and_variant
-                );
-                game
-            }
-            None => {
-                log::warn!("roms folder: {}: not ok", path.display());
-                continue;
-            }
+        let Some(game) = tango_gamedb::detect(&rom).and_then(game_from_gamedb_entry) else {
+            log::warn!("roms folder: {}: not ok", path.display());
+            continue;
         };
+
+        log::info!(
+            "roms folder: {}: {:?}",
+            path.display(),
+            game.gamedb_entry().family_and_variant
+        );
 
         roms.insert(game, rom);
     }
@@ -271,18 +260,18 @@ pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static 
 pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static (dyn Game + Send + Sync)> {
     let mut games = tango_gamedb::GAMES
         .iter()
-        .flat_map(|g| game_from_gamedb_entry(*g))
+        .flat_map(|g| game_from_gamedb_entry(g))
         .collect::<Vec<_>>();
     sort_games(lang, &mut games);
     games
 }
 
 pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    tango_gamedb::find_by_family_and_variant(family, variant).and_then(|g| game_from_gamedb_entry(g))
+    tango_gamedb::find_by_family_and_variant(family, variant).and_then(game_from_gamedb_entry)
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    tango_gamedb::find_by_rom_info(code, revision).and_then(|g| game_from_gamedb_entry(g))
+    tango_gamedb::find_by_rom_info(code, revision).and_then(game_from_gamedb_entry)
 }
 
 pub trait Game

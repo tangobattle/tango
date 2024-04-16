@@ -82,6 +82,7 @@ const PENDING_FILENAME: &str = "pending.AppImage";
 #[cfg(target_os = "linux")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.AppImage";
 
+#[cfg(target_os = "macos")]
 fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -191,7 +192,7 @@ fn do_update(path: &std::path::Path) {
     if let nix::unistd::ForkResult::Child = unsafe { nix::unistd::fork() }.unwrap() {
         nix::unistd::setsid().unwrap();
         let mut command = std::process::Command::new(appimage_path);
-        Err::<(), _>(command.exec()).unwrap();
+        panic!("{:?}", command.exec());
     }
     std::process::exit(0);
 }
@@ -417,9 +418,9 @@ impl Updater {
                 let mut status = status.lock().await;
                 if let Status::Downloading { release, .. } = &*status {
                     // Do cleanup.
-                    let _ = std::fs::remove_file(&path.join(IN_PROGRESS_FILENAME));
-                    let _ = std::fs::remove_file(&path.join(INCOMPLETE_FILENAME));
-                    let _ = std::fs::remove_file(&path.join(PENDING_FILENAME));
+                    let _ = std::fs::remove_file(path.join(IN_PROGRESS_FILENAME));
+                    let _ = std::fs::remove_file(path.join(INCOMPLETE_FILENAME));
+                    let _ = std::fs::remove_file(path.join(PENDING_FILENAME));
                     *status = Status::UpdateAvailable {
                         release: release.clone(),
                     };
