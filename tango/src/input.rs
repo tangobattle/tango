@@ -1,6 +1,7 @@
+use crate::keyboard::Key;
 use serde::Deserialize;
 
-pub type State = input_helper::State<winit::keyboard::KeyCode, sdl2::controller::Button>;
+pub type State = input_helper::State<Key, sdl2::controller::Button>;
 
 fn serialize_sdl2_button<S>(v: &sdl2::controller::Button, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -36,7 +37,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalInput {
-    Key(winit::keyboard::KeyCode),
+    Key(Key),
     Button(
         #[serde(
             serialize_with = "serialize_sdl2_button",
@@ -112,7 +113,7 @@ impl Default for Mapping {
     fn default() -> Self {
         Mapping {
             up: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::ArrowUp.into()),
+                PhysicalInput::Key(Key::Up),
                 PhysicalInput::Button(sdl2::controller::Button::DPadUp),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftY,
@@ -120,7 +121,7 @@ impl Default for Mapping {
                 },
             ],
             down: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::ArrowDown.into()),
+                PhysicalInput::Key(Key::Down),
                 PhysicalInput::Button(sdl2::controller::Button::DPadDown),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftY,
@@ -128,7 +129,7 @@ impl Default for Mapping {
                 },
             ],
             left: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::ArrowLeft.into()),
+                PhysicalInput::Key(Key::Left),
                 PhysicalInput::Button(sdl2::controller::Button::DPadLeft),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftX,
@@ -136,7 +137,7 @@ impl Default for Mapping {
                 },
             ],
             right: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::ArrowRight.into()),
+                PhysicalInput::Key(Key::Right),
                 PhysicalInput::Button(sdl2::controller::Button::DPadRight),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftX,
@@ -144,15 +145,15 @@ impl Default for Mapping {
                 },
             ],
             a: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::KeyZ.into()),
+                PhysicalInput::Key(Key::Z),
                 PhysicalInput::Button(sdl2::controller::Button::A),
             ],
             b: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::KeyX.into()),
+                PhysicalInput::Key(Key::X),
                 PhysicalInput::Button(sdl2::controller::Button::B),
             ],
             l: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::KeyA.into()),
+                PhysicalInput::Key(Key::A),
                 PhysicalInput::Button(sdl2::controller::Button::LeftShoulder),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::TriggerLeft,
@@ -160,7 +161,7 @@ impl Default for Mapping {
                 },
             ],
             r: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::KeyS.into()),
+                PhysicalInput::Key(Key::S),
                 PhysicalInput::Button(sdl2::controller::Button::RightShoulder),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::TriggerRight,
@@ -168,15 +169,15 @@ impl Default for Mapping {
                 },
             ],
             select: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::Space.into()),
+                PhysicalInput::Key(Key::Space),
                 PhysicalInput::Button(sdl2::controller::Button::Back),
             ],
             start: vec![
-                PhysicalInput::Key(winit::keyboard::KeyCode::Enter.into()),
+                PhysicalInput::Key(Key::Return),
                 PhysicalInput::Button(sdl2::controller::Button::Start),
             ],
-            speed_change: vec![PhysicalInput::Key(winit::keyboard::KeyCode::ShiftLeft.into())],
-            menu: vec![PhysicalInput::Key(winit::keyboard::KeyCode::Escape.into())],
+            speed_change: vec![PhysicalInput::Key(Key::LShift)],
+            menu: vec![PhysicalInput::Key(Key::Escape)],
         }
     }
 }

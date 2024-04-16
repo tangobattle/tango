@@ -15,6 +15,7 @@ mod graphics;
 mod gui;
 mod i18n;
 mod input;
+mod keyboard;
 mod net;
 mod patch;
 mod randomcode;
@@ -29,6 +30,7 @@ mod version;
 mod video;
 
 use fluent_templates::Loader;
+use keyboard::Key;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 
@@ -308,30 +310,36 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                     winit::event::WindowEvent::KeyboardInput {
                         event:
                             winit::event::KeyEvent {
-                                physical_key: winit::keyboard::PhysicalKey::Code(key),
+                                physical_key: winit::keyboard::PhysicalKey::Code(winit_key),
                                 state: element_state,
                                 ..
                             },
                         ..
-                    } => match element_state {
-                        winit::event::ElementState::Pressed => {
-                            if let Some(steal_input) = state.steal_input.take() {
-                                steal_input
-                                    .run_callback(input::PhysicalInput::Key(key), &mut next_config.input_mapping);
-                            } else if !gfx_backend.on_window_event(&window_event).consumed {
-                                input_state.handle_key_down(key);
-                            } else {
-                                input_state.clear_keys();
+                    } => {
+                        if let Some(key) = Key::resolve(winit_key) {
+                            match element_state {
+                                winit::event::ElementState::Pressed => {
+                                    if let Some(steal_input) = state.steal_input.take() {
+                                        steal_input.run_callback(
+                                            input::PhysicalInput::Key(key),
+                                            &mut next_config.input_mapping,
+                                        );
+                                    } else if !gfx_backend.on_window_event(&window_event).consumed {
+                                        input_state.handle_key_down(key);
+                                    } else {
+                                        input_state.clear_keys();
+                                    }
+                                }
+                                winit::event::ElementState::Released => {
+                                    if !gfx_backend.on_window_event(&window_event).consumed {
+                                        input_state.handle_key_up(key);
+                                    } else {
+                                        input_state.clear_keys();
+                                    }
+                                }
                             }
                         }
-                        winit::event::ElementState::Released => {
-                            if !gfx_backend.on_window_event(&window_event).consumed {
-                                input_state.handle_key_up(key);
-                            } else {
-                                input_state.clear_keys();
-                            }
-                        }
-                    },
+                    }
                     window_event => {
                         let _ = gfx_backend.on_window_event(&window_event);
                         match window_event {
