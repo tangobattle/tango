@@ -1,6 +1,5 @@
 mod rpc;
 
-#[allow(dead_code)]
 use fluent_templates::Loader;
 
 use crate::{game, i18n};
@@ -140,14 +139,14 @@ impl Client {
                             let mut rpc_guard = rpc.lock().await;
                             let current_activity = current_activity.clone();
 
-                            let (rpc, events_rx) = match (|| async {
+                            let (rpc, events_rx) = match async {
                                 let (rpc, events_rx) = rpc::Client::connect(APP_ID).await?;
                                 rpc.subscribe(rpc::Event::ActivityJoin).await?;
                                 if let Some(activity) = current_activity.lock().await.as_ref() {
                                     rpc.set_activity(activity).await?;
                                 }
                                 Ok::<_, anyhow::Error>((rpc, events_rx))
-                            })()
+                            }
                             .await
                             {
                                 Ok((rpc, events_rx)) => {
@@ -195,7 +194,7 @@ impl Client {
                             }
 
                             // Do stuff with RPC connection.
-                            if let Err(err) = (|| async {
+                            if let Err(err) = async {
                                 if let Some(rpc) = rpc.lock().await.as_ref() {
                                     if let Some(activity) = current_activity.lock().await.as_ref() {
                                         rpc.set_activity(activity).await?;
@@ -203,7 +202,7 @@ impl Client {
                                 }
 
                                 Ok::<_, anyhow::Error>(())
-                            })()
+                            }
                             .await
                             {
                                 log::warn!("discord RPC client encountered error: {:?}", err);
@@ -221,12 +220,11 @@ impl Client {
             });
         }
 
-        let client = Self {
+        Self {
             rpc,
             current_activity,
             current_join_secret,
-        };
-        client
+        }
     }
 
     pub fn set_current_activity(&self, activity: Option<rpc::activity::Activity>) {
