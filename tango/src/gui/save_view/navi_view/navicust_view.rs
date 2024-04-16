@@ -68,7 +68,7 @@ fn show_part_name(
     color: &tango_dataview::rom::NavicustPartColor,
 ) {
     egui::Frame::none()
-        .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+        .inner_margin(egui::Margin::symmetric(4.0, 0.0))
         .rounding(egui::Rounding::same(2.0))
         .fill(if is_enabled {
             let (color, _) = navicust_part_colors(color);
@@ -536,13 +536,12 @@ fn render_navicust_body<'a>(
             let y = y as isize + neighbor.offset[1];
 
             let mut should_stroke = x < 0 || x >= width as isize || y < 0 || y >= height as isize;
-            if !should_stroke {
-                if materialized[[y as usize, x as usize]]
+            if !should_stroke
+                && materialized[[y as usize, x as usize]]
                     .map(|v| v != ncp_i)
                     .unwrap_or(true)
-                {
-                    should_stroke = true;
-                }
+            {
+                should_stroke = true;
             }
 
             if should_stroke {
@@ -733,10 +732,10 @@ pub fn show(
                     }
 
                     if let Some((image, materialized, texture_handle)) = state.rendered_navicust_cache.as_ref() {
-                        let resp = ui.image(
+                        let resp = ui.image((
                             texture_handle.id(),
                             egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
-                        );
+                        ));
                         if let Some(hover_pos) = resp.hover_pos() {
                             let x = ((hover_pos.x - resp.rect.min.x) * 2.0) as u32;
                             let y = ((hover_pos.y - resp.rect.min.y) * 2.0) as u32;

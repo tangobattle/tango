@@ -158,7 +158,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     let sdl = sdl2::init().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
-    let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
+    let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build().unwrap();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
     let icon = image::load_from_memory(include_bytes!("icon.png"))?;
@@ -166,13 +166,13 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     let icon_height = icon.height();
 
     let window_builder = winit::window::WindowBuilder::new()
-        .with_title(&i18n::LOCALES.lookup(&config.read().language, "window-title").unwrap())
+        .with_title(i18n::LOCALES.lookup(&config.read().language, "window-title").unwrap())
         .with_window_icon(Some(winit::window::Icon::from_rgba(
             icon.into_bytes(),
             icon_width,
             icon_height,
         )?))
-        .with_inner_size(config.read().window_size.clone())
+        .with_inner_size(config.read().window_size)
         .with_min_inner_size(winit::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
@@ -194,9 +194,10 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     gfx_backend.paint();
 
     let egui_ctx = gfx_backend.egui_ctx();
+    egui_extras::install_image_loaders(egui_ctx);
     egui_ctx.set_request_repaint_callback({
         let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
-        move || {
+        move |_| {
             let _ = el_proxy.lock().send_event(UserEvent::RequestRepaint);
         }
     });
@@ -271,7 +272,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     patch_autoupdater.set_enabled(config.read().enable_patch_autoupdate);
 
     let mut last_config_dirty_time = None;
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, window_target| {
         let mut next_config = config.read().clone();
         let old_config = next_config.clone();
 
@@ -281,11 +282,11 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
 
             if repaint_after.is_zero() {
                 gfx_backend.window().request_redraw();
-                control_flow.set_poll();
+                window_target.set_control_flow(winit::event_loop::ControlFlow::Poll);
             } else if let Some(repaint_after_instant) = std::time::Instant::now().checked_add(repaint_after) {
-                control_flow.set_wait_until(repaint_after_instant);
+                window_target.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant));
             } else {
-                control_flow.set_wait();
+                window_target.set_control_flow(winit::event_loop::ControlFlow::Wait);
             }
 
             gfx_backend.paint();
@@ -297,6 +298,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                 event: window_event, ..
             } => {
                 match window_event {
+                    winit::event::WindowEvent::RedrawRequested if !cfg!(windows) => redraw(),
                     winit::event::WindowEvent::MouseInput { .. } | winit::event::WindowEvent::CursorMoved { .. } => {
                         state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
@@ -304,9 +306,9 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                         }
                     }
                     winit::event::WindowEvent::KeyboardInput {
-                        input:
-                            winit::event::KeyboardInput {
-                                virtual_keycode: Some(virutal_keycode),
+                        event:
+                            winit::event::KeyEvent {
+                                physical_key: winit::keyboard::PhysicalKey::Code(key),
                                 state: element_state,
                                 ..
                             },
@@ -314,21 +316,17 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                     } => match element_state {
                         winit::event::ElementState::Pressed => {
                             if let Some(steal_input) = state.steal_input.take() {
-                                steal_input.run_callback(
-                                    input::PhysicalInput::Key(virutal_keycode),
-                                    &mut next_config.input_mapping,
-                                );
+                                steal_input
+                                    .run_callback(input::PhysicalInput::Key(key), &mut next_config.input_mapping);
+                            } else if !gfx_backend.on_window_event(&window_event).consumed {
+                                input_state.handle_key_down(key);
                             } else {
-                                if !gfx_backend.on_window_event(&window_event).consumed {
-                                    input_state.handle_key_down(virutal_keycode);
-                                } else {
-                                    input_state.clear_keys();
-                                }
+                                input_state.clear_keys();
                             }
                         }
                         winit::event::ElementState::Released => {
                             if !gfx_backend.on_window_event(&window_event).consumed {
-                                input_state.handle_key_up(virutal_keycode);
+                                input_state.handle_key_up(key);
                             } else {
                                 input_state.clear_keys();
                             }
@@ -350,7 +348,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                                 state.last_mouse_motion_time = None;
                             }
                             winit::event::WindowEvent::CloseRequested => {
-                                control_flow.set_exit();
+                                window_target.exit();
                             }
                             _ => {}
                         }
@@ -367,7 +365,11 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
             winit::event::Event::UserEvent(UserEvent::RequestRepaint) => {
                 gfx_backend.window().request_redraw();
             }
-            winit::event::Event::MainEventsCleared => {
+            winit::event::Event::AboutToWait => {
+                if cfg!(windows) {
+                    redraw();
+                }
+
                 // We use SDL for controller events and that's it.
                 for sdl_event in sdl_event_loop.poll_iter() {
                     match sdl_event {
@@ -395,7 +397,10 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerAxisMotion { axis, value, which, .. } => {
-                            if let Some(steal_input) = (value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD)
+                            const AXIS_THRESHOLD_RANGE: std::ops::RangeInclusive<i16> =
+                                -input::AXIS_THRESHOLD..=input::AXIS_THRESHOLD;
+
+                            if let Some(steal_input) = (!AXIS_THRESHOLD_RANGE.contains(&value))
                                 .then(|| state.steal_input.take())
                                 .flatten()
                             {
@@ -433,9 +438,6 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                 }
             }
 
-            winit::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
-            winit::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
-
             _ => {}
         }
 
@@ -466,5 +468,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         gfx_backend.set_ui_scale(next_config.ui_scale_percent as f32 / 100.0);
         patch_autoupdater.set_enabled(next_config.enable_patch_autoupdate);
         updater.set_enabled(next_config.enable_updater);
-    });
+    })?;
+
+    Ok(())
 }

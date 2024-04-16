@@ -162,13 +162,13 @@ pub fn show(
         .frame(
             egui::Frame::none()
                 .fill(ctx.style().visuals.window_fill())
-                .inner_margin(egui::style::Margin::same(0.0)),
+                .inner_margin(egui::Margin::same(0.0)),
         )
         .show(ctx, |ui| match state.tab {
             Tab::Play => {
                 gui::play_pane::show(
                     ui,
-                    &font_families,
+                    font_families,
                     window,
                     clipboard,
                     config,
@@ -190,7 +190,7 @@ pub fn show(
                 gui::replays_pane::show(
                     ui,
                     clipboard,
-                    &font_families,
+                    font_families,
                     &mut state.replays_pane,
                     replay_dump_windows,
                     &config.language,

@@ -1468,14 +1468,13 @@ fn show_bottom_pane(
                             let _ = clipboard.set_text(link_code.clone());
                         }
 
-                        if config.streamer_mode {
-                            if ui
+                        if config.streamer_mode
+                            && ui
                                 .selectable_label(*show_link_code, "👁️")
                                 .on_hover_text(i18n::LOCALES.lookup(&config.language, "play-show-link-code").unwrap())
                                 .clicked()
-                            {
-                                *show_link_code = !*show_link_code;
-                            }
+                        {
+                            *show_link_code = !*show_link_code;
                         }
                     }
 
@@ -1695,7 +1694,7 @@ pub fn show(
         .frame(
             egui::Frame::none()
                 .fill(ui.style().visuals.window_fill())
-                .inner_margin(egui::style::Margin {
+                .inner_margin(egui::Margin {
                     left: 8.0,
                     right: 8.0,
                     bottom: 8.0,

@@ -4,7 +4,6 @@ use crate::{config, game, gui, i18n, rom};
 
 pub struct State {
     nickname: String,
-    emblem: egui_extras::RetainedImage,
     done_inputting_roms: bool,
 }
 
@@ -12,7 +11,6 @@ impl State {
     pub fn new() -> Self {
         Self {
             nickname: "".to_string(),
-            emblem: egui_extras::RetainedImage::from_image_bytes("emblem", include_bytes!("../emblem.png")).unwrap(),
             done_inputting_roms: false,
         }
     }
@@ -28,7 +26,9 @@ pub fn show(
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.horizontal_centered(|ui| {
             ui.add_space(8.0);
-            state.emblem.show_scaled(ui, 0.5);
+            let emblem = egui::Image::new(egui::include_image!("../emblem.png"));
+            let emblem_size = emblem.load_and_calc_size(ui, egui::Vec2::INFINITY).unwrap_or_default() * 0.5;
+            ui.add(emblem.fit_to_exact_size(emblem_size));
 
             ui.add_space(8.0);
             ui.add(egui::Separator::default().vertical());

@@ -31,7 +31,7 @@ pub fn show(ctx: &egui::Context, language: &unic_langid::LanguageIdentifier, ste
         .show(ctx, |ui| {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
                 egui::Frame::none()
-                    .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
+                    .inner_margin(egui::Margin::symmetric(32.0, 16.0))
                     .show(ui, |ui| {
                         let userdata = if let Some(State { userdata, .. }) = &steal_input {
                             userdata
@@ -43,12 +43,12 @@ pub fn show(ctx: &egui::Context, language: &unic_langid::LanguageIdentifier, ste
                             egui::RichText::new(
                                 i18n::LOCALES
                                     .lookup_with_args(
-                                        &language,
+                                        language,
                                         "input-mapping-prompt",
                                         &std::collections::HashMap::from([(
                                             "key",
                                             i18n::LOCALES
-                                                .lookup(&language, userdata.downcast_ref::<&str>().unwrap())
+                                                .lookup(language, userdata.downcast_ref::<&str>().unwrap())
                                                 .unwrap()
                                                 .into(),
                                         )]),

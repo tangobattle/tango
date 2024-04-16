@@ -69,7 +69,10 @@ pub fn show(
         ui.horizontal(|ui| {
             if streamer_mode
                 && ui
-                    .selectable_label(state.tab == None, i18n::LOCALES.lookup(lang, "save-tab-cover").unwrap())
+                    .selectable_label(
+                        state.tab.is_none(),
+                        i18n::LOCALES.lookup(lang, "save-tab-cover").unwrap(),
+                    )
                     .clicked()
             {
                 state.tab = None;

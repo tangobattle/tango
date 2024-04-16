@@ -219,7 +219,7 @@ pub fn show(
                         );
 
                         if ui.selectable_label(selected, layout_job).clicked() {
-                            let mut f = match std::fs::File::open(&path) {
+                            let mut f = match std::fs::File::open(path) {
                                 Ok(f) => f,
                                 Err(e) => {
                                     log::error!("failed to load replay {}: {:?}", path.display(), e);

@@ -87,13 +87,13 @@ fn show_emulator(
     if max_scale > 0 {
         scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| a.partial_cmp(b).unwrap());
     }
-    ui.image(
-        &vbuf.texture,
+    ui.image((
+        vbuf.texture.id(),
         egui::Vec2::new(
             mgba::gba::SCREEN_WIDTH as f32 * scaling_factor as f32 / ui.ctx().pixels_per_point(),
             mgba::gba::SCREEN_HEIGHT as f32 * scaling_factor as f32 / ui.ctx().pixels_per_point(),
         ),
-    );
+    ));
     ui.ctx().request_repaint();
 }
 
@@ -159,13 +159,11 @@ pub fn show(
 
     match session.mode() {
         session::Mode::SinglePlayer(_) => {
-            session.set_fps_target(
-                if input_mapping.speed_change.iter().any(|c| c.is_active(&input_state)) {
-                    session::EXPECTED_FPS * speed_change_factor
-                } else {
-                    session::EXPECTED_FPS
-                },
-            );
+            session.set_fps_target(if input_mapping.speed_change.iter().any(|c| c.is_active(input_state)) {
+                session::EXPECTED_FPS * speed_change_factor
+            } else {
+                session::EXPECTED_FPS
+            });
         }
         session::Mode::Replayer => {
             replay_controls_window::show(ctx, session, language, last_mouse_motion_time);

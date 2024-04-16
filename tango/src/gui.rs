@@ -43,7 +43,7 @@ impl Selection {
                 &patch
                     .as_ref()
                     .map(|(_, _, metadata)| metadata.rom_overrides.clone())
-                    .unwrap_or_else(|| Default::default()),
+                    .unwrap_or_default(),
             )
             .ok();
         Self {
@@ -344,7 +344,7 @@ pub fn show(
     let is_dark = match config.theme {
         config::Theme::System => match dark_light::detect() {
             dark_light::Mode::Light => false,
-            dark_light::Mode::Dark => true,
+            dark_light::Mode::Default | dark_light::Mode::Dark => true,
         },
         config::Theme::Light => false,
         config::Theme::Dark => true,
@@ -362,7 +362,7 @@ pub fn show(
             &state.font_families,
             config,
             state.roms_scanner.clone(),
-            state.welcome.get_or_insert_with(|| welcome::State::new()),
+            state.welcome.get_or_insert_with(welcome::State::new),
         );
         return;
     } else {
@@ -418,7 +418,7 @@ pub fn show(
             state.emu_tps_counter.clone(),
             config.show_debug,
             config.show_status_bar,
-            state.session_view.get_or_insert_with(|| session_view::State::new()),
+            state.session_view.get_or_insert_with(session_view::State::new),
             &mut state.discord_client,
         );
     } else {

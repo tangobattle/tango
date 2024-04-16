@@ -108,7 +108,7 @@ pub fn show(
 
                                         strip.cell(|ui| {
                                             ui.monospace(
-                                                buf.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
+                                                buf.map(|b| if (32..127).contains(&b) { b as char } else { '.' })
                                                     .iter()
                                                     .collect::<String>(),
                                             );
