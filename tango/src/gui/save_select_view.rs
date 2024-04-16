@@ -81,7 +81,7 @@ fn create_new_save(
     prefix = prefix.replace(":", "").replace("/", " ");
     prefix.push_str(".sav");
 
-    Ok(create_next_file(&saves_path.join(prefix))?)
+    create_next_file(&saves_path.join(prefix))
 }
 
 pub fn show(
@@ -163,30 +163,22 @@ pub fn show(
             const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
             ui.add_enabled_ui(show.as_ref().unwrap().selection.is_some(), |ui| {
                 let warning = (|| {
-                    let selection = if let Some(selection) = show.as_ref().unwrap().selection.as_ref() {
-                        selection
-                    } else {
+                    let Some(selection) = show.as_ref().unwrap().selection.as_ref() else {
                         return None;
                     };
 
-                    let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                        remote_settings
-                    } else {
+                    let Some(remote_settings) = remote_settings.as_ref() else {
                         return None;
                     };
 
-                    let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                        remote_gi
-                    } else {
+                    let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                         return None;
                     };
 
-                    let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                    let Some(remote_game) = game::find_by_family_and_variant(
                         &remote_gi.family_and_variant.0,
                         remote_gi.family_and_variant.1,
-                    ) {
-                        remote_game
-                    } else {
+                    ) else {
                         return None;
                     };
 
@@ -206,7 +198,7 @@ pub fn show(
                                     .map(|vi| vi.netplay_compatibility.as_str())
                                     .collect()
                             })
-                            .unwrap_or_else(|| vec![])
+                            .unwrap_or_default()
                     } else {
                         vec![selection.game.gamedb_entry().family_and_variant.0]
                     };
@@ -236,7 +228,7 @@ pub fn show(
                             .selection
                             .as_ref()
                             .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                            .unwrap_or(&i18n::LOCALES.lookup(&language, "play-no-patch").unwrap())
+                            .unwrap_or(&i18n::LOCALES.lookup(language, "play-no-patch").unwrap())
                     ),
                     0.0,
                     egui::TextFormat::simple(
@@ -273,24 +265,18 @@ pub fn show(
                         };
                         {
                             let warning = (|| {
-                                let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                    remote_settings
-                                } else {
+                                let Some(remote_settings) = remote_settings.as_ref() else {
                                     return None;
                                 };
 
-                                let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                    remote_gi
-                                } else {
+                                let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                                     return None;
                                 };
 
-                                let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                let Some(remote_game) = game::find_by_family_and_variant(
                                     &remote_gi.family_and_variant.0,
                                     remote_gi.family_and_variant.1,
-                                ) {
-                                    remote_game
-                                } else {
+                                ) else {
                                     return None;
                                 };
 
@@ -313,7 +299,7 @@ pub fn show(
                                 gui::warning::append_to_layout_job(ui, &mut layout_job);
                             }
                             layout_job.append(
-                                &i18n::LOCALES.lookup(&language, "play-no-patch").unwrap(),
+                                &i18n::LOCALES.lookup(language, "play-no-patch").unwrap(),
                                 0.0,
                                 egui::TextFormat::simple(
                                     ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
@@ -326,7 +312,7 @@ pub fn show(
                             );
                             let mut resp = ui.selectable_label(checked, layout_job);
                             if let Some(warning) = warning {
-                                resp = resp.on_hover_text(warning.description(&language));
+                                resp = resp.on_hover_text(warning.description(language));
                             }
                             if resp.clicked() {
                                 if let Some(s) = committed_selection.take() {
@@ -342,24 +328,18 @@ pub fn show(
                             .sort_by_key(|(name, _)| (if starred_patches.contains(**name) { 0 } else { 1 }, *name));
                         for (name, (meta, supported_versions)) in supported_patches_list {
                             let warning = (|| {
-                                let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                    remote_settings
-                                } else {
+                                let Some(remote_settings) = remote_settings.as_ref() else {
                                     return None;
                                 };
 
-                                let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                    remote_gi
-                                } else {
+                                let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                                     return None;
                                 };
 
-                                let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                let Some(remote_game) = game::find_by_family_and_variant(
                                     &remote_gi.family_and_variant.0,
                                     remote_gi.family_and_variant.1,
-                                ) {
-                                    remote_game
-                                } else {
+                                ) else {
                                     return None;
                                 };
 
@@ -367,7 +347,7 @@ pub fn show(
                                     return Some(gui::play_pane::Warning::NoRemotePatches((*name).clone()));
                                 }
 
-                                let local_netplay_compatibilities = patches
+                                let local_netplay_compatibilities: Vec<_> = patches
                                     .get(*name)
                                     .map(|patch| {
                                         patch
@@ -376,7 +356,7 @@ pub fn show(
                                             .map(|vi| vi.netplay_compatibility.as_str())
                                             .collect()
                                     })
-                                    .unwrap_or_else(|| vec![]);
+                                    .unwrap_or_default();
 
                                 if let Some(nc) = gui::play_pane::get_netplay_compatibility(
                                     remote_game,
@@ -432,7 +412,7 @@ pub fn show(
                             );
                             let mut resp = ui.selectable_label(checked, layout_job);
                             if let Some(warning) = warning {
-                                resp = resp.on_hover_text(warning.description(&language));
+                                resp = resp.on_hover_text(warning.description(language));
                             }
                             if resp.clicked() {
                                 *patch_selection = Some(name.to_string());
@@ -459,9 +439,9 @@ pub fn show(
                                         let rom = match patch::apply_patch_from_disk(
                                             &rom,
                                             selection.game,
-                                            &patches_path,
-                                            &name,
-                                            &version,
+                                            patches_path,
+                                            name,
+                                            version,
                                         ) {
                                             Ok(r) => r,
                                             Err(e) => {
@@ -486,7 +466,7 @@ pub fn show(
                         }
                     });
                 if let Some(warning) = warning {
-                    resp.response.on_hover_text(warning.description(&language));
+                    resp.response.on_hover_text(warning.description(language));
                 }
 
                 ui.add_enabled_ui(
@@ -500,30 +480,22 @@ pub fn show(
                         .unwrap_or(false),
                     |ui| {
                         let warning = (|| {
-                            let selection = if let Some(selection) = show.as_ref().unwrap().selection.as_ref() {
-                                selection
-                            } else {
+                            let Some(selection) = show.as_ref().unwrap().selection.as_ref() else {
                                 return None;
                             };
 
-                            let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                remote_settings
-                            } else {
+                            let Some(remote_settings) = remote_settings.as_ref() else {
                                 return None;
                             };
 
-                            let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                remote_gi
-                            } else {
+                            let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                                 return None;
                             };
 
-                            let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                            let Some(remote_game) = game::find_by_family_and_variant(
                                 &remote_gi.family_and_variant.0,
                                 remote_gi.family_and_variant.1,
-                            ) {
-                                remote_game
-                            } else {
+                            ) else {
                                 return None;
                             };
 
@@ -582,15 +554,11 @@ pub fn show(
                             .width(PATCH_VERSION_COMBOBOX_WIDTH)
                             .selected_text(layout_job)
                             .show_ui(ui, |ui| {
-                                let selection = if let Some(selection) = show.as_mut().unwrap().selection.as_mut() {
-                                    selection
-                                } else {
+                                let Some(selection) = show.as_mut().unwrap().selection.as_mut() else {
                                     return;
                                 };
 
-                                let (patch_name, patch_version, _) = if let Some(patch) = selection.patch.as_ref() {
-                                    patch.clone()
-                                } else {
+                                let Some((patch_name, patch_version, _)) = selection.patch.clone() else {
                                     return;
                                 };
 
@@ -604,24 +572,18 @@ pub fn show(
 
                                 for version in supported_versions.iter() {
                                     let warning = (|| {
-                                        let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                            remote_settings
-                                        } else {
+                                        let Some(remote_settings) = remote_settings.as_ref() else {
                                             return None;
                                         };
 
-                                        let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                            remote_gi
-                                        } else {
+                                        let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                                             return None;
                                         };
 
-                                        let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                        let Some(remote_game) = game::find_by_family_and_variant(
                                             &remote_gi.family_and_variant.0,
                                             remote_gi.family_and_variant.1,
-                                        ) {
-                                            remote_game
-                                        } else {
+                                        ) else {
                                             return None;
                                         };
 
@@ -673,7 +635,7 @@ pub fn show(
 
                                     let mut resp = ui.selectable_label(checked, layout_job);
                                     if let Some(warning) = warning {
-                                        resp = resp.on_hover_text(warning.description(&language));
+                                        resp = resp.on_hover_text(warning.description(language));
                                     }
                                     if resp.clicked() {
                                         let rom = roms.get(&selection.game).unwrap().clone();
@@ -699,9 +661,9 @@ pub fn show(
                                                 let rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection.game,
-                                                    &patches_path,
+                                                    patches_path,
                                                     &patch_name,
-                                                    &version,
+                                                    version,
                                                 ) {
                                                     Ok(r) => r,
                                                     Err(e) => {
@@ -726,7 +688,7 @@ pub fn show(
                                 }
                             });
                         if let Some(warning) = warning {
-                            resp.response.on_hover_text(warning.description(&language));
+                            resp.response.on_hover_text(warning.description(language));
                         }
                     },
                 );
@@ -783,53 +745,34 @@ pub fn show(
                                         menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
                                     } else {
                                         for (name, save) in save_templates {
-                                            if ui
-                                                .button(format!(
-                                                    "{}",
-                                                    if from_patch {
-                                                        i18n::LOCALES
-                                                            .lookup_with_args(
-                                                                language,
-                                                                "select-save.from-patch-save",
-                                                                &std::collections::HashMap::from([(
-                                                                    "name",
-                                                                    if !name.is_empty() {
-                                                                        name.into()
-                                                                    } else {
-                                                                        i18n::LOCALES
-                                                                            .lookup(
-                                                                                language,
-                                                                                "select-save.default-save",
-                                                                            )
-                                                                            .unwrap()
-                                                                            .into()
-                                                                    },
-                                                                )]),
-                                                            )
-                                                            .unwrap()
-                                                    } else if !name.is_empty() {
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                language,
-                                                                &format!(
-                                                                    "game-{}.save-{}",
-                                                                    selection_state
-                                                                        .game
-                                                                        .gamedb_entry()
-                                                                        .family_and_variant
-                                                                        .0,
-                                                                    name
-                                                                ),
-                                                            )
-                                                            .unwrap()
-                                                    } else {
-                                                        i18n::LOCALES
-                                                            .lookup(language, "select-save.default-save")
-                                                            .unwrap()
-                                                    }
-                                                ))
-                                                .clicked()
-                                            {
+                                            let localized_name = if !name.is_empty() {
+                                                let text_id = format!(
+                                                    "game-{}.save-{}",
+                                                    selection_state.game.gamedb_entry().family_and_variant.0,
+                                                    name
+                                                );
+
+                                                i18n::LOCALES.lookup(language, &text_id).unwrap_or(name.to_string())
+                                            } else {
+                                                i18n::LOCALES.lookup(language, "select-save.default-save").unwrap()
+                                            };
+
+                                            let save_label = if from_patch {
+                                                let localization_args =
+                                                    std::collections::HashMap::from([("name", localized_name.into())]);
+
+                                                i18n::LOCALES
+                                                    .lookup_with_args(
+                                                        language,
+                                                        "select-save.from-patch-save",
+                                                        &localization_args,
+                                                    )
+                                                    .unwrap()
+                                            } else {
+                                                localized_name
+                                            };
+
+                                            if ui.button(save_label).clicked() {
                                                 menu_selection = Some((name, save));
                                             }
                                         }
@@ -868,9 +811,9 @@ pub fn show(
                                                 rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection_state.game,
-                                                    &patches_path,
-                                                    &name,
-                                                    &version,
+                                                    patches_path,
+                                                    name,
+                                                    version,
                                                 ) {
                                                     Ok(r) => r,
                                                     Err(e) => {
@@ -1002,9 +945,9 @@ pub fn show(
                                                         rom = match patch::apply_patch_from_disk(
                                                             &rom,
                                                             selection_state.game,
-                                                            &patches_path,
-                                                            &name,
-                                                            &version,
+                                                            patches_path,
+                                                            name,
+                                                            version,
                                                         ) {
                                                             Ok(r) => r,
                                                             Err(e) => {
@@ -1081,9 +1024,9 @@ pub fn show(
                                                 rom = match patch::apply_patch_from_disk(
                                                     &rom,
                                                     selection_state.game,
-                                                    &patches_path,
-                                                    &name,
-                                                    &version,
+                                                    patches_path,
+                                                    name,
+                                                    version,
                                                 ) {
                                                     Ok(r) => r,
                                                     Err(e) => {
@@ -1124,9 +1067,7 @@ pub fn show(
                                     .unwrap_or(false);
 
                                 let warning = (|| {
-                                    let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                        remote_settings
-                                    } else {
+                                    let Some(remote_settings) = remote_settings.as_ref() else {
                                         return None;
                                     };
 
@@ -1136,16 +1077,14 @@ pub fn show(
                                         return Some(gui::play_pane::Warning::NoRemoteROM(*game));
                                     }
 
-                                    let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                        remote_gi
-                                    } else {
+                                    let Some(remote_gi) = remote_settings.game_info.as_ref() else {
                                         return None;
                                     };
 
                                     if let Some(netplay_compatibility) =
                                         gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
                                     {
-                                        if &netplay_compatibility != family
+                                        if netplay_compatibility != family
                                             && !patches.values().any(|metadata| {
                                                 metadata.versions.values().any(|version| {
                                                     version.supported_games.contains(game)
