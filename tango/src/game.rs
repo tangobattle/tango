@@ -192,8 +192,6 @@ fn scan_bnlc_rom_archives(
     roms
 }
 
-pub const ALLOW_DETACHED_ROMS: bool = cfg!(target_os = "macos");
-
 fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
@@ -220,10 +218,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
             }
         };
 
-        let game = match tango_gamedb::detect(&rom)
-            .filter(|game| ALLOW_DETACHED_ROMS || *game == &tango_gamedb::BR4J_00)
-            .and_then(|entry| game_from_gamedb_entry(entry))
-        {
+        let game = match tango_gamedb::detect(&rom).and_then(game_from_gamedb_entry) {
             Some(game) => {
                 log::info!(
                     "roms folder: {}: {:?}",

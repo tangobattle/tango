@@ -5,6 +5,7 @@ use crate::{config, game, gui, i18n, rom};
 pub struct State {
     nickname: String,
     emblem: egui_extras::RetainedImage,
+    done_inputting_roms: bool,
 }
 
 impl State {
@@ -12,6 +13,7 @@ impl State {
         Self {
             nickname: "".to_string(),
             emblem: egui_extras::RetainedImage::from_image_bytes("emblem", include_bytes!("../emblem.png")).unwrap(),
+            done_inputting_roms: false,
         }
     }
 }
@@ -53,46 +55,57 @@ pub fn show(
                         } else {
                             ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
                         }
-                        ui.strong(if !crate::game::ALLOW_DETACHED_ROMS {
-                            i18n::LOCALES.lookup(&config.language, "welcome-step-1").unwrap()
-                        } else {
-                            i18n::LOCALES.lookup(&config.language, "welcome-step-1-roms").unwrap()
-                        });
+                        ui.strong(i18n::LOCALES.lookup(&config.language, "welcome-step-1").unwrap());
                     });
                     if !has_roms {
-                        ui.label(if !crate::game::ALLOW_DETACHED_ROMS {
+                        ui.label({
                             i18n::LOCALES
                                 .lookup(&config.language, "welcome-step-1-description")
                                 .unwrap()
+                        });
+                    }
+
+                    ui.add_space(16.0);
+                    ui.horizontal(|ui| {
+                        if state.done_inputting_roms {
+                            ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
                         } else {
+                            ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
+                        }
+                        ui.strong(i18n::LOCALES.lookup(&config.language, "welcome-step-1-roms").unwrap());
+                    });
+
+                    if !state.done_inputting_roms {
+                        ui.label({
                             i18n::LOCALES
                                 .lookup(&config.language, "welcome-step-1-description-roms")
                                 .unwrap()
                         });
-                        if crate::game::ALLOW_DETACHED_ROMS {
-                            ui.monospace(format!("{}", config.roms_path().display()));
-                        }
+
+                        ui.monospace(format!("{}", config.roms_path().display()));
+
                         ui.horizontal(|ui| {
-                            if crate::game::ALLOW_DETACHED_ROMS {
-                                if ui
-                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
-                                    .clicked()
-                                {
-                                    let _ = open::that(&config.roms_path());
-                                }
+                            if ui
+                                .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
+                                .clicked()
+                            {
+                                let _ = open::that(config.roms_path());
                             }
+
                             ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
                                 if ui
                                     .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
                                     .clicked()
                                 {
                                     let roms_path = config.roms_path();
-                                    let roms_scanner = roms_scanner.clone();
+                                    let cloned_roms_scanner = roms_scanner.clone();
                                     let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {
-                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
+                                        cloned_roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
                                         egui_ctx.request_repaint();
                                     });
+
+                                    state.done_inputting_roms = true;
                                 }
                             });
                         });
