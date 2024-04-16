@@ -739,116 +739,120 @@ pub fn show(
                             ui.menu_button(
                                 format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
                                 |ui| {
-                                    let mut menu_selection = None;
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        let mut menu_selection = None;
 
-                                    if save_templates.len() == 1 {
-                                        menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
-                                    } else {
-                                        for (name, save) in save_templates {
-                                            let localized_name = if !name.is_empty() {
-                                                let text_id = format!(
-                                                    "game-{}.save-{}",
-                                                    selection_state.game.gamedb_entry().family_and_variant.0,
-                                                    name
-                                                );
+                                        if save_templates.len() == 1 {
+                                            menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
+                                        } else {
+                                            for (name, save) in save_templates {
+                                                let localized_name = if !name.is_empty() {
+                                                    let text_id = format!(
+                                                        "game-{}.save-{}",
+                                                        selection_state.game.gamedb_entry().family_and_variant.0,
+                                                        name
+                                                    );
 
-                                                i18n::LOCALES.lookup(language, &text_id).unwrap_or(name.to_string())
-                                            } else {
-                                                i18n::LOCALES.lookup(language, "select-save.default-save").unwrap()
-                                            };
+                                                    i18n::LOCALES.lookup(language, &text_id).unwrap_or(name.to_string())
+                                                } else {
+                                                    i18n::LOCALES.lookup(language, "select-save.default-save").unwrap()
+                                                };
 
-                                            let save_label = if from_patch {
-                                                let localization_args =
-                                                    std::collections::HashMap::from([("name", localized_name.into())]);
+                                                let save_label = if from_patch {
+                                                    let localization_args = std::collections::HashMap::from([(
+                                                        "name",
+                                                        localized_name.into(),
+                                                    )]);
 
-                                                i18n::LOCALES
-                                                    .lookup_with_args(
-                                                        language,
-                                                        "select-save.from-patch-save",
-                                                        &localization_args,
-                                                    )
-                                                    .unwrap()
-                                            } else {
-                                                localized_name
-                                            };
+                                                    i18n::LOCALES
+                                                        .lookup_with_args(
+                                                            language,
+                                                            "select-save.from-patch-save",
+                                                            &localization_args,
+                                                        )
+                                                        .unwrap()
+                                                } else {
+                                                    localized_name
+                                                };
 
-                                            if ui.button(save_label).clicked() {
-                                                menu_selection = Some((name, save));
+                                                if ui.button(save_label).clicked() {
+                                                    menu_selection = Some((name, save));
+                                                }
                                             }
                                         }
-                                    }
 
-                                    if let Some((name, save)) = menu_selection {
-                                        let (path, mut f) = match create_new_save(
-                                            language,
-                                            saves_path,
-                                            selection_state.game,
-                                            selection_state.patch.as_ref(),
-                                            name,
-                                        ) {
-                                            Ok((path, f)) => (path, f),
-                                            Err(e) => {
-                                                log::error!("failed to create save: {}", e);
+                                        if let Some((name, save)) = menu_selection {
+                                            let (path, mut f) = match create_new_save(
+                                                language,
+                                                saves_path,
+                                                selection_state.game,
+                                                selection_state.patch.as_ref(),
+                                                name,
+                                            ) {
+                                                Ok((path, f)) => (path, f),
+                                                Err(e) => {
+                                                    log::error!("failed to create save: {}", e);
+                                                    ui.close_menu();
+                                                    return;
+                                                }
+                                            };
+
+                                            let (game, rom, patch) = if let Some(committed_selection) =
+                                                committed_selection.take().filter(|committed_selection| {
+                                                    committed_selection.game == selection_state.game
+                                                }) {
+                                                (
+                                                    committed_selection.game,
+                                                    committed_selection.rom,
+                                                    committed_selection.patch,
+                                                )
+                                            } else {
+                                                let mut rom = roms.get(&selection_state.game).unwrap().clone();
+                                                if let Some((name, version, _)) = selection_state.patch.as_ref() {
+                                                    let (rom_code, revision) =
+                                                        selection_state.game.gamedb_entry().rom_code_and_revision;
+                                                    rom = match patch::apply_patch_from_disk(
+                                                        &rom,
+                                                        selection_state.game,
+                                                        patches_path,
+                                                        name,
+                                                        version,
+                                                    ) {
+                                                        Ok(r) => r,
+                                                        Err(e) => {
+                                                            log::error!(
+                                                                "failed to apply patch {}: {:?}: {:?}",
+                                                                name,
+                                                                (rom_code, revision),
+                                                                e
+                                                            );
+                                                            return;
+                                                        }
+                                                    };
+                                                }
+                                                (selection_state.game, rom, selection_state.patch.clone())
+                                            };
+
+                                            let mut save = save.clone_box();
+                                            save.rebuild_checksum();
+
+                                            if let Err(e) = f.write_all(&save.as_sram_dump()) {
+                                                log::error!("failed to write save: {}", e);
                                                 ui.close_menu();
                                                 return;
                                             }
-                                        };
 
-                                        let (game, rom, patch) = if let Some(committed_selection) =
-                                            committed_selection.take().filter(|committed_selection| {
-                                                committed_selection.game == selection_state.game
-                                            }) {
-                                            (
-                                                committed_selection.game,
-                                                committed_selection.rom,
-                                                committed_selection.patch,
-                                            )
-                                        } else {
-                                            let mut rom = roms.get(&selection_state.game).unwrap().clone();
-                                            if let Some((name, version, _)) = selection_state.patch.as_ref() {
-                                                let (rom_code, revision) =
-                                                    selection_state.game.gamedb_entry().rom_code_and_revision;
-                                                rom = match patch::apply_patch_from_disk(
-                                                    &rom,
-                                                    selection_state.game,
-                                                    patches_path,
-                                                    name,
-                                                    version,
-                                                ) {
-                                                    Ok(r) => r,
-                                                    Err(e) => {
-                                                        log::error!(
-                                                            "failed to apply patch {}: {:?}: {:?}",
-                                                            name,
-                                                            (rom_code, revision),
-                                                            e
-                                                        );
-                                                        return;
-                                                    }
-                                                };
-                                            }
-                                            (selection_state.game, rom, selection_state.patch.clone())
-                                        };
+                                            *show = None;
+                                            *committed_selection = Some(gui::Selection::new(
+                                                game,
+                                                save::ScannedSave { path, save },
+                                                patch,
+                                                rom,
+                                            ));
 
-                                        let mut save = save.clone_box();
-                                        save.rebuild_checksum();
-
-                                        if let Err(e) = f.write_all(&save.as_sram_dump()) {
-                                            log::error!("failed to write save: {}", e);
                                             ui.close_menu();
-                                            return;
                                         }
-
-                                        *show = None;
-                                        *committed_selection = Some(gui::Selection::new(
-                                            game,
-                                            save::ScannedSave { path, save },
-                                            patch,
-                                            rom,
-                                        ));
-
-                                        ui.close_menu();
-                                    }
+                                    })
                                 },
                             );
                         });
