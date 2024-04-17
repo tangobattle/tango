@@ -92,10 +92,10 @@ const SQUARE_SIZE: f32 = 60.0;
 const BG_FILL_COLOR: image::Rgba<u8> = image::Rgba([0x20, 0x20, 0x20, 0xff]);
 const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff]);
 
-fn render_navicust<'a>(
+fn render_navicust(
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    navicust_view: &(dyn tango_dataview::save::NavicustView),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     fonts: &[&fontdue::Font],
 ) -> image::RgbaImage {
@@ -157,8 +157,8 @@ fn render_navicust<'a>(
     image
 }
 
-fn gather_ncp_colors<'a>(
-    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+fn gather_ncp_colors(
+    navicust_view: &(dyn tango_dataview::save::NavicustView),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> Vec<tango_dataview::rom::NavicustPartColor> {
     (0..navicust_view.count())
@@ -181,13 +181,13 @@ fn gather_ncp_colors<'a>(
                 return vec![];
             };
 
-            return vec![color];
+            vec![color]
         })
         .unique()
         .collect::<Vec<_>>()
 }
 
-fn render_navicust_color_bar3<'a>(extra_color: Option<tango_dataview::rom::NavicustPartColor>) -> image::RgbaImage {
+fn render_navicust_color_bar3(extra_color: Option<tango_dataview::rom::NavicustPartColor>) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE / 4.0;
 
     let mut pixmap = tiny_skia::Pixmap::new(
@@ -212,9 +212,11 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<tango_dataview::rom::Navic
         BORDER_STROKE_COLOR.0[3],
     );
 
-    let mut stroke = tiny_skia::Stroke::default();
-    stroke.width = BORDER_WIDTH as f32;
-    stroke.line_cap = tiny_skia::LineCap::Square;
+    let stroke = tiny_skia::Stroke {
+        line_cap: tiny_skia::LineCap::Square,
+        width: BORDER_WIDTH,
+        ..Default::default()
+    };
 
     let path = {
         let mut pb = tiny_skia::PathBuilder::new();
@@ -254,8 +256,8 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<tango_dataview::rom::Navic
     image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
-fn render_navicust_color_bar456<'a>(
-    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+fn render_navicust_color_bar456(
+    navicust_view: &(dyn tango_dataview::save::NavicustView),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
@@ -288,9 +290,11 @@ fn render_navicust_color_bar456<'a>(
         BORDER_STROKE_COLOR.0[3],
     );
 
-    let mut stroke = tiny_skia::Stroke::default();
-    stroke.width = BORDER_WIDTH as f32;
-    stroke.line_cap = tiny_skia::LineCap::Square;
+    let stroke = tiny_skia::Stroke {
+        line_cap: tiny_skia::LineCap::Square,
+        width: BORDER_WIDTH,
+        ..Default::default()
+    };
 
     let outline_path = {
         let mut pb = tiny_skia::PathBuilder::new();
@@ -347,10 +351,10 @@ fn render_navicust_color_bar456<'a>(
     image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
-fn render_navicust_body<'a>(
+fn render_navicust_body(
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &(dyn tango_dataview::save::NavicustView<'a>),
+    navicust_view: &(dyn tango_dataview::save::NavicustView),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     let (height, width) = materialized.dim();
@@ -379,9 +383,11 @@ fn render_navicust_body<'a>(
         BORDER_STROKE_COLOR.0[3],
     );
 
-    let mut stroke = tiny_skia::Stroke::default();
-    stroke.width = BORDER_WIDTH as f32;
-    stroke.line_cap = tiny_skia::LineCap::Square;
+    let stroke = tiny_skia::Stroke {
+        width: BORDER_WIDTH,
+        line_cap: tiny_skia::LineCap::Square,
+        ..Default::default()
+    };
 
     let square_path = {
         let mut pb = tiny_skia::PathBuilder::new();
@@ -452,6 +458,7 @@ fn render_navicust_body<'a>(
     // First pass: draw background.
     for y in 0..width {
         for x in 0..height {
+            #[allow(clippy::nonminimal_bool)]
             if navicust_layout.has_out_of_bounds
                 && ((x == 0 && y == 0)
                     || (x == 0 && y == height - 1)
@@ -476,8 +483,8 @@ fn render_navicust_body<'a>(
 
     // Second pass: draw squares.
     for (i, ncp_i) in materialized.iter().enumerate() {
-        let x = i % width as usize;
-        let y = i / width as usize;
+        let x = i % width;
+        let y = i / width;
         let ncp_i = if let Some(ncp_i) = ncp_i {
             *ncp_i
         } else {
@@ -520,14 +527,12 @@ fn render_navicust_body<'a>(
 
     // Third pass: draw borders.
     for (i, ncp_i) in materialized.iter().enumerate() {
-        let ncp_i = if let Some(ncp_i) = ncp_i {
-            *ncp_i
-        } else {
+        let Some(ncp_i) = *ncp_i else {
             continue;
         };
 
-        let x = i % width as usize;
-        let y = i / width as usize;
+        let x = i % width;
+        let y = i / width;
 
         let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
 
@@ -691,7 +696,7 @@ pub fn show(
                 let _ = clipboard.set_image(arboard::ImageData {
                     width: image.width() as usize,
                     height: image.height() as usize,
-                    bytes: std::borrow::Cow::Borrowed(&image),
+                    bytes: std::borrow::Cow::Borrowed(image),
                 });
             })()
         }
@@ -708,7 +713,7 @@ pub fn show(
                     egui::Layout::left_to_right(egui::Align::Min)
                 },
                 |ui| {
-                    if !state.rendered_navicust_cache.is_some() {
+                    if state.rendered_navicust_cache.is_none() {
                         let materialized = navicust_view.materialized();
                         let image = render_navicust(
                             &materialized,
@@ -717,7 +722,7 @@ pub fn show(
                             assets,
                             &[font_families.fontdue_for_language(game_lang)]
                                 .into_iter()
-                                .chain(font_families.all_fontdue().into_iter())
+                                .chain(font_families.all_fontdue())
                                 .collect::<Vec<_>>(),
                         );
                         let texture = ui.ctx().load_texture(
@@ -761,7 +766,7 @@ pub fn show(
                                         .and_then(|ncp| assets.navicust_part(ncp.id))
                                     {
                                         resp.on_hover_text_at_pointer(
-                                            egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                            egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
                                                 .family(font_families.for_language(game_lang)),
                                         );
                                     }
