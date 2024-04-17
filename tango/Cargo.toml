@@ -42,7 +42,7 @@ env_logger = "0.9"
 fluent-bundle = "0.15"
 fluent-langneg = "0.13"
 fluent-templates = "0.8"
-fontdue = "0.7"
+fontdue = { version = "0.8", features = ["simd", "parallel"] }
 futures = "0.3"
 futures-util = "0.3"
 glow = "0.13"

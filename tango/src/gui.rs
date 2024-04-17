@@ -106,42 +106,10 @@ impl State {
         init_link_code: Option<String>,
     ) -> Result<Self, anyhow::Error> {
         let font_families = FontFamilies {
-            latn: {
-                let raw = include_bytes!("fonts/NotoSans-Regular.ttf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Latn".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            jpan: {
-                let raw = include_bytes!("fonts/NotoSansJP-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Jpan".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            hans: {
-                let raw = include_bytes!("fonts/NotoSansSC-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Hans".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            hant: {
-                let raw = include_bytes!("fonts/NotoSansTC-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Hant".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
+            latn: FontFamily::new("Latn", include_bytes!("fonts/NotoSans-Regular.ttf")),
+            jpan: FontFamily::new("Jpan", include_bytes!("fonts/NotoSansJP-Regular.otf")),
+            hans: FontFamily::new("Hans", include_bytes!("fonts/NotoSansSC-Regular.otf")),
+            hant: FontFamily::new("Hant", include_bytes!("fonts/NotoSansTC-Regular.otf")),
         };
 
         ctx.set_fonts(egui::FontDefinitions {
@@ -229,9 +197,19 @@ struct Themes {
 }
 
 pub struct FontFamily {
-    pub egui: egui::FontFamily,
-    pub raw: &'static [u8],
-    pub fontdue: fontdue::Font,
+    egui: egui::FontFamily,
+    raw: &'static [u8],
+    fontdue: fontdue::Font,
+}
+
+impl FontFamily {
+    fn new(name: &str, raw: &'static [u8]) -> Self {
+        Self {
+            egui: egui::FontFamily::Name(name.into()),
+            raw,
+            fontdue: fontdue::Font::from_bytes(raw, fontdue::FontSettings::default()).unwrap(),
+        }
+    }
 }
 
 pub struct FontFamilies {
@@ -264,13 +242,14 @@ impl FontFamilies {
         }
     }
 
-    pub fn all_fontdue(&self) -> Vec<&fontdue::Font> {
-        vec![
+    pub fn all_fontdue(&self) -> impl Iterator<Item = &fontdue::Font> {
+        [
             &self.latn.fontdue,
             &self.jpan.fontdue,
             &self.hans.fontdue,
             &self.hant.fontdue,
         ]
+        .into_iter()
     }
 }
 
