@@ -259,15 +259,15 @@ fn show_input_tab(
                                                 .unwrap_or(raw)
                                         }
                                         input::PhysicalInput::Button(button) => {
-                                            let raw = button.string();
+                                            let raw = button.str();
                                             i18n::LOCALES
                                                 .lookup(lang, &format!("physical-input-button-{}", raw))
-                                                .unwrap_or(raw)
+                                                .unwrap_or(raw.to_string())
                                         }
                                         input::PhysicalInput::Axis { axis, direction } => {
                                             let raw = format!(
                                                 "{}-{}",
-                                                axis.string(),
+                                                axis.str(),
                                                 match direction {
                                                     input::AxisDirection::Positive => "plus",
                                                     input::AxisDirection::Negative => "minus",

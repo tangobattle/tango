@@ -9,6 +9,7 @@ extern crate lazy_static;
 
 mod audio;
 mod config;
+mod controller;
 mod discord;
 mod game;
 mod graphics;
@@ -369,6 +370,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
             }
             winit::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
+                #[cfg(not(target_os = "android"))]
                 for sdl_event in sdl_event_loop.poll_iter() {
                     match sdl_event {
                         sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
@@ -407,7 +409,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Axis {
-                                        axis,
+                                        axis: axis.into(),
                                         direction: if value > input::AXIS_THRESHOLD {
                                             input::AxisDirection::Positive
                                         } else {
@@ -423,15 +425,17 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             if let Some(steal_input) = state.steal_input.take() {
-                                steal_input
-                                    .run_callback(input::PhysicalInput::Button(button), &mut next_config.input_mapping);
+                                steal_input.run_callback(
+                                    input::PhysicalInput::Button(button.into()),
+                                    &mut next_config.input_mapping,
+                                );
                             } else {
-                                input_state.handle_controller_button_down(which, button);
+                                input_state.handle_controller_button_down(which, button.into());
                             }
                             gfx_backend.window().request_redraw();
                         }
                         sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
-                            input_state.handle_controller_button_up(which, button);
+                            input_state.handle_controller_button_up(which, button.into());
                             gfx_backend.window().request_redraw();
                         }
                         _ => {}

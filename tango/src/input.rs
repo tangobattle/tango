@@ -1,52 +1,13 @@
-use serde::Deserialize;
+use crate::controller::{ControllerAxis, ControllerButton};
 
-pub type State = input_helper::State<winit::event::VirtualKeyCode, sdl2::controller::Button>;
-
-fn serialize_sdl2_button<S>(v: &sdl2::controller::Button, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&v.string())
-}
-
-fn deserialize_sdl2_button<'de, D>(deserializer: D) -> Result<sdl2::controller::Button, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let buf = String::deserialize(deserializer)?;
-    sdl2::controller::Button::from_string(&buf)
-        .ok_or_else(|| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 button"))
-}
-
-fn serialize_sdl2_axis<S>(v: &sdl2::controller::Axis, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&v.string())
-}
-
-fn deserialize_sdl2_axis<'de, D>(deserializer: D) -> Result<sdl2::controller::Axis, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let buf = String::deserialize(deserializer)?;
-    sdl2::controller::Axis::from_string(&buf)
-        .ok_or_else(|| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 axis"))
-}
+pub type State = input_helper::State<winit::event::VirtualKeyCode, ControllerButton>;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalInput {
     Key(winit::event::VirtualKeyCode),
-    Button(
-        #[serde(
-            serialize_with = "serialize_sdl2_button",
-            deserialize_with = "deserialize_sdl2_button"
-        )]
-        sdl2::controller::Button,
-    ),
+    Button(ControllerButton),
     Axis {
-        #[serde(serialize_with = "serialize_sdl2_axis", deserialize_with = "deserialize_sdl2_axis")]
-        axis: sdl2::controller::Axis,
+        axis: ControllerAxis,
         direction: AxisDirection,
     },
 }
@@ -113,67 +74,67 @@ impl Default for Mapping {
         Mapping {
             up: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Up),
-                PhysicalInput::Button(sdl2::controller::Button::DPadUp),
+                PhysicalInput::Button(ControllerButton::DPadUp),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::LeftY,
+                    axis: ControllerAxis::LeftY,
                     direction: AxisDirection::Negative,
                 },
             ],
             down: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Down),
-                PhysicalInput::Button(sdl2::controller::Button::DPadDown),
+                PhysicalInput::Button(ControllerButton::DPadDown),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::LeftY,
+                    axis: ControllerAxis::LeftY,
                     direction: AxisDirection::Positive,
                 },
             ],
             left: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Left),
-                PhysicalInput::Button(sdl2::controller::Button::DPadLeft),
+                PhysicalInput::Button(ControllerButton::DPadLeft),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::LeftX,
+                    axis: ControllerAxis::LeftX,
                     direction: AxisDirection::Negative,
                 },
             ],
             right: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Right),
-                PhysicalInput::Button(sdl2::controller::Button::DPadRight),
+                PhysicalInput::Button(ControllerButton::DPadRight),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::LeftX,
+                    axis: ControllerAxis::LeftX,
                     direction: AxisDirection::Positive,
                 },
             ],
             a: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Z),
-                PhysicalInput::Button(sdl2::controller::Button::A),
+                PhysicalInput::Button(ControllerButton::A),
             ],
             b: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::X),
-                PhysicalInput::Button(sdl2::controller::Button::B),
+                PhysicalInput::Button(ControllerButton::B),
             ],
             l: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::A),
-                PhysicalInput::Button(sdl2::controller::Button::LeftShoulder),
+                PhysicalInput::Button(ControllerButton::LeftShoulder),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::TriggerLeft,
+                    axis: ControllerAxis::TriggerLeft,
                     direction: AxisDirection::Positive,
                 },
             ],
             r: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::S),
-                PhysicalInput::Button(sdl2::controller::Button::RightShoulder),
+                PhysicalInput::Button(ControllerButton::RightShoulder),
                 PhysicalInput::Axis {
-                    axis: sdl2::controller::Axis::TriggerRight,
+                    axis: ControllerAxis::TriggerRight,
                     direction: AxisDirection::Positive,
                 },
             ],
             select: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Space),
-                PhysicalInput::Button(sdl2::controller::Button::Back),
+                PhysicalInput::Button(ControllerButton::Back),
             ],
             start: vec![
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Return),
-                PhysicalInput::Button(sdl2::controller::Button::Start),
+                PhysicalInput::Button(ControllerButton::Start),
             ],
             speed_change: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
             menu: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::Escape)],
