@@ -375,6 +375,8 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             if game_controller.is_game_controller(which) {
                                 match game_controller.open(which) {
                                     Ok(controller) => {
+                                        log::info!("controller added: {}", controller.name());
+
                                         // insane: `which` for ControllerDeviceAdded is not the same as the other events
                                         // https://github.com/libsdl-org/SDL/issues/7401
                                         // this event uses `joystick_index`, the rest work on the joystick's `id`
