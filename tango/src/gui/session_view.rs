@@ -74,8 +74,8 @@ fn show_emulator(
     vbuf.texture.set(vbuf.image.clone(), egui::TextureOptions::NEAREST);
 
     let gba_screen_size = egui::Vec2::new(mgba::gba::SCREEN_WIDTH as _, mgba::gba::SCREEN_HEIGHT as _);
-    let mut scaling_factor: f32 =
-        egui::Vec2::min_elem(ui.available_size() * ui.ctx().pixels_per_point() / gba_screen_size);
+    let pixels_per_point = ui.ctx().pixels_per_point();
+    let mut scaling_factor: f32 = egui::Vec2::min_elem(ui.available_size() * pixels_per_point / gba_screen_size);
 
     if integer_scaling {
         scaling_factor = scaling_factor.floor();
@@ -87,10 +87,11 @@ fn show_emulator(
         scaling_factor = scaling_factor.min(max_scale as _);
     }
 
-    ui.image(
-        &vbuf.texture,
-        gba_screen_size * scaling_factor / ui.ctx().pixels_per_point(),
-    );
+    let scaled_size = gba_screen_size * scaling_factor / pixels_per_point;
+    let center = (ui.available_size() * 0.5 * pixels_per_point).floor() / pixels_per_point;
+    let rect = egui::Rect::from_center_size(center.to_pos2(), scaled_size);
+
+    ui.put(rect, egui::Image::new(&vbuf.texture, scaled_size));
     ui.ctx().request_repaint();
 }
 
