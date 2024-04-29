@@ -73,26 +73,23 @@ fn show_emulator(
 
     vbuf.texture.set(vbuf.image.clone(), egui::TextureOptions::NEAREST);
 
-    let mut scaling_factor = std::cmp::min_by(
-        ui.available_width() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_WIDTH as f32,
-        ui.available_height() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_HEIGHT as f32,
-        |a, b| a.partial_cmp(b).unwrap(),
-    );
+    let gba_screen_size = egui::Vec2::new(mgba::gba::SCREEN_WIDTH as _, mgba::gba::SCREEN_HEIGHT as _);
+    let mut scaling_factor: f32 =
+        egui::Vec2::min_elem(ui.available_size() * ui.ctx().pixels_per_point() / gba_screen_size);
 
     if integer_scaling {
         scaling_factor = scaling_factor.floor();
     }
 
-    scaling_factor = std::cmp::max_by(scaling_factor, 1.0, |a, b| a.partial_cmp(b).unwrap());
+    scaling_factor = scaling_factor.max(1.0);
+
     if max_scale > 0 {
-        scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| a.partial_cmp(b).unwrap());
+        scaling_factor = scaling_factor.min(max_scale as _);
     }
+
     ui.image(
         &vbuf.texture,
-        egui::Vec2::new(
-            mgba::gba::SCREEN_WIDTH as f32 * scaling_factor as f32 / ui.ctx().pixels_per_point(),
-            mgba::gba::SCREEN_HEIGHT as f32 * scaling_factor as f32 / ui.ctx().pixels_per_point(),
-        ),
+        gba_screen_size * scaling_factor / ui.ctx().pixels_per_point(),
     );
     ui.ctx().request_repaint();
 }
