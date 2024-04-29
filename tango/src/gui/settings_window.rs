@@ -362,7 +362,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                         )
                         .clicked()
                     {
-                        window.set_inner_size(winit::dpi::LogicalSize::new(
+                        window.set_inner_size(winit::dpi::PhysicalSize::new(
                             mgba::gba::SCREEN_WIDTH * i,
                             mgba::gba::SCREEN_HEIGHT * i,
                         ));
