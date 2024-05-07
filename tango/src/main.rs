@@ -176,7 +176,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
             icon_height,
         )?))
         .with_inner_size(config.read().window_size)
-        .with_min_inner_size(winit::dpi::LogicalSize::new(
+        .with_min_inner_size(winit::dpi::PhysicalSize::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
         ))
