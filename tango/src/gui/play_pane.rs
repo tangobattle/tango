@@ -162,13 +162,13 @@ fn make_warning(
             .patch
             .as_ref()
             .map(|(name, version, _)| (name.as_str(), version)),
-        &patches,
+        patches,
     );
 
     let remote_netplay_compatibility = get_netplay_compatibility(
         remote_game,
         remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
-        &patches,
+        patches,
     );
 
     if local_netplay_compatibility != remote_netplay_compatibility {
@@ -216,11 +216,9 @@ pub fn get_netplay_compatibility(
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) -> Option<String> {
     if let Some(patch) = patch.as_ref() {
-        patches.get(patch.0).and_then(|p| {
-            p.versions
-                .get(&patch.1)
-                .map(|vinfo| vinfo.netplay_compatibility.clone())
-        })
+        patches
+            .get(patch.0)
+            .and_then(|p| p.versions.get(patch.1).map(|vinfo| vinfo.netplay_compatibility.clone()))
     } else {
         Some(game.gamedb_entry().family_and_variant.0.to_string())
     }
@@ -310,8 +308,8 @@ fn are_settings_compatible(
         }
     }
 
-    let local_simplified_settings = SimplifiedSettings::new(&local_settings, patches);
-    let remote_simplified_settings = SimplifiedSettings::new(&remote_settings, patches);
+    let local_simplified_settings = SimplifiedSettings::new(local_settings, patches);
+    let remote_simplified_settings = SimplifiedSettings::new(remote_settings, patches);
 
     local_simplified_settings.netplay_compatibility.is_some()
         && remote_simplified_settings.netplay_compatibility.is_some()
@@ -344,7 +342,7 @@ impl Lobby {
         let mut nonce = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut nonce);
         let negotiated_state = net::protocol::NegotiatedState {
-            nonce: nonce.clone(),
+            nonce,
             save_data: save_data.to_vec(),
         };
         let buf = zstd::stream::encode_all(
@@ -493,17 +491,16 @@ impl Lobby {
             ..self.make_local_settings()
         })
         .await?;
-        self.local_selection = if let Some(selection) = selection.as_ref() {
-            Some(LocalSelection {
-                game: selection.game,
-                save: selection.save.save.clone(),
-                rom: selection.rom.clone(),
-                patch: selection.patch.clone(),
-            })
-        } else {
-            None
-        };
+
+        self.local_selection = selection.as_ref().map(|selection| LocalSelection {
+            game: selection.game,
+            save: selection.save.save.clone(),
+            rom: selection.rom.clone(),
+            patch: selection.patch.clone(),
+        });
+
         self.match_type = match_type;
+
         if !self.can_ready() {
             self.remote_commitment = None;
         }
@@ -541,7 +538,7 @@ impl Lobby {
                             return None;
                         };
 
-                        let rom = match patch::apply_patch_from_disk(&rom, game, patches_path, &pi.name, &pi.version) {
+                        let rom = match patch::apply_patch_from_disk(rom, game, patches_path, &pi.name, &pi.version) {
                             Ok(r) => r,
                             Err(e) => {
                                 log::error!("failed to apply patch {}: {:?}: {:?}", pi.name, (rom_code, revision), e);
@@ -745,7 +742,7 @@ async fn run_connection_task(
                         } else {
                             return Err(ConnectionError::Other(anyhow::anyhow!("no sender?")));
                         };
-                        (sender, lobby.match_type, local_settings, lobby.remote_selection.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.clone(), lobby.local_selection.clone(), lobby.link_code.clone())
+                        (sender, lobby.match_type, local_settings, lobby.remote_selection.clone(), lobby.remote_settings.clone(), lobby.remote_commitment, lobby.local_negotiated_state.clone(), lobby.local_selection.clone(), lobby.link_code.clone())
                     };
 
                     let remote_selection = if let Some(remote_selection) = remote_selection {
@@ -1020,7 +1017,7 @@ fn show_lobby_table(
                             ui.horizontal(|ui| {
                                 ui.strong(i18n::LOCALES.lookup(&config.language, "play-details-game").unwrap());
 
-                                if let Some(warning) = make_warning(&lobby, &roms, &patches) {
+                                if let Some(warning) = make_warning(lobby, roms, patches) {
                                     gui::warning::show(ui, warning.description(&config.language));
                                 }
                             });
@@ -1050,7 +1047,7 @@ fn show_lobby_table(
                             ui.vertical(|ui| {
                                 if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
                                     let (family, variant) = &game_info.family_and_variant;
-                                    if let Some(game) = game::find_by_family_and_variant(&family, *variant) {
+                                    if let Some(game) = game::find_by_family_and_variant(family, *variant) {
                                         let (family, _) = game.gamedb_entry().family_and_variant;
                                         ui.label(
                                             i18n::LOCALES
@@ -1413,7 +1410,7 @@ fn show_bottom_pane(
                             )));
 
                             ui.add_enabled_ui(lobby.local_negotiated_state.is_none() && lobby.sender.is_some(), |ui| {
-                                show_lobby_table(ui, &cancellation_token, config, &mut lobby, &roms, &patches);
+                                show_lobby_table(ui, cancellation_token, config, &mut lobby, &roms, &patches);
                             });
                         }
                     }
@@ -1527,7 +1524,7 @@ fn show_bottom_pane(
                         .filter(|c| "abcdefghijklmnopqrstuvwxyz0123456789-".chars().any(|c2| c2 == *c))
                         .take(40)
                         .collect::<String>()
-                        .trim_start_matches("-")
+                        .trim_start_matches('-')
                         .to_string();
 
                     if let Some(last) = link_code.chars().last() {
@@ -1578,7 +1575,7 @@ fn show_bottom_pane(
                                     config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
                                 };
                                 let link_code = link_code.to_owned();
-                                let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                                let nickname = config.nickname.clone().unwrap_or_default();
                                 let patches_path = config.patches_path();
                                 let replays_path = config.replays_path();
                                 let config_arc = config_arc.clone();
@@ -1680,7 +1677,7 @@ pub fn show(
             selection,
             emu_tps_counter,
             discord_client,
-            &mut *connection_task,
+            &mut connection_task,
             connection_task_arc,
             &mut state.link_code,
             &mut state.show_link_code,
@@ -1703,10 +1700,10 @@ pub fn show(
         )
         .show_inside(ui, |ui| {
             let lobby = connection_task.as_ref().and_then(|task| match task {
-                ConnectionTask::InProgress { state, .. } => match state {
-                    ConnectionState::InLobby(lobby) => Some(lobby.blocking_lock()),
-                    _ => None,
-                },
+                ConnectionTask::InProgress {
+                    state: ConnectionState::InLobby(lobby),
+                    ..
+                } => Some(lobby.blocking_lock()),
                 _ => None,
             });
 
@@ -1736,7 +1733,7 @@ pub fn show(
                                     .vertical_centered_justified(|ui| {
                                         let patches = patches_scanner.read();
                                         let warning = if let Some(lobby) = lobby.as_ref() {
-                                            make_warning(&lobby, &roms, &patches)
+                                            make_warning(lobby, &roms, &patches)
                                         } else {
                                             None
                                         };
@@ -1906,6 +1903,6 @@ pub fn show(
     }) = connection_task.as_ref()
     {
         let mut lobby = lobby.blocking_lock();
-        let _ = sync::block_on(lobby.set_local_selection(&selection));
+        let _ = sync::block_on(lobby.set_local_selection(selection));
     }
 }
