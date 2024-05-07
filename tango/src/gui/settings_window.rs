@@ -16,15 +16,11 @@ enum Tab {
 
 pub struct State {
     tab: Tab,
-    emblem: egui_extras::RetainedImage,
 }
 
 impl State {
     pub fn new() -> Self {
-        Self {
-            tab: Tab::General,
-            emblem: egui_extras::RetainedImage::from_image_bytes("emblem", include_bytes!("../emblem.png")).unwrap(),
-        }
+        Self { tab: Tab::General }
     }
 }
 
@@ -110,7 +106,7 @@ pub fn show(
                             saves_scanner.clone(),
                             patches_scanner.clone(),
                         ),
-                        Tab::About => show_about_tab(ui, &state.emblem),
+                        Tab::About => show_about_tab(ui),
                     };
                 });
             });
@@ -126,7 +122,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
         .num_columns(2)
         .show(ui, |ui| {
             {
-                let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                let mut nickname = config.nickname.clone().unwrap_or_default();
                 ui.strong(i18n::LOCALES.lookup(&config.language, "settings-nickname").unwrap());
                 ui.add(egui::TextEdit::singleline(&mut nickname).desired_width(100.0));
                 config.nickname = Some(nickname.chars().take(20).collect());
@@ -287,7 +283,6 @@ fn show_input_tab(
                         if ui.add(egui::Button::new("➕")).clicked() {
                             *steal_input = Some(gui::steal_input_window::State::new(
                                 {
-                                    let get_mapping = get_mapping.clone();
                                     Box::new(move |phy, input_mapping| {
                                         let mapping = get_mapping(input_mapping);
                                         mapping.push(phy);
@@ -362,7 +357,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                         )
                         .clicked()
                     {
-                        window.set_inner_size(winit::dpi::PhysicalSize::new(
+                        let _ = window.request_inner_size(winit::dpi::LogicalSize::new(
                             mgba::gba::SCREEN_WIDTH * i,
                             mgba::gba::SCREEN_HEIGHT * i,
                         ));
@@ -701,13 +696,15 @@ fn show_advanced_tab(
         });
 }
 
-fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
+fn show_about_tab(ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
         ui.heading(format!("Tango {}", version::current()));
 
         ui.add_space(8.0);
         ui.vertical_centered(|ui| {
-            emblem.show_scaled(ui, 0.5);
+            let emblem = egui::Image::new(egui::include_image!("../emblem.png"));
+            let emblem_size = emblem.load_and_calc_size(ui, egui::Vec2::INFINITY).unwrap_or_default() * 0.5;
+            ui.add(emblem.fit_to_exact_size(emblem_size));
         });
         ui.add_space(8.0);
 

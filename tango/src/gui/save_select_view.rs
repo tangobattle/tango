@@ -905,112 +905,111 @@ pub fn show(
                                             },
                                         ),
                                     );
-                                    if ui
-                                        .selectable_label(selected, layout_job)
-                                        .context_menu(|ui| {
-                                            if ui
-                                                .button(egui::RichText::new(format!(
-                                                    "📄 {}",
-                                                    i18n::LOCALES
-                                                        .lookup(language, "select-save.duplicate-save")
-                                                        .unwrap()
-                                                )))
-                                                .clicked()
-                                            {
-                                                let (path, mut f) = match create_next_file(&save.path) {
-                                                    Ok((path, f)) => (path, f),
-                                                    Err(e) => {
-                                                        log::error!("failed to create save: {}", e);
-                                                        ui.close_menu();
-                                                        return;
-                                                    }
-                                                };
 
-                                                if let Err(e) = f.write_all(&save.save.as_sram_dump()) {
-                                                    log::error!("failed to write save: {}", e);
+                                    let save_ui_label = ui.selectable_label(selected, layout_job);
+
+                                    save_ui_label.context_menu(|ui| {
+                                        if ui
+                                            .button(egui::RichText::new(format!(
+                                                "📄 {}",
+                                                i18n::LOCALES.lookup(language, "select-save.duplicate-save").unwrap()
+                                            )))
+                                            .clicked()
+                                        {
+                                            let (path, mut f) = match create_next_file(&save.path) {
+                                                Ok((path, f)) => (path, f),
+                                                Err(e) => {
+                                                    log::error!("failed to create save: {}", e);
                                                     ui.close_menu();
                                                     return;
                                                 }
+                                            };
 
-                                                let (game, rom, patch) = if let Some(committed_selection) =
-                                                    committed_selection.take().filter(|committed_selection| {
-                                                        committed_selection.game == selection_state.game
-                                                    }) {
-                                                    (
-                                                        committed_selection.game,
-                                                        committed_selection.rom,
-                                                        committed_selection.patch,
-                                                    )
-                                                } else {
-                                                    let mut rom = roms.get(&selection_state.game).unwrap().clone();
-                                                    if let Some((name, version, _)) = selection_state.patch.as_ref() {
-                                                        let (rom_code, revision) =
-                                                            selection_state.game.gamedb_entry().rom_code_and_revision;
-                                                        rom = match patch::apply_patch_from_disk(
-                                                            &rom,
-                                                            selection_state.game,
-                                                            patches_path,
-                                                            name,
-                                                            version,
-                                                        ) {
-                                                            Ok(r) => r,
-                                                            Err(e) => {
-                                                                log::error!(
-                                                                    "failed to apply patch {}: {:?}: {:?}",
-                                                                    name,
-                                                                    (rom_code, revision),
-                                                                    e
-                                                                );
-                                                                return;
-                                                            }
-                                                        };
-                                                    }
-                                                    (selection_state.game, rom, selection_state.patch.clone())
-                                                };
-
-                                                *show = None;
-                                                *committed_selection = Some(gui::Selection::new(
-                                                    game,
-                                                    save::ScannedSave {
-                                                        path,
-                                                        save: save.save.clone_box(),
-                                                    },
-                                                    patch,
-                                                    rom,
-                                                ));
-
+                                            if let Err(e) = f.write_all(&save.save.as_sram_dump()) {
+                                                log::error!("failed to write save: {}", e);
                                                 ui.close_menu();
+                                                return;
                                             }
 
-                                            // if ui
-                                            //     .button(egui::RichText::new(format!(
-                                            //         "✏️ {}",
-                                            //         i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
-                                            //     )))
-                                            //     .clicked()
-                                            // {
-                                            //     // TODO: Show rename dialog.
-                                            //     ui.close_menu();
-                                            // }
+                                            let (game, rom, patch) = if let Some(committed_selection) =
+                                                committed_selection.take().filter(|committed_selection| {
+                                                    committed_selection.game == selection_state.game
+                                                }) {
+                                                (
+                                                    committed_selection.game,
+                                                    committed_selection.rom,
+                                                    committed_selection.patch,
+                                                )
+                                            } else {
+                                                let mut rom = roms.get(&selection_state.game).unwrap().clone();
+                                                if let Some((name, version, _)) = selection_state.patch.as_ref() {
+                                                    let (rom_code, revision) =
+                                                        selection_state.game.gamedb_entry().rom_code_and_revision;
+                                                    rom = match patch::apply_patch_from_disk(
+                                                        &rom,
+                                                        selection_state.game,
+                                                        patches_path,
+                                                        name,
+                                                        version,
+                                                    ) {
+                                                        Ok(r) => r,
+                                                        Err(e) => {
+                                                            log::error!(
+                                                                "failed to apply patch {}: {:?}: {:?}",
+                                                                name,
+                                                                (rom_code, revision),
+                                                                e
+                                                            );
+                                                            return;
+                                                        }
+                                                    };
+                                                }
+                                                (selection_state.game, rom, selection_state.patch.clone())
+                                            };
 
-                                            // if ui
-                                            //     .button(
-                                            //         egui::RichText::new(format!(
-                                            //             "🗑️ {}",
-                                            //             i18n::LOCALES
-                                            //                 .lookup(language, "select-save.delete-save")
-                                            //                 .unwrap()
-                                            //         ))
-                                            //         .color(egui::Color32::RED),
-                                            //     )
-                                            //     .clicked()
-                                            // {
-                                            //     // TODO: Show confirm dialog.
-                                            //     ui.close_menu();
-                                            // }
-                                        })
-                                        .clicked()
-                                    {
+                                            *show = None;
+                                            *committed_selection = Some(gui::Selection::new(
+                                                game,
+                                                save::ScannedSave {
+                                                    path,
+                                                    save: save.save.clone_box(),
+                                                },
+                                                patch,
+                                                rom,
+                                            ));
+
+                                            ui.close_menu();
+                                        }
+
+                                        // if ui
+                                        //     .button(egui::RichText::new(format!(
+                                        //         "✏️ {}",
+                                        //         i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
+                                        //     )))
+                                        //     .clicked()
+                                        // {
+                                        //     // TODO: Show rename dialog.
+                                        //     ui.close_menu();
+                                        // }
+
+                                        // if ui
+                                        //     .button(
+                                        //         egui::RichText::new(format!(
+                                        //             "🗑️ {}",
+                                        //             i18n::LOCALES
+                                        //                 .lookup(language, "select-save.delete-save")
+                                        //                 .unwrap()
+                                        //         ))
+                                        //         .color(egui::Color32::RED),
+                                        //     )
+                                        //     .clicked()
+                                        // {
+                                        //     // TODO: Show confirm dialog.
+                                        //     ui.close_menu();
+                                        // }
+                                    });
+
+                                    if save_ui_label.clicked() {
                                         let (game, rom, patch) = if let Some(committed_selection) =
                                             committed_selection.take().filter(|committed_selection| {
                                                 committed_selection.game == selection_state.game

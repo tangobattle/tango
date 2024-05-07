@@ -96,7 +96,7 @@ impl Match {
         };
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(crate::shadow::Shadow::new(
-                &remote_rom,
+                remote_rom,
                 remote_save,
                 remote_hooks,
                 match_type,
@@ -477,7 +477,7 @@ impl Round {
             {
                 if let Some(replay_writer) = self.replay_writer.as_mut() {
                     replay_writer
-                        .write_input(self.local_player_index, &ip.clone().into())
+                        .write_input(self.local_player_index, &ip.clone())
                         .expect("write input");
                 }
             }

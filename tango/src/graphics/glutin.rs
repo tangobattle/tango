@@ -1,5 +1,5 @@
 use glow::HasContext;
-use glutin::context::NotCurrentGlContextSurfaceAccessor;
+use glutin::context::NotCurrentGlContext;
 use glutin::display::GetGlDisplay;
 use glutin::display::GlDisplay;
 use glutin::prelude::GlSurface;
@@ -22,7 +22,7 @@ impl Backend {
         event_loop: &winit::event_loop::EventLoopWindowTarget<T>,
     ) -> Result<Self, anyhow::Error> {
         let (window, gl_config) = glutin_winit::DisplayBuilder::new()
-            .with_preference(glutin_winit::ApiPrefence::FallbackEgl)
+            .with_preference(glutin_winit::ApiPreference::FallbackEgl)
             .with_window_builder(Some(wb.clone()))
             .build(
                 event_loop,
@@ -99,8 +99,8 @@ impl Backend {
             glow::Context::from_loader_function(|s| gl_display.get_proc_address(&std::ffi::CString::new(s).unwrap()))
         });
 
-        let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone(), None);
-        egui_glow.egui_winit.set_pixels_per_point(window.scale_factor() as f32);
+        let egui_glow = egui_glow::EguiGlow::new(event_loop, gl.clone(), None, None);
+        egui_glow.egui_ctx.set_pixels_per_point(window.scale_factor() as f32);
 
         log::info!(
             "GL version: {}, extensions: {:?}",
@@ -123,7 +123,7 @@ impl graphics::Backend for Backend {
     fn set_ui_scale(&mut self, scale: f32) {
         self.ui_scale = scale;
         self.egui_glow
-            .egui_winit
+            .egui_ctx
             .set_pixels_per_point(self.window.scale_factor() as f32 * self.ui_scale);
     }
 
@@ -145,7 +145,10 @@ impl graphics::Backend for Backend {
     }
 
     fn run(&mut self, run_ui: &mut dyn FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration {
-        self.egui_glow.run(&self.window, |ui| run_ui(&self.window, ui))
+        self.egui_glow.run(&self.window, |ui| run_ui(&self.window, ui));
+
+        // egui_glow eats the ViewportOutput it seems
+        std::time::Duration::ZERO
     }
 
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse {
@@ -159,22 +162,21 @@ impl graphics::Backend for Backend {
                     );
                 }
             }
-            winit::event::WindowEvent::ScaleFactorChanged {
-                new_inner_size,
-                scale_factor,
-            } => {
+            winit::event::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.egui_glow
-                    .egui_winit
+                    .egui_ctx
                     .set_pixels_per_point(*scale_factor as f32 * self.ui_scale);
-                self.gl_surface.resize(
-                    &self.gl_context,
-                    new_inner_size.width.try_into().unwrap(),
-                    new_inner_size.height.try_into().unwrap(),
-                );
+
+                let inner_size = self.window.inner_size();
+
+                if let (Ok(width), Ok(height)) = (inner_size.width.try_into(), inner_size.height.try_into()) {
+                    self.gl_surface.resize(&self.gl_context, width, height);
+                }
             }
             _ => {}
         }
-        self.egui_glow.on_event(event)
+
+        self.egui_glow.on_window_event(&self.window, event)
     }
 }
 

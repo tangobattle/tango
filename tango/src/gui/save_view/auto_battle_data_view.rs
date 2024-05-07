@@ -111,7 +111,7 @@ fn show_table(
                                     }
 
                                     if let Some(texture_handle) = chip_icon_texture_cache.get(&id) {
-                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                        ui.image((texture_handle.id(), egui::Vec2::new(28.0, 28.0)));
                                     }
                                 });
                                 strip.cell(|ui| {
@@ -153,7 +153,7 @@ fn show_table(
                                     }
 
                                     if let Some(texture_handle) = element_icon_texture_cache.get(&element) {
-                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                        ui.image((texture_handle.id(), egui::Vec2::new(28.0, 28.0)));
                                     }
                                 });
                                 strip.cell(|ui| {
@@ -222,7 +222,7 @@ pub fn show(
             .clicked()
         {
             let _ = clipboard.set_text(
-                vec![
+                [
                     make_string(materialized.secondary_standard_chips(), assets),
                     make_string(materialized.standard_chips(), assets),
                     make_string(materialized.mega_chips(), assets),

@@ -234,7 +234,7 @@ pub fn show(
                                     }
 
                                     if let Some(texture_handle) = state.chip_icon_texture_cache.get(&chip.id) {
-                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0))
+                                        ui.image((texture_handle.id(), egui::Vec2::new(28.0, 28.0)))
                                             .on_hover_ui(|ui| {
                                                 match state.chip_image_texture_cache.entry(chip.id) {
                                                     std::collections::hash_map::Entry::Occupied(_) => {}
@@ -261,10 +261,10 @@ pub fn show(
                                                 if let Some((texture_handle, [width, height])) =
                                                     state.chip_image_texture_cache.get(&chip.id)
                                                 {
-                                                    ui.image(
+                                                    ui.image((
                                                         texture_handle.id(),
                                                         egui::Vec2::new(*width as f32 * 2.0, *height as f32 * 2.0),
-                                                    );
+                                                    ));
                                                 }
                                             });
                                     }
@@ -316,7 +316,7 @@ pub fn show(
                                         });
                                         if g.is_regular {
                                             egui::Frame::none()
-                                                .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+                                                .inner_margin(egui::Margin::symmetric(4.0, 0.0))
                                                 .rounding(egui::Rounding::same(2.0))
                                                 .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
                                                 .show(ui, |ui| {
@@ -325,7 +325,7 @@ pub fn show(
                                         }
                                         for _ in 0..g.tag_count {
                                             egui::Frame::none()
-                                                .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+                                                .inner_margin(egui::Margin::symmetric(4.0, 0.0))
                                                 .rounding(egui::Rounding::same(2.0))
                                                 .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
                                                 .show(ui, |ui| {
@@ -358,7 +358,7 @@ pub fn show(
                                     }
 
                                     if let Some(texture_handle) = state.element_icon_texture_cache.get(&element) {
-                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                        ui.image((texture_handle.id(), egui::Vec2::new(28.0, 28.0)));
                                     }
                                 });
                                 strip.cell(|ui| {

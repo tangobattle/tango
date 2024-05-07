@@ -12,7 +12,7 @@ impl State {
 
 fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_debuff: bool) {
     egui::Frame::none()
-        .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+        .inner_margin(egui::Margin::symmetric(4.0, 0.0))
         .rounding(egui::Rounding::same(2.0))
         .fill(if is_enabled {
             if is_debuff {
@@ -171,7 +171,7 @@ pub fn show_patch_card56s<'a>(
                 .as_ref()
                 .and_then(|item| assets.patch_card56(item.id))
                 .map(|info| info.effects())
-                .unwrap_or_else(|| vec![]);
+                .unwrap_or_default();
             (patch_card, effects)
         })
         .collect::<Vec<_>>();
@@ -249,7 +249,7 @@ pub fn show_patch_card56s<'a>(
                                 assets.patch_card56(patch_card.id).map(|m| (m, patch_card.enabled))
                             }) {
                                 let mut text =
-                                    egui::RichText::new(&patch_card.name().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(patch_card.name().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang));
                                 if !enabled {
                                     text = text.strikethrough();

@@ -43,7 +43,7 @@ impl Selection {
                 &patch
                     .as_ref()
                     .map(|(_, _, metadata)| metadata.rom_overrides.clone())
-                    .unwrap_or_else(|| Default::default()),
+                    .unwrap_or_default(),
             )
             .ok();
         Self {
@@ -106,42 +106,10 @@ impl State {
         init_link_code: Option<String>,
     ) -> Result<Self, anyhow::Error> {
         let font_families = FontFamilies {
-            latn: {
-                let raw = include_bytes!("fonts/NotoSans-Regular.ttf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Latn".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            jpan: {
-                let raw = include_bytes!("fonts/NotoSansJP-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Jpan".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            hans: {
-                let raw = include_bytes!("fonts/NotoSansSC-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Hans".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
-            hant: {
-                let raw = include_bytes!("fonts/NotoSansTC-Regular.otf");
-                FontFamily {
-                    egui: egui::FontFamily::Name("Hant".into()),
-                    raw,
-                    fontdue: fontdue::Font::from_bytes(&raw[..], fontdue::FontSettings::default())
-                        .map_err(|e| anyhow::format_err!("{}", e))?,
-                }
-            },
+            latn: FontFamily::new("Latn", include_bytes!("fonts/NotoSans-Regular.ttf")),
+            jpan: FontFamily::new("Jpan", include_bytes!("fonts/NotoSansJP-Regular.otf")),
+            hans: FontFamily::new("Hans", include_bytes!("fonts/NotoSansSC-Regular.otf")),
+            hant: FontFamily::new("Hant", include_bytes!("fonts/NotoSansTC-Regular.otf")),
         };
 
         ctx.set_fonts(egui::FontDefinitions {
@@ -229,9 +197,19 @@ struct Themes {
 }
 
 pub struct FontFamily {
-    pub egui: egui::FontFamily,
-    pub raw: &'static [u8],
-    pub fontdue: fontdue::Font,
+    egui: egui::FontFamily,
+    raw: &'static [u8],
+    fontdue: fontdue::Font,
+}
+
+impl FontFamily {
+    fn new(name: &str, raw: &'static [u8]) -> Self {
+        Self {
+            egui: egui::FontFamily::Name(name.into()),
+            raw,
+            fontdue: fontdue::Font::from_bytes(raw, fontdue::FontSettings::default()).unwrap(),
+        }
+    }
 }
 
 pub struct FontFamilies {
@@ -264,13 +242,14 @@ impl FontFamilies {
         }
     }
 
-    pub fn all_fontdue(&self) -> Vec<&fontdue::Font> {
-        vec![
+    pub fn all_fontdue(&self) -> impl Iterator<Item = &fontdue::Font> {
+        [
             &self.latn.fontdue,
             &self.jpan.fontdue,
             &self.hans.fontdue,
             &self.hant.fontdue,
         ]
+        .into_iter()
     }
 }
 
@@ -344,7 +323,7 @@ pub fn show(
     let is_dark = match config.theme {
         config::Theme::System => match dark_light::detect() {
             dark_light::Mode::Light => false,
-            dark_light::Mode::Dark => true,
+            dark_light::Mode::Default | dark_light::Mode::Dark => true,
         },
         config::Theme::Light => false,
         config::Theme::Dark => true,
@@ -362,7 +341,7 @@ pub fn show(
             &state.font_families,
             config,
             state.roms_scanner.clone(),
-            state.welcome.get_or_insert_with(|| welcome::State::new()),
+            state.welcome.get_or_insert_with(welcome::State::new),
         );
         return;
     } else {
@@ -418,7 +397,7 @@ pub fn show(
             state.emu_tps_counter.clone(),
             config.show_debug,
             config.show_status_bar,
-            state.session_view.get_or_insert_with(|| session_view::State::new()),
+            state.session_view.get_or_insert_with(session_view::State::new),
             &mut state.discord_client,
         );
     } else {

@@ -1,10 +1,10 @@
 use crate::controller::{ControllerAxis, ControllerButton};
-
-pub type State = input_helper::State<winit::event::VirtualKeyCode, ControllerButton>;
+use crate::keyboard::Key;
+pub type State = input_helper::State<Key, ControllerButton>;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalInput {
-    Key(winit::event::VirtualKeyCode),
+    Key(Key),
     Button(ControllerButton),
     Axis {
         axis: ControllerAxis,
@@ -73,7 +73,7 @@ impl Default for Mapping {
     fn default() -> Self {
         Mapping {
             up: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Up),
+                PhysicalInput::Key(Key::Up),
                 PhysicalInput::Button(ControllerButton::DPadUp),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::LeftY,
@@ -81,7 +81,7 @@ impl Default for Mapping {
                 },
             ],
             down: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Down),
+                PhysicalInput::Key(Key::Down),
                 PhysicalInput::Button(ControllerButton::DPadDown),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::LeftY,
@@ -89,7 +89,7 @@ impl Default for Mapping {
                 },
             ],
             left: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Left),
+                PhysicalInput::Key(Key::Left),
                 PhysicalInput::Button(ControllerButton::DPadLeft),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::LeftX,
@@ -97,23 +97,17 @@ impl Default for Mapping {
                 },
             ],
             right: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Right),
+                PhysicalInput::Key(Key::Right),
                 PhysicalInput::Button(ControllerButton::DPadRight),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::LeftX,
                     direction: AxisDirection::Positive,
                 },
             ],
-            a: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Z),
-                PhysicalInput::Button(ControllerButton::A),
-            ],
-            b: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::X),
-                PhysicalInput::Button(ControllerButton::B),
-            ],
+            a: vec![PhysicalInput::Key(Key::Z), PhysicalInput::Button(ControllerButton::A)],
+            b: vec![PhysicalInput::Key(Key::X), PhysicalInput::Button(ControllerButton::B)],
             l: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::A),
+                PhysicalInput::Key(Key::A),
                 PhysicalInput::Button(ControllerButton::LeftShoulder),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::TriggerLeft,
@@ -121,7 +115,7 @@ impl Default for Mapping {
                 },
             ],
             r: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::S),
+                PhysicalInput::Key(Key::S),
                 PhysicalInput::Button(ControllerButton::RightShoulder),
                 PhysicalInput::Axis {
                     axis: ControllerAxis::TriggerRight,
@@ -129,15 +123,15 @@ impl Default for Mapping {
                 },
             ],
             select: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Space),
+                PhysicalInput::Key(Key::Space),
                 PhysicalInput::Button(ControllerButton::Back),
             ],
             start: vec![
-                PhysicalInput::Key(winit::event::VirtualKeyCode::Return),
+                PhysicalInput::Key(Key::Return),
                 PhysicalInput::Button(ControllerButton::Start),
             ],
-            speed_change: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
-            menu: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::Escape)],
+            speed_change: vec![PhysicalInput::Key(Key::LShift)],
+            menu: vec![PhysicalInput::Key(Key::Escape)],
         }
     }
 }
