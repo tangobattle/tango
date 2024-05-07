@@ -113,7 +113,10 @@ pub fn show(
     let patches = patches_scanner.read();
 
     egui::SidePanel::left("replays-window-left-panel")
-        .frame(Default::default())
+        .frame(egui::Frame::default().inner_margin(egui::Margin {
+            right: 8.0,
+            ..Default::default()
+        }))
         .show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
