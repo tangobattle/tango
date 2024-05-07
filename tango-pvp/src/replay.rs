@@ -32,7 +32,7 @@ pub struct Replay {
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
-        VERSION => protos::replay11::Metadata::decode(&raw[..])?,
+        VERSION => protos::replay11::Metadata::decode(raw)?,
         _ => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -45,7 +45,7 @@ pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Err
 pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), std::io::Error> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
-    if &header != HEADER {
+    if header != HEADER {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
     }
 
@@ -144,7 +144,7 @@ impl Replay {
         }
 
         Ok(Self {
-            is_complete: num_inputs > 0 && num_inputs as usize == input_pairs.len(),
+            is_complete: num_inputs > 0 && num_inputs == input_pairs.len(),
             metadata,
             local_player_index,
             local_state,

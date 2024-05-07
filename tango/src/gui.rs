@@ -175,12 +175,15 @@ impl State {
                     let mut visuals = egui::style::Visuals::light();
                     visuals.selection.bg_fill = egui::Color32::from_rgb(0x4c, 0xaf, 0x50);
                     visuals.selection.stroke.color = egui::Color32::BLACK;
+                    visuals.faint_bg_color = egui::Color32::LIGHT_GRAY;
                     visuals
                 },
                 dark: {
                     let mut visuals = egui::style::Visuals::dark();
                     visuals.selection.bg_fill = egui::Color32::from_rgb(0x4c, 0xaf, 0x50);
                     visuals.selection.stroke.color = egui::Color32::WHITE;
+                    visuals.faint_bg_color = egui::Color32::from_gray(14);
+                    visuals.extreme_bg_color = egui::Color32::BLACK;
                     visuals
                 },
             },
@@ -368,12 +371,7 @@ pub fn show(
         &config.language,
         &mut state.show_settings,
     );
-    replay_dump_windows::show(
-        ctx,
-        &mut state.replay_dump_windows,
-        &config.language,
-        &config.replays_path(),
-    );
+    replay_dump_windows::show(ctx, &mut state.replay_dump_windows, &config.language);
 
     if let Some(session) = state.session.lock().as_ref() {
         window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());

@@ -108,7 +108,12 @@ fn resolve_ffmpeg_path(ffmpeg: &Option<std::path::PathBuf>) -> std::path::PathBu
             .map(|p| p.join("ffmpeg"))
             .unwrap_or("ffmpeg".into());
         p.set_extension(std::env::consts::EXE_EXTENSION);
-        p
+
+        if p.exists() {
+            p
+        } else {
+            "ffmpeg".into()
+        }
     })
 }
 
@@ -126,9 +131,9 @@ fn make_video_ffmpeg(
     child
         .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
-        .args(&["-y"])
+        .args(["-y"])
         // Input args.
-        .args(&[
+        .args([
             "-f",
             "rawvideo",
             "-pixel_format",
@@ -142,8 +147,8 @@ fn make_video_ffmpeg(
         ])
         // Output args.
         .args(flags)
-        .args(&["-f", "matroska"])
-        .arg(&output_path);
+        .args(["-f", "matroska"])
+        .arg(output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
     Ok(child.spawn()?)
@@ -158,13 +163,13 @@ fn make_audio_ffmpeg(
     child
         .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
-        .args(&["-y"])
+        .args(["-y"])
         // Input args.
-        .args(&["-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "pipe:"])
+        .args(["-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "pipe:"])
         // Output args.
         .args(flags)
-        .args(&["-f", "matroska"])
-        .arg(&output_path);
+        .args(["-f", "matroska"])
+        .arg(output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
     Ok(child.spawn()?)
@@ -178,25 +183,21 @@ fn make_mux_ffmpeg(
     flags: &[std::ffi::OsString],
 ) -> anyhow::Result<tokio::process::Child> {
     let mut child = tokio::process::Command::new(resolve_ffmpeg_path(ffmpeg));
-    child
-        .kill_on_drop(true)
-        .args(&["-y"])
-        .args(&["-i"])
-        .arg(video_input_path);
+    child.kill_on_drop(true).args(["-y"]).args(["-i"]).arg(video_input_path);
 
     for path in audio_input_paths {
-        child.args(&["-i"]).arg(path);
+        child.args(["-i"]).arg(path);
     }
 
-    child.args(&["-c:v", "copy", "-c:a", "copy"]);
+    child.args(["-c:v", "copy", "-c:a", "copy"]);
 
-    child.args(&["-map", "0"]);
+    child.args(["-map", "0"]);
     for i in 0..audio_input_paths.len() {
         child.arg("-map").arg(format!("{}", i + 1));
     }
 
     child.args(flags);
-    child.arg(&output_path);
+    child.arg(output_path);
 
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
@@ -206,14 +207,12 @@ fn make_mux_ffmpeg(
 pub async fn export(
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
-    replay: &crate::replay::Replay,
+    replays: &[crate::replay::Replay],
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
-    let (mut core, state) = make_core_and_state(rom, hooks, replay, settings)?;
-
-    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH as u32, mgba::gba::SCREEN_HEIGHT as u32);
+    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = make_video_ffmpeg(
@@ -223,7 +222,7 @@ pub async fn export(
         mgba::gba::SCREEN_HEIGHT as usize,
         &shell_words::split(&settings.ffmpeg_video_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
 
@@ -233,31 +232,43 @@ pub async fn export(
         audio_output.path(),
         &shell_words::split(&settings.ffmpeg_audio_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
 
+    let total_frames = replays.iter().map(|replay| replay.input_pairs.len()).sum();
+    let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
-    let total = state.lock_inner().input_pairs_left();
-    loop {
-        {
-            let state = state.lock_inner();
-            if (!replay.is_complete && state.input_pairs_left() == 0) || state.is_round_ended() {
-                break;
+
+    for replay in replays {
+        let (mut core, state) = make_core_and_state(rom, hooks, replay, settings)?;
+        let replay_len = replay.input_pairs.len();
+
+        loop {
+            {
+                let state = state.lock_inner();
+                if (!replay.is_complete && state.input_pairs_left() == 0) || state.is_round_ended() {
+                    break;
+                }
             }
+
+            if let Some(err) = state.lock_inner().take_error() {
+                Err(err)?;
+            }
+
+            let samples = run_frame(&mut core, &mut samples, &mut vbuf);
+            video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
+
+            let mut audio_bytes = vec![0u8; samples.len() * 2];
+            byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
+            audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
+            progress_callback(
+                replay_len - state.lock_inner().input_pairs_left() + completed_total,
+                total_frames,
+            );
         }
 
-        if let Some(err) = state.lock_inner().take_error() {
-            Err(err)?;
-        }
-
-        let samples = run_frame(&mut core, &mut samples, &mut vbuf);
-        video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
-
-        let mut audio_bytes = vec![0u8; samples.len() * 2];
-        byteorder::LittleEndian::write_i16_into(&samples, &mut audio_bytes[..]);
-        audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
-        progress_callback(total - state.lock_inner().input_pairs_left(), total);
+        completed_total += replay_len;
     }
 
     video_child.stdin = None;
@@ -272,7 +283,7 @@ pub async fn export(
         &[audio_output.path()],
         &shell_words::split(&settings.ffmpeg_mux_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
     mux_child.wait().await?;
@@ -285,20 +296,13 @@ pub async fn export_twosided(
     local_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
     remote_rom: &[u8],
     remote_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
-    replay: &crate::replay::Replay,
+    replays: &[crate::replay::Replay],
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
-    let local_replay = replay.clone();
-    let remote_replay = local_replay.clone().into_remote();
-
-    let (mut local_core, local_state) = make_core_and_state(local_rom, local_hooks, &local_replay, settings)?;
-    let (mut remote_core, remote_state) = make_core_and_state(remote_rom, remote_hooks, &remote_replay, settings)?;
-
-    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH as u32, mgba::gba::SCREEN_HEIGHT as u32);
-    let mut composed_vbuf =
-        image::RgbaImage::new((mgba::gba::SCREEN_WIDTH * 2) as u32, mgba::gba::SCREEN_HEIGHT as u32);
+    let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+    let mut composed_vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH * 2, mgba::gba::SCREEN_HEIGHT);
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = make_video_ffmpeg(
@@ -308,7 +312,7 @@ pub async fn export_twosided(
         mgba::gba::SCREEN_HEIGHT as usize,
         &shell_words::split(&settings.ffmpeg_video_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
 
@@ -318,7 +322,7 @@ pub async fn export_twosided(
         local_audio_output.path(),
         &shell_words::split(&settings.ffmpeg_audio_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
 
@@ -328,93 +332,106 @@ pub async fn export_twosided(
         remote_audio_output.path(),
         &shell_words::split(&settings.ffmpeg_audio_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
 
+    let total_frames = replays.iter().map(|replay| replay.input_pairs.len()).sum();
+
+    let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
-    let total = std::cmp::min(
-        local_state.lock_inner().input_pairs_left(),
-        remote_state.lock_inner().input_pairs_left(),
-    );
-    loop {
-        {
-            let local_state = local_state.lock_inner();
-            if (!local_replay.is_complete && local_state.input_pairs_left() == 0) || local_state.is_round_ended() {
-                break;
-            }
-        }
 
-        {
-            let remote_state = remote_state.lock_inner();
-            if (!remote_replay.is_complete && remote_state.input_pairs_left() == 0) || remote_state.is_round_ended() {
-                break;
-            }
-        }
+    for replay in replays {
+        let local_replay = replay.clone();
+        let remote_replay = local_replay.clone().into_remote();
 
-        let current_tick = local_state.lock_inner().current_tick();
-        if remote_state.lock_inner().current_tick() != current_tick {
-            anyhow::bail!(
-                "tick misaligned! {} vs {}",
-                current_tick,
-                remote_state.lock_inner().current_tick()
-            );
-        }
+        let (mut local_core, local_state) = make_core_and_state(local_rom, local_hooks, &local_replay, settings)?;
+        let (mut remote_core, remote_state) = make_core_and_state(remote_rom, remote_hooks, &remote_replay, settings)?;
 
-        while local_state.lock_inner().current_tick() == current_tick
-            && remote_state.lock_inner().current_tick() == current_tick
-        {
-            if let Some(err) = local_state.lock_inner().take_error() {
-                Err(err)?;
-            }
+        let replay_len = replay.input_pairs.len();
 
-            if let Some(err) = remote_state.lock_inner().take_error() {
-                Err(err)?;
+        loop {
+            {
+                let local_state = local_state.lock_inner();
+                if (!local_replay.is_complete && local_state.input_pairs_left() == 0) || local_state.is_round_ended() {
+                    break;
+                }
             }
 
             {
-                let local_samples = run_frame(&mut local_core, &mut samples, &mut vbuf);
-                image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
-                let mut audio_bytes = vec![0u8; local_samples.len() * 2];
-                byteorder::LittleEndian::write_i16_into(&local_samples, &mut audio_bytes[..]);
-                local_audio_child
-                    .stdin
-                    .as_mut()
-                    .unwrap()
-                    .write_all(&audio_bytes)
-                    .await?;
+                let remote_state = remote_state.lock_inner();
+                if (!remote_replay.is_complete && remote_state.input_pairs_left() == 0) || remote_state.is_round_ended()
+                {
+                    break;
+                }
             }
 
+            let current_tick = local_state.lock_inner().current_tick();
+            if remote_state.lock_inner().current_tick() != current_tick {
+                anyhow::bail!(
+                    "tick misaligned! {} vs {}",
+                    current_tick,
+                    remote_state.lock_inner().current_tick()
+                );
+            }
+
+            while local_state.lock_inner().current_tick() == current_tick
+                && remote_state.lock_inner().current_tick() == current_tick
             {
-                let remote_samples = run_frame(&mut remote_core, &mut samples, &mut vbuf);
-                image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
-                let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
-                byteorder::LittleEndian::write_i16_into(&remote_samples, &mut audio_bytes[..]);
-                remote_audio_child
+                if let Some(err) = local_state.lock_inner().take_error() {
+                    Err(err)?;
+                }
+
+                if let Some(err) = remote_state.lock_inner().take_error() {
+                    Err(err)?;
+                }
+
+                {
+                    let local_samples = run_frame(&mut local_core, &mut samples, &mut vbuf);
+                    image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
+                    let mut audio_bytes = vec![0u8; local_samples.len() * 2];
+                    byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
+                    local_audio_child
+                        .stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all(&audio_bytes)
+                        .await?;
+                }
+
+                {
+                    let remote_samples = run_frame(&mut remote_core, &mut samples, &mut vbuf);
+                    image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
+                    let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
+                    byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
+                    remote_audio_child
+                        .stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all(&audio_bytes)
+                        .await?;
+                }
+
+                video_child
                     .stdin
                     .as_mut()
                     .unwrap()
-                    .write_all(&audio_bytes)
+                    .write_all(composed_vbuf.as_bytes())
                     .await?;
             }
 
-            video_child
-                .stdin
-                .as_mut()
-                .unwrap()
-                .write_all(composed_vbuf.as_bytes())
-                .await?;
+            while local_state.lock_inner().current_tick() == current_tick {
+                run_frame(&mut local_core, &mut samples, &mut vbuf);
+            }
+
+            while remote_state.lock_inner().current_tick() == current_tick {
+                run_frame(&mut remote_core, &mut samples, &mut vbuf);
+            }
+
+            progress_callback(current_tick as usize + completed_total, total_frames);
         }
 
-        while local_state.lock_inner().current_tick() == current_tick {
-            run_frame(&mut local_core, &mut samples, &mut vbuf);
-        }
-
-        while remote_state.lock_inner().current_tick() == current_tick {
-            run_frame(&mut remote_core, &mut samples, &mut vbuf);
-        }
-
-        progress_callback(current_tick as usize, total);
+        completed_total += replay_len;
     }
 
     video_child.stdin = None;
@@ -431,7 +448,7 @@ pub async fn export_twosided(
         &[local_audio_output.path(), remote_audio_output.path()],
         &shell_words::split(&settings.ffmpeg_mux_flags)?
             .into_iter()
-            .map(|flag| std::ffi::OsString::from(flag))
+            .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
     )?;
     mux_child.wait().await?;

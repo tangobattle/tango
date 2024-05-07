@@ -21,13 +21,11 @@ impl State {
         &mut self,
         local_rom: Vec<u8>,
         remote_rom: Option<Vec<u8>>,
-        replay: tango_pvp::replay::Replay,
-        path: std::path::PathBuf,
+        replays: Vec<tango_pvp::replay::Replay>,
+        output_path: std::path::PathBuf,
     ) {
         let id = self.next_id;
         self.next_id += 1;
-        let mut output_path = path.clone();
-        output_path.set_extension("mp4");
         self.children.insert(
             id,
             ChildState {
@@ -35,8 +33,7 @@ impl State {
                 output_path,
                 local_rom,
                 remote_rom,
-                replay,
-                path,
+                replays,
                 scale: Some(DEFAULT_SCALE),
                 disable_bgm: false,
                 twosided: false,
@@ -52,8 +49,7 @@ pub struct ChildState {
     output_path: std::path::PathBuf,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
-    replay: tango_pvp::replay::Replay,
-    path: std::path::PathBuf,
+    replays: Vec<tango_pvp::replay::Replay>,
     scale: Option<usize>,
     disable_bgm: bool,
     twosided: bool,
@@ -69,17 +65,15 @@ impl Drop for ChildState {
     }
 }
 
-pub fn show(
-    ctx: &egui::Context,
-    state: &mut State,
-    language: &unic_langid::LanguageIdentifier,
-    replays_path: &std::path::Path,
-) {
+pub fn show(ctx: &egui::Context, state: &mut State, language: &unic_langid::LanguageIdentifier) {
     state.children.retain(|id, state| {
         let mut open = true;
         let mut open2 = open;
-        let path = state.path.strip_prefix(replays_path).unwrap_or(state.path.as_path());
-        egui::Window::new(format!("{}", path.display()))
+
+        let path = state.output_path.file_name().map(|path| path.to_string_lossy())
+        .unwrap_or_else(|| i18n::LOCALES.lookup(language, "replays-export").unwrap().into());
+
+        egui::Window::new(path)
             .id(egui::Id::new(format!("replay-dump-window-{}", id)))
             .open(&mut open)
             .resizable(false)
@@ -218,7 +212,7 @@ pub fn show(
                     let egui_ctx = ui.ctx().clone();
                     let local_rom = state.local_rom.clone();
                     let remote_rom = state.remote_rom.clone();
-                    let replay = state.replay.clone();
+                    let replays = state.replays.clone();
                     let path = state.output_path.clone();
                     let progress = state.progress.clone();
                     let result = state.result.clone();
@@ -232,8 +226,11 @@ pub fn show(
                             *progress.lock() = (current, total);
                             egui_ctx.request_repaint();
                         };
+
+                        let first_replay = &replays[0];
+
                         if twosided {
-                            let local_game_info = replay
+                            let local_game_info = first_replay
                                 .metadata
                                 .local_side
                                 .as_ref()
@@ -242,7 +239,7 @@ pub fn show(
                             let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
                             let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
-                            let remote_game_info = replay
+                            let remote_game_info = first_replay
                                 .metadata
                                 .remote_side
                                 .as_ref()
@@ -252,14 +249,14 @@ pub fn show(
                             let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
 
                             tokio::select! {
-                                r = tango_pvp::replay::export::export_twosided(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replay, &path, &settings, cb) => {
+                                r = tango_pvp::replay::export::export_twosided(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replays, &path, &settings, cb) => {
                                     *result.lock() = Some(r);
                                     egui_ctx.request_repaint();
                                 }
                                 _ = cancellation_token.cancelled() => { }
                             }
                         } else {
-                            let local_game_info = replay
+                            let local_game_info = first_replay
                                 .metadata
                                 .local_side
                                 .as_ref()
@@ -269,7 +266,7 @@ pub fn show(
                             let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
                             tokio::select! {
-                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replay, &path, &settings, cb) => {
+                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replays, &path, &settings, cb) => {
                                     *result.lock() = Some(r);
                                     egui_ctx.request_repaint();
                                 }
