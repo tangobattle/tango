@@ -91,7 +91,7 @@ fn show_emulator(
     let center = (ui.available_size() * 0.5 * pixels_per_point).floor() / pixels_per_point;
     let rect = egui::Rect::from_center_size(center.to_pos2(), scaled_size);
 
-    ui.put(rect, egui::Image::new(&vbuf.texture, scaled_size));
+    ui.put(rect, egui::Image::new((vbuf.texture.id(), scaled_size)));
     ui.ctx().request_repaint();
 }
 
