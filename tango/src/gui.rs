@@ -124,6 +124,8 @@ impl State {
             ]),
         });
 
+        ctx.style_mut(|style| style.spacing.scroll = egui::style::ScrollStyle::solid());
+
         Ok(Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
