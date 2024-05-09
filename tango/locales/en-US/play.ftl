@@ -6,8 +6,8 @@ play-leave = Leave
 play-random = Generate random code
 play-ready = I'm ready!
 play-link-code = Link code
-play-no-game = None
-play-no-patch = None
+play-no-game = No game selected
+play-no-patch = No patch
 play-you = You
 play-cancel = Cancel
 

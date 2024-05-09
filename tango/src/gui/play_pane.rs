@@ -102,7 +102,7 @@ impl Warning {
 fn make_warning(
     lobby: &Lobby,
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
-    patches: &std::collections::BTreeMap<String, patch::Patch>,
+    patches: &crate::patch::PatchMap,
 ) -> Option<Warning> {
     let local_selection = if let Some(local_selection) = lobby.local_selection.as_ref() {
         local_selection
@@ -183,14 +183,14 @@ struct LocalSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
     pub rom: Vec<u8>,
-    pub patch: Option<(String, semver::Version, patch::Version)>,
+    pub patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
 }
 
 #[derive(Clone)]
 struct RemoteSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
-    pub patch: Option<(String, semver::Version, patch::Version)>,
+    pub patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
 }
 
 struct Lobby {
@@ -213,7 +213,7 @@ struct Lobby {
 pub fn get_netplay_compatibility(
     game: &'static (dyn game::Game + Send + Sync),
     patch: Option<(&str, &semver::Version)>,
-    patches: &std::collections::BTreeMap<String, patch::Patch>,
+    patches: &crate::patch::PatchMap,
 ) -> Option<String> {
     if let Some(patch) = patch.as_ref() {
         patches
@@ -226,7 +226,7 @@ pub fn get_netplay_compatibility(
 
 pub fn get_netplay_compatibility_from_game_info(
     g: &net::protocol::GameInfo,
-    patches: &std::collections::BTreeMap<String, patch::Patch>,
+    patches: &crate::patch::PatchMap,
 ) -> Option<String> {
     game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1).and_then(|game| {
         get_netplay_compatibility(
@@ -240,7 +240,7 @@ pub fn get_netplay_compatibility_from_game_info(
 fn are_settings_compatible(
     local_settings: &net::protocol::Settings,
     remote_settings: &net::protocol::Settings,
-    patches: &std::collections::BTreeMap<String, patch::Patch>,
+    patches: &crate::patch::PatchMap,
 ) -> bool {
     let local_game_info = if let Some(gi) = local_settings.game_info.as_ref() {
         gi
@@ -297,7 +297,7 @@ fn are_settings_compatible(
     }
 
     impl SimplifiedSettings {
-        fn new(settings: &net::protocol::Settings, patches: &std::collections::BTreeMap<String, patch::Patch>) -> Self {
+        fn new(settings: &net::protocol::Settings, patches: &crate::patch::PatchMap) -> Self {
             Self {
                 netplay_compatibility: settings
                     .game_info
@@ -909,7 +909,7 @@ pub struct State {
     link_code: String,
     show_link_code: bool,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
-    show_save_select: Option<gui::save_select_view::State>,
+    save_select_state: gui::save_select_view::State,
 }
 
 impl State {
@@ -918,7 +918,7 @@ impl State {
             link_code: String::new(),
             show_link_code: false,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            show_save_select: None,
+            save_select_state: gui::save_select_view::State::new(None),
         }
     }
 }
@@ -929,7 +929,7 @@ fn show_lobby_table(
     config: &mut config::Config,
     lobby: &mut Lobby,
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
-    patches: &std::collections::BTreeMap<String, patch::Patch>,
+    patches: &crate::patch::PatchMap,
 ) {
     let row_height = ui.text_style_height(&egui::TextStyle::Body);
     let spacing_x = ui.spacing().item_spacing.x;
@@ -1265,7 +1265,6 @@ fn show_bottom_pane(
     connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     link_code: &mut String,
     show_link_code: &mut bool,
-    show_save_select: &mut Option<gui::save_select_view::State>,
     init_link_code: &mut Option<String>,
 ) {
     let error_window_open = {
@@ -1497,7 +1496,6 @@ fn show_bottom_pane(
                         }
                         if lobby.sender.is_some() {
                             if !was_ready && ready {
-                                *show_save_select = None;
                                 let save_data = lobby
                                     .local_selection
                                     .as_ref()
@@ -1663,30 +1661,6 @@ pub fn show(
     let connection_task_arc = state.connection_task.clone();
     let mut connection_task = state.connection_task.blocking_lock();
 
-    if state.show_save_select.is_none() {
-        show_bottom_pane(
-            ui,
-            window,
-            clipboard,
-            config,
-            config_arc.clone(),
-            roms_scanner.clone(),
-            patches_scanner.clone(),
-            audio_binder.clone(),
-            session,
-            selection,
-            emu_tps_counter,
-            discord_client,
-            &mut connection_task,
-            connection_task_arc,
-            &mut state.link_code,
-            &mut state.show_link_code,
-            &mut state.show_save_select,
-            init_link_code,
-        );
-    }
-
-    let roms = roms_scanner.read();
     egui::CentralPanel::default()
         .frame(
             egui::Frame::none()
@@ -1713,148 +1687,10 @@ pub fn show(
                 .unwrap_or(false);
 
             ui.add_enabled_ui(!is_ready, |ui| {
-                if ui
-                    .horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center).with_cross_justify(true),
-                            |ui| {
-                                ui.add({
-                                    let text = egui::RichText::new(
-                                        i18n::LOCALES.lookup(&config.language, "select-save.select").unwrap(),
-                                    );
-
-                                    if state.show_save_select.is_some() {
-                                        egui::Button::new(text.color(ui.ctx().style().visuals.selection.stroke.color))
-                                            .fill(ui.ctx().style().visuals.selection.bg_fill)
-                                    } else {
-                                        egui::Button::new(text)
-                                    }
-                                }) | ui
-                                    .vertical_centered_justified(|ui| {
-                                        let patches = patches_scanner.read();
-                                        let warning = if let Some(lobby) = lobby.as_ref() {
-                                            make_warning(lobby, &roms, &patches)
-                                        } else {
-                                            None
-                                        };
-
-                                        let mut layouter = |ui: &egui::Ui, _: &str, _wrap_width: f32| {
-                                            let mut layout_job = egui::text::LayoutJob::default();
-                                            if let Some(selection) = selection.as_ref() {
-                                                let (family, variant) =
-                                                    selection.game.gamedb_entry().family_and_variant;
-
-                                                if warning.is_some() {
-                                                    gui::warning::append_to_layout_job(ui, &mut layout_job);
-                                                }
-
-                                                layout_job.append(
-                                                    &format!(
-                                                        "{} ",
-                                                        selection
-                                                            .save
-                                                            .path
-                                                            .strip_prefix(&config.saves_path())
-                                                            .unwrap_or(selection.save.path.as_path())
-                                                            .display()
-                                                    ),
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Body)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                                let game_name = i18n::LOCALES
-                                                    .lookup(
-                                                        &config.language,
-                                                        &format!("game-{}.variant-{}", family, variant),
-                                                    )
-                                                    .unwrap();
-
-                                                layout_job.append(
-                                                    &if let Some((name, version, _)) = selection.patch.as_ref() {
-                                                        format!("{} + {} v{}", game_name, name, version)
-                                                    } else {
-                                                        game_name
-                                                    },
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Small)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                            } else {
-                                                layout_job.append(
-                                                    &i18n::LOCALES
-                                                        .lookup(&config.language, "select-save.no-save-selected")
-                                                        .unwrap(),
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Body)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                            }
-                                            ui.fonts(|f| f.layout_job(layout_job))
-                                        };
-                                        let mut resp = ui.add(
-                                            egui::TextEdit::singleline(&mut String::new()).layouter(&mut layouter),
-                                        );
-                                        if let Some(warning) = warning {
-                                            resp = resp.on_hover_text(warning.description(&config.language));
-                                        }
-                                        resp
-                                    })
-                                    .inner
-                            },
-                        )
-                        .inner
-                    })
-                    .inner
-                    .clicked()
-                {
-                    state.show_save_select = if state.show_save_select.is_none() {
-                        tokio::task::spawn_blocking({
-                            let roms_scanner = roms_scanner.clone();
-                            let saves_scanner = saves_scanner.clone();
-                            let roms_path = config.roms_path();
-                            let saves_path = config.saves_path();
-                            let egui_ctx = ui.ctx().clone();
-                            move || {
-                                roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-                                egui_ctx.request_repaint();
-                            }
-                        });
-                        Some(gui::save_select_view::State::new(selection.as_ref().map(|selection| {
-                            gui::save_select_view::Selection {
-                                game: selection.game,
-                                save_path: Some(selection.save.path.to_path_buf()),
-                                patch: selection.patch.clone(),
-                            }
-                        })))
-                    } else {
-                        None
-                    };
-                }
-            });
-
-            if state.show_save_select.is_some() {
                 gui::save_select_view::show(
                     ui,
-                    &mut state.show_save_select,
+                    config,
+                    &mut state.save_select_state,
                     &mut *selection,
                     patch_selection,
                     &config.language,
@@ -1870,32 +1706,52 @@ pub fn show(
                         None
                     },
                 );
-            } else {
-                ui.separator();
+            });
 
-                if let Some(selection) = selection.as_mut() {
-                    if let Some(assets) = selection.assets.as_ref() {
-                        let game_language = crate::game::region_to_language(selection.game.gamedb_entry().region);
-                        gui::save_view::show(
-                            ui,
-                            config.streamer_mode,
-                            clipboard,
-                            font_families,
-                            &config.language,
-                            selection
-                                .patch
-                                .as_ref()
-                                .and_then(|(_, _, metadata)| metadata.rom_overrides.language.as_ref())
-                                .unwrap_or(&game_language),
-                            selection.save.save.as_ref(),
-                            assets.as_ref(),
-                            &mut selection.save_view_state,
-                            false,
-                        );
-                    }
+            ui.separator();
+
+            if let Some(selection) = selection.as_mut() {
+                if let Some(assets) = selection.assets.as_ref() {
+                    let game_language = crate::game::region_to_language(selection.game.gamedb_entry().region);
+                    gui::save_view::show(
+                        ui,
+                        config.streamer_mode,
+                        clipboard,
+                        font_families,
+                        &config.language,
+                        selection
+                            .patch
+                            .as_ref()
+                            .and_then(|(_, _, metadata)| metadata.rom_overrides.language.as_ref())
+                            .unwrap_or(&game_language),
+                        selection.save.save.as_ref(),
+                        assets.as_ref(),
+                        &mut selection.save_view_state,
+                        false,
+                    );
                 }
             }
         });
+
+    show_bottom_pane(
+        ui,
+        window,
+        clipboard,
+        config,
+        config_arc.clone(),
+        roms_scanner.clone(),
+        patches_scanner.clone(),
+        audio_binder.clone(),
+        session,
+        selection,
+        emu_tps_counter,
+        discord_client,
+        &mut connection_task,
+        connection_task_arc,
+        &mut state.link_code,
+        &mut state.show_link_code,
+        init_link_code,
+    );
 
     if let Some(ConnectionTask::InProgress {
         state: ConnectionState::InLobby(lobby),

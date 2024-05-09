@@ -25,7 +25,7 @@ pub struct Selection {
     pub assets: Option<Box<dyn tango_dataview::rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
     pub rom: Vec<u8>,
-    pub patch: Option<(String, semver::Version, patch::Version)>,
+    pub patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
     pub save_view_state: save_view::State,
 }
 
@@ -33,7 +33,7 @@ impl Selection {
     pub fn new(
         game: &'static (dyn game::Game + Send + Sync),
         save: save::ScannedSave,
-        patch: Option<(String, semver::Version, patch::Version)>,
+        patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
         rom: Vec<u8>,
     ) -> Self {
         let assets = game

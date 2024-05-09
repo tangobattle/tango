@@ -43,7 +43,7 @@ pub struct Patch {
     pub license: Option<String>,
     pub source: Option<String>,
     pub readme: Option<String>,
-    pub versions: std::collections::HashMap<semver::Version, Version>,
+    pub versions: std::collections::HashMap<semver::Version, std::sync::Arc<Version>>,
 }
 
 pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
@@ -116,7 +116,9 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
     Ok(())
 }
 
-pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
+pub fn scan(
+    path: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, std::sync::Arc<Patch>>, std::io::Error> {
     let mut patches = std::collections::BTreeMap::new();
     for entry in std::fs::read_dir(path)? {
         let entry = match entry {
@@ -265,18 +267,18 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
 
             versions.insert(
                 sv,
-                Version {
+                std::sync::Arc::new(Version {
                     rom_overrides: version.rom_overrides,
                     netplay_compatibility: version.netplay_compatibility,
                     supported_games,
                     save_templates,
-                },
+                }),
             );
         }
 
         patches.insert(
             name.to_string(),
-            Patch {
+            std::sync::Arc::new(Patch {
                 path: entry.path(),
                 title: info.patch.title,
                 authors: info
@@ -302,13 +304,14 @@ pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String,
                 readme,
                 source: info.patch.source,
                 versions,
-            },
+            }),
         );
     }
     Ok(patches)
 }
 
-pub type Scanner = scanner::Scanner<std::collections::BTreeMap<String, Patch>>;
+pub type PatchMap = std::collections::BTreeMap<String, std::sync::Arc<Patch>>;
+pub type Scanner = scanner::Scanner<PatchMap>;
 
 pub struct Autoupdater {
     config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
