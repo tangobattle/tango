@@ -409,6 +409,7 @@ pub fn show(
                         .selected_text(layout_job)
                         .width(wide_width)
                         .wrap(true)
+                        .height(f32::INFINITY)
                         .show_ui(ui, |ui| {
                             // attempt to provide room to fix weird staircasing from using an imgui
                             let mut max_width: f32 = 0.0;
@@ -570,6 +571,7 @@ pub fn show(
                             .selected_text(layout_job)
                             .width(wide_width)
                             .wrap(true)
+                            .height(f32::INFINITY)
                             .show_ui(ui, |ui| {
                                 let Some(selection) = state.selection.as_mut() else {
                                     return;
@@ -770,6 +772,7 @@ pub fn show(
                             let resp = egui::ComboBox::from_id_source("patch-version-select-combobox")
                                 .selected_text(layout_job)
                                 .width(PATCH_VERSION_WIDTH)
+                                .height(f32::INFINITY)
                                 .show_ui(ui, |ui| {
                                     let Some(selection) = state.selection.as_mut() else {
                                         return;
@@ -867,6 +870,7 @@ pub fn show(
                 .selected_text(layout_job)
                 .width(ui.available_width())
                 .wrap(true)
+                .height(f32::INFINITY)
                 .show_ui(ui, |ui| {
                     let Some(selection_state) = state.selection.as_mut() else {
                         return;
