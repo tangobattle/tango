@@ -194,14 +194,14 @@ pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static 
     GAMES
         .iter()
         .find(|g| g.family_and_variant == (family, variant))
-        .map(|v| *v)
+        .copied()
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static Game> {
     GAMES
         .iter()
         .find(|g| g.rom_code_and_revision == (code, revision))
-        .map(|v| *v)
+        .copied()
 }
 
 pub fn detect(rom: &[u8]) -> Option<&'static Game> {

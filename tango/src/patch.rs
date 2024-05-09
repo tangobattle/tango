@@ -53,7 +53,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
     let entries = tokio::time::timeout(
         // 30 second timeout to fetch JSON.
         std::time::Duration::from_secs(30),
-        (|| async {
+        async {
             Ok::<_, anyhow::Error>(
                 client
                     .get(format!("{}/index.json", url))
@@ -63,7 +63,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                     .json::<tango_filesync::Entries>()
                     .await?,
             )
-        })(),
+        },
     )
     .await??;
 
@@ -182,7 +182,7 @@ pub fn scan(
                 continue;
             }
 
-            let read_version_dir = match std::fs::read_dir(entry.path().join(format!("v{}", sv.to_string()))) {
+            let read_version_dir = match std::fs::read_dir(entry.path().join(format!("v{sv}"))) {
                 Ok(read_version_dir) => read_version_dir,
                 Err(e) => {
                     log::warn!("{}: {}", entry.path().display(), e);
@@ -259,7 +259,7 @@ pub fn scan(
                         };
                         save_templates
                             .entry(game)
-                            .or_insert_with(|| std::collections::BTreeMap::new())
+                            .or_insert_with(std::collections::BTreeMap::new)
                             .insert(name, save);
                     }
                 }
@@ -405,7 +405,7 @@ pub fn apply_patch_from_disk(
     let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision;
     let raw = std::fs::read(
         patches_path
-            .join(&patch_name)
+            .join(patch_name)
             .join(format!("v{}", patch_version))
             .join(format!(
                 "{}_{:02}.bps",
