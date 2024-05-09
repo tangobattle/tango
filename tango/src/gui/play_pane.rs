@@ -1661,6 +1661,27 @@ pub fn show(
     let connection_task_arc = state.connection_task.clone();
     let mut connection_task = state.connection_task.blocking_lock();
 
+    // must happen first to provide the imgui enough info to prevent the central panel from overflowing
+    show_bottom_pane(
+        ui,
+        window,
+        clipboard,
+        config,
+        config_arc.clone(),
+        roms_scanner.clone(),
+        patches_scanner.clone(),
+        audio_binder.clone(),
+        session,
+        selection,
+        emu_tps_counter,
+        discord_client,
+        &mut connection_task,
+        connection_task_arc,
+        &mut state.link_code,
+        &mut state.show_link_code,
+        init_link_code,
+    );
+
     egui::CentralPanel::default()
         .frame(
             egui::Frame::none()
@@ -1732,26 +1753,6 @@ pub fn show(
                 }
             }
         });
-
-    show_bottom_pane(
-        ui,
-        window,
-        clipboard,
-        config,
-        config_arc.clone(),
-        roms_scanner.clone(),
-        patches_scanner.clone(),
-        audio_binder.clone(),
-        session,
-        selection,
-        emu_tps_counter,
-        discord_client,
-        &mut connection_task,
-        connection_task_arc,
-        &mut state.link_code,
-        &mut state.show_link_code,
-        init_link_code,
-    );
 
     if let Some(ConnectionTask::InProgress {
         state: ConnectionState::InLobby(lobby),
