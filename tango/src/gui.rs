@@ -126,6 +126,14 @@ impl State {
 
         ctx.style_mut(|style| style.spacing.scroll = egui::style::ScrollStyle::solid());
 
+        let main_view = main_view::State::new(
+            roms_scanner.clone(),
+            saves_scanner.clone(),
+            patches_scanner.clone(),
+            &config.read(),
+            show_updater,
+        );
+
         Ok(Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
@@ -134,7 +142,7 @@ impl State {
             roms_scanner,
             saves_scanner,
             patches_scanner,
-            main_view: main_view::State::new(show_updater),
+            main_view,
             audio_binder,
             fps_counter,
             emu_tps_counter,

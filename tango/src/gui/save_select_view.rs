@@ -10,6 +10,53 @@ pub struct Selection {
     pub patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
 }
 
+impl Selection {
+    pub fn resolve_from_config(
+        roms_scanner: rom::Scanner,
+        saves_scanner: save::Scanner,
+        patches_scanner: patch::Scanner,
+        config: &crate::config::Config,
+    ) -> Option<Selection> {
+        let roms = roms_scanner.read();
+        let saves = saves_scanner.read();
+        let patches = patches_scanner.read();
+
+        let (family, variant) = config.last_game.as_ref()?;
+        let game = game::find_by_family_and_variant(family, *variant)?;
+
+        // make sure the game is still installed
+        if !roms.contains_key(&game) {
+            return None;
+        }
+
+        // start building selection
+        let mut selection = Selection {
+            game,
+            save_path: None,
+            patch: None,
+        };
+
+        // see if we have the last save still, if we do, restore selection
+        if let (Some(game_saves), Some(save_path)) = (saves.get(&game), config.last_save.as_ref()) {
+            if game_saves.iter().any(|save| save.path == *save_path) {
+                selection.save_path = Some(save_path.clone());
+            }
+        }
+
+        // try to match patch from config
+        if let (Some(patch_name), Some(version)) = (config.last_patch.as_ref(), config.last_patch_version.as_ref()) {
+            if let Some(patch_version) = patches.get(patch_name).and_then(|patch| patch.versions.get(version)) {
+                if patch_version.supported_games.contains(&game) {
+                    // found a match
+                    selection.patch = Some((patch_name.clone(), version.clone(), patch_version.clone()));
+                }
+            }
+        }
+
+        Some(selection)
+    }
+}
+
 pub struct State {
     selection: Option<Selection>,
 }
@@ -291,20 +338,19 @@ fn patch_version_compatibility_warning(
 
 pub fn show(
     ui: &mut egui::Ui,
-    config: &crate::config::Config,
+    config: &mut crate::config::Config,
     state: &mut State,
     committed_selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
-    language: &unic_langid::LanguageIdentifier,
-    saves_path: &std::path::Path,
-    patches_path: &std::path::Path,
-    starred_patches: &std::collections::HashSet<String>,
     roms_scanner: rom::Scanner,
     saves_scanner: save::Scanner,
     patches_scanner: patch::Scanner,
     remote_settings: Option<&net::protocol::Settings>,
 ) {
-    let games = game::sorted_all_games(language);
+    let saves_path = &config.saves_path();
+    let patches_path = &config.patches_path();
+
+    let games = game::sorted_all_games(&config.language);
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();
     let patches = patches_scanner.read();
@@ -344,10 +390,10 @@ pub fn show(
                     let selected_game_text = if let Some(selection) = &state.selection {
                         let (family, variant) = selection.game.gamedb_entry().family_and_variant;
                         i18n::LOCALES
-                            .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                            .lookup(&config.language, &format!("game-{}.variant-{}", family, variant))
                             .unwrap()
                     } else {
-                        i18n::LOCALES.lookup(language, "play-no-game").unwrap()
+                        i18n::LOCALES.lookup(&config.language, "play-no-game").unwrap()
                     };
 
                     layout_job.append(
@@ -379,7 +425,7 @@ pub fn show(
                                 let (family, variant) = game.gamedb_entry().family_and_variant;
 
                                 let localized_name = i18n::LOCALES
-                                    .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                                    .lookup(&config.language, &format!("game-{}.variant-{}", family, variant))
                                     .unwrap();
 
                                 width += localized_name.len() as f32 * BODY_CHAR_WIDTH;
@@ -411,7 +457,7 @@ pub fn show(
                                 }
                                 layout_job.append(
                                     &i18n::LOCALES
-                                        .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                                        .lookup(&config.language, &format!("game-{}.variant-{}", family, variant))
                                         .unwrap(),
                                     0.0,
                                     egui::TextFormat::simple(
@@ -427,7 +473,7 @@ pub fn show(
                                 let mut resp =
                                     ui.add_enabled(available, egui::SelectableLabel::new(selected, layout_job));
                                 if let Some(warning) = warning {
-                                    resp = resp.on_hover_text(warning.description(language));
+                                    resp = resp.on_hover_text(warning.description(&config.language));
                                 }
 
                                 if resp.clicked() {
@@ -437,13 +483,17 @@ pub fn show(
                                         save_path: None,
                                         patch: None,
                                     });
+                                    config.last_game = Some((family.to_string(), variant));
+                                    config.last_save = None;
+                                    config.last_patch = None;
+                                    config.last_patch_version = None;
                                 }
                             }
                         })
                         .response;
 
                     if let Some(warning) = game_warning {
-                        resp.on_hover_text(warning.description(language));
+                        resp.on_hover_text(warning.description(&config.language));
                     }
                 });
 
@@ -493,7 +543,7 @@ pub fn show(
                                 .selection
                                 .as_ref()
                                 .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                                .unwrap_or(&i18n::LOCALES.lookup(language, "play-no-patch").unwrap()),
+                                .unwrap_or(&i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap()),
                             0.0,
                             egui::TextFormat::simple(
                                 ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
@@ -527,7 +577,7 @@ pub fn show(
 
                                 let mut supported_patches_list = supported_patches.iter().collect::<Vec<_>>();
                                 supported_patches_list.sort_by_key(|(name, _)| {
-                                    (if starred_patches.contains(**name) { 0 } else { 1 }, *name)
+                                    (if config.starred_patches.contains(**name) { 0 } else { 1 }, *name)
                                 });
 
                                 // attempt to provide room to fix weird staircasing from using an imgui
@@ -547,7 +597,7 @@ pub fn show(
                                         width += WARNING_WIDTH;
                                     }
 
-                                    if starred_patches.contains(*patch_name) {
+                                    if config.starred_patches.contains(*patch_name) {
                                         width += 2.0 * BODY_CHAR_WIDTH;
                                     }
 
@@ -569,7 +619,7 @@ pub fn show(
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
                                     }
                                     layout_job.append(
-                                        &i18n::LOCALES.lookup(language, "play-no-patch").unwrap(),
+                                        &i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap(),
                                         0.0,
                                         egui::TextFormat::simple(
                                             ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
@@ -582,7 +632,7 @@ pub fn show(
                                     );
                                     let mut resp = ui.selectable_label(checked, layout_job);
                                     if let Some(warning) = no_patch_warning {
-                                        resp = resp.on_hover_text(warning.description(language));
+                                        resp = resp.on_hover_text(warning.description(&config.language));
                                     }
                                     if resp.clicked() {
                                         if let Some(s) = committed_selection.take() {
@@ -590,6 +640,8 @@ pub fn show(
                                             *committed_selection = Some(gui::Selection::new(s.game, s.save, None, rom));
                                         }
                                         selection.patch = None;
+                                        config.last_patch = None;
+                                        config.last_patch_version = None;
                                     }
                                 }
 
@@ -606,7 +658,7 @@ pub fn show(
                                     if warning.is_some() {
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
                                     }
-                                    if starred_patches.contains(*name) {
+                                    if config.starred_patches.contains(*name) {
                                         layout_job.append(
                                             "★ ",
                                             0.0,
@@ -643,7 +695,7 @@ pub fn show(
                                     let mut resp = ui.selectable_label(checked, layout_job);
 
                                     if let Some(warning) = warning {
-                                        resp = resp.on_hover_text(warning.description(language));
+                                        resp = resp.on_hover_text(warning.description(&config.language));
                                     }
 
                                     if resp.clicked() {
@@ -660,13 +712,15 @@ pub fn show(
                                         let patch = Some(((*name).clone(), version.clone(), version_metadata));
 
                                         selection.patch = patch;
+                                        config.last_patch = Some(name.to_string());
+                                        config.last_patch_version = Some(version.clone());
                                         commit_patch(&roms, patches_path, committed_selection, selection);
                                     }
                                 }
                             });
 
                         if let Some(warning) = patch_warning {
-                            resp.response.on_hover_text(warning.description(language));
+                            resp.response.on_hover_text(warning.description(&config.language));
                         }
                     });
                 });
@@ -725,15 +779,12 @@ pub fn show(
                                         return;
                                     };
 
-                                    let supported_versions = if let Some(supported_versions) =
-                                        supported_patches.get(&patch_name).map(|(_, vs)| vs)
-                                    {
-                                        supported_versions
-                                    } else {
+                                    let Some(supported_versions) = supported_patches.get(&patch_name).map(|(_, vs)| vs)
+                                    else {
                                         return;
                                     };
 
-                                    for version in supported_versions.iter() {
+                                    for &version in supported_versions.iter() {
                                         let warning = patch_version_compatibility_warning(
                                             &patches,
                                             remote_settings,
@@ -741,7 +792,7 @@ pub fn show(
                                             Some((patch_name.as_str(), version)),
                                         );
 
-                                        let checked = &patch_version == *version;
+                                        let checked = &patch_version == version;
                                         let mut layout_job = egui::text::LayoutJob::default();
                                         if warning.is_some() {
                                             gui::warning::append_to_layout_job(ui, &mut layout_job);
@@ -761,28 +812,26 @@ pub fn show(
 
                                         let mut resp = ui.selectable_label(checked, layout_job);
                                         if let Some(warning) = warning {
-                                            resp = resp.on_hover_text(warning.description(language));
+                                            resp = resp.on_hover_text(warning.description(&config.language));
                                         }
                                         if resp.clicked() {
-                                            let version_metadata = if let Some(version_metadata) =
+                                            let Some(version_metadata) =
                                                 patches.get(&patch_name).and_then(|p| p.versions.get(version)).cloned()
-                                            {
-                                                version_metadata
-                                            } else {
+                                            else {
                                                 continue;
                                             };
 
-                                            let patch =
-                                                Some((patch_name.clone(), (*version).clone(), version_metadata));
+                                            let patch = Some((patch_name.clone(), version.clone(), version_metadata));
 
                                             selection.patch = patch.clone();
+                                            config.last_patch_version = Some(version.clone());
                                             commit_patch(&roms, patches_path, committed_selection, selection);
                                         }
                                     }
                                 });
 
                             if let Some(warning) = version_warning {
-                                resp.response.on_hover_text(warning.description(language));
+                                resp.response.on_hover_text(warning.description(&config.language));
                             }
                         },
                     );
@@ -801,7 +850,11 @@ pub fn show(
                 .as_ref()
                 .and_then(|selection| selection.save_path.as_ref())
                 .map(|save_path| save_name(saves_path, save_path).to_string())
-                .unwrap_or_else(|| i18n::LOCALES.lookup(language, "select-save.no-save-selected").unwrap()),
+                .unwrap_or_else(|| {
+                    i18n::LOCALES
+                        .lookup(&config.language, "select-save.no-save-selected")
+                        .unwrap()
+                }),
             0.0,
             egui::TextFormat::simple(
                 ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
@@ -861,6 +914,7 @@ pub fn show(
 
                         if save_ui_label.clicked() {
                             selection_state.save_path = Some(save.path.clone());
+                            config.last_save = Some(save.path.clone());
                             commit_save(&roms, patches_path, committed_selection, selection_state, save.clone());
                         }
                     }
@@ -875,7 +929,9 @@ pub fn show(
             if ui
                 .button(format!(
                     "📂 {}",
-                    i18n::LOCALES.lookup(language, "select-save.open-folder").unwrap(),
+                    i18n::LOCALES
+                        .lookup(&config.language, "select-save.open-folder")
+                        .unwrap(),
                 ))
                 .clicked()
             {
@@ -905,7 +961,10 @@ pub fn show(
 
             ui.add_enabled_ui(!save_templates.is_empty(), |ui| {
                 ui.menu_button(
-                    format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
+                    format!(
+                        "➕ {}",
+                        i18n::LOCALES.lookup(&config.language, "select-save.new-save").unwrap()
+                    ),
                     |ui| {
                         let Some(selection_state) = &mut state.selection else {
                             return;
@@ -924,9 +983,13 @@ pub fn show(
                                         name
                                     );
 
-                                    i18n::LOCALES.lookup(language, &text_id).unwrap_or(name.to_string())
+                                    i18n::LOCALES
+                                        .lookup(&config.language, &text_id)
+                                        .unwrap_or(name.to_string())
                                 } else {
-                                    i18n::LOCALES.lookup(language, "select-save.default-save").unwrap()
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "select-save.default-save")
+                                        .unwrap()
                                 };
 
                                 let save_label = if from_patch {
@@ -934,7 +997,11 @@ pub fn show(
                                         std::collections::HashMap::from([("name", localized_name.into())]);
 
                                     i18n::LOCALES
-                                        .lookup_with_args(language, "select-save.from-patch-save", &localization_args)
+                                        .lookup_with_args(
+                                            &config.language,
+                                            "select-save.from-patch-save",
+                                            &localization_args,
+                                        )
                                         .unwrap()
                                 } else {
                                     localized_name
@@ -948,7 +1015,7 @@ pub fn show(
 
                         if let Some((name, save)) = menu_selection {
                             let (path, mut f) = match create_new_save(
-                                language,
+                                &config.language,
                                 saves_path,
                                 selection_state.game,
                                 selection_state.patch.as_ref(),
@@ -972,6 +1039,7 @@ pub fn show(
                             }
 
                             selection_state.save_path = Some(path.clone());
+                            config.last_save = Some(path.clone());
 
                             let save = save::ScannedSave { path, save };
                             commit_save(&roms, patches_path, committed_selection, selection_state, save);
@@ -986,7 +1054,9 @@ pub fn show(
             ui.add_enabled_ui(committed_selection.is_some(), |ui| {
                 let duplicate_label = egui::RichText::new(format!(
                     "📄 {}",
-                    i18n::LOCALES.lookup(language, "select-save.duplicate-save").unwrap()
+                    i18n::LOCALES
+                        .lookup(&config.language, "select-save.duplicate-save")
+                        .unwrap()
                 ));
 
                 if ui.button(duplicate_label).clicked() {

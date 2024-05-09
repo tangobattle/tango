@@ -913,12 +913,24 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(
+        roms_scanner: rom::Scanner,
+        saves_scanner: save::Scanner,
+        patches_scanner: patch::Scanner,
+        config: &crate::config::Config,
+    ) -> Self {
         Self {
             link_code: String::new(),
             show_link_code: false,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            save_select_state: gui::save_select_view::State::new(None),
+            save_select_state: gui::save_select_view::State::new(
+                gui::save_select_view::Selection::resolve_from_config(
+                    roms_scanner,
+                    saves_scanner,
+                    patches_scanner,
+                    config,
+                ),
+            ),
         }
     }
 }
@@ -1026,7 +1038,7 @@ fn show_lobby_table(
                             ui.vertical(|ui| {
                                 if let Some(local_selection) = lobby.local_selection.as_ref() {
                                     let (family, variant) = local_selection.game.gamedb_entry().family_and_variant;
-                                    ui.label(if game::find_by_family_and_variant(family, variant).is_some() {
+                                    ui.label(if game::find_by_family_and_variant(&family, variant).is_some() {
                                         i18n::LOCALES
                                             .lookup(&config.language, &format!("game-{}", family))
                                             .unwrap()
@@ -1714,10 +1726,6 @@ pub fn show(
                     &mut state.save_select_state,
                     &mut *selection,
                     patch_selection,
-                    &config.language,
-                    &config.saves_path(),
-                    &config.patches_path(),
-                    &config.starred_patches,
                     roms_scanner.clone(),
                     saves_scanner.clone(),
                     patches_scanner.clone(),
