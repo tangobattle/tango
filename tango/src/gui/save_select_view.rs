@@ -317,6 +317,7 @@ pub fn show(
     let item_spacing_x = ui.spacing().item_spacing.x;
 
     ui.vertical(|ui| {
+        // game options
         ui.horizontal(|ui| {
             let wide_width = (ui.available_width() - PATCH_VERSION_WIDTH) * 0.5 - item_spacing_x;
 
@@ -789,7 +790,87 @@ pub fn show(
             });
         });
 
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+        // save list
+        let mut layout_job = egui::text::LayoutJob::default();
+        layout_job.wrap.break_anywhere = true;
+        layout_job.wrap.max_rows = 1;
+
+        layout_job.append(
+            &state
+                .selection
+                .as_ref()
+                .and_then(|selection| selection.save_path.as_ref())
+                .map(|save_path| save_name(saves_path, save_path).to_string())
+                .unwrap_or_else(|| i18n::LOCALES.lookup(language, "select-save.no-save-selected").unwrap()),
+            0.0,
+            egui::TextFormat::simple(
+                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                ui.visuals().text_color(),
+            ),
+        );
+
+        ui.add_enabled_ui(state.selection.is_some(), |ui| {
+            egui::ComboBox::from_id_source("save-select-combobox")
+                .selected_text(layout_job)
+                .width(ui.available_width())
+                .wrap(true)
+                .show_ui(ui, |ui| {
+                    let Some(selection_state) = state.selection.as_mut() else {
+                        return;
+                    };
+
+                    let Some(saves) = saves.get(&selection_state.game) else {
+                        return;
+                    };
+
+                    // attempt to provide room to fix weird staircasing from using an imgui
+                    let mut max_width: f32 = 0.0;
+
+                    for save in saves {
+                        let mut width = item_spacing_x * 2.0;
+
+                        width += save_name(saves_path, &save.path).len() as f32 * BODY_CHAR_WIDTH;
+
+                        max_width = max_width.max(width);
+                    }
+
+                    ui.allocate_space(egui::Vec2::new(max_width, 0.0));
+
+                    // save list
+                    for save in saves {
+                        let selected = selection_state
+                            .save_path
+                            .as_ref()
+                            .is_some_and(|path| path == save.path.as_path());
+
+                        let mut layout_job = egui::text::LayoutJob::default();
+                        layout_job.append(
+                            &save_name(saves_path, &save.path),
+                            0.0,
+                            egui::TextFormat::simple(
+                                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                if selected {
+                                    ui.visuals().selection.stroke.color
+                                } else {
+                                    ui.visuals().text_color()
+                                },
+                            ),
+                        );
+
+                        let save_ui_label = ui.selectable_label(selected, layout_job);
+
+                        if save_ui_label.clicked() {
+                            selection_state.save_path = Some(save.path.clone());
+                            commit_save(&roms, patches_path, committed_selection, selection_state, save.clone());
+                        }
+                    }
+                })
+        });
+
+        ui.separator();
+
+        // save management
+        ui.horizontal(|ui| {
             // open save folder button
             if ui
                 .button(format!(
@@ -801,87 +882,6 @@ pub fn show(
                 let _ = open::that(saves_path);
             }
 
-            // save list
-            let mut layout_job = egui::text::LayoutJob::default();
-            layout_job.wrap.break_anywhere = true;
-            layout_job.wrap.max_rows = 1;
-
-            layout_job.append(
-                &state
-                    .selection
-                    .as_ref()
-                    .and_then(|selection| selection.save_path.as_ref())
-                    .map(|save_path| save_name(saves_path, save_path).to_string())
-                    .unwrap_or_else(|| i18n::LOCALES.lookup(language, "select-save.no-save-selected").unwrap()),
-                0.0,
-                egui::TextFormat::simple(
-                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                    ui.visuals().text_color(),
-                ),
-            );
-
-            ui.add_enabled_ui(state.selection.is_some(), |ui| {
-                egui::ComboBox::from_id_source("save-select-combobox")
-                    .selected_text(layout_job)
-                    .width(ui.available_width())
-                    .wrap(true)
-                    .show_ui(ui, |ui| {
-                        let Some(selection_state) = state.selection.as_mut() else {
-                            return;
-                        };
-
-                        let Some(saves) = saves.get(&selection_state.game) else {
-                            return;
-                        };
-
-                        // attempt to provide room to fix weird staircasing from using an imgui
-                        let mut max_width: f32 = 0.0;
-
-                        for save in saves {
-                            let mut width = item_spacing_x * 2.0;
-
-                            width += save_name(saves_path, &save.path).len() as f32 * BODY_CHAR_WIDTH;
-
-                            max_width = max_width.max(width);
-                        }
-
-                        ui.allocate_space(egui::Vec2::new(max_width, 0.0));
-
-                        // save list
-                        for save in saves {
-                            let selected = selection_state
-                                .save_path
-                                .as_ref()
-                                .is_some_and(|path| path == save.path.as_path());
-
-                            let mut layout_job = egui::text::LayoutJob::default();
-                            layout_job.append(
-                                &save_name(saves_path, &save.path),
-                                0.0,
-                                egui::TextFormat::simple(
-                                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                                    if selected {
-                                        ui.visuals().selection.stroke.color
-                                    } else {
-                                        ui.visuals().text_color()
-                                    },
-                                ),
-                            );
-
-                            let save_ui_label = ui.selectable_label(selected, layout_job);
-
-                            if save_ui_label.clicked() {
-                                selection_state.save_path = Some(save.path.clone());
-                                commit_save(&roms, patches_path, committed_selection, selection_state, save.clone());
-                            }
-                        }
-                    })
-            });
-        });
-
-        ui.separator();
-
-        ui.horizontal(|ui| {
             // new save button + list
             let cloned_selection = state.selection.clone();
             let mut from_patch = false;
