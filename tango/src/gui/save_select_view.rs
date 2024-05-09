@@ -55,6 +55,29 @@ impl Selection {
 
         Some(selection)
     }
+
+    pub fn commit(
+        &self,
+        roms_scanner: rom::Scanner,
+        saves_scanner: save::Scanner,
+        config: &crate::config::Config,
+    ) -> Option<gui::Selection> {
+        let roms = roms_scanner.read();
+        let saves = saves_scanner.read();
+        let patches_path = &config.patches_path();
+
+        let save_path = self.save_path.as_ref()?;
+        let save = saves
+            .get(&self.game)?
+            .iter()
+            .find(|save| save.path == *save_path)?
+            .clone();
+
+        let mut committed_selection = None;
+        commit_save(&roms, patches_path, &mut committed_selection, self, save);
+
+        committed_selection
+    }
 }
 
 pub struct State {

@@ -913,24 +913,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
-        roms_scanner: rom::Scanner,
-        saves_scanner: save::Scanner,
-        patches_scanner: patch::Scanner,
-        config: &crate::config::Config,
-    ) -> Self {
+    pub fn new(selection: Option<gui::save_select_view::Selection>) -> Self {
         Self {
             link_code: String::new(),
             show_link_code: false,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            save_select_state: gui::save_select_view::State::new(
-                gui::save_select_view::Selection::resolve_from_config(
-                    roms_scanner,
-                    saves_scanner,
-                    patches_scanner,
-                    config,
-                ),
-            ),
+            save_select_state: gui::save_select_view::State::new(selection),
         }
     }
 }

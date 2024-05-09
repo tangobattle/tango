@@ -126,18 +126,24 @@ impl State {
 
         ctx.style_mut(|style| style.spacing.scroll = egui::style::ScrollStyle::solid());
 
-        let main_view = main_view::State::new(
+        // load previous selection
+        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
             roms_scanner.clone(),
             saves_scanner.clone(),
             patches_scanner.clone(),
             &config.read(),
-            show_updater,
         );
+
+        let committed_selection = working_selection
+            .as_ref()
+            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
+
+        let main_view = main_view::State::new(working_selection, show_updater);
 
         Ok(Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            selection: None,
+            selection: committed_selection,
             last_mouse_motion_time: None,
             roms_scanner,
             saves_scanner,
