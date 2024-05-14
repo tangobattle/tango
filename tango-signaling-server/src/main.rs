@@ -29,6 +29,12 @@ struct Config {
     #[envconfig(from = "OPENTOK_API_SECRET", default = "")]
     opentok_api_secret: String,
 
+    #[envconfig(from = "CLOUDFLARE_TURN_SERVICE_ID", default = "")]
+    cloudflare_turn_service_id: String,
+
+    #[envconfig(from = "CLOUDFLARE_TURN_SERVICE_API_TOKEN", default = "")]
+    cloudflare_turn_service_api_token: String,
+
     #[envconfig(from = "METERED_APPLICATION_NAME", default = "")]
     metered_application_name: String,
 
@@ -50,7 +56,7 @@ async fn handle_healthcheck_request(
         .unwrap());
 }
 
-pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3b;
+pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3a;
 
 async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,
@@ -178,33 +184,40 @@ async fn main() -> anyhow::Result<()> {
     let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
     let addr = config.listen_addr.parse()?;
 
-    let iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>> =
-        if !config.twilio_account_sid.is_empty()
-            && !config.twilio_api_sid.is_empty()
-            && !config.twilio_api_secret.is_empty()
-        {
-            log::info!("using twilio iceconfig backend");
-            Some(Box::new(iceconfig::twilio::Backend::new(
-                config.twilio_account_sid.clone(),
-                config.twilio_api_sid.clone(),
-                config.twilio_api_secret.clone(),
-            )))
-        } else if !config.opentok_api_key.is_empty() && !config.opentok_api_secret.is_empty() {
-            log::info!("using opentok iceconfig backend");
-            Some(Box::new(iceconfig::opentok::Backend::new(
-                config.opentok_api_key.clone(),
-                config.opentok_api_secret.clone(),
-            )))
-        } else if !config.metered_application_name.is_empty() && !config.metered_api_key.is_empty() {
-            log::info!("using metered iceconfig backend");
-            Some(Box::new(iceconfig::metered::Backend::new(
-                config.metered_application_name.clone(),
-                config.metered_api_key.clone(),
-            )))
-        } else {
-            log::warn!("no iceconfig backend, will not service iceconfig requests");
-            None
-        };
+    let iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>> = if !config
+        .twilio_account_sid
+        .is_empty()
+        && !config.twilio_api_sid.is_empty()
+        && !config.twilio_api_secret.is_empty()
+    {
+        log::info!("using twilio iceconfig backend");
+        Some(Box::new(iceconfig::twilio::Backend::new(
+            config.twilio_account_sid.clone(),
+            config.twilio_api_sid.clone(),
+            config.twilio_api_secret.clone(),
+        )))
+    } else if !config.cloudflare_turn_service_id.is_empty() && !config.cloudflare_turn_service_api_token.is_empty() {
+        log::info!("using cloudflare iceconfig backend");
+        Some(Box::new(iceconfig::cloudflare::Backend::new(
+            config.cloudflare_turn_service_id.clone(),
+            config.cloudflare_turn_service_api_token.clone(),
+        )))
+    } else if !config.opentok_api_key.is_empty() && !config.opentok_api_secret.is_empty() {
+        log::info!("using opentok iceconfig backend");
+        Some(Box::new(iceconfig::opentok::Backend::new(
+            config.opentok_api_key.clone(),
+            config.opentok_api_secret.clone(),
+        )))
+    } else if !config.metered_application_name.is_empty() && !config.metered_api_key.is_empty() {
+        log::info!("using metered iceconfig backend");
+        Some(Box::new(iceconfig::metered::Backend::new(
+            config.metered_application_name.clone(),
+            config.metered_api_key.clone(),
+        )))
+    } else {
+        log::warn!("no iceconfig backend, will not service iceconfig requests");
+        None
+    };
 
     let router = router(real_ip_getter, iceconfig_backend);
 
