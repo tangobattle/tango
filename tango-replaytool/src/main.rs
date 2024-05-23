@@ -105,7 +105,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
 
 async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
     let mut writer = tango_pvp::replay::Writer::new(
-        Box::new(std::fs::File::create(&output_path)?),
+        Box::new(std::fs::File::create(output_path)?),
         replay.metadata,
         replay.local_player_index,
         replay.input_pairs.first().map(|ip| ip.local.packet.len()).unwrap_or(0) as u8,
@@ -219,14 +219,14 @@ async fn cmd_export(
             local_hooks,
             &remote_rom,
             remote_hooks,
-            &replay,
+            &[replay],
             &output_path,
             &settings,
             cb,
         )
         .await?;
     } else {
-        tango_pvp::replay::export::export(&local_rom, local_hooks, &replay, &output_path, &settings, cb).await?;
+        tango_pvp::replay::export::export(&local_rom, local_hooks, &[replay], &output_path, &settings, cb).await?;
     }
 
     Ok(())
@@ -251,7 +251,7 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
         ));
     }
 
-    let (result, _) = tango_pvp::eval::eval(&replay, &rom, hooks, || vec![]).await?;
+    let (result, _) = tango_pvp::eval::eval(&replay, &rom, hooks, Vec::new).await?;
     println!("{}", result.outcome as u8);
 
     Ok(())
