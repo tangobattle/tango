@@ -9,7 +9,7 @@ bitvec = "1"
 bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
 c2rust-bitfields = "0.17"
-image = { version = "0.24", default_features = false }
+image = { version = "0.24", default-features = false }
 itertools = "0.6"
 ndarray = "0.15"
 num-derive = "0.3"
