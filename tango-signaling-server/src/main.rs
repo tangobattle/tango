@@ -50,10 +50,10 @@ struct State {
 async fn handle_healthcheck_request(
     _request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    return Ok(hyper::Response::builder()
+    Ok(hyper::Response::builder()
         .status(hyper::StatusCode::OK)
         .body(hyper::Body::from("ok"))
-        .unwrap());
+        .unwrap())
 }
 
 pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3a;
