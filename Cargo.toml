@@ -16,6 +16,3 @@ members = [
     "tango-signaling",
     "tango-signaling-server",
 ]
-
-[patch.crates-io]
-sdl2 = { git = "https://github.com/tangobattle/rust-sdl2", rev = "08bbc3d47cdccc0620373b73f2f1c1a5299d3f43" }
