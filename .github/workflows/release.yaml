@@ -25,7 +25,7 @@ jobs:
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo apt-get autoremove -y clang-14
+                  sudo apt-get autoremove -y clang-13 clang-14
 
             - run: >
                   sudo apt-get install -y nsis mingw-w64 imagemagick wget libarchive-tools clang-15
