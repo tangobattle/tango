@@ -1,5 +1,6 @@
 replays = Replays
 replays-export = Exporteren
+replays-export-multi = Exporteren+
 replays-play = Afspelen
 replays-scanning = Scannen...
 replay-subtitle = { $game_family } @ { $link_code }: vs { $nickname }

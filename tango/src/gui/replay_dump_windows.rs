@@ -71,7 +71,15 @@ pub fn show(ctx: &egui::Context, state: &mut State, language: &unic_langid::Lang
         let mut open2 = open;
 
         let path = state.output_path.file_name().map(|path| path.to_string_lossy())
-        .unwrap_or_else(|| i18n::LOCALES.lookup(language, "replays-export").unwrap().into());
+        .unwrap_or_else(|| {
+            let export_text_id = if state.replays.len() == 1 {
+                "replays-export"
+            } else {
+                "replays-export-multi"
+            };
+
+            i18n::LOCALES.lookup(language, export_text_id).unwrap().into()
+        });
 
         egui::Window::new(path)
             .id(egui::Id::new(format!("replay-dump-window-{}", id)))

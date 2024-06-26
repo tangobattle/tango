@@ -1,5 +1,6 @@
 replays = Реплеи
 replays-export = Экспортировать
+replays-export-multi = Export+
 replays-play = Играть
 replays-scanning = Сканирование...
 replay-subtitle = { $game_family } @ { $link_code }: против{ $nickname }

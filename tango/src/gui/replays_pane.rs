@@ -447,13 +447,15 @@ pub fn show(
                             });
                         }
 
-                        if ui
-                            .button(format!(
-                                "💾 {}",
-                                i18n::LOCALES.lookup(language, "replays-export").unwrap()
-                            ))
-                            .clicked()
-                        {
+                        let export_text_id = if selection.len() == 1 {
+                            "replays-export"
+                        } else {
+                            "replays-export-multi"
+                        };
+
+                        let export_label = format!("💾 {}", i18n::LOCALES.lookup(language, export_text_id).unwrap());
+
+                        if ui.button(export_label).clicked() {
                             let replays_to_render = replays[selection.clone()]
                                 .iter()
                                 .rev()
