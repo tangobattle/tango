@@ -1,5 +1,6 @@
 replays = 回放
 replays-export = 導出
+replays-export-multi = Export+
 replays-play = 播放
 replays-scanning = 正在掃描……
 replay-subtitle = { $game_family } @ { $link_code }：對{ $nickname }
