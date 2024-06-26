@@ -1,11 +1,24 @@
-use fluent_templates::Loader;
-
+use super::memoize::ResultCacheSingle;
 use crate::{audio, game, gui, i18n, patch, rom, scanner, session, stats};
+use fluent_templates::Loader;
+use std::{rc::Rc, sync::Arc};
+use tango_dataview::save::Save;
+use tango_pvp::replay::Replay;
+
+struct CachedData {
+    replay: Replay,
+    patch: Option<(String, semver::Version, Arc<crate::patch::Version>)>,
+    rom_assets: Option<Box<dyn tango_dataview::rom::Assets + Send + Sync>>,
+    local_rom: Vec<u8>,
+    remote_rom: Option<Vec<u8>>,
+    save: Box<dyn Save + Sync + Send>,
+}
 
 pub struct State {
     replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, tango_pvp::replay::Metadata)>>,
     selection: Option<std::ops::Range<usize>>,
     save_view: gui::save_view::State,
+    replay_cache: ResultCacheSingle<std::path::PathBuf, Option<Rc<CachedData>>>,
 }
 
 impl State {
@@ -14,6 +27,7 @@ impl State {
             selection: None,
             replays_scanner: scanner::Scanner::new(),
             save_view: gui::save_view::State::new(),
+            replay_cache: Default::default(),
         }
     }
 
@@ -274,10 +288,6 @@ pub fn show(
                     return;
                 };
 
-                let Some(remote_side) = metadata.remote_side.as_ref() else {
-                    return;
-                };
-
                 let Some(local_game_info) = local_side.game_info.as_ref() else {
                     return;
                 };
@@ -289,112 +299,51 @@ pub fn show(
                     return;
                 };
 
-                let Some(remote_game_info) = remote_side.game_info.as_ref() else {
-                    return;
-                };
+                let cached_result = state.replay_cache.calculate(path.clone(), |path| {
+                    let remote_side = metadata.remote_side.as_ref()?;
+                    let remote_game_info = remote_side.game_info.as_ref()?;
 
-                let Some(remote_game) = game::find_by_family_and_variant(
-                    remote_game_info.rom_family.as_str(),
-                    remote_game_info.rom_variant as u8,
-                ) else {
-                    return;
-                };
+                    let remote_game = game::find_by_family_and_variant(
+                        remote_game_info.rom_family.as_str(),
+                        remote_game_info.rom_variant as u8,
+                    )?;
 
-                let mut f = match std::fs::File::open(path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::error!("failed to load replay {}: {:?}", path.display(), e);
-                        return;
-                    }
-                };
-
-                let replay = match tango_pvp::replay::Replay::decode(&mut f) {
-                    Ok(replay) => replay,
-                    Err(e) => {
-                        log::error!("failed to load replay {}: {:?}", path.display(), e);
-                        return;
-                    }
-                };
-
-                let save = match local_game.save_from_wram(replay.local_state.wram()) {
-                    Ok(save) => save,
-                    Err(e) => {
-                        log::error!("failed to load replay {}: {:?}", path.display(), e);
-                        return;
-                    }
-                };
-
-                let Some(mut local_rom) = roms.get(&local_game).cloned() else {
-                    return;
-                };
-
-                let patch = if let Some(patch_info) = local_game_info.patch.as_ref() {
-                    let Some(patch) = patches.get(&patch_info.name) else {
-                        return;
-                    };
-
-                    let Ok(version) = semver::Version::parse(&patch_info.version) else {
-                        return;
-                    };
-
-                    let Some(version_meta) = patch.versions.get(&version) else {
-                        return;
-                    };
-
-                    let (rom_code, revision) = local_game.gamedb_entry().rom_code_and_revision;
-
-                    local_rom = match patch::apply_patch_from_disk(
-                        &local_rom,
-                        local_game,
-                        patches_path,
-                        &patch_info.name,
-                        &version,
-                    ) {
-                        Ok(r) => r,
+                    let mut f = match std::fs::File::open(&path) {
+                        Ok(f) => f,
                         Err(e) => {
-                            log::error!(
-                                "failed to apply patch {}: {:?}: {:?}",
-                                patch_info.name,
-                                (rom_code, revision),
-                                e
-                            );
-                            return;
+                            log::error!("failed to load replay {}: {:?}", path.display(), e);
+                            return None;
                         }
                     };
 
-                    Some((patch_info.name.clone(), version, version_meta.clone()))
-                } else {
-                    None
-                };
-
-                let assets = match local_game.load_rom_assets(
-                    &local_rom,
-                    replay.local_state.wram(),
-                    &patch
-                        .as_ref()
-                        .map(|(_, _, metadata)| metadata.rom_overrides.clone())
-                        .unwrap_or_default(),
-                ) {
-                    Ok(assets) => Some(assets),
-                    Err(e) => {
-                        log::error!("failed to load assets: {:?}", e);
-                        None
-                    }
-                };
-
-                let remote_rom = roms.get(&remote_game).and_then(|rom| {
-                    let mut rom = rom.clone();
-
-                    if let Some(patch_info) = remote_game_info.patch.as_ref() {
-                        let Ok(version) = semver::Version::parse(&patch_info.version) else {
+                    let replay = match tango_pvp::replay::Replay::decode(&mut f) {
+                        Ok(replay) => replay,
+                        Err(e) => {
+                            log::error!("failed to load replay {}: {:?}", path.display(), e);
                             return None;
-                        };
+                        }
+                    };
 
-                        let (rom_code, revision) = remote_game.gamedb_entry().rom_code_and_revision;
+                    let save = match local_game.save_from_wram(replay.local_state.wram()) {
+                        Ok(save) => save,
+                        Err(e) => {
+                            log::error!("failed to load replay {}: {:?}", path.display(), e);
+                            return None;
+                        }
+                    };
 
-                        rom = match patch::apply_patch_from_disk(
-                            &rom,
-                            remote_game,
+                    let mut local_rom = roms.get(&local_game).cloned()?;
+
+                    let patch = if let Some(patch_info) = local_game_info.patch.as_ref() {
+                        let patch = patches.get(&patch_info.name)?;
+                        let version = semver::Version::parse(&patch_info.version).ok()?;
+                        let version_meta = patch.versions.get(&version)?;
+
+                        let (rom_code, revision) = local_game.gamedb_entry().rom_code_and_revision;
+
+                        local_rom = match patch::apply_patch_from_disk(
+                            &local_rom,
+                            local_game,
                             patches_path,
                             &patch_info.name,
                             &version,
@@ -410,10 +359,80 @@ pub fn show(
                                 return None;
                             }
                         };
-                    }
 
-                    Some(rom)
+                        Some((patch_info.name.clone(), version, version_meta.clone()))
+                    } else {
+                        None
+                    };
+
+                    let assets = match local_game.load_rom_assets(
+                        &local_rom,
+                        replay.local_state.wram(),
+                        &patch
+                            .as_ref()
+                            .map(|(_, _, metadata)| metadata.rom_overrides.clone())
+                            .unwrap_or_default(),
+                    ) {
+                        Ok(assets) => Some(assets),
+                        Err(e) => {
+                            log::error!("failed to load assets: {:?}", e);
+                            None
+                        }
+                    };
+
+                    let remote_rom = roms.get(&remote_game).and_then(|rom| {
+                        let mut rom = rom.clone();
+
+                        if let Some(patch_info) = remote_game_info.patch.as_ref() {
+                            let Ok(version) = semver::Version::parse(&patch_info.version) else {
+                                return None;
+                            };
+
+                            let (rom_code, revision) = remote_game.gamedb_entry().rom_code_and_revision;
+
+                            rom = match patch::apply_patch_from_disk(
+                                &rom,
+                                remote_game,
+                                patches_path,
+                                &patch_info.name,
+                                &version,
+                            ) {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    log::error!(
+                                        "failed to apply patch {}: {:?}: {:?}",
+                                        patch_info.name,
+                                        (rom_code, revision),
+                                        e
+                                    );
+                                    return None;
+                                }
+                            };
+                        }
+
+                        Some(rom)
+                    });
+
+                    Some(Rc::new(CachedData {
+                        replay,
+                        rom_assets: assets,
+                        local_rom,
+                        remote_rom,
+                        patch,
+                        save,
+                    }))
                 });
+
+                let Some(cached_result) = cached_result else {
+                    return;
+                };
+
+                let local_rom = &cached_result.local_rom;
+                let remote_rom = &cached_result.remote_rom;
+                let assets = &cached_result.rom_assets;
+                let patch = &cached_result.patch;
+                let save = &cached_result.save;
+                let replay = cached_result.replay.clone();
 
                 ui.vertical(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
