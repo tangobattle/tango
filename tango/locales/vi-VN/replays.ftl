@@ -1,5 +1,6 @@
 replays = Bản ghi lại
 replays-export = Xuất
+replays-export-multi = Export+
 replays-play = Phát
 replays-scanning = Đang quét...
 replay-subtitle = { $game_family } @ { $link_code }: vs { $nickname }
