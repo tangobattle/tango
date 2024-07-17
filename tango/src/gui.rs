@@ -125,7 +125,13 @@ impl State {
             ]),
         });
 
-        ctx.style_mut(|style| style.spacing.scroll = egui::style::ScrollStyle::solid());
+        ctx.style_mut(|style| {
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+            // animation_time > 0 causes panics as egui requires us to keep data around for closing animations
+            // to see what i mean, open the settings window and close it with this set to anything other than 0
+            // disabling the fade_out animation on specific windows does not appear to stop egui from attempting to rerender old data
+            style.animation_time = 0.0;
+        });
 
         // load previous selection
         let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(

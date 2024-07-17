@@ -433,7 +433,7 @@ pub fn show(
                     let resp = egui::ComboBox::from_id_source("game-select-combobox")
                         .selected_text(layout_job)
                         .width(wide_width)
-                        .wrap(true)
+                        .wrap()
                         .height(max_dropdown_height)
                         .show_ui(ui, |ui| {
                             // attempt to provide room to fix weird staircasing from using an imgui
@@ -595,7 +595,7 @@ pub fn show(
                         let resp = egui::ComboBox::from_id_source("patch-select-combobox")
                             .selected_text(layout_job)
                             .width(wide_width)
-                            .wrap(true)
+                            .wrap()
                             .height(max_dropdown_height)
                             .show_ui(ui, |ui| {
                                 let Some(selection) = state.selection.as_mut() else {
@@ -894,7 +894,7 @@ pub fn show(
             egui::ComboBox::from_id_source("save-select-combobox")
                 .selected_text(layout_job)
                 .width(ui.available_width())
-                .wrap(true)
+                .wrap()
                 .height(max_dropdown_height)
                 .show_ui(ui, |ui| {
                     let Some(selection_state) = state.selection.as_mut() else {
