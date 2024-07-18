@@ -88,7 +88,8 @@ fn show_emulator(
     }
 
     let scaled_size = gba_screen_size * scaling_factor / pixels_per_point;
-    let center = (ui.available_size() * 0.5 * pixels_per_point).floor() / pixels_per_point;
+    let center = ui.available_size() * 0.5 + ui.cursor().left_top().to_vec2();
+    let center = (center * pixels_per_point).floor() / pixels_per_point;
     let rect = egui::Rect::from_center_size(center.to_pos2(), scaled_size);
 
     ui.put(rect, egui::Image::new((vbuf.texture.id(), scaled_size)));
