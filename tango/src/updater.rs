@@ -50,28 +50,16 @@ pub struct Updater {
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
-#[cfg(target_os = "macos")]
 fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-macos.dmg")
-}
-
-#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-x86_64-windows.exe")
-}
-
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-x86_64-linux.AppImage")
-}
-
-#[cfg(not(any(
-    all(target_os = "windows", target_arch = "x86_64"),
-    all(target_os = "linux", target_arch = "x86_64"),
-    target_os = "macos"
-)))]
-fn is_target_installer(s: &str) -> bool {
-    false
+    if cfg!(target_os = "macos") {
+        s.ends_with("-macos.dmg")
+    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        s.ends_with("-x86_64-windows.exe")
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        s.ends_with("-x86_64-linux.AppImage")
+    } else {
+        false
+    }
 }
 
 const INCOMPLETE_FILENAME: &str = "incomplete";
