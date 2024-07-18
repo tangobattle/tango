@@ -65,6 +65,15 @@ fn is_target_installer(s: &str) -> bool {
     s.ends_with("-x86_64-linux.AppImage")
 }
 
+#[cfg(not(any(
+    all(target_os = "windows", target_arch = "x86_64"),
+    all(target_os = "linux", target_arch = "x86_64"),
+    target_os = "macos"
+)))]
+fn is_target_installer(s: &str) -> bool {
+    false
+}
+
 const INCOMPLETE_FILENAME: &str = "incomplete";
 
 #[cfg(target_os = "macos")]
