@@ -184,7 +184,7 @@ fn commit_patch(
     }
 
     committed_selection.rom = rom;
-    committed_selection.patch = selection_state.patch.clone();
+    committed_selection.patch.clone_from(&selection_state.patch);
 }
 
 fn commit_save(
@@ -851,7 +851,7 @@ pub fn show(
 
                                             let patch = Some((patch_name.clone(), version.clone(), version_metadata));
 
-                                            selection.patch = patch.clone();
+                                            selection.patch.clone_from(&patch);
                                             config.last_patch_version = Some(version.clone());
                                             commit_patch(&roms, patches_path, committed_selection, selection);
                                         }

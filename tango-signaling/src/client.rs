@@ -302,26 +302,24 @@ pub async fn connect(
             );
 
             loop {
-                match event_rx.recv().await {
-                    Some(signal) => match signal {
-                        datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
-                            datachannel_wrapper::ConnectionState::Connected => {
-                                break;
-                            }
-                            datachannel_wrapper::ConnectionState::Disconnected => {
-                                return Err(Error::PeerConnectionDisconnected);
-                            }
-                            datachannel_wrapper::ConnectionState::Failed => {
-                                return Err(Error::PeerConnectionFailed);
-                            }
-                            datachannel_wrapper::ConnectionState::Closed => {
-                                return Err(Error::PeerConnectionClosed);
-                            }
-                            _ => {}
-                        },
+                let signal = event_rx.recv().await.unwrap();
+
+                if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) = signal {
+                    match c {
+                        datachannel_wrapper::ConnectionState::Connected => {
+                            break;
+                        }
+                        datachannel_wrapper::ConnectionState::Disconnected => {
+                            return Err(Error::PeerConnectionDisconnected);
+                        }
+                        datachannel_wrapper::ConnectionState::Failed => {
+                            return Err(Error::PeerConnectionFailed);
+                        }
+                        datachannel_wrapper::ConnectionState::Closed => {
+                            return Err(Error::PeerConnectionClosed);
+                        }
                         _ => {}
-                    },
-                    None => unreachable!(),
+                    }
                 }
             }
 

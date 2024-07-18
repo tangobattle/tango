@@ -16,3 +16,11 @@ members = [
     "tango-signaling",
     "tango-signaling-server",
 ]
+
+[workspace.lints.clippy]
+new_without_default = "allow"
+type_complexity = "allow"
+identity_op = "allow"
+blocks_in_conditions = "allow"
+redundant_closure = "allow"
+too_many_arguments = "allow"

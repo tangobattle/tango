@@ -1026,7 +1026,7 @@ fn show_lobby_table(
                             ui.vertical(|ui| {
                                 if let Some(local_selection) = lobby.local_selection.as_ref() {
                                     let (family, variant) = local_selection.game.gamedb_entry().family_and_variant;
-                                    ui.label(if game::find_by_family_and_variant(&family, variant).is_some() {
+                                    ui.label(if game::find_by_family_and_variant(family, variant).is_some() {
                                         i18n::LOCALES
                                             .lookup(&config.language, &format!("game-{}", family))
                                             .unwrap()

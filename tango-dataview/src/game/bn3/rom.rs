@@ -290,7 +290,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         let region = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = crate::msg::get_entry(&region, self.id / 4)?;
+        let entry = crate::msg::get_entry(region, self.id / 4)?;
 
         Some(
             self.assets
@@ -314,7 +314,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         let region = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = crate::msg::get_entry(&region, self.id / 4)?;
+        let entry = crate::msg::get_entry(region, self.id / 4)?;
 
         Some(
             self.assets
@@ -426,7 +426,7 @@ impl<'a> crate::rom::Style for Style<'a> {
         let region = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
             &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..std::mem::size_of::<u32>()],
         ));
-        let entry = crate::msg::get_entry(&region, 128 + raw.typ() as usize * 5 + raw.element() as usize)?;
+        let entry = crate::msg::get_entry(region, 128 + raw.typ() as usize * 5 + raw.element() as usize)?;
 
         Some(
             self.assets

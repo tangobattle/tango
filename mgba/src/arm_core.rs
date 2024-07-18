@@ -78,7 +78,7 @@ impl<'a> ARMCoreMutRef<'a> {
                 (self.as_ref().gpr(mgba_sys::ARM_PC as usize) & -(mgba_sys::WordSize_WORD_SIZE_THUMB as i32)) as u32;
 
             // cpu->memory.setActiveRegion(cpu, pc);
-            (*self.ptr).memory.setActiveRegion.unwrap()(self.ptr, pc as u32);
+            (*self.ptr).memory.setActiveRegion.unwrap()(self.ptr, pc);
 
             // LOAD_16(cpu->prefetch[0], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
             (*self.ptr).prefetch[0] = *(((*self.ptr).memory.activeRegion as *const u8)

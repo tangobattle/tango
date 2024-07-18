@@ -127,7 +127,7 @@ impl<'a> Instruction<'a> {
             Action::TargetRead { buf } => {
                 tgt.get_mut(self.tgt_offset..self.tgt_offset + self.len)
                     .ok_or(ApplyError::UnexpectedTargetEOF)?
-                    .copy_from_slice(&buf);
+                    .copy_from_slice(buf);
             }
             Action::SourceCopy { offset } => {
                 tgt.get_mut(self.tgt_offset..self.tgt_offset + self.len)
@@ -225,7 +225,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
                         }
                     },
                     tgt_offset,
-                    len: len,
+                    len,
                 })
             })() {
                 Ok(v) => Ok(v),

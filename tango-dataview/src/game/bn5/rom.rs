@@ -187,7 +187,7 @@ impl<'a> crate::rom::Chip for Chip<'a> {
                 Some(match part {
                     crate::msg::Chunk::Text(s) => s,
                     crate::msg::Chunk::Command(command) => match command {
-                        msg::Command::EreaderNameCommand(cmd) => {
+                        msg::Command::EreaderName(cmd) => {
                             if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                                 (super::save::EREADER_NAME_OFFSET + cmd.index as usize * super::save::EREADER_NAME_SIZE)
                                     as u32
@@ -233,7 +233,7 @@ impl<'a> crate::rom::Chip for Chip<'a> {
                 Some(match part {
                     crate::msg::Chunk::Text(s) => s,
                     crate::msg::Chunk::Command(command) => match command {
-                        msg::Command::EreaderDescriptionCommand(cmd) => {
+                        msg::Command::EreaderDescription(cmd) => {
                             if let Ok(parts) = self.assets.msg_parser.parse(&self.assets.mapper.get(
                                 (super::save::EREADER_DESCRIPTION_OFFSET
                                     + cmd.index as usize * super::save::EREADER_DESCRIPTION_SIZE)
@@ -511,8 +511,7 @@ impl<'a> PatchCard56<'a> {
 
         buf[std::mem::size_of::<RawPatchCard56Header>()..]
             .chunks(std::mem::size_of::<RawPatchCard56Effect>())
-            .into_iter()
-            .map(|chunk| bytemuck::pod_read_unaligned(chunk))
+            .map(bytemuck::pod_read_unaligned)
             .collect()
     }
 }
@@ -600,7 +599,7 @@ impl<'a> crate::rom::PatchCard56 for PatchCard56<'a> {
                                         vec![crate::rom::PatchCard56EffectTemplatePart::String(s)]
                                     }
                                     crate::msg::Chunk::Command(command) => match command {
-                                        msg::Command::PrintVarCommand(cmd) => {
+                                        msg::Command::PrintVar(cmd) => {
                                             vec![crate::rom::PatchCard56EffectTemplatePart::PrintVar(
                                                 cmd.buffer as usize,
                                             )]
@@ -620,7 +619,7 @@ impl<'a> crate::rom::PatchCard56 for PatchCard56<'a> {
                                             if v == 1 {
                                                 let mut parameter = effect.parameter as u32;
                                                 if effect.id == 0x00 || effect.id == 0x02 {
-                                                    parameter = parameter * 10;
+                                                    parameter *= 10;
                                                 }
                                                 format!("{}", parameter)
                                             } else {

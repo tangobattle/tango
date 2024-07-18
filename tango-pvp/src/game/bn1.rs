@@ -47,7 +47,7 @@ impl crate::hooks::Hooks for Hooks {
             (
                 self.offsets.rom.start_screen_play_music_call,
                 Box::new(move |mut core| {
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
@@ -642,7 +642,7 @@ impl crate::hooks::Hooks for Hooks {
                     if !stepper_state.disable_bgm() {
                         return;
                     }
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 })
             }),

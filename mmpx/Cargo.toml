@@ -21,3 +21,6 @@ edition = "2018"
 image = "0.25"
 rayon = "1.5"
 structopt = "0.3"
+
+[lints]
+workspace = true

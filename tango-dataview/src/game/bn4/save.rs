@@ -49,7 +49,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
-    crate::save::compute_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
+    crate::save::compute_raw_checksum(buf, shift + CHECKSUM_OFFSET)
 }
 
 const SHIFTABLE_REGION_START: usize = 0x2130;

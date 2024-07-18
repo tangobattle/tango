@@ -118,9 +118,7 @@ impl Receiver {
             .as_slice(),
         ) {
             Ok(p) => Ok(p),
-            Err(e) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e));
-            }
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
         }
     }
 }

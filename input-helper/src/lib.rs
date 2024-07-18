@@ -45,8 +45,8 @@ where
     }
 
     pub fn digest(&mut self) {
-        self.last_buttons_held = self.buttons_held.clone();
-        self.last_axes = self.axes.clone();
+        self.last_buttons_held.clone_from(&self.buttons_held);
+        self.last_axes.clone_from(&self.axes);
     }
 }
 
@@ -134,7 +134,7 @@ where
     }
 
     pub fn digest(&mut self) {
-        self.last_keys_held = self.keys_held.clone();
+        self.last_keys_held.clone_from(&self.keys_held);
 
         for (_, controller) in self.controllers.iter_mut() {
             controller.digest();

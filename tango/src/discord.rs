@@ -233,7 +233,7 @@ impl Client {
             if activity == *current_activity {
                 return;
             }
-            *current_activity = activity.clone();
+            current_activity.clone_from(&activity);
         }
 
         if let Some(activity) = activity.as_ref() {

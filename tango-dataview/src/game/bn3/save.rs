@@ -97,6 +97,7 @@ impl Save {
         self.buf[0x0030 + i / 8].view_bits::<bitvec::order::Msb0>()[i % 8]
     }
 
+    #[allow(dead_code)]
     fn set_flag(&mut self, i: usize, v: bool) {
         self.buf[0x0030 + i / 8]
             .view_bits_mut::<bitvec::order::Msb0>()

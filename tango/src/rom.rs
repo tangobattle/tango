@@ -10,9 +10,9 @@ fn deserialize_option_language_identifier<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    Ok(Option::<String>::deserialize(deserializer)?.map_or(Ok(None), |buf| {
+    Option::<String>::deserialize(deserializer)?.map_or(Ok(None), |buf| {
         buf.parse().map(|v| Some(v)).map_err(serde::de::Error::custom)
-    })?)
+    })
 }
 
 fn deserialize_option_patch_card56_effect_template<'de, D>(
@@ -100,15 +100,13 @@ pub struct OverridenChip<'a> {
 impl<'a> tango_dataview::rom::Chip for OverridenChip<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
-            .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
-            .flatten()
+            .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .map_or_else(|| self.chip.name(), Some)
     }
 
     fn description(&self) -> Option<String> {
         self.overrides
-            .map(|v| v.get(self.id).and_then(|v| v.description.clone()))
-            .flatten()
+            .and_then(|v| v.get(self.id).and_then(|v| v.description.clone()))
             .map_or_else(|| self.chip.description(), Some)
     }
 
@@ -158,15 +156,13 @@ pub struct OverridenNavicustPart<'a> {
 impl<'a> tango_dataview::rom::NavicustPart for OverridenNavicustPart<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
-            .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
-            .flatten()
+            .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .map_or_else(|| self.navicust_part.name(), Some)
     }
 
     fn description(&self) -> Option<String> {
         self.overrides
-            .map(|v| v.get(self.id).and_then(|v| v.description.clone()))
-            .flatten()
+            .and_then(|v| v.get(self.id).and_then(|v| v.description.clone()))
             .map_or_else(|| self.navicust_part.description(), Some)
     }
 
@@ -197,8 +193,7 @@ pub struct OverridenPatchCard56<'a> {
 impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
-            .map(|v| v.get(self.id).and_then(|v| v.name.clone()))
-            .flatten()
+            .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
             .map_or_else(|| self.patch_card56.name(), Some)
     }
 
@@ -213,8 +208,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
             .map(|e| tango_dataview::rom::PatchCard56Effect {
                 name: self
                     .effect_overrides
-                    .map(|v| v.get(e.id).and_then(|v| v.name_template.as_ref()))
-                    .flatten()
+                    .and_then(|v| v.get(e.id).and_then(|v| v.name_template.as_ref()))
                     .map(|parts| {
                         parts
                             .iter()
@@ -224,7 +218,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
                                     if *v == 1 {
                                         let mut parameter = e.parameter as u32;
                                         if e.id == 0x00 || e.id == 0x02 {
-                                            parameter = parameter * 10;
+                                            parameter *= 10;
                                         }
                                         format!("{}", parameter)
                                     } else {

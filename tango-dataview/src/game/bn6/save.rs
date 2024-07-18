@@ -145,7 +145,7 @@ impl Save {
     }
 
     pub fn as_jp_wram(&self) -> std::borrow::Cow<[u8]> {
-        let mut buf = self.buf.clone();
+        let mut buf = self.buf;
         convert_us_to_jp(&mut buf);
         std::borrow::Cow::Owned(buf.to_vec())
     }

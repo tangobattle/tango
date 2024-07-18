@@ -37,7 +37,7 @@ pub fn scan_saves(
         let mut errors = vec![];
         for game in tango_gamedb::GAMES
             .iter()
-            .flat_map(|g| crate::game::game_from_gamedb_entry(*g))
+            .flat_map(|g| crate::game::game_from_gamedb_entry(g))
         {
             match game.parse_save(&buf) {
                 Ok(save) => {

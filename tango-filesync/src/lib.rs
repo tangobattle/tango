@@ -35,7 +35,7 @@ async fn sync_entry(
             futures::future::join_all(entries.iter().map(|(filename, child)| {
                 let filename = filename.clone();
                 let sem = sem.clone();
-                async { Ok::<_, std::io::Error>(sync_entry(root, &path.join(filename), child, fetch_cb, sem).await?) }
+                async { sync_entry(root, &path.join(filename), child, fetch_cb, sem).await }
             }))
             .await
             .into_iter()
@@ -59,7 +59,7 @@ async fn sync_entry(
                         hasher.update(&buf[..n]);
                     }
 
-                    &hasher.finalize()[..] != &hash[..]
+                    hasher.finalize()[..] != hash[..]
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
                 Err(e) => {
@@ -88,7 +88,7 @@ pub async fn sync(
         let sem = sem.clone();
         let path = std::path::PathBuf::from(filename.clone());
         let fetch_cb = &fetch_cb;
-        async move { Ok::<_, std::io::Error>(sync_entry(root, &path, child, fetch_cb, sem).await?) }
+        async move { sync_entry(root, &path, child, fetch_cb, sem).await }
     }))
     .await
     .into_iter()

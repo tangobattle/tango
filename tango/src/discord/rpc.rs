@@ -18,7 +18,7 @@ impl<T> AsyncReadWrite for T where T: tokio::io::AsyncRead + tokio::io::AsyncWri
 async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>> {
     let tmpdir = if let Some(tmpdir) = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]
         .iter()
-        .flat_map(|key| std::env::var_os(key))
+        .flat_map(std::env::var_os)
         .next()
     {
         std::path::PathBuf::from(tmpdir)
@@ -32,7 +32,7 @@ async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::
         }
     }
 
-    return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"));
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"))
 }
 
 #[cfg(windows)]
@@ -217,7 +217,7 @@ impl Client {
             async move {
                 let receiver = &mut receiver;
                 let inner2 = inner.clone();
-                if let Err(e) = (move || async move {
+                if let Err(e) = async move {
                     loop {
                         let (opcode, raw) = receiver.receive_packet().await?;
                         let opcode = Opcode::from_u32(opcode).ok_or_else(|| {
@@ -256,7 +256,7 @@ impl Client {
                                 } else {
                                     return Err::<(), std::io::Error>(std::io::Error::new(
                                         std::io::ErrorKind::InvalidData,
-                                        format!("no nonce received"),
+                                        String::from("no nonce received"),
                                     ));
                                 };
 
@@ -265,7 +265,7 @@ impl Client {
                                 } else {
                                     return Err::<(), std::io::Error>(std::io::Error::new(
                                         std::io::ErrorKind::InvalidData,
-                                        format!("no current request"),
+                                        String::from("no current request"),
                                     ));
                                 };
                                 if incoming_nonce != nonce {
@@ -293,7 +293,7 @@ impl Client {
                             }
                         }
                     }
-                })()
+                }
                 .await
                 {
                     log::warn!("discord rpc disconnected with error: {:?}", e);

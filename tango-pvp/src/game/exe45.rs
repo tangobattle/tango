@@ -63,7 +63,7 @@ impl crate::hooks::Hooks for Hooks {
                 self.offsets.rom.comm_menu_handle_link_cable_input,
                 Box::new(move |mut core| {
                     //Skip call
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     //return r0 = 0, r1 = 0
                     core.gba_mut().cpu_mut().set_gpr(0, 0);
@@ -74,7 +74,7 @@ impl crate::hooks::Hooks for Hooks {
                 Box::new(move |mut core: mgba::core::CoreMutRef| {
                     // Skip giant section of code. This section checks if r0 == 8 and a bunch of input state checks that aren't present in BN4.
                     // It's probably fine! Maybe!
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x1C);
                 })
             }),
@@ -272,7 +272,7 @@ impl crate::hooks::Hooks for Hooks {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 Box::new(move |mut core| {
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     munger.set_copy_data_input_state(core, if match_.blocking_lock().is_some() { 2 } else { 4 });
                 })
@@ -477,7 +477,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.in_battle_call_handle_link_cable_input, {
                 let munger = self.munger();
                 Box::new(move |mut core| {
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     munger.set_copy_data_input_state(core, 2);
                 })
@@ -653,7 +653,7 @@ impl crate::hooks::Hooks for Hooks {
                     if !stepper_state.disable_bgm() {
                         return;
                     }
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 })
             }),
@@ -678,7 +678,7 @@ impl crate::hooks::Hooks for Hooks {
             (self.offsets.rom.in_battle_call_handle_link_cable_input, {
                 let munger = self.munger();
                 Box::new(move |mut core| {
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     munger.set_copy_data_input_state(core, 2);
                 })

@@ -228,7 +228,7 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn raw_read_32(&mut self, address: u32, segment: i32) -> u32 {
-        unsafe { (*self.ptr).rawRead32.unwrap()(self.ptr, address, segment) as u32 }
+        unsafe { (*self.ptr).rawRead32.unwrap()(self.ptr, address, segment) }
     }
 
     pub fn raw_read_range(&mut self, address: u32, segment: i32, buf: &mut [u8]) {

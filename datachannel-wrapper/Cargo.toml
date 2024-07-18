@@ -7,3 +7,6 @@ edition = "2021"
 datachannel = { version = "0.13", features = ["vendored"] }
 log = "0.4"
 tokio = { version = "1", features = ["full"] }
+
+[lints]
+workspace = true

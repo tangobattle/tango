@@ -832,7 +832,7 @@ impl crate::hooks::Hooks for Hooks {
                     if !stepper_state.disable_bgm() {
                         return;
                     }
-                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 })
             }),

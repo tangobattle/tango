@@ -118,3 +118,6 @@ sdl2 = { version = "0.37", features = ["static-link", "bundled"] }
 
 [build-dependencies]
 embed-resource = "1"
+
+[lints]
+workspace = true

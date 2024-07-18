@@ -151,7 +151,7 @@ pub fn show(
                             ui.vertical(|ui| {
                                 for author in patch.authors.iter() {
                                     let name = author.display_name.as_ref().unwrap_or(&author.addr);
-                                    if author.addr == "" {
+                                    if author.addr.is_empty() {
                                         ui.label(name);
                                     } else {
                                         ui.hyperlink_to(name, format!("mailto:{}", author.addr));
@@ -219,7 +219,7 @@ pub fn show(
                                 egui_commonmark::CommonMarkViewer::new("patch-info").show(
                                     ui,
                                     &mut state.commonmark_cache,
-                                    patch.readme.as_ref().map(|v| v.as_str()).unwrap_or(""),
+                                    patch.readme.as_deref().unwrap_or(""),
                                 );
                             });
                     });

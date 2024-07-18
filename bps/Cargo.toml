@@ -8,3 +8,6 @@ license = "MIT"
 byteorder = "1"
 crc32fast = "1"
 thiserror = "1"
+
+[lints]
+workspace = true

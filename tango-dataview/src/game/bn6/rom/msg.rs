@@ -1,7 +1,7 @@
 pub enum Command {
-    PrintVarCommand(PrintVarCommand),
-    EreaderNameCommand(EreaderNameCommand),
-    EreaderDescriptionCommand(EreaderDescriptionCommand),
+    PrintVar(PrintVarCommand),
+    EreaderName(EreaderNameCommand),
+    EreaderDescription(EreaderDescriptionCommand),
 }
 
 #[repr(packed, C)]
@@ -16,7 +16,7 @@ pub struct PrintVarCommand {
 const _: () = assert!(std::mem::size_of::<PrintVarCommand>() == 0x2);
 impl crate::msg::CommandBody<Command> for PrintVarCommand {
     fn into_wrapped(self) -> Command {
-        Command::PrintVarCommand(self)
+        Command::PrintVar(self)
     }
 }
 
@@ -28,7 +28,7 @@ pub struct EreaderNameCommand {
 const _: () = assert!(std::mem::size_of::<EreaderNameCommand>() == 0x1);
 impl crate::msg::CommandBody<Command> for EreaderNameCommand {
     fn into_wrapped(self) -> Command {
-        Command::EreaderNameCommand(self)
+        Command::EreaderName(self)
     }
 }
 
@@ -40,7 +40,7 @@ pub struct EreaderDescriptionCommand {
 const _: () = assert!(std::mem::size_of::<EreaderDescriptionCommand>() == 0x1);
 impl crate::msg::CommandBody<Command> for EreaderDescriptionCommand {
     fn into_wrapped(self) -> Command {
-        Command::EreaderDescriptionCommand(self)
+        Command::EreaderDescription(self)
     }
 }
 

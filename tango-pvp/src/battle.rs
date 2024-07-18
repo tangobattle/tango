@@ -455,7 +455,7 @@ impl Round {
                             r.tick,
                             local_tick
                         );
-                        last_commit = r.packet.clone();
+                        last_commit.clone_from(&r.packet);
                         r.packet
                     } else {
                         hooks.predict_rx(&mut last_commit);
@@ -489,13 +489,14 @@ impl Round {
 
         self.dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
 
-        core.gba_mut().sync_mut().expect("set fps target").set_fps_target(
-            match EXPECTED_FPS as f32 + self.tps_adjustment() {
+        core.gba_mut()
+            .sync_mut()
+            .expect("set fps target")
+            .set_fps_target(match EXPECTED_FPS + self.tps_adjustment() {
                 fps_target if fps_target <= 0.0 => f32::MIN,
                 fps_target if fps_target == f32::INFINITY => f32::MAX,
                 fps_target => fps_target,
-            },
-        );
+            });
 
         let round_result = if let Some(round_result) = ff_result.round_result {
             round_result

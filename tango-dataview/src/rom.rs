@@ -161,14 +161,14 @@ pub struct Bgr555 {
 impl Bgr555 {
     pub fn as_rgb888_mgba(&self) -> image::Rgb<u8> {
         image::Rgb([
-            (self.r() << 3 | self.r() >> 2) as u8,
-            (self.g() << 3 | self.g() >> 2) as u8,
-            (self.b() << 3 | self.b() >> 2) as u8,
+            self.r() << 3 | self.r() >> 2,
+            self.g() << 3 | self.g() >> 2,
+            self.b() << 3 | self.b() >> 2,
         ])
     }
 
     pub fn as_rgb888_nocash(&self) -> image::Rgb<u8> {
-        image::Rgb([(self.r() << 3) as u8, (self.g() << 3) as u8, (self.b() << 3) as u8])
+        image::Rgb([self.r() << 3, self.g() << 3, self.b() << 3])
     }
 
     pub fn as_rgb888(&self) -> image::Rgb<u8> {
@@ -213,7 +213,7 @@ pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaI
         paletted.width(),
         paletted.height(),
         paletted
-            .into_iter()
+            .iter()
             .flat_map(|v| {
                 if *v > 0 {
                     palette[*v as usize].as_rgb888_mgba().to_rgba()
@@ -229,9 +229,7 @@ pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaI
 
 pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Result<PalettedImage, std::io::Error> {
     Ok(merge_tiles(
-        &raw.chunks(TILE_BYTES)
-            .map(|raw_tile| read_tile(raw_tile))
-            .collect::<Result<Vec<_>, _>>()?,
+        &raw.chunks(TILE_BYTES).map(read_tile).collect::<Result<Vec<_>, _>>()?,
         cols,
     ))
 }
@@ -290,6 +288,7 @@ impl MemoryMapper {
     }
 
     pub fn get(&self, start: u32) -> std::borrow::Cow<[u8]> {
+        #[allow(clippy::manual_range_contains)]
         if start >= 0x02000000 && start < 0x04000000 {
             std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])
         } else if start >= 0x08000000 && start < 0x0a000000 {

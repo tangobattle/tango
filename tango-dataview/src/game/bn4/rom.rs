@@ -530,8 +530,7 @@ impl crate::rom::Assets for Assets {
         self.offsets
             .patch_cards
             .get(id)
-            .map(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn crate::rom::PatchCard4>))
-            .flatten()
+            .and_then(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn crate::rom::PatchCard4>))
     }
 
     fn num_patch_card4s(&self) -> usize {

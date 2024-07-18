@@ -117,7 +117,7 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
             &self.save.buf[0x7500
-                + LinkNaviView { save: self.save }.navi() as usize * (30 * std::mem::size_of::<RawChip>())
+                + LinkNaviView { save: self.save }.navi() * (30 * std::mem::size_of::<RawChip>())
                 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
         );
 

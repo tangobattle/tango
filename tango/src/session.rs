@@ -183,14 +183,12 @@ impl Session {
                                 game_info: Some(tango_pvp::replay::metadata::GameInfo {
                                     rom_family: local_game_settings.family_and_variant.0.to_string(),
                                     rom_variant: local_game_settings.family_and_variant.1 as u32,
-                                    patch: if let Some(patch) = local_game_settings.patch.as_ref() {
-                                        Some(tango_pvp::replay::metadata::game_info::Patch {
+                                    patch: local_game_settings.patch.as_ref().map(|patch|
+                                        tango_pvp::replay::metadata::game_info::Patch {
                                             name: patch.name.clone(),
                                             version: patch.version.to_string(),
-                                        })
-                                    } else {
-                                        None
-                                    },
+                                        }
+                                    ),
                                 }),
                                 reveal_setup: local_settings.reveal_setup,
                             }),
@@ -199,14 +197,12 @@ impl Session {
                                 game_info: Some(tango_pvp::replay::metadata::GameInfo {
                                     rom_family: remote_game_settings.family_and_variant.0.to_string(),
                                     rom_variant: remote_game_settings.family_and_variant.1 as u32,
-                                    patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
-                                        Some(tango_pvp::replay::metadata::game_info::Patch {
+                                    patch: remote_game_settings.patch.as_ref().map(|patch|
+                                        tango_pvp::replay::metadata::game_info::Patch {
                                             name: patch.name.clone(),
                                             version: patch.version.to_string(),
-                                        })
-                                    } else {
-                                        None
-                                    },
+                                        }
+                                    ),
                                 }),
                                 reveal_setup: remote_settings.reveal_setup,
                             }),
@@ -229,7 +225,7 @@ impl Session {
                     let replaycollector_endpoint = replaycollector_endpoint.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = (move || async move {
+                        if let Err(e) = async move {
                             let client = reqwest::Client::new();
                             client
                                 .post(replaycollector_endpoint)
@@ -239,7 +235,7 @@ impl Session {
                                 .await?
                                 .error_for_status()?;
                             Ok::<(), anyhow::Error>(())
-                        })()
+                        }
                         .await
                         {
                             log::error!("failed to submit replay: {:?}", e);
@@ -296,7 +292,7 @@ impl Session {
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
 
@@ -325,8 +321,7 @@ impl Session {
             completion_token,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             own_setup: {
-                let assets =
-                    local_game.load_rom_assets(&local_rom, &local_save.as_raw_wram(), local_patch_overrides)?;
+                let assets = local_game.load_rom_assets(local_rom, &local_save.as_raw_wram(), local_patch_overrides)?;
                 Some(Setup {
                     game_lang: local_patch_overrides
                         .language
@@ -338,7 +333,7 @@ impl Session {
             },
             opponent_setup: if reveal_setup {
                 let assets =
-                    remote_game.load_rom_assets(&remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides)?;
+                    remote_game.load_rom_assets(remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides)?;
                 Some(Setup {
                     game_lang: remote_patch_overrides
                         .language
@@ -399,7 +394,7 @@ impl Session {
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
 
@@ -446,7 +441,7 @@ impl Session {
         let stepper_state = tango_pvp::stepper::State::new(
             (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             replay.local_player_index,
-            input_pairs.iter().map(|p| p.clone().into()).collect(),
+            input_pairs.iter().cloned().collect(),
             0,
             Box::new({
                 let completion_token = completion_token.clone();
@@ -492,7 +487,7 @@ impl Session {
             move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut vbuf);
                 emu_tps_counter.lock().mark();
 
                 if !replay_is_complete && stepper_state.lock_inner().input_pairs_left() == 0 {
@@ -609,11 +604,8 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        match &mut self.mode {
-            Mode::PvP(pvp) => {
-                pvp.cancellation_token.cancel();
-            }
-            _ => {}
+        if let Mode::PvP(pvp) = &mut self.mode {
+            pvp.cancellation_token.cancel();
         }
     }
 }

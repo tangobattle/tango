@@ -8,11 +8,11 @@ where
 
 impl VFileOps for std::fs::File {
     fn resize(&mut self, size: u64) -> Result<(), std::io::Error> {
-        std::fs::File::set_len(&self, size)
+        std::fs::File::set_len(self, size)
     }
 
     fn sync_data(&self) -> Result<(), std::io::Error> {
-        std::fs::File::sync_data(&self)
+        std::fs::File::sync_data(self)
     }
 }
 
@@ -46,8 +46,8 @@ unsafe extern "C" fn vfile_seek(
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.seek(match whence as u32 {
         mgba_sys::SEEK_SET => std::io::SeekFrom::Start(offset as u64),
-        mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset as i64),
-        mgba_sys::SEEK_END => std::io::SeekFrom::End(offset as i64),
+        mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset),
+        mgba_sys::SEEK_END => std::io::SeekFrom::End(offset),
         _ => {
             return -1;
         }
@@ -84,10 +84,10 @@ unsafe extern "C" fn vfile_map(
     _flags: ::std::os::raw::c_int,
 ) -> *mut ::std::os::raw::c_void {
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
-    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    let pos = f.stream_position().unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
     let mut buf = vec![0u8; size as usize];
-    if !f.read_exact(&mut buf).is_ok() {
+    if f.read_exact(&mut buf).is_err() {
         assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
         return std::ptr::null_mut();
     }
@@ -103,7 +103,7 @@ unsafe extern "C" fn vfile_unmap(
     size: mgba_sys::size_t,
 ) {
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
-    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    let pos = f.stream_position().unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(0)).is_ok());
     let buf = Vec::from_raw_parts(memory as *mut u8, size as usize, size as usize);
     assert!(f.write_all(&buf).is_ok());
@@ -112,12 +112,12 @@ unsafe extern "C" fn vfile_unmap(
 
 unsafe extern "C" fn vfile_truncate(vf: *mut mgba_sys::VFile, size: mgba_sys::size_t) {
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
-    let _ = f.resize(size as u64);
+    let _ = f.resize(size);
 }
 
 unsafe extern "C" fn vfile_size(vf: *mut mgba_sys::VFile) -> mgba_sys::ssize_t {
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
-    let pos = f.seek(std::io::SeekFrom::Current(0)).unwrap();
+    let pos = f.stream_position().unwrap();
     let len = f.seek(std::io::SeekFrom::End(0)).unwrap();
     assert!(f.seek(std::io::SeekFrom::Start(pos)).is_ok());
     len as mgba_sys::ssize_t

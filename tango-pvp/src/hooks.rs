@@ -40,7 +40,7 @@ pub trait Hooks {
     ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
     fn packet_size(&self) -> usize {
-        return 0x10;
+        0x10
     }
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);

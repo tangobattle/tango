@@ -264,7 +264,7 @@ impl datachannel::DataChannelHandler for DataChannelHandler {
     }
 
     fn on_error(&mut self, err: &str) {
-        let _ = self.state.blocking_lock().error = Some(err.to_owned());
+        self.state.blocking_lock().error = Some(err.to_owned());
     }
 
     fn on_message(&mut self, msg: &[u8]) {

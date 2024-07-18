@@ -28,13 +28,13 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
         });
 }
 
-pub fn show_patch_card4s<'a>(
+pub fn show_patch_card4s(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card4s_view: &dyn tango_dataview::save::PatchCard4sView<'a>,
+    patch_card4s_view: &dyn tango_dataview::save::PatchCard4sView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     _state: &mut State,
 ) {
@@ -154,13 +154,13 @@ pub fn show_patch_card4s<'a>(
         });
 }
 
-pub fn show_patch_card56s<'a>(
+pub fn show_patch_card56s(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    patch_card56s_view: &dyn tango_dataview::save::PatchCard56sView<'a>,
+    patch_card56s_view: &dyn tango_dataview::save::PatchCard56sView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     _state: &mut State,
 ) {

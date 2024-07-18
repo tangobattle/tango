@@ -51,7 +51,7 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
         (trap.handler)(core);
         core.step();
     }
-    (*trapper).real_bkpt16.unwrap()(arm_core.ptr, imm);
+    trapper.real_bkpt16.unwrap()(arm_core.ptr, imm);
 }
 
 impl Trapper {
@@ -70,9 +70,9 @@ impl Trapper {
 
         unsafe {
             let arm_core = &mut *core.gba_mut().cpu_mut().ptr;
-            trapper_c_struct.real_bkpt16 = (*arm_core).irqh.bkpt16;
+            trapper_c_struct.real_bkpt16 = arm_core.irqh.bkpt16;
             let components = std::slice::from_raw_parts_mut(
-                (*arm_core).components,
+                arm_core.components,
                 mgba_sys::mCPUComponentType_CPU_COMPONENT_MAX as usize,
             );
             components[mgba_sys::mCPUComponentType_CPU_COMPONENT_MISC_1 as usize] =
