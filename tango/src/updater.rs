@@ -39,6 +39,7 @@ struct GithubReleaseInfo {
     tag_name: String,
     assets: Vec<GithubReleaseAssetInfo>,
     body: String,
+    prerelease: bool,
 }
 
 pub struct Updater {
@@ -279,7 +280,7 @@ impl Updater {
                                     return vec![];
                                 };
 
-                                if !config.read().allow_prerelease_upgrades && !v.pre.is_empty() {
+                                if !config.read().allow_prerelease_upgrades && (r.prerelease || !v.pre.is_empty()) {
                                     return vec![];
                                 }
 
