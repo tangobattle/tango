@@ -217,7 +217,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 ui.strong(i18n::LOCALES.lookup(&config.language, "settings-speed-change").unwrap());
                 ui.add(
                     egui::DragValue::new(&mut config.speed_change_percent)
-                        .clamp_range(10..=1000)
+                        .range(10..=1000)
                         .suffix("%")
                         .speed(25),
                 );
@@ -337,7 +337,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                         }
                     })
                     .speed(1)
-                    .clamp_range(0..=10),
+                    .range(0..=10),
             );
             ui.end_row();
 

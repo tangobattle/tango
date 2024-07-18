@@ -1198,11 +1198,7 @@ fn show_lobby_table(
                         });
                         strip.cell(|ui| {
                             ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::DragValue::new(&mut config.input_delay)
-                                        .speed(1)
-                                        .clamp_range(2..=10),
-                                );
+                                ui.add(egui::DragValue::new(&mut config.input_delay).speed(1).range(2..=10));
                                 if ui
                                     .button(
                                         i18n::LOCALES
