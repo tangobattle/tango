@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::i18n;
+use crate::{config, i18n};
 
 pub struct State {
     children: std::collections::HashMap<u64, ChildState>,
@@ -65,7 +65,9 @@ impl Drop for ChildState {
     }
 }
 
-pub fn show(ctx: &egui::Context, state: &mut State, language: &unic_langid::LanguageIdentifier) {
+pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config) {
+    let language = &config.language;
+
     state.children.retain(|id, state| {
         let mut open = true;
         let mut open2 = open;
@@ -115,6 +117,10 @@ pub fn show(ctx: &egui::Context, state: &mut State, language: &unic_langid::Lang
                                         .save_file()
                                     {
                                         state.output_path = path;
+
+                                        if let Some(folder_path ) = state.output_path.parent() {
+                                            config.last_export_folder = Some(folder_path.to_owned());
+                                        }
                                     }
                                 }
                             });
@@ -123,7 +129,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, language: &unic_langid::Lang
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-scale-factor").unwrap());
                             ui.horizontal(|ui| {
                                 let mut scale = state.scale.unwrap_or(1);
-                                ui.add_enabled(state.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).clamp_range(1..=10));
+                                ui.add_enabled(state.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).range(1..=10));
                                 if state.scale.is_some() {
                                     state.scale = Some(scale);
                                 }

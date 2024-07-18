@@ -1,5 +1,5 @@
 use super::memoize::ResultCacheSingle;
-use crate::{audio, game, gui, i18n, patch, rom, scanner, session, stats};
+use crate::{audio, config, game, gui, i18n, patch, rom, scanner, session, stats};
 use fluent_templates::Loader;
 use std::{rc::Rc, sync::Arc};
 use tango_dataview::save::Save;
@@ -114,15 +114,17 @@ pub fn show(
     font_families: &gui::FontFamilies,
     state: &mut State,
     replay_dump_windows: &mut gui::replay_dump_windows::State,
-    language: &unic_langid::LanguageIdentifier,
-    patches_path: &std::path::Path,
+    config: &config::Config,
     patches_scanner: patch::Scanner,
     roms_scanner: rom::Scanner,
-    replays_path: &std::path::Path,
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
 ) {
+    let language = &config.language;
+    let patches_path = &config.patches_path();
+    let replays_path = &config.replays_path();
+
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 
@@ -497,7 +499,13 @@ pub fn show(
                                 })
                                 .collect();
 
-                            let mut save_path = path.clone();
+                            let mut save_path = if let Some(folder) = &config.last_export_folder {
+                                let mut save_path = folder.clone();
+                                save_path.push(path.file_name().unwrap());
+                                save_path
+                            } else {
+                                path.clone()
+                            };
 
                             if selection.len() > 1 {
                                 save_path.set_extension("multi.mp4");

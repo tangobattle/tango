@@ -394,7 +394,7 @@ pub fn show(
         &config.language,
         &mut state.show_settings,
     );
-    replay_dump_windows::show(ctx, &mut state.replay_dump_windows, &config.language);
+    replay_dump_windows::show(ctx, &mut state.replay_dump_windows, config);
 
     if let Some(session) = state.session.lock().as_ref() {
         window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
