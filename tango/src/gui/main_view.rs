@@ -12,17 +12,11 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
-        roms_scanner: rom::Scanner,
-        saves_scanner: save::Scanner,
-        patches_scanner: patch::Scanner,
-        config: &crate::config::Config,
-        updater: bool,
-    ) -> Self {
+    pub fn new(selection: Option<gui::save_select_view::Selection>, updater: bool) -> Self {
         Self {
             tab: Tab::Play,
             patch_selection: None,
-            play_pane: gui::play_pane::State::new(roms_scanner, saves_scanner, patches_scanner, config),
+            play_pane: gui::play_pane::State::new(selection),
             patches_pane: gui::patches_pane::State::new(),
             replays_pane: gui::replays_pane::State::new(),
             updater: if updater {

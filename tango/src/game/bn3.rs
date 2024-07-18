@@ -428,7 +428,7 @@ lazy_static! {
         ("heat-shield", &*HEAT_SHIELD_BLUE_SAVE),
         ("aqua-shield", &*AQUA_SHIELD_BLUE_SAVE),
         ("elec-shield", &*ELEC_SHIELD_BLUE_SAVE),
-        ("wood-shield", &*WOOD_SHIELD_WHITE_SAVE),
+        ("wood-shield", &*WOOD_SHIELD_BLUE_SAVE),
         ("heat-team", &*HEAT_TEAM_BLUE_SAVE),
         ("aqua-team", &*AQUA_TEAM_BLUE_SAVE),
         ("elec-team", &*ELEC_TEAM_BLUE_SAVE),

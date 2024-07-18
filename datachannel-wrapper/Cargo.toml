@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-datachannel = { version = "0.9", features = ["vendored"] }
+datachannel = { version = "0.13", features = ["vendored"] }
 log = "0.4"
 tokio = { version = "1", features = ["full"] }

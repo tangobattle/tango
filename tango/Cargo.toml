@@ -28,12 +28,12 @@ crc32fast = "1"
 dark-light = "1"
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 directories-next = "2"
-egui = { version = "0.27", features = [] }
-egui-wgpu = { version = "0.27", features = ["winit"], optional = true }
-egui-winit = "0.27"
-egui_commonmark = '0.15'
-egui_extras = { version = "0.27", features = ["image"] }
-egui_glow = { version = "0.27", features = [
+egui = { version = "0.28", features = [] }
+egui-wgpu = { version = "0.28", features = ["winit"], optional = true }
+egui-winit = "0.28"
+egui_commonmark = '0.17'
+egui_extras = { version = "0.28", features = ["image"] }
+egui_glow = { version = "0.28", features = [
   "winit",
   "clipboard",
   "links"
@@ -101,7 +101,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.5"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 walkdir = "2"
-wgpu = { version = "0.19", optional = true, features = ["angle"] }
+wgpu = { version = "0.20", optional = true, features = ["angle"] }
 winit = { version = "0.29", features = ["serde"] }
 zip = "0.6"
 zstd = "0.11"
@@ -114,7 +114,7 @@ core-foundation = "0.9"
 plist = "1.3"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-sdl2 = { version = "0.35", features = ["static-link", "bundled"] }
+sdl2 = { version = "0.37", features = ["static-link", "bundled"] }
 
 [build-dependencies]
 embed-resource = "1"

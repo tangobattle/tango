@@ -7,6 +7,7 @@ mod debug_window;
 mod escape_window;
 mod language_select;
 mod main_view;
+mod memoize;
 mod patches_pane;
 mod play_pane;
 mod replay_dump_windows;
@@ -124,20 +125,32 @@ impl State {
             ]),
         });
 
-        ctx.style_mut(|style| style.spacing.scroll = egui::style::ScrollStyle::solid());
+        ctx.style_mut(|style| {
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+            // animation_time > 0 causes panics as egui requires us to keep data around for closing animations
+            // to see what i mean, open the settings window and close it with this set to anything other than 0
+            // disabling the fade_out animation on specific windows does not appear to stop egui from attempting to rerender old data
+            style.animation_time = 0.0;
+        });
 
-        let main_view = main_view::State::new(
+        // load previous selection
+        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
             roms_scanner.clone(),
             saves_scanner.clone(),
             patches_scanner.clone(),
             &config.read(),
-            show_updater,
         );
+
+        let committed_selection = working_selection
+            .as_ref()
+            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
+
+        let main_view = main_view::State::new(working_selection, show_updater);
 
         Ok(Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            selection: None,
+            selection: committed_selection,
             last_mouse_motion_time: None,
             roms_scanner,
             saves_scanner,

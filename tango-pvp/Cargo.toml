@@ -8,7 +8,7 @@ anyhow = "1"
 async-trait = "0.1"
 byteorder = "1"
 log = "0.4"
-image = { version = "0.24", default_features = false }
+image = { version = "0.24", default-features = false }
 mgba = { path = "../mgba" }
 parking_lot = { version = "0.12" }
 prost = "0.10"

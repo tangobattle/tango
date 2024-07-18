@@ -1,6 +1,7 @@
 replays = Replays
 
 replays-export = Export
+replays-export-multi = Export+
 replays-play = Play
 replays-scanning = Scanning...
 
