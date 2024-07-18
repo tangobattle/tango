@@ -1,6 +1,6 @@
 [package]
 name = "tango"
-version = "4.1.4"
+version = "4.1.5"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 default-run = "tango"
@@ -49,7 +49,7 @@ glow = "0.13"
 glutin = { version = "0.31", optional = true }
 glutin-winit = "0.4"
 hqx = { path = "../hqx" }
-image = { version = "0.24", features = ["png"] }
+image = { version = "0.25", features = ["png"] }
 indexmap = "1.9"
 input-helper = { path = "../input-helper" }
 itertools = "0.10"
