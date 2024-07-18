@@ -251,12 +251,12 @@ impl Updater {
                     let ui_callback = ui_callback.clone();
                     let current_version = current_version.clone();
                     let config = config.clone();
-                    if let Err(e) = (move || async move {
+                    if let Err(e) = async move {
                         let client = reqwest::Client::new();
                         let releases = tokio::time::timeout(
                             // 30 second timeout to get release info.
                             std::time::Duration::from_secs(30),
-                            (|| async {
+                            async {
                                 Ok::<_, anyhow::Error>(
                                     client
                                         .get(GITHUB_RELEASES_URL)
@@ -266,14 +266,14 @@ impl Updater {
                                         .json::<Vec<GithubReleaseInfo>>()
                                         .await?,
                                 )
-                            })(),
+                            },
                         )
                         .await??;
 
                         let (version, info) = if let Some(release) = releases
                             .into_iter()
                             .flat_map(|r| {
-                                if r.tag_name.chars().next() != Some('v') {
+                                if !r.tag_name.starts_with('v') {
                                     return vec![];
                                 }
                                 let v = if let Ok(v) = r.tag_name[1..].parse::<semver::Version>() {
@@ -403,7 +403,7 @@ impl Updater {
                         }
 
                         Ok::<(), anyhow::Error>(())
-                    })()
+                    }
                     .await
                     {
                         log::error!("updater failed: {:?}", e);
