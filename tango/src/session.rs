@@ -441,7 +441,7 @@ impl Session {
         let stepper_state = tango_pvp::stepper::State::new(
             (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             replay.local_player_index,
-            input_pairs.iter().cloned().collect(),
+            input_pairs.clone(),
             0,
             Box::new({
                 let completion_token = completion_token.clone();
