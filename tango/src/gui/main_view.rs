@@ -1,6 +1,6 @@
-use fluent_templates::Loader;
-
+use super::ui_windows::UiWindows;
 use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats, sync, updater};
+use fluent_templates::Loader;
 
 pub struct State {
     tab: Tab,
@@ -42,7 +42,7 @@ pub fn show(
     config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     window: &winit::window::Window,
     show_settings: &mut Option<gui::settings_window::State>,
-    replay_dump_windows: &mut gui::replay_dump_windows::State,
+    ui_windows: &mut UiWindows,
     clipboard: &mut arboard::Clipboard,
     audio_binder: audio::LateBinder,
     roms_scanner: rom::Scanner,
@@ -192,7 +192,7 @@ pub fn show(
                     clipboard,
                     font_families,
                     &mut state.replays_pane,
-                    replay_dump_windows,
+                    ui_windows,
                     config,
                     patches_scanner.clone(),
                     roms_scanner.clone(),

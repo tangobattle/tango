@@ -10,13 +10,14 @@ mod main_view;
 mod memoize;
 mod patches_pane;
 mod play_pane;
-mod replay_dump_windows;
+mod replay_dump_window;
 mod replays_pane;
 mod save_select_view;
 mod save_view;
 mod session_view;
 mod settings_window;
 mod steal_input_window;
+mod ui_windows;
 mod updater_window;
 mod warning;
 mod welcome;
@@ -80,7 +81,7 @@ pub struct State {
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
-    replay_dump_windows: replay_dump_windows::State,
+    ui_windows: ui_windows::UiWindows,
     clipboard: arboard::Clipboard,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
@@ -164,7 +165,7 @@ impl State {
             show_escape_window: None,
             session_view: None,
             welcome: None,
-            replay_dump_windows: replay_dump_windows::State::new(),
+            ui_windows: Default::default(),
             clipboard: arboard::Clipboard::new().unwrap(),
             font_data: std::collections::BTreeMap::from([
                 (
@@ -394,7 +395,13 @@ pub fn show(
         &config.language,
         &mut state.show_settings,
     );
-    replay_dump_windows::show(ctx, &mut state.replay_dump_windows, config);
+
+    // take ui windows to allow state to be passed to each window
+    let mut ui_windows = std::mem::take(&mut state.ui_windows);
+    ui_windows.show(ctx, state, config);
+    // store original ui windows, append any new ui windows
+    std::mem::swap(&mut state.ui_windows, &mut ui_windows);
+    state.ui_windows.merge(ui_windows);
 
     if let Some(session) = state.session.lock().as_ref() {
         window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
@@ -431,7 +438,7 @@ pub fn show(
             state.config.clone(),
             window,
             &mut state.show_settings,
-            &mut state.replay_dump_windows,
+            &mut state.ui_windows,
             &mut state.clipboard,
             state.audio_binder.clone(),
             state.roms_scanner.clone(),

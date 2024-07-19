@@ -1,50 +1,10 @@
+use crate::{config, i18n};
 use fluent_templates::Loader;
 
-use crate::{config, i18n};
-
-pub struct State {
-    children: std::collections::HashMap<u64, ChildState>,
-    next_id: u64,
-}
-
+use super::ui_windows::UiWindowKey;
 const DEFAULT_SCALE: usize = 5;
 
-impl State {
-    pub fn new() -> Self {
-        Self {
-            children: std::collections::HashMap::new(),
-            next_id: 0,
-        }
-    }
-
-    pub fn add_child(
-        &mut self,
-        local_rom: Vec<u8>,
-        remote_rom: Option<Vec<u8>>,
-        replays: Vec<tango_pvp::replay::Replay>,
-        output_path: std::path::PathBuf,
-    ) {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.children.insert(
-            id,
-            ChildState {
-                cancellation_token: None,
-                output_path,
-                local_rom,
-                remote_rom,
-                replays,
-                scale: Some(DEFAULT_SCALE),
-                disable_bgm: false,
-                twosided: false,
-                progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
-                result: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            },
-        );
-    }
-}
-
-pub struct ChildState {
+pub struct ReplayDumpWindow {
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
     output_path: std::path::PathBuf,
     local_rom: Vec<u8>,
@@ -57,7 +17,7 @@ pub struct ChildState {
     result: std::sync::Arc<parking_lot::Mutex<Option<anyhow::Result<()>>>>,
 }
 
-impl Drop for ChildState {
+impl Drop for ReplayDumpWindow {
     fn drop(&mut self) {
         if let Some(cancellation_token) = self.cancellation_token.take() {
             cancellation_token.cancel();
@@ -65,37 +25,60 @@ impl Drop for ChildState {
     }
 }
 
-pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config) {
-    let language = &config.language;
+impl ReplayDumpWindow {
+    pub fn new(
+        local_rom: Vec<u8>,
+        remote_rom: Option<Vec<u8>>,
+        replays: Vec<tango_pvp::replay::Replay>,
+        output_path: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            cancellation_token: None,
+            output_path,
+            local_rom,
+            remote_rom,
+            replays,
+            scale: Some(DEFAULT_SCALE),
+            disable_bgm: false,
+            twosided: false,
+            progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
+            result: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+        }
+    }
 
-    state.children.retain(|id, state| {
+    pub fn show(&mut self, id: UiWindowKey, ctx: &egui::Context, config: &mut config::Config) -> bool {
+        let language = &config.language;
+
         let mut open = true;
         let mut open2 = open;
 
-        let path = state.output_path.file_name().map(|path| path.to_string_lossy())
-        .unwrap_or_else(|| {
-            let export_text_id = if state.replays.len() == 1 {
-                "replays-export"
-            } else {
-                "replays-export-multi"
-            };
+        let path = self
+            .output_path
+            .file_name()
+            .map(|path| path.to_string_lossy())
+            .unwrap_or_else(|| {
+                let export_text_id = if self.replays.len() == 1 {
+                    "replays-export"
+                } else {
+                    "replays-export-multi"
+                };
 
-            i18n::LOCALES.lookup(language, export_text_id).unwrap().into()
-        });
+                i18n::LOCALES.lookup(language, export_text_id).unwrap().into()
+            });
 
         egui::Window::new(path)
-            .id(egui::Id::new(format!("replay-dump-window-{}", id)))
+            .id(egui::Id::new(("replay-dump-window", id)))
             .open(&mut open)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.add_enabled_ui(state.cancellation_token.is_none(), |ui| {
-                    egui::Grid::new(format!("replay-dump-window-{}-grid", id))
+                ui.add_enabled_ui(self.cancellation_token.is_none(), |ui| {
+                    egui::Grid::new(("replay-dump-window-grid", id))
                         .num_columns(2)
                         .show(ui, |ui| {
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-path").unwrap());
                             ui.horizontal(|ui| {
                                 ui.add(
-                                    egui::TextEdit::singleline(&mut format!("{}", state.output_path.display()))
+                                    egui::TextEdit::singleline(&mut format!("{}", self.output_path.display()))
                                         .desired_width(300.0)
                                         .interactive(false),
                                 );
@@ -105,9 +88,9 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
                                     .clicked()
                                 {
                                     if let Some(path) = rfd::FileDialog::new()
-                                        .set_directory(state.output_path.parent().unwrap_or(&std::path::PathBuf::new()))
+                                        .set_directory(self.output_path.parent().unwrap_or(&std::path::PathBuf::new()))
                                         .set_file_name(
-                                            state
+                                            self
                                                 .output_path
                                                 .file_name()
                                                 .and_then(|filename| filename.to_str())
@@ -116,9 +99,9 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
                                         .add_filter("MP4", &["mp4"])
                                         .save_file()
                                     {
-                                        state.output_path = path;
+                                        self.output_path = path;
 
-                                        if let Some(folder_path ) = state.output_path.parent() {
+                                        if let Some(folder_path ) = self.output_path.parent() {
                                             config.last_export_folder = Some(folder_path.to_owned());
                                         }
                                     }
@@ -128,34 +111,34 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-scale-factor").unwrap());
                             ui.horizontal(|ui| {
-                                let mut scale = state.scale.unwrap_or(1);
-                                ui.add_enabled(state.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).range(1..=10));
-                                if state.scale.is_some() {
-                                    state.scale = Some(scale);
+                                let mut scale = self.scale.unwrap_or(1);
+                                ui.add_enabled(self.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).range(1..=10));
+                                if self.scale.is_some() {
+                                    self.scale = Some(scale);
                                 }
 
-                                let mut lossless = state.scale.is_none();
+                                let mut lossless = self.scale.is_none();
                                 let was_lossless = lossless;
                                 ui.checkbox(&mut lossless, i18n::LOCALES.lookup(language, "replays-export-lossless").unwrap());
                                 if lossless {
-                                    state.scale = None;
+                                    self.scale = None;
                                 } else if was_lossless {
-                                    state.scale = Some(DEFAULT_SCALE);
+                                    self.scale = Some(DEFAULT_SCALE);
                                 }
                             });
                             ui.end_row();
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-disable-bgm").unwrap());
-                            ui.add(egui::Checkbox::new(&mut state.disable_bgm, ""));
+                            ui.add(egui::Checkbox::new(&mut self.disable_bgm, ""));
                             ui.end_row();
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-twosided").unwrap());
-                            ui.add_enabled(state.remote_rom.is_some(), egui::Checkbox::new(&mut state.twosided, ""));
+                            ui.add_enabled(self.remote_rom.is_some(), egui::Checkbox::new(&mut self.twosided, ""));
                             ui.end_row();
                         });
                 });
 
-                if let Some(result) = state.result.lock().as_ref() {
+                if let Some(result) = self.result.lock().as_ref() {
                     match result {
                         Ok(()) => {
                             ui.add(
@@ -171,7 +154,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
                                 ))
                                 .clicked()
                             {
-                                let _ = open::that(&state.output_path);
+                                let _ = open::that(&self.output_path);
                             }
                         }
                         Err(e) => {
@@ -195,10 +178,10 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
                             }
                         }
                     }
-                } else if state.cancellation_token.is_some() {
+                } else if self.cancellation_token.is_some() {
                     ui.add(
                         egui::widgets::ProgressBar::new({
-                            let (current, total) = *state.progress.lock();
+                            let (current, total) = *self.progress.lock();
                             if total > 0 {
                                 current as f32 / total as f32
                             } else {
@@ -224,17 +207,17 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
                     .clicked()
                 {
                     let egui_ctx = ui.ctx().clone();
-                    let local_rom = state.local_rom.clone();
-                    let remote_rom = state.remote_rom.clone();
-                    let replays = state.replays.clone();
-                    let path = state.output_path.clone();
-                    let progress = state.progress.clone();
-                    let result = state.result.clone();
-                    let mut settings = tango_pvp::replay::export::Settings::default_with_scale(state.scale);
-                    let twosided = state.twosided;
-                    settings.disable_bgm = state.disable_bgm;
+                    let local_rom = self.local_rom.clone();
+                    let remote_rom = self.remote_rom.clone();
+                    let replays = self.replays.clone();
+                    let path = self.output_path.clone();
+                    let progress = self.progress.clone();
+                    let result = self.result.clone();
+                    let mut settings = tango_pvp::replay::export::Settings::default_with_scale(self.scale);
+                    let twosided = self.twosided;
+                    settings.disable_bgm = self.disable_bgm;
                     let cancellation_token = tokio_util::sync::CancellationToken::new();
-                    state.cancellation_token = Some(cancellation_token.clone());
+                    self.cancellation_token = Some(cancellation_token.clone());
                     tokio::task::spawn(async move {
                         let cb = |current, total| {
                             *progress.lock() = (current, total);
@@ -292,5 +275,5 @@ pub fn show(ctx: &egui::Context, state: &mut State, config: &mut config::Config)
             });
 
         open && open2
-    });
+    }
 }

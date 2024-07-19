@@ -1,4 +1,4 @@
-use super::memoize::ResultCacheSingle;
+use super::{memoize::ResultCacheSingle, replay_dump_window::ReplayDumpWindow, ui_windows};
 use crate::{audio, config, game, gui, i18n, patch, rom, scanner, session, stats};
 use fluent_templates::Loader;
 use std::{rc::Rc, sync::Arc};
@@ -113,7 +113,7 @@ pub fn show(
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     state: &mut State,
-    replay_dump_windows: &mut gui::replay_dump_windows::State,
+    ui_windows: &mut ui_windows::UiWindows,
     config: &config::Config,
     patches_scanner: patch::Scanner,
     roms_scanner: rom::Scanner,
@@ -513,12 +513,13 @@ pub fn show(
                                 save_path.set_extension("mp4");
                             }
 
-                            replay_dump_windows.add_child(
+                            let mut window = ReplayDumpWindow::new(
                                 local_rom.clone(),
                                 remote_rom.clone(),
                                 replays_to_render,
                                 save_path,
                             );
+                            ui_windows.push(move |id, ctx, _, config| window.show(id, ctx, config));
                         }
 
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
