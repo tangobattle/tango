@@ -1,6 +1,5 @@
+use crate::{config, gui::SharedRootState, i18n};
 use fluent_templates::Loader;
-
-use crate::{gui, i18n};
 
 pub struct State {
     grouped: bool,
@@ -22,14 +21,17 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     chips_view: &dyn tango_dataview::save::ChipsView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
+    let lang = &config.language;
+    let font_families = &shared_root_state.font_families;
+    let clipboard = &mut shared_root_state.clipboard;
+
     struct GroupedChip {
         count: usize,
         is_regular: bool,

@@ -3,9 +3,8 @@ mod folder_view;
 mod navi_view;
 mod patch_cards_view;
 
+use crate::{config, gui, i18n};
 use fluent_templates::Loader;
-
-use crate::{gui, i18n};
 
 #[derive(PartialEq, Clone)]
 enum Tab {
@@ -37,15 +36,16 @@ impl State {
 pub fn show(
     ui: &mut egui::Ui,
     streamer_mode: bool,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     save: &(dyn tango_dataview::save::Save + Send + Sync),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
     prefer_vertical: bool,
 ) {
+    let lang = &config.language;
+
     ui.vertical(|ui| {
         let navi_view = save.view_navi();
         let chips_view = save.view_chips();
@@ -110,9 +110,8 @@ pub fn show(
                 if let Some(navi_view) = navi_view {
                     navi_view::show(
                         ui,
-                        clipboard,
-                        font_families,
-                        lang,
+                        config,
+                        shared_root_state,
                         game_lang,
                         &navi_view,
                         assets,
@@ -125,9 +124,8 @@ pub fn show(
                 if let Some(chips_view) = chips_view {
                     folder_view::show(
                         ui,
-                        clipboard,
-                        font_families,
-                        lang,
+                        config,
+                        shared_root_state,
                         game_lang,
                         chips_view.as_ref(),
                         assets,
@@ -139,9 +137,8 @@ pub fn show(
                 if let Some(patch_cards_view) = patch_cards_view {
                     patch_cards_view::show(
                         ui,
-                        clipboard,
-                        font_families,
-                        lang,
+                        config,
+                        shared_root_state,
                         game_lang,
                         &patch_cards_view,
                         assets,
@@ -153,9 +150,8 @@ pub fn show(
                 if let Some(auto_battle_data_view) = auto_battle_data_view {
                     auto_battle_data_view::show(
                         ui,
-                        clipboard,
-                        font_families,
-                        lang,
+                        config,
+                        shared_root_state,
                         game_lang,
                         auto_battle_data_view.as_ref(),
                         assets,

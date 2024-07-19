@@ -1,7 +1,7 @@
 use fluent_templates::Loader;
 use itertools::Itertools;
 
-use crate::{gui, i18n};
+use crate::{config, gui, i18n};
 
 pub struct State {
     rendered_navicust_cache: Option<(
@@ -616,15 +616,18 @@ fn render_navicust_body(
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
     prefer_vertical: bool,
 ) {
+    let lang = &config.language;
+    let clipboard = &mut shared_root_state.clipboard;
+    let font_families = &shared_root_state.font_families;
+
     let navicust_layout = if let Some(navicust_layout) = assets.navicust_layout() {
         navicust_layout
     } else {

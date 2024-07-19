@@ -1,5 +1,5 @@
-use super::{memoize::ResultCacheSingle, replay_dump_window::ReplayDumpWindow, ui_windows};
-use crate::{audio, config, game, gui, i18n, patch, rom, scanner, session, stats};
+use super::{memoize::ResultCacheSingle, replay_dump_window::ReplayDumpWindow};
+use crate::{config, game, gui, i18n, patch, scanner, session};
 use fluent_templates::Loader;
 use std::{rc::Rc, sync::Arc};
 use tango_dataview::save::Save;
@@ -110,21 +110,16 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    state: &mut State,
-    ui_windows: &mut ui_windows::UiWindows,
     config: &config::Config,
-    patches_scanner: patch::Scanner,
-    roms_scanner: rom::Scanner,
-    audio_binder: audio::LateBinder,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    shared_root_state: &mut gui::SharedRootState,
+    state: &mut State,
 ) {
     let language = &config.language;
     let patches_path = &config.patches_path();
     let replays_path = &config.replays_path();
 
+    let roms_scanner = shared_root_state.roms_scanner.clone();
+    let patches_scanner = shared_root_state.patches_scanner.clone();
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 
@@ -444,12 +439,13 @@ pub fn show(
                         {
                             tokio::task::spawn_blocking({
                                 let egui_ctx = ui.ctx().clone();
-                                let audio_binder = audio_binder.clone();
+                                let audio_binder = shared_root_state.audio_binder.clone();
                                 let game = local_game;
                                 let patch = patch.as_ref().map(|(name, version, _)| (name.clone(), version.clone()));
                                 let rom = local_rom.clone();
-                                let emu_tps_counter = emu_tps_counter.clone();
+                                let emu_tps_counter = shared_root_state.emu_tps_counter.clone();
                                 let replay = replay.clone();
+                                let session = shared_root_state.session.clone();
 
                                 move || {
                                     *session.lock() = Some(
@@ -519,7 +515,9 @@ pub fn show(
                                 replays_to_render,
                                 save_path,
                             );
-                            ui_windows.push(move |id, ctx, _, config| window.show(id, ctx, config));
+                            shared_root_state
+                                .ui_windows
+                                .push(move |id, ctx, _, config| window.show(id, ctx, config));
                         }
 
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
@@ -542,9 +540,8 @@ pub fn show(
                         gui::save_view::show(
                             ui,
                             false,
-                            clipboard,
-                            font_families,
-                            language,
+                            config,
+                            shared_root_state,
                             patch
                                 .as_ref()
                                 .and_then(|(_, _, metadata)| metadata.rom_overrides.language.as_ref())

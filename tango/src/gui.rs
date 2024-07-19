@@ -66,30 +66,34 @@ impl Selection {
     }
 }
 
-pub struct State {
-    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+pub struct SharedRootState {
+    pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    pub clipboard: arboard::Clipboard,
+    pub roms_scanner: rom::Scanner,
+    pub saves_scanner: save::Scanner,
+    pub patches_scanner: patch::Scanner,
+    pub audio_binder: audio::LateBinder,
+    pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    pub discord_client: discord::Client,
+    pub font_families: FontFamilies,
+    pub ui_windows: ui_windows::UiWindows,
+}
+
+pub struct State {
+    pub shared: SharedRootState,
     selection: Option<Selection>,
     pub steal_input: Option<steal_input_window::State>,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
     pub last_mouse_motion_time: Option<std::time::Instant>,
-    audio_binder: audio::LateBinder,
-    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
-    ui_windows: ui_windows::UiWindows,
-    clipboard: arboard::Clipboard,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
-    font_families: FontFamilies,
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
     welcome: Option<welcome::State>,
-    discord_client: discord::Client,
     init_link_code: Option<String>,
 }
 
@@ -148,52 +152,57 @@ impl State {
 
         let main_view = main_view::State::new(working_selection, show_updater);
 
+        let font_data = std::collections::BTreeMap::from([
+            (
+                "NotoSans-Regular".to_string(),
+                egui::FontData::from_static(font_families.latn.raw),
+            ),
+            (
+                "NotoSansJP-Regular".to_string(),
+                egui::FontData::from_static(font_families.jpan.raw),
+            ),
+            (
+                "NotoSansSC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hans.raw),
+            ),
+            (
+                "NotoSansTC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hant.raw),
+            ),
+            (
+                "NotoSansMono-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
+            ),
+            (
+                "NotoEmoji-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
+            ),
+        ]);
+
         Ok(Self {
-            config,
-            session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            shared: SharedRootState {
+                config,
+                session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+                clipboard: arboard::Clipboard::new().unwrap(),
+                roms_scanner,
+                saves_scanner,
+                patches_scanner,
+                audio_binder,
+                fps_counter,
+                emu_tps_counter,
+                font_families,
+                ui_windows: Default::default(),
+                discord_client,
+            },
             selection: committed_selection,
             last_mouse_motion_time: None,
-            roms_scanner,
-            saves_scanner,
-            patches_scanner,
             main_view,
-            audio_binder,
-            fps_counter,
-            emu_tps_counter,
             steal_input: None,
             show_settings: None,
             show_escape_window: None,
             session_view: None,
             welcome: None,
-            ui_windows: Default::default(),
-            clipboard: arboard::Clipboard::new().unwrap(),
-            font_data: std::collections::BTreeMap::from([
-                (
-                    "NotoSans-Regular".to_string(),
-                    egui::FontData::from_static(font_families.latn.raw),
-                ),
-                (
-                    "NotoSansJP-Regular".to_string(),
-                    egui::FontData::from_static(font_families.jpan.raw),
-                ),
-                (
-                    "NotoSansSC-Regular".to_string(),
-                    egui::FontData::from_static(font_families.hans.raw),
-                ),
-                (
-                    "NotoSansTC-Regular".to_string(),
-                    egui::FontData::from_static(font_families.hant.raw),
-                ),
-                (
-                    "NotoSansMono-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
-                ),
-                (
-                    "NotoEmoji-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
-                ),
-            ]),
-            font_families,
+            font_data,
             themes: Themes {
                 light: {
                     let mut visuals = egui::style::Visuals::light();
@@ -212,7 +221,6 @@ impl State {
                 },
             },
             current_language: None,
-            discord_client,
             init_link_code,
         })
     }
@@ -289,7 +297,7 @@ pub fn show(
     updater: &updater::Updater,
 ) {
     {
-        let mut session = state.session.lock();
+        let mut session = state.shared.session.lock();
         if let Some(s) = session.as_ref() {
             if s.completed() {
                 *session = None;
@@ -320,27 +328,17 @@ pub fn show(
         let mut monospace = vec!["NotoSansMono-Regular".to_string()];
         monospace.extend(proportional.clone());
 
+        let font_families = &state.shared.font_families;
+
         ctx.set_fonts(egui::FontDefinitions {
             font_data: state.font_data.clone(),
             families: std::collections::BTreeMap::from([
                 (egui::FontFamily::Proportional, proportional),
                 (egui::FontFamily::Monospace, monospace),
-                (
-                    state.font_families.jpan.egui.clone(),
-                    vec!["NotoSansJP-Regular".to_string()],
-                ),
-                (
-                    state.font_families.hans.egui.clone(),
-                    vec!["NotoSansSC-Regular".to_string()],
-                ),
-                (
-                    state.font_families.hant.egui.clone(),
-                    vec!["NotoSansTC-Regular".to_string()],
-                ),
-                (
-                    state.font_families.latn.egui.clone(),
-                    vec!["NotoSans-Regular".to_string()],
-                ),
+                (font_families.jpan.egui.clone(), vec!["NotoSansJP-Regular".to_string()]),
+                (font_families.hans.egui.clone(), vec!["NotoSansSC-Regular".to_string()]),
+                (font_families.hant.egui.clone(), vec!["NotoSansTC-Regular".to_string()]),
+                (font_families.latn.egui.clone(), vec!["NotoSans-Regular".to_string()]),
             ]),
         });
         state.current_language = Some(config.language.clone());
@@ -365,9 +363,8 @@ pub fn show(
     if config.nickname.is_none() {
         welcome::show(
             ctx,
-            &state.font_families,
+            &state.shared,
             config,
-            state.roms_scanner.clone(),
             state.welcome.get_or_insert_with(welcome::State::new),
         );
         return;
@@ -378,18 +375,15 @@ pub fn show(
     settings_window::show(
         ctx,
         &mut state.show_settings,
-        &state.font_families,
+        &state.shared,
         config,
-        state.roms_scanner.clone(),
-        state.saves_scanner.clone(),
-        state.patches_scanner.clone(),
         window,
         &mut state.steal_input,
     );
     steal_input_window::show(ctx, &config.language, &mut state.steal_input);
     escape_window::show(
         ctx,
-        state.session.clone(),
+        state.shared.session.clone(),
         &mut state.selection,
         &mut state.show_escape_window,
         &config.language,
@@ -397,58 +391,38 @@ pub fn show(
     );
 
     // take ui windows to allow state to be passed to each window
-    let mut ui_windows = std::mem::take(&mut state.ui_windows);
+    let mut ui_windows = std::mem::take(&mut state.shared.ui_windows);
     ui_windows.show(ctx, state, config);
     // store original ui windows, append any new ui windows
-    std::mem::swap(&mut state.ui_windows, &mut ui_windows);
-    state.ui_windows.merge(ui_windows);
+    std::mem::swap(&mut state.shared.ui_windows, &mut ui_windows);
+    state.shared.ui_windows.merge(ui_windows);
 
-    if let Some(session) = state.session.lock().as_ref() {
+    let session = state.shared.session.clone();
+    let session_guard = session.lock();
+
+    if let Some(session) = session_guard.as_ref() {
         window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
         session_view::show(
             ctx,
-            &config.language,
-            &mut state.clipboard,
-            &state.font_families,
+            config,
+            &mut state.shared,
             input_state,
-            &config.input_mapping,
             session,
-            &config.video_filter,
-            config.integer_scaling,
-            config.max_scale,
-            config.speed_change_percent as f32 / 100.0,
-            config.show_own_setup,
-            &config.crashstates_path(),
             &state.last_mouse_motion_time,
             &mut state.show_escape_window,
-            state.fps_counter.clone(),
-            state.emu_tps_counter.clone(),
-            config.show_debug,
-            config.show_status_bar,
             state.session_view.get_or_insert_with(session_view::State::new),
-            &mut state.discord_client,
         );
     } else {
         state.session_view = None;
         window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap());
         main_view::show(
             ctx,
-            &state.font_families,
             config,
-            state.config.clone(),
+            &mut state.shared,
             window,
             &mut state.show_settings,
-            &mut state.ui_windows,
-            &mut state.clipboard,
-            state.audio_binder.clone(),
-            state.roms_scanner.clone(),
-            state.saves_scanner.clone(),
-            state.patches_scanner.clone(),
-            state.emu_tps_counter.clone(),
-            state.session.clone(),
             &mut state.selection,
             &mut state.main_view,
-            &mut state.discord_client,
             &mut state.init_link_code,
             updater,
         );

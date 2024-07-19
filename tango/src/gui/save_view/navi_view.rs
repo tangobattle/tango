@@ -1,4 +1,4 @@
-use crate::gui;
+use crate::{config, gui};
 mod link_navi_view;
 mod navicust_view;
 
@@ -18,9 +18,8 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     navi_view: &tango_dataview::save::NaviView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
@@ -30,9 +29,8 @@ pub fn show(
     match navi_view {
         tango_dataview::save::NaviView::LinkNavi(link_navi_view) => link_navi_view::show(
             ui,
-            clipboard,
-            font_families,
-            lang,
+            config,
+            shared_root_state,
             game_lang,
             link_navi_view.as_ref(),
             assets,
@@ -40,9 +38,8 @@ pub fn show(
         ),
         tango_dataview::save::NaviView::Navicust(navicust_view) => navicust_view::show(
             ui,
-            clipboard,
-            font_families,
-            lang,
+            config,
+            shared_root_state,
             game_lang,
             navicust_view.as_ref(),
             assets,

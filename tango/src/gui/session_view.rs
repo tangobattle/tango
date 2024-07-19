@@ -1,7 +1,5 @@
+use crate::{config, discord, gui, i18n, input, session, sync, video};
 use fluent_templates::Loader;
-
-use crate::{discord, gui, i18n, input, session, stats, sync, video};
-
 mod replay_controls_window;
 
 pub struct State {
@@ -98,27 +96,25 @@ fn show_emulator(
 
 pub fn show(
     ctx: &egui::Context,
-    language: &unic_langid::LanguageIdentifier,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     input_state: &input::State,
-    input_mapping: &input::Mapping,
     session: &session::Session,
-    video_filter: &str,
-    integer_scaling: bool,
-    max_scale: u32,
-    speed_change_factor: f32,
-    show_own_setup: bool,
-    crashstates_path: &std::path::Path,
     last_mouse_motion_time: &Option<std::time::Instant>,
     show_escape_window: &mut Option<gui::escape_window::State>,
-    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    show_debug: bool,
-    always_show_status_bar: Option<bool>,
     state: &mut State,
-    discord_client: &mut discord::Client,
 ) {
+    let language = &config.language;
+    let discord_client = &shared_root_state.discord_client;
+    let input_mapping = &config.input_mapping;
+    let video_filter = &config.video_filter;
+    let integer_scaling = config.integer_scaling;
+    let max_scale = config.max_scale;
+    let speed_change_factor = config.speed_change_percent as f32 / 100.0;
+    let show_own_setup = config.show_own_setup;
+    let crashstates_path = &config.crashstates_path();
+    let show_debug = config.show_debug;
+
     if input_mapping.menu.iter().any(|c| c.is_pressed(input_state)) {
         *show_escape_window = if show_escape_window.is_some() {
             None
@@ -225,9 +221,8 @@ cpsr = {:08x}"#,
                         gui::save_view::show(
                             ui,
                             false,
-                            clipboard,
-                            font_families,
-                            language,
+                            config,
+                            shared_root_state,
                             &own_setup.game_lang,
                             own_setup.save.as_ref(),
                             own_setup.assets.as_ref(),
@@ -248,9 +243,8 @@ cpsr = {:08x}"#,
                     gui::save_view::show(
                         ui,
                         false,
-                        clipboard,
-                        font_families,
-                        language,
+                        config,
+                        shared_root_state,
                         &opponent_setup.game_lang,
                         opponent_setup.save.as_ref(),
                         opponent_setup.assets.as_ref(),
@@ -261,16 +255,15 @@ cpsr = {:08x}"#,
         });
     }
 
-    if always_show_status_bar.unwrap_or(false) {
+    if config.show_status_bar.unwrap_or(false) {
         // This shows the status bar on top of everything.
         show_status_bar(
             ctx,
-            language,
+            config,
+            shared_root_state,
             session,
             show_debug,
             &mut state.debug_window,
-            fps_counter.clone(),
-            emu_tps_counter.clone(),
         );
     }
 
@@ -286,7 +279,7 @@ cpsr = {:08x}"#,
         });
 
     const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
-    if always_show_status_bar.is_none()
+    if config.show_status_bar.is_none()
         && last_mouse_motion_time
             .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
             .unwrap_or(false)
@@ -294,12 +287,11 @@ cpsr = {:08x}"#,
         // This adjusts the layout.
         show_status_bar(
             ctx,
-            language,
+            config,
+            shared_root_state,
             session,
             show_debug,
             &mut state.debug_window,
-            fps_counter.clone(),
-            emu_tps_counter.clone(),
         );
     }
     gui::debug_window::show(ctx, language, session, &mut state.debug_window);
@@ -307,13 +299,16 @@ cpsr = {:08x}"#,
 
 fn show_status_bar(
     ctx: &egui::Context,
-    language: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     session: &session::Session,
     show_debug: bool,
     debug_window: &mut Option<gui::debug_window::State>,
-    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
 ) {
+    let language = &config.language;
+    let fps_counter = &shared_root_state.fps_counter;
+    let emu_tps_counter = &shared_root_state.emu_tps_counter;
+
     egui::TopBottomPanel::bottom("session-status-bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

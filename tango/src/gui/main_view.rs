@@ -1,5 +1,4 @@
-use super::ui_windows::UiWindows;
-use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats, sync, updater};
+use crate::{config, gui, i18n, patch, sync, updater};
 use fluent_templates::Loader;
 
 pub struct State {
@@ -37,22 +36,12 @@ enum Tab {
 
 pub fn show(
     ctx: &egui::Context,
-    font_families: &gui::FontFamilies,
     config: &mut config::Config,
-    config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    shared_root_state: &mut gui::SharedRootState,
     window: &winit::window::Window,
     show_settings: &mut Option<gui::settings_window::State>,
-    ui_windows: &mut UiWindows,
-    clipboard: &mut arboard::Clipboard,
-    audio_binder: audio::LateBinder,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: &mut Option<gui::Selection>,
     state: &mut State,
-    discord_client: &mut discord::Client,
     init_link_code: &mut Option<String>,
     updater: &updater::Updater,
 ) {
@@ -133,7 +122,7 @@ pub fn show(
                             {
                                 let egui_ctx = ui.ctx().clone();
                                 tokio::task::spawn_blocking({
-                                    let patches_scanner = patches_scanner.clone();
+                                    let patches_scanner = shared_root_state.patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
                                         patches_scanner
@@ -154,7 +143,7 @@ pub fn show(
     }
 
     // If a join is requested, switch immediately to the play tab.
-    if discord_client.has_current_join_secret() || init_link_code.is_some() {
+    if shared_root_state.discord_client.has_current_join_secret() || init_link_code.is_some() {
         state.tab = Tab::Play;
     }
 
@@ -168,54 +157,27 @@ pub fn show(
             Tab::Play => {
                 gui::play_pane::show(
                     ui,
-                    font_families,
-                    window,
-                    clipboard,
                     config,
-                    config_arc,
-                    roms_scanner.clone(),
-                    saves_scanner.clone(),
-                    patches_scanner.clone(),
-                    audio_binder.clone(),
-                    session.clone(),
+                    shared_root_state,
+                    window,
                     selection,
                     &mut state.patch_selection,
-                    emu_tps_counter.clone(),
                     &mut state.play_pane,
-                    discord_client,
                     init_link_code,
                 );
             }
             Tab::Replays => {
-                gui::replays_pane::show(
-                    ui,
-                    clipboard,
-                    font_families,
-                    &mut state.replays_pane,
-                    ui_windows,
-                    config,
-                    patches_scanner.clone(),
-                    roms_scanner.clone(),
-                    audio_binder.clone(),
-                    emu_tps_counter.clone(),
-                    session.clone(),
-                );
+                gui::replays_pane::show(ui, config, shared_root_state, &mut state.replays_pane);
             }
             Tab::Patches => {
                 let patches_path = config.patches_path().clone();
                 gui::patches_pane::show(
                     ui,
+                    config,
+                    shared_root_state,
                     &mut state.patches_pane,
-                    &config.language,
-                    if !config.patch_repo.is_empty() {
-                        config.patch_repo.as_str()
-                    } else {
-                        config::DEFAULT_PATCH_REPO
-                    },
-                    &mut config.starred_patches,
                     &mut state.patch_selection,
                     &patches_path,
-                    patches_scanner.clone(),
                 );
             }
         });

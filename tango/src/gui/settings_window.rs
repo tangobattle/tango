@@ -1,6 +1,5 @@
+use crate::{config, game, gui, i18n, input, patch, save, version};
 use fluent_templates::Loader;
-
-use crate::{config, game, gui, i18n, input, patch, rom, save, version};
 
 #[derive(PartialEq, Eq)]
 enum Tab {
@@ -27,11 +26,8 @@ impl State {
 pub fn show(
     ctx: &egui::Context,
     state: &mut Option<State>,
-    font_families: &gui::FontFamilies,
+    shared_root_state: &gui::SharedRootState,
     config: &mut config::Config,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
     window: &winit::window::Window,
     steal_input: &mut Option<gui::steal_input_window::State>,
 ) {
@@ -93,19 +89,13 @@ pub fn show(
             egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     match state.tab {
-                        Tab::General => show_general_tab(ui, config, font_families),
+                        Tab::General => show_general_tab(ui, config, &shared_root_state.font_families),
                         Tab::Input => show_input_tab(ui, &config.language, &mut config.input_mapping, steal_input),
                         Tab::Graphics => show_graphics_tab(ui, config, window),
                         Tab::Audio => show_audio_tab(ui, config),
                         Tab::Netplay => show_netplay_tab(ui, config),
                         Tab::Patches => show_patches_tab(ui, config),
-                        Tab::Advanced => show_advanced_tab(
-                            ui,
-                            config,
-                            roms_scanner.clone(),
-                            saves_scanner.clone(),
-                            patches_scanner.clone(),
-                        ),
+                        Tab::Advanced => show_advanced_tab(ui, config, shared_root_state),
                         Tab::About => show_about_tab(ui),
                     };
                 });
@@ -607,13 +597,7 @@ fn show_patches_tab(ui: &mut egui::Ui, config: &mut config::Config) {
         });
 }
 
-fn show_advanced_tab(
-    ui: &mut egui::Ui,
-    config: &mut config::Config,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
-) {
+fn show_advanced_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root_state: &gui::SharedRootState) {
     egui::Grid::new("settings-window-general-grid")
         .num_columns(2)
         .show(ui, |ui| {
@@ -668,9 +652,9 @@ fn show_advanced_tab(
                             let _ = config.ensure_dirs();
                             tokio::task::spawn_blocking({
                                 let egui_ctx = ui.ctx().clone();
-                                let roms_scanner = roms_scanner.clone();
-                                let saves_scanner = saves_scanner.clone();
-                                let patches_scanner = patches_scanner.clone();
+                                let roms_scanner = shared_root_state.roms_scanner.clone();
+                                let saves_scanner = shared_root_state.saves_scanner.clone();
+                                let patches_scanner = shared_root_state.patches_scanner.clone();
                                 let roms_path = config.roms_path();
                                 let saves_path = config.saves_path();
                                 let patches_path = config.patches_path();

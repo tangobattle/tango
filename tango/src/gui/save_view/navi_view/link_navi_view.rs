@@ -2,7 +2,7 @@
 use fluent_templates::Loader;
 
 #[allow(unused_imports)]
-use crate::{gui, i18n};
+use crate::{config, gui, i18n};
 
 pub struct State {
     emblem_texture_cache: Option<egui::TextureHandle>,
@@ -18,14 +18,15 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
-    _clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    _lang: &unic_langid::LanguageIdentifier,
+    _config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     navi_view: &dyn tango_dataview::save::LinkNaviView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
+    let font_families = &shared_root_state.font_families;
+
     let navi_id = navi_view.navi();
     let navi = if let Some(navi) = assets.navi(navi_id) {
         navi

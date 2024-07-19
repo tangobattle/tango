@@ -1,6 +1,5 @@
+use crate::{config, game, gui, i18n};
 use fluent_templates::Loader;
-
-use crate::{config, game, gui, i18n, rom};
 
 pub struct State {
     nickname: String,
@@ -18,11 +17,12 @@ impl State {
 
 pub fn show(
     ctx: &egui::Context,
-    font_families: &gui::FontFamilies,
+    shared_root_state: &gui::SharedRootState,
     config: &mut config::Config,
-    roms_scanner: rom::Scanner,
     state: &mut State,
 ) {
+    let roms_scanner = &shared_root_state.roms_scanner;
+
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.horizontal_centered(|ui| {
             ui.add_space(8.0);
@@ -39,7 +39,7 @@ pub fn show(
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        gui::language_select::show(ui, font_families, &mut config.language);
+                        gui::language_select::show(ui, &shared_root_state.font_families, &mut config.language);
                     });
                 });
 

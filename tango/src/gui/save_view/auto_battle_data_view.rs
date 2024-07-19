@@ -1,7 +1,6 @@
+use crate::{config, gui, i18n};
 use fluent_templates::Loader;
 use itertools::Itertools;
-
-use crate::{gui, i18n};
 
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
@@ -21,14 +20,17 @@ impl State {
 
 fn show_table(
     ui: &mut egui::Ui,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     chips: &[Option<usize>],
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
     chip_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
 ) {
+    let lang = &config.language;
+    let font_families = &shared_root_state.font_families;
+
     let groups = chips.iter().group_by(|k| **k);
     let groups = groups.into_iter().enumerate().collect::<Vec<_>>();
     egui_extras::StripBuilder::new(ui)
@@ -201,14 +203,16 @@ fn make_string(chips: &[Option<usize>], assets: &(dyn tango_dataview::rom::Asset
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     auto_battle_data_view: &dyn tango_dataview::save::AutoBattleDataView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
+    let lang = &config.language;
+    let clipboard = &mut shared_root_state.clipboard;
+
     let materialized = state
         .materialized
         .get_or_insert_with(|| auto_battle_data_view.materialized());
@@ -247,10 +251,10 @@ pub fn show(
                 );
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     materialized.secondary_standard_chips(),
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,
@@ -261,10 +265,10 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-standard-chips").unwrap());
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     materialized.standard_chips(),
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,
@@ -275,10 +279,10 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-mega-chips").unwrap());
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     materialized.mega_chips(),
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,
@@ -289,10 +293,10 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-giga-chip").unwrap());
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     &[materialized.giga_chip()],
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,
@@ -303,10 +307,10 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-combos").unwrap());
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     &[None; 8],
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,
@@ -317,10 +321,10 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-program-advance").unwrap());
                 show_table(
                     ui,
+                    config,
+                    shared_root_state,
                     &[materialized.program_advance()],
                     assets,
-                    font_families,
-                    lang,
                     game_lang,
                     &mut state.chip_icon_texture_cache,
                     &mut state.element_icon_texture_cache,

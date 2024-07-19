@@ -1,5 +1,5 @@
 use crate::patch::{self, PatchMap};
-use crate::{game, gui, i18n, net, rom, save};
+use crate::{config, game, gui, i18n, net, rom, save};
 use fluent_templates::Loader;
 use std::io::Write;
 
@@ -361,22 +361,21 @@ fn patch_version_compatibility_warning(
 
 pub fn show(
     ui: &mut egui::Ui,
-    config: &mut crate::config::Config,
+    config: &mut config::Config,
+    shared_root_state: &mut gui::SharedRootState,
     state: &mut State,
     committed_selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
     remote_settings: Option<&net::protocol::Settings>,
 ) {
     let saves_path = &config.saves_path();
     let patches_path = &config.patches_path();
 
     let games = game::sorted_all_games(&config.language);
-    let roms = roms_scanner.read();
+    let roms = shared_root_state.roms_scanner.read();
+    let saves_scanner = &shared_root_state.saves_scanner;
     let saves = saves_scanner.read();
-    let patches = patches_scanner.read();
+    let patches = shared_root_state.patches_scanner.read();
 
     const BODY_CHAR_WIDTH: f32 = 6.5;
     const SMALL_CHAR_WIDTH: f32 = 4.5;
@@ -1072,7 +1071,7 @@ pub fn show(
 
                             let save = save::ScannedSave { path, save };
                             commit_save(&roms, patches_path, committed_selection, selection_state, save);
-                            rescan_saves(config, &saves_scanner, ui.ctx());
+                            rescan_saves(config, saves_scanner, ui.ctx());
 
                             ui.close_menu();
                         }
@@ -1123,7 +1122,7 @@ pub fn show(
                             previous_selection.rom,
                         ));
 
-                        rescan_saves(config, &saves_scanner, ui.ctx());
+                        rescan_saves(config, saves_scanner, ui.ctx());
                     })()
                 }
 

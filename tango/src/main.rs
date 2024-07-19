@@ -459,7 +459,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
             _ => {}
         }
 
-        if let Some(session) = state.session.lock().as_mut() {
+        if let Some(session) = state.shared.session.lock().as_mut() {
             session.set_joyflags(next_config.input_mapping.to_mgba_keys(&input_state));
             session.set_master_volume(next_config.volume);
         }

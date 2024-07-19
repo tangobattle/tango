@@ -1,9 +1,8 @@
+use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, session, stats, sync};
 use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
-
-use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats, sync};
 
 pub enum Warning {
     Incompatible,
@@ -1247,16 +1246,9 @@ fn show_lobby_table(
 fn show_bottom_pane(
     ui: &mut egui::Ui,
     window: &winit::window::Window,
-    clipboard: &mut arboard::Clipboard,
     config: &mut config::Config,
-    config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    roms_scanner: rom::Scanner,
-    patches_scanner: patch::Scanner,
-    audio_binder: audio::LateBinder,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    shared_root_state: &mut gui::SharedRootState,
     selection: &mut Option<gui::Selection>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    discord_client: &mut discord::Client,
     connection_task: &mut Option<ConnectionTask>,
     connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     link_code: &mut String,
@@ -1323,8 +1315,9 @@ fn show_bottom_pane(
         }
     }
 
-    let roms = roms_scanner.read();
-    let patches = patches_scanner.read();
+    let discord_client = &shared_root_state.discord_client;
+    let roms = shared_root_state.roms_scanner.read();
+    let patches = shared_root_state.patches_scanner.read();
 
     egui::TopBottomPanel::bottom("play-bottom-pane").show_inside(ui, |ui| {
         ui.vertical(|ui| {
@@ -1457,7 +1450,7 @@ fn show_bottom_pane(
                             .clicked()
                         {
                             *link_code = randomcode::generate(&config.language);
-                            let _ = clipboard.set_text(link_code.clone());
+                            let _ = shared_root_state.clipboard.set_text(link_code.clone());
                         }
 
                         if config.streamer_mode
@@ -1550,10 +1543,10 @@ fn show_bottom_pane(
                     }
 
                     if submitted {
-                        let audio_binder = audio_binder.clone();
+                        let audio_binder = shared_root_state.audio_binder.clone();
                         let egui_ctx = ui.ctx().clone();
-                        let session = session.clone();
-                        let emu_tps_counter = emu_tps_counter.clone();
+                        let session = shared_root_state.session.clone();
+                        let emu_tps_counter = shared_root_state.emu_tps_counter.clone();
 
                         if !link_code.is_empty() {
                             let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -1572,10 +1565,10 @@ fn show_bottom_pane(
                                 let nickname = config.nickname.clone().unwrap_or_default();
                                 let patches_path = config.patches_path();
                                 let replays_path = config.replays_path();
-                                let config_arc = config_arc.clone();
+                                let config_arc = shared_root_state.config.clone();
                                 let connection_task_arc = connection_task_arc.clone();
-                                let roms_scanner = roms_scanner.clone();
-                                let patches_scanner = patches_scanner.clone();
+                                let roms_scanner = shared_root_state.roms_scanner.clone();
+                                let patches_scanner = shared_root_state.patches_scanner.clone();
                                 async move {
                                     run_connection_task(
                                         config_arc,
@@ -1637,21 +1630,12 @@ fn show_bottom_pane(
 
 pub fn show(
     ui: &mut egui::Ui,
-    font_families: &gui::FontFamilies,
-    window: &winit::window::Window,
-    clipboard: &mut arboard::Clipboard,
     config: &mut config::Config,
-    config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
-    patches_scanner: patch::Scanner,
-    audio_binder: audio::LateBinder,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    shared_root_state: &mut gui::SharedRootState,
+    window: &winit::window::Window,
     selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     state: &mut State,
-    discord_client: &mut discord::Client,
     init_link_code: &mut Option<String>,
 ) {
     let connection_task_arc = state.connection_task.clone();
@@ -1661,16 +1645,9 @@ pub fn show(
     show_bottom_pane(
         ui,
         window,
-        clipboard,
         config,
-        config_arc.clone(),
-        roms_scanner.clone(),
-        patches_scanner.clone(),
-        audio_binder.clone(),
-        session,
+        shared_root_state,
         selection,
-        emu_tps_counter,
-        discord_client,
         &mut connection_task,
         connection_task_arc,
         &mut state.link_code,
@@ -1707,12 +1684,10 @@ pub fn show(
                 gui::save_select_view::show(
                     ui,
                     config,
+                    shared_root_state,
                     &mut state.save_select_state,
                     &mut *selection,
                     patch_selection,
-                    roms_scanner.clone(),
-                    saves_scanner.clone(),
-                    patches_scanner.clone(),
                     if let Some(lobby) = lobby.as_ref() {
                         Some(&lobby.remote_settings)
                     } else {
@@ -1729,9 +1704,8 @@ pub fn show(
                     gui::save_view::show(
                         ui,
                         config.streamer_mode,
-                        clipboard,
-                        font_families,
-                        &config.language,
+                        config,
+                        shared_root_state,
                         selection
                             .patch
                             .as_ref()

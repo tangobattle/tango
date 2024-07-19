@@ -1,6 +1,6 @@
+use crate::gui::{self, SharedRootState};
+use crate::{config, i18n};
 use fluent_templates::Loader;
-
-use crate::{gui, i18n};
 
 pub struct State {}
 
@@ -314,14 +314,17 @@ pub fn show_patch_card56s(
 
 pub fn show(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
+    config: &config::Config,
+    shared_root_state: &mut SharedRootState,
     game_lang: &unic_langid::LanguageIdentifier,
     patch_cards_view: &tango_dataview::save::PatchCardsView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     state: &mut State,
 ) {
+    let lang = &config.language;
+    let font_families = &shared_root_state.font_families;
+    let clipboard = &mut shared_root_state.clipboard;
+
     match patch_cards_view {
         tango_dataview::save::PatchCardsView::PatchCard4s(patch_card4s_view) => show_patch_card4s(
             ui,

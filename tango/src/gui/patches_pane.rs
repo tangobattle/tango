@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, i18n, patch, sync};
+use crate::{config, game, i18n, patch, sync};
 
 pub struct State {
     commonmark_cache: egui_commonmark::CommonMarkCache,
@@ -16,14 +16,22 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
+    config: &mut config::Config,
+    shared_root_state: &super::SharedRootState,
     state: &mut State,
-    language: &unic_langid::LanguageIdentifier,
-    repo_url: &str,
-    starred_patches: &mut std::collections::HashSet<String>,
     patch_selection: &mut Option<String>,
     patches_path: &std::path::Path,
-    patches_scanner: patch::Scanner,
 ) {
+    let language = &config.language;
+    let starred_patches = &mut config.starred_patches;
+    let repo_url = if !config.patch_repo.is_empty() {
+        config.patch_repo.as_str()
+    } else {
+        config::DEFAULT_PATCH_REPO
+    };
+
+    let patches_scanner = &shared_root_state.patches_scanner;
+
     egui::TopBottomPanel::top("patches-window-top-panel").show_inside(ui, |ui| {
         ui.horizontal(|ui| {
             ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
