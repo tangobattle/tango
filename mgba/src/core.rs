@@ -48,11 +48,7 @@ impl Core {
 
         let mut buffer = vec![0u8; (width * height * 4) as usize];
         unsafe {
-            (*self.ptr).setVideoBuffer.unwrap()(
-                self.ptr,
-                buffer.as_mut_ptr() as *mut _ as *mut u32,
-                width as mgba_sys::size_t,
-            );
+            (*self.ptr).setVideoBuffer.unwrap()(self.ptr, buffer.as_mut_ptr() as *mut _ as *mut u32, width as _);
         }
         self.video_buffer = Some(buffer);
     }
@@ -272,11 +268,11 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn audio_buffer_size(&mut self) -> u64 {
-        unsafe { (*self.ptr).getAudioBufferSize.unwrap()(self.ptr) }
+        unsafe { (*self.ptr).getAudioBufferSize.unwrap()(self.ptr) as _ }
     }
 
     pub fn set_audio_buffer_size(&mut self, size: u64) {
-        unsafe { (*self.ptr).setAudioBufferSize.unwrap()(self.ptr, size) }
+        unsafe { (*self.ptr).setAudioBufferSize.unwrap()(self.ptr, size as _) }
     }
 
     pub fn audio_channel(&mut self, ch: i32) -> blip::BlipMutRef {
