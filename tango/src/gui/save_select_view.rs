@@ -82,11 +82,15 @@ impl Selection {
 
 pub struct State {
     selection: Option<Selection>,
+    last_committed_save_path: Option<std::path::PathBuf>,
 }
 
 impl State {
     pub fn new(selection: Option<Selection>) -> Self {
-        Self { selection }
+        Self {
+            selection,
+            last_committed_save_path: None,
+        }
     }
 }
 
@@ -364,10 +368,20 @@ pub fn show(
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
     state: &mut State,
-    committed_selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
     remote_settings: Option<&net::protocol::Settings>,
 ) {
+    let committed_selection = &mut shared_root_state.selection;
+
+    // keep save path in sync with changes from deleting and renaming
+    if committed_selection.as_ref().map(|s| &s.save.path) != state.last_committed_save_path.as_ref() {
+        state.last_committed_save_path = committed_selection.as_ref().map(|s| s.save.path.clone());
+
+        if let Some(selection) = &mut state.selection {
+            selection.save_path.clone_from(&state.last_committed_save_path);
+        }
+    }
+
     let saves_path = &config.saves_path();
     let patches_path = &config.patches_path();
 
@@ -1136,15 +1150,83 @@ pub fn show(
                 //     rescan_saves(config, &saves_scanner, ui.ctx());
                 // }
 
-                // let delete_label = egui::RichText::new(format!(
-                //     "🗑️ {}",
-                //     i18n::LOCALES.lookup(language, "select-save.delete-save").unwrap()
-                // ));
+                let delete_label = egui::RichText::new(format!(
+                    "🗑️ {}",
+                    i18n::LOCALES
+                        .lookup(&config.language, "select-save.delete-save")
+                        .unwrap()
+                ));
 
-                // if ui.button(delete_label).clicked() {
-                //     // TODO: Show confirm dialog.
-                //     rescan_saves(config, &saves_scanner, ui.ctx());
-                // }
+                if ui.button(delete_label).clicked() {
+                    let ui_windows = &mut shared_root_state.ui_windows;
+                    let previous_selection = committed_selection.as_ref().unwrap();
+
+                    let saves_path = saves_path.clone();
+                    let save_path = previous_selection.save.path.clone();
+
+                    ui_windows.push(move |key, ctx, config, shared_state| {
+                        let mut open = true;
+                        let mut open2 = true;
+
+                        egui::Window::new(
+                            i18n::LOCALES
+                                .lookup(&config.language, "select-save.delete-save-window-title")
+                                .unwrap(),
+                        )
+                        .id(egui::Id::new(("save-confirm-delete-window", key)))
+                        .open(&mut open)
+                        .pivot(egui::Align2::CENTER_CENTER)
+                        .default_pos((ctx.screen_rect().size() * 0.5).to_pos2())
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ctx, |ui| {
+                            let save_name = save_name(&saves_path, &save_path);
+                            let localization_args = std::collections::HashMap::from([("name", save_name.into())]);
+
+                            ui.label(
+                                i18n::LOCALES
+                                    .lookup_with_args(
+                                        &config.language,
+                                        "select-save.delete-save-window-message",
+                                        &localization_args,
+                                    )
+                                    .unwrap(),
+                            );
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                let delete_text = i18n::LOCALES
+                                    .lookup(&config.language, "select-save.delete-save")
+                                    .unwrap();
+
+                                if ui.button(delete_text).clicked() {
+                                    match std::fs::remove_file(&save_path) {
+                                        Ok(_) => {
+                                            rescan_saves(config, &shared_state.saves_scanner, ctx);
+
+                                            // deselect
+                                            let selection = &mut shared_state.selection;
+
+                                            if selection.as_ref().is_some_and(|s| s.save.path == save_path) {
+                                                *selection = None;
+                                            }
+                                        }
+                                        Err(err) => log::error!("failed to delete save: {err:?}"),
+                                    }
+
+                                    open2 = false;
+                                }
+
+                                let cancel_text = i18n::LOCALES.lookup(&config.language, "cancel").unwrap();
+
+                                if ui.button(cancel_text).clicked() {
+                                    open2 = false;
+                                }
+                            });
+                        });
+
+                        open && open2
+                    });
+                }
             })
         });
     });

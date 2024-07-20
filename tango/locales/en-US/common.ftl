@@ -3,3 +3,5 @@ copy-to-clipboard = Copy to clipboard
 
 window-title = Tango
     .running = Tango (running)
+
+cancel = Cancel

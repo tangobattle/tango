@@ -79,11 +79,11 @@ pub struct SharedRootState {
     pub discord_client: discord::Client,
     pub font_families: FontFamilies,
     pub ui_windows: ui_windows::UiWindows,
+    pub selection: Option<Selection>,
 }
 
 pub struct State {
     pub shared: SharedRootState,
-    selection: Option<Selection>,
     pub steal_input: Option<steal_input_window::State>,
     pub last_mouse_motion_time: Option<std::time::Instant>,
     main_view: main_view::State,
@@ -193,8 +193,8 @@ impl State {
                 font_families,
                 ui_windows: Default::default(),
                 discord_client,
+                selection: committed_selection,
             },
-            selection: committed_selection,
             last_mouse_motion_time: None,
             main_view,
             steal_input: None,
@@ -383,8 +383,7 @@ pub fn show(
     steal_input_window::show(ctx, &config.language, &mut state.steal_input);
     escape_window::show(
         ctx,
-        state.shared.session.clone(),
-        &mut state.selection,
+        &mut state.shared,
         &mut state.show_escape_window,
         &config.language,
         &mut state.show_settings,
@@ -421,7 +420,6 @@ pub fn show(
             &mut state.shared,
             window,
             &mut state.show_settings,
-            &mut state.selection,
             &mut state.main_view,
             &mut state.init_link_code,
             updater,

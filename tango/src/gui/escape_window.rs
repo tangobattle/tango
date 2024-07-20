@@ -1,6 +1,5 @@
+use crate::{gui, i18n};
 use fluent_templates::Loader;
-
-use crate::{gui, i18n, session};
 
 pub struct State {}
 
@@ -12,12 +11,14 @@ impl State {
 
 pub fn show(
     ctx: &egui::Context,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    selection: &mut Option<gui::Selection>,
+    shared_root_state: &mut gui::SharedRootState,
     show_escape_window: &mut Option<State>,
     language: &unic_langid::LanguageIdentifier,
     show_settings: &mut Option<gui::settings_window::State>,
 ) {
+    let session = shared_root_state.session.clone();
+    let selection = &mut shared_root_state.selection;
+
     let mut open = show_escape_window.is_some();
     egui::Window::new("")
         .id(egui::Id::new("escape-window"))

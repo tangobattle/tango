@@ -1248,13 +1248,14 @@ fn show_bottom_pane(
     window: &winit::window::Window,
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
-    selection: &mut Option<gui::Selection>,
     connection_task: &mut Option<ConnectionTask>,
     connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     link_code: &mut String,
     show_link_code: &mut bool,
     init_link_code: &mut Option<String>,
 ) {
+    let selection = &mut shared_root_state.selection;
+
     let error_window_open = {
         if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
             let mut open = true;
@@ -1633,7 +1634,6 @@ pub fn show(
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
     window: &winit::window::Window,
-    selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
     state: &mut State,
     init_link_code: &mut Option<String>,
@@ -1647,7 +1647,6 @@ pub fn show(
         window,
         config,
         shared_root_state,
-        selection,
         &mut connection_task,
         connection_task_arc,
         &mut state.link_code,
@@ -1686,7 +1685,6 @@ pub fn show(
                     config,
                     shared_root_state,
                     &mut state.save_select_state,
-                    &mut *selection,
                     patch_selection,
                     if let Some(lobby) = lobby.as_ref() {
                         Some(&lobby.remote_settings)
@@ -1698,25 +1696,30 @@ pub fn show(
 
             ui.separator();
 
-            if let Some(selection) = selection.as_mut() {
+            // we're only planning on viewing the data, should be safe to take the selection
+            if let Some(mut selection) = shared_root_state.selection.take() {
                 if let Some(assets) = selection.assets.as_ref() {
-                    let game_language = crate::game::region_to_language(selection.game.gamedb_entry().region);
+                    let game_language = selection
+                        .patch
+                        .as_ref()
+                        .and_then(|(_, _, metadata)| metadata.rom_overrides.language.clone())
+                        .unwrap_or_else(|| crate::game::region_to_language(selection.game.gamedb_entry().region));
+
                     gui::save_view::show(
                         ui,
                         config.streamer_mode,
                         config,
                         shared_root_state,
-                        selection
-                            .patch
-                            .as_ref()
-                            .and_then(|(_, _, metadata)| metadata.rom_overrides.language.as_ref())
-                            .unwrap_or(&game_language),
+                        &game_language,
                         selection.save.save.as_ref(),
                         assets.as_ref(),
                         &mut selection.save_view_state,
                         false,
                     );
                 }
+
+                // put the selection back
+                shared_root_state.selection = Some(selection);
             }
         });
 
@@ -1726,6 +1729,7 @@ pub fn show(
     }) = connection_task.as_ref()
     {
         let mut lobby = lobby.blocking_lock();
+        let selection = &shared_root_state.selection;
         let _ = sync::block_on(lobby.set_local_selection(selection));
     }
 }
