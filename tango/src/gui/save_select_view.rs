@@ -375,11 +375,15 @@ pub fn show(
 
     // keep save path in sync with changes from deleting and renaming
     if committed_selection.as_ref().map(|s| &s.save.path) != state.last_committed_save_path.as_ref() {
-        state.last_committed_save_path = committed_selection.as_ref().map(|s| s.save.path.clone());
+        let new_save_path = committed_selection.as_ref().map(|s| s.save.path.clone());
 
         if let Some(selection) = &mut state.selection {
-            selection.save_path.clone_from(&state.last_committed_save_path);
+            if selection.save_path.is_some() && selection.save_path == state.last_committed_save_path {
+                selection.save_path.clone_from(&new_save_path);
+            }
         }
+
+        state.last_committed_save_path = new_save_path;
     }
 
     let saves_path = &config.saves_path();
@@ -1140,15 +1144,117 @@ pub fn show(
                     })()
                 }
 
-                // let rename_label = egui::RichText::new(format!(
-                //     "✏️ {}",
-                //     i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
-                // ));
+                let rename_label_title = i18n::LOCALES
+                    .lookup(&config.language, "select-save.rename-save")
+                    .unwrap();
+                let rename_label = egui::RichText::new(format!("✏️ {rename_label_title}",));
 
-                // if ui.button(rename_label).clicked() {
-                //     // TODO: Show rename dialog.
-                //     rescan_saves(config, &saves_scanner, ui.ctx());
-                // }
+                if ui.button(rename_label).clicked() {
+                    let ui_windows = &mut shared_root_state.ui_windows;
+                    let previous_selection = committed_selection.as_ref().unwrap();
+
+                    let saves_path = saves_path.clone();
+                    let save_path = previous_selection.save.path.clone();
+
+                    let mut new_name = save_name(&saves_path, &save_path).to_string();
+                    let mut error_text = None;
+
+                    ui_windows.push(move |key, ctx, config, shared_state| {
+                        let mut open = true;
+                        let mut open2 = true;
+
+                        egui::Window::new(&rename_label_title)
+                            .id(egui::Id::new(("save-rename-window", key)))
+                            .open(&mut open)
+                            .pivot(egui::Align2::CENTER_CENTER)
+                            .default_pos((ctx.screen_rect().size() * 0.5).to_pos2())
+                            .resizable(false)
+                            .collapsible(false)
+                            .show(ctx, |ui| {
+                                let save_name = save_name(&saves_path, &save_path);
+
+                                egui::Grid::new("save-rename-grid").num_columns(2).show(ui, |ui| {
+                                    {
+                                        let label_text = i18n::LOCALES
+                                            .lookup(&config.language, "select-save.rename-save-original-label")
+                                            .unwrap();
+
+                                        ui.strong(label_text);
+                                        ui.label(save_name);
+                                        ui.end_row();
+                                    }
+
+                                    {
+                                        let label_text = i18n::LOCALES
+                                            .lookup(&config.language, "select-save.rename-save-new-label")
+                                            .unwrap();
+
+                                        ui.strong(label_text);
+                                        ui.text_edit_singleline(&mut new_name);
+                                        ui.end_row();
+                                    }
+                                });
+
+                                if let Some(error_text) = &error_text {
+                                    ui.colored_label(egui::Color32::RED, error_text);
+                                }
+
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                    let button_text = i18n::LOCALES
+                                        .lookup(&config.language, "select-save.rename-save")
+                                        .unwrap();
+
+                                    if ui.button(button_text).clicked() {
+                                        let mut new_path = save_path.clone();
+                                        new_path.pop();
+                                        new_path.push(&new_name);
+
+                                        if new_path.parent() != save_path.parent() {
+                                            error_text = Some(
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "select-save.rename-save-invalid")
+                                                    .unwrap(),
+                                            );
+                                        } else if new_path.exists() {
+                                            error_text = Some(
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "select-save.rename-save-exists")
+                                                    .unwrap(),
+                                            );
+                                        } else {
+                                            match std::fs::rename(&save_path, &new_path) {
+                                                Ok(_) => {
+                                                    rescan_saves(config, &shared_state.saves_scanner, ctx);
+
+                                                    // update committed name
+                                                    if let Some(selection) = &mut shared_state.selection {
+                                                        if selection.save.path == save_path {
+                                                            selection.save.path.clone_from(&new_path);
+                                                            config.last_save = Some(new_path);
+                                                        }
+                                                    }
+
+                                                    open2 = false;
+                                                }
+                                                Err(err) => {
+                                                    error_text = Some(err.to_string());
+                                                    log::error!("failed to rename save: {err:?}");
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    let cancel_text = i18n::LOCALES.lookup(&config.language, "cancel").unwrap();
+
+                                    if ui.button(cancel_text).clicked() {
+                                        open2 = false;
+                                    }
+                                });
+                            });
+
+                        open && open2
+                    });
+                }
 
                 let delete_label = egui::RichText::new(format!(
                     "🗑️ {}",
@@ -1163,6 +1269,7 @@ pub fn show(
 
                     let saves_path = saves_path.clone();
                     let save_path = previous_selection.save.path.clone();
+                    let mut error_text = None;
 
                     ui_windows.push(move |key, ctx, config, shared_state| {
                         let mut open = true;
@@ -1193,6 +1300,10 @@ pub fn show(
                                     .unwrap(),
                             );
 
+                            if let Some(error_text) = &error_text {
+                                ui.colored_label(egui::Color32::RED, error_text);
+                            }
+
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                                 let delete_text = i18n::LOCALES
                                     .lookup(&config.language, "select-save.delete-save")
@@ -1208,12 +1319,16 @@ pub fn show(
 
                                             if selection.as_ref().is_some_and(|s| s.save.path == save_path) {
                                                 *selection = None;
+                                                config.last_save = None;
                                             }
-                                        }
-                                        Err(err) => log::error!("failed to delete save: {err:?}"),
-                                    }
 
-                                    open2 = false;
+                                            open2 = false;
+                                        }
+                                        Err(err) => {
+                                            error_text = Some(err.to_string());
+                                            log::error!("failed to delete save: {err:?}")
+                                        }
+                                    }
                                 }
 
                                 let cancel_text = i18n::LOCALES.lookup(&config.language, "cancel").unwrap();
