@@ -517,7 +517,7 @@ pub fn show(
                             );
                             shared_root_state
                                 .ui_windows
-                                .push(move |id, ctx, _, config| window.show(id, ctx, config));
+                                .push(move |id, ctx, config, _| window.show(id, ctx, config));
                         }
 
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {

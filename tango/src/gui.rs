@@ -392,7 +392,7 @@ pub fn show(
 
     // take ui windows to allow state to be passed to each window
     let mut ui_windows = std::mem::take(&mut state.shared.ui_windows);
-    ui_windows.show(ctx, state, config);
+    ui_windows.show(ctx, config, &mut state.shared);
     // store original ui windows, append any new ui windows
     std::mem::swap(&mut state.shared.ui_windows, &mut ui_windows);
     state.shared.ui_windows.merge(ui_windows);

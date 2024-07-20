@@ -4,7 +4,8 @@ slotmap::new_key_type! {
     pub struct UiWindowKey;
 }
 
-type ShowCallback = Box<dyn FnMut(UiWindowKey, &egui::Context, &mut super::State, &mut config::Config) -> bool>;
+type ShowCallback =
+    Box<dyn FnMut(UiWindowKey, &egui::Context, &mut config::Config, &mut super::SharedRootState) -> bool>;
 
 #[derive(Default)]
 pub struct UiWindows {
@@ -14,13 +15,19 @@ pub struct UiWindows {
 impl UiWindows {
     pub fn push(
         &mut self,
-        show: impl FnMut(UiWindowKey, &egui::Context, &mut super::State, &mut config::Config) -> bool + 'static,
+        show: impl FnMut(UiWindowKey, &egui::Context, &mut config::Config, &mut super::SharedRootState) -> bool + 'static,
     ) {
         self.windows.insert(Box::new(show));
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, state: &mut super::State, config: &mut config::Config) {
-        self.windows.retain(|key, show| (show)(key, ctx, state, config));
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        config: &mut config::Config,
+        shared_root_state: &mut super::SharedRootState,
+    ) {
+        self.windows
+            .retain(|key, show| (show)(key, ctx, config, shared_root_state));
     }
 
     pub fn merge(&mut self, ui_windows: UiWindows) {
