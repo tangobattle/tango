@@ -1,6 +1,5 @@
-> [!WARNING] 
-> **Tango is no longer actively supported by the author.**
-> 
+> [!WARNING] > **Tango is no longer actively supported by the author.**
+>
 > **There are no further updates expected to Tango.** If you wish to become the maintainer of Tango, please email <merry.bowl9875@fastmail.com>.
 
 # Tango
@@ -75,10 +74,10 @@ Tango is rollback netplay for Mega Man Battle Network.
 
 The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by sending WebRTC SDPs around.
 
-If you already have Rust installed, you can build it like so:
+If you already have Rust and Perl installed ([on Windows, try Strawberry Perl](https://strawberryperl.com/)), you can build it like so:
 
 ```sh
-cargo build --release --bin tango-server
+cargo build --release --bin tango-signaling-server
 ```
 
 ## Language support
@@ -87,8 +86,8 @@ Tango is fully internationalized and supports language switching based on your c
 
 The order of language support is as follows:
 
--   **English (en):** This is Tango's primary and fallback language. All Tango development is done in English.
+- **English (en):** This is Tango's primary and fallback language. All Tango development is done in English.
 
--   **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST NOT contain missing Japanese text.
+- **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST NOT contain missing Japanese text.
 
--   **All other languages:** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
+- **All other languages:** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
