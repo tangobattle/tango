@@ -32,9 +32,9 @@ Tango is rollback netplay for Mega Man Battle Network.
 | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                                          |
 | Battle Network Rockman EXE (JP)                       | 🤷 Works, with minor issues | 🤷 Folder                                          |
 
-## Building (Linux Binary for target platform)
+## Building (Linux Binary)
 
-We assume you're using Ubuntu or Debian. 
+We assume you're using Ubuntu or Debian.
 
 1.  Install Rust.
 
@@ -48,15 +48,12 @@ We assume you're using Ubuntu or Debian.
     sudo apt-get install -y libssl-dev libglib2.0-dev pkg-config cmake build-essential libclang-dev libgtk-3-dev librust-alsa-sys-dev libasound2-dev curl wget git
     ```
 
-1.  Clone this repository and build it. There's also a script for ARM64.
+1.  Run the build script. It will create an AppImage in the dist directory.
 
     ```sh
-    git clone --recurse-submodules https://github.com/HikariCalyx/tango
-    cd tango
     bash ./linux/build.sh
+    # or bash ./linux/build_arm64.sh
     ```
-
-1.  Your build is now located at dist directory.
 
 ## Building (Windows Binary)
 
