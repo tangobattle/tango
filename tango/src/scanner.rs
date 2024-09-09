@@ -53,4 +53,9 @@ where
         }
         inner.scanning = false;
     }
+
+    pub fn modify(&self, update: impl Fn(&mut T)) {
+        let mut inner = self.inner.write();
+        update(&mut inner.items);
+    }
 }

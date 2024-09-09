@@ -58,10 +58,21 @@ impl Selection {
         }
     }
 
-    pub fn reload_save(&mut self) -> anyhow::Result<()> {
+    pub fn reload_save(&mut self, saves_scanner: &mut save::Scanner) -> anyhow::Result<()> {
         let raw = std::fs::read(&self.save.path)?;
         self.save.save = self.game.parse_save(&raw)?;
         self.save_view_state = save_view::State::new();
+
+        saves_scanner.modify(|saves_map| {
+            let Some(saves) = saves_map.get_mut(&self.game) else {
+                return;
+            };
+            let Some(save) = saves.iter_mut().find(|save| save.path == self.save.path) else {
+                return;
+            };
+            *save = self.save.clone();
+        });
+
         Ok(())
     }
 }
