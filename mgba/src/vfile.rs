@@ -46,8 +46,8 @@ unsafe extern "C" fn vfile_seek(
     let f = (vf as *mut VFile).as_mut().unwrap().f.as_mut();
     f.seek(match whence as u32 {
         mgba_sys::SEEK_SET => std::io::SeekFrom::Start(offset as u64),
-        mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset),
-        mgba_sys::SEEK_END => std::io::SeekFrom::End(offset),
+        mgba_sys::SEEK_CUR => std::io::SeekFrom::Current(offset.into()),
+        mgba_sys::SEEK_END => std::io::SeekFrom::End(offset.into()),
         _ => {
             return -1;
         }
