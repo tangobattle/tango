@@ -37,6 +37,8 @@ mkdir -p dist
 cd tango_linux_workdir
 $SHELL
 ln -s armv7 aarch64
+ln -s armv7 armv7l
+ln -s armv7 armhf
 cd ..
 $SHELL
 ./appimagetool-armhf.AppImage tango_linux_workdir "dist/tango-${target_arch}-linux.AppImage"
