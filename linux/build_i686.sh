@@ -31,13 +31,11 @@ chmod a+x "tango_linux_workdir/${target_arch}/bin/ffmpeg"
 
 # Build AppImage.
 mkdir -p dist
-# Workarounf for running 32bit OS on 64bit kernel
+# Workaround for running 32bit OS on 64bit kernel
 cd tango_linux_workdir
-$SHELL
 ln -s i686 i386
 ln -s i686 x86_64
 ln -s i686 amd64
-cd ..
 $SHELL
 ./appimagetool-i686.AppImage tango_linux_workdir "dist/tango-${target_arch}-linux.AppImage"
 rm -rf tango_linux_workdir

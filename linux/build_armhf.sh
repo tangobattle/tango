@@ -35,11 +35,9 @@ ln -s
 mkdir -p dist
 # Workaround for running 32bit OS on 64bit hardware
 cd tango_linux_workdir
-$SHELL
 ln -s armv7 aarch64
 ln -s armv7 armv7l
 ln -s armv7 armhf
-cd ..
 $SHELL
 ./appimagetool-armhf.AppImage tango_linux_workdir "dist/tango-${target_arch}-linux.AppImage"
 rm -rf tango_linux_workdir
