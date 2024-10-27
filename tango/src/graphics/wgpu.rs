@@ -24,7 +24,10 @@ impl Backend {
                 device_descriptor: Arc::new(|_| wgpu::DeviceDescriptor {
                     label: None,
                     required_features: wgpu::Features::default(),
-                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                    required_limits: wgpu::Limits {
+                        max_texture_dimension_2d: 4096,
+                        ..wgpu::Limits::downlevel_defaults()
+                    },
                 }),
                 supported_backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
                 present_mode: wgpu::PresentMode::Fifo,

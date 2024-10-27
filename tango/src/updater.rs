@@ -60,6 +60,13 @@ fn is_target_installer(s: &str) -> bool {
         s.ends_with("-x86_64-linux.AppImage")
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         s.ends_with("-aarch64-linux.AppImage")
+    } else if cfg!(all(target_os = "linux", target_arch = "i686")) {
+        s.ends_with("-i686-linux.AppImage")
+    } else if cfg!(all(target_os = "linux", target_arch = "armv7")) {
+        s.ends_with("-armv7-linux.AppImage")
+    } else if cfg!(all(target_os = "linux", target_arch = "armhf")) {
+        s.ends_with("-armv7-linux.AppImage")
+
     } else {
         false
     }
