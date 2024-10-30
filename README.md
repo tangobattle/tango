@@ -45,14 +45,15 @@ We assume you're using Ubuntu or Debian.
 1.  Install required dependencies.
 
     ```sh
-    sudo apt-get install -y libssl-dev libglib2.0-dev pkg-config cmake build-essential libclang-dev libgtk-3-dev librust-alsa-sys-dev libasound2-dev curl wget git
+    sudo apt-get install -y libssl-dev libglib2.0-dev pkg-config cmake build-essential libclang-dev libgtk-3-dev librust-alsa-sys-dev libasound2-dev curl wget git libfuse2
     ```
 
 1.  Run the build script. It will create an AppImage in the dist directory.
 
     ```sh
     bash ./linux/build.sh
-    # or bash ./linux/build_arm64.sh
+    # For ARM32 Build: bash ./linux/build_armhf.sh
+    # For ARM64 Build: bash ./linux/build_arm64.sh
     ```
 
 ## Building (Windows Binary)
@@ -92,6 +93,48 @@ We assume you're using Ubuntu or Debian.
     ```sh
     cargo build --target x86_64-pc-windows-gnu --release --bin tango
     ```
+
+## Building (32Bit Windows Binary)
+
+The result made by Debian 11 amd64 is guaranteed to work.
+
+1.  Install Rust.
+
+    ```sh
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+1.  Install the Rust target and toolchain for `i686-pc-windows-gnu`.
+
+    ```sh
+    rustup target add i686-pc-windows-gnu
+    rustup toolchain install stable-i686-pc-windows-gnu
+    ```
+
+1.  Install mingw-w64 and all other required dependencies.
+
+    ```sh
+    sudo apt-get install -y libssl-dev libglib2.0-dev pkg-config cmake build-essential libclang-dev libgtk-3-dev librust-alsa-sys-dev libasound2-dev curl wget git mingw-w64 clang nsis python3-pip python3-dev p7zip-full
+    pip install mako semver toml
+    ```
+
+1.  Ensure mingw-w64 is using the POSIX threading model.
+
+    ```sh
+    sudo update-alternatives --install /usr/bin/i686-w64-mingw32-gcc i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-win32 60 &&
+    sudo update-alternatives --install /usr/bin/i686-w64-mingw32-gcc i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-posix 90 &&
+    sudo update-alternatives --config i686-w64-mingw32-gcc &&
+    sudo update-alternatives --install /usr/bin/i686-w64-mingw32-g++ i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-win32 60 &&
+    sudo update-alternatives --install /usr/bin/i686-w64-mingw32-g++ i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-posix 90 &&
+    sudo update-alternatives --config i686-w64-mingw32-g++
+    ```
+
+1.  Build the installer.
+
+    ```sh
+    bash ./win/build_i686.sh
+    ```
+
 
 ### Server
 
