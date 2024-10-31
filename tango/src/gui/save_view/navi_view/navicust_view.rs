@@ -798,9 +798,9 @@ pub fn show(
                             for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,
@@ -812,9 +812,9 @@ pub fn show(
                             for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,
