@@ -129,40 +129,6 @@ impl State {
             hant: FontFamily::new("Hant", include_bytes!("fonts/NotoSansTC-Regular.otf")),
         };
 
-        ctx.set_fonts(egui::FontDefinitions {
-            font_data: std::collections::BTreeMap::default(),
-            families: std::collections::BTreeMap::from([
-                (egui::FontFamily::Proportional, vec![]),
-                (egui::FontFamily::Monospace, vec![]),
-                (font_families.latn.egui.clone(), vec![]),
-                (font_families.jpan.egui.clone(), vec![]),
-                (font_families.hans.egui.clone(), vec![]),
-                (font_families.hant.egui.clone(), vec![]),
-            ]),
-        });
-
-        ctx.style_mut(|style| {
-            style.spacing.scroll = egui::style::ScrollStyle::solid();
-            // animation_time > 0 causes panics as egui requires us to keep data around for closing animations
-            // to see what i mean, open the settings window and close it with this set to anything other than 0
-            // disabling the fade_out animation on specific windows does not appear to stop egui from attempting to rerender old data
-            style.animation_time = 0.0;
-        });
-
-        // load previous selection
-        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
-            roms_scanner.clone(),
-            saves_scanner.clone(),
-            patches_scanner.clone(),
-            &config.read(),
-        );
-
-        let committed_selection = working_selection
-            .as_ref()
-            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
-
-        let main_view = main_view::State::new(working_selection, show_updater);
-
         let font_data = std::collections::BTreeMap::from([
             (
                 "NotoSans-Regular".to_string(),
@@ -189,6 +155,34 @@ impl State {
                 egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
             ),
         ]);
+
+        ctx.set_fonts(resolve_font_definitions(
+            config.read().language.clone(),
+            &font_families,
+            &font_data,
+        ));
+
+        ctx.style_mut(|style| {
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+            // animation_time > 0 causes panics as egui requires us to keep data around for closing animations
+            // to see what i mean, open the settings window and close it with this set to anything other than 0
+            // disabling the fade_out animation on specific windows does not appear to stop egui from attempting to rerender old data
+            style.animation_time = 0.0;
+        });
+
+        // load previous selection
+        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
+            roms_scanner.clone(),
+            saves_scanner.clone(),
+            patches_scanner.clone(),
+            &config.read(),
+        );
+
+        let committed_selection = working_selection
+            .as_ref()
+            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
+
+        let main_view = main_view::State::new(working_selection, show_updater);
 
         Ok(Self {
             shared: SharedRootState {
@@ -245,7 +239,6 @@ struct Themes {
 pub struct FontFamily {
     egui: egui::FontFamily,
     raw: &'static [u8],
-    fontdue: fontdue::Font,
 }
 
 impl FontFamily {
@@ -253,7 +246,6 @@ impl FontFamily {
         Self {
             egui: egui::FontFamily::Name(name.into()),
             raw,
-            fontdue: fontdue::Font::from_bytes(raw, fontdue::FontSettings::default()).unwrap(),
         }
     }
 }
@@ -276,26 +268,44 @@ impl FontFamilies {
             _ => self.latn.egui.clone(),
         }
     }
+}
 
-    pub fn fontdue_for_language(&self, lang: &unic_langid::LanguageIdentifier) -> &fontdue::Font {
-        let mut lang = lang.clone();
-        lang.maximize();
-        match lang.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => &self.jpan.fontdue,
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => &self.hans.fontdue,
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => &self.hant.fontdue,
-            _ => &self.latn.fontdue,
-        }
-    }
+fn resolve_font_definitions(
+    mut language: unic_langid::LanguageIdentifier,
+    font_families: &FontFamilies,
+    font_data: &std::collections::BTreeMap<std::string::String, egui::FontData>,
+) -> egui::FontDefinitions {
+    language.maximize();
 
-    pub fn all_fontdue(&self) -> impl Iterator<Item = &fontdue::Font> {
-        [
-            &self.latn.fontdue,
-            &self.jpan.fontdue,
-            &self.hans.fontdue,
-            &self.hant.fontdue,
-        ]
-        .into_iter()
+    let primary_font = match language.script {
+        Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "NotoSansJP-Regular",
+        Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "NotoSansSC-Regular",
+        Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "NotoSansTC-Regular",
+        _ => "NotoSans-Regular",
+    };
+
+    let proportional = vec![
+        primary_font.to_string(),
+        "NotoSans-Regular".to_string(),
+        "NotoSansJP-Regular".to_string(),
+        "NotoSansSC-Regular".to_string(),
+        "NotoSansTC-Regular".to_string(),
+        "NotoEmoji-Regular".to_string(),
+    ];
+
+    let mut monospace = vec!["NotoSansMono-Regular".to_string()];
+    monospace.extend(proportional.clone());
+
+    egui::FontDefinitions {
+        font_data: font_data.clone(),
+        families: std::collections::BTreeMap::from([
+            (egui::FontFamily::Proportional, proportional),
+            (egui::FontFamily::Monospace, monospace),
+            (font_families.jpan.egui.clone(), vec!["NotoSansJP-Regular".to_string()]),
+            (font_families.hans.egui.clone(), vec!["NotoSansSC-Regular".to_string()]),
+            (font_families.hant.egui.clone(), vec!["NotoSansTC-Regular".to_string()]),
+            (font_families.latn.egui.clone(), vec!["NotoSans-Regular".to_string()]),
+        ]),
     }
 }
 
@@ -317,41 +327,14 @@ pub fn show(
     }
 
     if state.current_language.as_ref() != Some(&config.language) {
-        let mut language = config.language.clone();
-        language.maximize();
+        let language = config.language.clone();
 
-        let primary_font = match language.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "NotoSansJP-Regular",
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "NotoSansSC-Regular",
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "NotoSansTC-Regular",
-            _ => "NotoSans-Regular",
-        };
+        ctx.set_fonts(resolve_font_definitions(
+            language,
+            &state.shared.font_families,
+            &state.font_data,
+        ));
 
-        let proportional = vec![
-            primary_font.to_string(),
-            "NotoSans-Regular".to_string(),
-            "NotoSansJP-Regular".to_string(),
-            "NotoSansSC-Regular".to_string(),
-            "NotoSansTC-Regular".to_string(),
-            "NotoEmoji-Regular".to_string(),
-        ];
-
-        let mut monospace = vec!["NotoSansMono-Regular".to_string()];
-        monospace.extend(proportional.clone());
-
-        let font_families = &state.shared.font_families;
-
-        ctx.set_fonts(egui::FontDefinitions {
-            font_data: state.font_data.clone(),
-            families: std::collections::BTreeMap::from([
-                (egui::FontFamily::Proportional, proportional),
-                (egui::FontFamily::Monospace, monospace),
-                (font_families.jpan.egui.clone(), vec!["NotoSansJP-Regular".to_string()]),
-                (font_families.hans.egui.clone(), vec!["NotoSansSC-Regular".to_string()]),
-                (font_families.hant.egui.clone(), vec!["NotoSansTC-Regular".to_string()]),
-                (font_families.latn.egui.clone(), vec!["NotoSans-Regular".to_string()]),
-            ]),
-        });
         state.current_language = Some(config.language.clone());
         log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
     }
