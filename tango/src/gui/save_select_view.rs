@@ -1,5 +1,5 @@
 use crate::patch::{self, PatchMap};
-use crate::{config, game, gui, i18n, net, rom, save};
+use crate::{config, game, gui, i18n, net, save};
 use fluent_templates::Loader;
 use std::io::Write;
 
@@ -11,15 +11,10 @@ pub struct Selection {
 }
 
 impl Selection {
-    pub fn resolve_from_config(
-        roms_scanner: rom::Scanner,
-        saves_scanner: save::Scanner,
-        patches_scanner: patch::Scanner,
-        config: &crate::config::Config,
-    ) -> Option<Selection> {
-        let roms = roms_scanner.read();
-        let saves = saves_scanner.read();
-        let patches = patches_scanner.read();
+    pub fn resolve_from_config(scanners: &gui::Scanners, config: &crate::config::Config) -> Option<Selection> {
+        let roms = scanners.roms.read();
+        let saves = scanners.saves.read();
+        let patches = scanners.patches.read();
 
         let (family, variant) = config.last_game.as_ref()?;
         let game = game::find_by_family_and_variant(family, *variant)?;
@@ -56,14 +51,9 @@ impl Selection {
         Some(selection)
     }
 
-    pub fn commit(
-        &self,
-        roms_scanner: rom::Scanner,
-        saves_scanner: save::Scanner,
-        config: &crate::config::Config,
-    ) -> Option<gui::Selection> {
-        let roms = roms_scanner.read();
-        let saves = saves_scanner.read();
+    pub fn commit(&self, scanners: &gui::Scanners, config: &crate::config::Config) -> Option<gui::Selection> {
+        let roms = scanners.roms.read();
+        let saves = scanners.saves.read();
         let patches_path = &config.patches_path();
 
         let save_path = self.save_path.as_ref()?;
@@ -390,10 +380,10 @@ pub fn show(
     let patches_path = &config.patches_path();
 
     let games = game::sorted_all_games(&config.language);
-    let roms = shared_root_state.roms_scanner.read();
-    let saves_scanner = &shared_root_state.saves_scanner;
+    let roms = shared_root_state.scanners.roms.read();
+    let saves_scanner = &shared_root_state.scanners.saves;
     let saves = saves_scanner.read();
-    let patches = shared_root_state.patches_scanner.read();
+    let patches = shared_root_state.scanners.patches.read();
 
     const BODY_CHAR_WIDTH: f32 = 6.5;
     const SMALL_CHAR_WIDTH: f32 = 4.5;
@@ -1224,7 +1214,7 @@ pub fn show(
                                         } else {
                                             match std::fs::rename(&save_path, &new_path) {
                                                 Ok(_) => {
-                                                    rescan_saves(config, &shared_state.saves_scanner, ctx);
+                                                    rescan_saves(config, &shared_state.scanners.saves, ctx);
 
                                                     // update committed name
                                                     if let Some(selection) = &mut shared_state.selection {
@@ -1312,7 +1302,7 @@ pub fn show(
                                 if ui.button(delete_text).clicked() {
                                     match std::fs::remove_file(&save_path) {
                                         Ok(_) => {
-                                            rescan_saves(config, &shared_state.saves_scanner, ctx);
+                                            rescan_saves(config, &shared_state.scanners.saves, ctx);
 
                                             // deselect
                                             let selection = &mut shared_state.selection;

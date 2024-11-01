@@ -257,6 +257,8 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
     }
 
+    let scanners = gui::Scanners::new(&config.read());
+
     let mut state = gui::State::new(
         egui_ctx,
         show_update_info,
@@ -265,9 +267,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         audio_binder.clone(),
         fps_counter.clone(),
         emu_tps_counter.clone(),
-        roms_scanner.clone(),
-        saves_scanner.clone(),
-        patches_scanner.clone(),
+        scanners.clone(),
         init_link_code,
     )?;
 

@@ -30,7 +30,7 @@ pub fn show(
         config::DEFAULT_PATCH_REPO
     };
 
-    let patches_scanner = &shared_root_state.patches_scanner;
+    let patches_scanner = &shared_root_state.scanners.patches;
 
     egui::TopBottomPanel::top("patches-window-top-panel").show_inside(ui, |ui| {
         ui.horizontal(|ui| {

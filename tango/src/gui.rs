@@ -77,13 +77,40 @@ impl Selection {
     }
 }
 
+#[derive(Clone)]
+pub struct Scanners {
+    pub roms: rom::Scanner,
+    pub saves: save::Scanner,
+    pub patches: patch::Scanner,
+}
+
+impl Scanners {
+    pub fn new(config: &config::Config) -> Self {
+        let roms_scanner = rom::Scanner::new();
+        let saves_scanner = save::Scanner::new();
+        let patches_scanner = patch::Scanner::new();
+
+        let roms_path = config.roms_path();
+        let saves_path = config.saves_path();
+        let patches_path = config.patches_path();
+
+        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+        patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
+
+        Self {
+            roms: roms_scanner,
+            saves: saves_scanner,
+            patches: patches_scanner,
+        }
+    }
+}
+
 pub struct SharedRootState {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     pub clipboard: arboard::Clipboard,
-    pub roms_scanner: rom::Scanner,
-    pub saves_scanner: save::Scanner,
-    pub patches_scanner: patch::Scanner,
+    pub scanners: Scanners,
     pub audio_binder: audio::LateBinder,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -117,9 +144,7 @@ impl State {
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-        roms_scanner: rom::Scanner,
-        saves_scanner: save::Scanner,
-        patches_scanner: patch::Scanner,
+        scanners: Scanners,
         init_link_code: Option<String>,
     ) -> Result<Self, anyhow::Error> {
         let font_families = FontFamilies {
@@ -171,16 +196,11 @@ impl State {
         });
 
         // load previous selection
-        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
-            roms_scanner.clone(),
-            saves_scanner.clone(),
-            patches_scanner.clone(),
-            &config.read(),
-        );
+        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(&scanners, &config.read());
 
         let committed_selection = working_selection
             .as_ref()
-            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
+            .and_then(|selection| selection.commit(&scanners, &config.read()));
 
         let main_view = main_view::State::new(working_selection, show_updater);
 
@@ -189,9 +209,7 @@ impl State {
                 config,
                 session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
                 clipboard: arboard::Clipboard::new().unwrap(),
-                roms_scanner,
-                saves_scanner,
-                patches_scanner,
+                scanners,
                 audio_binder,
                 fps_counter,
                 emu_tps_counter,

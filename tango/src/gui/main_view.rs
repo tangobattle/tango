@@ -121,7 +121,7 @@ pub fn show(
                             {
                                 let egui_ctx = ui.ctx().clone();
                                 tokio::task::spawn_blocking({
-                                    let patches_scanner = shared_root_state.patches_scanner.clone();
+                                    let patches_scanner = shared_root_state.scanners.patches.clone();
                                     let patches_path = config.patches_path();
                                     move || {
                                         patches_scanner

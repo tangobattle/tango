@@ -1317,8 +1317,8 @@ fn show_bottom_pane(
     }
 
     let discord_client = &shared_root_state.discord_client;
-    let roms = shared_root_state.roms_scanner.read();
-    let patches = shared_root_state.patches_scanner.read();
+    let roms = shared_root_state.scanners.roms.read();
+    let patches = shared_root_state.scanners.patches.read();
 
     egui::TopBottomPanel::bottom("play-bottom-pane").show_inside(ui, |ui| {
         ui.vertical(|ui| {
@@ -1568,8 +1568,8 @@ fn show_bottom_pane(
                                 let replays_path = config.replays_path();
                                 let config_arc = shared_root_state.config.clone();
                                 let connection_task_arc = connection_task_arc.clone();
-                                let roms_scanner = shared_root_state.roms_scanner.clone();
-                                let patches_scanner = shared_root_state.patches_scanner.clone();
+                                let roms_scanner = shared_root_state.scanners.roms.clone();
+                                let patches_scanner = shared_root_state.scanners.patches.clone();
                                 async move {
                                     run_connection_task(
                                         config_arc,

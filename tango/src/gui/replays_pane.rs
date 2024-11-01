@@ -118,8 +118,8 @@ pub fn show(
     let patches_path = &config.patches_path();
     let replays_path = &config.replays_path();
 
-    let roms_scanner = shared_root_state.roms_scanner.clone();
-    let patches_scanner = shared_root_state.patches_scanner.clone();
+    let roms_scanner = shared_root_state.scanners.roms.clone();
+    let patches_scanner = shared_root_state.scanners.patches.clone();
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 

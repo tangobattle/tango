@@ -652,16 +652,15 @@ fn show_advanced_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root
                             let _ = config.ensure_dirs();
                             tokio::task::spawn_blocking({
                                 let egui_ctx = ui.ctx().clone();
-                                let roms_scanner = shared_root_state.roms_scanner.clone();
-                                let saves_scanner = shared_root_state.saves_scanner.clone();
-                                let patches_scanner = shared_root_state.patches_scanner.clone();
+                                let scanners = shared_root_state.scanners.clone();
                                 let roms_path = config.roms_path();
                                 let saves_path = config.saves_path();
                                 let patches_path = config.patches_path();
                                 move || {
-                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-                                    saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-                                    patches_scanner
+                                    scanners.roms.rescan(move || Some(game::scan_roms(&roms_path)));
+                                    scanners.saves.rescan(move || Some(save::scan_saves(&saves_path)));
+                                    scanners
+                                        .patches
                                         .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
                                     egui_ctx.request_repaint();
                                 }
