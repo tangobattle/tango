@@ -434,7 +434,10 @@ pub fn show(
                 ui.vertical(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if ui
-                            .button(format!("▶️ {}", i18n::LOCALES.lookup(language, "replays-play").unwrap()))
+                            .button(format!(
+                                "▶️ {}",
+                                i18n::LOCALES.lookup(language, "replays-play").unwrap()
+                            ))
                             .clicked()
                         {
                             tokio::task::spawn_blocking({
@@ -525,7 +528,7 @@ pub fn show(
                                 ui.with_layout(
                                     egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
                                     |ui| {
-                                        ui.heading(&format!(
+                                        ui.heading(format!(
                                             "{}",
                                             path.strip_prefix(replays_path).unwrap_or(path.as_path()).display()
                                         ));
