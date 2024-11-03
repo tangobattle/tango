@@ -134,7 +134,6 @@ pub struct State {
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
-    font_data: std::collections::BTreeMap<String, egui::FontData>,
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
@@ -162,38 +161,7 @@ impl State {
             hant: FontFamily::new("Hant", include_bytes!("fonts/NotoSansTC-Regular.otf")),
         };
 
-        let font_data = std::collections::BTreeMap::from([
-            (
-                "NotoSans-Regular".to_string(),
-                egui::FontData::from_static(font_families.latn.raw),
-            ),
-            (
-                "NotoSansJP-Regular".to_string(),
-                egui::FontData::from_static(font_families.jpan.raw),
-            ),
-            (
-                "NotoSansSC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hans.raw),
-            ),
-            (
-                "NotoSansTC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hant.raw),
-            ),
-            (
-                "NotoSansMono-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
-            ),
-            (
-                "NotoEmoji-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
-            ),
-        ]);
-
-        ctx.set_fonts(resolve_font_definitions(
-            config.read().language.clone(),
-            &font_families,
-            &font_data,
-        ));
+        ctx.set_fonts(resolve_font_definitions(config.read().language.clone(), &font_families));
 
         ctx.style_mut(|style| {
             style.spacing.scroll = egui::style::ScrollStyle::solid();
@@ -234,7 +202,6 @@ impl State {
             show_escape_window: None,
             session_view: None,
             welcome: None,
-            font_data,
             themes: Themes {
                 light: {
                     let mut visuals = egui::style::Visuals::light();
@@ -300,7 +267,6 @@ impl FontFamilies {
 fn resolve_font_definitions(
     mut language: unic_langid::LanguageIdentifier,
     font_families: &FontFamilies,
-    font_data: &std::collections::BTreeMap<std::string::String, egui::FontData>,
 ) -> egui::FontDefinitions {
     language.maximize();
 
@@ -324,7 +290,32 @@ fn resolve_font_definitions(
     monospace.extend(proportional.clone());
 
     egui::FontDefinitions {
-        font_data: font_data.clone(),
+        font_data: std::collections::BTreeMap::from([
+            (
+                "NotoSans-Regular".to_string(),
+                egui::FontData::from_static(font_families.latn.raw),
+            ),
+            (
+                "NotoSansJP-Regular".to_string(),
+                egui::FontData::from_static(font_families.jpan.raw),
+            ),
+            (
+                "NotoSansSC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hans.raw),
+            ),
+            (
+                "NotoSansTC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hant.raw),
+            ),
+            (
+                "NotoSansMono-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
+            ),
+            (
+                "NotoEmoji-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
+            ),
+        ]),
         families: std::collections::BTreeMap::from([
             (egui::FontFamily::Proportional, proportional),
             (egui::FontFamily::Monospace, monospace),
@@ -355,11 +346,7 @@ pub fn show(
     if state.current_language.as_ref() != Some(&config.language) {
         let language = config.language.clone();
 
-        ctx.set_fonts(resolve_font_definitions(
-            language,
-            &state.shared.font_families,
-            &state.font_data,
-        ));
+        ctx.set_fonts(resolve_font_definitions(language, &state.shared.font_families));
 
         state.current_language = Some(config.language.clone());
         log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
