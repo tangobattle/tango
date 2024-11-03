@@ -1245,7 +1245,6 @@ fn show_lobby_table(
 
 fn show_bottom_pane(
     ui: &mut egui::Ui,
-    window: &winit::window::Window,
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
     connection_task: &mut Option<ConnectionTask>,
@@ -1379,7 +1378,8 @@ fn show_bottom_pane(
                         ConnectionState::InLobby(lobby) => {
                             let mut lobby = lobby.blocking_lock();
                             if !lobby.attention_requested {
-                                window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
+                                let window_request = crate::WindowRequest::Attention;
+                                let _ = shared_root_state.event_loop_proxy.send_event(window_request);
                                 lobby.attention_requested = true;
                             }
 
@@ -1633,7 +1633,6 @@ pub fn show(
     ui: &mut egui::Ui,
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
-    window: &winit::window::Window,
     patch_selection: &mut Option<String>,
     state: &mut State,
     init_link_code: &mut Option<String>,
@@ -1644,7 +1643,6 @@ pub fn show(
     // must happen first to provide the imgui enough info to prevent the central panel from overflowing
     show_bottom_pane(
         ui,
-        window,
         config,
         shared_root_state,
         &mut connection_task,

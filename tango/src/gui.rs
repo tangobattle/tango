@@ -107,6 +107,7 @@ impl Scanners {
 }
 
 pub struct SharedRootState {
+    pub event_loop_proxy: winit::event_loop::EventLoopProxy<crate::WindowRequest>,
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     pub clipboard: arboard::Clipboard,
@@ -118,6 +119,12 @@ pub struct SharedRootState {
     pub font_families: FontFamilies,
     pub ui_windows: ui_windows::UiWindows,
     pub selection: Option<Selection>,
+}
+
+impl SharedRootState {
+    pub fn send_window_request(&self, request: crate::WindowRequest) {
+        let _ = self.event_loop_proxy.send_event(request);
+    }
 }
 
 pub struct State {
@@ -137,6 +144,7 @@ pub struct State {
 
 impl State {
     pub fn new(
+        event_loop_proxy: winit::event_loop::EventLoopProxy<crate::WindowRequest>,
         ctx: &egui::Context,
         show_updater: bool,
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
@@ -206,6 +214,7 @@ impl State {
 
         Ok(Self {
             shared: SharedRootState {
+                event_loop_proxy,
                 config,
                 session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
                 clipboard: arboard::Clipboard::new().unwrap(),
@@ -330,7 +339,6 @@ fn resolve_font_definitions(
 pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
-    window: &winit::window::Window,
     input_state: &input::State,
     state: &mut State,
     updater: &updater::Updater,
@@ -389,7 +397,6 @@ pub fn show(
         &mut state.show_settings,
         &state.shared,
         config,
-        window,
         &mut state.steal_input,
     );
     steal_input_window::show(ctx, &config.language, &mut state.steal_input);
@@ -412,7 +419,10 @@ pub fn show(
     let session_guard = session.lock();
 
     if let Some(session) = session_guard.as_ref() {
-        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
+        let title = i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap();
+        let window_request = crate::WindowRequest::SetTitle(title);
+        state.shared.send_window_request(window_request);
+
         session_view::show(
             ctx,
             config,
@@ -425,12 +435,15 @@ pub fn show(
         );
     } else {
         state.session_view = None;
-        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap());
+
+        let title = i18n::LOCALES.lookup(&config.language, "window-title").unwrap();
+        let window_request = crate::WindowRequest::SetTitle(title);
+        state.shared.send_window_request(window_request);
+
         main_view::show(
             ctx,
             config,
             &mut state.shared,
-            window,
             &mut state.show_settings,
             &mut state.main_view,
             &mut state.init_link_code,

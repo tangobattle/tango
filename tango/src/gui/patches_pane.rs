@@ -70,7 +70,7 @@ pub fn show(
     egui::SidePanel::left("patches-window-left-panel").show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .id_source("patch-window-left")
+            .id_salt("patch-window-left")
             .show(ui, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     for (name, _) in patches.iter() {
@@ -93,7 +93,7 @@ pub fn show(
             } else {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
-                    .id_source("patch-window-right-empty")
+                    .id_salt("patch-window-right-empty")
                     .show(ui, |_ui| {});
                 return;
             };
@@ -222,9 +222,9 @@ pub fn show(
 
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
-                            .id_source("patch-window-readme")
+                            .id_salt("patch-window-readme")
                             .show(ui, |ui| {
-                                egui_commonmark::CommonMarkViewer::new("patch-info").show(
+                                egui_commonmark::CommonMarkViewer::new().show(
                                     ui,
                                     &mut state.commonmark_cache,
                                     patch.readme.as_deref().unwrap_or(""),

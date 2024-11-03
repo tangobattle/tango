@@ -437,7 +437,7 @@ pub fn show(
                         ),
                     );
 
-                    let resp = egui::ComboBox::from_id_source("game-select-combobox")
+                    let resp = egui::ComboBox::from_id_salt("game-select-combobox")
                         .selected_text(layout_job)
                         .width(wide_width)
                         .wrap()
@@ -599,7 +599,7 @@ pub fn show(
                             );
                         }
 
-                        let resp = egui::ComboBox::from_id_source("patch-select-combobox")
+                        let resp = egui::ComboBox::from_id_salt("patch-select-combobox")
                             .selected_text(layout_job)
                             .width(wide_width)
                             .wrap()
@@ -801,7 +801,7 @@ pub fn show(
                                 ),
                             );
 
-                            let resp = egui::ComboBox::from_id_source("patch-version-select-combobox")
+                            let resp = egui::ComboBox::from_id_salt("patch-version-select-combobox")
                                 .selected_text(layout_job)
                                 .width(PATCH_VERSION_WIDTH)
                                 .height(max_dropdown_height)
@@ -898,7 +898,7 @@ pub fn show(
         );
 
         ui.add_enabled_ui(state.selection.is_some(), |ui| {
-            egui::ComboBox::from_id_source("save-select-combobox")
+            egui::ComboBox::from_id_salt("save-select-combobox")
                 .selected_text(layout_job)
                 .width(ui.available_width())
                 .wrap()

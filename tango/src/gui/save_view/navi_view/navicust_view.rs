@@ -727,7 +727,7 @@ pub fn show(
     });
 
     egui::ScrollArea::vertical()
-        .id_source("navicust-view")
+        .id_salt("navicust-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.with_layout(

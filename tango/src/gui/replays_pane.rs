@@ -131,7 +131,7 @@ pub fn show(
         .show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .id_source("replays-window-left")
+                .id_salt("replays-window-left")
                 .show(ui, |ui| {
                     if state.replays_scanner.is_scanning() {
                         ui.horizontal(|ui| {
@@ -271,7 +271,7 @@ pub fn show(
     egui::CentralPanel::default().show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .id_source("replays-window-info")
+            .id_salt("replays-window-info")
             .vscroll(false)
             .show(ui, |ui| {
                 let Some(selection) = state.selection.as_mut() else {
