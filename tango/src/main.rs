@@ -59,6 +59,7 @@ pub enum WindowRequest {
 }
 
 fn main() -> Result<(), anyhow::Error> {
+    let start_instant = std::time::Instant::now();
     let args = Args::parse();
 
     std::env::set_var("RUST_BACKTRACE", "1");
@@ -75,7 +76,7 @@ fn main() -> Result<(), anyhow::Error> {
     log::info!("welcome to tango {}!", version::current());
 
     if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {
-        return child_main(config, args);
+        return child_main(config, start_instant, args);
     }
 
     let log_filename = format!(
@@ -142,7 +143,7 @@ fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn child_main(config: config::Config, args: Args) -> Result<(), anyhow::Error> {
+fn child_main(config: config::Config, start_instant: std::time::Instant, args: Args) -> Result<(), anyhow::Error> {
     let init_link_code = match args.command {
         Some(Command::Join { link_code }) => Some(link_code),
         _ => None,
@@ -153,7 +154,7 @@ fn child_main(config: config::Config, args: Args) -> Result<(), anyhow::Error> {
 
     let event_loop = winit::event_loop::EventLoop::with_user_event().build().unwrap();
 
-    let mut app = TangoWinitApp::new(&event_loop, config, init_link_code);
+    let mut app = TangoWinitApp::new(&event_loop, config, start_instant, init_link_code);
     event_loop.run_app(&mut app)?;
 
     Ok(())
@@ -204,6 +205,7 @@ impl SdlSystems {
 
 struct TangoWinitApp {
     config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    start_instant: std::time::Instant,
     init_link_code: Option<String>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<WindowRequest>,
     audio_backend: Option<Box<dyn audio::Backend>>,
@@ -222,6 +224,7 @@ impl TangoWinitApp {
     fn new(
         event_loop: &winit::event_loop::EventLoop<WindowRequest>,
         config: config::Config,
+        start_instant: std::time::Instant,
         init_link_code: Option<String>,
     ) -> Self {
         let config = std::sync::Arc::new(parking_lot::RwLock::new(config));
@@ -247,6 +250,7 @@ impl TangoWinitApp {
         patch_autoupdater.set_enabled(config.read().enable_patch_autoupdate);
 
         Self {
+            start_instant,
             config,
             init_link_code,
             event_loop_proxy,
@@ -387,6 +391,8 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
         );
 
         self.gfx_backend = Some(gfx_backend);
+
+        log::info!("launched in {:?}s", self.start_instant.elapsed().as_secs_f32());
     }
 
     fn window_event(
