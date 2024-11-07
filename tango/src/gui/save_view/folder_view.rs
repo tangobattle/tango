@@ -35,7 +35,8 @@ pub fn show(
     struct GroupedChip {
         count: usize,
         is_regular: bool,
-        tag_count: usize,
+        has_tag1: bool,
+        has_tag2: bool,
     }
 
     let mut chips = (0..30)
@@ -51,21 +52,24 @@ pub fn show(
 
     let items = if state.grouped {
         let mut grouped = indexmap::IndexMap::new();
+
         for (i, chip) in chips.iter().enumerate() {
             let g = grouped.entry(chip).or_insert(GroupedChip {
                 count: 0,
                 is_regular: false,
-                tag_count: 0,
+                has_tag1: false,
+                has_tag2: false,
             });
+
             g.count += 1;
+
             if chips_view.regular_chip_index(chips_view.equipped_folder_index()) == Some(i) {
                 g.is_regular = true;
             }
-            if chips_view
-                .tag_chip_indexes(chips_view.equipped_folder_index())
-                .map_or(false, |is| is.contains(&i))
-            {
-                g.tag_count += 1;
+
+            if let Some(tag_indices) = chips_view.tag_chip_indexes(chips_view.equipped_folder_index()) {
+                g.has_tag1 |= tag_indices[0] == i;
+                g.has_tag2 |= tag_indices[1] == i;
             }
         }
 
@@ -75,19 +79,18 @@ pub fn show(
             .iter()
             .enumerate()
             .map(|(i, chip)| {
+                let [has_tag1, has_tag2] = chips_view
+                    .tag_chip_indexes(chips_view.equipped_folder_index())
+                    .map(|tag_indices| [tag_indices[0] == i, tag_indices[1] == i])
+                    .unwrap_or_default();
+
                 (
                     chip,
                     GroupedChip {
                         count: 1,
                         is_regular: chips_view.regular_chip_index(chips_view.equipped_folder_index()) == Some(i),
-                        tag_count: if chips_view
-                            .tag_chip_indexes(chips_view.equipped_folder_index())
-                            .map_or(false, |is| is.contains(&i))
-                        {
-                            1
-                        } else {
-                            0
-                        },
+                        has_tag1,
+                        has_tag2,
                     },
                 )
             })
@@ -124,8 +127,11 @@ pub fn show(
                         if g.is_regular {
                             buf.push_str("[REG]");
                         }
-                        for _ in 0..g.tag_count {
-                            buf.push_str("[TAG]");
+                        if g.has_tag1 {
+                            buf.push_str("[TAG1]");
+                        }
+                        if g.has_tag2 {
+                            buf.push_str("[TAG2]");
                         }
                         buf
                     })
@@ -316,6 +322,8 @@ pub fn show(
                                                 ui.label("???");
                                             };
                                         });
+
+                                        // regular chip label
                                         if g.is_regular {
                                             egui::Frame::none()
                                                 .inner_margin(egui::Margin::symmetric(4.0, 0.0))
@@ -325,13 +333,29 @@ pub fn show(
                                                     ui.label(egui::RichText::new("REG").color(egui::Color32::WHITE));
                                                 });
                                         }
-                                        for _ in 0..g.tag_count {
+
+                                        // tag chip labels
+                                        let mut tag_start = 1;
+                                        let mut tag_end = 3;
+
+                                        if !g.has_tag1 {
+                                            tag_start += 1;
+                                        }
+
+                                        if !g.has_tag2 {
+                                            tag_end -= 1;
+                                        }
+
+                                        for n in tag_start..tag_end {
                                             egui::Frame::none()
                                                 .inner_margin(egui::Margin::symmetric(4.0, 0.0))
                                                 .rounding(egui::Rounding::same(2.0))
                                                 .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
                                                 .show(ui, |ui| {
-                                                    ui.label(egui::RichText::new("TAG").color(egui::Color32::WHITE));
+                                                    ui.label(
+                                                        egui::RichText::new(format!("TAG{}", n))
+                                                            .color(egui::Color32::WHITE),
+                                                    );
                                                 });
                                         }
                                     });
