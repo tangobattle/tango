@@ -240,7 +240,7 @@ pub fn show(
     });
 
     egui::ScrollArea::vertical()
-        .id_source("auto-battle-data-view")
+        .id_salt("auto-battle-data-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.push_id(egui::Id::new("auto-battle-data-view-secondary-standard-chips"), |ui| {

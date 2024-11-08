@@ -93,11 +93,11 @@ const BG_FILL_COLOR: image::Rgba<u8> = image::Rgba([0x20, 0x20, 0x20, 0xff]);
 const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff]);
 
 fn render_navicust(
+    ctx: &egui::Context,
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &(dyn tango_dataview::save::NavicustView),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
-    fonts: &[&fontdue::Font],
 ) -> image::RgbaImage {
     let body = render_navicust_body(materialized, navicust_layout, navicust_view, assets);
 
@@ -113,23 +113,44 @@ fn render_navicust(
         );
 
         if let Some(info) = assets.style(style) {
-            let px = color_bar.height() as f32 * 2.0 / 3.0;
-            let mut layout = fontdue::layout::Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown);
-            layout.append(
-                fonts,
-                &fontdue::layout::TextStyle::new(&info.name().unwrap_or_else(|| "???".to_string()), px, 0),
-            );
+            let name = info.name().unwrap_or_else(|| "???".to_string());
 
-            for glyph in layout.glyphs() {
-                let (metrics, coverage) = fonts[glyph.font_index].rasterize(glyph.parent, px);
-                let g = image::RgbaImage::from_vec(
-                    metrics.width as u32,
-                    metrics.height as u32,
-                    coverage.into_iter().flat_map(|a| [0xff, 0xff, 0xff, a]).collect(),
-                )
-                .unwrap();
-                image::imageops::overlay(&mut color_bar, &g, glyph.x as i64, glyph.y as i64);
-            }
+            let pixels_per_point = ctx.pixels_per_point();
+
+            ctx.fonts(|fonts| {
+                let font_size = color_bar.height() as f32 * 2.0 / 3.0 / pixels_per_point;
+                let font_id = egui::FontId::new(font_size, egui::FontFamily::Proportional);
+
+                let galley = fonts.layout_no_wrap(name, font_id, egui::Color32::WHITE);
+
+                let atlas = fonts.texture_atlas();
+                let atlas = atlas.lock();
+                let atlas_image = atlas.image();
+
+                for row in &galley.rows {
+                    for glyph in &row.glyphs {
+                        // grab the glyph image
+                        let [x0, y0] = glyph.uv_rect.min;
+                        let [x1, y1] = glyph.uv_rect.max;
+                        let w = x1 - x0;
+                        let h = y1 - y0;
+
+                        let atlas_region = atlas_image.region([x0 as _, y0 as _], [w as _, h as _]);
+                        let coverage = atlas_region.srgba_pixels(None);
+
+                        let g = image::RgbaImage::from_vec(
+                            w as _,
+                            h as _,
+                            coverage.flat_map(|c| [c.r(), c.g(), c.b(), c.a()]).collect(),
+                        )
+                        .unwrap();
+
+                        // place the glyph
+                        let pos = (glyph.pos + glyph.uv_rect.offset) * pixels_per_point;
+                        image::imageops::overlay(&mut color_bar, &g, pos.x as _, pos.y as _);
+                    }
+                }
+            });
         }
 
         color_bar
@@ -706,7 +727,7 @@ pub fn show(
     });
 
     egui::ScrollArea::vertical()
-        .id_source("navicust-view")
+        .id_salt("navicust-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.with_layout(
@@ -718,16 +739,7 @@ pub fn show(
                 |ui| {
                     if state.rendered_navicust_cache.is_none() {
                         let materialized = navicust_view.materialized();
-                        let image = render_navicust(
-                            &materialized,
-                            &navicust_layout,
-                            navicust_view,
-                            assets,
-                            &[font_families.fontdue_for_language(game_lang)]
-                                .into_iter()
-                                .chain(font_families.all_fontdue())
-                                .collect::<Vec<_>>(),
-                        );
+                        let image = render_navicust(ui.ctx(), &materialized, &navicust_layout, navicust_view, assets);
                         let texture = ui.ctx().load_texture(
                             "navicust",
                             egui::ColorImage::from_rgba_unmultiplied(
@@ -786,9 +798,9 @@ pub fn show(
                             for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,
@@ -800,9 +812,9 @@ pub fn show(
                             for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
                                 show_part_name(
                                     ui,
-                                    egui::RichText::new(&info.name().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(&info.description().unwrap_or_else(|| "???".to_string()))
+                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
                                         .family(font_families.for_language(game_lang)),
                                     true,
                                     color,

@@ -28,7 +28,6 @@ pub fn show(
     state: &mut Option<State>,
     shared_root_state: &gui::SharedRootState,
     config: &mut config::Config,
-    window: &winit::window::Window,
     steal_input: &mut Option<gui::steal_input_window::State>,
 ) {
     let mut open = state.is_some();
@@ -91,7 +90,7 @@ pub fn show(
                     match state.tab {
                         Tab::General => show_general_tab(ui, config, &shared_root_state.font_families),
                         Tab::Input => show_input_tab(ui, &config.language, &mut config.input_mapping, steal_input),
-                        Tab::Graphics => show_graphics_tab(ui, config, window),
+                        Tab::Graphics => show_graphics_tab(ui, config, shared_root_state),
                         Tab::Audio => show_audio_tab(ui, config),
                         Tab::Netplay => show_netplay_tab(ui, config),
                         Tab::Patches => show_patches_tab(ui, config),
@@ -126,7 +125,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 let light_label = i18n::LOCALES.lookup(&config.language, "settings-theme.light").unwrap();
                 let dark_label = i18n::LOCALES.lookup(&config.language, "settings-theme.dark").unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-theme")
+                egui::ComboBox::from_id_salt("settings-window-general-theme")
                     .selected_text(match config.theme {
                         config::Theme::System => &system_label,
                         config::Theme::Light => &light_label,
@@ -188,7 +187,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                     .lookup(&config.language, "settings-always-show-status-bar.always")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-always-show-status-bar")
+                egui::ComboBox::from_id_salt("settings-window-always-show-status-bar")
                     .selected_text(match config.show_status_bar {
                         None => &auto_label,
                         Some(false) => &never_label,
@@ -310,7 +309,7 @@ fn show_input_tab(
         });
 }
 
-fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &winit::window::Window) {
+fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root_state: &gui::SharedRootState) {
     egui::Grid::new("settings-window-graphics-grid")
         .num_columns(2)
         .show(ui, |ui| {
@@ -347,10 +346,11 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                         )
                         .clicked()
                     {
-                        let _ = window.request_inner_size(winit::dpi::PhysicalSize::new(
+                        let window_request = crate::WindowRequest::SetWindowSize(winit::dpi::PhysicalSize::new(
                             mgba::gba::SCREEN_WIDTH * i,
                             mgba::gba::SCREEN_HEIGHT * i,
                         ));
+                        shared_root_state.send_window_request(window_request);
                     }
                 }
             });
@@ -365,7 +365,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             ui.end_row();
 
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-ui-scale").unwrap());
-            egui::ComboBox::from_id_source("settings-ui-scale")
+            egui::ComboBox::from_id_salt("settings-ui-scale")
                 .selected_text(format!("{}%", config.ui_scale_percent))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut config.ui_scale_percent, 50, "50%");
@@ -379,11 +379,15 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             ui.end_row();
 
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-full-screen").unwrap());
-            ui.add(egui::Checkbox::new(&mut config.full_screen, ""));
-            if config.full_screen && window.fullscreen().is_none() {
-                window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-            } else if !config.full_screen && window.fullscreen().is_some() {
-                window.set_fullscreen(None);
+            if ui.add(egui::Checkbox::new(&mut config.full_screen, "")).changed() {
+                if config.full_screen {
+                    let value = Some(winit::window::Fullscreen::Borderless(None));
+                    let window_request = crate::WindowRequest::SetFullscreen(value);
+                    shared_root_state.send_window_request(window_request);
+                } else if !config.full_screen {
+                    let window_request = crate::WindowRequest::SetFullscreen(None);
+                    shared_root_state.send_window_request(window_request);
+                }
             }
 
             ui.end_row();
@@ -407,7 +411,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                     .lookup(&config.language, "settings-video-filter.mmpx")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-video-filter")
+                egui::ComboBox::from_id_salt("settings-window-general-video-filter")
                     .width(200.0)
                     .selected_text(match config.video_filter.as_str() {
                         "" => &null_label,
@@ -443,7 +447,7 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                     .lookup(&config.language, "settings-graphics-backend.wgpu")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-graphics-backend")
+                egui::ComboBox::from_id_salt("settings-window-general-graphics-backend")
                     .width(200.0)
                     .selected_text(match config.graphics_backend {
                         #[cfg(feature = "glutin")]
@@ -492,7 +496,7 @@ fn show_audio_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                     .lookup(&config.language, "settings-audio-backend.cpal")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-audio-backend")
+                egui::ComboBox::from_id_salt("settings-window-general-audio-backend")
                     .width(200.0)
                     .selected_text(match config.audio_backend {
                         #[cfg(feature = "sdl2-audio")]
@@ -549,7 +553,7 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                     .lookup(&config.language, "settings-use-relay.never")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-use-relay")
+                egui::ComboBox::from_id_salt("settings-window-general-use-relay")
                     .width(200.0)
                     .selected_text(match config.use_relay {
                         None => auto_label.clone(),
@@ -652,16 +656,15 @@ fn show_advanced_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root
                             let _ = config.ensure_dirs();
                             tokio::task::spawn_blocking({
                                 let egui_ctx = ui.ctx().clone();
-                                let roms_scanner = shared_root_state.roms_scanner.clone();
-                                let saves_scanner = shared_root_state.saves_scanner.clone();
-                                let patches_scanner = shared_root_state.patches_scanner.clone();
+                                let scanners = shared_root_state.scanners.clone();
                                 let roms_path = config.roms_path();
                                 let saves_path = config.saves_path();
                                 let patches_path = config.patches_path();
                                 move || {
-                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-                                    saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-                                    patches_scanner
+                                    scanners.roms.rescan(move || Some(game::scan_roms(&roms_path)));
+                                    scanners.saves.rescan(move || Some(save::scan_saves(&saves_path)));
+                                    scanners
+                                        .patches
                                         .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
                                     egui_ctx.request_repaint();
                                 }

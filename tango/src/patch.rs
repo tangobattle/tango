@@ -247,7 +247,7 @@ pub fn scan(
                         supported_games.insert(game);
                     }
                     FileType::SaveTemplate(name) => {
-                        let save = match std::fs::read(&entry.path())
+                        let save = match std::fs::read(entry.path())
                             .map_err(|e| e.into())
                             .and_then(|raw| game.parse_save(&raw))
                         {

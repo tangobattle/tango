@@ -35,7 +35,7 @@ pub fn show(
     };
 
     egui::ScrollArea::vertical()
-        .id_source("navi-view")
+        .id_salt("navi-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.vertical_centered_justified(|ui| {
