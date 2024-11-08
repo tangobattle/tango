@@ -77,41 +77,13 @@ impl Selection {
     }
 }
 
-#[derive(Clone)]
-pub struct Scanners {
-    pub roms: rom::Scanner,
-    pub saves: save::Scanner,
-    pub patches: patch::Scanner,
-}
-
-impl Scanners {
-    pub fn new(config: &config::Config) -> Self {
-        let roms_scanner = rom::Scanner::new();
-        let saves_scanner = save::Scanner::new();
-        let patches_scanner = patch::Scanner::new();
-
-        let roms_path = config.roms_path();
-        let saves_path = config.saves_path();
-        let patches_path = config.patches_path();
-
-        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-        patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
-
-        Self {
-            roms: roms_scanner,
-            saves: saves_scanner,
-            patches: patches_scanner,
-        }
-    }
-}
-
 pub struct SharedRootState {
-    pub event_loop_proxy: winit::event_loop::EventLoopProxy<crate::WindowRequest>,
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     pub clipboard: arboard::Clipboard,
-    pub scanners: Scanners,
+    pub roms_scanner: rom::Scanner,
+    pub saves_scanner: save::Scanner,
+    pub patches_scanner: patch::Scanner,
     pub audio_binder: audio::LateBinder,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -121,12 +93,6 @@ pub struct SharedRootState {
     pub selection: Option<Selection>,
 }
 
-impl SharedRootState {
-    pub fn send_window_request(&self, request: crate::WindowRequest) {
-        let _ = self.event_loop_proxy.send_event(request);
-    }
-}
-
 pub struct State {
     pub shared: SharedRootState,
     pub steal_input: Option<steal_input_window::State>,
@@ -134,6 +100,7 @@ pub struct State {
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
+    font_data: std::collections::BTreeMap<String, egui::FontData>,
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
@@ -143,7 +110,6 @@ pub struct State {
 
 impl State {
     pub fn new(
-        event_loop_proxy: winit::event_loop::EventLoopProxy<crate::WindowRequest>,
         ctx: &egui::Context,
         show_updater: bool,
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
@@ -151,7 +117,9 @@ impl State {
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-        scanners: Scanners,
+        roms_scanner: rom::Scanner,
+        saves_scanner: save::Scanner,
+        patches_scanner: patch::Scanner,
         init_link_code: Option<String>,
     ) -> Result<Self, anyhow::Error> {
         let font_families = FontFamilies {
@@ -161,7 +129,17 @@ impl State {
             hant: FontFamily::new("Hant", include_bytes!("fonts/NotoSansTC-Regular.otf")),
         };
 
-        ctx.set_fonts(resolve_font_definitions(config.read().language.clone(), &font_families));
+        ctx.set_fonts(egui::FontDefinitions {
+            font_data: std::collections::BTreeMap::default(),
+            families: std::collections::BTreeMap::from([
+                (egui::FontFamily::Proportional, vec![]),
+                (egui::FontFamily::Monospace, vec![]),
+                (font_families.latn.egui.clone(), vec![]),
+                (font_families.jpan.egui.clone(), vec![]),
+                (font_families.hans.egui.clone(), vec![]),
+                (font_families.hant.egui.clone(), vec![]),
+            ]),
+        });
 
         ctx.style_mut(|style| {
             style.spacing.scroll = egui::style::ScrollStyle::solid();
@@ -172,21 +150,54 @@ impl State {
         });
 
         // load previous selection
-        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(&scanners, &config.read());
+        let working_selection = crate::gui::save_select_view::Selection::resolve_from_config(
+            roms_scanner.clone(),
+            saves_scanner.clone(),
+            patches_scanner.clone(),
+            &config.read(),
+        );
 
         let committed_selection = working_selection
             .as_ref()
-            .and_then(|selection| selection.commit(&scanners, &config.read()));
+            .and_then(|selection| selection.commit(roms_scanner.clone(), saves_scanner.clone(), &config.read()));
 
         let main_view = main_view::State::new(working_selection, show_updater);
 
+        let font_data = std::collections::BTreeMap::from([
+            (
+                "NotoSans-Regular".to_string(),
+                egui::FontData::from_static(font_families.latn.raw),
+            ),
+            (
+                "NotoSansJP-Regular".to_string(),
+                egui::FontData::from_static(font_families.jpan.raw),
+            ),
+            (
+                "NotoSansSC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hans.raw),
+            ),
+            (
+                "NotoSansTC-Regular".to_string(),
+                egui::FontData::from_static(font_families.hant.raw),
+            ),
+            (
+                "NotoSansMono-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
+            ),
+            (
+                "NotoEmoji-Regular".to_string(),
+                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
+            ),
+        ]);
+
         Ok(Self {
             shared: SharedRootState {
-                event_loop_proxy,
                 config,
                 session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
                 clipboard: arboard::Clipboard::new().unwrap(),
-                scanners,
+                roms_scanner,
+                saves_scanner,
+                patches_scanner,
                 audio_binder,
                 fps_counter,
                 emu_tps_counter,
@@ -202,6 +213,7 @@ impl State {
             show_escape_window: None,
             session_view: None,
             welcome: None,
+            font_data,
             themes: Themes {
                 light: {
                     let mut visuals = egui::style::Visuals::light();
@@ -233,6 +245,7 @@ struct Themes {
 pub struct FontFamily {
     egui: egui::FontFamily,
     raw: &'static [u8],
+    fontdue: fontdue::Font,
 }
 
 impl FontFamily {
@@ -240,6 +253,7 @@ impl FontFamily {
         Self {
             egui: egui::FontFamily::Name(name.into()),
             raw,
+            fontdue: fontdue::Font::from_bytes(raw, fontdue::FontSettings::default()).unwrap(),
         }
     }
 }
@@ -262,74 +276,33 @@ impl FontFamilies {
             _ => self.latn.egui.clone(),
         }
     }
-}
 
-fn resolve_font_definitions(
-    mut language: unic_langid::LanguageIdentifier,
-    font_families: &FontFamilies,
-) -> egui::FontDefinitions {
-    language.maximize();
+    pub fn fontdue_for_language(&self, lang: &unic_langid::LanguageIdentifier) -> &fontdue::Font {
+        let mut lang = lang.clone();
+        lang.maximize();
+        match lang.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => &self.jpan.fontdue,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => &self.hans.fontdue,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => &self.hant.fontdue,
+            _ => &self.latn.fontdue,
+        }
+    }
 
-    let primary_font = match language.script {
-        Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "NotoSansJP-Regular",
-        Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "NotoSansSC-Regular",
-        Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "NotoSansTC-Regular",
-        _ => "NotoSans-Regular",
-    };
-
-    let proportional = vec![
-        primary_font.to_string(),
-        "NotoSans-Regular".to_string(),
-        "NotoSansJP-Regular".to_string(),
-        "NotoSansSC-Regular".to_string(),
-        "NotoSansTC-Regular".to_string(),
-        "NotoEmoji-Regular".to_string(),
-    ];
-
-    let mut monospace = vec!["NotoSansMono-Regular".to_string()];
-    monospace.extend(proportional.clone());
-
-    egui::FontDefinitions {
-        font_data: std::collections::BTreeMap::from([
-            (
-                "NotoSans-Regular".to_string(),
-                egui::FontData::from_static(font_families.latn.raw),
-            ),
-            (
-                "NotoSansJP-Regular".to_string(),
-                egui::FontData::from_static(font_families.jpan.raw),
-            ),
-            (
-                "NotoSansSC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hans.raw),
-            ),
-            (
-                "NotoSansTC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hant.raw),
-            ),
-            (
-                "NotoSansMono-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
-            ),
-            (
-                "NotoEmoji-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
-            ),
-        ]),
-        families: std::collections::BTreeMap::from([
-            (egui::FontFamily::Proportional, proportional),
-            (egui::FontFamily::Monospace, monospace),
-            (font_families.jpan.egui.clone(), vec!["NotoSansJP-Regular".to_string()]),
-            (font_families.hans.egui.clone(), vec!["NotoSansSC-Regular".to_string()]),
-            (font_families.hant.egui.clone(), vec!["NotoSansTC-Regular".to_string()]),
-            (font_families.latn.egui.clone(), vec!["NotoSans-Regular".to_string()]),
-        ]),
+    pub fn all_fontdue(&self) -> impl Iterator<Item = &fontdue::Font> {
+        [
+            &self.latn.fontdue,
+            &self.jpan.fontdue,
+            &self.hans.fontdue,
+            &self.hant.fontdue,
+        ]
+        .into_iter()
     }
 }
 
 pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
+    window: &winit::window::Window,
     input_state: &input::State,
     state: &mut State,
     updater: &updater::Updater,
@@ -344,10 +317,41 @@ pub fn show(
     }
 
     if state.current_language.as_ref() != Some(&config.language) {
-        let language = config.language.clone();
+        let mut language = config.language.clone();
+        language.maximize();
 
-        ctx.set_fonts(resolve_font_definitions(language, &state.shared.font_families));
+        let primary_font = match language.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "NotoSansJP-Regular",
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "NotoSansSC-Regular",
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "NotoSansTC-Regular",
+            _ => "NotoSans-Regular",
+        };
 
+        let proportional = vec![
+            primary_font.to_string(),
+            "NotoSans-Regular".to_string(),
+            "NotoSansJP-Regular".to_string(),
+            "NotoSansSC-Regular".to_string(),
+            "NotoSansTC-Regular".to_string(),
+            "NotoEmoji-Regular".to_string(),
+        ];
+
+        let mut monospace = vec!["NotoSansMono-Regular".to_string()];
+        monospace.extend(proportional.clone());
+
+        let font_families = &state.shared.font_families;
+
+        ctx.set_fonts(egui::FontDefinitions {
+            font_data: state.font_data.clone(),
+            families: std::collections::BTreeMap::from([
+                (egui::FontFamily::Proportional, proportional),
+                (egui::FontFamily::Monospace, monospace),
+                (font_families.jpan.egui.clone(), vec!["NotoSansJP-Regular".to_string()]),
+                (font_families.hans.egui.clone(), vec!["NotoSansSC-Regular".to_string()]),
+                (font_families.hant.egui.clone(), vec!["NotoSansTC-Regular".to_string()]),
+                (font_families.latn.egui.clone(), vec!["NotoSans-Regular".to_string()]),
+            ]),
+        });
         state.current_language = Some(config.language.clone());
         log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
     }
@@ -384,6 +388,7 @@ pub fn show(
         &mut state.show_settings,
         &state.shared,
         config,
+        window,
         &mut state.steal_input,
     );
     steal_input_window::show(ctx, &config.language, &mut state.steal_input);
@@ -406,10 +411,7 @@ pub fn show(
     let session_guard = session.lock();
 
     if let Some(session) = session_guard.as_ref() {
-        let title = i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap();
-        let window_request = crate::WindowRequest::SetTitle(title);
-        state.shared.send_window_request(window_request);
-
+        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
         session_view::show(
             ctx,
             config,
@@ -422,15 +424,12 @@ pub fn show(
         );
     } else {
         state.session_view = None;
-
-        let title = i18n::LOCALES.lookup(&config.language, "window-title").unwrap();
-        let window_request = crate::WindowRequest::SetTitle(title);
-        state.shared.send_window_request(window_request);
-
+        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap());
         main_view::show(
             ctx,
             config,
             &mut state.shared,
+            window,
             &mut state.show_settings,
             &mut state.main_view,
             &mut state.init_link_code,

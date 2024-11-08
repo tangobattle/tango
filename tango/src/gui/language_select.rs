@@ -48,7 +48,7 @@ pub fn show(ui: &mut egui::Ui, font_families: &gui::FontFamilies, language: &mut
         ),
     ];
 
-    egui::ComboBox::from_id_salt("settings-window-general-language")
+    egui::ComboBox::from_id_source("settings-window-general-language")
         .width(200.0)
         .selected_text(
             languages

@@ -43,7 +43,7 @@ pub fn show(
                     // Current save file needs to be reloaded from disk.
                     // TODO: Maybe we even need to rescan saves if region lock status changed? (e.g. EXE4 -> BN4)
                     if let Some(selection) = selection.as_mut() {
-                        let _ = selection.reload_save(&mut shared_root_state.scanners.saves);
+                        let _ = selection.reload_save(&mut shared_root_state.saves_scanner);
                     }
 
                     *show_escape_window = None;

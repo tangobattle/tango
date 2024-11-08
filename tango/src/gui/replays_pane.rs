@@ -118,8 +118,8 @@ pub fn show(
     let patches_path = &config.patches_path();
     let replays_path = &config.replays_path();
 
-    let roms_scanner = shared_root_state.scanners.roms.clone();
-    let patches_scanner = shared_root_state.scanners.patches.clone();
+    let roms_scanner = shared_root_state.roms_scanner.clone();
+    let patches_scanner = shared_root_state.patches_scanner.clone();
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 
@@ -131,7 +131,7 @@ pub fn show(
         .show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .id_salt("replays-window-left")
+                .id_source("replays-window-left")
                 .show(ui, |ui| {
                     if state.replays_scanner.is_scanning() {
                         ui.horizontal(|ui| {
@@ -271,7 +271,7 @@ pub fn show(
     egui::CentralPanel::default().show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .id_salt("replays-window-info")
+            .id_source("replays-window-info")
             .vscroll(false)
             .show(ui, |ui| {
                 let Some(selection) = state.selection.as_mut() else {
@@ -434,10 +434,7 @@ pub fn show(
                 ui.vertical(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if ui
-                            .button(format!(
-                                "▶️ {}",
-                                i18n::LOCALES.lookup(language, "replays-play").unwrap()
-                            ))
+                            .button(format!("▶️ {}", i18n::LOCALES.lookup(language, "replays-play").unwrap()))
                             .clicked()
                         {
                             tokio::task::spawn_blocking({
@@ -528,7 +525,7 @@ pub fn show(
                                 ui.with_layout(
                                     egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
                                     |ui| {
-                                        ui.heading(format!(
+                                        ui.heading(&format!(
                                             "{}",
                                             path.strip_prefix(replays_path).unwrap_or(path.as_path()).display()
                                         ));

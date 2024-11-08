@@ -57,7 +57,7 @@ pub fn show(
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .max_height(400.0)
-                    .id_salt("updater-version-info")
+                    .id_source("updater-version-info")
                     .show(ui, |ui| {
                         if is_loading {
                             ui.horizontal(|ui| {
@@ -65,7 +65,7 @@ pub fn show(
                                 ui.label(i18n::LOCALES.lookup(language, "updater-loading").unwrap());
                             });
                         } else if let Some(release) = release.as_ref() {
-                            egui_commonmark::CommonMarkViewer::new().show(
+                            egui_commonmark::CommonMarkViewer::new("release-info").show(
                                 ui,
                                 &mut state.as_mut().unwrap().commonmark_cache,
                                 &release.info,

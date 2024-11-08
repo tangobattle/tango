@@ -272,7 +272,7 @@ pub fn show_patch_card56s(
                                             show_effect(
                                                 ui,
                                                 egui::RichText::new(
-                                                    effect.name.clone().unwrap_or_else(|| "???".to_string()),
+                                                    &effect.name.clone().unwrap_or_else(|| "???".to_string()),
                                                 )
                                                 .family(font_families.for_language(game_lang)),
                                                 patch_card
@@ -292,7 +292,7 @@ pub fn show_patch_card56s(
                                             show_effect(
                                                 ui,
                                                 egui::RichText::new(
-                                                    effect.name.clone().unwrap_or_else(|| "???".to_string()),
+                                                    &effect.name.clone().unwrap_or_else(|| "???".to_string()),
                                                 )
                                                 .family(font_families.for_language(game_lang)),
                                                 patch_card
