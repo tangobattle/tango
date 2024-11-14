@@ -48,10 +48,11 @@ impl Backend {
         egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
         let render_state = painter.render_state().unwrap();
         log::info!(
-            "wgpu device: {:?}, swapchain format: {:?}",
-            render_state.device,
+            "wgpu adapter: {:?}, swapchain format: {:?}",
+            render_state.adapter.get_info(),
             render_state.target_format
         );
+
         Ok(Self {
             window,
             painter,
