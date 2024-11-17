@@ -39,7 +39,7 @@ async fn sync_entry(
             }))
             .await
             .into_iter()
-            .collect::<Result<(), _>>()?;
+            .collect::<Result<_, _>>()?;
         }
         Entry::File(hash) => {
             let _permit = sem
@@ -92,6 +92,6 @@ pub async fn sync(
     }))
     .await
     .into_iter()
-    .collect::<Result<(), _>>()?;
+    .collect::<Result<_, _>>()?;
     Ok(())
 }

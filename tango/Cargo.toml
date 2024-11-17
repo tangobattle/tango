@@ -1,6 +1,6 @@
 [package]
 name = "tango"
-version = "4.1.6-dev3"
+version = "4.1.5"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 default-run = "tango"
@@ -28,12 +28,12 @@ crc32fast = "1"
 dark-light = "1"
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 directories-next = "2"
-egui = { version = "0.29", features = [] }
-egui-wgpu = { version = "0.29", features = ["winit"], optional = true }
-egui-winit = "0.29"
-egui_commonmark = '0.18'
-egui_extras = { version = "0.29", features = ["image"] }
-egui_glow = { version = "0.29", features = [
+egui = { version = "0.28", features = [] }
+egui-wgpu = { version = "0.28", features = ["winit"], optional = true }
+egui-winit = "0.28"
+egui_commonmark = '0.17'
+egui_extras = { version = "0.28", features = ["image"] }
+egui_glow = { version = "0.28", features = [
   "winit",
   "clipboard",
   "links"
@@ -42,11 +42,12 @@ env_logger = "0.9"
 fluent-bundle = "0.15"
 fluent-langneg = "0.13"
 fluent-templates = "0.8"
+fontdue = { version = "0.8", features = ["simd", "parallel"] }
 futures = "0.3"
 futures-util = "0.3"
-glow = "0.14"
-glutin = { version = "0.32", optional = true }
-glutin-winit = "0.5"
+glow = "0.13"
+glutin = { version = "0.31", optional = true }
+glutin-winit = "0.4"
 hqx = { path = "../hqx" }
 image = { version = "0.25", features = ["png"] }
 indexmap = "1.9"
@@ -68,6 +69,7 @@ pollster = "0.3"
 prost = "0.10"
 rand = "0.8"
 rand_pcg = { version = "0.3", features = ["serde1"] }
+raw-window-handle = "0.5"
 regex = "1.6"
 reqwest = { version = "0.11", features = ["stream", "json"] }
 reservoir-sampling = "0.5"
@@ -100,8 +102,8 @@ tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.5"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 walkdir = "2"
-wgpu = { version = "22", optional = true, features = ["angle"] }
-winit = { version = "0.30", features = ["serde"] }
+wgpu = { version = "0.20", optional = true, features = ["angle"] }
+winit = { version = "0.29", features = ["serde"] }
 zip = "0.6"
 zstd = "0.11"
 

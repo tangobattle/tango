@@ -56,6 +56,8 @@ fn is_target_installer(s: &str) -> bool {
         s.ends_with("-macos.dmg")
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         s.ends_with("-x86_64-windows.exe")
+    } else if cfg!(all(target_os = "windows", target_arch = "x86")) {
+        s.ends_with("-i686-windows.exe")
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         s.ends_with("-x86_64-linux.AppImage")
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {

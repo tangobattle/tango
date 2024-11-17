@@ -21,7 +21,7 @@ pub fn show(
     config: &mut config::Config,
     state: &mut State,
 ) {
-    let roms_scanner = &shared_root_state.scanners.roms;
+    let roms_scanner = &shared_root_state.roms_scanner;
 
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.horizontal_centered(|ui| {

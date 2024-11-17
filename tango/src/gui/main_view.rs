@@ -38,6 +38,7 @@ pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
     shared_root_state: &mut gui::SharedRootState,
+    window: &winit::window::Window,
     show_settings: &mut Option<gui::settings_window::State>,
     state: &mut State,
     init_link_code: &mut Option<String>,
@@ -120,7 +121,7 @@ pub fn show(
                             {
                                 let egui_ctx = ui.ctx().clone();
                                 tokio::task::spawn_blocking({
-                                    let patches_scanner = shared_root_state.scanners.patches.clone();
+                                    let patches_scanner = shared_root_state.patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
                                         patches_scanner
@@ -157,6 +158,7 @@ pub fn show(
                     ui,
                     config,
                     shared_root_state,
+                    window,
                     &mut state.patch_selection,
                     &mut state.play_pane,
                     init_link_code,
