@@ -268,7 +268,7 @@ cpsr = {:08x}"#,
     }
 
     egui::CentralPanel::default()
-        .frame(egui::Frame::none().fill(egui::Color32::BLACK))
+        .frame(egui::Frame::new().fill(egui::Color32::BLACK))
         .show(ctx, |ui| {
             ui.with_layout(
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),

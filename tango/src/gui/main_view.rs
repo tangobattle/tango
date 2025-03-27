@@ -147,9 +147,9 @@ pub fn show(
 
     egui::CentralPanel::default()
         .frame(
-            egui::Frame::none()
+            egui::Frame::new()
                 .fill(ctx.style().visuals.window_fill())
-                .inner_margin(egui::Margin::same(0.0)),
+                .inner_margin(egui::Margin::same(0)),
         )
         .show(ctx, |ui| match state.tab {
             Tab::Play => {

@@ -1654,13 +1654,13 @@ pub fn show(
 
     egui::CentralPanel::default()
         .frame(
-            egui::Frame::none()
+            egui::Frame::new()
                 .fill(ui.style().visuals.window_fill())
                 .inner_margin(egui::Margin {
-                    left: 8.0,
-                    right: 8.0,
-                    bottom: 8.0,
-                    top: 8.0,
+                    left: 8,
+                    right: 8,
+                    bottom: 8,
+                    top: 8,
                 }),
         )
         .show_inside(ui, |ui| {

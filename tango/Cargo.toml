@@ -28,12 +28,12 @@ crc32fast = "1"
 dark-light = "1"
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 directories-next = "2"
-egui = { version = "0.29", features = [] }
-egui-wgpu = { version = "0.29", features = ["winit"], optional = true }
-egui-winit = "0.29"
-egui_commonmark = '0.18'
-egui_extras = { version = "0.29", features = ["image"] }
-egui_glow = { version = "0.29", features = [
+egui = { version = "0.31.1" }
+egui-wgpu = { version = "0.31.1", features = ["winit"], optional = true }
+egui-winit = "0.31.1"
+egui_commonmark = '0.20'
+egui_extras = { version = "0.31.1", features = ["image"] }
+egui_glow = { version = "0.31.1", features = [
   "winit",
   "clipboard",
   "links"
@@ -44,7 +44,7 @@ fluent-langneg = "0.13"
 fluent-templates = "0.8"
 futures = "0.3"
 futures-util = "0.3"
-glow = "0.14"
+glow = "0.16"
 glutin = { version = "0.32", optional = true }
 glutin-winit = "0.5"
 hqx = { path = "../hqx" }
@@ -100,7 +100,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.5"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 walkdir = "2"
-wgpu = { version = "22", optional = true, features = ["angle"] }
+wgpu = { version = "24.0.3", optional = true, features = ["angle"] }
 winit = { version = "0.30", features = ["serde"] }
 zip = "0.6"
 zstd = "0.11"

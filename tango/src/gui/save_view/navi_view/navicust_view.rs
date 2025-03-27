@@ -67,9 +67,9 @@ fn show_part_name(
     is_enabled: bool,
     color: &tango_dataview::rom::NavicustPartColor,
 ) {
-    egui::Frame::none()
-        .inner_margin(egui::Margin::symmetric(4.0, 0.0))
-        .rounding(egui::Rounding::same(2.0))
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(4, 0))
+        .corner_radius(egui::CornerRadius::same(2))
         .fill(if is_enabled {
             let (color, _) = navicust_part_colors(color);
             egui::Color32::from_rgb(color.0[0], color.0[1], color.0[2])

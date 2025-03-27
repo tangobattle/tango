@@ -1,7 +1,7 @@
 use fluent_templates::Loader;
 
 use crate::{audio, config, discord, game, i18n, input, patch, rom, save, session, stats, updater};
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 mod debug_window;
 mod escape_window;
@@ -293,27 +293,31 @@ fn resolve_font_definitions(
         font_data: std::collections::BTreeMap::from([
             (
                 "NotoSans-Regular".to_string(),
-                egui::FontData::from_static(font_families.latn.raw),
+                Arc::new(egui::FontData::from_static(font_families.latn.raw)),
             ),
             (
                 "NotoSansJP-Regular".to_string(),
-                egui::FontData::from_static(font_families.jpan.raw),
+                Arc::new(egui::FontData::from_static(font_families.jpan.raw)),
             ),
             (
                 "NotoSansSC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hans.raw),
+                Arc::new(egui::FontData::from_static(font_families.hans.raw)),
             ),
             (
                 "NotoSansTC-Regular".to_string(),
-                egui::FontData::from_static(font_families.hant.raw),
+                Arc::new(egui::FontData::from_static(font_families.hant.raw)),
             ),
             (
                 "NotoSansMono-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
+                Arc::new(egui::FontData::from_static(include_bytes!(
+                    "fonts/NotoSansMono-Regular.ttf"
+                ))),
             ),
             (
                 "NotoEmoji-Regular".to_string(),
-                egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
+                Arc::new(egui::FontData::from_static(include_bytes!(
+                    "fonts/NotoEmoji-Regular.ttf"
+                ))),
             ),
         ]),
         families: std::collections::BTreeMap::from([

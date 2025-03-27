@@ -325,9 +325,9 @@ pub fn show(
 
                                         // regular chip label
                                         if g.is_regular {
-                                            egui::Frame::none()
-                                                .inner_margin(egui::Margin::symmetric(4.0, 0.0))
-                                                .rounding(egui::Rounding::same(2.0))
+                                            egui::Frame::new()
+                                                .inner_margin(egui::Margin::symmetric(4, 0))
+                                                .corner_radius(egui::CornerRadius::same(2))
                                                 .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
                                                 .show(ui, |ui| {
                                                     ui.label(egui::RichText::new("REG").color(egui::Color32::WHITE));
@@ -347,9 +347,9 @@ pub fn show(
                                         }
 
                                         for n in tag_start..tag_end {
-                                            egui::Frame::none()
-                                                .inner_margin(egui::Margin::symmetric(4.0, 0.0))
-                                                .rounding(egui::Rounding::same(2.0))
+                                            egui::Frame::new()
+                                                .inner_margin(egui::Margin::symmetric(4, 0))
+                                                .corner_radius(egui::CornerRadius::same(2))
                                                 .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
                                                 .show(ui, |ui| {
                                                     ui.label(

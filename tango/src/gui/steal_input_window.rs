@@ -30,8 +30,8 @@ pub fn show(ctx: &egui::Context, language: &unic_langid::LanguageIdentifier, ste
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-                egui::Frame::none()
-                    .inner_margin(egui::Margin::symmetric(32.0, 16.0))
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(32, 16))
                     .show(ui, |ui| {
                         let userdata = if let Some(State { userdata, .. }) = &steal_input {
                             userdata

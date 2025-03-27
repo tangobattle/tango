@@ -18,20 +18,31 @@ impl Backend {
     ) -> Result<Self, anyhow::Error> {
         let window = Arc::new(event_loop.create_window(window_attributes)?);
 
-        let mut painter = egui_wgpu::winit::Painter::new(
+        let egui_ctx = egui::Context::default();
+
+        let painter = egui_wgpu::winit::Painter::new(
+            egui_ctx.clone(),
             egui_wgpu::WgpuConfiguration {
-                device_descriptor: Arc::new(|_| wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::default(),
-                    required_limits: wgpu::Limits {
-                        max_texture_dimension_2d: 4096,
-                        ..wgpu::Limits::downlevel_defaults()
+                wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(egui_wgpu::WgpuSetupCreateNew {
+                    instance_descriptor: wgpu::InstanceDescriptor {
+                        backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+                        flags: wgpu::InstanceFlags::empty(),
+                        backend_options: wgpu::BackendOptions::default(),
                     },
-                    memory_hints: wgpu::MemoryHints::MemoryUsage,
+                    power_preference: wgpu::PowerPreference::LowPower,
+                    native_adapter_selector: None,
+                    device_descriptor: Arc::new(|_| wgpu::DeviceDescriptor {
+                        label: None,
+                        required_features: wgpu::Features::default(),
+                        required_limits: wgpu::Limits {
+                            max_texture_dimension_2d: 4096,
+                            ..wgpu::Limits::downlevel_defaults()
+                        },
+                        memory_hints: wgpu::MemoryHints::MemoryUsage,
+                    }),
+                    trace_path: None,
                 }),
-                supported_backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
                 present_mode: wgpu::PresentMode::Fifo,
-                power_preference: wgpu::PowerPreference::LowPower,
                 ..Default::default()
             },
             1,
@@ -40,9 +51,9 @@ impl Backend {
             false,
         );
 
-        pollster::block_on(painter.set_window(VIEWPORT, Some(window.clone())))?;
+        let mut painter = pollster::block_on(painter);
 
-        let egui_ctx = egui::Context::default();
+        pollster::block_on(painter.set_window(VIEWPORT, Some(window.clone())))?;
 
         let mut egui_winit = egui_winit::State::new(egui_ctx, VIEWPORT, event_loop, None, None, None);
         egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
@@ -88,7 +99,7 @@ impl graphics::Backend for Backend {
             [0.0, 0.0, 0.0, 1.0],
             &clipped_primitives,
             &std::mem::take(&mut self.textures_delta),
-            false,
+            Vec::new(),
         );
     }
 

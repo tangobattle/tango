@@ -11,9 +11,9 @@ impl State {
 }
 
 fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_debuff: bool) {
-    egui::Frame::none()
-        .inner_margin(egui::Margin::symmetric(4.0, 0.0))
-        .rounding(egui::Rounding::same(2.0))
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(4, 0))
+        .corner_radius(egui::CornerRadius::same(2))
         .fill(if is_enabled {
             if is_debuff {
                 egui::Color32::from_rgb(0xb5, 0x5a, 0xde)

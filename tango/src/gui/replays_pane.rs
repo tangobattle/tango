@@ -125,7 +125,7 @@ pub fn show(
 
     egui::SidePanel::left("replays-window-left-panel")
         .frame(egui::Frame::default().inner_margin(egui::Margin {
-            right: 8.0,
+            right: 8,
             ..Default::default()
         }))
         .show_inside(ui, |ui| {
