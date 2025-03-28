@@ -60,7 +60,6 @@ mmpx = { path = "../mmpx" }
 ndarray = "0.15"
 num-derive = "0.3"
 num-traits = "0.2"
-oneshot = "0.1"
 open = "3"
 parking_lot = { version = "0.12" }
 png = "0.17"
