@@ -122,7 +122,7 @@ impl graphics::Backend for Backend {
         self.egui_winit.handle_platform_output(&self.window, platform_output);
 
         self.shapes = shapes;
-        self.textures_delta = textures_delta;
+        self.textures_delta.append(textures_delta);
 
         viewport_output[&VIEWPORT].repaint_delay
     }
