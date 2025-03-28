@@ -178,10 +178,8 @@ impl graphics::Backend for Backend {
 
         self.egui_glow.on_window_event(&self.window, event)
     }
-}
 
-impl Drop for Backend {
-    fn drop(&mut self) {
+    fn exiting(&mut self) {
         self.egui_glow.destroy();
     }
 }

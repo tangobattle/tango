@@ -485,9 +485,6 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
                         gui_state.last_mouse_motion_time = None;
                     }
                     winit::event::WindowEvent::CloseRequested => {
-                        // destroy gfx backend before the window is destroyed
-                        // todo: seems like this shouldn't be necessary, possibly a winit issue?
-                        self.gfx_backend.take();
                         self.flush_config();
                         event_loop.exit();
                         return;
@@ -655,6 +652,12 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
 
         if request_redraw {
             self.request_redraw();
+        }
+    }
+
+    fn exiting(&mut self, _: &winit::event_loop::ActiveEventLoop) {
+        if let Some(backend) = &mut self.gfx_backend {
+            backend.exiting();
         }
     }
 }
