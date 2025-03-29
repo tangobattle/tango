@@ -58,7 +58,7 @@ mailparse = "0.13"
 mgba = { path = "../mgba" }
 mmpx = { path = "../mmpx" }
 ndarray = "0.15"
-num-derive = "0.3"
+num-derive = "0.4.2"
 num-traits = "0.2"
 open = "3"
 parking_lot = { version = "0.12" }
