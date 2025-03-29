@@ -1,5 +1,5 @@
-use crate::gui::{self, SharedRootState};
-use crate::{config, i18n};
+use crate::gui::SharedRootState;
+use crate::{config, fonts, i18n};
 use fluent_templates::Loader;
 
 pub struct State {}
@@ -31,7 +31,7 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
 pub fn show_patch_card4s(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
+    font_families: &fonts::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
     patch_card4s_view: &dyn tango_dataview::save::PatchCard4sView,
@@ -160,7 +160,7 @@ pub fn show_patch_card4s(
 pub fn show_patch_card56s(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
+    font_families: &fonts::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
     patch_card56s_view: &dyn tango_dataview::save::PatchCard56sView,

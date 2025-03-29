@@ -11,6 +11,7 @@ mod audio;
 mod config;
 mod controller;
 mod discord;
+mod fonts;
 mod game;
 mod graphics;
 mod gui;

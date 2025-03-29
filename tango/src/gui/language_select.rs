@@ -1,6 +1,6 @@
-use crate::gui;
+use crate::fonts;
 
-pub fn show(ui: &mut egui::Ui, font_families: &gui::FontFamilies, language: &mut unic_langid::LanguageIdentifier) {
+pub fn show(ui: &mut egui::Ui, font_families: &fonts::FontFamilies, language: &mut unic_langid::LanguageIdentifier) {
     let languages = &[
         (
             unic_langid::langid!("en-US"),

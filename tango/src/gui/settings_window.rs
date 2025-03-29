@@ -1,4 +1,4 @@
-use crate::{config, game, gui, i18n, input, patch, save, version};
+use crate::{config, fonts, game, gui, i18n, input, patch, save, version};
 use fluent_templates::Loader;
 
 #[derive(PartialEq, Eq)]
@@ -106,7 +106,7 @@ pub fn show(
     }
 }
 
-fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_families: &gui::FontFamilies) {
+fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_families: &fonts::FontFamilies) {
     egui::Grid::new("settings-window-general-grid")
         .num_columns(2)
         .show(ui, |ui| {
