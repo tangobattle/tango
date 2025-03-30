@@ -465,6 +465,8 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
                             }
                         }
                     }
+
+                    gfx_backend.window().request_redraw();
                 }
             }
             window_event => {
