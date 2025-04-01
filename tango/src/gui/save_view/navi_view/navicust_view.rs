@@ -1,7 +1,7 @@
 use fluent_templates::Loader;
 use itertools::Itertools;
 
-use crate::{config, gui, i18n};
+use crate::{config, fonts, gui, i18n};
 
 pub struct State {
     rendered_navicust_cache: Option<(
@@ -649,9 +649,7 @@ pub fn show(
     let clipboard = &mut shared_root_state.clipboard;
     let font_families = &shared_root_state.font_families;
 
-    let navicust_layout = if let Some(navicust_layout) = assets.navicust_layout() {
-        navicust_layout
-    } else {
+    let Some(navicust_layout) = assets.navicust_layout() else {
         return;
     };
 
@@ -666,163 +664,222 @@ pub fn show(
         .collect::<Vec<_>>();
 
     ui.horizontal(|ui| {
-        if ui
-            .button(format!(
-                "📋 {}",
-                i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
-            ))
-            .clicked()
-        {
-            let mut buf = vec![];
-            if let Some(style) = navicust_view.style() {
-                buf.push(
-                    assets
-                        .style(style)
-                        .and_then(|style| style.name())
-                        .unwrap_or_else(|| "".to_string())
-                        .to_owned(),
-                );
-            }
-            buf.extend(
-                itertools::Itertools::zip_longest(
-                    items
-                        .iter()
-                        .filter(|(info, _)| info.is_solid())
-                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
-                    items
-                        .iter()
-                        .filter(|(info, _)| !info.is_solid())
-                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
-                )
-                .map(|v| match v {
-                    itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
-                    itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
-                    itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
-                }),
-            );
-            let _ = clipboard.set_text(buf.join("\n"));
-        }
+        ui.menu_button(
+            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap()),
+            |ui| {
+                let navi_cust_grid_args = [(
+                    "name",
+                    i18n::LOCALES.lookup(lang, "save-tab-navi-cust-grid").unwrap().into(),
+                )]
+                .into();
+                let navi_cust_args =
+                    [("name", i18n::LOCALES.lookup(lang, "save-tab-navi-cust").unwrap().into())].into();
 
-        if ui
-            .button(format!(
-                "📋 {}",
-                i18n::LOCALES.lookup(lang, "copy-navicust-image-to-clipboard").unwrap(),
-            ))
-            .clicked()
-        {
-            (|| {
-                let image = if let Some((image, _, _)) = state.rendered_navicust_cache.as_ref() {
-                    image
-                } else {
-                    return;
-                };
+                let grid_as_image_text = i18n::LOCALES
+                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &navi_cust_grid_args)
+                    .unwrap();
+                let as_image_text = i18n::LOCALES
+                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &navi_cust_args)
+                    .unwrap();
+                let as_text_text = i18n::LOCALES
+                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &navi_cust_args)
+                    .unwrap();
 
-                let _ = clipboard.set_image(arboard::ImageData {
-                    width: image.width() as usize,
-                    height: image.height() as usize,
-                    bytes: std::borrow::Cow::Borrowed(image),
-                });
-            })()
-        }
+                if ui.button(grid_as_image_text).clicked() {
+                    ui.close_menu();
+
+                    if let Some((image, _, _)) = state.rendered_navicust_cache.as_ref() {
+                        let _ = clipboard.set_image(arboard::ImageData {
+                            width: image.width() as usize,
+                            height: image.height() as usize,
+                            bytes: std::borrow::Cow::Borrowed(image),
+                        });
+                    };
+                }
+
+                if ui.button(as_image_text).clicked() {
+                    ui.close_menu();
+
+                    shared_root_state.offscreen_ui.resize(0, 0);
+                    shared_root_state.offscreen_ui.run(|ui| {
+                        egui::Frame::new()
+                            .fill(ui.style().visuals.panel_fill)
+                            .inner_margin(egui::Margin::symmetric(8, 8))
+                            .show(ui, |ui| {
+                                show_navicust_view(
+                                    ui,
+                                    font_families,
+                                    game_lang,
+                                    navicust_view,
+                                    &navicust_layout,
+                                    assets,
+                                    &items,
+                                    &mut State::new(),
+                                    prefer_vertical,
+                                );
+                            });
+                    });
+                    shared_root_state.offscreen_ui.copy_to_clipboard();
+                    shared_root_state.offscreen_ui.sweep();
+                }
+
+                if ui.button(as_text_text).clicked() {
+                    ui.close_menu();
+
+                    let mut buf = vec![];
+                    if let Some(style) = navicust_view.style() {
+                        buf.push(
+                            assets
+                                .style(style)
+                                .and_then(|style| style.name())
+                                .unwrap_or_else(|| "".to_string())
+                                .to_owned(),
+                        );
+                    }
+                    buf.extend(
+                        itertools::Itertools::zip_longest(
+                            items
+                                .iter()
+                                .filter(|(info, _)| info.is_solid())
+                                .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
+                            items
+                                .iter()
+                                .filter(|(info, _)| !info.is_solid())
+                                .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
+                        )
+                        .map(|v| match v {
+                            itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
+                            itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
+                            itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
+                        }),
+                    );
+                    let _ = clipboard.set_text(buf.join("\n"));
+                }
+            },
+        );
     });
 
     egui::ScrollArea::vertical()
         .id_salt("navicust-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.with_layout(
-                if prefer_vertical {
-                    egui::Layout::top_down(egui::Align::Min)
-                } else {
-                    egui::Layout::left_to_right(egui::Align::Min)
-                },
-                |ui| {
-                    if state.rendered_navicust_cache.is_none() {
-                        let materialized = navicust_view.materialized();
-                        let image = render_navicust(ui.ctx(), &materialized, &navicust_layout, navicust_view, assets);
-                        let texture = ui.ctx().load_texture(
-                            "navicust",
-                            egui::ColorImage::from_rgba_unmultiplied(
-                                [image.width() as usize, image.height() as usize],
-                                &image,
-                            ),
-                            egui::TextureOptions::NEAREST,
-                        );
-                        state.rendered_navicust_cache = Some((image, materialized, texture));
-                    }
+            show_navicust_view(
+                ui,
+                font_families,
+                game_lang,
+                navicust_view,
+                &navicust_layout,
+                assets,
+                &items,
+                state,
+                prefer_vertical,
+            );
+        });
+}
 
-                    if let Some((image, materialized, texture_handle)) = state.rendered_navicust_cache.as_ref() {
-                        let resp = ui.image((
-                            texture_handle.id(),
-                            egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
-                        ));
-                        if let Some(hover_pos) = resp.hover_pos() {
-                            let x = ((hover_pos.x - resp.rect.min.x) * 2.0) as u32;
-                            let y = ((hover_pos.y - resp.rect.min.y) * 2.0) as u32;
+fn show_navicust_view(
+    ui: &mut egui::Ui,
+    font_families: &fonts::FontFamilies,
+    game_lang: &unic_langid::LanguageIdentifier,
+    navicust_view: &dyn tango_dataview::save::NavicustView,
+    navicust_layout: &tango_dataview::rom::NavicustLayout,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
+    items: &[(
+        Box<dyn tango_dataview::rom::NavicustPart + '_>,
+        tango_dataview::rom::NavicustPartColor,
+    )],
+    state: &mut State,
+    prefer_vertical: bool,
+) {
+    ui.with_layout(
+        if prefer_vertical {
+            egui::Layout::top_down(egui::Align::Min)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Min)
+        },
+        |ui| {
+            if state.rendered_navicust_cache.is_none() {
+                let materialized = navicust_view.materialized();
+                let image = render_navicust(ui.ctx(), &materialized, navicust_layout, navicust_view, assets);
+                let texture = ui.ctx().load_texture(
+                    "navicust",
+                    egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], &image),
+                    egui::TextureOptions::NEAREST,
+                );
+                state.rendered_navicust_cache = Some((image, materialized, texture));
+            }
 
-                            const LEFT: u32 = PADDING_H + (BORDER_WIDTH / 2.0) as u32;
-                            const TOP: u32 = PADDING_V
-                                + (SQUARE_SIZE / 2.0) as u32
-                                + BORDER_WIDTH as u32
-                                + PADDING_V
-                                + (BORDER_WIDTH / 2.0) as u32;
+            if let Some((image, materialized, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+                let resp = ui.image((
+                    texture_handle.id(),
+                    egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
+                ));
+                if let Some(hover_pos) = resp.hover_pos() {
+                    let x = ((hover_pos.x - resp.rect.min.x) * 2.0) as u32;
+                    let y = ((hover_pos.y - resp.rect.min.y) * 2.0) as u32;
 
-                            if x >= LEFT
-                                && x < image.width() - PADDING_H - (BORDER_WIDTH / 2.0) as u32
-                                && y >= TOP
-                                && y < image.height() - PADDING_V - (BORDER_WIDTH / 2.0) as u32
+                    const LEFT: u32 = PADDING_H + (BORDER_WIDTH / 2.0) as u32;
+                    const TOP: u32 = PADDING_V
+                        + (SQUARE_SIZE / 2.0) as u32
+                        + BORDER_WIDTH as u32
+                        + PADDING_V
+                        + (BORDER_WIDTH / 2.0) as u32;
+
+                    if x >= LEFT
+                        && x < image.width() - PADDING_H - (BORDER_WIDTH / 2.0) as u32
+                        && y >= TOP
+                        && y < image.height() - PADDING_V - (BORDER_WIDTH / 2.0) as u32
+                    {
+                        let tx = (x - LEFT) / SQUARE_SIZE as u32;
+                        let ty = (y - TOP) / SQUARE_SIZE as u32;
+
+                        if let Some(ncp_i) = materialized[[ty as usize, tx as usize]] {
+                            if let Some(info) = navicust_view
+                                .navicust_part(ncp_i)
+                                .and_then(|ncp| assets.navicust_part(ncp.id))
                             {
-                                let tx = (x - LEFT) / SQUARE_SIZE as u32;
-                                let ty = (y - TOP) / SQUARE_SIZE as u32;
-
-                                if let Some(ncp_i) = materialized[[ty as usize, tx as usize]] {
-                                    if let Some(info) = navicust_view
-                                        .navicust_part(ncp_i)
-                                        .and_then(|ncp| assets.navicust_part(ncp.id))
-                                    {
-                                        resp.on_hover_text_at_pointer(
-                                            egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
-                                                .family(font_families.for_language(game_lang)),
-                                        );
-                                    }
-                                }
+                                resp.on_hover_text_at_pointer(
+                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
+                                        .family(font_families.for_language(game_lang)),
+                                );
                             }
                         }
                     }
+                }
+            }
 
-                    const NCP_CHIP_WIDTH: f32 = 150.0;
+            const NCP_CHIP_WIDTH: f32 = 150.0;
 
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                            ui.set_width(NCP_CHIP_WIDTH);
-                            for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
-                                show_part_name(
-                                    ui,
-                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
-                                        .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
-                                        .family(font_families.for_language(game_lang)),
-                                    true,
-                                    color,
-                                );
-                            }
-                        });
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                            ui.set_width(NCP_CHIP_WIDTH);
-                            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
-                                show_part_name(
-                                    ui,
-                                    egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
-                                        .family(font_families.for_language(game_lang)),
-                                    egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
-                                        .family(font_families.for_language(game_lang)),
-                                    true,
-                                    color,
-                                );
-                            }
-                        });
-                    });
-                },
-            );
-        });
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    ui.set_width(NCP_CHIP_WIDTH);
+                    for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
+                        show_part_name(
+                            ui,
+                            egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
+                                .family(font_families.for_language(game_lang)),
+                            egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
+                                .family(font_families.for_language(game_lang)),
+                            true,
+                            color,
+                        );
+                    }
+                });
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    ui.set_width(NCP_CHIP_WIDTH);
+                    for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
+                        show_part_name(
+                            ui,
+                            egui::RichText::new(info.name().unwrap_or_else(|| "???".to_string()))
+                                .family(font_families.for_language(game_lang)),
+                            egui::RichText::new(info.description().unwrap_or_else(|| "???".to_string()))
+                                .family(font_families.for_language(game_lang)),
+                            true,
+                            color,
+                        );
+                    }
+                });
+            });
+        },
+    );
 }

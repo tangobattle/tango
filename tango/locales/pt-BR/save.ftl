@@ -12,5 +12,3 @@ auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combos
 auto-battle-data-program-advance = Program advance
 auto-battle-data-unset = Desativar
-copy-navicust-image-to-clipboard = Copiar imagem do NaviCust para área de transferência
-    .copied = Copiado!

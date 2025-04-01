@@ -1,4 +1,4 @@
-use crate::{config, gui, i18n};
+use crate::{config, fonts, gui, i18n};
 use fluent_templates::Loader;
 use itertools::Itertools;
 
@@ -21,7 +21,7 @@ impl State {
 fn show_table(
     ui: &mut egui::Ui,
     config: &config::Config,
-    shared_root_state: &mut gui::SharedRootState,
+    font_families: &fonts::FontFamilies,
     chips: &[Option<usize>],
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
     game_lang: &unic_langid::LanguageIdentifier,
@@ -29,12 +29,14 @@ fn show_table(
     element_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
 ) {
     let lang = &config.language;
-    let font_families = &shared_root_state.font_families;
+
+    let spacing = ui.spacing_mut();
+    spacing.item_spacing.y = 0.0;
 
     let groups = chips.iter().group_by(|k| **k);
     let groups = groups.into_iter().enumerate().collect::<Vec<_>>();
     egui_extras::StripBuilder::new(ui)
-        .sizes(egui_extras::Size::exact(28.0), groups.len())
+        .sizes(egui_extras::Size::exact(32.0), groups.len())
         .vertical(|mut outer_strip| {
             for (i, (id, g)) in groups {
                 outer_strip.cell(|ui| {
@@ -76,7 +78,10 @@ fn show_table(
                         (None, None)
                     };
 
-                    let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
+                    let rect = ui
+                        .available_rect_before_wrap()
+                        .expand2(egui::Vec2::new(ui.spacing().item_spacing.x, 0.0));
+
                     if let Some(bg_color) = bg_color {
                         ui.painter().rect_filled(rect, 0.0, bg_color);
                     } else if i % 2 == 0 {
@@ -180,6 +185,110 @@ fn show_table(
         });
 }
 
+fn show_auto_battle_data(
+    ui: &mut egui::Ui,
+    config: &config::Config,
+    font_families: &fonts::FontFamilies,
+    game_lang: &unic_langid::LanguageIdentifier,
+    auto_battle_data_view: &dyn tango_dataview::save::AutoBattleDataView,
+    assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
+    state: &mut State,
+) {
+    let lang = &config.language;
+
+    let materialized = state
+        .materialized
+        .get_or_insert_with(|| auto_battle_data_view.materialized());
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-secondary-standard-chips"), |ui| {
+        ui.strong(
+            i18n::LOCALES
+                .lookup(lang, "auto-battle-data-secondary-standard-chips")
+                .unwrap(),
+        );
+        show_table(
+            ui,
+            config,
+            font_families,
+            materialized.secondary_standard_chips(),
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-standard-chips"), |ui| {
+        ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-standard-chips").unwrap());
+        show_table(
+            ui,
+            config,
+            font_families,
+            materialized.standard_chips(),
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-mega-chips"), |ui| {
+        ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-mega-chips").unwrap());
+        show_table(
+            ui,
+            config,
+            font_families,
+            materialized.mega_chips(),
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-giga-chip"), |ui| {
+        ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-giga-chip").unwrap());
+        show_table(
+            ui,
+            config,
+            font_families,
+            &[materialized.giga_chip()],
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-combos"), |ui| {
+        ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-combos").unwrap());
+        show_table(
+            ui,
+            config,
+            font_families,
+            &[None; 8],
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+
+    ui.push_id(egui::Id::new("auto-battle-data-view-program-advance"), |ui| {
+        ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-program-advance").unwrap());
+        show_table(
+            ui,
+            config,
+            font_families,
+            &[materialized.program_advance()],
+            assets,
+            game_lang,
+            &mut state.chip_icon_texture_cache,
+            &mut state.element_icon_texture_cache,
+        );
+    });
+}
+
 fn make_string(chips: &[Option<usize>], assets: &(dyn tango_dataview::rom::Assets + Send + Sync)) -> String {
     chips
         .iter()
@@ -218,117 +327,78 @@ pub fn show(
         .get_or_insert_with(|| auto_battle_data_view.materialized());
 
     ui.horizontal(|ui| {
-        if ui
-            .button(format!(
-                "📋 {}",
-                i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
-            ))
-            .clicked()
-        {
-            let _ = clipboard.set_text(
-                [
-                    make_string(materialized.secondary_standard_chips(), assets),
-                    make_string(materialized.standard_chips(), assets),
-                    make_string(materialized.mega_chips(), assets),
-                    make_string(&[materialized.giga_chip()], assets),
-                    make_string(&[None; 8], assets),
-                    make_string(&[materialized.program_advance()], assets),
-                ]
-                .join("\n"),
-            );
-        }
+        ui.menu_button(
+            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),),
+            |ui| {
+                let fluent_args = [(
+                    "name",
+                    i18n::LOCALES.lookup(lang, "save-tab-auto-battle-data").unwrap().into(),
+                )]
+                .into();
+                let as_image_text = i18n::LOCALES
+                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &fluent_args)
+                    .unwrap();
+                let as_text_text = i18n::LOCALES
+                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &fluent_args)
+                    .unwrap();
+
+                if ui.button(as_image_text).clicked() {
+                    ui.close_menu();
+
+                    shared_root_state.offscreen_ui.resize(400, 0);
+                    shared_root_state.offscreen_ui.run(|ui| {
+                        egui::Frame::new()
+                            .inner_margin(egui::Margin::symmetric(8, 0))
+                            .fill(ui.style().visuals.panel_fill)
+                            .show(ui, |ui| {
+                                show_auto_battle_data(
+                                    ui,
+                                    config,
+                                    &shared_root_state.font_families,
+                                    game_lang,
+                                    auto_battle_data_view,
+                                    assets,
+                                    &mut State::new(),
+                                );
+                            });
+                    });
+                    shared_root_state.offscreen_ui.copy_to_clipboard();
+                    shared_root_state.offscreen_ui.sweep();
+                }
+
+                if ui.button(as_text_text).clicked() {
+                    ui.close_menu();
+
+                    let _ = clipboard.set_text(
+                        [
+                            make_string(materialized.secondary_standard_chips(), assets),
+                            make_string(materialized.standard_chips(), assets),
+                            make_string(materialized.mega_chips(), assets),
+                            make_string(&[materialized.giga_chip()], assets),
+                            make_string(&[None; 8], assets),
+                            make_string(&[materialized.program_advance()], assets),
+                        ]
+                        .join("\n"),
+                    );
+                }
+            },
+        );
     });
+
+    ui.style_mut().visuals.clip_rect_margin = 0.0;
 
     egui::ScrollArea::vertical()
         .id_salt("auto-battle-data-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.push_id(egui::Id::new("auto-battle-data-view-secondary-standard-chips"), |ui| {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(lang, "auto-battle-data-secondary-standard-chips")
-                        .unwrap(),
-                );
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    materialized.secondary_standard_chips(),
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
-
-            ui.push_id(egui::Id::new("auto-battle-data-view-standard-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-standard-chips").unwrap());
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    materialized.standard_chips(),
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
-
-            ui.push_id(egui::Id::new("auto-battle-data-view-mega-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-mega-chips").unwrap());
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    materialized.mega_chips(),
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
-
-            ui.push_id(egui::Id::new("auto-battle-data-view-giga-chip"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-giga-chip").unwrap());
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    &[materialized.giga_chip()],
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
-
-            ui.push_id(egui::Id::new("auto-battle-data-view-combos"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-combos").unwrap());
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    &[None; 8],
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
-
-            ui.push_id(egui::Id::new("auto-battle-data-view-program-advance"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-program-advance").unwrap());
-                show_table(
-                    ui,
-                    config,
-                    shared_root_state,
-                    &[materialized.program_advance()],
-                    assets,
-                    game_lang,
-                    &mut state.chip_icon_texture_cache,
-                    &mut state.element_icon_texture_cache,
-                );
-            });
+            show_auto_battle_data(
+                ui,
+                config,
+                &shared_root_state.font_families,
+                game_lang,
+                auto_battle_data_view,
+                assets,
+                state,
+            );
         });
 }

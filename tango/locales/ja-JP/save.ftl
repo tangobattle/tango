@@ -12,5 +12,3 @@ auto-battle-data-giga-chip = ギガチップ
 auto-battle-data-combos = コンボ
 auto-battle-data-program-advance = プログラムアドバンス
 auto-battle-data-unset = 未設定
-copy-navicust-image-to-clipboard = ナビカス画像をクリップボードにコピー
-    .copied = コピーしました！

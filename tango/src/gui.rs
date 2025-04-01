@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, fonts, game, i18n, input, patch, rom, save, session, stats, updater};
+use crate::{audio, config, discord, fonts, game, graphics, i18n, input, patch, rom, save, session, stats, updater};
 
 mod debug_window;
 mod escape_window;
@@ -106,6 +106,7 @@ impl Scanners {
 }
 
 pub struct SharedRootState {
+    pub offscreen_ui: graphics::offscreen::OffscreenUi,
     pub event_loop_proxy: winit::event_loop::EventLoopProxy<crate::WindowRequest>,
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
@@ -153,9 +154,12 @@ impl State {
         scanners: Scanners,
         init_link_code: Option<String>,
     ) -> Result<Self, anyhow::Error> {
-        let font_families = fonts::FontFamilies::new();
+        let offscreen_ui = graphics::offscreen::OffscreenUi::new();
 
-        ctx.set_fonts(font_families.resolve_definitions(config.read().language.clone()));
+        let font_families = fonts::FontFamilies::new();
+        let font_definitions = font_families.resolve_definitions(config.read().language.clone());
+        ctx.set_fonts(font_definitions.clone());
+        offscreen_ui.ctx().set_fonts(font_definitions);
 
         ctx.style_mut(|style| {
             style.spacing.scroll = egui::style::ScrollStyle::solid();
@@ -176,6 +180,7 @@ impl State {
 
         Ok(Self {
             shared: SharedRootState {
+                offscreen_ui,
                 event_loop_proxy,
                 config,
                 session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
@@ -243,7 +248,9 @@ pub fn show(
     if state.current_language.as_ref() != Some(&config.language) {
         let language = config.language.clone();
 
-        ctx.set_fonts(state.shared.font_families.resolve_definitions(language));
+        let font_definitions = state.shared.font_families.resolve_definitions(language);
+        state.shared.offscreen_ui.ctx().set_fonts(font_definitions.clone());
+        ctx.set_fonts(font_definitions);
 
         state.current_language = Some(config.language.clone());
         log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
@@ -258,11 +265,14 @@ pub fn show(
         config::Theme::Dark => true,
     };
 
-    ctx.set_visuals(if is_dark {
+    let visuals = if is_dark {
         state.themes.dark.clone()
     } else {
         state.themes.light.clone()
-    });
+    };
+
+    ctx.set_visuals(visuals.clone());
+    state.shared.offscreen_ui.ctx().set_visuals(visuals);
 
     if config.nickname.is_none() {
         welcome::show(

@@ -1,5 +1,7 @@
 save-tab-cover = Cover
 save-tab-navi = Navi
+save-tab-navi-cust = NaviCust
+save-tab-navi-cust-grid = NaviCust Grid
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data
@@ -16,5 +18,3 @@ auto-battle-data-combos = Combos
 auto-battle-data-program-advance = Program advance
 auto-battle-data-unset = Unset
 
-copy-navicust-image-to-clipboard = Copy NaviCust image to clipboard
-    .copied = Copied!
