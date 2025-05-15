@@ -67,44 +67,31 @@ impl Server {
             None
         };
 
+        let ice_servers = ice_servers.unwrap_or_else(|| {
+            const DEFAULT_ICE_URIS: &[&str] = &[
+                "stun:stun.l.google.com:19302",
+                "stun:stun1.l.google.com:19302",
+                "stun:stun2.l.google.com:19302",
+                "stun:stun3.l.google.com:19302",
+                "stun:stun4.l.google.com:19302",
+            ];
+
+            DEFAULT_ICE_URIS
+                .iter()
+                .map(|uri| tango_signaling::proto::signaling::packet::hello::IceServer {
+                    username: None,
+                    credential: None,
+                    urls: vec![uri.to_string()],
+                })
+                .collect::<Vec<_>>()
+        });
+
         tokio::time::timeout(
             TX_TIMEOUT,
             tx.send(tungstenite::Message::Binary(
                 tango_signaling::proto::signaling::Packet {
                     which: Some(tango_signaling::proto::signaling::packet::Which::Hello(
-                        tango_signaling::proto::signaling::packet::Hello {
-                            ice_servers: if let Some(ice_servers) = ice_servers {
-                                ice_servers
-                            } else {
-                                vec![
-                                    tango_signaling::proto::signaling::packet::hello::IceServer {
-                                        username: None,
-                                        credential: None,
-                                        urls: vec!["stun:stun.l.google.com:19302".to_string()],
-                                    },
-                                    tango_signaling::proto::signaling::packet::hello::IceServer {
-                                        username: None,
-                                        credential: None,
-                                        urls: vec!["stun:stun1.l.google.com:19302".to_string()],
-                                    },
-                                    tango_signaling::proto::signaling::packet::hello::IceServer {
-                                        username: None,
-                                        credential: None,
-                                        urls: vec!["stun:stun2.l.google.com:19302".to_string()],
-                                    },
-                                    tango_signaling::proto::signaling::packet::hello::IceServer {
-                                        username: None,
-                                        credential: None,
-                                        urls: vec!["stun:stun3.l.google.com:19302".to_string()],
-                                    },
-                                    tango_signaling::proto::signaling::packet::hello::IceServer {
-                                        username: None,
-                                        credential: None,
-                                        urls: vec!["stun:stun4.l.google.com:19302".to_string()],
-                                    },
-                                ]
-                            },
-                        },
+                        tango_signaling::proto::signaling::packet::Hello { ice_servers },
                     )),
                 }
                 .encode_to_vec(),
