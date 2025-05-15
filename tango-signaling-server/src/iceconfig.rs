@@ -1,6 +1,7 @@
 pub mod cloudflare;
 pub mod metered;
 pub mod opentok;
+pub mod turn;
 pub mod twilio;
 
 #[async_trait::async_trait]

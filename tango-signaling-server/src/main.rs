@@ -40,6 +40,9 @@ struct Config {
 
     #[envconfig(from = "METERED_API_KEY", default = "")]
     metered_api_key: String,
+
+    #[envconfig(from = "TURN_ADDR", default = "")]
+    turn_addr: String,
 }
 
 struct State {
@@ -214,6 +217,9 @@ async fn main() -> anyhow::Result<()> {
             config.metered_application_name.clone(),
             config.metered_api_key.clone(),
         )))
+    } else if !config.turn_addr.is_empty() {
+        log::info!("using plain turn iceconfig backend");
+        Some(Box::new(iceconfig::turn::Backend::new(config.turn_addr.clone())))
     } else {
         log::warn!("no iceconfig backend, will not service iceconfig requests");
         None
