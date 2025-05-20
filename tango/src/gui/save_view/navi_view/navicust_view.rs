@@ -664,99 +664,89 @@ pub fn show(
         .collect::<Vec<_>>();
 
     ui.horizontal(|ui| {
-        ui.menu_button(
-            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap()),
-            |ui| {
-                let navi_cust_grid_args = [(
-                    "name",
-                    i18n::LOCALES.lookup(lang, "save-tab-navi-cust-grid").unwrap().into(),
-                )]
-                .into();
-                let navi_cust_args =
-                    [("name", i18n::LOCALES.lookup(lang, "save-tab-navi-cust").unwrap().into())].into();
+        let as_text_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-text").unwrap();
+        let as_image_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-image").unwrap();
 
-                let grid_as_image_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &navi_cust_grid_args)
-                    .unwrap();
-                let as_image_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &navi_cust_args)
-                    .unwrap();
-                let as_text_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &navi_cust_args)
-                    .unwrap();
+        let navi_cust_grid_args = [(
+            "name",
+            i18n::LOCALES.lookup(lang, "save-tab-navi-cust-grid").unwrap().into(),
+        )]
+        .into();
 
-                if ui.button(grid_as_image_text).clicked() {
-                    ui.close_menu();
+        let grid_as_image_text = i18n::LOCALES
+            .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &navi_cust_grid_args)
+            .unwrap();
 
-                    if let Some((image, _, _)) = state.rendered_navicust_cache.as_ref() {
-                        let _ = clipboard.set_image(arboard::ImageData {
-                            width: image.width() as usize,
-                            height: image.height() as usize,
-                            bytes: std::borrow::Cow::Borrowed(image),
-                        });
-                    };
-                }
+        if ui.button(as_text_text).clicked() {
+            ui.close_menu();
 
-                if ui.button(as_image_text).clicked() {
-                    ui.close_menu();
+            let mut buf = vec![];
+            if let Some(style) = navicust_view.style() {
+                buf.push(
+                    assets
+                        .style(style)
+                        .and_then(|style| style.name())
+                        .unwrap_or_else(|| "".to_string())
+                        .to_owned(),
+                );
+            }
+            buf.extend(
+                itertools::Itertools::zip_longest(
+                    items
+                        .iter()
+                        .filter(|(info, _)| info.is_solid())
+                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
+                    items
+                        .iter()
+                        .filter(|(info, _)| !info.is_solid())
+                        .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
+                )
+                .map(|v| match v {
+                    itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
+                    itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
+                    itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
+                }),
+            );
+            let _ = clipboard.set_text(buf.join("\n"));
+        }
 
-                    shared_root_state.offscreen_ui.resize(0, 0);
-                    shared_root_state.offscreen_ui.run(|ui| {
-                        egui::Frame::new()
-                            .fill(ui.style().visuals.panel_fill)
-                            .inner_margin(egui::Margin::symmetric(8, 8))
-                            .show(ui, |ui| {
-                                show_navicust_view(
-                                    ui,
-                                    font_families,
-                                    game_lang,
-                                    navicust_view,
-                                    &navicust_layout,
-                                    assets,
-                                    &items,
-                                    &mut State::new(),
-                                    prefer_vertical,
-                                );
-                            });
-                    });
-                    shared_root_state.offscreen_ui.copy_to_clipboard();
-                    shared_root_state.offscreen_ui.sweep();
-                }
+        if ui.button(as_image_text).clicked() {
+            ui.close_menu();
 
-                if ui.button(as_text_text).clicked() {
-                    ui.close_menu();
-
-                    let mut buf = vec![];
-                    if let Some(style) = navicust_view.style() {
-                        buf.push(
-                            assets
-                                .style(style)
-                                .and_then(|style| style.name())
-                                .unwrap_or_else(|| "".to_string())
-                                .to_owned(),
+            shared_root_state.offscreen_ui.resize(0, 0);
+            shared_root_state.offscreen_ui.run(|ui| {
+                egui::Frame::new()
+                    .fill(ui.style().visuals.panel_fill)
+                    .inner_margin(egui::Margin::symmetric(8, 8))
+                    .show(ui, |ui| {
+                        show_navicust_view(
+                            ui,
+                            font_families,
+                            game_lang,
+                            navicust_view,
+                            &navicust_layout,
+                            assets,
+                            &items,
+                            &mut State::new(),
+                            prefer_vertical,
                         );
-                    }
-                    buf.extend(
-                        itertools::Itertools::zip_longest(
-                            items
-                                .iter()
-                                .filter(|(info, _)| info.is_solid())
-                                .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
-                            items
-                                .iter()
-                                .filter(|(info, _)| !info.is_solid())
-                                .map(|(info, _)| info.name().unwrap_or_else(|| "???".to_string())),
-                        )
-                        .map(|v| match v {
-                            itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
-                            itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
-                            itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
-                        }),
-                    );
-                    let _ = clipboard.set_text(buf.join("\n"));
-                }
-            },
-        );
+                    });
+            });
+            shared_root_state.offscreen_ui.copy_to_clipboard();
+            shared_root_state.offscreen_ui.sweep();
+        }
+
+        if ui.button(grid_as_image_text).clicked() {
+            ui.close_menu();
+
+            if let Some((image, _, _)) = state.rendered_navicust_cache.as_ref() {
+                let _ = clipboard.set_image(arboard::ImageData {
+                    width: image.width() as usize,
+                    height: image.height() as usize,
+                    bytes: std::borrow::Cow::Borrowed(image),
+                });
+            };
+        }
     });
 
     egui::ScrollArea::vertical()

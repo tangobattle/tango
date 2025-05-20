@@ -373,44 +373,30 @@ pub fn show(
     let clipboard = &mut shared_root_state.clipboard;
 
     ui.horizontal(|ui| {
-        ui.menu_button(
-            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),),
-            |ui| {
-                let fluent_args = [(
-                    "name",
-                    i18n::LOCALES.lookup(lang, "save-tab-patch-cards").unwrap().into(),
-                )]
-                .into();
-                let as_image_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &fluent_args)
-                    .unwrap();
-                let as_text_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &fluent_args)
-                    .unwrap();
+        let as_text_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-text").unwrap();
+        let as_image_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-image").unwrap();
 
-                if ui.button(as_image_text).clicked() {
-                    ui.close_menu();
+        if ui.button(as_text_text).clicked() {
+            ui.close_menu();
+            let text = patch_cards_string(patch_cards_view, assets);
+            let _ = clipboard.set_text(text);
+        }
 
-                    shared_root_state.offscreen_ui.resize(500, 0);
-                    shared_root_state.offscreen_ui.run(|ui| {
-                        egui::Frame::new()
-                            .inner_margin(egui::Margin::symmetric(8, 0))
-                            .fill(ui.style().visuals.panel_fill)
-                            .show(ui, |ui| {
-                                show_patch_cards(ui, font_families, game_lang, patch_cards_view, assets, state);
-                            });
+        if ui.button(as_image_text).clicked() {
+            ui.close_menu();
+
+            shared_root_state.offscreen_ui.resize(500, 0);
+            shared_root_state.offscreen_ui.run(|ui| {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(8, 0))
+                    .fill(ui.style().visuals.panel_fill)
+                    .show(ui, |ui| {
+                        show_patch_cards(ui, font_families, game_lang, patch_cards_view, assets, state);
                     });
-                    shared_root_state.offscreen_ui.copy_to_clipboard();
-                    shared_root_state.offscreen_ui.sweep();
-                }
-
-                if ui.button(as_text_text).clicked() {
-                    ui.close_menu();
-                    let text = patch_cards_string(patch_cards_view, assets);
-                    let _ = clipboard.set_text(text);
-                }
-            },
-        );
+            });
+            shared_root_state.offscreen_ui.copy_to_clipboard();
+            shared_root_state.offscreen_ui.sweep();
+        }
     });
 
     ui.style_mut().visuals.clip_rect_margin = 0.0;

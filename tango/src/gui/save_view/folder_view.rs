@@ -97,48 +97,40 @@ pub fn show(
             .collect::<Vec<_>>()
     };
 
-    ui.horizontal(|ui| {
-        ui.menu_button(
-            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap()),
-            |ui| {
-                let fluent_args = [("name", i18n::LOCALES.lookup(lang, "save-tab-folder").unwrap().into())].into();
-                let as_image_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &fluent_args)
-                    .unwrap();
-                let as_text_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &fluent_args)
-                    .unwrap();
-
-                if ui.button(as_image_text).clicked() {
-                    ui.close_menu();
-
-                    let mut state = State {
-                        grouped: state.grouped,
-                        ..State::new()
-                    };
-
-                    shared_root_state.offscreen_ui.resize(400, 0);
-                    shared_root_state.offscreen_ui.run(|ui| {
-                        egui::Frame::new()
-                            .inner_margin(egui::Margin::symmetric(8, 0))
-                            .fill(ui.style().visuals.panel_fill)
-                            .show(ui, |ui| {
-                                show_chips(ui, assets, font_families, game_lang, &items, &mut state);
-                            });
-                    });
-                    shared_root_state.offscreen_ui.copy_to_clipboard();
-                    shared_root_state.offscreen_ui.sweep();
-                }
-
-                if ui.button(as_text_text).clicked() {
-                    ui.close_menu();
-
-                    let _ = clipboard.set_text(chips_to_string(assets, &items, state.grouped));
-                }
-            },
-        );
-
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
         ui.checkbox(&mut state.grouped, i18n::LOCALES.lookup(lang, "save-group").unwrap());
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+            let as_text_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-text").unwrap();
+            let as_image_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-image").unwrap();
+
+            if ui.button(as_text_text).clicked() {
+                ui.close_menu();
+
+                let _ = clipboard.set_text(chips_to_string(assets, &items, state.grouped));
+            }
+
+            if ui.button(as_image_text).clicked() {
+                ui.close_menu();
+
+                let mut state = State {
+                    grouped: state.grouped,
+                    ..State::new()
+                };
+
+                shared_root_state.offscreen_ui.resize(400, 0);
+                shared_root_state.offscreen_ui.run(|ui| {
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin::symmetric(8, 0))
+                        .fill(ui.style().visuals.panel_fill)
+                        .show(ui, |ui| {
+                            show_chips(ui, assets, font_families, game_lang, &items, &mut state);
+                        });
+                });
+                shared_root_state.offscreen_ui.copy_to_clipboard();
+                shared_root_state.offscreen_ui.sweep();
+            }
+        });
     });
 
     ui.style_mut().visuals.clip_rect_margin = 0.0;

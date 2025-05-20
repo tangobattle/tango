@@ -327,62 +327,48 @@ pub fn show(
         .get_or_insert_with(|| auto_battle_data_view.materialized());
 
     ui.horizontal(|ui| {
-        ui.menu_button(
-            format!("📋 {}", i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),),
-            |ui| {
-                let fluent_args = [(
-                    "name",
-                    i18n::LOCALES.lookup(lang, "save-tab-auto-battle-data").unwrap().into(),
-                )]
-                .into();
-                let as_image_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-image", &fluent_args)
-                    .unwrap();
-                let as_text_text = i18n::LOCALES
-                    .lookup_with_args(lang, "copy-to-clipboard.named-as-text", &fluent_args)
-                    .unwrap();
+        let as_text_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-text").unwrap();
+        let as_image_text = i18n::LOCALES.lookup(lang, "copy-to-clipboard.as-image").unwrap();
 
-                if ui.button(as_image_text).clicked() {
-                    ui.close_menu();
+        if ui.button(as_text_text).clicked() {
+            ui.close_menu();
 
-                    shared_root_state.offscreen_ui.resize(400, 0);
-                    shared_root_state.offscreen_ui.run(|ui| {
-                        egui::Frame::new()
-                            .inner_margin(egui::Margin::symmetric(8, 0))
-                            .fill(ui.style().visuals.panel_fill)
-                            .show(ui, |ui| {
-                                show_auto_battle_data(
-                                    ui,
-                                    config,
-                                    &shared_root_state.font_families,
-                                    game_lang,
-                                    auto_battle_data_view,
-                                    assets,
-                                    &mut State::new(),
-                                );
-                            });
+            let _ = clipboard.set_text(
+                [
+                    make_string(materialized.secondary_standard_chips(), assets),
+                    make_string(materialized.standard_chips(), assets),
+                    make_string(materialized.mega_chips(), assets),
+                    make_string(&[materialized.giga_chip()], assets),
+                    make_string(&[None; 8], assets),
+                    make_string(&[materialized.program_advance()], assets),
+                ]
+                .join("\n"),
+            );
+        }
+
+        if ui.button(as_image_text).clicked() {
+            ui.close_menu();
+
+            shared_root_state.offscreen_ui.resize(400, 0);
+            shared_root_state.offscreen_ui.run(|ui| {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(8, 0))
+                    .fill(ui.style().visuals.panel_fill)
+                    .show(ui, |ui| {
+                        show_auto_battle_data(
+                            ui,
+                            config,
+                            &shared_root_state.font_families,
+                            game_lang,
+                            auto_battle_data_view,
+                            assets,
+                            &mut State::new(),
+                        );
                     });
-                    shared_root_state.offscreen_ui.copy_to_clipboard();
-                    shared_root_state.offscreen_ui.sweep();
-                }
-
-                if ui.button(as_text_text).clicked() {
-                    ui.close_menu();
-
-                    let _ = clipboard.set_text(
-                        [
-                            make_string(materialized.secondary_standard_chips(), assets),
-                            make_string(materialized.standard_chips(), assets),
-                            make_string(materialized.mega_chips(), assets),
-                            make_string(&[materialized.giga_chip()], assets),
-                            make_string(&[None; 8], assets),
-                            make_string(&[materialized.program_advance()], assets),
-                        ]
-                        .join("\n"),
-                    );
-                }
-            },
-        );
+            });
+            shared_root_state.offscreen_ui.copy_to_clipboard();
+            shared_root_state.offscreen_ui.sweep();
+        }
     });
 
     ui.style_mut().visuals.clip_rect_margin = 0.0;
