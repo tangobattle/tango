@@ -61,7 +61,7 @@ jobs:
             ./dist/tango-x86_64-windows.exe
 
   release-mac-universal:
-    runs-on: macos-12
+    runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v2
