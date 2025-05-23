@@ -103,6 +103,7 @@ wgpu = { version = "24.0.3", optional = true, features = ["angle"] }
 winit = { version = "0.30", features = ["serde"] }
 zip = "0.6"
 zstd = "0.11"
+normalize-path = "0.2.1"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.25"

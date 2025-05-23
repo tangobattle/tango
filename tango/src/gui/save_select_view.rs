@@ -1,6 +1,7 @@
 use crate::patch::{self, PatchMap};
 use crate::{config, game, gui, i18n, net, save};
 use fluent_templates::Loader;
+use normalize_path::NormalizePath;
 use std::io::Write;
 
 #[derive(Clone)]
@@ -1195,11 +1196,10 @@ pub fn show(
                                         .unwrap();
 
                                     if ui.button(button_text).clicked() {
-                                        let mut new_path = save_path.clone();
-                                        new_path.pop();
+                                        let mut new_path = saves_path.clone();
                                         new_path.push(&new_name);
 
-                                        if new_path.parent() != save_path.parent() {
+                                        if !new_path.normalize().starts_with(&saves_path) {
                                             error_text = Some(
                                                 i18n::LOCALES
                                                     .lookup(&config.language, "select-save.rename-save-invalid")
@@ -1212,6 +1212,11 @@ pub fn show(
                                                     .unwrap(),
                                             );
                                         } else {
+                                            // create parent folders
+                                            if let Some(parent_path) = new_path.parent() {
+                                                let _ = std::fs::create_dir_all(parent_path);
+                                            }
+
                                             match std::fs::rename(&save_path, &new_path) {
                                                 Ok(_) => {
                                                     rescan_saves(config, &shared_state.scanners.saves, ctx);
