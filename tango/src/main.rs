@@ -659,13 +659,18 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
     }
 
     fn exiting(&mut self, ev: &winit::event_loop::ActiveEventLoop) {
-        use winit::platform::wayland::ActiveEventLoopExtWayland;
+        let is_wayland = if cfg!(target_os = "linux") {
+            use winit::platform::wayland::ActiveEventLoopExtWayland;
+            ev.is_wayland()
+        } else {
+            false
+        };
 
         if let Some(backend) = &mut self.gfx_backend {
             backend.exiting();
 
             // resolve whether we should drop early for this backend and platform
-            if backend.should_take_on_exit() || ev.is_wayland() {
+            if backend.should_take_on_exit() || is_wayland {
                 self.gfx_backend.take();
             }
         }
