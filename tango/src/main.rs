@@ -659,7 +659,7 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
     }
 
     fn exiting(&mut self, _: &winit::event_loop::ActiveEventLoop) {
-        if let Some(backend) = &mut self.gfx_backend {
+        if let Some(mut backend) = self.gfx_backend.take() {
             backend.exiting();
         }
     }

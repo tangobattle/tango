@@ -14,7 +14,7 @@ wgpu = ["dep:wgpu", "dep:egui-wgpu"]
 
 [dependencies]
 anyhow = "1"
-arboard = "2"
+arboard = "3.5"
 async-trait = "0.1"
 bincode = "1"
 bps = { path = "../bps" }
@@ -100,7 +100,7 @@ toml = "0.5"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 walkdir = "2"
 wgpu = { version = "24.0.3", optional = true, features = ["angle"] }
-winit = { version = "0.30", features = ["serde"] }
+winit = { version = "0.30.11", features = ["serde"] }
 zip = "0.6"
 zstd = "0.11"
 normalize-path = "0.2.1"
