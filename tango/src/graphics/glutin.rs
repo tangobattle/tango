@@ -182,4 +182,10 @@ impl graphics::Backend for Backend {
     fn exiting(&mut self) {
         self.egui_glow.destroy();
     }
+
+    fn should_take_on_exit(&mut self) -> bool {
+        // dropping with the window crashes on x11
+        // we'll use an override to drop the window early on wayland
+        false
+    }
 }

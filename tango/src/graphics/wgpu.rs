@@ -134,4 +134,8 @@ impl graphics::Backend for Backend {
 
         self.egui_winit.on_window_event(&self.window, event)
     }
+
+    fn should_take_on_exit(&mut self) -> bool {
+        true
+    }
 }

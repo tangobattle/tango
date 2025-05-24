@@ -16,4 +16,5 @@ pub trait Backend {
     fn run(&mut self, run_ui: &mut dyn FnMut(&egui::Context)) -> std::time::Duration;
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse;
     fn exiting(&mut self) {}
+    fn should_take_on_exit(&mut self) -> bool;
 }
