@@ -65,11 +65,13 @@ pub fn show(
                                 ui.label(i18n::LOCALES.lookup(language, "updater-loading").unwrap());
                             });
                         } else if let Some(release) = release.as_ref() {
-                            egui_commonmark::CommonMarkViewer::new().show(
-                                ui,
-                                &mut state.as_mut().unwrap().commonmark_cache,
-                                &release.info,
-                            );
+                            if let Some(state) = state.as_mut() {
+                                egui_commonmark::CommonMarkViewer::new().show(
+                                    ui,
+                                    &mut state.commonmark_cache,
+                                    &release.info,
+                                );
+                            }
                         } else {
                             ui.label(i18n::LOCALES.lookup(language, "updater-no-info").unwrap());
                         }

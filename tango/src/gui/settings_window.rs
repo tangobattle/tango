@@ -38,7 +38,10 @@ pub fn show(
     .open(&mut open)
     .id(egui::Id::new("settings-window"))
     .show(ctx, |ui| {
-        let state = state.as_mut().unwrap();
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.selectable_value(

@@ -31,7 +31,9 @@ pub fn show(
 
             ui.separator();
 
-            let state = state.as_mut().unwrap();
+            let Some(state) = state.as_mut() else {
+                return;
+            };
 
             let mut jumping = false;
             ui.horizontal(|ui| {
