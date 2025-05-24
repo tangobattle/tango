@@ -159,7 +159,7 @@ pub fn scan(
             .and_then(|mut it| {
                 it.find(|p| {
                     p.as_ref()
-                        .map(|entry| entry.file_name().to_ascii_lowercase() == "readme")
+                        .map(|entry| entry.file_name().eq_ignore_ascii_case("readme"))
                         .unwrap_or(false)
                 })
                 .and_then(|r| r.ok())

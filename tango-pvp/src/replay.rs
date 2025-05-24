@@ -88,21 +88,16 @@ impl Replay {
         let mut input_pairs = vec![];
 
         loop {
-            let local_tick = if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
-                v
-            } else {
+            let Ok(local_tick) = zr.read_u32::<byteorder::LittleEndian>() else {
                 break;
             };
-            let remote_tick = if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
-                v
-            } else {
+            let Ok(remote_tick) = zr.read_u32::<byteorder::LittleEndian>() else {
                 break;
             };
-            let dt = std::time::Duration::from_millis(if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
-                v
-            } else {
+            let Ok(dt) = zr.read_u16::<byteorder::LittleEndian>() else {
                 break;
-            } as u64);
+            };
+            let dt = std::time::Duration::from_millis(dt as u64);
 
             let mut p1_input = crate::input::Input {
                 local_tick,

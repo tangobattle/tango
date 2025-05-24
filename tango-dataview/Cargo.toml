@@ -17,3 +17,6 @@ num-traits = "0.2"
 parking_lot = "0.12"
 patricia_tree = "0.5"
 thiserror = "1"
+
+[lints]
+workspace = true
