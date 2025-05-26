@@ -58,6 +58,21 @@ pub fn show(
                             None
                         };
                     }
+
+                    // add experimental prerelease button for "-dev" builds
+                    if env!("CARGO_PKG_VERSION").contains("-dev")
+                        && ui
+                            .selectable_label(false, egui::RichText::new("🧪").color(ui.visuals().selection.bg_fill))
+                            .on_hover_text_at_pointer(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "experimental-prerelease")
+                                    .unwrap(),
+                            )
+                            .clicked()
+                    {
+                        *show_settings = Some(gui::settings_window::State::new_prerelease_focused());
+                    }
+
                     let updater_status = sync::block_on(updater.status());
                     match updater_status {
                         updater::Status::UpToDate { .. } => {}

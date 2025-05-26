@@ -15,11 +15,22 @@ enum Tab {
 
 pub struct State {
     tab: Tab,
+    highlight_prerelease: bool,
 }
 
 impl State {
     pub fn new() -> Self {
-        Self { tab: Tab::General }
+        Self {
+            tab: Tab::General,
+            highlight_prerelease: false,
+        }
+    }
+
+    pub fn new_prerelease_focused() -> Self {
+        Self {
+            tab: Tab::Advanced,
+            highlight_prerelease: true,
+        }
     }
 }
 
@@ -97,7 +108,7 @@ pub fn show(
                         Tab::Audio => show_audio_tab(ui, config),
                         Tab::Netplay => show_netplay_tab(ui, config),
                         Tab::Patches => show_patches_tab(ui, config),
-                        Tab::Advanced => show_advanced_tab(ui, config, shared_root_state),
+                        Tab::Advanced => show_advanced_tab(ui, config, shared_root_state, state.highlight_prerelease),
                         Tab::About => show_about_tab(ui),
                     };
                 });
@@ -604,7 +615,12 @@ fn show_patches_tab(ui: &mut egui::Ui, config: &mut config::Config) {
         });
 }
 
-fn show_advanced_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root_state: &gui::SharedRootState) {
+fn show_advanced_tab(
+    ui: &mut egui::Ui,
+    config: &mut config::Config,
+    shared_root_state: &gui::SharedRootState,
+    highlight_prerelease: bool,
+) {
     egui::Grid::new("settings-window-general-grid")
         .num_columns(2)
         .show(ui, |ui| {
@@ -619,12 +635,22 @@ fn show_advanced_tab(ui: &mut egui::Ui, config: &mut config::Config, shared_root
             }
 
             {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-allow-prerelease-upgrades")
-                        .unwrap(),
-                );
-                ui.checkbox(&mut config.allow_prerelease_upgrades, "");
+                let prerelease_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-allow-prerelease-upgrades")
+                    .unwrap();
+
+                if highlight_prerelease {
+                    ui.strong(egui::RichText::new(prerelease_label).color(ui.visuals().selection.bg_fill));
+                } else {
+                    ui.strong(prerelease_label);
+                }
+
+                let checkbox_response = ui.checkbox(&mut config.allow_prerelease_upgrades, "");
+
+                if highlight_prerelease {
+                    checkbox_response.highlight();
+                }
+
                 ui.end_row();
             }
 
