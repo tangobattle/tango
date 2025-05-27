@@ -1,5 +1,7 @@
 replays = Replays
 
+replays-all-replays = All Replays
+
 replays-export = Export
 replays-export-multi = Export+
 replays-play = Play

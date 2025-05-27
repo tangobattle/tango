@@ -1,7 +1,8 @@
 use super::{memoize::ResultCacheSingle, replay_dump_window::ReplayDumpWindow};
 use crate::{config, game, gui, i18n, patch, scanner, session};
 use fluent_templates::Loader;
-use std::{rc::Rc, sync::Arc};
+use itertools::Itertools;
+use std::{borrow::Cow, rc::Rc, sync::Arc};
 use tango_dataview::save::Save;
 use tango_pvp::replay::Replay;
 
@@ -17,6 +18,7 @@ struct CachedData {
 pub struct State {
     replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, tango_pvp::replay::Metadata)>>,
     selection: Option<std::ops::Range<usize>>,
+    folder_filter: Option<std::path::PathBuf>,
     save_view: gui::save_view::State,
     replay_cache: ResultCacheSingle<std::path::PathBuf, Option<Rc<CachedData>>>,
 }
@@ -26,6 +28,7 @@ impl State {
         Self {
             selection: None,
             replays_scanner: scanner::Scanner::new(),
+            folder_filter: None,
             save_view: gui::save_view::State::new(),
             replay_cache: Default::default(),
         }
@@ -108,6 +111,16 @@ impl State {
     }
 }
 
+fn format_path(replays_path: &std::path::Path, path: &std::path::Path) -> String {
+    let string = path.strip_prefix(replays_path).unwrap_or(path).to_string_lossy();
+
+    if string.is_empty() {
+        String::from("/")
+    } else {
+        format!("/{string}/")
+    }
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     config: &config::Config,
@@ -122,6 +135,66 @@ pub fn show(
     let patches_scanner = shared_root_state.scanners.patches.clone();
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
+
+    let max_dropdown_height = ui.available_height();
+
+    egui::Frame::default()
+        .inner_margin(egui::Margin {
+            bottom: 2,
+            ..egui::Margin::from(8)
+        })
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let default_label = i18n::LOCALES.lookup(language, "replays-all-replays").unwrap();
+
+                egui::ComboBox::from_id_salt("game-select-combobox")
+                    .selected_text(
+                        state
+                            .folder_filter
+                            .as_ref()
+                            .map(|path| Cow::Owned(format_path(replays_path, path)))
+                            .unwrap_or(Cow::Borrowed(default_label.as_str())),
+                    )
+                    .wrap()
+                    .width(ui.spacing().combo_width.max(ui.available_width() / 3.0))
+                    .height(max_dropdown_height)
+                    .show_ui(ui, |ui| {
+                        const CHAR_WIDTH: f32 = 6.5;
+
+                        let replays = state.replays_scanner.read();
+                        let mut parent_folders = replays
+                            .iter()
+                            .flat_map(|(path, _, _)| path.parent())
+                            .unique()
+                            .map(|path| (path, format_path(replays_path, path)))
+                            .collect::<Vec<_>>();
+
+                        parent_folders.sort_by(|(_, a), (_, b)| a.cmp(b));
+
+                        // attempt to provide room to fix weird staircasing from using an imgui
+                        let mut max_width: f32 = default_label.len() as f32 * CHAR_WIDTH;
+
+                        for (_, path_str) in &parent_folders {
+                            max_width = max_width.max(path_str.len() as f32 * CHAR_WIDTH);
+                        }
+
+                        ui.allocate_space(egui::Vec2::new(max_width, 0.0));
+
+                        // render options
+                        if ui.selectable_label(false, default_label.as_str()).clicked() {
+                            state.folder_filter = None;
+                        }
+
+                        for (path, path_str) in parent_folders {
+                            if ui.selectable_label(false, path_str).clicked() {
+                                state.folder_filter = Some(path.to_path_buf());
+                            }
+                        }
+                    });
+            });
+        });
+
+    ui.separator();
 
     egui::SidePanel::left("replays-window-left-panel")
         .frame(egui::Frame::default().inner_margin(egui::Margin {
@@ -152,7 +225,14 @@ pub fn show(
                         let default_spacing = ui.style().spacing.item_spacing;
                         ui.style_mut().spacing.item_spacing = Default::default();
 
-                        for (i, (_, _, metadata)) in replays.iter().enumerate() {
+                        let folder_filter = state.folder_filter.as_ref();
+
+                        for (i, (path, _, metadata)) in replays.iter().enumerate() {
+                            if folder_filter.is_some_and(|filter| path.parent().is_some_and(|parent| parent != filter))
+                            {
+                                continue;
+                            }
+
                             let Some(ts) =
                                 std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(metadata.ts))
                             else {
