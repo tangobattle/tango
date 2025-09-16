@@ -19,7 +19,7 @@ pub struct SyncMutRef<'a> {
 }
 
 impl<'a> SyncMutRef<'a> {
-    pub fn as_ref(&self) -> SyncRef {
+    pub fn as_ref(&self) -> SyncRef<'_> {
         SyncRef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,

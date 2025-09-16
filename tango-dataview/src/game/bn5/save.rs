@@ -120,15 +120,15 @@ impl Save {
 }
 
 impl crate::save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView<'_> + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut<'_> + '_>> {
         Some(Box::new(ChipsViewMut { save: self }))
     }
 
-    fn view_navi(&self) -> Option<crate::save::NaviView> {
+    fn view_navi(&self) -> Option<crate::save::NaviView<'_>> {
         Some({
             let link_navi_view = LinkNaviView { save: self };
             if link_navi_view.navi() != 0 {
@@ -139,33 +139,33 @@ impl crate::save::Save for Save {
         })
     }
 
-    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
+    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut<'_>> {
         Some(crate::save::NaviViewMut::Navicust(Box::new(NavicustViewMut {
             save: self,
         })))
     }
 
-    fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView> {
+    fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView<'_>> {
         Some(crate::save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
             save: self,
         })))
     }
 
-    fn view_patch_cards_mut(&mut self) -> Option<crate::save::PatchCardsViewMut> {
+    fn view_patch_cards_mut(&mut self) -> Option<crate::save::PatchCardsViewMut<'_>> {
         Some(crate::save::PatchCardsViewMut::PatchCard56s(Box::new(
             PatchCard56sViewMut { save: self },
         )))
     }
 
-    fn view_auto_battle_data(&self) -> Option<Box<dyn crate::save::AutoBattleDataView + '_>> {
+    fn view_auto_battle_data(&self) -> Option<Box<dyn crate::save::AutoBattleDataView<'_> + '_>> {
         Some(Box::new(AutoBattleDataView { save: self }))
     }
 
-    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn crate::save::AutoBattleDataViewMut + '_>> {
+    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn crate::save::AutoBattleDataViewMut<'_> + '_>> {
         Some(Box::new(AutoBattleDataViewMut { save: self }))
     }
 
-    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 

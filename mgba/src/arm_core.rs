@@ -46,7 +46,7 @@ pub struct ARMCoreMutRef<'a> {
 }
 
 impl<'a> ARMCoreMutRef<'a> {
-    pub fn as_ref(&self) -> ARMCoreRef {
+    pub fn as_ref(&self) -> ARMCoreRef<'_> {
         ARMCoreRef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,

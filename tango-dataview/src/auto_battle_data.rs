@@ -44,7 +44,7 @@ impl MaterializedAutoBattleData {
     }
 
     pub fn materialize(
-        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
+        auto_battle_data_view: &(dyn crate::save::AutoBattleDataView<'_> + '_),
         assets: &dyn crate::rom::Assets,
     ) -> Self {
         let use_counts = (0..assets.num_chips())

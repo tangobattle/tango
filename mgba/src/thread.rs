@@ -160,7 +160,7 @@ impl Handle {
         unsafe { mgba_sys::mCoreThreadRunFunction(&mut thread.raw, Some(c_run_function)) }
     }
 
-    pub fn lock_audio(&self) -> AudioGuard {
+    pub fn lock_audio(&self) -> AudioGuard<'_> {
         let mut thread = self.thread.lock();
         let sync = sync::SyncMutRef {
             ptr: unsafe { &mut (*thread.raw.impl_).sync as *mut _ },

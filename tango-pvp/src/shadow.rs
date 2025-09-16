@@ -133,7 +133,7 @@ impl State {
         self.0.is_offerer
     }
 
-    pub fn lock_rng(&self) -> parking_lot::MutexGuard<rand_pcg::Mcg128Xsl64> {
+    pub fn lock_rng(&self) -> parking_lot::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
         self.0.rng.lock()
     }
 

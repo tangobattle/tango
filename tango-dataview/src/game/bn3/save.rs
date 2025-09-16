@@ -106,15 +106,15 @@ impl Save {
 }
 
 impl crate::save::Save for Save {
-    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 
-    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView<'_> + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_navi(&self) -> Option<crate::save::NaviView> {
+    fn view_navi(&self) -> Option<crate::save::NaviView<'_>> {
         Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 

@@ -20,7 +20,7 @@ impl<'a> GBARef<'a> {
         }
     }
 
-    pub fn timing(&self) -> timing::TimingRef {
+    pub fn timing(&self) -> timing::TimingRef<'_> {
         timing::TimingRef {
             ptr: unsafe { &(*self.ptr).timing },
             _lifetime: std::marker::PhantomData,
@@ -31,7 +31,7 @@ impl<'a> GBARef<'a> {
         unsafe { (*self.ptr).audio.masterVolume }
     }
 
-    pub fn sync(&self) -> Option<sync::SyncRef> {
+    pub fn sync(&self) -> Option<sync::SyncRef<'_>> {
         let sync_ptr = unsafe { (*self.ptr).sync };
         if sync_ptr.is_null() {
             None
@@ -52,7 +52,7 @@ pub struct GBAMutRef<'a> {
 }
 
 impl<'a> GBAMutRef<'a> {
-    pub fn as_ref(&self) -> GBARef {
+    pub fn as_ref(&self) -> GBARef<'_> {
         GBARef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,
@@ -72,7 +72,7 @@ impl<'a> GBAMutRef<'a> {
         }
     }
 
-    pub fn sync_mut(&mut self) -> Option<sync::SyncMutRef> {
+    pub fn sync_mut(&mut self) -> Option<sync::SyncMutRef<'_>> {
         let sync_ptr = unsafe { (*self.ptr).sync };
         if sync_ptr.is_null() {
             None

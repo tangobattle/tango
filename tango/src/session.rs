@@ -573,7 +573,7 @@ impl Session {
         }
     }
 
-    pub fn lock_vbuf(&self) -> parking_lot::MutexGuard<Vec<u8>> {
+    pub fn lock_vbuf(&self) -> parking_lot::MutexGuard<'_, Vec<u8>> {
         self.vbuf.lock()
     }
 

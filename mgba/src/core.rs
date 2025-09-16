@@ -53,14 +53,14 @@ impl Core {
         self.video_buffer = Some(buffer);
     }
 
-    pub fn as_ref(&self) -> CoreRef {
+    pub fn as_ref(&self) -> CoreRef<'_> {
         CoreRef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,
         }
     }
 
-    pub fn as_mut(&mut self) -> CoreMutRef {
+    pub fn as_mut(&mut self) -> CoreMutRef<'_> {
         CoreMutRef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,
@@ -99,7 +99,7 @@ impl<'a> CoreRef<'a> {
         unsafe { (*self.ptr).frequency.unwrap()(self.ptr) }
     }
 
-    pub fn gba(&self) -> gba::GBARef {
+    pub fn gba(&self) -> gba::GBARef<'_> {
         gba::GBARef {
             ptr: unsafe { (*self.ptr).board as *const mgba_sys::GBA },
             _lifetime: std::marker::PhantomData,
@@ -161,14 +161,14 @@ pub struct CoreMutRef<'a> {
 unsafe impl<'a> Send for CoreMutRef<'a> {}
 
 impl<'a> CoreMutRef<'a> {
-    pub fn as_ref(&self) -> CoreRef {
+    pub fn as_ref(&self) -> CoreRef<'_> {
         CoreRef {
             ptr: self.ptr,
             _lifetime: std::marker::PhantomData,
         }
     }
 
-    pub fn gba_mut(&mut self) -> gba::GBAMutRef {
+    pub fn gba_mut(&mut self) -> gba::GBAMutRef<'_> {
         gba::GBAMutRef {
             ptr: unsafe { (*self.ptr).board as *mut mgba_sys::GBA },
             _lifetime: std::marker::PhantomData,
@@ -275,7 +275,7 @@ impl<'a> CoreMutRef<'a> {
         unsafe { (*self.ptr).setAudioBufferSize.unwrap()(self.ptr, size as _) }
     }
 
-    pub fn audio_channel(&mut self, ch: i32) -> blip::BlipMutRef {
+    pub fn audio_channel(&mut self, ch: i32) -> blip::BlipMutRef<'_> {
         blip::BlipMutRef {
             ptr: unsafe { (*self.ptr).getAudioChannel.unwrap()(self.ptr, ch) },
             _lifetime: std::marker::PhantomData,

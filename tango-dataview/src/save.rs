@@ -26,39 +26,39 @@ where
     Self: SaveClone,
 {
     fn as_sram_dump(&self) -> Vec<u8>;
-    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]>;
+    fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]>;
 
     fn rebuild_checksum(&mut self);
 
-    fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn ChipsView<'_> + '_>> {
         None
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn ChipsViewMut<'_> + '_>> {
         None
     }
 
-    fn view_patch_cards(&self) -> Option<PatchCardsView> {
+    fn view_patch_cards(&self) -> Option<PatchCardsView<'_>> {
         None
     }
 
-    fn view_patch_cards_mut(&mut self) -> Option<PatchCardsViewMut> {
+    fn view_patch_cards_mut(&mut self) -> Option<PatchCardsViewMut<'_>> {
         None
     }
 
-    fn view_navi(&self) -> Option<NaviView> {
+    fn view_navi(&self) -> Option<NaviView<'_>> {
         None
     }
 
-    fn view_navi_mut(&mut self) -> Option<NaviViewMut> {
+    fn view_navi_mut(&mut self) -> Option<NaviViewMut<'_>> {
         None
     }
 
-    fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView + '_>> {
+    fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView<'_> + '_>> {
         None
     }
 
-    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut + '_>> {
+    fn view_auto_battle_data_mut(&mut self) -> Option<Box<dyn AutoBattleDataViewMut<'_> + '_>> {
         None
     }
 

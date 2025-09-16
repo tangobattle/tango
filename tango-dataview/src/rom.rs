@@ -287,7 +287,7 @@ impl MemoryMapper {
         }
     }
 
-    pub fn get(&self, start: u32) -> std::borrow::Cow<[u8]> {
+    pub fn get(&self, start: u32) -> std::borrow::Cow<'_, [u8]> {
         #[allow(clippy::manual_range_contains)]
         if start >= 0x02000000 && start < 0x04000000 {
             std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])

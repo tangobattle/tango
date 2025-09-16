@@ -140,11 +140,11 @@ impl Save {
         bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
     }
 
-    pub fn as_us_wram(&self) -> std::borrow::Cow<[u8]> {
+    pub fn as_us_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
 
-    pub fn as_jp_wram(&self) -> std::borrow::Cow<[u8]> {
+    pub fn as_jp_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         let mut buf = self.buf;
         convert_us_to_jp(&mut buf);
         std::borrow::Cow::Owned(buf.to_vec())
@@ -164,15 +164,15 @@ impl Save {
 }
 
 impl crate::save::Save for Save {
-    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView + '_>> {
+    fn view_chips(&self) -> Option<Box<dyn crate::save::ChipsView<'_> + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
-    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut + '_>> {
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut<'_> + '_>> {
         Some(Box::new(ChipsViewMut { save: self }))
     }
 
-    fn view_navi(&self) -> Option<crate::save::NaviView> {
+    fn view_navi(&self) -> Option<crate::save::NaviView<'_>> {
         Some({
             let link_navi_view = LinkNaviView { save: self };
             if link_navi_view.navi() != 0 {
@@ -183,13 +183,13 @@ impl crate::save::Save for Save {
         })
     }
 
-    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut> {
+    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut<'_>> {
         Some(crate::save::NaviViewMut::Navicust(Box::new(NavicustViewMut {
             save: self,
         })))
     }
 
-    fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView> {
+    fn view_patch_cards(&self) -> Option<crate::save::PatchCardsView<'_>> {
         if self.game_info.region != Region::JP {
             return None;
         }
@@ -198,7 +198,7 @@ impl crate::save::Save for Save {
         })))
     }
 
-    fn view_patch_cards_mut(&mut self) -> Option<crate::save::PatchCardsViewMut> {
+    fn view_patch_cards_mut(&mut self) -> Option<crate::save::PatchCardsViewMut<'_>> {
         if self.game_info.region != Region::JP {
             return None;
         }
@@ -207,7 +207,7 @@ impl crate::save::Save for Save {
         )))
     }
 
-    fn as_raw_wram(&self) -> std::borrow::Cow<[u8]> {
+    fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         match self.game_info.region {
             Region::US => self.as_us_wram(),
             Region::JP => self.as_jp_wram(),
