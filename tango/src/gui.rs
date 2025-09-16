@@ -257,9 +257,9 @@ pub fn show(
     }
 
     let is_dark = match config.theme {
-        config::Theme::System => match dark_light::detect() {
+        config::Theme::System => match dark_light::detect().unwrap_or(dark_light::Mode::Unspecified) {
             dark_light::Mode::Light => false,
-            dark_light::Mode::Default | dark_light::Mode::Dark => true,
+            dark_light::Mode::Unspecified | dark_light::Mode::Dark => true,
         },
         config::Theme::Light => false,
         config::Theme::Dark => true,

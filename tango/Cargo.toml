@@ -23,9 +23,9 @@ byteorder = "1"
 bytes = "1"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
-cpal = { version = "0.15", optional = true }
+cpal = { version = "0.16", optional = true }
 crc32fast = "1"
-dark-light = "1"
+dark-light = "2"
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 directories-next = "2"
 egui = { version = "0.31.1" }
@@ -63,13 +63,13 @@ num-traits = "0.2"
 open = "3"
 parking_lot = { version = "0.12" }
 png = "0.17"
-pollster = "0.3"
+pollster = "0.4"
 rand = "0.8"
 rand_pcg = { version = "0.3", features = ["serde1"] }
 regex = "1.6"
 reqwest = { version = "0.11", features = ["stream", "json"] }
 reservoir-sampling = "0.5"
-rfd = "0.10"
+rfd = "0.15"
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde-hex = "0.1"
@@ -80,9 +80,9 @@ sha2 = "0.10"
 sha3 = "0.10"
 shell-words = "1"
 slotmap = "1"
-steamlocate = "1"
+steamlocate = "2"
 subtle = "2"
-sys-locale = "0.2"
+sys-locale = "0.3"
 tango-dataview = { path = "../tango-dataview" }
 tango-filesync = { path = "../tango-filesync" }
 tango-gamedb = { path = "../tango-gamedb" }
@@ -91,7 +91,7 @@ tango-pvp = { path = "../tango-pvp" }
 tempfile = "3"
 thiserror = "1"
 time = { version = "0.3", features = ["formatting", "macros"] }
-tiny-skia = "0.7"
+tiny-skia = "0.11"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.16", features = ["rustls-tls-webpki-roots"] }
 tokio-util = { version = "0.7", features = ["io"] }

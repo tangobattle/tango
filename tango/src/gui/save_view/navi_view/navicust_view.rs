@@ -241,7 +241,7 @@ fn render_navicust_color_bar3(extra_color: Option<tango_dataview::rom::NavicustP
 
     let path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0);
+        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0).unwrap());
         pb.finish().unwrap()
     };
 
@@ -319,17 +319,20 @@ fn render_navicust_color_bar456(
 
     let outline_path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0);
+        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0).unwrap());
         pb.finish().unwrap()
     };
 
     let tile_path = {
         let mut pb = tiny_skia::PathBuilder::new();
         pb.push_rect(
-            BORDER_WIDTH / 2.0,
-            BORDER_WIDTH / 2.0,
-            TILE_WIDTH - BORDER_WIDTH,
-            SQUARE_SIZE / 2.0 - BORDER_WIDTH,
+            tiny_skia::Rect::from_xywh(
+                BORDER_WIDTH / 2.0,
+                BORDER_WIDTH / 2.0,
+                TILE_WIDTH - BORDER_WIDTH,
+                SQUARE_SIZE / 2.0 - BORDER_WIDTH,
+            )
+            .unwrap(),
         );
         pb.finish().unwrap()
     };
@@ -412,7 +415,7 @@ fn render_navicust_body(
 
     let square_path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, SQUARE_SIZE, SQUARE_SIZE);
+        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, SQUARE_SIZE, SQUARE_SIZE).unwrap());
         pb.finish().unwrap()
     };
 
@@ -602,25 +605,35 @@ fn render_navicust_body(
             let h = (height - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
 
             // Left
-            pb.push_rect(-BORDER_WIDTH / 2.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h);
+            pb.push_rect(
+                tiny_skia::Rect::from_xywh(-BORDER_WIDTH / 2.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h).unwrap(),
+            );
 
             // Right
             pb.push_rect(
-                (width - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                w,
-                h,
+                tiny_skia::Rect::from_xywh(
+                    (width - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                    1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                    w,
+                    h,
+                )
+                .unwrap(),
             );
 
             // Top
-            pb.push_rect(1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, -BORDER_WIDTH / 2.0, h, w);
+            pb.push_rect(
+                tiny_skia::Rect::from_xywh(1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, -BORDER_WIDTH / 2.0, h, w).unwrap(),
+            );
 
             // Bottom
             pb.push_rect(
-                1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                (height - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                h,
-                w,
+                tiny_skia::Rect::from_xywh(
+                    1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                    (height - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                    h,
+                    w,
+                )
+                .unwrap(),
             );
 
             pb.finish().unwrap()

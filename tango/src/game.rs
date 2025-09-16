@@ -69,20 +69,20 @@ pub fn game_from_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dy
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
-    let Some(mut steamdir) = steamlocate::SteamDir::locate() else {
+    let Ok(steamdir) =
+        steamlocate::SteamDir::locate().inspect_err(|err| log::error!("failed to locate steam directory: {err:?}"))
+    else {
         return roms;
     };
 
-    let apps = steamdir.apps();
-
-    if let Some(app) = apps.get(&1798010).and_then(|v| v.as_ref()) {
+    if let Ok(Some((app, lib))) = steamdir.find_app(1798010) {
         // Vol 1
-        roms.extend(scan_bnlc_rom_archives(&app.path));
+        roms.extend(scan_bnlc_rom_archives(&lib.resolve_app_dir(&app)));
     }
 
-    if let Some(app) = apps.get(&1798020).and_then(|v| v.as_ref()) {
+    if let Ok(Some((app, lib))) = steamdir.find_app(1798020) {
         // Vol 2
-        roms.extend(scan_bnlc_rom_archives(&app.path));
+        roms.extend(scan_bnlc_rom_archives(&lib.resolve_app_dir(&app)));
     }
 
     roms
