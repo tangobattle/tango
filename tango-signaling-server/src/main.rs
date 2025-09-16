@@ -2,8 +2,8 @@ mod httputil;
 mod iceconfig;
 mod matchmaking;
 use envconfig::Envconfig;
-use prost::Message;
 use routerify::ext::RequestExt;
+use tango_signaling::proto::prost::Message;
 
 #[derive(Envconfig)]
 struct Config {

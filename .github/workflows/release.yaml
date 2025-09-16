@@ -31,6 +31,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nsis mingw-w64 imagemagick wget libarchive-tools clang-15
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       # Horrible hack...
       - run: |
           sudo ln -s /usr/x86_64-w64-mingw32/lib/libshell32.a /usr/x86_64-w64-mingw32/lib/libShell32.a
@@ -81,6 +84,9 @@ jobs:
       - run: |
           sudo pip3 install semver==3.0.0-dev3 toml dmgbuild pyobjc-framework-Quartz mako
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -115,6 +121,9 @@ jobs:
 
       - run: |
           sudo pip3 install semver==3.0.0-dev3 toml mako
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
 
       - uses: dtolnay/rust-toolchain@stable
         with:

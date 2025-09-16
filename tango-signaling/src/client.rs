@@ -124,7 +124,7 @@ pub async fn connect(
                 e.body().as_ref().map(|b| b.as_bytes()).unwrap_or_default(),
             )?;
             return Err(Error::ServerAbort(
-                AbortReason::from_i32(abort.reason).unwrap_or_default(),
+                AbortReason::try_from(abort.reason).unwrap_or_default(),
             ));
         }
         Err(e) => {
@@ -245,7 +245,7 @@ pub async fn connect(
                 match &packet.which {
                     Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
                         return Err(Error::ServerAbort(
-                            AbortReason::from_i32(abort.reason).unwrap_or_default(),
+                            AbortReason::try_from(abort.reason).unwrap_or_default(),
                         ))
                     }
                     Some(crate::proto::signaling::packet::Which::Offer(offer)) => {

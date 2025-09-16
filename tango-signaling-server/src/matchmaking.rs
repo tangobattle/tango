@@ -1,6 +1,6 @@
 use byteorder::WriteBytesExt;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use prost::Message;
+use tango_signaling::proto::prost::Message;
 
 use crate::iceconfig;
 
