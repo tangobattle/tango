@@ -6,8 +6,11 @@ on:
       - created
 
 jobs:
+
   release-win32-x64:
     runs-on: ubuntu-22.04
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
       - uses: actions/checkout@v2
@@ -65,6 +68,8 @@ jobs:
 
   release-mac-universal:
     runs-on: macos-13
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
       - uses: actions/checkout@v2
@@ -103,6 +108,8 @@ jobs:
 
   release-linux-x86_64:
     runs-on: ubuntu-22.04 # Ubuntu 22.04 is used for higher glibc compatibility across users
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
       - uses: actions/checkout@v2
