@@ -241,196 +241,193 @@ impl Updater {
         self.finish_update();
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        tokio::task::spawn({
-            let cancellation_token = cancellation_token.clone();
-            let status = self.status.clone();
-            let path = self.path.clone();
-            let ui_callback = self.ui_callback.clone();
-            let current_version = self.current_version.clone();
-            let config = self.config.clone();
-            async move {
-                'l: loop {
-                    let status = status.clone();
-                    let path = path.clone();
-                    let ui_callback = ui_callback.clone();
-                    let current_version = current_version.clone();
-                    let config = config.clone();
-                    if let Err(e) = async move {
-                        let client = reqwest::Client::new();
-                        let releases = tokio::time::timeout(
-                            // 30 second timeout to get release info.
-                            std::time::Duration::from_secs(30),
-                            async {
-                                Ok::<_, anyhow::Error>(
-                                    client
-                                        .get(GITHUB_RELEASES_URL)
-                                        .header("User-Agent", "tango")
-                                        .send()
-                                        .await?
-                                        .json::<Vec<GithubReleaseInfo>>()
-                                        .await?,
-                                )
-                            },
-                        )
-                        .await??;
+        let captured_cancellation_token = cancellation_token.clone();
 
-                        let (version, info) = if let Some(release) = releases
-                            .into_iter()
-                            .flat_map(|r| {
-                                if !r.tag_name.starts_with('v') {
-                                    return vec![];
-                                }
-                                let v = if let Ok(v) = r.tag_name[1..].parse::<semver::Version>() {
-                                    v
-                                } else {
-                                    return vec![];
-                                };
+        let status = self.status.clone();
+        let path = self.path.clone();
+        let ui_callback = self.ui_callback.clone();
+        let current_version = self.current_version.clone();
+        let allow_prerelease_upgrades = self.config.read().allow_prerelease_upgrades;
 
-                                if !config.read().allow_prerelease_upgrades && (r.prerelease || !v.pre.is_empty()) {
-                                    return vec![];
-                                }
+        tokio::task::spawn(async move {
+            'l: loop {
+                let status = status.clone();
+                let path = path.clone();
+                let ui_callback = ui_callback.clone();
+                let current_version = current_version.clone();
 
-                                vec![(v, r)]
-                            })
-                            .max_by_key(|(v, _)| v.clone())
-                        {
-                            release
-                        } else {
-                            anyhow::bail!("no releases found at all");
-                        };
+                if let Err(e) = async move {
+                    let client = reqwest::Client::new();
+                    let releases = tokio::time::timeout(
+                        // 30 second timeout to get release info.
+                        std::time::Duration::from_secs(30),
+                        async {
+                            Ok::<_, anyhow::Error>(
+                                client
+                                    .get(GITHUB_RELEASES_URL)
+                                    .header("User-Agent", "tango")
+                                    .send()
+                                    .await?
+                                    .json::<Vec<GithubReleaseInfo>>()
+                                    .await?,
+                            )
+                        },
+                    )
+                    .await??;
 
-                        let release = Release {
-                            version: version.clone(),
-                            info: info.body.clone(),
-                        };
+                    let (version, info) = if let Some(release) = releases
+                        .into_iter()
+                        .flat_map(|r| {
+                            if !r.tag_name.starts_with('v') {
+                                return vec![];
+                            }
+                            let v = if let Ok(v) = r.tag_name[1..].parse::<semver::Version>() {
+                                v
+                            } else {
+                                return vec![];
+                            };
 
-                        // If this version is older or the one we already know about, skip.
-                        {
-                            let mut status_guard = status.lock().await;
-                            match &*status_guard {
-                                Status::UpToDate { .. } => {
-                                    if version <= current_version {
-                                        log::info!(
-                                            "current version is already latest: {} vs {}",
-                                            version,
-                                            current_version
-                                        );
+                            if !allow_prerelease_upgrades && (r.prerelease || !v.pre.is_empty()) {
+                                return vec![];
+                            }
 
-                                        *status_guard = Status::UpToDate {
-                                            release: Some(if version == current_version {
-                                                Some(release.clone())
-                                            } else {
-                                                None
-                                            }),
-                                        };
+                            vec![(v, r)]
+                        })
+                        .max_by_key(|(v, _)| v.clone())
+                    {
+                        release
+                    } else {
+                        anyhow::bail!("no releases found at all");
+                    };
 
-                                        return Ok(());
-                                    }
-                                }
-                                Status::ReadyToUpdate {
-                                    release:
-                                        Release {
-                                            version: update_version,
-                                            ..
-                                        },
-                                } => {
-                                    if version <= *update_version {
-                                        log::info!(
-                                            "latest version already downloaded: {} vs {}",
-                                            version,
-                                            update_version
-                                        );
-                                        return Ok(());
-                                    }
-                                }
-                                _ => {
-                                    // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
+                    let release = Release {
+                        version: version.clone(),
+                        info: info.body.clone(),
+                    };
+
+                    // If this version is older or the one we already know about, skip.
+                    {
+                        let mut status_guard = status.lock().await;
+                        match &*status_guard {
+                            Status::UpToDate { .. } => {
+                                let has_latest = version == current_version
+                                    || (allow_prerelease_upgrades && version < current_version);
+
+                                if has_latest {
+                                    log::info!("current version is already latest: {} vs {}", version, current_version);
+
+                                    *status_guard = Status::UpToDate {
+                                        release: Some(if version == current_version {
+                                            Some(release.clone())
+                                        } else {
+                                            None
+                                        }),
+                                    };
+
+                                    return Ok(());
                                 }
                             }
-                        }
+                            Status::ReadyToUpdate {
+                                release:
+                                    Release {
+                                        version: update_version,
+                                        ..
+                                    },
+                            } => {
+                                let has_latest = version == *update_version
+                                    || (allow_prerelease_upgrades && version < *update_version);
 
-                        // Find the appropriate release.
-                        let asset = if let Some(asset) =
-                            info.assets.into_iter().find(|asset| is_target_installer(&asset.name))
-                        {
+                                if has_latest {
+                                    log::info!("latest version already downloaded: {} vs {}", version, update_version);
+                                    return Ok(());
+                                }
+                            }
+                            _ => {
+                                // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
+                            }
+                        }
+                    }
+
+                    // Find the appropriate release.
+                    let asset =
+                        if let Some(asset) = info.assets.into_iter().find(|asset| is_target_installer(&asset.name)) {
                             asset
                         } else {
                             log::info!("version {} has no assets right now", version);
                             return Ok(());
                         };
 
-                        *status.lock().await = Status::UpdateAvailable {
-                            release: release.clone(),
-                        };
-                        if let Some(cb) = ui_callback.lock().await.as_ref() {
-                            cb();
-                        }
-
-                        let resp = tokio::time::timeout(
-                            // 30 second timeout to initiate connection.
-                            std::time::Duration::from_secs(30),
-                            reqwest::get(&asset.browser_download_url),
-                        )
-                        .await??;
-                        let mut current = 0u64;
-                        let total = resp.content_length().unwrap_or(0);
-
-                        let incomplete_output_path = path.join(INCOMPLETE_FILENAME);
-                        {
-                            let mut output_file = tokio::fs::File::create(&incomplete_output_path).await?;
-                            let mut stream = resp.bytes_stream();
-                            while let Some(chunk) = tokio::time::timeout(
-                                // 30 second timeout per stream chunk.
-                                std::time::Duration::from_secs(30),
-                                stream.next(),
-                            )
-                            .await?
-                            {
-                                let chunk = chunk?;
-                                output_file.write_all(&chunk).await?;
-                                current += chunk.len() as u64;
-                                *status.lock().await = Status::Downloading {
-                                    release: release.clone(),
-                                    current,
-                                    total,
-                                };
-                                if let Some(cb) = ui_callback.lock().await.as_ref() {
-                                    cb();
-                                }
-                            }
-                        }
-                        std::fs::rename(incomplete_output_path, path.join(PENDING_FILENAME))?;
-
-                        *status.lock().await = Status::ReadyToUpdate { release };
-                        if let Some(cb) = ui_callback.lock().await.as_ref() {
-                            cb();
-                        }
-
-                        Ok::<(), anyhow::Error>(())
-                    }
-                    .await
-                    {
-                        log::error!("updater failed: {:?}", e);
-                    }
-
-                    tokio::select! {
-                        _ = tokio::time::sleep(std::time::Duration::from_secs(30 * 60)) => { }
-                        _ = cancellation_token.cancelled() => { break 'l; }
-                    }
-                }
-
-                let mut status = status.lock().await;
-                if let Status::Downloading { release, .. } = &*status {
-                    // Do cleanup.
-                    let _ = std::fs::remove_file(path.join(IN_PROGRESS_FILENAME));
-                    let _ = std::fs::remove_file(path.join(INCOMPLETE_FILENAME));
-                    let _ = std::fs::remove_file(path.join(PENDING_FILENAME));
-                    *status = Status::UpdateAvailable {
+                    *status.lock().await = Status::UpdateAvailable {
                         release: release.clone(),
                     };
                     if let Some(cb) = ui_callback.lock().await.as_ref() {
                         cb();
                     }
+
+                    let resp = tokio::time::timeout(
+                        // 30 second timeout to initiate connection.
+                        std::time::Duration::from_secs(30),
+                        reqwest::get(&asset.browser_download_url),
+                    )
+                    .await??;
+                    let mut current = 0u64;
+                    let total = resp.content_length().unwrap_or(0);
+
+                    let incomplete_output_path = path.join(INCOMPLETE_FILENAME);
+                    {
+                        let mut output_file = tokio::fs::File::create(&incomplete_output_path).await?;
+                        let mut stream = resp.bytes_stream();
+                        while let Some(chunk) = tokio::time::timeout(
+                            // 30 second timeout per stream chunk.
+                            std::time::Duration::from_secs(30),
+                            stream.next(),
+                        )
+                        .await?
+                        {
+                            let chunk = chunk?;
+                            output_file.write_all(&chunk).await?;
+                            current += chunk.len() as u64;
+                            *status.lock().await = Status::Downloading {
+                                release: release.clone(),
+                                current,
+                                total,
+                            };
+                            if let Some(cb) = ui_callback.lock().await.as_ref() {
+                                cb();
+                            }
+                        }
+                    }
+                    std::fs::rename(incomplete_output_path, path.join(PENDING_FILENAME))?;
+
+                    *status.lock().await = Status::ReadyToUpdate { release };
+                    if let Some(cb) = ui_callback.lock().await.as_ref() {
+                        cb();
+                    }
+
+                    Ok::<(), anyhow::Error>(())
+                }
+                .await
+                {
+                    log::error!("updater failed: {:?}", e);
+                }
+
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(30 * 60)) => { }
+                    _ = captured_cancellation_token.cancelled() => { break 'l; }
+                }
+            }
+
+            let mut status = status.lock().await;
+            if let Status::Downloading { release, .. } = &*status {
+                // Do cleanup.
+                let _ = std::fs::remove_file(path.join(IN_PROGRESS_FILENAME));
+                let _ = std::fs::remove_file(path.join(INCOMPLETE_FILENAME));
+                let _ = std::fs::remove_file(path.join(PENDING_FILENAME));
+                *status = Status::UpdateAvailable {
+                    release: release.clone(),
+                };
+                if let Some(cb) = ui_callback.lock().await.as_ref() {
+                    cb();
                 }
             }
         });
