@@ -1206,18 +1206,13 @@ fn show_lobby_table(
                                     )
                                     .clicked()
                                 {
-                                    config.input_delay = std::cmp::min(
-                                        10,
-                                        std::cmp::max(
-                                            2,
-                                            ((lobby.latencies.median() * 60).as_nanos()
-                                                / 2
-                                                / std::time::Duration::from_secs(1).as_nanos())
-                                                as i32
-                                                + 1
-                                                - 2,
-                                        ),
-                                    ) as u32;
+                                    let input_delay = ((lobby.latencies.median() * 60).as_nanos()
+                                        / 2
+                                        / std::time::Duration::from_secs(1).as_nanos())
+                                        as i32
+                                        + 1
+                                        - 2;
+                                    config.input_delay = input_delay.clamp(2, 10) as u32;
                                 }
                             });
                         });
@@ -1601,6 +1596,7 @@ fn show_bottom_pane(
                                 .map(|(name, version, _)| (name.clone(), version.clone()));
                             let save_file = std::fs::OpenOptions::new()
                                 .create(true)
+                                .truncate(false)
                                 .write(true)
                                 .read(true)
                                 .open(save_path)

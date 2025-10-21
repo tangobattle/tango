@@ -169,7 +169,7 @@ impl Session {
                     let local_game_settings = local_settings.game_info.as_ref().unwrap();
                     let remote_game_settings = remote_settings.game_info.as_ref().unwrap();
 
-                    let replay_file = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&replay_filename)?;
+                    let replay_file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&replay_filename)?;
                     Ok(Some(tango_pvp::replay::Writer::new(
                         replay_file,
                         tango_pvp::replay::Metadata {

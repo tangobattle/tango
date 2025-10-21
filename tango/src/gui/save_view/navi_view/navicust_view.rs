@@ -96,7 +96,7 @@ fn render_navicust(
     ctx: &egui::Context,
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &(dyn tango_dataview::save::NavicustView),
+    navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     let body = render_navicust_body(materialized, navicust_layout, navicust_view, assets);
@@ -179,7 +179,7 @@ fn render_navicust(
 }
 
 fn gather_ncp_colors(
-    navicust_view: &(dyn tango_dataview::save::NavicustView),
+    navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> Vec<tango_dataview::rom::NavicustPartColor> {
     (0..navicust_view.count())
@@ -278,7 +278,7 @@ fn render_navicust_color_bar3(extra_color: Option<tango_dataview::rom::NavicustP
 }
 
 fn render_navicust_color_bar456(
-    navicust_view: &(dyn tango_dataview::save::NavicustView),
+    navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
@@ -378,7 +378,7 @@ fn render_navicust_color_bar456(
 fn render_navicust_body(
     materialized: &tango_dataview::navicust::MaterializedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
-    navicust_view: &(dyn tango_dataview::save::NavicustView),
+    navicust_view: &dyn tango_dataview::save::NavicustView,
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
 ) -> image::RgbaImage {
     let (height, width) = materialized.dim();

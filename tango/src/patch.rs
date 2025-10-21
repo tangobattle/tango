@@ -93,7 +93,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                             .send(),
                     )
                     .await?
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                    .map_err(|e| std::io::Error::other(e))?
                     .bytes_stream();
                     while let Some(chunk) = tokio::time::timeout(
                         // 30 second timeout per stream chunk.
@@ -102,7 +102,7 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                     )
                     .await?
                     {
-                        let chunk = chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        let chunk = chunk.map_err(|e| std::io::Error::other(e))?;
                         output_file.write_all(&chunk).await?;
                     }
                     log::info!("filesynced: {}", path.display());

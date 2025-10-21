@@ -42,10 +42,7 @@ async fn sync_entry(
             .collect::<Result<(), _>>()?;
         }
         Entry::File(hash) => {
-            let _permit = sem
-                .acquire()
-                .await
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let _permit = sem.acquire().await.map_err(std::io::Error::other)?;
             let needs_fetch = match tokio::fs::metadata(&real_path).await {
                 Ok(_) => {
                     let mut f = tokio::fs::File::open(&real_path).await?;

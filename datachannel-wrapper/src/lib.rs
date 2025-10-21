@@ -203,7 +203,7 @@ impl DataChannelSender {
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
         let mut state = self.state.lock().await;
         if let Some(err) = &state.error {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, err.clone()));
+            return Err(std::io::Error::other(err.clone()));
         }
 
         if let Some(open_rx) = state.open_rx.take() {
@@ -244,10 +244,10 @@ struct DataChannelHandler {
 fn datachannel_error_to_io_error(err: datachannel::Error) -> std::io::Error {
     match err {
         datachannel::Error::InvalidArg => std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid argument"),
-        datachannel::Error::Runtime => std::io::Error::new(std::io::ErrorKind::Other, "runtime error"),
+        datachannel::Error::Runtime => std::io::Error::other("runtime error"),
         datachannel::Error::NotAvailable => std::io::Error::new(std::io::ErrorKind::WouldBlock, "not available"),
         datachannel::Error::TooSmall => std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too small"),
-        datachannel::Error::Unkown => std::io::Error::new(std::io::ErrorKind::Other, "unknown"),
+        datachannel::Error::Unkown => std::io::Error::other("unknown"),
         datachannel::Error::BadString(s) => {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("bad string: {}", s))
         }

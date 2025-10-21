@@ -317,7 +317,7 @@ impl Client {
                 .as_mut()
                 .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
             if inner.current_request.is_some() {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "rpc in progress"));
+                return Err(std::io::Error::other("rpc in progress"));
             }
             inner.current_request = Some((nonce.clone(), rpc_tx));
             inner
