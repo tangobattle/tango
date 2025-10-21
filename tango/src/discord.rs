@@ -132,6 +132,8 @@ impl Client {
             let current_join_secret = current_join_secret.clone();
 
             tokio::task::spawn(async move {
+                let mut last_err_message = None;
+
                 loop {
                     {
                         let mut events_rx = {
@@ -154,7 +156,13 @@ impl Client {
                                     (rpc, events_rx)
                                 }
                                 Err(err) => {
-                                    log::warn!("did not open discord RPC client: {:?}", err);
+                                    let err_message = format!("{err:?}");
+
+                                    if last_err_message.as_ref() != Some(&err_message) {
+                                        log::warn!("did not open discord RPC client: {err_message}");
+                                        last_err_message = Some(err_message);
+                                    }
+
                                     tokio::time::sleep(std::time::Duration::from_secs(15)).await;
                                     continue;
                                 }
