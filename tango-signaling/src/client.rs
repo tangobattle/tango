@@ -132,9 +132,7 @@ pub async fn connect(
         }
     };
 
-    let raw = if let Some(raw) = signaling_stream.try_next().await? {
-        raw
-    } else {
+    let Some(raw) = signaling_stream.try_next().await? else {
         return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into());
     };
 
@@ -144,9 +142,7 @@ pub async fn connect(
         return Err(Error::InvalidPacket(raw));
     };
 
-    let hello = if let Some(crate::proto::signaling::packet::Which::Hello(hello)) = packet.which {
-        hello
-    } else {
+    let Some(crate::proto::signaling::packet::Which::Hello(hello)) = packet.which else {
         return Err(Error::UnexpectedPacket(packet));
     };
 
@@ -161,9 +157,7 @@ pub async fn connect(
                     .urls
                     .into_iter()
                     .flat_map(|url| {
-                        let colon_idx = if let Some(colon_idx) = url.chars().position(|c| c == ':') {
-                            colon_idx
-                        } else {
+                        let Some(colon_idx) = url.chars().position(|c| c == ':') else {
                             return vec![];
                         };
 
@@ -218,12 +212,10 @@ pub async fn connect(
         fut: Box::pin(async move {
             loop {
                 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-                let raw = if let Some(raw) = tokio::time::timeout(TIMEOUT, signaling_stream.try_next())
+                let Some(raw) = tokio::time::timeout(TIMEOUT, signaling_stream.try_next())
                     .await
                     .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))??
-                {
-                    raw
-                } else {
+                else {
                     return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into());
                 };
 

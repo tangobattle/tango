@@ -64,28 +64,24 @@ pub const EXPECTED_PROTOCOL_VERSION: u8 = 0x3a;
 async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    let remote_ip = if let Some(remote_ip) = request
+    let Some(remote_ip) = request
         .data::<State>()
         .unwrap()
         .real_ip_getter
         .get_remote_real_ip(&request)
-    {
-        remote_ip
-    } else {
+    else {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
             .body(hyper::Body::from("internal error"))
             .unwrap());
     };
 
-    let session_id = if let Some(session_id) = request.uri().query().and_then(|query| {
+    let Some(session_id) = request.uri().query().and_then(|query| {
         url::form_urlencoded::parse(query.as_bytes())
             .into_owned()
             .find(|(k, _)| k == "session_id")
             .map(|(_, v)| v)
-    }) {
-        session_id
-    } else {
+    }) else {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
             .body(hyper::Body::from(

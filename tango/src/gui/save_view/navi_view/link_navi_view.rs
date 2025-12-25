@@ -28,9 +28,7 @@ pub fn show(
     let font_families = &shared_root_state.font_families;
 
     let navi_id = navi_view.navi();
-    let navi = if let Some(navi) = assets.navi(navi_id) {
-        navi
-    } else {
+    let Some(navi) = assets.navi(navi_id) else {
         return;
     };
 

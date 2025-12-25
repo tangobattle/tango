@@ -184,9 +184,7 @@ impl Client {
                                     else => { break 'l; }
                                 };
 
-                                let (event, v) = if let Some(event) = event {
-                                    event
-                                } else {
+                                let Some((event, v)) = event else {
                                     break;
                                 };
 
@@ -195,11 +193,9 @@ impl Client {
                                     continue;
                                 }
 
-                                let secret = if let Some(secret) =
+                                let Some(secret) =
                                     v.and_then(|v| v.get("secret").and_then(|v| v.as_str().map(|v| v.to_string())))
-                                {
-                                    secret
-                                } else {
+                                else {
                                     continue;
                                 };
 

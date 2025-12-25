@@ -242,9 +242,7 @@ impl State {
             apply_shadow_input: Box::new({
                 let mut iq = input_pairs.into_iter().collect::<std::collections::VecDeque<_>>();
                 move |_| {
-                    let ip = if let Some(ip) = iq.pop_front() {
-                        ip
-                    } else {
+                    let Some(ip) = iq.pop_front() else {
                         anyhow::bail!("no more committed inputs");
                     };
                     Ok(ip.remote.packet)

@@ -60,9 +60,7 @@ pub async fn eval(
         stepper_state.round_result()
     };
 
-    let result = if let Some(result) = result {
-        result
-    } else {
+    let Some(result) = result else {
         return Err(anyhow::anyhow!("failed to read round result"));
     };
 

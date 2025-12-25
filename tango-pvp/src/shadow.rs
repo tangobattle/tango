@@ -210,17 +210,15 @@ impl Shadow {
             }
 
             let mut round_state = self.state.lock_round_state();
-            let round = if let Some(round) = round_state.round.as_mut() {
-                round
-            } else {
+            let Some(round) = round_state.round.as_mut() else {
                 continue;
             };
 
-            let state = if let Some(state) = round.first_committed_state.as_ref() {
-                state.clone()
-            } else {
+            let Some(state) = round.first_committed_state.as_ref() else {
                 continue;
             };
+
+            let state = state.clone();
 
             self.core.as_mut().load_state(&state).expect("load state");
             round.current_tick = 0;
@@ -263,9 +261,7 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            let applied_state = if let Some(applied_state) = self.state.0.applied_state.lock().take() {
-                applied_state
-            } else {
+            let Some(applied_state) = self.state.0.applied_state.lock().take() else {
                 continue;
             };
 

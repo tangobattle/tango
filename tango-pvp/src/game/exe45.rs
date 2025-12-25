@@ -354,9 +354,7 @@ impl crate::hooks::Hooks for Hooks {
                     };
 
                     let mut round_state = match_.lock_round_state();
-                    let round = if let Some(round) = round_state.round.as_mut() {
-                        round
-                    } else {
+                    let Some(round) = round_state.round.as_mut() else {
                         return;
                     };
 
@@ -563,9 +561,7 @@ impl crate::hooks::Hooks for Hooks {
                     let mut round_state = shadow_state.lock_round_state();
                     let round = round_state.round.as_mut().expect("round");
 
-                    let ip = if let Some(ip) = round.take_shadow_input() {
-                        ip
-                    } else {
+                    let Some(ip) = round.take_shadow_input() else {
                         return;
                     };
 
@@ -630,9 +626,7 @@ impl crate::hooks::Hooks for Hooks {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_core| {
                     let mut round_state = shadow_state.lock_round_state();
-                    let round = if let Some(round) = round_state.round.as_mut() {
-                        round
-                    } else {
+                    let Some(round) = round_state.round.as_mut() else {
                         return;
                     };
                     if !round.has_first_committed_state() {

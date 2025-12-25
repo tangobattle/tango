@@ -61,9 +61,7 @@ impl LateBinder {
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut stream = self.stream.lock();
-        let stream = if let Some(stream) = &mut *stream {
-            stream
-        } else {
+        let Some(stream) = &mut *stream else {
             for v in buf.iter_mut() {
                 *v = [0, 0];
             }

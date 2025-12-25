@@ -149,11 +149,10 @@ impl Match {
 
             // We need to wait for the next round to start to avoid dropping inputs on the floor.
             if input.round_number != last_round_number {
-                let round_number = if let Some(number) = self.round_started_rx.lock().await.recv().await {
-                    number
-                } else {
+                let Some(round_number) = self.round_started_rx.lock().await.recv().await else {
                     break;
                 };
+
                 assert!(round_number == input.round_number);
                 last_round_number = input.round_number;
             }
@@ -169,12 +168,9 @@ impl Match {
                     continue;
                 }
 
-                let round = match &mut round_state.round {
-                    None => {
-                        log::info!("no round in progress, dropping input");
-                        continue;
-                    }
-                    Some(b) => b,
+                let Some(round) = &mut round_state.round else {
+                    log::info!("no round in progress, dropping input");
+                    continue;
                 };
                 round.first_state_committed_rx.take()
             };
@@ -188,12 +184,9 @@ impl Match {
                 continue;
             }
 
-            let round = match &mut round_state.round {
-                None => {
-                    log::info!("no round in progress, dropping input");
-                    continue;
-                }
-                Some(b) => b,
+            let Some(round) = &mut round_state.round else {
+                log::info!("no round in progress, dropping input");
+                continue;
             };
 
             if !round.iq.can_add_remote_input() {
@@ -498,9 +491,7 @@ impl Round {
                 fps_target => fps_target,
             });
 
-        let round_result = if let Some(round_result) = ff_result.round_result {
-            round_result
-        } else {
+        let Some(round_result) = ff_result.round_result else {
             return Ok(None);
         };
 

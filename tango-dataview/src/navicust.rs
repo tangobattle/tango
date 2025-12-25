@@ -45,15 +45,11 @@ pub fn materialize(
 ) -> MaterializedNavicust {
     let mut materialized = ndarray::Array2::from_elem(max_size, None);
     for i in 0..navicust_view.count() {
-        let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
-            ncp
-        } else {
+        let Some(ncp) = navicust_view.navicust_part(i) else {
             continue;
         };
 
-        let info = if let Some(info) = assets.navicust_part(ncp.id) {
-            info
-        } else {
+        let Some(info) = assets.navicust_part(ncp.id) else {
             continue;
         };
 

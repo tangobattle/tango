@@ -129,9 +129,7 @@ pub fn scan(
             }
         };
 
-        let name = if let Some(name) = entry.file_name().to_str().map(|s| s.to_owned()) {
-            name
-        } else {
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_owned()) else {
             continue;
         };
 
@@ -236,9 +234,7 @@ pub fn scan(
                     continue;
                 };
 
-                let game = if let Some(game) = game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision) {
-                    game
-                } else {
+                let Some(game) = game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision) else {
                     continue;
                 };
 

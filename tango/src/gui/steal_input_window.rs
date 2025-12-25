@@ -33,9 +33,7 @@ pub fn show(ctx: &egui::Context, language: &unic_langid::LanguageIdentifier, ste
                 egui::Frame::new()
                     .inner_margin(egui::Margin::symmetric(32, 16))
                     .show(ui, |ui| {
-                        let userdata = if let Some(State { userdata, .. }) = &steal_input {
-                            userdata
-                        } else {
+                        let Some(State { userdata, .. }) = &steal_input else {
                             unreachable!();
                         };
 

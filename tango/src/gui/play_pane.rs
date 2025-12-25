@@ -103,23 +103,17 @@ fn make_warning(
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
     patches: &crate::patch::PatchMap,
 ) -> Option<Warning> {
-    let local_selection = if let Some(local_selection) = lobby.local_selection.as_ref() {
-        local_selection
-    } else {
+    let Some(local_selection) = lobby.local_selection.as_ref() else {
         return Some(Warning::NoLocalSelection);
     };
 
-    let remote_gi = if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
-        remote_gi
-    } else {
+    let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() else {
         return Some(Warning::NoRemoteSelection);
     };
 
-    let remote_game = if let Some(remote_game) =
+    let Some(remote_game) =
         game::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
-    {
-        remote_game
-    } else {
+    else {
         return Some(Warning::UnrecognizedGame);
     };
 
@@ -241,15 +235,11 @@ fn are_settings_compatible(
     remote_settings: &net::protocol::Settings,
     patches: &crate::patch::PatchMap,
 ) -> bool {
-    let local_game_info = if let Some(gi) = local_settings.game_info.as_ref() {
-        gi
-    } else {
+    let Some(local_game_info) = local_settings.game_info.as_ref() else {
         return false;
     };
 
-    let remote_game_info = if let Some(gi) = remote_settings.game_info.as_ref() {
-        gi
-    } else {
+    let Some(remote_game_info) = remote_settings.game_info.as_ref() else {
         return false;
     };
 
@@ -326,9 +316,7 @@ fn make_commitment(buf: &[u8]) -> [u8; 16] {
 
 impl Lobby {
     async fn uncommit(&mut self) -> Result<(), anyhow::Error> {
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
+        let Some(sender) = self.sender.as_mut() else {
             anyhow::bail!("no sender?")
         };
 
@@ -352,9 +340,7 @@ impl Lobby {
 
         log::info!("nonce = {:02x?}, commitment = {:02x?}", nonce, commitment);
 
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
+        let Some(sender) = self.sender.as_mut() else {
             anyhow::bail!("no sender?")
         };
         sender.send_commit(commitment).await?;
@@ -398,9 +384,7 @@ impl Lobby {
     }
 
     async fn send_settings(&mut self, settings: net::protocol::Settings) -> Result<(), anyhow::Error> {
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
+        let Some(sender) = self.sender.as_mut() else {
             anyhow::bail!("no sender?")
         };
         sender.send_settings(settings).await?;
@@ -524,15 +508,13 @@ impl Lobby {
                     if let Some(pi) = gi.patch.as_ref() {
                         let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision;
 
-                        let patch_version_metadata = if let Some(version_meta) = self
+                        let Some(patch_version_metadata) = self
                             .patches_scanner
                             .read()
                             .get(&pi.name)
                             .and_then(|p| p.versions.get(&pi.version))
                             .cloned()
-                        {
-                            version_meta
-                        } else {
+                        else {
                             log::error!("missing remote version metadata?");
                             return None;
                         };
@@ -568,9 +550,7 @@ impl Lobby {
     }
 
     async fn send_pong(&mut self, ts: std::time::SystemTime) -> Result<(), anyhow::Error> {
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
+        let Some(sender) = self.sender.as_mut() else {
             anyhow::bail!("no sender?")
         };
         sender.send_pong(ts).await?;
@@ -578,9 +558,7 @@ impl Lobby {
     }
 
     async fn send_ping(&mut self) -> Result<(), anyhow::Error> {
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
+        let Some(sender) = self.sender.as_mut() else {
             anyhow::bail!("no sender?")
         };
         sender.send_ping(std::time::SystemTime::now()).await?;
@@ -736,25 +714,19 @@ async fn run_connection_task(
                     let (mut sender, match_type, local_settings, remote_selection, remote_settings, remote_commitment, local_negotiated_state, local_selection, link_code) = {
                         let mut lobby = lobby.lock().await;
                         let local_settings = lobby.make_local_settings();
-                        let sender = if let Some(sender) = lobby.sender.take() {
-                            sender
-                        } else {
+                        let Some(sender) = lobby.sender.take() else {
                             return Err(ConnectionError::Other(anyhow::anyhow!("no sender?")));
                         };
                         (sender, lobby.match_type, local_settings, lobby.remote_selection.clone(), lobby.remote_settings.clone(), lobby.remote_commitment, lobby.local_negotiated_state.clone(), lobby.local_selection.clone(), lobby.link_code.clone())
                     };
 
-                    let remote_selection = if let Some(remote_selection) = remote_selection {
-                        remote_selection
-                    } else {
+                    let Some(remote_selection) = remote_selection else {
                         return Err(ConnectionError::Other(anyhow::anyhow!("missing remote selection?")));
                     };
 
                     let remote_patch_overrides = remote_selection.patch.as_ref().map(|(_, _, version_meta)| version_meta.rom_overrides.clone()).unwrap_or_default();
 
-                    let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
-                        (negotiated_state, raw_local_state)
-                    } else {
+                    let Some((local_negotiated_state, raw_local_state)) = local_negotiated_state else {
                         return Err(ConnectionError::Other(anyhow::anyhow!("missing local state?")));
                     };
 
@@ -787,9 +759,7 @@ async fn run_connection_task(
 
                     let raw_remote_negotiated_state = remote_chunks.into_iter().flatten().collect::<Vec<_>>();
 
-                    let received_remote_commitment = if let Some(commitment) = remote_commitment {
-                        commitment
-                    } else {
+                    let Some(received_remote_commitment) = remote_commitment else {
                         return Err(ConnectionError::Other(anyhow::anyhow!("no remote commitment?")));
                     };
 
@@ -806,9 +776,7 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let local_selection = if let Some(local_selection) = local_selection {
-                        local_selection
-                    } else {
+                     let Some(local_selection) = local_selection else {
                         return Err(ConnectionError::Other(anyhow::anyhow!("attempted to start match in invalid state")));
                     };
 

@@ -184,21 +184,15 @@ fn gather_ncp_colors(
 ) -> Vec<tango_dataview::rom::NavicustPartColor> {
     (0..navicust_view.count())
         .flat_map(|i| {
-            let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
-                ncp
-            } else {
+            let Some(ncp) = navicust_view.navicust_part(i) else {
                 return vec![];
             };
 
-            let info = if let Some(info) = assets.navicust_part(ncp.id) {
-                info
-            } else {
+            let Some(info) = assets.navicust_part(ncp.id) else {
                 return vec![];
             };
 
-            let color = if let Some(color) = info.color() {
-                color
-            } else {
+            let Some(color) = info.color() else {
                 return vec![];
             };
 
@@ -509,27 +503,19 @@ fn render_navicust_body(
     for (i, ncp_i) in materialized.iter().enumerate() {
         let x = i % width;
         let y = i / width;
-        let ncp_i = if let Some(ncp_i) = ncp_i {
-            *ncp_i
-        } else {
+        let Some(ncp_i) = ncp_i else {
             continue;
         };
 
-        let ncp = if let Some(ncp) = navicust_view.navicust_part(ncp_i) {
-            ncp
-        } else {
+        let Some(ncp) = navicust_view.navicust_part(*ncp_i) else {
             continue;
         };
 
-        let info = if let Some(info) = assets.navicust_part(ncp.id) {
-            info
-        } else {
+        let Some(info) = assets.navicust_part(ncp.id) else {
             continue;
         };
 
-        let color = if let Some(color) = info.color() {
-            color
-        } else {
+        let Some(color) = info.color() else {
             continue;
         };
 

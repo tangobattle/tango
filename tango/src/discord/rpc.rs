@@ -241,9 +241,7 @@ impl Client {
 
                                 if payload.cmd == Command::Dispatch {
                                     // This is an event that we've subscribed to.
-                                    let event = if let Some(event) = payload.evt.take() {
-                                        event
-                                    } else {
+                                    let Some(event) = payload.evt.take() else {
                                         continue;
                                     };
 
@@ -251,18 +249,14 @@ impl Client {
                                     continue;
                                 }
 
-                                let incoming_nonce = if let Some(nonce) = payload.nonce.take() {
-                                    nonce
-                                } else {
+                                let Some(incoming_nonce) = payload.nonce.take() else {
                                     return Err::<(), std::io::Error>(std::io::Error::new(
                                         std::io::ErrorKind::InvalidData,
                                         String::from("no nonce received"),
                                     ));
                                 };
 
-                                let (nonce, tx) = if let Some((nonce, tx)) = inner.current_request.take() {
-                                    (nonce, tx)
-                                } else {
+                                let Some((nonce, tx)) = inner.current_request.take() else {
                                     return Err::<(), std::io::Error>(std::io::Error::new(
                                         std::io::ErrorKind::InvalidData,
                                         String::from("no current request"),
@@ -305,9 +299,7 @@ impl Client {
     }
 
     async fn do_request(&self, payload: &Payload) -> std::io::Result<Payload> {
-        let nonce = if let Some(nonce) = payload.nonce.as_ref() {
-            nonce
-        } else {
+        let Some(nonce) = payload.nonce.as_ref() else {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "expected nonce"));
         };
         let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();

@@ -167,9 +167,7 @@ fn scan_bnlc_rom_archives(
 
         let entry_path = entry.path();
 
-        let file_name = if let Some(file_name) = entry_path.file_name() {
-            file_name
-        } else {
+        let Some(file_name) = entry_path.file_name() else {
             continue;
         };
 

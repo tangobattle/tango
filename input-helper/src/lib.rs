@@ -79,30 +79,21 @@ where
     }
 
     pub fn handle_controller_axis_motion(&mut self, id: u32, axis: usize, value: i16) {
-        let controller_state = if let Some(controller_state) = self.controllers.get_mut(&id) {
-            controller_state
-        } else {
-            return;
-        };
-        controller_state.axes[axis] = value;
+        if let Some(controller_state) = self.controllers.get_mut(&id) {
+            controller_state.axes[axis] = value;
+        }
     }
 
     pub fn handle_controller_button_up(&mut self, id: u32, button: Button) {
-        let controller_state = if let Some(controller_state) = self.controllers.get_mut(&id) {
-            controller_state
-        } else {
-            return;
-        };
-        controller_state.buttons_held.remove(&button);
+        if let Some(controller_state) = self.controllers.get_mut(&id) {
+            controller_state.buttons_held.remove(&button);
+        }
     }
 
     pub fn handle_controller_button_down(&mut self, id: u32, button: Button) {
-        let controller_state = if let Some(controller_state) = self.controllers.get_mut(&id) {
-            controller_state
-        } else {
-            return;
-        };
-        controller_state.buttons_held.insert(button);
+        if let Some(controller_state) = self.controllers.get_mut(&id) {
+            controller_state.buttons_held.insert(button);
+        }
     }
 
     pub fn handle_controller_connected(&mut self, id: u32, num_axes: usize) {

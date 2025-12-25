@@ -313,25 +313,19 @@ fn show_status_bar(
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (tps_adjustment, latency, round_info) = (|| {
-                    let pvp = if let session::Mode::PvP(pvp) = session.mode() {
-                        pvp
-                    } else {
+                    let session::Mode::PvP(pvp) = session.mode() else {
                         return (0.0, None, None);
                     };
 
                     let match_ = pvp.match_.blocking_lock();
-                    let match_ = if let Some(match_) = &*match_ {
-                        match_
-                    } else {
+                    let Some(match_) = &*match_ else {
                         return (0.0, None, None);
                     };
 
                     let latency = sync::block_on(pvp.latency());
 
                     let round_state = match_.lock_round_state();
-                    let round = if let Some(round) = round_state.round.as_ref() {
-                        round
-                    } else {
+                    let Some(round) = round_state.round.as_ref() else {
                         return (0.0, Some(latency), None);
                     };
 

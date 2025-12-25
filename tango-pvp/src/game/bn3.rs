@@ -463,9 +463,7 @@ impl crate::hooks::Hooks for Hooks {
 
                 let current_tick = round.current_tick();
 
-                let ip = if let Some(ip) = round.take_shadow_input() {
-                    ip
-                } else {
+                let Some(ip) = round.take_shadow_input() else {
                     let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                     byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick.saturating_sub(2));
                     munger.set_rx_packet(core, 0, &rx);
@@ -764,9 +762,7 @@ impl crate::hooks::Hooks for Hooks {
 
                 let current_tick = stepper_state.current_tick();
 
-                let ip = if let Some(ip) = stepper_state.pop_input_pair() {
-                    ip
-                } else {
+                let Some(ip) = stepper_state.pop_input_pair() else {
                     let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                     byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick.saturating_sub(2));
                     munger.set_rx_packet(core, 0, &rx);

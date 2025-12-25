@@ -56,20 +56,20 @@ impl super::Backend for Backend {
             .json::<Vec<Session>>()
             .await?;
 
-        let session = if let Some(session) = resp.into_iter().next() {
-            session
-        } else {
+        let Some(session) = resp.into_iter().next() else {
             anyhow::bail!("no session returned");
         };
 
         Ok(session
             .ice_servers
             .into_iter()
-            .map(|ice_server| tango_signaling::proto::signaling::packet::hello::IceServer {
-                credential: ice_server.credential,
-                username: ice_server.username,
-                urls: vec![ice_server.url],
-            })
+            .map(
+                |ice_server| tango_signaling::proto::signaling::packet::hello::IceServer {
+                    credential: ice_server.credential,
+                    username: ice_server.username,
+                    urls: vec![ice_server.url],
+                },
+            )
             .collect())
     }
 }

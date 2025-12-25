@@ -624,9 +624,7 @@ impl crate::hooks::Hooks for Hooks {
                         ));
                     }
 
-                    let ip = if let Some(ip) = round.take_shadow_input() {
-                        ip
-                    } else {
+                    let Some(ip) = round.take_shadow_input() else {
                         return;
                     };
 

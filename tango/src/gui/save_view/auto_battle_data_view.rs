@@ -137,9 +137,7 @@ fn show_table(
                                     });
                                 });
                                 strip.cell(|ui| {
-                                    let element = if let Some(element) = info.as_ref().map(|info| info.element()) {
-                                        element
-                                    } else {
+                                    let Some(element) = info.as_ref().map(|info| info.element()) else {
                                         return;
                                     };
 

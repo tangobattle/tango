@@ -281,9 +281,7 @@ impl Updater {
                             if !r.tag_name.starts_with('v') {
                                 return vec![];
                             }
-                            let v = if let Ok(v) = r.tag_name[1..].parse::<semver::Version>() {
-                                v
-                            } else {
+                            let Ok(v) = r.tag_name[1..].parse::<semver::Version>() else {
                                 return vec![];
                             };
 
