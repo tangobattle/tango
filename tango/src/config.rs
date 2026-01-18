@@ -52,17 +52,12 @@ impl Default for AudioBackend {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone, PartialEq, Eq)]
 pub enum Theme {
+    #[default]
     System,
     Light,
     Dark,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 fn serialize_language_identifier<S>(v: &unic_langid::LanguageIdentifier, serializer: S) -> Result<S::Ok, S::Error>
