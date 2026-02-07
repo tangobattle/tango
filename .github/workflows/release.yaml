@@ -67,7 +67,7 @@ jobs:
             ./dist/tango-x86_64-windows.exe
 
   release-mac-universal:
-    runs-on: macos-13
+    runs-on: macos-14
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
