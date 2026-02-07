@@ -3,14 +3,12 @@ use fluent_templates::Loader;
 
 pub struct State {
     nickname: String,
-    done_inputting_roms: bool,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            nickname: "".to_string(),
-            done_inputting_roms: false,
+            nickname: Default::default(),
         }
     }
 }
@@ -67,7 +65,7 @@ pub fn show(
 
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
-                        if state.done_inputting_roms {
+                        if has_roms {
                             ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
                         } else {
                             ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
@@ -75,41 +73,37 @@ pub fn show(
                         ui.strong(i18n::LOCALES.lookup(&config.language, "welcome-step-1-roms").unwrap());
                     });
 
-                    if !state.done_inputting_roms {
-                        ui.label({
-                            i18n::LOCALES
-                                .lookup(&config.language, "welcome-step-1-description-roms")
-                                .unwrap()
-                        });
+                    ui.label({
+                        i18n::LOCALES
+                            .lookup(&config.language, "welcome-step-1-description-roms")
+                            .unwrap()
+                    });
 
-                        ui.monospace(format!("{}", config.roms_path().display()));
+                    ui.monospace(format!("{}", config.roms_path().display()));
 
-                        ui.horizontal(|ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
+                            .clicked()
+                        {
+                            let _ = open::that(config.roms_path());
+                        }
+
+                        ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
                             if ui
-                                .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
+                                .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
                                 .clicked()
                             {
-                                let _ = open::that(config.roms_path());
+                                let roms_path = config.roms_path();
+                                let cloned_roms_scanner = roms_scanner.clone();
+                                let egui_ctx = ui.ctx().clone();
+                                tokio::task::spawn_blocking(move || {
+                                    cloned_roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
+                                    egui_ctx.request_repaint();
+                                });
                             }
-
-                            ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
-                                if ui
-                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
-                                    .clicked()
-                                {
-                                    let roms_path = config.roms_path();
-                                    let cloned_roms_scanner = roms_scanner.clone();
-                                    let egui_ctx = ui.ctx().clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        cloned_roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
-                                        egui_ctx.request_repaint();
-                                    });
-
-                                    state.done_inputting_roms = true;
-                                }
-                            });
                         });
-                    }
+                    });
                 });
 
                 ui.add_space(16.0);
