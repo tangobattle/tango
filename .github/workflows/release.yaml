@@ -59,7 +59,8 @@ jobs:
           sudo update-alternatives --quiet --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 90
           sudo update-alternatives --quiet --config x86_64-w64-mingw32-g++
 
-      - run: |
+      - name: Build
+        run: |
           BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr/x86_64-w64-mingw32/" ./win/build.sh
 
       - uses: softprops/action-gh-release@v2
@@ -99,7 +100,8 @@ jobs:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
       # using venv to avoid: "The directory '/Users/runner/Library/Caches/pip' or its parent directory is not owned or is not writable by the current user"
-      - run: |
+      - name: Build
+        run: |
           python3 -m venv ./macos/venv
           source ./macos/venv/bin/activate
           python3 -m pip install semver==3.0.0-dev3 toml dmgbuild pyobjc-framework-Quartz mako
@@ -144,7 +146,8 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
-      - run: |
+      - name: Build
+        run: |
           sudo apt-get update -y
           sudo apt-get upgrade -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl fuse git libnss3 librust-atk-dev librust-gdk-pixbuf-dev librust-gdk-sys-dev librust-pango-dev libsdl2-dev pkgconf sudo wget
