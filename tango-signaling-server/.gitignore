@@ -1,0 +1,4 @@
+node_modules
+/.wrangler
+/src/proto
+/worker-configuration.d.ts
