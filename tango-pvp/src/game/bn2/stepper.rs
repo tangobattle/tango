@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::hooks::{stepper_round_outcome_traps, stepper_trap, Trap};
+use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
 use super::rng::{generate_rng_state, random_background};
@@ -17,7 +17,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-            if stepper_state.replay_rng().is_some() && !stepper_state.has_committed_this_round() {
+            if stepper_state.is_replaying() && !stepper_state.has_committed_this_round() {
                 return;
             }
 
@@ -63,7 +63,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
         })
     };
 
-    let mut traps: Vec<Trap> = vec![
+    vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
@@ -92,78 +92,91 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 stepper_state.lock_inner().advance_to_next_replay_round_if_pending();
             })
         }),
-        stepper_trap(
-            hooks.offsets.rom.battle_start_play_music_call,
-            &stepper_state,
-            |state, mut core| {
+        (hooks.offsets.rom.battle_start_play_music_call, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |mut core: mgba::core::CoreMutRef| {
+                let state = stepper_state.lock_inner();
                 if !state.disable_bgm() {
                     return;
                 }
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-            },
-        ),
-        stepper_trap(hooks.offsets.rom.link_is_p2_ret, &stepper_state, |state, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
+            })
         }),
-        stepper_trap(hooks.offsets.rom.round_ending_entry1, &stepper_state, |state, _core| {
-            if state.is_round_ending() {
-                return;
-            }
-            state.set_round_ending();
+        (hooks.offsets.rom.link_is_p2_ret, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |mut core: mgba::core::CoreMutRef| {
+                let state = stepper_state.lock_inner();
+                core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
+            })
         }),
-        stepper_trap(hooks.offsets.rom.round_ending_entry2, &stepper_state, |state, _core| {
-            if state.is_round_ending() {
-                return;
-            }
-            state.set_round_ending();
+        (hooks.offsets.rom.round_ending_entry1, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                if state.is_round_ending() {
+                    return;
+                }
+                state.set_round_ending();
+            })
         }),
-        stepper_trap(hooks.offsets.rom.round_end_entry, &stepper_state, |state, _core| {
-            state.set_round_ended();
+        (hooks.offsets.rom.round_ending_entry2, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                if state.is_round_ending() {
+                    return;
+                }
+                state.set_round_ending();
+            })
         }),
-        {
+        (hooks.offsets.rom.round_end_entry, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_ended();
+            })
+        }),
+        (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
-            stepper_trap(
-                hooks.offsets.rom.main_read_joyflags,
-                &stepper_state,
-                move |state, mut core| {
-                    // In replay mode, do nothing until round_start_ret has fired.
-                    // Primary's match_round_trap + is_linking guard naturally
-                    // skips this PC during the comm-menu→battle transition;
-                    // without the round_active gate the stepper would inject
-                    // recorded battle joyflags into r4 during pre-battle code,
-                    // corrupting the menu state machine.
-                    if state.replay_rng().is_some() && !state.round_active() {
-                        return;
+            let stepper_state = stepper_state.clone();
+            Box::new(move |mut core: mgba::core::CoreMutRef| {
+                let mut state = stepper_state.lock_inner();
+                // In replay mode, do nothing until round_start_ret has fired.
+                // Primary's is_linking guard naturally skips this PC during
+                // the comm-menu→battle transition; without the round_active
+                // gate the stepper would inject recorded battle joyflags into
+                // r4 during pre-battle code, corrupting the menu state machine.
+                if state.is_replaying() && !state.round_active() {
+                    return;
+                }
+
+                let current_tick = state.current_tick();
+
+                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
+                {
+                    // Mirror primary: re-seed rng_state at first commit. Primary
+                    // sets it once at comm_menu_init_ret (used during init) and
+                    // again here (used in-battle). Without this second seed in
+                    // replay, the in-battle shared rng diverges from recording.
+                    if let Some(rng) = state.replay_rng().cloned() {
+                        let rng_state = generate_rng_state(&mut *rng.lock());
+                        munger.set_rng_state(core, rng_state);
                     }
+                    state.set_committed_state(core.save_state().expect("save committed state"));
+                }
 
-                    let current_tick = state.current_tick();
+                let Some(ip) = state.peek_input_pair().cloned() else {
+                    return;
+                };
 
-                    if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
-                    {
-                        // Mirror primary: re-seed rng_state at first commit. Primary
-                        // sets it once at comm_menu_init_ret (used during init) and
-                        // again here (used in-battle). Without this second seed in
-                        // replay, the in-battle shared rng diverges from recording.
-                        if let Some(rng) = state.replay_rng().cloned() {
-                            let rng_state = generate_rng_state(&mut *rng.lock());
-                            munger.set_rng_state(core, rng_state);
-                        }
-                        state.set_committed_state(core.save_state().expect("save committed state"));
-                    }
+                core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                    let Some(ip) = state.peek_input_pair().cloned() else {
-                        return;
-                    };
-
-                    core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
-
-                    if current_tick == state.dirty_tick() {
-                        state.set_dirty_state(core.save_state().expect("save dirty state"));
-                    }
-                },
-            )
-        },
+                if current_tick == state.dirty_tick() {
+                    state.set_dirty_state(core.save_state().expect("save dirty state"));
+                }
+            })
+        }),
         (
             hooks.offsets.rom.handle_input_custom_send_and_receive_call,
             make_send_and_receive_call_hook(),
@@ -185,31 +198,55 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }),
             )
         },
-        stepper_trap(
-            hooks.offsets.rom.round_call_jump_table_ret,
-            &stepper_state,
-            |state, _core| {
+        (hooks.offsets.rom.round_call_jump_table_ret, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
                 // Mirror primary: don't tick before first-commit. This PC fires
                 // between main_read_joyflags and handle_input_*_send_and_receive
                 // on the first battle tick, so without the gate current_tick
                 // jumps to 1 before the first send/receive's local_packet check
                 // runs, breaking the tick alignment for the whole replay.
-                if state.replay_rng().is_some() && !state.has_committed_this_round() {
+                if state.is_replaying() && !state.has_committed_this_round() {
                     return;
                 }
                 state.increment_current_tick();
-            },
-        ),
-    ];
-    traps.extend(stepper_round_outcome_traps(
-        &stepper_state,
-        &[
-            (hooks.offsets.rom.round_end_set_win, BattleOutcome::Win),
-            (hooks.offsets.rom.round_end_set_loss, BattleOutcome::Loss),
-            (hooks.offsets.rom.round_end_damage_judge_set_win, BattleOutcome::Win),
-            (hooks.offsets.rom.round_end_damage_judge_set_loss, BattleOutcome::Loss),
-            (hooks.offsets.rom.round_end_damage_judge_set_draw, BattleOutcome::Draw),
-        ],
-    ));
-    traps
+            })
+        }),
+        (hooks.offsets.rom.round_end_set_win, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_result(BattleOutcome::Win);
+            })
+        }),
+        (hooks.offsets.rom.round_end_set_loss, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_result(BattleOutcome::Loss);
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_win, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_result(BattleOutcome::Win);
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_loss, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_result(BattleOutcome::Loss);
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_draw, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                let mut state = stepper_state.lock_inner();
+                state.set_round_result(BattleOutcome::Draw);
+            })
+        }),
+    ]
 }

@@ -5,7 +5,7 @@
 //! check + body is identical for primary/shadow/stepper; only the state
 //! source differs. Build all six in one helper per mode.
 
-use crate::hooks::{match_trap, shadow_trap, stepper_trap, MatchHandle, Trap};
+use crate::hooks::{MatchHandle, Trap};
 
 /// `(rom address, gpr index)` pairs for the six pizzazz mov sites.
 fn entries(hooks: &super::Hooks) -> [(u32, usize); 6] {
@@ -31,12 +31,18 @@ pub(super) fn primary_traps(hooks: &super::Hooks, match_: &MatchHandle) -> Vec<T
     entries(hooks)
         .into_iter()
         .map(|(addr, gpr)| {
-            match_trap(addr, match_, move |match_, core| {
-                if match_.match_type().1 != 1 {
-                    return;
-                }
-                apply(core, gpr);
-            })
+            let match_ = match_.clone();
+            (
+                addr,
+                Box::new(move |core: mgba::core::CoreMutRef| {
+                    let guard = match_.blocking_lock();
+                    let Some(match_) = guard.as_ref() else { return };
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+                    apply(core, gpr);
+                }) as Box<dyn Fn(mgba::core::CoreMutRef)>,
+            )
         })
         .collect()
 }
@@ -45,12 +51,16 @@ pub(super) fn shadow_traps(hooks: &super::Hooks, shadow_state: &crate::shadow::S
     entries(hooks)
         .into_iter()
         .map(|(addr, gpr)| {
-            shadow_trap(addr, shadow_state, move |shadow_state, core| {
-                if shadow_state.match_type().1 != 1 {
-                    return;
-                }
-                apply(core, gpr);
-            })
+            let shadow_state = shadow_state.clone();
+            (
+                addr,
+                Box::new(move |core: mgba::core::CoreMutRef| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    apply(core, gpr);
+                }) as Box<dyn Fn(mgba::core::CoreMutRef)>,
+            )
         })
         .collect()
 }
@@ -59,12 +69,17 @@ pub(super) fn stepper_traps(hooks: &super::Hooks, stepper_state: &crate::stepper
     entries(hooks)
         .into_iter()
         .map(|(addr, gpr)| {
-            stepper_trap(addr, stepper_state, move |state, core| {
-                if state.match_type().1 != 1 {
-                    return;
-                }
-                apply(core, gpr);
-            })
+            let stepper_state = stepper_state.clone();
+            (
+                addr,
+                Box::new(move |core: mgba::core::CoreMutRef| {
+                    let state = stepper_state.lock_inner();
+                    if state.match_type().1 != 1 {
+                        return;
+                    }
+                    apply(core, gpr);
+                }) as Box<dyn Fn(mgba::core::CoreMutRef)>,
+            )
         })
         .collect()
 }

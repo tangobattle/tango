@@ -20,8 +20,7 @@
 //!   Both modes share `InnerState` and the per-game `stepper_traps` set.
 //!
 //! - [`hooks`]: the trap framework. ROM PCs are registered with closures
-//!   (`Trap`) that fire on hit. Helpers (`match_trap`, `shadow_trap`,
-//!   `stepper_trap`, etc.) absorb the lock-and-unwrap boilerplate.
+//!   (`Trap`) that fire on hit.
 //!
 //! - [`game`]: per-game (bn1..bn6, exe45) trap registrations. Each game has
 //!   `common`/`primary`/`shadow`/`stepper` submodules that supply the trap

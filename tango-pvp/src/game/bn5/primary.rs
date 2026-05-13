@@ -1,4 +1,4 @@
-use crate::hooks::{match_round_trap, match_trap, CompletionToken, MatchHandle, Trap};
+use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
 use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
 
@@ -9,23 +9,50 @@ pub(super) fn traps(
     completion_token: CompletionToken,
 ) -> Vec<Trap> {
     vec![
-        {
+        (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
-            match_trap(hooks.offsets.rom.comm_menu_init_ret, &match_, move |match_, core| {
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
                 munger.start_battle_from_comm_menu(core, match_.match_type().0);
             })
-        },
-        match_trap(hooks.offsets.rom.round_set_ending, &match_, |match_, _core| {
-            match_.end_round().expect("end round");
         }),
-        match_trap(hooks.offsets.rom.round_start_ret, &match_, |match_, _core| {
-            crate::sync::block_on(match_.start_round()).expect("start round");
+        (hooks.offsets.rom.round_set_ending, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                match_.end_round().expect("end round");
+            })
         }),
-        match_round_trap(hooks.offsets.rom.battle_is_p2_tst, &match_, |_match_, round, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+        (hooks.offsets.rom.round_start_ret, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                crate::sync::block_on(match_.start_round()).expect("start round");
+            })
         }),
-        match_round_trap(hooks.offsets.rom.link_is_p2_ret, &match_, |_match_, round, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+        (hooks.offsets.rom.battle_is_p2_tst, {
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+            })
+        }),
+        (hooks.offsets.rom.link_is_p2_ret, {
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+            })
         }),
         (
             hooks.offsets.rom.handle_sio_entry,
@@ -36,15 +63,18 @@ pub(super) fn traps(
                 );
             }),
         ),
-        {
+        (hooks.offsets.rom.comm_menu_init_battle_entry, {
             let munger = hooks.munger();
-            match_trap(hooks.offsets.rom.comm_menu_init_battle_entry, &match_, move |match_, core| {
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
                 let (battle_settings, background) =
                     random_battle_settings_and_background(match_.match_type().1 == 1, &mut *rng);
                 munger.set_battle_settings_and_background(core, battle_settings, background);
             })
-        },
+        }),
         (
             hooks.offsets.rom.comm_menu_end_battle_entry,
             Box::new(move |_core| {
@@ -60,9 +90,15 @@ pub(super) fn traps(
                 munger.set_copy_data_input_state(core, if match_.blocking_lock().is_some() { 2 } else { 4 });
             })
         }),
-        {
+        (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
-            match_round_trap(hooks.offsets.rom.main_read_joyflags, &match_, move |match_, round, core| {
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+
                 if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
 
@@ -114,10 +150,15 @@ pub(super) fn traps(
                     match_.cancel();
                 }
             })
-        },
-        {
+        }),
+        (hooks.offsets.rom.round_post_increment_tick, {
             let munger = hooks.munger();
-            match_round_trap(hooks.offsets.rom.round_post_increment_tick, &match_, move |_match_, round, core| {
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
                 if !round.has_committed_state() {
                     return;
                 }
@@ -132,6 +173,6 @@ pub(super) fn traps(
                     );
                 }
             })
-        },
+        }),
     ]
 }

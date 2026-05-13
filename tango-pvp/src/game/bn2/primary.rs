@@ -1,4 +1,4 @@
-use crate::hooks::{match_round_trap, match_trap, CompletionToken, MatchHandle, Trap};
+use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
 use super::rng::{generate_rng_state, random_background};
 use super::INIT_RX;
@@ -24,9 +24,12 @@ pub(super) fn traps(
         })
     };
     vec![
-        {
+        (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
-            match_trap(hooks.offsets.rom.comm_menu_init_ret, &match_, move |match_, core| {
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
                 let offerer_rng_state = generate_rng_state(&mut *rng);
                 let answerer_rng_state = generate_rng_state(&mut *rng);
@@ -40,57 +43,81 @@ pub(super) fn traps(
                 );
                 munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
             })
-        },
+        }),
         (
             hooks.offsets.rom.match_end_ret,
             Box::new(move |_core| {
                 completion_token.complete();
             }),
         ),
-        match_trap(hooks.offsets.rom.round_ending_entry1, &match_, |match_, _core| {
-            match_.end_round().expect("end round");
+        (hooks.offsets.rom.round_ending_entry1, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                match_.end_round().expect("end round");
+            })
         }),
-        match_trap(hooks.offsets.rom.round_ending_entry2, &match_, |match_, _core| {
-            match_.end_round().expect("end round");
+        (hooks.offsets.rom.round_ending_entry2, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                match_.end_round().expect("end round");
+            })
         }),
-        match_trap(hooks.offsets.rom.round_start_ret, &match_, |match_, _core| {
-            crate::sync::block_on(match_.start_round()).expect("start round");
+        (hooks.offsets.rom.round_start_ret, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                crate::sync::block_on(match_.start_round()).expect("start round");
+            })
         }),
-        match_round_trap(hooks.offsets.rom.link_is_p2_ret, &match_, |_match_, round, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+        (hooks.offsets.rom.link_is_p2_ret, {
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+            })
         }),
-        {
+        (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
-            match_round_trap(
-                hooks.offsets.rom.main_read_joyflags,
-                &match_,
-                move |match_, round, core| {
-                    if !munger.is_linking(core) {
-                        return;
-                    }
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
 
-                    if !round.has_committed_state() {
-                        let mut rng = match_.lock_rng();
-                        let rng_state = generate_rng_state(&mut *rng);
-                        munger.set_rng_state(core, rng_state);
+                if !munger.is_linking(core) {
+                    return;
+                }
 
-                        match_
-                            .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
-                            .expect("record first commit");
-                        log::info!("primary rng state: {:08x}", munger.rng_state(core));
-                        log::info!("battle state committed on {}", round.current_tick());
-                    }
+                if !round.has_committed_state() {
+                    let mut rng = match_.lock_rng();
+                    let rng_state = generate_rng_state(&mut *rng);
+                    munger.set_rng_state(core, rng_state);
 
-                    if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                        core,
-                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                    )) {
-                        log::error!("failed to add local input: {}", e);
-                        match_.cancel();
-                    }
-                },
-            )
-        },
+                    match_
+                        .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
+                        .expect("record first commit");
+                    log::info!("primary rng state: {:08x}", munger.rng_state(core));
+                    log::info!("battle state committed on {}", round.current_tick());
+                }
+
+                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
+                    core,
+                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                )) {
+                    log::error!("failed to add local input: {}", e);
+                    match_.cancel();
+                }
+            })
+        }),
         (
             hooks.offsets.rom.handle_input_custom_send_and_receive_call,
             make_send_and_receive_call_hook(),
@@ -119,15 +146,18 @@ pub(super) fn traps(
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             }),
         ),
-        match_round_trap(
-            hooks.offsets.rom.round_call_jump_table_ret,
-            &match_,
-            |_match_, round, _core| {
+        (hooks.offsets.rom.round_call_jump_table_ret, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut round_state = match_.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
                 if !round.has_committed_state() {
                     return;
                 }
                 round.increment_current_tick();
-            },
-        ),
+            })
+        }),
     ]
 }

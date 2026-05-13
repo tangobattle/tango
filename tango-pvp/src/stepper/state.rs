@@ -460,6 +460,10 @@ impl InnerState {
     // These return Option / sensible Fastforwarder-mode defaults so per-game
     // stepper traps can use them unconditionally.
 
+    pub fn is_replaying(&self) -> bool {
+        self.replay.is_some()
+    }
+
     /// Returns the replay-mode RNG, if this stepper is in replay mode.
     pub fn replay_rng(&self) -> Option<&SharedRng> {
         self.replay.as_ref().map(|r| &r.rng)

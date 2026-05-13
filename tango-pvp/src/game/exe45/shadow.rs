@@ -1,12 +1,13 @@
-use crate::hooks::{shadow_result_is_in_traps, shadow_round_trap, shadow_trap, Trap};
+use crate::hooks::Trap;
 
 use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
-    let mut traps: Vec<Trap> = vec![
-        {
+    vec![
+        (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
-            shadow_trap(hooks.offsets.rom.comm_menu_init_ret, &shadow_state, move |shadow_state, core| {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |core| {
                 let mut rng = shadow_state.lock_rng();
 
                 let match_type = shadow_state.match_type().0 as u32;
@@ -17,19 +18,35 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
 
                 munger.start_battle_from_comm_menu(core, shadow_state.match_type().0, battle_settings, background);
             })
-        },
-        shadow_trap(hooks.offsets.rom.round_start_ret, &shadow_state, |shadow_state, _core| {
-            shadow_state.start_round();
         }),
-        shadow_trap(hooks.offsets.rom.round_end_entry, &shadow_state, |shadow_state, core| {
-            shadow_state.end_round();
-            shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+        (hooks.offsets.rom.round_start_ret, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.start_round();
+            })
         }),
-        shadow_round_trap(hooks.offsets.rom.battle_is_p2_tst, &shadow_state, |_shadow_state, round, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+        (hooks.offsets.rom.round_end_entry, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |core| {
+                shadow_state.end_round();
+                shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+            })
         }),
-        shadow_round_trap(hooks.offsets.rom.link_is_p2_ret, &shadow_state, |_shadow_state, round, mut core| {
-            core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+        (hooks.offsets.rom.battle_is_p2_tst, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |mut core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+            })
+        }),
+        (hooks.offsets.rom.link_is_p2_ret, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |mut core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+            })
         }),
         (
             hooks.offsets.rom.handle_sio_entry,
@@ -51,9 +68,13 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 }),
             )
         },
-        {
+        (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
-            shadow_round_trap(hooks.offsets.rom.main_read_joyflags, &shadow_state, move |shadow_state, round, mut core| {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |mut core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+
                 if !round.has_first_committed_state() {
                     let mut rng = shadow_state.lock_rng();
 
@@ -95,10 +116,13 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     shadow_state.set_applied_state(core.save_state().expect("save state"), round.current_tick());
                 }
             })
-        },
-        {
+        }),
+        (hooks.offsets.rom.copy_input_data_entry, {
             let munger = hooks.munger();
-            shadow_round_trap(hooks.offsets.rom.copy_input_data_entry, &shadow_state, move |shadow_state, round, core| {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
                 let Some(pending) = round.take_shadow_input() else {
                     return;
                 };
@@ -127,30 +151,57 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     &remote_packet.clone().try_into().unwrap(),
                 );
             })
-        },
-        {
+        }),
+        (hooks.offsets.rom.copy_input_data_ret, {
             let munger = hooks.munger();
-            shadow_round_trap(hooks.offsets.rom.copy_input_data_ret, &shadow_state, move |_shadow_state, round, core| {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
                 round.set_remote_packet(munger.tx_packet(core).to_vec());
                 round.set_input_injected();
             })
-        },
-        shadow_round_trap(hooks.offsets.rom.round_call_jump_table_ret, &shadow_state, |_shadow_state, round, _core| {
-            if !round.has_first_committed_state() {
-                return;
-            }
-            round.increment_current_tick();
         }),
-    ];
-    traps.extend(shadow_result_is_in_traps(
-        &shadow_state,
-        &[
-            hooks.offsets.rom.round_end_set_win,
-            hooks.offsets.rom.round_end_set_loss,
-            hooks.offsets.rom.round_end_damage_judge_set_win,
-            hooks.offsets.rom.round_end_damage_judge_set_loss,
-            hooks.offsets.rom.round_end_damage_judge_set_draw,
-        ],
-    ));
-    traps
+        (hooks.offsets.rom.round_call_jump_table_ret, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                let mut round_state = shadow_state.lock_round_state();
+                let Some(round) = round_state.round.as_mut() else { return };
+                if !round.has_first_committed_state() {
+                    return;
+                }
+                round.increment_current_tick();
+            })
+        }),
+        (hooks.offsets.rom.round_end_set_win, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.lock_round_state().set_result_is_in();
+            })
+        }),
+        (hooks.offsets.rom.round_end_set_loss, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.lock_round_state().set_result_is_in();
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_win, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.lock_round_state().set_result_is_in();
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_loss, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.lock_round_state().set_result_is_in();
+            })
+        }),
+        (hooks.offsets.rom.round_end_damage_judge_set_draw, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.lock_round_state().set_result_is_in();
+            })
+        }),
+    ]
 }
