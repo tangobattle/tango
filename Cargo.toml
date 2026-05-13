@@ -14,7 +14,6 @@ members = [
     "tango-pvp",
     "tango-replaytool",
     "tango-signaling",
-    "tango-signaling-server",
 ]
 
 [workspace.lints.clippy]
