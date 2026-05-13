@@ -1,8 +1,6 @@
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Input {
     pub round_number: u8,
-    pub local_tick: u32,
-    pub tick_diff: i8,
     pub joyflags: u16,
 }
 

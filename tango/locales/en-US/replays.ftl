@@ -23,6 +23,7 @@ replays-export-open = Open
 replays-export-lossless = Lossless 1x
 
 replay-viewer-pause = Pause
+replay-viewer-exit = Exit
 replay-viewer-step = Step
 replay-viewer-speed = Speed
 replay-viewer-speed-up = Speed up

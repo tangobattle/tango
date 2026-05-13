@@ -239,7 +239,15 @@ pub fn show(
     {
         let mut session = state.shared.session.lock();
         if let Some(s) = session.as_ref() {
-            if s.completed() {
+            // Replay sessions stay open after completion so the user can
+            // continue scrubbing; they exit only via the explicit exit
+            // button (which sets close_requested). Other modes auto-close
+            // when the underlying match / single-player session finishes.
+            let should_close = match s.mode() {
+                session::Mode::Replayer(_) => s.close_requested(),
+                _ => s.completed(),
+            };
+            if should_close {
                 *session = None;
             }
         }
@@ -312,20 +320,21 @@ pub fn show(
     let session = state.shared.session.clone();
     let session_guard = session.lock();
 
-    if let Some(session) = session_guard.as_ref() {
+    if let Some(session_ref) = session_guard.as_ref() {
         let title = i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap();
         let window_request = crate::WindowRequest::SetTitle(title);
         state.shared.send_window_request(window_request);
 
+        let session_view_state = state.session_view.get_or_insert_with(session_view::State::new);
         session_view::show(
             ctx,
             config,
             &mut state.shared,
             input_state,
-            session,
+            session_ref,
             &state.last_mouse_motion_time,
             &mut state.show_escape_window,
-            state.session_view.get_or_insert_with(session_view::State::new),
+            session_view_state,
         );
     } else {
         state.session_view = None;

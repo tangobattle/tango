@@ -17,6 +17,7 @@ replays-export-confirm-error = Droga!
 replays-export-open = Abrir
 replays-export-lossless = Sem perda de conteúdo da gravação
 replay-viewer-pause = Pausar
+replay-viewer-exit = Sair
 replay-viewer-step = avançar quadro
 replay-viewer-speed = Velocidade de reprodução
 replay-viewer-speed-up = Aumentar velocidade

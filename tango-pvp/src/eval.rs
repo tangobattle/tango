@@ -2,21 +2,31 @@ pub async fn eval(
     replay: &crate::replay::Replay,
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Sync + Send),
-    extra_traps: impl FnOnce() -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> + Send + Sync,
+    extra_traps: impl FnOnce() -> Vec<crate::hooks::Trap> + Send + Sync,
 ) -> Result<(crate::stepper::RoundResult, Box<mgba::state::State>), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango")?;
 
     let vf = mgba::vfile::VFile::from_vec(rom.to_vec());
     core.as_mut().load_rom(vf)?;
+    core.as_mut()
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
     core.as_mut().reset();
 
-    let input_pairs = replay.input_pairs.clone();
+    if replay.rounds.is_empty() {
+        return Err(anyhow::anyhow!("replay has no rounds"));
+    }
 
+    let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
     let stepper_state = crate::stepper::State::new(
         (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
         replay.local_player_index,
-        input_pairs,
+        replay.rounds.clone(),
         0,
+        replay.rng_seed,
+        replay.is_offerer,
+        0,
+        0,
+        total_replay_ticks,
         Box::new(|| {}),
     );
 
@@ -28,21 +38,21 @@ pub async fn eval(
         traps.extend(extra_traps());
         core.set_traps(traps);
     }
-    core.as_mut().load_state(&replay.local_state)?;
 
+    let replay_is_complete = replay.is_complete;
     loop {
         {
             let mut stepper_state = stepper_state.lock_inner();
             if let Some(err) = stepper_state.take_error() {
                 return Err(err);
             }
-            if stepper_state.input_pairs_left() == 0 {
+            if stepper_state.is_round_ended() {
                 break;
             }
-
-            // For old-style replays, we don't have a precise ending, so we have to just take the result.
-            if let Some(result) = stepper_state.round_result() {
-                return Ok((result, core.as_mut().save_state()?));
+            if !replay_is_complete && stepper_state.total_input_pairs_left() == 0 {
+                // Incomplete replay: ran out of inputs before the final
+                // round naturally ended. Take whatever round_result we have.
+                break;
             }
         }
 

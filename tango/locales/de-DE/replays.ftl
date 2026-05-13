@@ -17,6 +17,7 @@ replays-export-confirm-error = Verdammt!
 replays-export-open = Öffnen
 replays-export-lossless = Verlustfrei 1x
 replay-viewer-pause = Pause
+replay-viewer-exit = Beenden
 replay-viewer-step = Schritt
 replay-viewer-speed = Geschwindigkeit
 replay-viewer-speed-up = Geschwindigkeit steigern

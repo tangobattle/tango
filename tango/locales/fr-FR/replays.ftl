@@ -17,6 +17,7 @@ replays-export-confirm-error = Mince !
 replays-export-open = Ouvrir
 replays-export-lossless = Sans perte 1x
 replay-viewer-pause = Pause
+replay-viewer-exit = Quitter
 replay-viewer-step = Étape
 replay-viewer-speed = Vitesse
 replay-viewer-speed-up = Accélérer

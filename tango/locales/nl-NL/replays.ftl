@@ -17,6 +17,7 @@ replays-export-confirm-error = Potverdriedubbeltjes!
 replays-export-open = Open
 replays-export-lossless = Lossless 1x
 replay-viewer-pause = Pauzeren
+replay-viewer-exit = Afsluiten
 replay-viewer-step = Stap
 replay-viewer-speed = Afspeelsnelheid
 replay-viewer-speed-up = Speed up

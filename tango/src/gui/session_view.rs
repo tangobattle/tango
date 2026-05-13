@@ -7,6 +7,7 @@ pub struct State {
     opponent_save_view: gui::save_view::State,
     own_save_view: gui::save_view::State,
     debug_window: Option<gui::debug_window::State>,
+    replay_controls: replay_controls_window::State,
 }
 
 impl State {
@@ -16,6 +17,7 @@ impl State {
             opponent_save_view: gui::save_view::State::new(),
             own_save_view: gui::save_view::State::new(),
             debug_window: None,
+            replay_controls: replay_controls_window::State::new(),
         }
     }
 }
@@ -147,7 +149,7 @@ pub fn show(
                 )),
             )));
         }
-        session::Mode::Replayer => {
+        session::Mode::Replayer(_) => {
             discord_client.set_current_activity(Some(discord::make_base_activity(None)));
         }
     }
@@ -160,8 +162,8 @@ pub fn show(
                 session::EXPECTED_FPS
             });
         }
-        session::Mode::Replayer => {
-            replay_controls_window::show(ctx, session, language, last_mouse_motion_time);
+        session::Mode::Replayer(_) => {
+            replay_controls_window::show(ctx, session, &mut state.replay_controls, language);
         }
         _ => {}
     }

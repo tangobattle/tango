@@ -1,46 +1,33 @@
-#[derive(Clone)]
-pub struct Packet {
-    pub packet: Vec<u8>,
-    pub tick: u32,
-}
-
+/// A committed local-side input plus the matching outgoing packet for that
+/// tick. Tick is positional — derived from the input's position in its
+/// round / queue, never embedded in the struct.
 #[derive(Clone, Debug)]
 pub struct Input {
-    pub local_tick: u32,
-    pub remote_tick: u32,
     pub joyflags: u16,
     pub packet: Vec<u8>,
-    pub dt: std::time::Duration,
 }
 
-impl Input {
-    pub fn lag(&self) -> i32 {
-        self.remote_tick as i32 - self.local_tick as i32
-    }
-}
-
+/// A committed input without its outgoing packet. Local inputs upgrade to
+/// `Input` once the Fastforwarder pairs them with a packet via
+/// [`PartialInput::with_packet`].
 #[derive(Clone, Debug)]
 pub struct PartialInput {
-    pub local_tick: u32,
-    pub remote_tick: u32,
     pub joyflags: u16,
-    pub dt: std::time::Duration,
 }
 
 impl PartialInput {
-    pub fn lag(&self) -> i32 {
-        self.remote_tick as i32 - self.local_tick as i32
-    }
-
     pub fn with_packet(self, packet: Vec<u8>) -> Input {
         Input {
-            local_tick: self.local_tick,
-            remote_tick: self.remote_tick,
             joyflags: self.joyflags,
-            dt: self.dt,
             packet,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Pair<LocalInput, RemoteInput> {
+    pub local: LocalInput,
+    pub remote: RemoteInput,
 }
 
 pub struct PairQueue<LocalInput, RemoteInput> {
@@ -48,12 +35,6 @@ pub struct PairQueue<LocalInput, RemoteInput> {
     remote_queue: std::collections::VecDeque<RemoteInput>,
     local_delay: u32,
     max_length: usize,
-}
-
-#[derive(Clone, Debug)]
-pub struct Pair<LocalInput, RemoteInput> {
-    pub local: LocalInput,
-    pub remote: RemoteInput,
 }
 
 impl<LocalInput, RemoteInput> PairQueue<LocalInput, RemoteInput>

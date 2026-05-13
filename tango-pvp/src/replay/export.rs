@@ -40,6 +40,7 @@ const SAMPLE_RATE: f64 = 48000.0;
 
 fn make_core_and_state(
     rom: &[u8],
+    sram: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
     replay: &crate::replay::Replay,
     settings: &Settings,
@@ -48,15 +49,24 @@ fn make_core_and_state(
     core.enable_video_buffer();
 
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
+    core.as_mut().load_save(mgba::vfile::VFile::from_vec(sram.to_vec()))?;
     core.as_mut().reset();
 
-    let input_pairs = replay.input_pairs.clone();
+    if replay.rounds.is_empty() {
+        return Err(anyhow::anyhow!("replay has no rounds"));
+    }
 
+    let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
     let stepper_state = crate::stepper::State::new(
         (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
         replay.local_player_index,
-        input_pairs,
+        replay.rounds.clone(),
         0,
+        replay.rng_seed,
+        replay.is_offerer,
+        0,
+        0,
+        total_replay_ticks,
         Box::new(|| {}),
     );
     stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
@@ -66,10 +76,8 @@ fn make_core_and_state(
         let stepper_state = stepper_state.clone();
         let mut traps = hooks.common_traps();
         traps.extend(hooks.stepper_traps(stepper_state.clone()));
-        traps.extend(hooks.stepper_replay_traps());
         core.set_traps(traps);
     }
-    core.as_mut().load_state(&replay.local_state)?;
 
     Ok((core, stepper_state))
 }
@@ -236,18 +244,18 @@ pub async fn export(
             .collect::<Vec<_>>(),
     )?;
 
-    let total_frames = replays.iter().map(|replay| replay.input_pairs.len()).sum();
+    let total_frames = replays.iter().map(|replay| replay.total_input_pairs()).sum();
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
     for replay in replays {
-        let (mut core, state) = make_core_and_state(rom, hooks, replay, settings)?;
-        let replay_len = replay.input_pairs.len();
+        let (mut core, state) = make_core_and_state(rom, &replay.local_sram, hooks, replay, settings)?;
+        let replay_len = replay.total_input_pairs();
 
         loop {
             {
                 let state = state.lock_inner();
-                if (!replay.is_complete && state.input_pairs_left() == 0) || state.is_round_ended() {
+                if (!replay.is_complete && state.total_input_pairs_left() == 0) || state.is_round_ended() {
                     break;
                 }
             }
@@ -263,7 +271,7 @@ pub async fn export(
             byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
             audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
             progress_callback(
-                replay_len - state.lock_inner().input_pairs_left() + completed_total,
+                replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
                 total_frames,
             );
         }
@@ -336,7 +344,7 @@ pub async fn export_twosided(
             .collect::<Vec<_>>(),
     )?;
 
-    let total_frames = replays.iter().map(|replay| replay.input_pairs.len()).sum();
+    let total_frames = replays.iter().map(|replay| replay.total_input_pairs()).sum();
 
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
@@ -345,22 +353,37 @@ pub async fn export_twosided(
         let local_replay = replay.clone();
         let remote_replay = local_replay.clone().into_remote();
 
-        let (mut local_core, local_state) = make_core_and_state(local_rom, local_hooks, &local_replay, settings)?;
-        let (mut remote_core, remote_state) = make_core_and_state(remote_rom, remote_hooks, &remote_replay, settings)?;
+        let (mut local_core, local_state) = make_core_and_state(
+            local_rom,
+            &local_replay.local_sram,
+            local_hooks,
+            &local_replay,
+            settings,
+        )?;
+        let (mut remote_core, remote_state) = make_core_and_state(
+            remote_rom,
+            &remote_replay.local_sram,
+            remote_hooks,
+            &remote_replay,
+            settings,
+        )?;
 
-        let replay_len = replay.input_pairs.len();
+        let replay_len = replay.total_input_pairs();
 
         loop {
             {
                 let local_state = local_state.lock_inner();
-                if (!local_replay.is_complete && local_state.input_pairs_left() == 0) || local_state.is_round_ended() {
+                if (!local_replay.is_complete && local_state.total_input_pairs_left() == 0)
+                    || local_state.is_round_ended()
+                {
                     break;
                 }
             }
 
             {
                 let remote_state = remote_state.lock_inner();
-                if (!remote_replay.is_complete && remote_state.input_pairs_left() == 0) || remote_state.is_round_ended()
+                if (!remote_replay.is_complete && remote_state.total_input_pairs_left() == 0)
+                    || remote_state.is_round_ended()
                 {
                     break;
                 }

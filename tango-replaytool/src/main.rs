@@ -104,33 +104,42 @@ pub async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
+    let raw_input_size = replay
+        .rounds
+        .iter()
+        .flatten()
+        .next()
+        .map(|ip| ip.local.packet.len())
+        .unwrap_or(0) as u8;
     let mut writer = tango_pvp::replay::Writer::new(
         Box::new(std::fs::File::create(output_path)?),
         replay.metadata,
+        replay.is_offerer,
         replay.local_player_index,
-        replay.input_pairs.first().map(|ip| ip.local.packet.len()).unwrap_or(0) as u8,
+        raw_input_size,
+        replay.rng_seed,
+        &replay.local_sram,
+        &replay.remote_sram,
     )?;
-    writer.write_state(&replay.local_state)?;
-    writer.write_state(&replay.remote_state)?;
-    for ip in replay.input_pairs {
-        writer.write_input(replay.local_player_index, &ip)?;
+    for round in &replay.rounds {
+        writer.start_round()?;
+        for ip in round {
+            writer.write_input(replay.local_player_index, ip)?;
+        }
     }
     writer.finish()?;
     Ok(())
 }
 
 async fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
-    for ip in &replay.input_pairs {
-        println!(
-            "tick = {:08x?}, l = {:?} {:02x} {:02x?}, r = {:?} {:02x} {:02x?}",
-            ip.local.local_tick,
-            ip.local.dt,
-            ip.local.joyflags,
-            ip.local.packet,
-            ip.remote.dt,
-            ip.remote.joyflags,
-            ip.remote.packet,
-        );
+    for (idx, round) in replay.rounds.iter().enumerate() {
+        println!("=== round {} ({} inputs) ===", idx + 1, round.len());
+        for (tick, ip) in round.iter().enumerate() {
+            println!(
+                "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
+                tick, ip.local.joyflags, ip.local.packet, ip.remote.joyflags, ip.remote.packet,
+            );
+        }
     }
     Ok(())
 }
@@ -144,7 +153,7 @@ async fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::E
 
 async fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
-    stdout.write_all(replay.local_state.wram())?;
+    stdout.write_all(&replay.local_sram)?;
     Ok(())
 }
 

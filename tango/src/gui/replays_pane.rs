@@ -16,7 +16,7 @@ struct CachedData {
 }
 
 pub struct State {
-    replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, tango_pvp::replay::Metadata)>>,
+    replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, tango_pvp::replay::Metadata)>>,
     selection: Option<std::ops::Range<usize>>,
     folder_filter: Option<std::path::PathBuf>,
     save_view: gui::save_view::State,
@@ -87,16 +87,16 @@ impl State {
                             }
                         };
 
-                        let (num_inputs, metadata) = match tango_pvp::replay::read_metadata(&mut f) {
-                            Ok((n, metadata)) => (n, metadata),
+                        let metadata = match tango_pvp::replay::read_metadata(&mut f) {
+                            Ok(metadata) => metadata,
                             Err(_) => {
                                 continue;
                             }
                         };
 
-                        replays.push((path.to_path_buf(), num_inputs > 0, metadata));
+                        replays.push((path.to_path_buf(), metadata));
                     }
-                    replays.sort_by_key(|(_, _, metadata)| {
+                    replays.sort_by_key(|(_, metadata)| {
                         (
                             std::cmp::Reverse(metadata.ts),
                             metadata.link_code.clone(),
@@ -164,7 +164,7 @@ pub fn show(
                         let replays = state.replays_scanner.read();
                         let mut parent_folders = replays
                             .iter()
-                            .flat_map(|(path, _, _)| path.parent())
+                            .flat_map(|(path, _)| path.parent())
                             .unique()
                             .map(|path| (path, format_path(replays_path, path)))
                             .collect::<Vec<_>>();
@@ -227,7 +227,7 @@ pub fn show(
 
                         let folder_filter = state.folder_filter.as_ref();
 
-                        for (i, (path, _, metadata)) in replays.iter().enumerate() {
+                        for (i, (path, metadata)) in replays.iter().enumerate() {
                             if folder_filter.is_some_and(|filter| path.parent().is_some_and(|parent| parent != filter))
                             {
                                 continue;
@@ -359,7 +359,7 @@ pub fn show(
                 };
 
                 let replays = state.replays_scanner.read();
-                let (path, _, metadata) = &replays[selection.start];
+                let (path, metadata) = &replays[selection.start];
 
                 let Some(local_side) = metadata.local_side.as_ref() else {
                     return;
@@ -401,7 +401,7 @@ pub fn show(
                         }
                     };
 
-                    let save = match local_game.save_from_wram(replay.local_state.wram()) {
+                    let save = match local_game.parse_save(&replay.local_sram) {
                         Ok(save) => save,
                         Err(e) => {
                             log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -444,7 +444,7 @@ pub fn show(
 
                     let assets = match local_game.load_rom_assets(
                         &local_rom,
-                        replay.local_state.wram(),
+                        &save.as_raw_wram(),
                         &patch
                             .as_ref()
                             .map(|(_, _, metadata)| metadata.rom_overrides.clone())
@@ -531,17 +531,17 @@ pub fn show(
                                 let session = shared_root_state.session.clone();
 
                                 move || {
-                                    *session.lock() = Some(
-                                        session::Session::new_replayer(
-                                            audio_binder,
-                                            game,
-                                            patch,
-                                            &rom,
-                                            emu_tps_counter,
-                                            &replay,
-                                        )
-                                        .unwrap(),
-                                    ); // TODO: Don't unwrap maybe
+                                    match session::Session::new_replayer(
+                                        audio_binder,
+                                        game,
+                                        patch,
+                                        std::sync::Arc::new(rom),
+                                        emu_tps_counter,
+                                        std::sync::Arc::new(replay),
+                                    ) {
+                                        Ok(s) => *session.lock() = Some(s),
+                                        Err(e) => log::error!("failed to start replay session: {:?}", e),
+                                    }
                                     egui_ctx.request_repaint();
                                 }
                             });
@@ -559,7 +559,7 @@ pub fn show(
                             let replays_to_render = replays[selection.clone()]
                                 .iter()
                                 .rev()
-                                .flat_map(|(path, _, _)| {
+                                .flat_map(|(path, _)| {
                                     let mut f = match std::fs::File::open(path) {
                                         Ok(f) => f,
                                         Err(e) => {

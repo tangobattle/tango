@@ -1,0 +1,178 @@
+use byteorder::ByteOrder;
+use rand::Rng;
+
+use crate::hooks::{stepper_round_outcome_traps, stepper_trap, Trap};
+use crate::stepper::BattleOutcome;
+
+use super::rng::generate_rng_state;
+
+pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
+    let make_send_and_receive_call_hook = || {
+        let munger = hooks.munger();
+        let stepper_state = stepper_state.clone();
+        Box::new(move |mut core: mgba::core::CoreMutRef| {
+            let mut stepper_state = stepper_state.lock_inner();
+
+            let pc = core.as_ref().gba().cpu().thumb_pc();
+            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+            core.gba_mut().cpu_mut().set_gpr(0, 3);
+
+            if stepper_state.is_round_ending() {
+                return;
+            }
+            if stepper_state.replay_rng().is_some() && !stepper_state.has_committed_this_round() {
+                return;
+            }
+
+            let ip = match stepper_state.pop_input_pair() {
+                Some(ip) => ip,
+                None => {
+                    let mut rx = [
+                        0x80, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x00, 0xfc, 0x00, 0xfc, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+                    ];
+                    byteorder::LittleEndian::write_u32(&mut rx[0x0c..0x10], munger.packet_seqnum(core));
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
+                    return;
+                }
+            };
+
+            if let Err(e) = stepper_state.check_local_packet_at_current_tick() {
+                stepper_state.set_anyhow_error(e);
+                return;
+            }
+
+            let local_packet = stepper_state.peek_local_packet().unwrap().to_vec();
+
+            munger.set_rx_packet(
+                core,
+                stepper_state.local_player_index() as u32,
+                &local_packet.clone().try_into().unwrap(),
+            );
+            munger.set_rx_packet(
+                core,
+                stepper_state.remote_player_index() as u32,
+                &stepper_state
+                    .apply_shadow_input(crate::input::Pair {
+                        local: ip.local.with_packet(local_packet),
+                        remote: ip.remote,
+                    })
+                    .expect("apply shadow input")
+                    .try_into()
+                    .unwrap(),
+            );
+            stepper_state.set_local_packet(munger.tx_packet(core).to_vec());
+        })
+    };
+
+    let mut traps: Vec<Trap> = vec![
+        (hooks.offsets.rom.comm_menu_init_ret, {
+            let munger = hooks.munger();
+            Box::new(move |core| {
+                munger.start_battle_from_comm_menu(core);
+            })
+        }),
+        (hooks.offsets.rom.round_start_ret, {
+            let munger = hooks.munger();
+            let stepper_state = stepper_state.clone();
+            Box::new(move |core| {
+                let mut inner = stepper_state.lock_inner();
+                inner.advance_to_next_replay_round_if_pending();
+                let Some(rng) = inner.replay_rng().cloned() else {
+                    return;
+                };
+                munger.set_battle_stage(core, rng.lock().gen_range(0..0xc));
+            })
+        }),
+        stepper_trap(
+            hooks.offsets.rom.battle_start_play_music_call,
+            &stepper_state,
+            |state, mut core| {
+                if !state.disable_bgm() {
+                    return;
+                }
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+            },
+        ),
+        stepper_trap(hooks.offsets.rom.link_is_p2_ret, &stepper_state, |state, mut core| {
+            core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
+        }),
+        stepper_trap(hooks.offsets.rom.round_ending_entry1, &stepper_state, |state, _core| {
+            if state.is_round_ending() {
+                return;
+            }
+            state.set_round_ending();
+        }),
+        stepper_trap(hooks.offsets.rom.round_ending_entry2, &stepper_state, |state, _core| {
+            if state.is_round_ending() {
+                return;
+            }
+            state.set_round_ending();
+        }),
+        stepper_trap(hooks.offsets.rom.round_end_entry, &stepper_state, |state, _core| {
+            state.set_round_ended();
+        }),
+        {
+            let munger = hooks.munger();
+            stepper_trap(
+                hooks.offsets.rom.main_read_joyflags,
+                &stepper_state,
+                move |state, mut core| {
+                    let current_tick = state.current_tick();
+
+                    if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
+                    {
+                        if let Some(rng) = state.replay_rng().cloned() {
+                            let mut rng = rng.lock();
+                            let offerer_rng_state = generate_rng_state(&mut *rng);
+                            let answerer_rng_state = generate_rng_state(&mut *rng);
+                            munger.set_rng_state(
+                                core,
+                                if state.replay_is_offerer() {
+                                    offerer_rng_state
+                                } else {
+                                    answerer_rng_state
+                                },
+                            );
+                        }
+                        state.set_committed_state(core.save_state().expect("save committed state"));
+                    }
+
+                    let Some(ip) = state.peek_input_pair().cloned() else {
+                        return;
+                    };
+
+                    core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+
+                    if current_tick == state.dirty_tick() {
+                        state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    }
+                },
+            )
+        },
+        (
+            hooks.offsets.rom.handle_input_custom_send_and_receive_call,
+            make_send_and_receive_call_hook(),
+        ),
+        (
+            hooks.offsets.rom.handle_input_in_turn_send_and_receive_call,
+            make_send_and_receive_call_hook(),
+        ),
+        stepper_trap(
+            hooks.offsets.rom.round_call_jump_table_ret,
+            &stepper_state,
+            |state, _core| {
+                state.increment_current_tick();
+            },
+        ),
+    ];
+    traps.extend(stepper_round_outcome_traps(
+        &stepper_state,
+        &[
+            (hooks.offsets.rom.round_end_set_win, BattleOutcome::Win),
+            (hooks.offsets.rom.round_end_set_loss, BattleOutcome::Loss),
+        ],
+    ));
+    traps
+}

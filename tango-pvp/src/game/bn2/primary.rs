@@ -1,0 +1,133 @@
+use crate::hooks::{match_round_trap, match_trap, CompletionToken, MatchHandle, Trap};
+
+use super::rng::{generate_rng_state, random_background};
+use super::INIT_RX;
+
+pub(super) fn traps(
+    hooks: &super::Hooks,
+    joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    match_: MatchHandle,
+    completion_token: CompletionToken,
+) -> Vec<Trap> {
+    let make_send_and_receive_call_hook = || {
+        let match_ = match_.clone();
+        Box::new(move |mut core: mgba::core::CoreMutRef| {
+            let pc = core.as_ref().gba().cpu().thumb_pc();
+            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+
+            let match_ = match_.blocking_lock();
+            let Some(_) = &*match_ else {
+                core.gba_mut().cpu_mut().set_gpr(0, 0);
+                return;
+            };
+            core.gba_mut().cpu_mut().set_gpr(0, 3);
+        })
+    };
+    vec![
+        {
+            let munger = hooks.munger();
+            match_trap(hooks.offsets.rom.comm_menu_init_ret, &match_, move |match_, core| {
+                let mut rng = match_.lock_rng();
+                let offerer_rng_state = generate_rng_state(&mut *rng);
+                let answerer_rng_state = generate_rng_state(&mut *rng);
+                munger.set_rng_state(
+                    core,
+                    if match_.is_offerer() {
+                        offerer_rng_state
+                    } else {
+                        answerer_rng_state
+                    },
+                );
+                munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
+            })
+        },
+        (
+            hooks.offsets.rom.match_end_ret,
+            Box::new(move |_core| {
+                completion_token.complete();
+            }),
+        ),
+        match_trap(hooks.offsets.rom.round_ending_entry1, &match_, |match_, _core| {
+            match_.end_round().expect("end round");
+        }),
+        match_trap(hooks.offsets.rom.round_ending_entry2, &match_, |match_, _core| {
+            match_.end_round().expect("end round");
+        }),
+        match_trap(hooks.offsets.rom.round_start_ret, &match_, |match_, _core| {
+            crate::sync::block_on(match_.start_round()).expect("start round");
+        }),
+        match_round_trap(hooks.offsets.rom.link_is_p2_ret, &match_, |_match_, round, mut core| {
+            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+        }),
+        {
+            let munger = hooks.munger();
+            match_round_trap(
+                hooks.offsets.rom.main_read_joyflags,
+                &match_,
+                move |match_, round, core| {
+                    if !munger.is_linking(core) {
+                        return;
+                    }
+
+                    if !round.has_committed_state() {
+                        let mut rng = match_.lock_rng();
+                        let rng_state = generate_rng_state(&mut *rng);
+                        munger.set_rng_state(core, rng_state);
+
+                        match_
+                            .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
+                            .expect("record first commit");
+                        log::info!("primary rng state: {:08x}", munger.rng_state(core));
+                        log::info!("battle state committed on {}", round.current_tick());
+                    }
+
+                    if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    )) {
+                        log::error!("failed to add local input: {}", e);
+                        match_.cancel();
+                    }
+                },
+            )
+        },
+        (
+            hooks.offsets.rom.handle_input_custom_send_and_receive_call,
+            make_send_and_receive_call_hook(),
+        ),
+        (
+            hooks.offsets.rom.handle_input_in_turn_send_and_receive_call,
+            make_send_and_receive_call_hook(),
+        ),
+        {
+            let munger = hooks.munger();
+            (
+                hooks.offsets.rom.comm_menu_send_and_receive_call,
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
+                    munger.set_rx_packet(core, 0, &INIT_RX);
+                    munger.set_rx_packet(core, 1, &INIT_RX);
+                }),
+            )
+        },
+        (
+            hooks.offsets.rom.init_sio_call,
+            Box::new(|mut core| {
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+            }),
+        ),
+        match_round_trap(
+            hooks.offsets.rom.round_call_jump_table_ret,
+            &match_,
+            |_match_, round, _core| {
+                if !round.has_committed_state() {
+                    return;
+                }
+                round.increment_current_tick();
+            },
+        ),
+    ]
+}

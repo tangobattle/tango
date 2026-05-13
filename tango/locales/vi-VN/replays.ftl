@@ -17,6 +17,7 @@ replays-export-confirm-error = Đm!
 replays-export-open = Mở
 replays-export-lossless = Lossless 1x
 replay-viewer-pause = Tạm dừng
+replay-viewer-exit = Thoát
 replay-viewer-step = Tua
 replay-viewer-speed = Tốc độ
 replay-viewer-speed-up = Nhanh hơn

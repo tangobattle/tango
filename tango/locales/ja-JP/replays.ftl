@@ -17,6 +17,7 @@ replays-export-confirm-error = やべっ！
 replays-export-open = 開く
 replays-export-lossless = ロスレス1倍
 replay-viewer-pause = ポーズ
+replay-viewer-exit = 終了
 replay-viewer-step = ステップ
 replay-viewer-speed = 速度
 replay-viewer-speed-up = 加速

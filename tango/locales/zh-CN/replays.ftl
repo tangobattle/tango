@@ -17,6 +17,7 @@ replays-export-confirm-error = 哎呀！
 replays-export-open = 打开
 replays-export-lossless = 无损1倍
 replay-viewer-pause = 暂停
+replay-viewer-exit = 退出
 replay-viewer-step = 帧步进
 replay-viewer-speed = 速度
 replay-viewer-speed-up = 加速

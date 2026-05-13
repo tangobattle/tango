@@ -17,6 +17,7 @@ replays-export-confirm-error = ¡Maldición!
 replays-export-open = Open
 replays-export-lossless = Sin Perdida 1x
 replay-viewer-pause = Pausa
+replay-viewer-exit = Salir
 replay-viewer-step = Paso
 replay-viewer-speed = Velocidad
 replay-viewer-speed-up = Apresurar

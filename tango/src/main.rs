@@ -658,12 +658,12 @@ impl winit::application::ApplicationHandler<WindowRequest> for TangoWinitApp {
         }
     }
 
-    fn exiting(&mut self, ev: &winit::event_loop::ActiveEventLoop) {
+    fn exiting(&mut self, _ev: &winit::event_loop::ActiveEventLoop) {
         let is_wayland = {
             #[cfg(target_os = "linux")]
             {
                 use winit::platform::wayland::ActiveEventLoopExtWayland;
-                ev.is_wayland()
+                _ev.is_wayland()
             }
 
             #[cfg(not(target_os = "linux"))]
