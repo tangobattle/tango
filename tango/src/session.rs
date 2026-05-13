@@ -214,14 +214,14 @@ fn run_prefetch(
         if let Some(cp) = stepper_state.capture_replay_checkpoint() {
             let mut snaps = snapshots.lock();
             let want_round_start = !cp.has_committed_this_round
-                && !snaps.iter().any(|s| {
-                    s.round_index == cp.current_round_index && !s.has_committed_this_round
-                });
+                && !snaps
+                    .iter()
+                    .any(|s| s.round_index == cp.current_round_index && !s.has_committed_this_round);
             let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
             let want_mid_round = cp.has_committed_this_round
-                && !snaps.iter().any(|s| {
-                    s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick
-                });
+                && !snaps
+                    .iter()
+                    .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
             if want_round_start || want_mid_round {
                 if let Ok(state) = core.as_mut().save_state() {
                     snaps.push(ReplaySnapshot {
@@ -448,9 +448,7 @@ impl Session {
                 rng,
                 shadow,
                 identity,
-                tango_pvp::battle::ReplayConfig {
-                    writer: replay_writer,
-                },
+                tango_pvp::battle::ReplayConfig { writer: replay_writer },
             );
 
             {
@@ -700,8 +698,7 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
-        let snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>> =
-            Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>> = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let prefetch_progress = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let prefetcher = Prefetcher::spawn(
             rom.clone(),
@@ -755,15 +752,14 @@ impl Session {
                 if let Some(cp) = checkpoint {
                     let mut snaps = snapshots.lock();
                     let want_round_start = !cp.has_committed_this_round
-                        && !snaps.iter().any(|s| {
-                            s.round_index == cp.current_round_index
-                                && !s.has_committed_this_round
-                        });
+                        && !snaps
+                            .iter()
+                            .any(|s| s.round_index == cp.current_round_index && !s.has_committed_this_round);
                     let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
                     let want_mid_round = cp.has_committed_this_round
-                        && !snaps.iter().any(|s| {
-                            s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick
-                        });
+                        && !snaps
+                            .iter()
+                            .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
                     if want_round_start || want_mid_round {
                         if let Ok(state) = core.save_state() {
                             snaps.push(ReplaySnapshot {
@@ -825,8 +821,7 @@ impl Session {
     }
 
     pub fn request_close(&self) {
-        self.close_requested
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.close_requested.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn close_requested(&self) -> bool {
@@ -960,9 +955,9 @@ impl Session {
                     if cp.has_committed_this_round {
                         let mut snaps = snapshots.lock();
                         let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
-                        let exists = snaps.iter().any(|s| {
-                            s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick
-                        });
+                        let exists = snaps
+                            .iter()
+                            .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
                         if !exists {
                             if let Ok(state) = core.save_state() {
                                 snaps.push(ReplaySnapshot {
