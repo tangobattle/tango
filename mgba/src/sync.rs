@@ -31,17 +31,4 @@ impl<'a> SyncMutRef<'a> {
             (*self.ptr).fpsTarget = fps_target;
         }
     }
-
-    /// How many source-buffer frames must accumulate before
-    /// `mCoreSyncProduceAudio` blocks the emulator. The default of 512 frames
-    /// (set by mCoreSyncLoadCoreOpts) is sized for a 32 kHz source: at higher
-    /// SOUNDBIAS resolutions the source rate jumps to 65/131/262 kHz, and a
-    /// 512-frame threshold starves the audio thread of a single SDL
-    /// callback's worth of samples. Tango rescales this per fill, mirroring
-    /// what mGBA's SDL frontend does.
-    pub fn set_audio_high_water(&mut self, frames: u32) {
-        unsafe {
-            (*self.ptr).audioHighWater = frames as _;
-        }
-    }
 }
