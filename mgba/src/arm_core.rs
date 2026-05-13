@@ -15,11 +15,11 @@ impl<'a> ARMCoreRef<'a> {
     }
 
     pub fn thumb_pc(&self) -> u32 {
-        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB
+        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB as u32
     }
 
     pub fn arm_pc(&self) -> u32 {
-        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_ARM
+        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_ARM as u32
     }
 
     pub fn execution_mode(&self) -> ExecutionMode {
@@ -86,7 +86,7 @@ impl<'a> ARMCoreMutRef<'a> {
                 as *const u16) as u32;
 
             // pc += WORD_SIZE_THUMB;
-            pc += mgba_sys::WordSize_WORD_SIZE_THUMB;
+            pc += mgba_sys::WordSize_WORD_SIZE_THUMB as u32;
 
             // LOAD_16(cpu->prefetch[1], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
             (*self.ptr).prefetch[1] = *(((*self.ptr).memory.activeRegion as *const u8)
