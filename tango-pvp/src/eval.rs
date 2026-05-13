@@ -24,8 +24,6 @@ pub async fn eval(
         0,
         replay.rng_seed,
         replay.is_offerer,
-        0,
-        0,
         total_replay_ticks,
         Box::new(|| {}),
     );

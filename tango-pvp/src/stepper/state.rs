@@ -10,19 +10,18 @@ use super::types::{BattleOutcome, RoundPhase, RoundResult};
 type InputPair = Pair<Input, Input>;
 type PartialInputPair = Pair<PartialInput, PartialInput>;
 
-type ApplyShadowInput = Box<
-    dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send,
->;
+type ApplyShadowInput = Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>;
 
 type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
 type SharedInputQueue = Arc<Mutex<VecDeque<InputPair>>>;
 
-/// `local_packet`'s payload bundled with the tick at which a consumer should
-/// expect to see it. Setters record `current_tick + 1`; consumers verify
-/// `target_tick == current_tick` to catch trap-ordering bugs.
+/// `local_packet`'s payload bundled with the send count at which a consumer
+/// should expect to see it. Setters record `output_pairs.len()` at the time
+/// of the set; consumers verify it still matches at peek to catch
+/// trap-ordering bugs.
 #[derive(Clone)]
 struct LocalPacket {
-    target_tick: u32,
+    send_count: u32,
     packet: Vec<u8>,
 }
 
@@ -44,6 +43,20 @@ struct ReplayExtras {
     /// Set true when `round_start_ret` has fired for the current round.
     /// Gates first commit so RNG isn't seeded before battle init completes.
     round_active: bool,
+    /// Set true at first set_committed_state for the current round; reset
+    /// by `load_replay_round` between replay rounds. Per-game traps gate
+    /// first-commit work on this so it only fires once per round.
+    has_committed_this_round: bool,
+    /// Monotonic tick counter across all replay rounds. Equal to
+    /// `sum(rounds[..current_round].len()) + current_tick` while a round is
+    /// in progress. Used by the replay UI to drive the seek bar.
+    absolute_tick: u32,
+    /// Total number of input pairs across all replay rounds, computed once
+    /// at construction. Used as the seek bar's max.
+    total_replay_ticks: u32,
+    /// Index of the round currently in progress. Increments in
+    /// [`InnerState::load_replay_round`].
+    current_round_index: u32,
     /// Fired when the last queued round ends.
     on_round_ended: Option<Box<dyn FnOnce() + Send>>,
 }
@@ -64,48 +77,71 @@ pub struct InnerState {
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
-    /// Set true at first set_committed_state for the current round; reset by
-    /// `load_replay_round` between replay rounds. Per-game traps gate
-    /// first-commit work on this so it only fires once per round.
-    has_committed_this_round: bool,
-    /// Monotonic tick counter across all replay rounds. Equal to
-    /// `sum(rounds[..current_round].len()) + current_tick` while a round is
-    /// in progress. Used by the replay UI to drive the seek bar. Always 0
-    /// in Fastforwarder mode.
-    absolute_tick: u32,
-    /// Total number of input pairs across all replay rounds, computed once
-    /// at construction. Used as the seek bar's max. 0 in Fastforwarder mode.
-    total_replay_ticks: u32,
-    /// Index of the round currently in progress. Increments in
-    /// [`load_replay_round`]. 0 in Fastforwarder mode and for the first
-    /// replay round.
-    current_round_index: u32,
 
     /// Replay-mode-only state. None in Fastforwarder mode.
     replay: Option<ReplayExtras>,
 }
 
+/// Bundle of inputs to [`InnerState::for_replay`]. Used by both the fresh
+/// [`State::new`] path (defaults for the carry-over fields) and
+/// [`State::restore_replay_checkpoint`] (snapshot values).
+struct ReplayInit {
+    match_type: (u8, u8),
+    local_player_index: u8,
+    commit_tick: u32,
+    rng: SharedRng,
+    is_offerer: bool,
+    /// All remaining rounds, including the one currently in progress at
+    /// front. The constructor pops the front and treats it as the active
+    /// round; the rest become `next_rounds`.
+    rounds: VecDeque<Vec<InputPair>>,
+    /// Inputs already played from the front round before this construction.
+    /// 0 for fresh starts; non-zero when restoring a mid-round snapshot.
+    inputs_consumed_in_current_round: u32,
+    current_round_index: u32,
+    absolute_tick: u32,
+    total_replay_ticks: u32,
+    current_tick_in_round: u32,
+    /// Fresh start: None — the constructor seeds local_packet from the
+    /// front round's first input. Restore: Some — use the captured bytes
+    /// from the checkpoint, since mid-round the active local_packet is
+    /// whatever the previous send produced, not the input record.
+    local_packet_override: Option<Vec<u8>>,
+    round_active: bool,
+    has_committed_this_round: bool,
+    disable_bgm: bool,
+    on_round_ended: Option<Box<dyn FnOnce() + Send>>,
+}
+
 impl InnerState {
-    /// Construct an InnerState for replay playback. Wired up by [`State::new`].
-    /// `start_round_index` and `start_absolute_tick` are 0 for a fresh replay,
-    /// and non-zero when resuming from a snapshot mid-replay.
-    /// `total_replay_ticks` is the input count across the *full* replay
-    /// (not just the rounds passed in here).
-    fn for_replay(
-        match_type: (u8, u8),
-        local_player_index: u8,
-        commit_tick: u32,
-        rng: SharedRng,
-        is_offerer: bool,
-        first_round: Vec<InputPair>,
-        next_rounds: VecDeque<Vec<InputPair>>,
-        start_round_index: u32,
-        start_absolute_tick: u32,
-        total_replay_ticks: u32,
-        on_round_ended: Box<dyn FnOnce() + Send>,
-    ) -> Self {
-        let remote_inputs: SharedInputQueue =
-            Arc::new(Mutex::new(first_round.iter().cloned().collect()));
+    /// Construct an InnerState for replay playback. Used by both the fresh
+    /// [`State::new`] path and [`State::restore_replay_checkpoint`].
+    fn for_replay(init: ReplayInit) -> Self {
+        let ReplayInit {
+            match_type,
+            local_player_index,
+            commit_tick,
+            rng,
+            is_offerer,
+            mut rounds,
+            inputs_consumed_in_current_round,
+            current_round_index,
+            absolute_tick,
+            total_replay_ticks,
+            current_tick_in_round,
+            local_packet_override,
+            round_active,
+            has_committed_this_round,
+            disable_bgm,
+            on_round_ended,
+        } = init;
+
+        let current_round = rounds.pop_front().unwrap_or_default();
+        let consumed = (inputs_consumed_in_current_round as usize).min(current_round.len());
+        let remaining_inputs: Vec<InputPair> = current_round[consumed..].to_vec();
+        let next_rounds = rounds;
+
+        let remote_inputs: SharedInputQueue = Arc::new(Mutex::new(remaining_inputs.iter().cloned().collect()));
 
         let apply_shadow_input: ApplyShadowInput = {
             let queue = remote_inputs.clone();
@@ -117,15 +153,22 @@ impl InnerState {
             })
         };
 
-        let local_packet = first_round.first().map(|ip| LocalPacket {
-            target_tick: 0,
-            packet: ip.local.packet.clone(),
-        });
-        let input_pairs = first_round.into_iter().map(into_partial_pair).collect();
+        // target_tick = 0 either way: fresh starts at tick 0 with empty
+        // output_pairs, and restore resets output_pairs to empty too — both
+        // sides of the send-counter check start fresh.
+        let local_packet = match local_packet_override {
+            Some(packet) => Some(LocalPacket { send_count: 0, packet }),
+            None => remaining_inputs.first().map(|ip| LocalPacket {
+                send_count: 0,
+                packet: ip.local.packet.clone(),
+            }),
+        };
+
+        let input_pairs = remaining_inputs.into_iter().map(into_partial_pair).collect();
 
         Self {
-            disable_bgm: false,
-            current_tick: 0,
+            disable_bgm,
+            current_tick: current_tick_in_round,
             local_player_index,
             match_type,
             input_pairs,
@@ -139,17 +182,17 @@ impl InnerState {
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
-            has_committed_this_round: false,
-            absolute_tick: start_absolute_tick,
-            total_replay_ticks,
-            current_round_index: start_round_index,
             replay: Some(ReplayExtras {
                 next_rounds,
                 remote_inputs,
                 rng,
                 is_offerer,
-                round_active: false,
-                on_round_ended: Some(on_round_ended),
+                round_active,
+                has_committed_this_round,
+                absolute_tick,
+                total_replay_ticks,
+                current_round_index,
+                on_round_ended,
             }),
         }
     }
@@ -177,7 +220,7 @@ impl InnerState {
             local_packet: Some(LocalPacket {
                 // target_tick = output_pairs.len() at this send. We start at
                 // 0 (no sends yet) and the first send's check expects 0.
-                target_tick: 0,
+                send_count: 0,
                 packet: last_local_packet,
             }),
             commit_tick,
@@ -187,10 +230,6 @@ impl InnerState {
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
-            has_committed_this_round: false,
-            absolute_tick: 0,
-            total_replay_ticks: 0,
-            current_round_index: 0,
             replay: None,
         }
     }
@@ -245,30 +284,31 @@ impl InnerState {
         // menu transitions, and inter-round animations; we mustn't let
         // those bump current_tick past commit_tick (= 0) before the round
         // actually starts. In Fastforwarder mode, every increment counts.
-        if self.replay.is_some() && !self.has_committed_this_round {
-            return;
+        if let Some(replay) = self.replay.as_mut() {
+            if !replay.has_committed_this_round {
+                return;
+            }
+            replay.absolute_tick += 1;
         }
         self.current_tick += 1;
-        if self.replay.is_some() {
-            self.absolute_tick += 1;
-        }
     }
 
     /// Replay-mode monotonic tick counter across all queued rounds. 0 in
     /// Fastforwarder mode.
     pub fn absolute_tick(&self) -> u32 {
-        self.absolute_tick
+        self.replay.as_ref().map_or(0, |r| r.absolute_tick)
     }
 
     /// Total ticks across all replay rounds, computed once at construction.
     /// 0 in Fastforwarder mode.
     pub fn total_replay_ticks(&self) -> u32 {
-        self.total_replay_ticks
+        self.replay.as_ref().map_or(0, |r| r.total_replay_ticks)
     }
 
-    /// Index of the round currently in progress (0-based).
+    /// Index of the round currently in progress (0-based). 0 in
+    /// Fastforwarder mode.
     pub fn current_round_index(&self) -> u32 {
-        self.current_round_index
+        self.replay.as_ref().map_or(0, |r| r.current_round_index)
     }
 
     // ----- input pair queue -----
@@ -308,7 +348,7 @@ impl InnerState {
         // sends and the old `current_tick + 1` formula no longer matches the
         // consumer side.
         self.local_packet = Some(LocalPacket {
-            target_tick: self.output_pairs.len() as u32,
+            send_count: self.output_pairs.len() as u32,
             packet,
         });
     }
@@ -330,10 +370,10 @@ impl InnerState {
     pub fn check_local_packet_at_current_tick(&self) -> anyhow::Result<()> {
         if let Some(p) = self.local_packet.as_ref() {
             let expected = self.output_pairs.len() as u32;
-            if p.target_tick != expected {
+            if p.send_count != expected {
                 anyhow::bail!(
                     "local packet send mismatch: stored for send {}, current send {}",
-                    p.target_tick,
+                    p.send_count,
                     expected,
                 );
             }
@@ -343,10 +383,7 @@ impl InnerState {
 
     // ----- shadow input -----
 
-    pub fn apply_shadow_input(
-        &mut self,
-        input: Pair<Input, PartialInput>,
-    ) -> anyhow::Result<Vec<u8>> {
+    pub fn apply_shadow_input(&mut self, input: Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> {
         let remote_packet = (self.apply_shadow_input)(self.current_tick, input.clone())?;
         self.output_pairs.push(Pair {
             local: input.local,
@@ -360,10 +397,10 @@ impl InnerState {
     pub fn set_committed_state(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
-        if p.target_tick != expected {
+        if p.send_count != expected {
             panic!(
                 "local packet send mismatch at commit: stored for send {}, current send {}",
-                p.target_tick, expected,
+                p.send_count, expected,
             );
         }
         self.committed_state = Some(crate::battle::CommittedState {
@@ -371,7 +408,9 @@ impl InnerState {
             state,
             packet: p.packet,
         });
-        self.has_committed_this_round = true;
+        if let Some(replay) = self.replay.as_mut() {
+            replay.has_committed_this_round = true;
+        }
     }
 
     pub fn take_committed_state(&mut self) -> Option<crate::battle::CommittedState> {
@@ -404,10 +443,10 @@ impl InnerState {
     pub fn set_dirty_state(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
-        if p.target_tick != expected {
+        if p.send_count != expected {
             panic!(
                 "local packet send mismatch at dirty: stored for send {}, current send {}",
-                p.target_tick, expected,
+                p.send_count, expected,
             );
         }
         self.dirty_state = Some(crate::battle::CommittedState {
@@ -476,8 +515,9 @@ impl InnerState {
     /// True iff the current round has had its first commit. Used by per-game
     /// stepper traps to gate per-frame work that would otherwise diverge from
     /// the game's tick during boot / inter-round animations in replay mode.
+    /// Always false in Fastforwarder mode.
     pub fn has_committed_this_round(&self) -> bool {
-        self.has_committed_this_round
+        self.replay.as_ref().is_some_and(|r| r.has_committed_this_round)
     }
 
     /// True iff round_start_ret has fired for the current round. In FF mode
@@ -515,9 +555,8 @@ impl InnerState {
     /// with the new round's remote inputs.
     fn load_replay_round(&mut self, round_inputs: Vec<InputPair>) {
         self.current_tick = 0;
-        self.current_round_index += 1;
         self.local_packet = round_inputs.first().map(|ip| LocalPacket {
-            target_tick: 0,
+            send_count: 0,
             packet: ip.local.packet.clone(),
         });
 
@@ -528,6 +567,8 @@ impl InnerState {
             q.extend(round_inputs.iter().cloned());
             drop(q);
             replay.round_active = true;
+            replay.current_round_index += 1;
+            replay.has_committed_this_round = false;
         }
 
         self.input_pairs = round_inputs.into_iter().map(into_partial_pair).collect();
@@ -536,15 +577,18 @@ impl InnerState {
         self.dirty_state = None;
         self.round_result = None;
         self.phase = RoundPhase::InProgress;
-        self.has_committed_this_round = false;
     }
 }
 
 /// Drop the packet payload, keeping only the joyflags from each input pair.
 fn into_partial_pair(ip: InputPair) -> PartialInputPair {
     Pair {
-        local: PartialInput { joyflags: ip.local.joyflags },
-        remote: PartialInput { joyflags: ip.remote.joyflags },
+        local: PartialInput {
+            joyflags: ip.local.joyflags,
+        },
+        remote: PartialInput {
+            joyflags: ip.remote.joyflags,
+        },
     }
 }
 
@@ -560,19 +604,7 @@ pub struct ReplayCheckpoint {
     pub current_tick_in_round: u32,
     pub has_committed_this_round: bool,
     pub rng_state: rand_pcg::Mcg128Xsl64,
-    /// `(target_tick, packet_bytes)` of the buffered local_packet at capture
-    /// time. Captured directly so restore can rebuild the exact LocalPacket
-    /// without trying to derive it from `current_tick_in_round` and the
-    /// recorded round (which is game-frame-ordering-specific and produces
-    /// the wrong index for games whose frame layout shifts ticks relative
-    /// to send_and_receive).
     pub local_packet: Option<(u32, Vec<u8>)>,
-    /// Number of input pairs consumed from the current round so far. Restore
-    /// drops this many entries from the front of the round when rebuilding
-    /// the input queue. Captured directly because it isn't always equal to
-    /// `current_tick_in_round` — games whose frame layout puts multiple tick
-    /// increments between input pairs (e.g. BN3) consume one pair per
-    /// `send_and_receive`, not one per stepper tick.
     pub inputs_consumed: u32,
 }
 
@@ -585,13 +617,8 @@ impl State {
     /// Construct a replay-mode stepper state covering one or more rounds.
     /// Rounds are played back in order; `set_round_ended` advances to the
     /// next one until the queue is empty, then fires `on_round_ended`.
-    ///
-    /// `start_round_index` and `start_absolute_tick` are normally 0. Pass
-    /// non-zero values to resume mid-replay from a snapshot — the caller
-    /// is responsible for also load_state'ing the matching mgba snapshot
-    /// onto the core, and for passing only `rounds[start_round_index..]`
-    /// here. `total_replay_ticks` is the input-pair count across the
-    /// *full* replay (used by the seek bar).
+    /// `total_replay_ticks` is the input-pair count across the full replay
+    /// (used by the seek bar).
     pub fn new(
         match_type: (u8, u8),
         local_player_index: u8,
@@ -599,8 +626,6 @@ impl State {
         commit_tick: u32,
         rng_seed: [u8; 16],
         is_offerer: bool,
-        start_round_index: u32,
-        start_absolute_tick: u32,
         total_replay_ticks: u32,
         on_round_ended: Box<dyn FnOnce() + Send>,
     ) -> State {
@@ -611,22 +636,24 @@ impl State {
         let _ = rand::Rng::gen::<bool>(&mut rng);
         let rng = Arc::new(Mutex::new(rng));
 
-        let mut rounds = VecDeque::from(rounds);
-        let first_round = rounds.pop_front().unwrap_or_default();
-
-        let inner = InnerState::for_replay(
+        let inner = InnerState::for_replay(ReplayInit {
             match_type,
             local_player_index,
             commit_tick,
             rng,
             is_offerer,
-            first_round,
-            rounds,
-            start_round_index,
-            start_absolute_tick,
+            rounds: VecDeque::from(rounds),
+            inputs_consumed_in_current_round: 0,
+            current_round_index: 0,
+            absolute_tick: 0,
             total_replay_ticks,
-            on_round_ended,
-        );
+            current_tick_in_round: 0,
+            local_packet_override: None,
+            round_active: false,
+            has_committed_this_round: false,
+            disable_bgm: false,
+            on_round_ended: Some(on_round_ended),
+        });
 
         State(Arc::new(Mutex::new(Some(inner))))
     }
@@ -645,12 +672,12 @@ impl State {
         }
         let rng_state = replay.rng.lock().clone();
         Some(ReplayCheckpoint {
-            absolute_tick: inner.absolute_tick,
-            current_round_index: inner.current_round_index,
+            absolute_tick: replay.absolute_tick,
+            current_round_index: replay.current_round_index,
             current_tick_in_round: inner.current_tick,
-            has_committed_this_round: inner.has_committed_this_round,
+            has_committed_this_round: replay.has_committed_this_round,
             rng_state,
-            local_packet: inner.local_packet.as_ref().map(|p| (p.target_tick, p.packet.clone())),
+            local_packet: inner.local_packet.as_ref().map(|p| (p.send_count, p.packet.clone())),
             inputs_consumed: inner.output_pairs.len() as u32,
         })
     }
@@ -666,9 +693,7 @@ impl State {
         rounds: &[Vec<InputPair>],
     ) -> anyhow::Result<()> {
         let mut guard = self.0.lock();
-        let prev = guard
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("stepper state missing"))?;
+        let prev = guard.as_mut().ok_or_else(|| anyhow::anyhow!("stepper state missing"))?;
         let prev_replay = prev
             .replay
             .as_mut()
@@ -676,10 +701,10 @@ impl State {
 
         let on_round_ended = prev_replay.on_round_ended.take();
         let is_offerer = prev_replay.is_offerer;
+        let total_replay_ticks = prev_replay.total_replay_ticks;
         let match_type = prev.match_type;
         let local_player_index = prev.local_player_index;
         let commit_tick = prev.commit_tick;
-        let total_replay_ticks = prev.total_replay_ticks;
         let disable_bgm = prev.disable_bgm;
 
         let round_idx = checkpoint.current_round_index as usize;
@@ -690,72 +715,28 @@ impl State {
                 rounds.len()
             );
         }
-        let current_round = &rounds[round_idx];
-        let next_rounds: VecDeque<Vec<InputPair>> =
-            rounds[round_idx + 1..].iter().cloned().collect();
 
-        let consumed = (checkpoint.inputs_consumed as usize).min(current_round.len());
-        let remaining_inputs: Vec<InputPair> = current_round[consumed..].to_vec();
-
-        let remote_inputs: SharedInputQueue =
-            Arc::new(Mutex::new(remaining_inputs.iter().cloned().collect()));
-        let apply_shadow_input: ApplyShadowInput = {
-            let queue = remote_inputs.clone();
-            Box::new(move |_tick, _ip| {
-                let Some(ip) = queue.lock().pop_front() else {
-                    anyhow::bail!("no more committed inputs");
-                };
-                Ok(ip.remote.packet)
-            })
-        };
-
-        // Restore the captured local_packet bytes. target_tick is reset to
-        // 0 because output_pairs is reset to empty on restore — both
-        // sides of the send-counter check are starting fresh, and the
-        // captured bytes are still the right thing to feed at the next
-        // send.
-        let local_packet = checkpoint
-            .local_packet
-            .as_ref()
-            .map(|(_captured_target_tick, packet)| LocalPacket {
-                target_tick: 0,
-                packet: packet.clone(),
-            });
-
-        let input_pairs: VecDeque<PartialInputPair> =
-            remaining_inputs.into_iter().map(into_partial_pair).collect();
-
+        let rounds_from_current: VecDeque<Vec<InputPair>> = rounds[round_idx..].iter().cloned().collect();
         let rng = Arc::new(Mutex::new(checkpoint.rng_state.clone()));
 
-        let new_inner = InnerState {
-            disable_bgm,
-            current_tick: checkpoint.current_tick_in_round,
-            local_player_index,
+        let new_inner = InnerState::for_replay(ReplayInit {
             match_type,
-            input_pairs,
-            output_pairs: vec![],
-            apply_shadow_input,
-            local_packet,
+            local_player_index,
             commit_tick,
-            committed_state: None,
-            dirty_tick: 0,
-            dirty_state: None,
-            round_result: None,
-            phase: RoundPhase::InProgress,
-            error: None,
-            has_committed_this_round: checkpoint.has_committed_this_round,
+            rng,
+            is_offerer,
+            rounds: rounds_from_current,
+            inputs_consumed_in_current_round: checkpoint.inputs_consumed,
+            current_round_index: checkpoint.current_round_index,
             absolute_tick: checkpoint.absolute_tick,
             total_replay_ticks,
-            current_round_index: checkpoint.current_round_index,
-            replay: Some(ReplayExtras {
-                next_rounds,
-                remote_inputs,
-                rng,
-                is_offerer,
-                round_active: true,
-                on_round_ended,
-            }),
-        };
+            current_tick_in_round: checkpoint.current_tick_in_round,
+            local_packet_override: checkpoint.local_packet.as_ref().map(|(_, packet)| packet.clone()),
+            round_active: true,
+            has_committed_this_round: checkpoint.has_committed_this_round,
+            disable_bgm,
+            on_round_ended,
+        });
 
         *guard = Some(new_inner);
         Ok(())

@@ -185,8 +185,6 @@ fn run_prefetch(
         0,
         replay.rng_seed,
         replay.is_offerer,
-        0,
-        0,
         total_replay_ticks,
         Box::new(|| {}),
     );
@@ -682,8 +680,6 @@ impl Session {
             0,
             replay.rng_seed,
             replay.is_offerer,
-            0,
-            0,
             total_replay_ticks,
             Box::new({
                 let completion_token = completion_token.clone();
