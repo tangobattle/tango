@@ -28,7 +28,6 @@ settings-input-delay = 輸入延遲
 settings-ui-scale = UI縮放
 settings-max-queue-length = 最大隊列長度
 settings-matchmaking-endpoint = 配對服務器端點
-settings-replaycollector-endpoint = 回放收集器端點
 settings-patch-repo = 補丁倉庫
 settings-enable-patch-autoupdate = 自動更新
 settings-data-path = 數據路徑

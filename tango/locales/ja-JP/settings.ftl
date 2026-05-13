@@ -28,7 +28,6 @@ settings-input-delay = 入力遅延
 settings-ui-scale = UIスケール
 settings-max-queue-length = 最大キューの長
 settings-matchmaking-endpoint = マッチメイキング エンドポイント
-settings-replaycollector-endpoint = リプレイコレクターエンドポイント
 settings-patch-repo = パッチリポジトリ
 settings-enable-patch-autoupdate = 自動更新
 settings-data-path = データ経路

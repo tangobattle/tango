@@ -32,7 +32,6 @@ settings-input-delay = Input delay
 settings-ui-scale = UI scale
 settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
-settings-replaycollector-endpoint = Replay collector endpoint
 settings-patch-repo = Patches repository
 settings-enable-patch-autoupdate = Enable autoupdate
 settings-data-path = Data path

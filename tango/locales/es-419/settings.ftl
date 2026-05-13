@@ -28,7 +28,6 @@ settings-input-delay = Retraso
 settings-ui-scale = Escala de UI
 settings-max-queue-length = Máximo largo de la cola
 settings-matchmaking-endpoint = Salida de emparejamiento
-settings-replaycollector-endpoint = Salida para el recolector de repeticiones
 settings-patch-repo = Repositorio de parches
 settings-enable-patch-autoupdate = Auto actualización
 settings-data-path = Ruta de datos

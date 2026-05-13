@@ -28,7 +28,6 @@ settings-input-delay = Задержка ввода
 settings-ui-scale = Масштаб интерфейса
 settings-max-queue-length = Максимальная длина очереди
 settings-matchmaking-endpoint = Точка окончания матча
-settings-replaycollector-endpoint = Конечная точка коллектора Риплеев
 settings-patch-repo = Репозитория Патчей
 settings-enable-patch-autoupdate = Включить авто обновление
 settings-data-path = Путь к данным

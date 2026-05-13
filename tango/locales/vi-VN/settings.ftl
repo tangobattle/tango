@@ -28,7 +28,6 @@ settings-input-delay = Độ trễ đầu vào
 settings-ui-scale = Tỉ lệ UI
 settings-max-queue-length = Thời gian chờ đối thủ tối đa
 settings-matchmaking-endpoint = Điểm cuối tạo trận đấu
-settings-replaycollector-endpoint = Điểm cuối thu thập replay
 settings-patch-repo = Kho lưu trữ bản vá
 settings-enable-patch-autoupdate = Bật tự động cập nhật
 settings-data-path = Đường dẫn dữ liệu

@@ -581,14 +581,6 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                     });
                 ui.end_row();
             }
-
-            ui.strong(
-                i18n::LOCALES
-                    .lookup(&config.language, "settings-replaycollector-endpoint")
-                    .unwrap(),
-            );
-            ui.add(egui::TextEdit::singleline(&mut config.replaycollector_endpoint).desired_width(200.0));
-            ui.end_row();
         });
 }
 

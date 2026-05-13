@@ -28,7 +28,6 @@ settings-input-delay = Eingabeverzögerung
 settings-ui-scale = UI-Skalierung
 settings-max-queue-length = Maximale Warteschlangenlänge
 settings-matchmaking-endpoint = Matchmaking-Endpunkt
-settings-replaycollector-endpoint = Aufzeichnungskollektor-Endpunkt
 settings-patch-repo = Patch-Repository
 settings-enable-patch-autoupdate = Aktiviere automatische Aktualisierung
 settings-data-path = Datenpfad
