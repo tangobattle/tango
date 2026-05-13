@@ -50,7 +50,12 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
         };
         (trap.handler)(core);
         core.step();
+        return;
     }
+    // Don't chain TRAPPER_IMM into the original bkpt16: master mgba dropped
+    // GBABreakpoint's `if (immediate >= CPU_COMPONENT_MAX) return;` guard, so
+    // an unknown immediate now falls into ARMRaiseUndefined and corrupts the
+    // CPU. Only forward non-trapper immediates.
     trapper.real_bkpt16.unwrap()(arm_core.ptr, imm);
 }
 
