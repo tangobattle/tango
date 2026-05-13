@@ -108,9 +108,17 @@ impl Stream for MGBAStream {
         let core_rate = core.as_ref().audio_sample_rate() as f64;
         let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
 
+        // Rescale audioHighWater for the current source rate. The default of
+        // 512 frames is sized for the 32 kHz default; if the game sets a
+        // higher SOUNDBIAS resolution (e.g. 262 kHz), 512 source frames isn't
+        // enough to fill one SDL callback and the audio thread starves.
+        // Formula matches mGBA's SDL frontend (src/platform/sdl/sdl-audio.c).
+        let dest_rate = self.sample_rate as f64 * faux_clock;
+        let high_water = (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
+        audio_guard.sync_mut().set_audio_high_water(high_water as u32);
+
         self.resampler.set_source(core_buffer_ptr, core_rate, true);
-        self.resampler
-            .set_destination(self.dest_buffer.as_mut_ptr(), self.sample_rate as f64 * faux_clock);
+        self.resampler.set_destination(self.dest_buffer.as_mut_ptr(), dest_rate);
         self.resampler.process();
 
         let available = self.dest_buffer.available().min(frame_count);
