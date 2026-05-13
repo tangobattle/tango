@@ -31,4 +31,17 @@ impl<'a> SyncMutRef<'a> {
             (*self.ptr).fpsTarget = fps_target;
         }
     }
+
+    // mCoreSyncLoadCoreOpts pins audioHighWater at 512 frames, sized for the
+    // 32 kHz default source rate. Battle Network games (and any title that
+    // bumps SOUNDBIAS.resolution) push the GBA audio rate up to 65/131/262
+    // kHz, at which point 512 source frames isn't enough to fill a single
+    // host audio callback — the producer blocks every fill and the emulator
+    // throttles below realtime (audible as low-pitched playback + underrun
+    // crunch). Tango rescales this per fill mirroring mGBA's SDL frontend.
+    pub fn set_audio_high_water(&mut self, frames: u32) {
+        unsafe {
+            (*self.ptr).audioHighWater = frames as _;
+        }
+    }
 }
