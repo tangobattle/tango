@@ -1,5 +1,7 @@
+#include <mgba-util/audio-buffer.h>
+#include <mgba-util/audio-resampler.h>
+#include <mgba-util/interpolator.h>
 #include <mgba-util/vfs.h>
-#include <mgba/core/blip_buf.h>
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
 #include <mgba/core/sync.h>

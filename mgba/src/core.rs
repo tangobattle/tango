@@ -1,4 +1,4 @@
-use super::blip;
+use super::audio;
 use super::gba;
 use super::state;
 use super::trapper;
@@ -44,7 +44,7 @@ impl Core {
     pub fn enable_video_buffer(&mut self) {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
-        unsafe { (*self.ptr).desiredVideoDimensions.unwrap()(self.ptr, &mut width, &mut height) };
+        unsafe { (*self.ptr).baseVideoSize.unwrap()(self.ptr, &mut width, &mut height) };
 
         let mut buffer = vec![0u8; (width * height * 4) as usize];
         unsafe {
@@ -94,6 +94,12 @@ pub struct CoreRef<'a> {
 
 unsafe impl<'a> Send for CoreRef<'a> {}
 
+fn cstring_to_string(buf: &[std::os::raw::c_char]) -> String {
+    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len()) };
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
 impl<'a> CoreRef<'a> {
     pub fn frequency(&self) -> i32 {
         unsafe { (*self.ptr).frequency.unwrap()(self.ptr) }
@@ -106,32 +112,22 @@ impl<'a> CoreRef<'a> {
         }
     }
 
-    pub fn game_title(&self) -> String {
-        let mut title = [0u8; 16];
+    fn game_info(&self) -> mgba_sys::mGameInfo {
         unsafe {
-            (*self.ptr).getGameTitle.unwrap()(self.ptr, title.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char)
+            let mut info = std::mem::zeroed::<mgba_sys::mGameInfo>();
+            (*self.ptr).getGameInfo.unwrap()(self.ptr, &mut info);
+            info
         }
-        let cstr = match std::ffi::CString::new(title) {
-            Ok(r) => r,
-            Err(err) => {
-                let nul_pos = err.nul_position();
-                std::ffi::CString::new(&err.into_vec()[0..nul_pos]).unwrap()
-            }
-        };
-        cstr.to_string_lossy().to_string()
+    }
+
+    pub fn game_title(&self) -> String {
+        let info = self.game_info();
+        cstring_to_string(&info.title)
     }
 
     pub fn game_code(&self) -> String {
-        let mut code = [0u8; 12];
-        unsafe { (*self.ptr).getGameCode.unwrap()(self.ptr, code.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char) }
-        let cstr = match std::ffi::CString::new(code) {
-            Ok(r) => r,
-            Err(err) => {
-                let nul_pos = err.nul_position();
-                std::ffi::CString::new(&err.into_vec()[0..nul_pos]).unwrap()
-            }
-        };
-        cstr.to_string_lossy().to_string()
+        let info = self.game_info();
+        cstring_to_string(&info.code)
     }
 
     pub fn crc32(&self) -> u32 {
@@ -148,6 +144,14 @@ impl<'a> CoreRef<'a> {
 
     pub fn frame_counter(&self) -> u32 {
         unsafe { (*self.ptr).frameCounter.unwrap()(self.ptr) }
+    }
+
+    pub fn calculate_framerate_ratio(&self, desired_frame_rate: f64) -> f64 {
+        unsafe { mgba_sys::mCoreCalculateFramerateRatio(self.ptr, desired_frame_rate) }
+    }
+
+    pub fn audio_sample_rate(&self) -> u32 {
+        unsafe { (*self.ptr).audioSampleRate.unwrap()(self.ptr) }
     }
 }
 
@@ -275,9 +279,9 @@ impl<'a> CoreMutRef<'a> {
         unsafe { (*self.ptr).setAudioBufferSize.unwrap()(self.ptr, size as _) }
     }
 
-    pub fn audio_channel(&mut self, ch: i32) -> blip::BlipMutRef<'_> {
-        blip::BlipMutRef {
-            ptr: unsafe { (*self.ptr).getAudioChannel.unwrap()(self.ptr, ch) },
+    pub fn audio_buffer(&mut self) -> audio::AudioBufferMutRef<'_> {
+        audio::AudioBufferMutRef {
+            ptr: unsafe { (*self.ptr).getAudioBuffer.unwrap()(self.ptr) },
             _lifetime: std::marker::PhantomData,
         }
     }

@@ -76,18 +76,25 @@ pub const NUM_CHANNELS: usize = 2;
 pub struct MGBAStream {
     handle: mgba::thread::Handle,
     sample_rate: u32,
+    resampler: mgba::audio::AudioResampler,
+    dest_buffer: mgba::audio::AudioBuffer,
 }
 
 impl MGBAStream {
     pub fn new(handle: mgba::thread::Handle, sample_rate: u32) -> MGBAStream {
-        Self { handle, sample_rate }
+        Self {
+            handle,
+            sample_rate,
+            resampler: mgba::audio::AudioResampler::new(),
+            dest_buffer: mgba::audio::AudioBuffer::new(0x4000, NUM_CHANNELS as u32),
+        }
     }
 }
 
 impl Stream for MGBAStream {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let frame_count = buf.len();
-        let linear_buf = bytemuck::cast_slice_mut(buf);
+        let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
 
         let mut audio_guard = self.handle.lock_audio();
 
@@ -95,28 +102,20 @@ impl Stream for MGBAStream {
         if fps_target <= 0.0 {
             fps_target = 1.0;
         }
-        let faux_clock = mgba::gba::audio_calculate_ratio(1.0, fps_target, 1.0);
 
         let mut core = audio_guard.core_mut();
+        let faux_clock = core.as_ref().calculate_framerate_ratio(fps_target as f64);
+        let core_rate = core.as_ref().audio_sample_rate() as f64;
+        let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
 
-        let clock_rate = core.as_ref().frequency();
+        self.resampler.set_source(core_buffer_ptr, core_rate, true);
+        self.resampler
+            .set_destination(self.dest_buffer.as_mut_ptr(), self.sample_rate as f64 * faux_clock);
+        self.resampler.process();
 
-        let available = {
-            let mut left = core.audio_channel(0);
-            left.set_rates(clock_rate as f64, self.sample_rate as f64 * faux_clock as f64);
-            let mut available = left.samples_avail() as usize;
-            if available > frame_count {
-                available = frame_count;
-            }
-            left.read_samples(linear_buf, available as i32, true);
-            available
-        };
-
-        let mut right = core.audio_channel(1);
-        right.set_rates(clock_rate as f64, self.sample_rate as f64 * faux_clock as f64);
-        right.read_samples(&mut linear_buf[1..], available as i32, true);
-
-        available as usize
+        let available = self.dest_buffer.available().min(frame_count);
+        self.dest_buffer.read(&mut linear_buf[..available * NUM_CHANNELS], available);
+        available
     }
 }
 

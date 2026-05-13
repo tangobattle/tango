@@ -82,25 +82,31 @@ fn make_core_and_state(
     Ok((core, stepper_state))
 }
 
-fn run_frame<'a>(core: &mut mgba::core::Core, samples: &'a mut [i16], emu_vbuf: &mut [u8]) -> &'a [i16] {
+const AUDIO_CHANNELS: usize = 2;
+
+fn run_frame<'a>(
+    core: &mut mgba::core::Core,
+    resampler: &mut mgba::audio::AudioResampler,
+    dest_buffer: &mut mgba::audio::AudioBuffer,
+    samples: &'a mut [i16],
+    emu_vbuf: &mut [u8],
+) -> &'a [i16] {
     core.as_mut().run_frame();
 
-    let clock_rate = core.as_ref().frequency();
     let n = {
         let mut core = core.as_mut();
-        let mut left = core.audio_channel(0);
-        left.set_rates(clock_rate as f64, SAMPLE_RATE);
-        let n = left.samples_avail();
-        left.read_samples(&mut samples[..(n * 2) as usize], left.samples_avail(), true);
-        n
+        let core_rate = core.as_ref().audio_sample_rate() as f64;
+        let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
+        resampler.set_source(core_buffer_ptr, core_rate, true);
+        resampler.set_destination(dest_buffer.as_mut_ptr(), SAMPLE_RATE);
+        resampler.process();
+        let cap = samples.len() / AUDIO_CHANNELS;
+        let frames = dest_buffer.available().min(cap);
+        dest_buffer.read(&mut samples[..frames * AUDIO_CHANNELS], frames);
+        frames
     };
-    {
-        let mut core = core.as_mut();
-        let mut right = core.audio_channel(1);
-        right.set_rates(clock_rate as f64, SAMPLE_RATE);
-        right.read_samples(&mut samples[1..(n * 2) as usize], n, true);
-    }
-    let samples = &samples[..(n * 2) as usize];
+
+    let samples = &samples[..n * AUDIO_CHANNELS];
 
     emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
     fix_vbuf_alpha(emu_vbuf);
@@ -248,6 +254,9 @@ pub async fn export(
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
+    let mut resampler = mgba::audio::AudioResampler::new();
+    let mut dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+
     for replay in replays {
         let (mut core, state) = make_core_and_state(rom, &replay.local_sram, hooks, replay, settings)?;
         let replay_len = replay.total_input_pairs();
@@ -264,7 +273,7 @@ pub async fn export(
                 Err(err)?;
             }
 
-            let samples = run_frame(&mut core, &mut samples, &mut vbuf);
+            let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
             video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
 
             let mut audio_bytes = vec![0u8; samples.len() * 2];
@@ -349,6 +358,11 @@ pub async fn export_twosided(
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
+    let mut local_resampler = mgba::audio::AudioResampler::new();
+    let mut local_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+    let mut remote_resampler = mgba::audio::AudioResampler::new();
+    let mut remote_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+
     for replay in replays {
         let local_replay = replay.clone();
         let remote_replay = local_replay.clone().into_remote();
@@ -410,7 +424,13 @@ pub async fn export_twosided(
                 }
 
                 {
-                    let local_samples = run_frame(&mut local_core, &mut samples, &mut vbuf);
+                    let local_samples = run_frame(
+                        &mut local_core,
+                        &mut local_resampler,
+                        &mut local_dest_buffer,
+                        &mut samples,
+                        &mut vbuf,
+                    );
                     image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
                     let mut audio_bytes = vec![0u8; local_samples.len() * 2];
                     byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
@@ -423,7 +443,13 @@ pub async fn export_twosided(
                 }
 
                 {
-                    let remote_samples = run_frame(&mut remote_core, &mut samples, &mut vbuf);
+                    let remote_samples = run_frame(
+                        &mut remote_core,
+                        &mut remote_resampler,
+                        &mut remote_dest_buffer,
+                        &mut samples,
+                        &mut vbuf,
+                    );
                     image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
                     let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
                     byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
@@ -444,11 +470,23 @@ pub async fn export_twosided(
             }
 
             while local_state.lock_inner().current_tick() == current_tick {
-                run_frame(&mut local_core, &mut samples, &mut vbuf);
+                run_frame(
+                    &mut local_core,
+                    &mut local_resampler,
+                    &mut local_dest_buffer,
+                    &mut samples,
+                    &mut vbuf,
+                );
             }
 
             while remote_state.lock_inner().current_tick() == current_tick {
-                run_frame(&mut remote_core, &mut samples, &mut vbuf);
+                run_frame(
+                    &mut remote_core,
+                    &mut remote_resampler,
+                    &mut remote_dest_buffer,
+                    &mut samples,
+                    &mut vbuf,
+                );
             }
 
             progress_callback(current_tick as usize + completed_total, total_frames);

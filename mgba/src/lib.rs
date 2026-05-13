@@ -1,5 +1,5 @@
 pub mod arm_core;
-pub mod blip;
+pub mod audio;
 pub mod core;
 pub mod gba;
 pub mod input;
