@@ -1,8 +1,9 @@
 use byteorder::ByteOrder;
+use rand::Rng;
 
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state, random_background};
+use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state};
 use super::INIT_RX;
 
 pub(super) fn traps(
@@ -62,11 +63,31 @@ pub(super) fn traps(
                         answerer_rng1_state
                     },
                 );
-                munger.start_battle_from_comm_menu(
-                    core,
-                    bn3_match_type(&mut *rng, match_.match_type()),
-                    random_background(&mut *rng),
-                );
+                munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, match_.match_type()));
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut rng = match_.lock_rng();
+                // The ROM bg generator reads rng2 (shared). Pre-seed
+                // it from the synced match RNG so both peers compute
+                // the same bg.
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng2_state(core, r2_seed);
+                // Advance to Tango's original post-handshake state so
+                // once the handler returns, the next outer-dispatcher
+                // tick lands at the battle-init path.
+                munger.select_battle_init_substate(core, 0x30);
+                // PC-redirect past the function's SIO checks and its
+                // own [1]=0x34 write — landing at the BL to the bg
+                // generator. The function then writes the bg into the
+                // tx_packet via `strb r4, [r7, #4]`.
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x50);
             })
         }),
         (

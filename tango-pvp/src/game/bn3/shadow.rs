@@ -1,8 +1,9 @@
 use byteorder::ByteOrder;
+use rand::Rng;
 
 use crate::hooks::Trap;
 
-use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state, random_background};
+use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state};
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
@@ -81,11 +82,19 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                         offerer_rng1_state
                     },
                 );
-                munger.start_battle_from_comm_menu(
-                    core,
-                    bn3_match_type(&mut *rng, shadow_state.match_type()),
-                    random_background(&mut *rng),
-                );
+                munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, shadow_state.match_type()));
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let shadow_state = shadow_state.clone();
+            Box::new(move |mut core| {
+                let mut rng = shadow_state.lock_rng();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng2_state(core, r2_seed);
+                munger.select_battle_init_substate(core, 0x30);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x50);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {

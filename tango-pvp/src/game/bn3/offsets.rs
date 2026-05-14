@@ -87,6 +87,15 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
+    /// Entry into the comm-menu state handler whose generator-path
+    /// branch calls the game's bg generator. The trap pre-seeds rng
+    /// from the synced match RNG and PC-redirects +0x50 bytes past
+    /// the function's SIO checks to the BL site for the generator,
+    /// which writes the bg byte into the link-cable packet buffer
+    /// the game would normally broadcast. Delta 0x50 is identical
+    /// across A6BE/A6BJ/A3XE/A3XJ.
+    pub(super) comm_menu_settings_entry: u32,
+
     /// This hooks the exit from the function that is called when a match ends.
     ///
     /// Tango ends its match here.
@@ -139,6 +148,7 @@ pub static A3XE_00: Offsets = Offsets {
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e08a,
+        comm_menu_settings_entry:                   0x0803e9fa,
         match_end_ret:                              0x08006958,
         battle_start_play_music_call:               0x080076b4,
     },
@@ -170,6 +180,7 @@ pub static A6BE_00: Offsets = Offsets {
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e0a2,
+        comm_menu_settings_entry:                   0x0803ea12,
         match_end_ret:                              0x08006958,
         battle_start_play_music_call:               0x080076b4,
     },
@@ -201,6 +212,7 @@ pub static A3XJ_01: Offsets = Offsets {
         battle_is_p2_ret:                           0x08008bfe,
         link_is_p2_ret:                             0x080034e0,
         comm_menu_init_ret:                         0x0803e532,
+        comm_menu_settings_entry:                   0x0803eeaa,
         match_end_ret:                              0x080068ec,
         battle_start_play_music_call:               0x08007648,
     },
@@ -232,6 +244,7 @@ pub static A6BJ_01: Offsets = Offsets {
         battle_is_p2_ret:                           0x08008bfe,
         link_is_p2_ret:                             0x080034e0,
         comm_menu_init_ret:                         0x0803e54a,
+        comm_menu_settings_entry:                   0x0803eec2,
         match_end_ret:                              0x080068ec,
         battle_start_play_music_call:               0x08007648,
     },
