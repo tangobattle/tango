@@ -216,10 +216,18 @@ fn make_mux_ffmpeg(
     Ok(child.spawn()?)
 }
 
+fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize {
+    match selected.iter().rposition(|&s| s) {
+        Some(last) => replay.rounds.iter().take(last + 1).map(|r| r.len()).sum(),
+        None => 0,
+    }
+}
+
 pub async fn export(
     rom: &[u8],
     hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
     replays: &[crate::replay::Replay],
+    selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
@@ -248,42 +256,67 @@ pub async fn export(
             .collect::<Vec<_>>(),
     )?;
 
-    let total_frames = replays.iter().map(|replay| replay.total_input_pairs()).sum();
+    let total_frames: usize = replays
+        .iter()
+        .enumerate()
+        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
+        .sum();
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
 
     let mut resampler = mgba::audio::AudioResampler::new();
     let mut dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+    let mut prev_should_write = false;
 
-    for replay in replays {
+    for (replay_idx, replay) in replays.iter().enumerate() {
         let (mut core, state) = make_core_and_state(rom, &replay.local_sram, hooks, replay, settings)?;
-        let replay_len = replay.total_input_pairs();
+        let full_replay_len = replay.total_input_pairs();
+        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
+        let last_selected_round = selected.iter().rposition(|&s| s);
+        let kept_replay_len = kept_input_pairs(replay, selected);
 
+        let last_round_idx = replay.rounds.len().saturating_sub(1);
         loop {
-            {
+            let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
-                if (!replay.is_complete && state.total_input_pairs_left() == 0) || state.is_round_ended() {
-                    break;
-                }
+                (state.current_round_index() as usize, state.is_round_ended(), state.total_input_pairs_left())
+            };
+
+            if (!replay.is_complete && pairs_left == 0) || (is_ended && cur_round_idx >= last_round_idx) {
+                break;
+            }
+
+            if last_selected_round.is_none_or(|last| cur_round_idx > last) {
+                break;
             }
 
             if let Some(err) = state.lock_inner().take_error() {
                 Err(err)?;
             }
 
-            let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
-            video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
+            let should_write = selected.get(cur_round_idx).copied().unwrap_or(false);
+            if should_write && !prev_should_write {
+                resampler = mgba::audio::AudioResampler::new();
+                dest_buffer.clear();
+            }
+            prev_should_write = should_write;
 
-            let mut audio_bytes = vec![0u8; samples.len() * 2];
-            byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
-            audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
+            let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
+
+            if should_write {
+                video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
+
+                let mut audio_bytes = vec![0u8; samples.len() * 2];
+                byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
+                audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
+            }
             progress_callback(
-                replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
+                full_replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
                 total_frames,
             );
         }
 
-        completed_total += replay_len;
+        completed_total += kept_replay_len;
     }
 
     video_child.stdin = None;
@@ -312,6 +345,7 @@ pub async fn export_twosided(
     remote_rom: &[u8],
     remote_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
     replays: &[crate::replay::Replay],
+    selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
@@ -351,7 +385,11 @@ pub async fn export_twosided(
             .collect::<Vec<_>>(),
     )?;
 
-    let total_frames = replays.iter().map(|replay| replay.total_input_pairs()).sum();
+    let total_frames: usize = replays
+        .iter()
+        .enumerate()
+        .map(|(idx, replay)| kept_input_pairs(replay, selected_rounds.get(idx).map(Vec::as_slice).unwrap_or(&[])))
+        .sum();
 
     let mut completed_total = 0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
@@ -360,8 +398,9 @@ pub async fn export_twosided(
     let mut local_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
     let mut remote_resampler = mgba::audio::AudioResampler::new();
     let mut remote_dest_buffer = mgba::audio::AudioBuffer::new(0x4000, AUDIO_CHANNELS as u32);
+    let mut prev_should_write = false;
 
-    for replay in replays {
+    for (replay_idx, replay) in replays.iter().enumerate() {
         let local_replay = replay.clone();
         let remote_replay = local_replay.clone().into_remote();
 
@@ -380,13 +419,19 @@ pub async fn export_twosided(
             settings,
         )?;
 
-        let replay_len = replay.total_input_pairs();
+        let full_replay_len = replay.total_input_pairs();
+        let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
+        let last_selected_round = selected.iter().rposition(|&s| s);
+        let kept_replay_len = kept_input_pairs(replay, selected);
+        let last_round_idx = replay.rounds.len().saturating_sub(1);
 
         loop {
+            let cur_round_idx = local_state.lock_inner().current_round_index() as usize;
+
             {
                 let local_state = local_state.lock_inner();
                 if (!local_replay.is_complete && local_state.total_input_pairs_left() == 0)
-                    || local_state.is_round_ended()
+                    || (local_state.is_round_ended() && cur_round_idx >= last_round_idx)
                 {
                     break;
                 }
@@ -395,11 +440,23 @@ pub async fn export_twosided(
             {
                 let remote_state = remote_state.lock_inner();
                 if (!remote_replay.is_complete && remote_state.total_input_pairs_left() == 0)
-                    || remote_state.is_round_ended()
+                    || (remote_state.is_round_ended() && cur_round_idx >= last_round_idx)
                 {
                     break;
                 }
             }
+
+            if last_selected_round.is_none_or(|last| cur_round_idx > last) {
+                break;
+            }
+            let should_write = selected.get(cur_round_idx).copied().unwrap_or(false);
+            if should_write && !prev_should_write {
+                local_resampler = mgba::audio::AudioResampler::new();
+                local_dest_buffer.clear();
+                remote_resampler = mgba::audio::AudioResampler::new();
+                remote_dest_buffer.clear();
+            }
+            prev_should_write = should_write;
 
             let current_tick = local_state.lock_inner().current_tick();
             if remote_state.lock_inner().current_tick() != current_tick {
@@ -429,15 +486,17 @@ pub async fn export_twosided(
                         &mut samples,
                         &mut vbuf,
                     );
-                    image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
-                    let mut audio_bytes = vec![0u8; local_samples.len() * 2];
-                    byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
-                    local_audio_child
-                        .stdin
-                        .as_mut()
-                        .unwrap()
-                        .write_all(&audio_bytes)
-                        .await?;
+                    if should_write {
+                        image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
+                        let mut audio_bytes = vec![0u8; local_samples.len() * 2];
+                        byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
+                        local_audio_child
+                            .stdin
+                            .as_mut()
+                            .unwrap()
+                            .write_all(&audio_bytes)
+                            .await?;
+                    }
                 }
 
                 {
@@ -448,23 +507,27 @@ pub async fn export_twosided(
                         &mut samples,
                         &mut vbuf,
                     );
-                    image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
-                    let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
-                    byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
-                    remote_audio_child
+                    if should_write {
+                        image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
+                        let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
+                        byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
+                        remote_audio_child
+                            .stdin
+                            .as_mut()
+                            .unwrap()
+                            .write_all(&audio_bytes)
+                            .await?;
+                    }
+                }
+
+                if should_write {
+                    video_child
                         .stdin
                         .as_mut()
                         .unwrap()
-                        .write_all(&audio_bytes)
+                        .write_all(composed_vbuf.as_bytes())
                         .await?;
                 }
-
-                video_child
-                    .stdin
-                    .as_mut()
-                    .unwrap()
-                    .write_all(composed_vbuf.as_bytes())
-                    .await?;
             }
 
             while local_state.lock_inner().current_tick() == current_tick {
@@ -487,10 +550,13 @@ pub async fn export_twosided(
                 );
             }
 
-            progress_callback(current_tick as usize + completed_total, total_frames);
+            progress_callback(
+                full_replay_len - local_state.lock_inner().total_input_pairs_left() + completed_total,
+                total_frames,
+            );
         }
 
-        completed_total += replay_len;
+        completed_total += kept_replay_len;
     }
 
     video_child.stdin = None;

@@ -34,19 +34,7 @@ impl State {
         }
     }
 
-    fn update_selection(&mut self, i: usize, multi_select: bool) {
-        if multi_select {
-            if let Some(range) = &mut self.selection {
-                if i < range.start {
-                    range.start = i;
-                } else if i + 1 > range.end {
-                    range.end = i + 1;
-                }
-
-                return;
-            }
-        }
-
+    fn update_selection(&mut self, i: usize) {
         let new_selection = Some(i..i + 1);
 
         if self.selection == new_selection {
@@ -342,8 +330,7 @@ pub fn show(
                     std::mem::drop(replays);
 
                     if let Some(i) = clicked_index {
-                        let shift_held = ui.input(|i| i.modifiers.shift);
-                        state.update_selection(i, shift_held);
+                        state.update_selection(i);
                     }
                 });
         });
@@ -547,37 +534,9 @@ pub fn show(
                             });
                         }
 
-                        let export_text_id = if selection.len() == 1 {
-                            "replays-export"
-                        } else {
-                            "replays-export-multi"
-                        };
-
-                        let export_label = format!("💾 {}", i18n::LOCALES.lookup(language, export_text_id).unwrap());
+                        let export_label = format!("💾 {}", i18n::LOCALES.lookup(language, "replays-export").unwrap());
 
                         if ui.button(export_label).clicked() {
-                            let replays_to_render = replays[selection.clone()]
-                                .iter()
-                                .rev()
-                                .flat_map(|(path, _)| {
-                                    let mut f = match std::fs::File::open(path) {
-                                        Ok(f) => f,
-                                        Err(e) => {
-                                            log::error!("failed to load replay {}: {:?}", path.display(), e);
-                                            return None;
-                                        }
-                                    };
-
-                                    match tango_pvp::replay::Replay::decode(&mut f) {
-                                        Ok(replay) => Some(replay),
-                                        Err(e) => {
-                                            log::error!("failed to load replay {}: {:?}", path.display(), e);
-                                            None
-                                        }
-                                    }
-                                })
-                                .collect();
-
                             let mut save_path = if let Some(folder) = &config.last_export_folder {
                                 let mut save_path = folder.clone();
                                 save_path.push(path.file_name().unwrap());
@@ -585,17 +544,12 @@ pub fn show(
                             } else {
                                 path.clone()
                             };
-
-                            if selection.len() > 1 {
-                                save_path.set_extension("multi.mp4");
-                            } else {
-                                save_path.set_extension("mp4");
-                            }
+                            save_path.set_extension("mp4");
 
                             let mut window = ReplayDumpWindow::new(
                                 local_rom.clone(),
                                 remote_rom.clone(),
-                                replays_to_render,
+                                replay.clone(),
                                 save_path,
                             );
                             shared_root_state

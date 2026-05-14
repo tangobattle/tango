@@ -223,19 +223,31 @@ async fn cmd_export(
             ));
         }
 
+        let selected_rounds = vec![vec![true; replay.rounds.len()]];
         tango_pvp::replay::export::export_twosided(
             &local_rom,
             local_hooks,
             &remote_rom,
             remote_hooks,
             &[replay],
+            &selected_rounds,
             &output_path,
             &settings,
             cb,
         )
         .await?;
     } else {
-        tango_pvp::replay::export::export(&local_rom, local_hooks, &[replay], &output_path, &settings, cb).await?;
+        let selected_rounds = vec![vec![true; replay.rounds.len()]];
+        tango_pvp::replay::export::export(
+            &local_rom,
+            local_hooks,
+            &[replay],
+            &selected_rounds,
+            &output_path,
+            &settings,
+            cb,
+        )
+        .await?;
     }
 
     Ok(())

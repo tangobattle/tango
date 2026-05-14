@@ -9,7 +9,8 @@ pub struct ReplayDumpWindow {
     output_path: std::path::PathBuf,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
-    replays: Vec<tango_pvp::replay::Replay>,
+    replay: tango_pvp::replay::Replay,
+    selected_rounds: Vec<bool>,
     scale: Option<usize>,
     disable_bgm: bool,
     twosided: bool,
@@ -29,15 +30,17 @@ impl ReplayDumpWindow {
     pub fn new(
         local_rom: Vec<u8>,
         remote_rom: Option<Vec<u8>>,
-        replays: Vec<tango_pvp::replay::Replay>,
+        replay: tango_pvp::replay::Replay,
         output_path: std::path::PathBuf,
     ) -> Self {
+        let selected_rounds = vec![true; replay.rounds.len()];
         Self {
             cancellation_token: None,
             output_path,
             local_rom,
             remote_rom,
-            replays,
+            replay,
+            selected_rounds,
             scale: Some(DEFAULT_SCALE),
             disable_bgm: false,
             twosided: false,
@@ -56,15 +59,7 @@ impl ReplayDumpWindow {
             .output_path
             .file_name()
             .map(|path| path.to_string_lossy())
-            .unwrap_or_else(|| {
-                let export_text_id = if self.replays.len() == 1 {
-                    "replays-export"
-                } else {
-                    "replays-export-multi"
-                };
-
-                i18n::LOCALES.lookup(language, export_text_id).unwrap().into()
-            });
+            .unwrap_or_else(|| i18n::LOCALES.lookup(language, "replays-export").unwrap().into());
 
         egui::Window::new(path)
             .id(egui::Id::new(("replay-dump-window", id)))
@@ -135,6 +130,16 @@ impl ReplayDumpWindow {
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-twosided").unwrap());
                             ui.add_enabled(self.remote_rom.is_some(), egui::Checkbox::new(&mut self.twosided, ""));
                             ui.end_row();
+
+                            if self.selected_rounds.len() > 1 {
+                                ui.strong(i18n::LOCALES.lookup(language, "replays-export-rounds").unwrap());
+                                ui.horizontal(|ui| {
+                                    for (i, selected) in self.selected_rounds.iter_mut().enumerate() {
+                                        ui.checkbox(selected, format!("{}", i + 1));
+                                    }
+                                });
+                                ui.end_row();
+                            }
                         });
                 });
 
@@ -200,16 +205,20 @@ impl ReplayDumpWindow {
                         open2 = false;
                     }
                 } else if ui
-                    .button(format!(
-                        "💾 {}",
-                        i18n::LOCALES.lookup(language, "replays-export").unwrap()
-                    ))
+                    .add_enabled(
+                        self.selected_rounds.iter().any(|s| *s),
+                        egui::Button::new(format!(
+                            "💾 {}",
+                            i18n::LOCALES.lookup(language, "replays-export").unwrap()
+                        )),
+                    )
                     .clicked()
                 {
                     let egui_ctx = ui.ctx().clone();
                     let local_rom = self.local_rom.clone();
                     let remote_rom = self.remote_rom.clone();
-                    let replays = self.replays.clone();
+                    let replays = vec![self.replay.clone()];
+                    let selected_rounds = vec![self.selected_rounds.clone()];
                     let path = self.output_path.clone();
                     let progress = self.progress.clone();
                     let result = self.result.clone();
@@ -246,7 +255,7 @@ impl ReplayDumpWindow {
                             let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
 
                             tokio::select! {
-                                r = tango_pvp::replay::export::export_twosided(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replays, &path, &settings, cb) => {
+                                r = tango_pvp::replay::export::export_twosided(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replays, &selected_rounds, &path, &settings, cb) => {
                                     *result.lock() = Some(r);
                                     egui_ctx.request_repaint();
                                 }
@@ -263,7 +272,7 @@ impl ReplayDumpWindow {
                             let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
                             tokio::select! {
-                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replays, &path, &settings, cb) => {
+                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replays, &selected_rounds, &path, &settings, cb) => {
                                     *result.lock() = Some(r);
                                     egui_ctx.request_repaint();
                                 }
