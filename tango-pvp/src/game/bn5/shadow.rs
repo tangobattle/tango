@@ -1,6 +1,8 @@
+use rand::Rng;
+
 use crate::hooks::Trap;
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
     vec![
@@ -8,7 +10,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
-                munger.start_battle_from_comm_menu(core, shadow_state.match_type().0);
+                munger.start_battle_from_comm_menu(core, shadow_state.match_type().1 == 1);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
@@ -49,14 +51,18 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 );
             }),
         ),
-        (hooks.offsets.rom.comm_menu_init_battle_entry, {
+        (hooks.offsets.rom.comm_menu_settings_entry, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
-            Box::new(move |core| {
+            Box::new(move |mut core| {
                 let mut rng = shadow_state.lock_rng();
-                let (battle_settings, background) =
-                    random_battle_settings_and_background(shadow_state.match_type().1 == 1, &mut *rng);
-                munger.set_battle_settings_and_background(core, battle_settings, background);
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
+                munger.select_init_battle_substate(core);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x12);
             })
         }),
         {

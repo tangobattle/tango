@@ -104,10 +104,15 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
-    /// This is the entry point to link battle in the comm menu: that is, the first match has started.
-    ///
-    /// We need to perform some initialization we skipped here, such as setting stage and background.
-    pub(super) comm_menu_init_battle_entry: u32,
+    /// Entry into the in-game settings-handler function (after its
+    /// `push {r4, lr}`). The trap pre-seeds rng1/rng2 from the synced
+    /// match RNG, advances submenu_control[1]=0x0c and [2]=0 so the
+    /// next outer-dispatcher tick lands at init_battle_entry, and
+    /// PC-redirects +0x12 bytes past the function's SIO check so the
+    /// generator-path branch runs unconditionally. The function then
+    /// calls the ROM generator and writes submenu_control[0x16]/[0x17]
+    /// itself. Delta 0x12 is identical across BRBE/BRKE/BRBJ/BRKJ.
+    pub(super) comm_menu_settings_entry: u32,
 
     /// This handles underlying link cable SIO in the comm menu.
     ///
@@ -169,7 +174,7 @@ pub static BRBE_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0803d020,
         link_is_p2_ret:                         0x0803d03e,
         comm_menu_init_ret:                     0x08134c34,
-        comm_menu_init_battle_entry:            0x08135928,
+        comm_menu_settings_entry:               0x08134eee,
         handle_sio_entry:                       0x0803d11c,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134b50,
@@ -199,7 +204,7 @@ pub static BRKE_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0803d024,
         link_is_p2_ret:                         0x0803d042,
         comm_menu_init_ret:                     0x08134d1c,
-        comm_menu_init_battle_entry:            0x08135a10,
+        comm_menu_settings_entry:               0x08134fd6,
         handle_sio_entry:                       0x0803d120,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134c38,
@@ -229,7 +234,7 @@ pub static BRBJ_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0803cf34,
         link_is_p2_ret:                         0x0803cf52,
         comm_menu_init_ret:                     0x081347ec,
-        comm_menu_init_battle_entry:            0x081354e0,
+        comm_menu_settings_entry:               0x08134aa6,
         handle_sio_entry:                       0x0803d030,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134708,
@@ -259,7 +264,7 @@ pub static BRKJ_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0803cf38,
         link_is_p2_ret:                         0x0803cf56,
         comm_menu_init_ret:                     0x081348d4,
-        comm_menu_init_battle_entry:            0x081355c8,
+        comm_menu_settings_entry:               0x08134b8e,
         handle_sio_entry:                       0x0803d034,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x081347f0,

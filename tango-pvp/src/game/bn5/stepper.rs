@@ -1,7 +1,9 @@
+use rand::Rng;
+
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     vec![
@@ -10,21 +12,25 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
                 let stepper_state = stepper_state.lock_inner();
-                munger.start_battle_from_comm_menu(core, stepper_state.match_type().0);
+                munger.start_battle_from_comm_menu(core, stepper_state.match_type().1 == 1);
             })
         }),
-        (hooks.offsets.rom.comm_menu_init_battle_entry, {
+        (hooks.offsets.rom.comm_menu_settings_entry, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
-            Box::new(move |core| {
+            Box::new(move |mut core| {
                 let stepper_state = stepper_state.lock_inner();
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
                 let mut rng = rng.lock();
-                let (battle_settings, background) =
-                    random_battle_settings_and_background(stepper_state.match_type().1 == 1, &mut *rng);
-                munger.set_battle_settings_and_background(core, battle_settings, background);
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
+                munger.select_init_battle_substate(core);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x12);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
