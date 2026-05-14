@@ -25,17 +25,28 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
     }
 
-    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef, background: u8) {
+    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
+        // [1]=0x28 routes the inner dispatcher to the state handler
+        // that contains the inline bg-generator block (vs the old
+        // [1]=0x2c which jumped to the post-handshake state). The
+        // comm_menu_settings_entry trap PC-redirects past the SIO
+        // checks so the bg gen runs and writes tx_packet[2] itself.
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x28);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
+        // Tx-packet template; [2] is the bg byte (left 0 — the ROM
+        // handler overwrites it via `strb r0, [r7, #2]`).
         core.raw_write_range(
             self.offsets.ewram.tx_packet,
             -1,
             &[
-                0x00, 0x04, background, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+                0x00, 0x04, 0x00, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
             ],
         );
+    }
+
+    pub(super) fn select_battle_init_substate(&self, mut core: mgba::core::CoreMutRef, v: u8) {
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, v)
     }
 
     pub(super) fn set_rng_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {

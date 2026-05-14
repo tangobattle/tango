@@ -80,6 +80,17 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
+    /// Entry into the comm-menu state handler that contains the inline
+    /// bg-generator block. The trap PC-redirects +0x70 bytes to skip
+    /// the function's SIO/state checks (and its own [1] advance,
+    /// `bl sound`, and `bl SIO`) — landing at the inline `ldr r0,
+    /// [pc, #imm] ; movs r1, #8 ; bl <rng>` sequence so the ROM bg
+    /// generator runs and writes the bg byte into tx_packet[2] via
+    /// `strb r0, [r7, #2]`. select_battle_init_substate(0x2c) handles
+    /// the [1] advance for the next outer-dispatcher tick. Delta 0x70
+    /// is identical across AE2E and AE2J.
+    pub(super) comm_menu_settings_entry: u32,
+
     /// This hooks the exit from the function that is called when a match ends.
     ///
     /// Tango ends its match here.
@@ -131,6 +142,7 @@ pub static AE2E_00: Offsets = Offsets {
         round_end_entry:                            0x08006114,
         link_is_p2_ret:                             0x08002b28,
         comm_menu_init_ret:                         0x0802b2a0,
+        comm_menu_settings_entry:                   0x0802b6f2,
         match_end_ret:                              0x080061a2,
         battle_start_play_music_call:               0x08006ce0,
     },
@@ -161,6 +173,7 @@ pub static AE2J_00_AC: Offsets = Offsets {
         round_end_entry:                            0x08006104,
         link_is_p2_ret:                             0x08002b28,
         comm_menu_init_ret:                         0x0802b11c,
+        comm_menu_settings_entry:                   0x0802b56e,
         match_end_ret:                              0x08006192,
         battle_start_play_music_call:               0x08006b9c,
     },

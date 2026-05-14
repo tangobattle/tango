@@ -1,6 +1,8 @@
+use rand::Rng;
+
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng_state, random_background};
+use super::rng::generate_rng_state;
 use super::INIT_RX;
 
 pub(super) fn traps(
@@ -41,7 +43,32 @@ pub(super) fn traps(
                         answerer_rng_state
                     },
                 );
-                munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
+                munger.start_battle_from_comm_menu(core);
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                let mut rng = match_.lock_rng();
+                // The ROM bg gen reads the game's single rng state.
+                // Tango's comm_menu_init_ret seeded it to a per-peer
+                // value (offerer vs answerer) — override to a shared
+                // value so both peers compute the same bg.
+                let rng_seed: u32 = rng.gen();
+                munger.set_rng_state(core, rng_seed);
+                // Advance submenu_control[1]=0x2c so once the handler
+                // returns the next outer-dispatcher tick lands at
+                // Tango's working post-handshake state.
+                munger.select_battle_init_substate(core, 0x2c);
+                // PC-redirect past the function's SIO checks, its own
+                // [1] advance, and the sound/SIO calls — landing at
+                // the inline bg-gen `ldr r0, [pc, #imm] ; movs r1, #8
+                // ; bl <rng>` sequence.
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x70);
             })
         }),
         (
