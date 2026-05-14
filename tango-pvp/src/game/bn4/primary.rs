@@ -1,6 +1,8 @@
+use rand::Rng;
+
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -15,12 +17,32 @@ pub(super) fn traps(
             Box::new(move |core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
+                munger.start_battle_from_comm_menu(core, match_.match_type().0);
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let match_ = match_.clone();
+            Box::new(move |mut core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
-
-                let (battle_settings, background) =
-                    random_battle_settings_and_background(&mut *rng, match_.match_type());
-
-                munger.start_battle_from_comm_menu(core, match_.match_type().0, battle_settings, background);
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
+                // Advance to Tango's battle-init state so once the
+                // settings handler returns and the state machine
+                // ticks again, the outer dispatcher routes to the
+                // battle-init path (which reads the [0x11]/[0x2c]
+                // the handler is about to write).
+                munger.select_battle_init_substate(core);
+                // PC-redirect past the function's SIO/button check
+                // *and* its own [2]=0xc / [3]=0 writes (which would
+                // undo the substate we just set) — landing right
+                // before `bl 0x803b23c` so the generator path runs.
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x62);
             })
         }),
         (

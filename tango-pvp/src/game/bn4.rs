@@ -23,21 +23,9 @@ pub static B4BE_00: Hooks = Hooks {
 pub static B4WE_00: Hooks = Hooks {
     offsets: &offsets::B4WE_00,
 };
-
-#[allow(dead_code)]
-pub static B4BJ_00: Hooks = Hooks {
-    offsets: &offsets::B4BJ_00,
-};
-
 pub static B4BJ_01: Hooks = Hooks {
     offsets: &offsets::B4BJ_01,
 };
-
-#[allow(dead_code)]
-pub static B4WJ_00: Hooks = Hooks {
-    offsets: &offsets::B4WJ_00,
-};
-
 pub static B4WJ_01: Hooks = Hooks {
     offsets: &offsets::B4WJ_01,
 };

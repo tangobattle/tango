@@ -98,6 +98,17 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
+    /// Entry into the in-game settings-handler function (after its
+    /// `push {lr}`). The trap pre-seeds rng1/rng2 from the synced
+    /// match RNG, then PC-redirects +0x5a bytes past the function's
+    /// SIO/button check (`bl 0x803a89c`) — landing at the settings-
+    /// write block (`movs r0, #0xc; strb r0, [r5, #2]; …`) — so the
+    /// generator-path branch runs unconditionally. The function then
+    /// calls the ROM generator and writes submenu_control[0x11]
+    /// (settings) and [0x2c] (background) itself. Delta 0x5a is
+    /// identical across B4BE/B4WE/B4BJ_01/B4WJ_01.
+    pub(super) comm_menu_settings_entry: u32,
+
     /// This handles underlying link cable SIO in the comm menu.
     ///
     /// This should never be called.
@@ -163,6 +174,7 @@ pub static B4BE_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x08048204,
         link_is_p2_ret:                         0x08048222,
         comm_menu_init_ret:                     0x0803956a,
+        comm_menu_settings_entry:               0x08039756,
         handle_sio_entry:                       0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
@@ -200,6 +212,7 @@ pub static B4WE_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x080481fc,
         link_is_p2_ret:                         0x0804821a,
         comm_menu_init_ret:                     0x08039562,
+        comm_menu_settings_entry:               0x0803974e,
         handle_sio_entry:                       0x080482f0,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
@@ -210,78 +223,6 @@ pub static B4WE_00: Offsets = Offsets {
         battle_pizzazz_opponent_mov:            0x0800fcbc,
         battle_pizzazz_silhouette_mov:          0x08010d3a,
         battle_pizzazz_final_mov:               0x080074e8,
-    },
-};
-
-#[rustfmt::skip]
-pub static B4BJ_00: Offsets = Offsets {
-    ewram: EWRAM_OFFSETS,
-    rom: ROMOffsets {
-        start_screen_jump_table_entry:          0x0802d69a,
-        start_screen_sram_unmask_ret:           0x080252d2,
-        ngplus_menu_init_ret:                   0x080254b2,
-        game_load_ret:                          0x08004976,
-        main_read_joyflags:                     0x080003c6,
-        copy_input_data_entry:                  0x08017a9a,
-        copy_input_data_ret:                    0x08017b62,
-        round_end_set_win:                      0x08007104,
-        round_end_set_loss:                     0x08007118,
-        round_end_damage_judge_set_win:         0x080073ae,
-        round_end_damage_judge_set_loss:        0x080073c2,
-        round_end_damage_judge_set_draw:        0x080073c8,
-        round_start_ret:                        0x080066ec,
-        round_set_ending:                       0x080077ae,
-        round_end_entry:                        0x08006dfa,
-        round_call_jump_table_ret:              0x08006b04,
-        battle_is_p2_tst:                       0x080480c4,
-        link_is_p2_ret:                         0x080480e2,
-        comm_menu_init_ret:                     0x08039442,
-        handle_sio_entry:                       0x080481b8,
-        in_battle_call_handle_link_cable_input: 0x08006af2,
-        match_end_ret:                          0x08004f48,
-        battle_start_play_music_call:           0x08007490,
-        battle_pizzazz_init_mov:                0x08007464,
-        battle_pizzazz_bg_mov:                  0x080074a2,
-        battle_pizzazz_self_mov:                0x080145e0,
-        battle_pizzazz_opponent_mov:            0x0800fc34,
-        battle_pizzazz_silhouette_mov:          0x08010cb2,
-        battle_pizzazz_final_mov:               0x080074bc,
-    },
-};
-
-#[rustfmt::skip]
-pub static B4WJ_00: Offsets = Offsets {
-    ewram: EWRAM_OFFSETS,
-    rom: ROMOffsets {
-        start_screen_jump_table_entry:          0x0802d696,
-        start_screen_sram_unmask_ret:           0x080252ce,
-        ngplus_menu_init_ret:                   0x080254ae,
-        game_load_ret:                          0x08004976,
-        main_read_joyflags:                     0x080003c6,
-        copy_input_data_entry:                  0x08017a9a,
-        copy_input_data_ret:                    0x08017b62,
-        round_end_set_win:                      0x08007104,
-        round_end_set_loss:                     0x08007118,
-        round_end_damage_judge_set_win:         0x080073ae,
-        round_end_damage_judge_set_loss:        0x080073c2,
-        round_end_damage_judge_set_draw:        0x080073c8,
-        round_start_ret:                        0x080066ec,
-        round_set_ending:                       0x080077ae,
-        round_end_entry:                        0x08006dfa,
-        round_call_jump_table_ret:              0x08006b04,
-        battle_is_p2_tst:                       0x080480bc,
-        link_is_p2_ret:                         0x080480da,
-        comm_menu_init_ret:                     0x0803943a,
-        handle_sio_entry:                       0x080481b0,
-        in_battle_call_handle_link_cable_input: 0x08006af2,
-        match_end_ret:                          0x08004f48,
-        battle_start_play_music_call:           0x08007490,
-        battle_pizzazz_init_mov:                0x08007464,
-        battle_pizzazz_bg_mov:                  0x080074a2,
-        battle_pizzazz_self_mov:                0x080145e0,
-        battle_pizzazz_opponent_mov:            0x0800fc34,
-        battle_pizzazz_silhouette_mov:          0x08010cb2,
-        battle_pizzazz_final_mov:               0x080074bc,
     },
 };
 
@@ -308,6 +249,7 @@ pub static B4BJ_01: Offsets = Offsets {
         battle_is_p2_tst:                       0x08048100,
         link_is_p2_ret:                         0x0804811e,
         comm_menu_init_ret:                     0x0803947e,
+        comm_menu_settings_entry:               0x0803966a,
         handle_sio_entry:                       0x080481f4,
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
@@ -344,6 +286,7 @@ pub static B4WJ_01: Offsets = Offsets {
         battle_is_p2_tst:                       0x080480f8,
         link_is_p2_ret:                         0x08048116,
         comm_menu_init_ret:                     0x08039476,
+        comm_menu_settings_entry:               0x08039662,
         handle_sio_entry:                       0x080481ec,
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
