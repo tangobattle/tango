@@ -210,8 +210,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     core.gba_mut().cpu_mut().set_gpr(0, 3);
-                    munger.set_rx_packet(core, 0, &INIT_RX);
-                    munger.set_rx_packet(core, 1, &INIT_RX);
+                    let tx = munger.tx_packet(core);
+                    let mut rx = INIT_RX;
+                    rx[2] = tx[2];
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
                 }),
             )
         },
