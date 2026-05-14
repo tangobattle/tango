@@ -2,7 +2,7 @@ extern crate bindgen;
 
 use std::env;
 use std::io::BufRead;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug)]

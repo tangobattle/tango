@@ -20,7 +20,7 @@ type SharedInputQueue = Arc<Mutex<VecDeque<InputPair>>>;
 /// of the set; consumers verify it still matches at peek to catch
 /// trap-ordering bugs.
 #[derive(Clone)]
-struct LocalPacket {
+pub struct LocalPacket {
     send_count: u32,
     packet: Vec<u8>,
 }
@@ -153,7 +153,7 @@ impl InnerState {
             })
         };
 
-        // target_tick = 0 either way: fresh starts at tick 0 with empty
+        // send_count = 0 either way: fresh starts at tick 0 with empty
         // output_pairs, and restore resets output_pairs to empty too — both
         // sides of the send-counter check start fresh.
         let local_packet = match local_packet_override {
@@ -604,7 +604,7 @@ pub struct ReplayCheckpoint {
     pub current_tick_in_round: u32,
     pub has_committed_this_round: bool,
     pub rng_state: rand_pcg::Mcg128Xsl64,
-    pub local_packet: Option<(u32, Vec<u8>)>,
+    pub local_packet: Option<LocalPacket>,
     pub inputs_consumed: u32,
 }
 
@@ -677,7 +677,7 @@ impl State {
             current_tick_in_round: inner.current_tick,
             has_committed_this_round: replay.has_committed_this_round,
             rng_state,
-            local_packet: inner.local_packet.as_ref().map(|p| (p.send_count, p.packet.clone())),
+            local_packet: inner.local_packet.clone(),
             inputs_consumed: inner.output_pairs.len() as u32,
         })
     }
@@ -731,7 +731,7 @@ impl State {
             absolute_tick: checkpoint.absolute_tick,
             total_replay_ticks,
             current_tick_in_round: checkpoint.current_tick_in_round,
-            local_packet_override: checkpoint.local_packet.as_ref().map(|(_, packet)| packet.clone()),
+            local_packet_override: checkpoint.local_packet.as_ref().map(|lp| lp.packet.clone()),
             round_active: true,
             has_committed_this_round: checkpoint.has_committed_this_round,
             disable_bgm,

@@ -56,23 +56,8 @@ pub struct SinglePlayer {}
 /// `current_tick_in_round = 0`) and periodically mid-round.
 #[derive(Clone)]
 struct ReplaySnapshot {
-    round_index: u32,
-    /// Position used to pick the best snapshot for a seek target.
-    absolute_tick: u32,
-    current_tick_in_round: u32,
-    has_committed_this_round: bool,
-    rng_state: rand_pcg::Mcg128Xsl64,
-    /// Captured local_packet (target_tick, packet bytes) at snapshot time;
-    /// fed back into the stepper on restore so games whose frame layout
-    /// shifts current_tick relative to send_and_receive (e.g. BN3) get the
-    /// exact same packet they had in normal playback.
-    local_packet: Option<(u32, Vec<u8>)>,
-    /// Inputs consumed from the current round at snapshot time. Restore
-    /// drops this many entries from the front of the round so the input
-    /// queue picks up where it left off (current_tick_in_round isn't a
-    /// reliable proxy when sends per tick != 1).
-    inputs_consumed: u32,
-    mgba_state: Arc<mgba::state::State>,
+    checkpoint: tango_pvp::stepper::ReplayCheckpoint,
+    mgba_state: Box<mgba::state::State>,
 }
 
 /// Take a fresh snapshot every this many absolute_ticks within an active
@@ -110,8 +95,8 @@ impl Replayer {
         self.snapshots
             .lock()
             .iter()
-            .filter(|s| s.absolute_tick <= target)
-            .max_by_key(|s| s.absolute_tick)
+            .filter(|s| s.checkpoint.absolute_tick <= target)
+            .max_by_key(|s| s.checkpoint.absolute_tick)
             .cloned()
     }
 }
@@ -212,25 +197,19 @@ fn run_prefetch(
         if let Some(cp) = stepper_state.capture_replay_checkpoint() {
             let mut snaps = snapshots.lock();
             let want_round_start = !cp.has_committed_this_round
-                && !snaps
-                    .iter()
-                    .any(|s| s.round_index == cp.current_round_index && !s.has_committed_this_round);
+                && !snaps.iter().any(|s| {
+                    s.checkpoint.current_round_index == cp.current_round_index && !s.checkpoint.has_committed_this_round
+                });
             let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
             let want_mid_round = cp.has_committed_this_round
                 && !snaps
                     .iter()
-                    .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
+                    .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
             if want_round_start || want_mid_round {
                 if let Ok(state) = core.as_mut().save_state() {
                     snaps.push(ReplaySnapshot {
-                        round_index: cp.current_round_index,
-                        absolute_tick: cp.absolute_tick,
-                        current_tick_in_round: cp.current_tick_in_round,
-                        has_committed_this_round: cp.has_committed_this_round,
-                        rng_state: cp.rng_state,
-                        local_packet: cp.local_packet,
-                        inputs_consumed: cp.inputs_consumed,
-                        mgba_state: Arc::new(*state),
+                        checkpoint: cp,
+                        mgba_state: state,
                     });
                 }
             }
@@ -748,25 +727,20 @@ impl Session {
                 if let Some(cp) = checkpoint {
                     let mut snaps = snapshots.lock();
                     let want_round_start = !cp.has_committed_this_round
-                        && !snaps
-                            .iter()
-                            .any(|s| s.round_index == cp.current_round_index && !s.has_committed_this_round);
+                        && !snaps.iter().any(|s| {
+                            s.checkpoint.current_round_index == cp.current_round_index
+                                && !s.checkpoint.has_committed_this_round
+                        });
                     let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
                     let want_mid_round = cp.has_committed_this_round
                         && !snaps
                             .iter()
-                            .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
+                            .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
                     if want_round_start || want_mid_round {
                         if let Ok(state) = core.save_state() {
                             snaps.push(ReplaySnapshot {
-                                round_index: cp.current_round_index,
-                                absolute_tick: cp.absolute_tick,
-                                current_tick_in_round: cp.current_tick_in_round,
-                                has_committed_this_round: cp.has_committed_this_round,
-                                rng_state: cp.rng_state,
-                                local_packet: cp.local_packet,
-                                inputs_consumed: cp.inputs_consumed,
-                                mgba_state: Arc::new(*state),
+                                checkpoint: cp,
+                                mgba_state: state,
                             });
                         }
                     }
@@ -899,8 +873,8 @@ impl Session {
             r.snapshots
                 .lock()
                 .iter()
-                .filter(|s| s.absolute_tick > current && s.absolute_tick <= target)
-                .max_by_key(|s| s.absolute_tick)
+                .filter(|s| s.checkpoint.absolute_tick > current && s.checkpoint.absolute_tick <= target)
+                .max_by_key(|s| s.checkpoint.absolute_tick)
                 .cloned()
         };
 
@@ -923,16 +897,7 @@ impl Session {
                     log::error!("seek load_state failed: {:?}", e);
                     return;
                 }
-                let cp = tango_pvp::stepper::ReplayCheckpoint {
-                    absolute_tick: snap.absolute_tick,
-                    current_round_index: snap.round_index,
-                    current_tick_in_round: snap.current_tick_in_round,
-                    has_committed_this_round: snap.has_committed_this_round,
-                    rng_state: snap.rng_state.clone(),
-                    local_packet: snap.local_packet.clone(),
-                    inputs_consumed: snap.inputs_consumed,
-                };
-                if let Err(e) = stepper_state.restore_replay_checkpoint(&cp, &replay.rounds) {
+                if let Err(e) = stepper_state.restore_replay_checkpoint(&snap.checkpoint, &replay.rounds) {
                     log::error!("seek restore_replay_checkpoint failed: {:?}", e);
                     return;
                 }
@@ -953,18 +918,12 @@ impl Session {
                         let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
                         let exists = snaps
                             .iter()
-                            .any(|s| s.absolute_tick > lo && s.absolute_tick <= cp.absolute_tick);
+                            .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
                         if !exists {
                             if let Ok(state) = core.save_state() {
                                 snaps.push(ReplaySnapshot {
-                                    round_index: cp.current_round_index,
-                                    absolute_tick: cp.absolute_tick,
-                                    current_tick_in_round: cp.current_tick_in_round,
-                                    has_committed_this_round: cp.has_committed_this_round,
-                                    rng_state: cp.rng_state,
-                                    local_packet: cp.local_packet,
-                                    inputs_consumed: cp.inputs_consumed,
-                                    mgba_state: Arc::new(*state),
+                                    checkpoint: cp,
+                                    mgba_state: state,
                                 });
                             }
                         }
