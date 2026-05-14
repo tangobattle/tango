@@ -100,10 +100,16 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
-    /// This is the entry point to link battle in the comm menu: that is, the first match has started.
-    ///
-    /// We need to perform some initialization we skipped here, such as setting stage and background.
-    pub(super) comm_menu_init_battle_entry: u32,
+    /// Entry into the comm-menu state handler that calls the game's
+    /// random battle settings generator. Trap fires after the function's
+    /// `push {r4-r7, lr}`; the trap pre-seeds rng1/rng2, sets
+    /// submenu_control[1] = 0x18 (so the next dispatch lands at the
+    /// post-handshake state), and redirects PC `+0xa6` bytes — to the
+    /// match_type → variant lookup right before the BL to the generator
+    /// — skipping the SIO handshake the function would otherwise
+    /// perform. The 0xa6 delta is identical across all four bn6 ROMs
+    /// (same prologue layout); callers inline the constant.
+    pub(super) comm_menu_settings_entry: u32,
 
     /// This handles underlying link cable SIO in the comm menu.
     ///
@@ -170,7 +176,7 @@ pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         battle_is_p2_tst:                                           0x0803dd52,
         link_is_p2_ret:                                             0x0803dd86,
         comm_menu_init_ret:                                         0x08129298,
-        comm_menu_init_battle_entry:                                0x0812b608,
+        comm_menu_settings_entry:                                   0x0812a76e,
         handle_sio_entry:                                           0x0803deb4,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812b5ca,
         comm_menu_end_battle_entry:                                 0x0812b708,
@@ -200,7 +206,7 @@ pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         battle_is_p2_tst:                                           0x0803dd26,
         link_is_p2_ret:                                             0x0803dd5a,
         comm_menu_init_ret:                                         0x0812b074,
-        comm_menu_init_battle_entry:                                0x0812d3e4,
+        comm_menu_settings_entry:                                   0x0812c54a,
         handle_sio_entry:                                           0x0803de88,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812d3a6,
         comm_menu_end_battle_entry:                                 0x0812d4e4,
@@ -230,7 +236,7 @@ pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         battle_is_p2_tst:                                           0x0803ed96,
         link_is_p2_ret:                                             0x0803edca,
         comm_menu_init_ret:                                         0x08131cbc,
-        comm_menu_init_battle_entry:                                0x08134008,
+        comm_menu_settings_entry:                                   0x08133182,
         handle_sio_entry:                                           0x0803eef8,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08133fca,
         comm_menu_end_battle_entry:                                 0x08134108,
@@ -260,7 +266,7 @@ pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         battle_is_p2_tst:                                           0x0803ed6a,
         link_is_p2_ret:                                             0x0803ed9e,
         comm_menu_init_ret:                                         0x08133a84,
-        comm_menu_init_battle_entry:                                0x08135dd0,
+        comm_menu_settings_entry:                                   0x08134f4a,
         handle_sio_entry:                                           0x0803eecc,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08135d92,
         comm_menu_end_battle_entry:                                 0x08135ed0,

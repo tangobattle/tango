@@ -1,6 +1,8 @@
+use rand::Rng;
+
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -40,7 +42,9 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
             })
         }),
@@ -50,7 +54,9 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
             })
         }),
@@ -63,17 +69,20 @@ pub(super) fn traps(
                 );
             }),
         ),
-        (hooks.offsets.rom.comm_menu_init_battle_entry, {
+        (hooks.offsets.rom.comm_menu_settings_entry, {
             let munger = hooks.munger();
             let match_ = match_.clone();
-            Box::new(move |core| {
+            Box::new(move |mut core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
-                munger.set_link_battle_settings_and_background(
-                    core,
-                    random_battle_settings_and_background(&mut *rng, match_.match_type().0),
-                );
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
+                munger.select_battle_init_substate(core, 0x18);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa6);
             })
         }),
         (
@@ -83,7 +92,8 @@ pub(super) fn traps(
             }),
         ),
         (
-            hooks.offsets
+            hooks
+                .offsets
                 .rom
                 .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
             {
@@ -103,7 +113,9 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
 
                 if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
@@ -149,10 +161,12 @@ pub(super) fn traps(
                     );
                 }
 
-                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                    core,
-                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                )) {
+                if let Err(e) =
+                    crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    ))
+                {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }
@@ -165,7 +179,9 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 if !round.has_committed_state() {
                     return;
                 }

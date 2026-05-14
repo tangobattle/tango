@@ -28,7 +28,10 @@ impl Munger {
 
     pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef, match_type: u8) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x18);
+        // submenu_control[1] = 0x10 lands the inner dispatcher on the
+        // settings-handler state. Tango's comm_menu_settings_trap fires
+        // there, pre-seeds RNG, and lets the game's own generator run.
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x10);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x12, -1, match_type);
@@ -61,8 +64,8 @@ impl Munger {
         buf
     }
 
-    pub(super) fn set_link_battle_settings_and_background(&self, mut core: mgba::core::CoreMutRef, v: u16) {
-        core.raw_write_16(self.offsets.ewram.submenu_control + 0x2a, -1, v)
+    pub(super) fn select_battle_init_substate(&self, mut core: mgba::core::CoreMutRef, v: u8) {
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, v)
     }
 
     pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {

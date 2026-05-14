@@ -1,7 +1,9 @@
+use rand::Rng;
+
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     vec![
@@ -13,19 +15,22 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 munger.start_battle_from_comm_menu(core, stepper_state.match_type().0);
             })
         }),
-        (hooks.offsets.rom.comm_menu_init_battle_entry, {
+        (hooks.offsets.rom.comm_menu_settings_entry, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
-            Box::new(move |core| {
+            Box::new(move |mut core| {
                 let stepper_state = stepper_state.lock_inner();
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
                 let mut rng = rng.lock();
-                munger.set_link_battle_settings_and_background(
-                    core,
-                    random_battle_settings_and_background(&mut *rng, stepper_state.match_type().0),
-                );
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
+                munger.select_battle_init_substate(core, 0x18);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa6);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
@@ -62,7 +67,10 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
         {
             let munger = hooks.munger();
             (
-                hooks.offsets.rom.comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                hooks
+                    .offsets
+                    .rom
+                    .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
                 Box::new(move |mut core| {
                     let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
@@ -91,10 +99,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let mut state = stepper_state.lock_inner();
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick()
-                    && !state.has_committed_this_round()
-                    && state.round_active()
-                {
+                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock();
                         let offerer_rng1_state = generate_rng1_state(&mut *rng);
