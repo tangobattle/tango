@@ -723,7 +723,10 @@ impl Session {
                 // replay-deterministic; revisiting the same tick later
                 // reuses the existing one.
                 let checkpoint = stepper_state.capture_replay_checkpoint();
-                let total_left = stepper_state.lock_inner().total_input_pairs_left();
+                let (total_left, is_round_ended) = {
+                    let inner = stepper_state.lock_inner();
+                    (inner.total_input_pairs_left(), inner.is_round_ended())
+                };
                 if let Some(cp) = checkpoint {
                     let mut snaps = snapshots.lock();
                     let want_round_start = !cp.has_committed_this_round
@@ -746,13 +749,21 @@ impl Session {
                     }
                 }
 
-                // Fire completion regardless of replay_is_complete: for clean
-                // replays the stepper's on_round_ended callback handles the
-                // first completion, but it's a one-shot, so this path covers
-                // re-completion after the user scrubs back and replays past
-                // the end again. CompletionToken::complete is idempotent.
-                let _ = replay_is_complete;
-                if total_left == 0 {
+                // For clean (complete) replays, also require the stepper to
+                // have flipped is_round_ended — that fires when the per-game
+                // stepper signals the post-round battle-end routine has
+                // finished, so the trailing fade-out animation plays out
+                // instead of being cut off the moment inputs ran out.
+                // total_left == 0 alone reaches zero a few frames earlier
+                // (right after the last send/receive pops the final input),
+                // before the game has run its end-of-round sequence.
+                // Incomplete replays don't reach is_round_ended (the round
+                // was cut mid-flight), so they fall back to bare input
+                // exhaustion. CompletionToken::complete is idempotent;
+                // re-firing on every subsequent frame is fine, and this
+                // also covers re-completion after the user scrubs back past
+                // the end, since the on_round_ended callback is one-shot.
+                if total_left == 0 && (is_round_ended || !replay_is_complete) {
                     completion_token.complete();
                 }
 

@@ -147,7 +147,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 state.set_round_ending();
             })
         }),
-        (hooks.offsets.rom.round_end_entry, {
+        (hooks.offsets.rom.match_end_ret, {
             let stepper_state = stepper_state.clone();
             Box::new(move |_core| {
                 let mut state = stepper_state.lock_inner();
