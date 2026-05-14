@@ -1,7 +1,9 @@
+use rand::Rng;
+
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     vec![
@@ -10,15 +12,22 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
                 let stepper_state = stepper_state.lock_inner();
+                munger.start_battle_from_comm_menu(core, stepper_state.match_type().0);
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let stepper_state = stepper_state.clone();
+            Box::new(move |core| {
+                let stepper_state = stepper_state.lock_inner();
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
                 let mut rng = rng.lock();
-                let match_type = stepper_state.match_type().0 as u32;
-                let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
-                let (battle_settings, background) =
-                    random_battle_settings_and_background(&mut *rng, settings_and_bg.0, settings_and_bg.1);
-                munger.start_battle_from_comm_menu(core, stepper_state.match_type().0, battle_settings, background);
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {

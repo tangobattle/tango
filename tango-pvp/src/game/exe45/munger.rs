@@ -29,34 +29,20 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
     }
 
-    pub(super) fn start_battle_from_comm_menu(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        match_type: u8,
-        battle_settings: u8,
-        background: u8,
-    ) {
+    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef, match_type: u8) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x08);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x0C);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x04);
+        // submenu_control[3] = 0 routes the outer dispatcher to the
+        // settings-handler path (0x04 skips it). The handler calls the
+        // game's generator and writes submenu_control[0x15]/[0x16].
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
+        // [0x10] is the match_type byte the generator reads to pick
+        // the per-match_type settings range; the game would normally
+        // populate it during the comm-menu UI flow that we skip.
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x10, -1, match_type);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x11, -1, 0x01);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x14, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x14, -1, match_type * 2 + 1);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x15, -1, battle_settings); //Changed
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x16, -1, background);
-        //Changed
-    }
-
-    pub(super) fn get_setting_and_background_count(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        match_type: u32,
-    ) -> (u8, u8) {
-        (
-            core.raw_read_8(self.offsets.rom.comm_menu_num_battle_setups + match_type * 4, -1),
-            core.raw_read_8(self.offsets.rom.comm_menu_num_backgrounds, -1),
-        )
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {

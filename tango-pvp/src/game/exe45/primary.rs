@@ -1,6 +1,8 @@
+use rand::Rng;
+
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng1_state, generate_rng2_state, random_battle_settings_and_background};
+use super::rng::{generate_rng1_state, generate_rng2_state};
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -15,15 +17,24 @@ pub(super) fn traps(
             Box::new(move |core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
+                munger.start_battle_from_comm_menu(core, match_.match_type().0);
+            })
+        }),
+        (hooks.offsets.rom.comm_menu_settings_entry, {
+            let munger = hooks.munger();
+            let match_ = match_.clone();
+            Box::new(move |core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
-
-                let match_type = match_.match_type().0 as u32;
-                let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
-
-                let (battle_settings, background) =
-                    random_battle_settings_and_background(&mut *rng, settings_and_bg.0, settings_and_bg.1);
-
-                munger.start_battle_from_comm_menu(core, match_.match_type().0, battle_settings, background);
+                // Pre-seed rng1 (local) and rng2 (shared) right before
+                // the handler runs the generator transitively. Both
+                // peers seed from the synced match RNG so the
+                // generator produces an agreed (settings, bg) pair.
+                let r1_seed: u32 = rng.gen();
+                let r2_seed: u32 = rng.gen();
+                munger.set_rng1_state(core, r1_seed);
+                munger.set_rng2_state(core, r2_seed);
             })
         }),
         (

@@ -108,6 +108,13 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
+    /// Entry of the comm-menu state handler that calls the game's
+    /// settings/background generator. Trap pre-seeds rng1/rng2 from
+    /// the synced match RNG so the generator (called transitively
+    /// via this handler) produces a peer-agreeing value. The handler
+    /// itself writes submenu_control[0x15]/[0x16] and advances state.
+    pub(super) comm_menu_settings_entry: u32,
+
     /// This routine has to return 0 for r0 and r1 for battle to start
     ///
     /// Here, Tango sets r0 and r1 to 0
@@ -129,9 +136,6 @@ pub(super) struct ROMOffsets {
     pub(super) match_end_ret: u32,
 
     pub(super) battle_start_play_music_call: u32,
-
-    pub(super) comm_menu_num_backgrounds: u32,
-    pub(super) comm_menu_num_battle_setups: u32,
 }
 
 #[rustfmt::skip]
@@ -177,12 +181,11 @@ pub static BR4J_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0804A3A8,
         link_is_p2_ret:                         0x0804A3C6,
         comm_menu_init_ret:                     0x080440D2,//Routine different from BN4
+        comm_menu_settings_entry:               0x08044370,
         handle_sio_entry:                       0x0804A49C,
         in_battle_call_handle_link_cable_input: 0x08006E3E,
         comm_menu_handle_link_cable_input:      0x080443E2,
         match_end_ret:                          0x08043fb6,
         battle_start_play_music_call:           0x0800796c,
-        comm_menu_num_backgrounds:              0x0803C8C8,
-        comm_menu_num_battle_setups:            0x0803C8E0,
     },
 };
