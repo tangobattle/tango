@@ -215,6 +215,27 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             }),
         ),
+        (hooks.offsets.rom.sio_teardown_clear_entry, {
+            Box::new(|mut core| {
+                // Skip the 3-instruction clear block plus the trailing
+                // SIO-register-cleanup BL, landing on the function's
+                // pop {pc}. Stack stays balanced because the function's
+                // push {lr} already executed.
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xc);
+            })
+        }),
+        (hooks.offsets.rom.comm_status_check_entry, {
+            Box::new(|mut core| {
+                // Force return value 0 (no error) and PC-redirect to
+                // the function's `mov pc, lr` epilogue. Defeats the
+                // state-1 → state-3 transition that displays the
+                // "Communication Error" UI.
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_gpr(0, 0);
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x22);
+            })
+        }),
         (hooks.offsets.rom.round_call_jump_table_ret, {
             let stepper_state = stepper_state.clone();
             Box::new(move |_core| {

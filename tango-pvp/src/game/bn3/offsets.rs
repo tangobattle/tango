@@ -102,6 +102,52 @@ pub(super) struct ROMOffsets {
     pub(super) match_end_ret: u32,
 
     pub(super) battle_start_play_music_call: u32,
+
+    /// First instruction inside the body of the SIO teardown routine
+    /// that clears `is_linking` (and `commdata[3]`, then calls the SIO
+    /// register cleanup). This PC is reached only when `is_linking`
+    /// is currently 1 (the function early-exits via `beq` otherwise).
+    /// The stepper trap PC-redirects +0x0c bytes here, landing on the
+    /// function's `pop {pc}` so the body is skipped but the caller's
+    /// `bl` return path stays balanced. Delta 0x0c is identical across
+    /// A6BE/A6BJ/A3XE/A3XJ.
+    ///
+    /// Why this is needed: in replay, the deinit hook bypass routes
+    /// through the remote-packet parser at `0x800890c` (E) / `0x8008c40` (J)
+    /// area, which returns 0 for packets with `packet[0] != 0x42`. Recorded
+    /// tx_packets start with 0x01 (template never overwritten by the game),
+    /// so the deinit's r0==0 path calls this teardown every battle frame.
+    /// In primary mode the rx_packets are synthetic 0x42 sync packets
+    /// that the parser accepts, so this teardown is never reached; the
+    /// `is_linking=1` set during state-0 sub-4 sub-sub-4 (battle init)
+    /// persists across rounds. In replay we have to defend it explicitly
+    /// because that battle-init path only runs once per match.
+    pub(super) sio_teardown_clear_entry: u32,
+
+    /// Entry of the in-battle comm-status-check function. Reads
+    /// `commdata[5]` (error flag) and `commdata[0xe]` (is_linking)
+    /// and returns:
+    ///   0 = no error (continue battle)
+    ///   1 = fresh error detected (caller sets full error code)
+    ///   2 = already errored (caller advances state without re-setting)
+    /// Called every frame from the state-1 (battle running) handler;
+    /// non-zero return drives the state machine to state 3
+    /// (round_end_post), which is the in-game "Communication Error"
+    /// screen.
+    ///
+    /// In replay we neuter this with a trap that returns 0
+    /// unconditionally. Why: the UPDATE handler's retry-counter
+    /// timeout (`bl 0x80088a0` returns non-7 for 60 frames) writes
+    /// commdata[5]=1 and commdata[0xf]=2 directly via r5 (= commdata
+    /// in the input-handler struct context), bypassing `set_comm_error`.
+    /// That happens within the same frame as the next state-1
+    /// comm-status-check read, so clearing commdata[5] from
+    /// main_read_joyflags is too early — the read sees 1 again before
+    /// the next frame. Neutering the check itself defeats every entry
+    /// path that depends on it. The PC offset (+0x22) lands on the
+    /// function's `mov pc, lr` epilogue. Delta 0x22 is identical
+    /// across A6BE/A6BJ/A3XE/A3XJ.
+    pub(super) comm_status_check_entry: u32,
 }
 
 #[rustfmt::skip]
@@ -151,6 +197,8 @@ pub static A3XE_00: Offsets = Offsets {
         comm_menu_settings_entry:                   0x0803e9fa,
         match_end_ret:                              0x08006958,
         battle_start_play_music_call:               0x080076b4,
+        sio_teardown_clear_entry:                   0x08008cb6,
+        comm_status_check_entry:                    0x08008c76,
     },
 };
 
@@ -183,6 +231,8 @@ pub static A6BE_00: Offsets = Offsets {
         comm_menu_settings_entry:                   0x0803ea12,
         match_end_ret:                              0x08006958,
         battle_start_play_music_call:               0x080076b4,
+        sio_teardown_clear_entry:                   0x08008cb6,
+        comm_status_check_entry:                    0x08008c76,
     },
 };
 
@@ -215,6 +265,8 @@ pub static A3XJ_01: Offsets = Offsets {
         comm_menu_settings_entry:                   0x0803eeaa,
         match_end_ret:                              0x080068ec,
         battle_start_play_music_call:               0x08007648,
+        sio_teardown_clear_entry:                   0x08008c4a,
+        comm_status_check_entry:                    0x08008c0a,
     },
 };
 
@@ -247,5 +299,7 @@ pub static A6BJ_01: Offsets = Offsets {
         comm_menu_settings_entry:                   0x0803eec2,
         match_end_ret:                              0x080068ec,
         battle_start_play_music_call:               0x08007648,
+        sio_teardown_clear_entry:                   0x08008c4a,
+        comm_status_check_entry:                    0x08008c0a,
     },
 };
