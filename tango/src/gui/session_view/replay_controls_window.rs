@@ -29,14 +29,27 @@ impl State {
     }
 }
 
+/// Mirror the status bar's auto-hide: show the overlay only while the
+/// mouse has moved within the last `HIDE_AFTER`. A drag in progress
+/// overrides this — releasing on a hidden bar would orphan the drag
+/// state because there'd be no widget to receive `drag_stopped`.
+const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub fn show(
     ctx: &egui::Context,
     session: &session::Session,
     state: &mut State,
     language: &unic_langid::LanguageIdentifier,
+    last_mouse_motion_time: &Option<std::time::Instant>,
 ) {
     let total_ticks = session.replay_total_ticks().unwrap_or(0);
     if total_ticks == 0 {
+        return;
+    }
+    let mouse_recently_active = last_mouse_motion_time
+        .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
+        .unwrap_or(false);
+    if !mouse_recently_active && !state.was_dragging {
         return;
     }
     let current_tick = session.replay_current_tick().unwrap_or(0);

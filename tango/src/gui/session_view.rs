@@ -163,7 +163,13 @@ pub fn show(
             });
         }
         session::Mode::Replayer(_) => {
-            replay_controls_window::show(ctx, session, &mut state.replay_controls, language);
+            replay_controls_window::show(
+                ctx,
+                session,
+                &mut state.replay_controls,
+                language,
+                last_mouse_motion_time,
+            );
         }
         _ => {}
     }
