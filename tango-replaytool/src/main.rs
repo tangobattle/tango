@@ -48,9 +48,17 @@ pub enum Command {
         #[clap(default_value = "false", long)]
         disable_bgm: bool,
 
+        /// Render both sides of the match side-by-side. Without this,
+        /// only the local-perspective core is rendered.
+        #[clap(long)]
+        twosided: bool,
+
         local_rom_path: std::path::PathBuf,
 
-        #[clap(default_value = "None", long)]
+        /// Required even for one-sided rendering: shadow plays the opponent's
+        /// ROM from the recorded remote joyflags to re-derive the per-tick
+        /// remote packets that the local-side core needs.
+        #[clap(long)]
         remote_rom_path: Option<std::path::PathBuf>,
 
         output_path: std::path::PathBuf,
@@ -82,6 +90,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
             ffmpeg_video_flags,
             ffmpeg_mux_flags,
             disable_bgm,
+            twosided,
             local_rom_path,
             remote_rom_path,
             output_path,
@@ -93,6 +102,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
                 ffmpeg_video_flags,
                 ffmpeg_mux_flags,
                 disable_bgm,
+                twosided,
                 local_rom_path,
                 remote_rom_path,
                 output_path,
@@ -104,19 +114,11 @@ pub async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::PathBuf) -> Result<(), anyhow::Error> {
-    let raw_input_size = replay
-        .rounds
-        .iter()
-        .flatten()
-        .next()
-        .map(|ip| ip.local.packet.len())
-        .unwrap_or(0) as u8;
     let mut writer = tango_pvp::replay::Writer::new(
         Box::new(std::fs::File::create(output_path)?),
         replay.metadata,
         replay.is_offerer,
         replay.local_player_index,
-        raw_input_size,
         replay.rng_seed,
         &replay.local_sram,
         &replay.remote_sram,
@@ -136,8 +138,8 @@ async fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error
         println!("=== round {} ({} inputs) ===", idx + 1, round.len());
         for (tick, ip) in round.iter().enumerate() {
             println!(
-                "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
-                tick, ip.local.joyflags, ip.local.packet, ip.remote.joyflags, ip.remote.packet,
+                "tick = {:08x?}, l = {:04x}, r = {:04x}",
+                tick, ip.local.joyflags, ip.remote.joyflags,
             );
         }
     }
@@ -164,6 +166,7 @@ async fn cmd_export(
     ffmpeg_video_flags: String,
     ffmpeg_mux_flags: String,
     disable_bgm: bool,
+    twosided: bool,
     local_rom_path: std::path::PathBuf,
     remote_rom_path: Option<std::path::PathBuf>,
     output_path: std::path::PathBuf,
@@ -202,28 +205,33 @@ async fn cmd_export(
         ));
     }
 
-    if let Some(remote_rom_path) = remote_rom_path {
-        let remote_rom = std::fs::read(&remote_rom_path)?;
-        let remote_detected_game = tango_gamedb::detect(&remote_rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
-        let remote_game_info = replay
-            .metadata
-            .remote_side
-            .as_ref()
-            .and_then(|side| side.game_info.as_ref())
-            .ok_or(anyhow::anyhow!("missing remote game info"))?;
-        let remote_game =
-            tango_gamedb::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8)
-                .unwrap();
-        let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game).unwrap();
-        if remote_game != remote_detected_game {
-            return Err(anyhow::format_err!(
-                "expected game {:?}, got {:?}",
-                remote_game.family_and_variant,
-                remote_detected_game.family_and_variant
-            ));
-        }
+    // Shadow always needs the remote ROM, even on a one-sided export —
+    // running it against the local ROM for a cross-game replay would
+    // produce nonsense packets. Require remote_rom_path.
+    let remote_rom_path =
+        remote_rom_path.ok_or_else(|| anyhow::anyhow!("remote_rom_path is required (shadow needs the remote rom)"))?;
+    let remote_rom = std::fs::read(&remote_rom_path)?;
+    let remote_detected_game = tango_gamedb::detect(&remote_rom).ok_or(anyhow::anyhow!("rom detection failed"))?;
+    let remote_game_info = replay
+        .metadata
+        .remote_side
+        .as_ref()
+        .and_then(|side| side.game_info.as_ref())
+        .ok_or(anyhow::anyhow!("missing remote game info"))?;
+    let remote_game =
+        tango_gamedb::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8)
+            .unwrap();
+    let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game).unwrap();
+    if remote_game != remote_detected_game {
+        return Err(anyhow::format_err!(
+            "expected game {:?}, got {:?}",
+            remote_game.family_and_variant,
+            remote_detected_game.family_and_variant
+        ));
+    }
 
-        let selected_rounds = vec![vec![true; replay.rounds.len()]];
+    let selected_rounds = vec![vec![true; replay.rounds.len()]];
+    if twosided {
         tango_pvp::replay::export::export_twosided(
             &local_rom,
             local_hooks,
@@ -237,10 +245,11 @@ async fn cmd_export(
         )
         .await?;
     } else {
-        let selected_rounds = vec![vec![true; replay.rounds.len()]];
         tango_pvp::replay::export::export(
             &local_rom,
             local_hooks,
+            &remote_rom,
+            remote_hooks,
             &[replay],
             &selected_rounds,
             &output_path,

@@ -180,6 +180,12 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                         let rng_state = generate_rng_state(&mut *rng.lock());
                         munger.set_rng_state(core, rng_state);
                     }
+                    // v0x18 replay stores joyflags only; seed local_packet
+                    // from the game's tx_packet (set by the comm-menu
+                    // bg-gen path) so set_committed_state has a packet to
+                    // record and the upcoming send/receive trap has a
+                    // value to inject into rx[local].
+                    state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_committed_state(core.save_state().expect("save committed state"));
                 }
 
@@ -190,6 +196,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
                 if current_tick == state.dirty_tick() {
+                    state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_dirty_state(core.save_state().expect("save dirty state"));
                 }
             })

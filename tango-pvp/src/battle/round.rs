@@ -198,8 +198,19 @@ impl Round {
 
             if round_result.map_or(true, |rr| tick < rr.tick) {
                 if let Some(writer) = self.replay_writer.lock().as_mut() {
+                    // New replay format stores joyflags only; the per-tick
+                    // packet is re-derived at playback time by running the
+                    // shadow side from the recorded remote joyflags.
+                    let partial_pair = Pair {
+                        local: PartialInput {
+                            joyflags: ip.local.joyflags,
+                        },
+                        remote: PartialInput {
+                            joyflags: ip.remote.joyflags,
+                        },
+                    };
                     writer
-                        .write_input(self.local_player_index, &ip.clone())
+                        .write_input(self.local_player_index, &partial_pair)
                         .expect("write input");
                 }
             }

@@ -12,6 +12,9 @@ struct CachedData {
     rom_assets: Option<Box<dyn tango_dataview::rom::Assets + Send + Sync>>,
     local_rom: Vec<u8>,
     remote_rom: Option<Vec<u8>>,
+    /// Set once `remote_rom` resolves; needed alongside it to construct
+    /// the replay-mode Shadow (which runs the opponent's game).
+    remote_game: Option<&'static (dyn game::Game + Send + Sync)>,
     save: Box<dyn Save + Sync + Send>,
 }
 
@@ -477,11 +480,13 @@ pub fn show(
                         Some(rom)
                     });
 
+                    let remote_game_for_cache = remote_rom.as_ref().map(|_| remote_game);
                     Some(Rc::new(CachedData {
                         replay,
                         rom_assets: assets,
                         local_rom,
                         remote_rom,
+                        remote_game: remote_game_for_cache,
                         patch,
                         save,
                     }))
@@ -498,15 +503,26 @@ pub fn show(
                 let save = &cached_result.save;
                 let replay = cached_result.replay.clone();
 
+                let remote_rom_for_play = cached_result.remote_rom.clone();
+                let remote_game_for_play = cached_result.remote_game;
                 ui.vertical(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if ui
-                            .button(format!(
-                                "▶️ {}",
-                                i18n::LOCALES.lookup(language, "replays-play").unwrap()
-                            ))
+                            .add_enabled(
+                                remote_rom_for_play.is_some() && remote_game_for_play.is_some(),
+                                egui::Button::new(format!(
+                                    "▶️ {}",
+                                    i18n::LOCALES.lookup(language, "replays-play").unwrap()
+                                )),
+                            )
                             .clicked()
                         {
+                            let Some(remote_rom) = remote_rom_for_play.clone() else {
+                                return;
+                            };
+                            let Some(remote_game) = remote_game_for_play else {
+                                return;
+                            };
                             tokio::task::spawn_blocking({
                                 let egui_ctx = ui.ctx().clone();
                                 let audio_binder = shared_root_state.audio_binder.clone();
@@ -523,6 +539,8 @@ pub fn show(
                                         game,
                                         patch,
                                         std::sync::Arc::new(rom),
+                                        remote_game,
+                                        std::sync::Arc::new(remote_rom),
                                         emu_tps_counter,
                                         std::sync::Arc::new(replay),
                                     ) {

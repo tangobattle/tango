@@ -13,6 +13,18 @@ mod state;
 pub use round::{Round, RoundState};
 pub use state::State;
 
+/// Captures the full shadow-side state for replay-mode seeking. The
+/// playback session pairs this with the stepper's `ReplayCheckpoint` +
+/// stepper-core mgba state so that loading a snapshot restores both
+/// sides — without this, the shadow would still be at its pre-seek tick
+/// and would feed misaligned packets after the seek.
+#[derive(Clone)]
+pub struct ShadowSnapshot {
+    pub mgba_state: Box<mgba::state::State>,
+    pub rng: rand_pcg::Mcg128Xsl64,
+    pub round_state: RoundState,
+}
+
 use crate::input::{Input, Pair, PartialInput};
 
 /// Shadow-mode emulator that mirrors the remote peer locally. The visible
@@ -35,11 +47,27 @@ impl Shadow {
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
+        Self::new_from_sram(rom, &save.as_sram_dump(), hooks, match_type, is_offerer, local_player_index, rng)
+    }
+
+    /// Same as [`Shadow::new`] but takes the SRAM dump directly. Used by the
+    /// replay-via-shadow playback path, where the remote-side save is
+    /// stored as raw bytes inside the replay file rather than as a parsed
+    /// Save object.
+    pub fn new_from_sram(
+        rom: &[u8],
+        save_sram: &[u8],
+        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+        match_type: (u8, u8),
+        is_offerer: bool,
+        local_player_index: u8,
+        rng: rand_pcg::Mcg128Xsl64,
+    ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(save.as_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::from_vec(save_sram.to_vec()))?;
 
         let state = State::new(match_type, is_offerer, local_player_index, rng);
 
@@ -51,6 +79,29 @@ impl Shadow {
         core.as_mut().reset();
 
         Ok(Shadow { core, hooks, state })
+    }
+
+    pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {
+        let mgba_state = self.core.as_mut().save_state()?;
+        let rng = self.state.0.rng.lock().clone();
+        let round_state = self.state.0.round_state.lock().clone();
+        Ok(ShadowSnapshot {
+            mgba_state,
+            rng,
+            round_state,
+        })
+    }
+
+    pub fn load_state(&mut self, snapshot: &ShadowSnapshot) -> anyhow::Result<()> {
+        self.core.as_mut().load_state(&snapshot.mgba_state)?;
+        *self.state.0.rng.lock() = snapshot.rng.clone();
+        *self.state.0.round_state.lock() = snapshot.round_state.clone();
+        // applied_state and error are per-apply_input scratch; clear so the
+        // next apply_input call doesn't pick up stale values that don't
+        // correspond to the just-restored core state.
+        *self.state.0.applied_state.lock() = None;
+        *self.state.0.error.lock() = None;
+        Ok(())
     }
 
     /// Run the shadow until the per-game traps have captured this round's

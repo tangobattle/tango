@@ -50,16 +50,6 @@ impl PvP {
 
 pub struct SinglePlayer {}
 
-/// mgba snapshot captured during replay playback, used by backward seek to
-/// skip the boot/menu sequence (and any rounds + frames before this point).
-/// Captured both at round-start (`has_committed_this_round = false`,
-/// `current_tick_in_round = 0`) and periodically mid-round.
-#[derive(Clone)]
-struct ReplaySnapshot {
-    checkpoint: tango_pvp::stepper::ReplayCheckpoint,
-    mgba_state: Box<mgba::state::State>,
-}
-
 /// Take a fresh snapshot every this many absolute_ticks within an active
 /// round, in addition to the round-start snapshot. Coarser snapshots leave
 /// long fast-forwards on backward scrub; finer snapshots cost RAM and a
@@ -75,11 +65,16 @@ pub struct Replayer {
     /// Session API to read out absolute_tick / total_replay_ticks, and
     /// swapped wholesale by [`Session::replay_seek_to`] on snapshot load.
     stepper_state: tango_pvp::stepper::State,
+    /// Playback-side shadow handle. The stepper already owns this via its
+    /// replay-mode shared shadow, but seeks also need to restore the shadow
+    /// from the captured snapshot so its mgba core + Round state stay in
+    /// sync with the stepper.
+    shadow: Arc<parking_lot::Mutex<tango_pvp::shadow::Shadow>>,
     /// mgba state + stepper checkpoints captured during playback (round
     /// starts and periodic mid-round) and during sync seeks. Both seek
     /// directions pick the snapshot closest to target to minimize how
     /// many frames we have to re-run.
-    snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>>,
+    snapshots: Arc<parking_lot::Mutex<Vec<tango_pvp::stepper::ReplaySnapshot>>>,
     /// Furthest absolute_tick the background prefetch worker has reached.
     /// The seek-bar UI clamps user drags to this value so the user can
     /// only seek into prefetched (= snapshotted) territory.
@@ -91,7 +86,7 @@ pub struct Replayer {
 impl Replayer {
     /// Returns the snapshot whose `absolute_tick` is the largest value still
     /// `<= target`, if any.
-    fn best_snapshot_for(&self, target: u32) -> Option<ReplaySnapshot> {
+    fn best_snapshot_for(&self, target: u32) -> Option<tango_pvp::stepper::ReplaySnapshot> {
         self.snapshots
             .lock()
             .iter()
@@ -113,15 +108,18 @@ struct Prefetcher {
 impl Prefetcher {
     fn spawn(
         rom: Arc<Vec<u8>>,
+        remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
         game: &'static (dyn game::Game + Send + Sync),
-        snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>>,
+        remote_game: &'static (dyn game::Game + Send + Sync),
+        snapshots: Arc<parking_lot::Mutex<Vec<tango_pvp::stepper::ReplaySnapshot>>>,
         progress: Arc<std::sync::atomic::AtomicU32>,
     ) -> Self {
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel_for_thread = cancel.clone();
         let join_handle = std::thread::spawn(move || {
-            if let Err(e) = run_prefetch(rom, replay, game, snapshots, cancel_for_thread, progress) {
+            if let Err(e) = run_prefetch(rom, remote_rom, replay, game, remote_game, snapshots, cancel_for_thread, progress)
+            {
                 log::error!("replay prefetch worker exited with error: {:?}", e);
             }
         });
@@ -143,9 +141,11 @@ impl Drop for Prefetcher {
 
 fn run_prefetch(
     rom: Arc<Vec<u8>>,
+    remote_rom: Arc<Vec<u8>>,
     replay: Arc<tango_pvp::replay::Replay>,
     game: &'static (dyn game::Game + Send + Sync),
-    snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>>,
+    remote_game: &'static (dyn game::Game + Send + Sync),
+    snapshots: Arc<parking_lot::Mutex<Vec<tango_pvp::stepper::ReplaySnapshot>>>,
     cancel: Arc<std::sync::atomic::AtomicBool>,
     progress: Arc<std::sync::atomic::AtomicU32>,
 ) -> anyhow::Result<()> {
@@ -160,17 +160,35 @@ fn run_prefetch(
     core.as_mut().reset();
 
     let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
+    let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
     hooks.patch(core.as_mut());
 
     let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
+    let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+
+    use rand::SeedableRng;
+    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
+    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
+    let shadow = tango_pvp::shadow::Shadow::new_from_sram(
+        remote_rom.as_ref(),
+        &replay.remote_sram,
+        remote_hooks,
+        match_type,
+        replay.is_offerer,
+        replay.local_player_index,
+        shadow_rng,
+    )?;
+    let shadow = Arc::new(parking_lot::Mutex::new(shadow));
+
     let stepper_state = tango_pvp::stepper::State::new(
-        (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        match_type,
         replay.local_player_index,
         replay.rounds.clone(),
         0,
         replay.rng_seed,
         replay.is_offerer,
         total_replay_ticks,
+        shadow.clone(),
         Box::new(|| {}),
     );
     let mut traps = hooks.common_traps();
@@ -207,10 +225,13 @@ fn run_prefetch(
                     .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
             if want_round_start || want_mid_round {
                 if let Ok(state) = core.as_mut().save_state() {
-                    snaps.push(ReplaySnapshot {
-                        checkpoint: cp,
-                        mgba_state: state,
-                    });
+                    if let Ok(shadow_snapshot) = shadow.lock().save_state() {
+                        snaps.push(tango_pvp::stepper::ReplaySnapshot {
+                            checkpoint: cp,
+                            mgba_state: state,
+                            shadow_snapshot,
+                        });
+                    }
                 }
             }
         }
@@ -231,6 +252,12 @@ struct BuildReplayerArgs {
     game: &'static (dyn game::Game + Send + Sync),
     patch: Option<(String, semver::Version)>,
     rom: Arc<Vec<u8>>,
+    /// The opponent's game+rom. Used to construct the Shadow side that
+    /// re-derives each tick's remote packet from the recorded remote
+    /// joyflag. Cross-game replays make these legitimately different from
+    /// `game` / `rom`.
+    remote_game: &'static (dyn game::Game + Send + Sync),
+    remote_rom: Arc<Vec<u8>>,
     emu_tps_counter: Arc<Mutex<stats::Counter>>,
     replay: Arc<tango_pvp::replay::Replay>,
 }
@@ -393,7 +420,6 @@ impl Session {
                     },
                     is_offerer,
                     local_player_index,
-                    local_hooks.packet_size() as u8,
                     rng_seed,
                     &local_sram,
                     &remote_sram,
@@ -609,6 +635,8 @@ impl Session {
         game: &'static (dyn game::Game + Send + Sync),
         patch: Option<(String, semver::Version)>,
         rom: Arc<Vec<u8>>,
+        remote_game: &'static (dyn game::Game + Send + Sync),
+        remote_rom: Arc<Vec<u8>>,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         replay: Arc<tango_pvp::replay::Replay>,
     ) -> Result<Self, anyhow::Error> {
@@ -617,6 +645,8 @@ impl Session {
             game,
             patch,
             rom,
+            remote_game,
+            remote_rom,
             emu_tps_counter,
             replay,
         })
@@ -628,6 +658,8 @@ impl Session {
             game,
             patch,
             rom,
+            remote_game,
+            remote_rom,
             emu_tps_counter,
             replay,
         } = args;
@@ -651,15 +683,35 @@ impl Session {
         }
 
         let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
+        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+
+        // Shadow re-derives the per-tick remote packets from the recorded
+        // remote joyflag — it has to run the OPPONENT's ROM, which may
+        // legitimately differ from `rom` (cross-game replays are common).
+        let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
+        use rand::SeedableRng;
+        let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
+        let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
+        let shadow = tango_pvp::shadow::Shadow::new_from_sram(
+            remote_rom.as_ref(),
+            &replay.remote_sram,
+            remote_hooks,
+            match_type,
+            replay.is_offerer,
+            replay.local_player_index,
+            shadow_rng,
+        )?;
+        let shadow = Arc::new(parking_lot::Mutex::new(shadow));
 
         let stepper_state = tango_pvp::stepper::State::new(
-            (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+            match_type,
             replay.local_player_index,
             replay.rounds.clone(),
             0,
             replay.rng_seed,
             replay.is_offerer,
             total_replay_ticks,
+            shadow.clone(),
             Box::new({
                 let completion_token = completion_token.clone();
                 move || {
@@ -673,12 +725,14 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
-        let snapshots: Arc<parking_lot::Mutex<Vec<ReplaySnapshot>>> = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let snapshots: Arc<parking_lot::Mutex<Vec<tango_pvp::stepper::ReplaySnapshot>>> = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let prefetch_progress = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let prefetcher = Prefetcher::spawn(
             rom.clone(),
+            remote_rom.clone(),
             replay.clone(),
             game,
+            remote_game,
             snapshots.clone(),
             prefetch_progress.clone(),
         );
@@ -704,6 +758,7 @@ impl Session {
             let stepper_state = stepper_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
             let snapshots = snapshots.clone();
+            let shadow = shadow.clone();
             move |core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
@@ -741,10 +796,19 @@ impl Session {
                             .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
                     if want_round_start || want_mid_round {
                         if let Ok(state) = core.save_state() {
-                            snaps.push(ReplaySnapshot {
-                                checkpoint: cp,
-                                mgba_state: state,
-                            });
+                            // Capture shadow alongside stepper so seek can
+                            // restore both. Without shadow_snapshot here,
+                            // loading this snapshot on a seek would leave
+                            // the shadow at a different tick than the
+                            // stepper, and the apply_input chain would
+                            // then feed misaligned packets.
+                            if let Ok(shadow_snapshot) = shadow.lock().save_state() {
+                                snaps.push(tango_pvp::stepper::ReplaySnapshot {
+                                    checkpoint: cp,
+                                    mgba_state: state,
+                                    shadow_snapshot,
+                                });
+                            }
                         }
                     }
                 }
@@ -785,6 +849,7 @@ impl Session {
             mode: Mode::Replayer(Replayer {
                 replay,
                 stepper_state,
+                shadow,
                 snapshots,
                 prefetch_progress,
                 _prefetcher: prefetcher,
@@ -878,7 +943,7 @@ impl Session {
             return Ok(false);
         }
 
-        let start_snap: Option<ReplaySnapshot> = if target < current {
+        let start_snap: Option<tango_pvp::stepper::ReplaySnapshot> = if target < current {
             r.best_snapshot_for(target)
         } else {
             r.snapshots
@@ -901,6 +966,7 @@ impl Session {
         let stepper_state = r.stepper_state.clone();
         let replay = r.replay.clone();
         let snapshots = r.snapshots.clone();
+        let shadow = r.shadow.clone();
 
         self.thread.handle().run_on_core(move |mut core| {
             if let Some(snap) = start_snap.as_ref() {
@@ -910,6 +976,14 @@ impl Session {
                 }
                 if let Err(e) = stepper_state.restore_replay_checkpoint(&snap.checkpoint, &replay.rounds) {
                     log::error!("seek restore_replay_checkpoint failed: {:?}", e);
+                    return;
+                }
+                // Restore shadow alongside stepper. The shadow holds its own
+                // mgba core + Round state; without restoring it, post-seek
+                // apply_input calls would feed the stepper packets from the
+                // shadow's stale pre-seek state.
+                if let Err(e) = shadow.lock().load_state(&snap.shadow_snapshot) {
+                    log::error!("seek shadow load_state failed: {:?}", e);
                     return;
                 }
             }
@@ -932,10 +1006,13 @@ impl Session {
                             .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
                         if !exists {
                             if let Ok(state) = core.save_state() {
-                                snaps.push(ReplaySnapshot {
-                                    checkpoint: cp,
-                                    mgba_state: state,
-                                });
+                                if let Ok(shadow_snapshot) = shadow.lock().save_state() {
+                                    snaps.push(tango_pvp::stepper::ReplaySnapshot {
+                                        checkpoint: cp,
+                                        mgba_state: state,
+                                        shadow_snapshot,
+                                    });
+                                }
                             }
                         }
                     }

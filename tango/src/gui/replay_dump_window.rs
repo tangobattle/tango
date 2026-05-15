@@ -206,7 +206,7 @@ impl ReplayDumpWindow {
                     }
                 } else if ui
                     .add_enabled(
-                        self.selected_rounds.iter().any(|s| *s),
+                        self.selected_rounds.iter().any(|s| *s) && self.remote_rom.is_some(),
                         egui::Button::new(format!(
                             "💾 {}",
                             i18n::LOCALES.lookup(language, "replays-export").unwrap()
@@ -271,8 +271,17 @@ impl ReplayDumpWindow {
                             let local_game = crate::game::find_by_family_and_variant(&local_game_info.rom_family, local_game_info.rom_variant as u8).unwrap();
                             let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
 
+                            let remote_game_info = first_replay
+                                .metadata
+                                .remote_side
+                                .as_ref()
+                                .and_then(|side| side.game_info.as_ref())
+                                .ok_or(anyhow::anyhow!("missing remote game info")).unwrap();
+                            let remote_game = crate::game::find_by_family_and_variant(&remote_game_info.rom_family, remote_game_info.rom_variant as u8).unwrap();
+                            let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
+
                             tokio::select! {
-                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, &replays, &selected_rounds, &path, &settings, cb) => {
+                                r = tango_pvp::replay::export::export(&local_rom, local_hooks, remote_rom.as_ref().unwrap(), remote_hooks, &replays, &selected_rounds, &path, &settings, cb) => {
                                     *result.lock() = Some(r);
                                     egui_ctx.request_repaint();
                                 }

@@ -163,6 +163,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     if let Some(rng) = state.replay_rng().cloned() {
                         munger.set_rng2_state(core, generate_rng2_state(&mut *rng.lock()));
                     }
+                    state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_committed_state(core.save_state().expect("save committed state"));
                 }
 
@@ -173,6 +174,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
                 if current_tick == state.dirty_tick() {
+                    state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_dirty_state(core.save_state().expect("save dirty state"));
                 }
             })

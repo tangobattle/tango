@@ -4,6 +4,7 @@ use crate::input::{Input, Pair, PartialInput};
 /// trap to consume, plus the tick the primary expected the shadow to process
 /// it at. The expected tick lets per-game traps detect the "shadow advanced
 /// one tick before the trap fired" race.
+#[derive(Clone)]
 pub struct PendingShadowInput {
     pub expected_tick: u32,
     pub pair: Pair<Input, PartialInput>,
@@ -12,21 +13,23 @@ pub struct PendingShadowInput {
 /// `pending_remote_packet`'s payload bundled with the tick at which a
 /// consumer should expect to see it. Setters record `current_tick + 1`;
 /// consumers verify `target_tick == current_tick`.
-struct RemotePacket {
-    target_tick: u32,
-    packet: Vec<u8>,
+#[derive(Clone)]
+pub(super) struct RemotePacket {
+    pub(super) target_tick: u32,
+    pub(super) packet: Vec<u8>,
 }
 
 /// State for a single shadow-emulator round. Per-game shadow traps
 /// drive this between [`State::start_round`](super::State::start_round) and
 /// [`State::end_round`](super::State::end_round).
+#[derive(Clone)]
 pub struct Round {
     pub(super) current_tick: u32,
     pub(super) local_player_index: u8,
     pub(super) first_committed_state: Option<Box<mgba::state::State>>,
-    pending_shadow_input: Option<PendingShadowInput>,
-    pending_remote_packet: Option<RemotePacket>,
-    input_injected: bool,
+    pub(super) pending_shadow_input: Option<PendingShadowInput>,
+    pub(super) pending_remote_packet: Option<RemotePacket>,
+    pub(super) input_injected: bool,
 }
 
 impl Round {
@@ -117,6 +120,7 @@ impl Round {
 }
 
 /// Wraps the optional shadow round and the result-arrived flag.
+#[derive(Clone)]
 pub struct RoundState {
     pub round: Option<Round>,
     pub result_is_in: bool,

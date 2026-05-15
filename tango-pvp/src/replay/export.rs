@@ -41,7 +41,9 @@ const SAMPLE_RATE: f64 = 48000.0;
 fn make_core_and_state(
     rom: &[u8],
     sram: &[u8],
-    hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    shadow_rom: &[u8],
+    shadow_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     replay: &crate::replay::Replay,
     settings: &Settings,
 ) -> anyhow::Result<(mgba::core::Core, crate::stepper::State)> {
@@ -57,14 +59,31 @@ fn make_core_and_state(
     }
 
     let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
+    let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+
+    use rand::SeedableRng;
+    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
+    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
+    let shadow = crate::shadow::Shadow::new_from_sram(
+        shadow_rom,
+        &replay.remote_sram,
+        shadow_hooks,
+        match_type,
+        replay.is_offerer,
+        replay.local_player_index,
+        shadow_rng,
+    )?;
+    let shadow = std::sync::Arc::new(parking_lot::Mutex::new(shadow));
+
     let stepper_state = crate::stepper::State::new(
-        (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        match_type,
         replay.local_player_index,
         replay.rounds.clone(),
         0,
         replay.rng_seed,
         replay.is_offerer,
         total_replay_ticks,
+        shadow,
         Box::new(|| {}),
     );
     stepper_state.lock_inner().set_disable_bgm(settings.disable_bgm);
@@ -224,8 +243,10 @@ fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize 
 }
 
 pub async fn export(
-    rom: &[u8],
-    hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    local_rom: &[u8],
+    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    remote_rom: &[u8],
+    remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     replays: &[crate::replay::Replay],
     selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
@@ -269,7 +290,15 @@ pub async fn export(
     let mut prev_should_write = false;
 
     for (replay_idx, replay) in replays.iter().enumerate() {
-        let (mut core, state) = make_core_and_state(rom, &replay.local_sram, hooks, replay, settings)?;
+        let (mut core, state) = make_core_and_state(
+            local_rom,
+            &replay.local_sram,
+            local_hooks,
+            remote_rom,
+            remote_hooks,
+            replay,
+            settings,
+        )?;
         let full_replay_len = replay.total_input_pairs();
         let selected = selected_rounds.get(replay_idx).map(Vec::as_slice).unwrap_or(&[]);
         let last_selected_round = selected.iter().rposition(|&s| s);
@@ -341,9 +370,9 @@ pub async fn export(
 
 pub async fn export_twosided(
     local_rom: &[u8],
-    local_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_rom: &[u8],
-    remote_hooks: &(dyn crate::hooks::Hooks + Send + Sync + 'static),
+    remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     replays: &[crate::replay::Replay],
     selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
@@ -404,10 +433,14 @@ pub async fn export_twosided(
         let local_replay = replay.clone();
         let remote_replay = local_replay.clone().into_remote();
 
+        // For each side's primary core, the shadow runs the OTHER side's
+        // ROM + the recording peer's view of their opponent's SRAM.
         let (mut local_core, local_state) = make_core_and_state(
             local_rom,
             &local_replay.local_sram,
             local_hooks,
+            remote_rom,
+            remote_hooks,
             &local_replay,
             settings,
         )?;
@@ -415,6 +448,8 @@ pub async fn export_twosided(
             remote_rom,
             &remote_replay.local_sram,
             remote_hooks,
+            local_rom,
+            local_hooks,
             &remote_replay,
             settings,
         )?;

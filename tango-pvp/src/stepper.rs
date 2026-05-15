@@ -14,5 +14,5 @@ mod state;
 mod types;
 
 pub use fastforwarder::{FastforwardResult, Fastforwarder};
-pub use state::{InnerState, ReplayCheckpoint, State};
+pub use state::{InnerState, ReplayCheckpoint, ReplaySnapshot, State};
 pub use types::{BattleOutcome, RoundResult};
