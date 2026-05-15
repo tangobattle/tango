@@ -38,8 +38,7 @@ impl SnapshotStore {
         let snaps = self.0.lock();
         let want_round_start = !cp.has_committed_this_round
             && !snaps.iter().any(|s| {
-                s.checkpoint.current_round_index == cp.current_round_index
-                    && !s.checkpoint.has_committed_this_round
+                s.checkpoint.current_round_index == cp.current_round_index && !s.checkpoint.has_committed_this_round
             });
         let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
         let want_mid_round = cp.has_committed_this_round
@@ -113,10 +112,10 @@ impl SnapshotStore {
 /// The host spawns the thread that drives this — this function takes no
 /// thread handle and never blocks except on its own work loop.
 pub fn run_prefetch(
-    rom: &[u8],
+    local_rom: &[u8],
     remote_rom: &[u8],
     replay: &Replay,
-    hooks: &'static (dyn Hooks + Send + Sync),
+    local_hooks: &'static (dyn Hooks + Send + Sync),
     remote_hooks: &'static (dyn Hooks + Send + Sync),
     store: SnapshotStore,
     cancel: Arc<AtomicBool>,
@@ -125,14 +124,14 @@ pub fn run_prefetch(
     let mut core = mgba::core::Core::new_gba("tango-prefetch")?;
     core.enable_video_buffer();
     core.as_mut()
-        .load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
+        .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
         .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
     // mgba::thread::Thread::start does this implicitly for the playback
     // core; a raw Core driven by run_frame needs it explicitly.
     core.as_mut().reset();
 
-    hooks.patch(core.as_mut());
+    local_hooks.patch(core.as_mut());
 
     let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
@@ -162,8 +161,8 @@ pub fn run_prefetch(
         shadow.clone(),
         Box::new(|| {}),
     );
-    let mut traps = hooks.common_traps();
-    traps.extend(hooks.stepper_traps(stepper_state.clone()));
+    let mut traps = local_hooks.common_traps();
+    traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
 
     loop {
