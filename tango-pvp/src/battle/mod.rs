@@ -15,7 +15,7 @@ mod types;
 
 pub use match_::Match;
 pub use round::Round;
-pub use types::{BattleOutcome, CommittedState, MatchIdentity, ReplayConfig, RoundState};
+pub use types::{BattleOutcome, CommittedState, MatchIdentity, ReplayConfig};
 
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;

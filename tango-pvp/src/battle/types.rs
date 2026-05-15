@@ -1,5 +1,3 @@
-use super::Round;
-
 /// Outcome from primary's perspective: did the local player win or lose this
 /// round? (Draws are mapped to win/loss by [`Round::on_draw_outcome`] before
 /// reaching this enum.)
@@ -33,24 +31,3 @@ pub struct CommittedState {
     pub packet: Vec<u8>,
 }
 
-/// Shared between Match and the per-game primary traps. `number` is the
-/// 1-indexed round counter; `round` is the in-progress round (None between
-/// rounds).
-pub struct RoundState {
-    pub number: u8,
-    pub round: Option<Round>,
-}
-
-impl RoundState {
-    pub fn end_round(&mut self) -> anyhow::Result<()> {
-        match self.round.take() {
-            Some(round) => {
-                log::info!("round ended at {:x}", round.current_tick());
-            }
-            None => {
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-}

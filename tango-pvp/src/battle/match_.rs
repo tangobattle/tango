@@ -4,14 +4,7 @@ use parking_lot::Mutex as PlMutex;
 use tokio::sync::{watch, Mutex};
 
 use super::round::Round;
-use super::types::{MatchIdentity, ReplayConfig, RoundState};
-
-/// Outcome of a single attempt to attach a remote input to the current round.
-enum Attach {
-    Added,
-    Dropped,
-    WaitForProgress,
-}
+use super::types::{MatchIdentity, ReplayConfig};
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
@@ -22,7 +15,7 @@ pub struct Match {
     rng: Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     identity: MatchIdentity,
-    round_state: Mutex<RoundState>,
+    round_state: Mutex<Option<Round>>,
     primary_thread_handle: mgba::thread::Handle,
     /// Bumped whenever the round lifecycle advances (start_round, first
     /// commit, end_round). The network receive loop awaits changes on this
@@ -52,10 +45,7 @@ impl Match {
             rng: Mutex::new(rng),
             cancellation_token,
             identity,
-            round_state: Mutex::new(RoundState {
-                number: 0,
-                round: None,
-            }),
+            round_state: Mutex::new(None),
             primary_thread_handle,
             round_progress,
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
@@ -137,10 +127,10 @@ impl Match {
     /// just-ended round can be dropped.
     pub fn end_round(&self) -> anyhow::Result<()> {
         let mut round_state = self.round_state.blocking_lock();
-        if round_state.round.is_none() {
+        let Some(round) = round_state.take() else {
             return Ok(());
-        }
-        round_state.end_round()?;
+        };
+        log::info!("round ended at {:x}", round.current_tick());
         self.shadow.lock().advance_until_round_end()?;
         self.bump_round_progress();
         Ok(())
@@ -161,9 +151,8 @@ impl Match {
         }
     }
 
-    /// Wait until either we can attach `input` to the in-progress round or we
-    /// can confidently drop it (round is already over). Awaits round-progress
-    /// changes between attempts.
+    /// Wait until we can attach `input` to the in-progress round. Awaits
+    /// round-progress changes between attempts.
     async fn deliver_remote_input(
         &self,
         progress: &mut watch::Receiver<u64>,
@@ -174,9 +163,8 @@ impl Match {
             // `changed().await` only fires on a genuinely later state.
             progress.borrow_and_update();
 
-            match self.try_attach_remote_input(&input).await? {
-                Attach::Added | Attach::Dropped => return Ok(()),
-                Attach::WaitForProgress => {}
+            if self.try_attach_remote_input(&input).await? {
+                return Ok(());
             }
 
             if progress.changed().await.is_err() {
@@ -186,31 +174,19 @@ impl Match {
         }
     }
 
-    async fn try_attach_remote_input(&self, input: &crate::net::Input) -> anyhow::Result<Attach> {
+    /// Returns `true` if the input was queued; `false` if the caller should
+    /// wait for round progress and try again.
+    async fn try_attach_remote_input(&self, input: &crate::net::Input) -> anyhow::Result<bool> {
         let mut round_state = self.round_state.lock().await;
-        let current_number = round_state.number;
 
-        // Round number drifted past us, or the input arrived after the round
-        // was torn down (round.is_none() but round_state.number hasn't yet
-        // been incremented for the next round): drop on the floor.
-        if current_number > input.round_number
-            || (current_number == input.round_number && round_state.round.is_none())
-        {
-            log::info!("dropping input for finished round {}", input.round_number);
-            return Ok(Attach::Dropped);
-        }
-
-        if current_number != input.round_number {
-            // Input is for a future round we haven't started yet.
-            return Ok(Attach::WaitForProgress);
-        }
-
-        let Some(round) = round_state.round.as_mut() else {
-            return Ok(Attach::WaitForProgress);
+        let Some(round) = round_state.as_mut() else {
+            // Either before the first round has started or between rounds —
+            // wait for the next round to spin up before delivering the input.
+            return Ok(false);
         };
         if !round.has_committed_state() {
             // Round started but hasn't reached its first commit.
-            return Ok(Attach::WaitForProgress);
+            return Ok(false);
         }
 
         if !round.can_add_remote_input() {
@@ -219,10 +195,10 @@ impl Match {
         round.add_remote_input(crate::input::PartialInput {
             joyflags: input.joyflags as u16,
         });
-        Ok(Attach::Added)
+        Ok(true)
     }
 
-    pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, RoundState> {
+    pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, Option<Round>> {
         self.round_state.blocking_lock()
     }
 
@@ -243,7 +219,6 @@ impl Match {
     /// so the network receive loop wakes up to (re-)evaluate.
     pub async fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
-        round_state.number += 1;
         log::info!("starting round: local_player_index = {}", self.identity.local_player_index);
 
         // Mark a new round in the replay file. The body is a stream of
@@ -262,16 +237,11 @@ impl Match {
             let mut sender = self.sender.lock().await;
             for _ in 0..self.identity.input_delay {
                 iq.add_local_input(crate::input::PartialInput { joyflags: 0 });
-                sender
-                    .send(&crate::net::Input {
-                        round_number: round_state.number,
-                        joyflags: 0,
-                    })
-                    .await?;
+                sender.send(&crate::net::Input { joyflags: 0 }).await?;
             }
         }
 
-        round_state.round = Some(Round::new(self, round_state.number, iq)?);
+        *round_state = Some(Round::new(self, iq)?);
         self.bump_round_progress();
         log::info!("round has started");
         Ok(())

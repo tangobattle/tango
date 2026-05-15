@@ -333,7 +333,7 @@ fn show_status_bar(
                     let latency = sync::block_on(pvp.latency());
 
                     let round_state = match_.lock_round_state();
-                    let Some(round) = round_state.round.as_ref() else {
+                    let Some(round) = round_state.as_ref() else {
                         return (0.0, Some(latency), None);
                     };
 

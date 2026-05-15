@@ -28,7 +28,7 @@ pub(super) fn traps(
 
             let mut round_state = match_.lock_round_state();
 
-            let Some(round) = round_state.round.as_mut() else {
+            let Some(round) = round_state.as_mut() else {
                 return;
             };
 
@@ -118,7 +118,7 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
             })
         }),
@@ -128,7 +128,7 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
             })
         }),
@@ -139,7 +139,7 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.as_mut() else { return };
 
                 if !munger.is_linking(core) {
                     return;
@@ -215,7 +215,7 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.as_mut() else { return };
                 if !round.has_committed_state() {
                     return;
                 }
