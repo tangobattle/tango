@@ -161,7 +161,7 @@ fn commit_patch(
     committed_selection: &mut Option<gui::Selection>,
     selection_state: &Selection,
 ) {
-    let Some(committed_selection) = committed_selection else {
+    let Some(prev) = committed_selection.take() else {
         return;
     };
 
@@ -173,13 +173,16 @@ fn commit_patch(
             Ok(r) => r,
             Err(e) => {
                 log::error!("failed to apply patch {}: {:?}: {:?}", name, (rom_code, revision), e);
+                *committed_selection = Some(prev);
                 return;
             }
         };
     }
 
-    committed_selection.rom = rom;
-    committed_selection.patch.clone_from(&selection_state.patch);
+    // Rebuild through Selection::new so `assets` is re-derived from the
+    // new ROM + the new patch's rom_overrides. Mutating rom+patch alone
+    // would leave `assets` pointing at the previous patch's overlay.
+    *committed_selection = Some(gui::Selection::new(prev.game, prev.save, selection_state.patch.clone(), rom));
 }
 
 fn commit_save(
