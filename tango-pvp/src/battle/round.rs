@@ -13,7 +13,6 @@ use super::EXPECTED_FPS;
 /// helpers that wire remote-side prediction into FF runs.
 pub struct Round {
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    number: u8,
     local_player_index: u8,
     current_tick: u32,
     /// Signed tick lag: how far ahead remote is of us. Positive when we're
@@ -37,7 +36,6 @@ pub struct Round {
 impl Round {
     pub(super) fn new(
         match_: &super::Match,
-        number: u8,
         iq: PairQueue<PartialInput, PartialInput>,
     ) -> anyhow::Result<Self> {
         let hooks = match_.local_hooks();
@@ -53,7 +51,6 @@ impl Round {
         };
         Ok(Self {
             hooks,
-            number,
             local_player_index: match_.local_player_index(),
             current_tick: 0,
             tick_lag: 0,
@@ -120,10 +117,7 @@ impl Round {
         self.sender
             .lock()
             .await
-            .send(&crate::net::Input {
-                round_number: self.number,
-                joyflags,
-            })
+            .send(&crate::net::Input { joyflags })
             .await?;
 
         self.add_local_input(PartialInput { joyflags });
