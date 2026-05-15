@@ -1,4 +1,5 @@
 pub mod export;
+pub mod playback;
 mod protos;
 
 use byteorder::ReadBytesExt;
