@@ -9,7 +9,7 @@ pub async fn eval(
     let vf = mgba::vfile::VFile::from_vec(rom.to_vec());
     core.as_mut().load_rom(vf)?;
     core.as_mut()
-        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
     core.as_mut().reset();
 
     if replay.rounds.is_empty() {
@@ -29,7 +29,7 @@ pub async fn eval(
     let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
     let shadow = crate::shadow::Shadow::new_from_sram(
         rom,
-        &replay.remote_sram,
+        &replay.remote_sram_dump()?,
         hooks,
         match_type,
         replay.is_offerer,

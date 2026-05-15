@@ -394,6 +394,15 @@ impl InnerState {
         Ok(remote_packet)
     }
 
+    /// Per-tick output pairs accumulated since the last round transition.
+    /// `load_replay_round` resets this to empty between replay rounds, so
+    /// callers that need a full-replay record must drain it before the
+    /// stepper observes the next round-start. Used by the replay regression
+    /// harness to build a per-tick remote-packet digest.
+    pub fn output_pairs(&self) -> &[Pair<Input, Input>] {
+        &self.output_pairs
+    }
+
     // ----- committed / dirty save snapshots -----
 
     pub fn set_committed_state(&mut self, state: Box<mgba::state::State>) {

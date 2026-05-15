@@ -77,13 +77,13 @@ pub struct Overrides {
     pub patch_card56_effects: Option<Vec<PatchCard56EffectOverride>>,
 }
 
-pub struct OverridenAssets<A> {
-    assets: A,
+pub struct OverridenAssets {
+    assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     overrides: Overrides,
 }
 
-impl<A> OverridenAssets<A> {
-    pub fn new(assets: A, overrides: &Overrides) -> Self {
+impl OverridenAssets {
+    pub fn new(assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>, overrides: &Overrides) -> Self {
         Self {
             assets,
             overrides: overrides.clone(),
@@ -235,10 +235,7 @@ impl<'a> tango_dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
     }
 }
 
-impl<A> tango_dataview::rom::Assets for OverridenAssets<A>
-where
-    A: tango_dataview::rom::Assets,
-{
+impl tango_dataview::rom::Assets for OverridenAssets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Chip + 'a>> {
         self.assets.chip(id).map(|chip| {
             Box::new(OverridenChip {

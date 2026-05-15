@@ -52,8 +52,10 @@ pub trait Hooks {
     fn predict_rx(&self, _rx: &mut Vec<u8>) {}
 }
 
-pub fn hooks_for_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dyn Hooks + Send + Sync)> {
-    Some(match entry.rom_code_and_revision {
+pub fn hooks_for_gamedb_entry(
+    entry: &(dyn tango_gamedb::Game + Send + Sync),
+) -> Option<&'static (dyn Hooks + Send + Sync)> {
+    Some(match entry.rom_code_and_revision() {
         (b"AREJ", 0x00) => &crate::game::bn1::AREJ_00,
         (b"AREE", 0x00) => &crate::game::bn1::AREE_00,
 

@@ -131,7 +131,7 @@ fn create_new_save(
     patch: Option<&(String, semver::Version, std::sync::Arc<patch::Version>)>,
     name: &str,
 ) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
-    let (family, variant) = game.gamedb_entry().family_and_variant;
+    let (family, variant) = game.gamedb_entry().family_and_variant();
     let mut prefix = i18n::LOCALES
         .lookup(language, &format!("game-{}.variant-{}", family, variant))
         .unwrap();
@@ -168,7 +168,7 @@ fn commit_patch(
     let mut rom = roms.get(&selection_state.game).unwrap().clone();
 
     if let Some((name, version, _)) = selection_state.patch.as_ref() {
-        let (rom_code, revision) = selection_state.game.gamedb_entry().rom_code_and_revision;
+        let (rom_code, revision) = selection_state.game.gamedb_entry().rom_code_and_revision();
         rom = match patch::apply_patch_from_disk(&rom, selection_state.game, patches_path, name, version) {
             Ok(r) => r,
             Err(e) => {
@@ -204,7 +204,7 @@ fn commit_save(
     } else {
         let mut rom = roms.get(&selection_state.game).unwrap().clone();
         if let Some((name, version, _)) = selection_state.patch.as_ref() {
-            let (rom_code, revision) = selection_state.game.gamedb_entry().rom_code_and_revision;
+            let (rom_code, revision) = selection_state.game.gamedb_entry().rom_code_and_revision();
             rom = match patch::apply_patch_from_disk(&rom, selection_state.game, patches_path, name, version) {
                 Ok(r) => r,
                 Err(e) => {
@@ -241,7 +241,7 @@ fn game_compatibility_warning(
     let remote_has_rom = remote_settings
         .available_games
         .iter()
-        .any(|(family, variant)| game.gamedb_entry().family_and_variant == (family, *variant));
+        .any(|(family, variant)| game.gamedb_entry().family_and_variant() == (family, *variant));
 
     if !remote_has_rom {
         return Some(gui::play_pane::Warning::NoRemoteROM(game));
@@ -251,7 +251,7 @@ fn game_compatibility_warning(
     let remote_gi = remote_settings.game_info.as_ref()?;
 
     if let Some(netplay_compatibility) = gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, patches) {
-        let family = game.gamedb_entry().family_and_variant.0;
+        let family = game.gamedb_entry().family_and_variant().0;
 
         if netplay_compatibility != family
             && !patches.values().any(|metadata| {
@@ -292,7 +292,7 @@ fn patch_compatibility_warning(
                     .map(|vi| vi.netplay_compatibility.as_str())
                     .collect()
             })
-            .unwrap_or_else(|| vec![game.gamedb_entry().family_and_variant.0]);
+            .unwrap_or_else(|| vec![game.gamedb_entry().family_and_variant().0]);
 
         if let Some(nc) = gui::play_pane::get_netplay_compatibility(
             remote_game,
@@ -308,7 +308,7 @@ fn patch_compatibility_warning(
         remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
         patches,
     ) {
-        if nc != game.gamedb_entry().family_and_variant.0 {
+        if nc != game.gamedb_entry().family_and_variant().0 {
             return Some(gui::play_pane::Warning::Incompatible);
         }
     }
@@ -424,7 +424,7 @@ pub fn show(
                     }
 
                     let selected_game_text = if let Some(selection) = &state.selection {
-                        let (family, variant) = selection.game.gamedb_entry().family_and_variant;
+                        let (family, variant) = selection.game.gamedb_entry().family_and_variant();
                         i18n::LOCALES
                             .lookup(&config.language, &format!("game-{}.variant-{}", family, variant))
                             .unwrap()
@@ -459,7 +459,7 @@ pub fn show(
                                     width += WARNING_WIDTH;
                                 }
 
-                                let (family, variant) = game.gamedb_entry().family_and_variant;
+                                let (family, variant) = game.gamedb_entry().family_and_variant();
 
                                 let localized_name = i18n::LOCALES
                                     .lookup(&config.language, &format!("game-{}.variant-{}", family, variant))
@@ -479,7 +479,7 @@ pub fn show(
                                 .map(|g| (true, g))
                                 .chain(games.iter().filter(|g| !roms.contains_key(*g)).map(|g| (false, g)))
                             {
-                                let (family, variant) = game.gamedb_entry().family_and_variant;
+                                let (family, variant) = game.gamedb_entry().family_and_variant();
 
                                 let selected = state
                                     .selection
@@ -1019,7 +1019,7 @@ pub fn show(
                                 let localized_name = if !name.is_empty() {
                                     let text_id = format!(
                                         "game-{}.save-{}",
-                                        selection_state.game.gamedb_entry().family_and_variant.0,
+                                        selection_state.game.gamedb_entry().family_and_variant().0,
                                         name
                                     );
 

@@ -30,8 +30,10 @@ impl std::fmt::Debug for &'static (dyn Game + Send + Sync) {
     }
 }
 
-pub fn game_from_gamedb_entry(entry: &tango_gamedb::Game) -> Option<&'static (dyn Game + Send + Sync)> {
-    Some(match entry.family_and_variant {
+pub fn game_from_gamedb_entry(
+    entry: &(dyn tango_gamedb::Game + Send + Sync),
+) -> Option<&'static (dyn Game + Send + Sync)> {
+    Some(match entry.family_and_variant() {
         ("exe1", 0) => bn1::EXE1,
         ("bn1", 0) => bn1::BN1,
 
@@ -135,7 +137,7 @@ fn scan_bnlc_rom_archive(
             "bnlc: {}/{}: {:?}",
             path.display(),
             entry_path.display(),
-            game.gamedb_entry().family_and_variant
+            game.gamedb_entry().family_and_variant()
         );
 
         roms.insert(game, rom);
@@ -217,7 +219,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
         log::info!(
             "roms folder: {}: {:?}",
             path.display(),
-            game.gamedb_entry().family_and_variant
+            game.gamedb_entry().family_and_variant()
         );
 
         roms.insert(game, rom);
@@ -245,12 +247,12 @@ pub fn region_to_language(region: tango_gamedb::Region) -> unic_langid::Language
 pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static (dyn Game + Send + Sync)]) {
     games.sort_by_key(|g| {
         (
-            if region_to_language(g.gamedb_entry().region).matches(lang, true, true) {
+            if region_to_language(g.gamedb_entry().region()).matches(lang, true, true) {
                 0
             } else {
                 1
             },
-            g.gamedb_entry().family_and_variant,
+            g.gamedb_entry().family_and_variant(),
         )
     });
 }
@@ -258,7 +260,8 @@ pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static 
 pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static (dyn Game + Send + Sync)> {
     let mut games = tango_gamedb::GAMES
         .iter()
-        .flat_map(|g| game_from_gamedb_entry(g))
+        .copied()
+        .flat_map(game_from_gamedb_entry)
         .collect::<Vec<_>>();
     sort_games(lang, &mut games);
     games
@@ -276,16 +279,26 @@ pub trait Game
 where
     Self: Any,
 {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game;
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync);
     fn match_types(&self) -> &[usize];
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error>;
+    /// Build the rom Assets, layering patch-driven `overrides` on top of
+    /// gamedb's per-game defaults. The default impl converts the
+    /// override charset (Vec<String>) into the gamedb-friendly
+    /// `Option<&[&str]>` shape and wraps the gamedb result with
+    /// `OverridenAssets`. Per-game impls almost never need to override.
     fn load_rom_assets(
         &self,
         rom: &[u8],
         wram: &[u8],
         overrides: &rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error>;
+    ) -> Box<dyn tango_dataview::rom::Assets + Send + Sync> {
+        let charset_owned: Option<Vec<&str>> = overrides
+            .charset
+            .as_ref()
+            .map(|c| c.iter().map(|s| s.as_str()).collect());
+        let inner = self.gamedb_entry().load_rom_assets(rom, wram, charset_owned.as_deref());
+        Box::new(rom::OverridenAssets::new(inner, overrides))
+    }
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
         &[][..]
     }

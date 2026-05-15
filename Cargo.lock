@@ -5760,6 +5760,8 @@ name = "tango-gamedb"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "tango-dataview",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5779,6 +5781,7 @@ dependencies = [
  "rand_pcg",
  "serde",
  "serde_repr",
+ "sha2",
  "shell-words",
  "tango-dataview",
  "tango-gamedb",

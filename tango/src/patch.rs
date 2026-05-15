@@ -244,8 +244,8 @@ pub fn scan(
                     }
                     FileType::SaveTemplate(name) => {
                         let save = match std::fs::read(entry.path())
-                            .map_err(|e| e.into())
-                            .and_then(|raw| game.parse_save(&raw))
+                            .map_err(anyhow::Error::from)
+                            .and_then(|raw| game.gamedb_entry().parse_save(&raw).map_err(anyhow::Error::from))
                         {
                             Ok(save) => save,
                             Err(e) => {
@@ -398,7 +398,7 @@ pub fn apply_patch_from_disk(
         anyhow::bail!("attempted path traversal in patch name");
     }
 
-    let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision;
+    let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision();
     let raw = std::fs::read(
         patches_path
             .join(patch_name)

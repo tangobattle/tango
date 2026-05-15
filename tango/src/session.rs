@@ -232,8 +232,8 @@ impl Session {
             let mut rng = rand_pcg::Mcg128Xsl64::from_seed(rng_seed);
             let local_player_index = tango_pvp::battle::Match::pick_local_player_index(&mut rng, is_offerer);
 
-            let local_sram = local_save.as_sram_dump();
-            let remote_sram = remote_save.as_sram_dump();
+            let local_wram = local_save.as_raw_wram().into_owned();
+            let remote_wram = remote_save.as_raw_wram().into_owned();
 
             const TIME_DESCRIPTION: &[time::format_description::FormatItem<'_>] = time::macros::format_description!(
                 "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
@@ -309,8 +309,8 @@ impl Session {
                     is_offerer,
                     local_player_index,
                     rng_seed,
-                    &local_sram,
-                    &remote_sram,
+                    &local_wram,
+                    &remote_wram,
                 )?)
             };
 
@@ -420,24 +420,24 @@ impl Session {
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             close_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             own_setup: {
-                let assets = local_game.load_rom_assets(local_rom, &local_save.as_raw_wram(), local_patch_overrides)?;
+                let assets = local_game.load_rom_assets(local_rom, &local_save.as_raw_wram(), local_patch_overrides);
                 Some(Setup {
                     game_lang: local_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(local_game.gamedb_entry().region)),
+                        .unwrap_or_else(|| crate::game::region_to_language(local_game.gamedb_entry().region())),
                     save: local_save,
                     assets,
                 })
             },
             opponent_setup: if reveal_setup {
                 let assets =
-                    remote_game.load_rom_assets(remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides)?;
+                    remote_game.load_rom_assets(remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides);
                 Some(Setup {
                     game_lang: remote_patch_overrides
                         .language
                         .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(remote_game.gamedb_entry().region)),
+                        .unwrap_or_else(|| crate::game::region_to_language(remote_game.gamedb_entry().region())),
                     save: remote_save,
                     assets,
                 })
@@ -558,7 +558,7 @@ impl Session {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram.clone()))?;
+            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
 
         let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
         hooks.patch(core.as_mut());
@@ -582,7 +582,7 @@ impl Session {
         let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
         let shadow = tango_pvp::shadow::Shadow::new_from_sram(
             remote_rom.as_ref(),
-            &replay.remote_sram,
+            &replay.remote_sram_dump()?,
             remote_hooks,
             match_type,
             replay.is_offerer,

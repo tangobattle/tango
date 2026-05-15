@@ -38,41 +38,12 @@ lazy_static! {
 }
 
 impl game::Game for EXE2Impl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::AE2J_00_AC
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::new(data)?))
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::from_wram(data)?))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        save: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn2::rom::Assets::new(
-                &tango_dataview::game::bn2::rom::AE2J_00_AC,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn2::rom::JA_CHARSET)),
-                rom.to_vec(),
-                save.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
@@ -84,41 +55,12 @@ pub struct BN2Impl;
 pub const BN2: &'static (dyn game::Game + Send + Sync) = &BN2Impl {};
 
 impl game::Game for BN2Impl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::AE2E_00
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::new(data)?))
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::from_wram(data)?))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        save: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn2::rom::Assets::new(
-                &tango_dataview::game::bn2::rom::AE2E_00,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn2::rom::EN_CHARSET)),
-                rom.to_vec(),
-                save.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {

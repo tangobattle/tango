@@ -120,8 +120,8 @@ async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::Pat
         replay.is_offerer,
         replay.local_player_index,
         replay.rng_seed,
-        &replay.local_sram,
-        &replay.remote_sram,
+        &replay.local_wram,
+        &replay.remote_wram,
     )?;
     for round in &replay.rounds {
         writer.start_round()?;
@@ -155,7 +155,7 @@ async fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::E
 
 async fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
-    stdout.write_all(&replay.local_sram)?;
+    stdout.write_all(&replay.local_wram)?;
     Ok(())
 }
 
@@ -200,8 +200,8 @@ async fn cmd_export(
     if local_game != local_detected_game {
         return Err(anyhow::format_err!(
             "expected game {:?}, got {:?}",
-            local_game.family_and_variant,
-            local_detected_game.family_and_variant
+            local_game.family_and_variant(),
+            local_detected_game.family_and_variant()
         ));
     }
 
@@ -225,8 +225,8 @@ async fn cmd_export(
     if remote_game != remote_detected_game {
         return Err(anyhow::format_err!(
             "expected game {:?}, got {:?}",
-            remote_game.family_and_variant,
-            remote_detected_game.family_and_variant
+            remote_game.family_and_variant(),
+            remote_detected_game.family_and_variant()
         ));
     }
 
@@ -276,8 +276,8 @@ async fn cmd_eval(replay: tango_pvp::replay::Replay, rom_path: std::path::PathBu
     if game != detected_game {
         return Err(anyhow::format_err!(
             "expected game {:?}, got {:?}",
-            game.family_and_variant,
-            detected_game.family_and_variant
+            game.family_and_variant(),
+            detected_game.family_and_variant()
         ));
     }
 

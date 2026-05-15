@@ -38,8 +38,8 @@ impl Warning {
                                 language,
                                 &format!(
                                     "game-{}.variant-{}",
-                                    game.gamedb_entry().family_and_variant.0,
-                                    game.gamedb_entry().family_and_variant.1
+                                    game.gamedb_entry().family_and_variant().0,
+                                    game.gamedb_entry().family_and_variant().1
                                 ),
                             )
                             .unwrap()
@@ -68,8 +68,8 @@ impl Warning {
                                 language,
                                 &format!(
                                     "game-{}.variant-{}",
-                                    game.gamedb_entry().family_and_variant.0,
-                                    game.gamedb_entry().family_and_variant.1
+                                    game.gamedb_entry().family_and_variant().0,
+                                    game.gamedb_entry().family_and_variant().1
                                 ),
                             )
                             .unwrap()
@@ -125,7 +125,7 @@ fn make_warning(
         .remote_settings
         .available_games
         .iter()
-        .any(|(family, variant)| local_selection.game.gamedb_entry().family_and_variant == (family, *variant))
+        .any(|(family, variant)| local_selection.game.gamedb_entry().family_and_variant() == (family, *variant))
     {
         return Some(Warning::NoRemoteROM(local_selection.game));
     }
@@ -213,7 +213,7 @@ pub fn get_netplay_compatibility(
             .get(patch.0)
             .and_then(|p| p.versions.get(patch.1).map(|vinfo| vinfo.netplay_compatibility.clone()))
     } else {
-        Some(game.gamedb_entry().family_and_variant.0.to_string())
+        Some(game.gamedb_entry().family_and_variant().0.to_string())
     }
 }
 
@@ -356,7 +356,7 @@ impl Lobby {
             nickname: self.nickname.clone(),
             match_type: self.match_type,
             game_info: self.local_selection.as_ref().map(|local_selection| {
-                let (family, variant) = local_selection.game.gamedb_entry().family_and_variant;
+                let (family, variant) = local_selection.game.gamedb_entry().family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
                     patch: local_selection
@@ -371,7 +371,7 @@ impl Lobby {
             available_games: roms
                 .keys()
                 .map(|g| {
-                    let (family, variant) = g.gamedb_entry().family_and_variant;
+                    let (family, variant) = g.gamedb_entry().family_and_variant();
                     (family.to_string(), variant)
                 })
                 .collect(),
@@ -458,7 +458,7 @@ impl Lobby {
 
         self.send_settings(net::protocol::Settings {
             game_info: selection.as_ref().map(|selection| {
-                let (family, variant) = selection.game.gamedb_entry().family_and_variant;
+                let (family, variant) = selection.game.gamedb_entry().family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
                     patch: selection
@@ -506,7 +506,7 @@ impl Lobby {
             game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1).and_then(|game| {
                 roms.get(&game).and_then(|rom| {
                     if let Some(pi) = gi.patch.as_ref() {
-                        let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision;
+                        let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision();
 
                         let Some(patch_version_metadata) = self
                             .patches_scanner
@@ -795,7 +795,7 @@ async fn run_connection_task(
                             link_code,
                             local_selection.patch.as_ref()
                                 .map(|(_, _, metadata)| metadata.netplay_compatibility.clone())
-                                .unwrap_or(local_selection.game.gamedb_entry().family_and_variant.0.to_owned()),
+                                .unwrap_or(local_selection.game.gamedb_entry().family_and_variant().0.to_owned()),
                             local_settings,
                             local_selection.game,
                             local_selection.patch.as_ref().map(|(name, version, _)| {
@@ -805,12 +805,12 @@ async fn run_connection_task(
                                 meta.rom_overrides.clone()
                             }).unwrap_or_default(),
                             &local_selection.rom,
-                            local_selection.game.save_from_wram(&local_negotiated_state.save_data)?,
+                            local_selection.game.gamedb_entry().save_from_wram(&local_negotiated_state.save_data).map_err(anyhow::Error::from)?,
                             remote_settings,
                             remote_selection.game,
                             &remote_patch_overrides,
                             &remote_selection.rom,
-                            remote_selection.game.save_from_wram(&remote_negotiated_state.save_data)?,
+                            remote_selection.game.gamedb_entry().save_from_wram(&remote_negotiated_state.save_data).map_err(anyhow::Error::from)?,
                             emu_tps_counter.clone(),
                             sender,
                             receiver,
@@ -992,7 +992,7 @@ fn show_lobby_table(
                         strip.cell(|ui| {
                             ui.vertical(|ui| {
                                 if let Some(local_selection) = lobby.local_selection.as_ref() {
-                                    let (family, variant) = local_selection.game.gamedb_entry().family_and_variant;
+                                    let (family, variant) = local_selection.game.gamedb_entry().family_and_variant();
                                     ui.label(if game::find_by_family_and_variant(family, variant).is_some() {
                                         i18n::LOCALES
                                             .lookup(&config.language, &format!("game-{}", family))
@@ -1015,7 +1015,7 @@ fn show_lobby_table(
                                 if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
                                     let (family, variant) = &game_info.family_and_variant;
                                     if let Some(game) = game::find_by_family_and_variant(family, *variant) {
-                                        let (family, _) = game.gamedb_entry().family_and_variant;
+                                        let (family, _) = game.gamedb_entry().family_and_variant();
                                         ui.label(
                                             i18n::LOCALES
                                                 .lookup(&config.language, &format!("game-{}", family))
@@ -1074,7 +1074,7 @@ fn show_lobby_table(
                                                 &config.language,
                                                 &format!(
                                                     "game-{}.match-type-{}-{}",
-                                                    game.gamedb_entry().family_and_variant.0,
+                                                    game.gamedb_entry().family_and_variant().0,
                                                     lobby.match_type.0,
                                                     lobby.match_type.1
                                                 ),
@@ -1096,7 +1096,7 @@ fn show_lobby_table(
                                                                 &config.language,
                                                                 &format!(
                                                                     "game-{}.match-type-{}-{}",
-                                                                    game.gamedb_entry().family_and_variant.0,
+                                                                    game.gamedb_entry().family_and_variant().0,
                                                                     typ,
                                                                     subtype
                                                                 ),
@@ -1665,7 +1665,7 @@ pub fn show(
                         .patch
                         .as_ref()
                         .and_then(|(_, _, metadata)| metadata.rom_overrides.language.clone())
-                        .unwrap_or_else(|| crate::game::region_to_language(selection.game.gamedb_entry().region));
+                        .unwrap_or_else(|| crate::game::region_to_language(selection.game.gamedb_entry().region()));
 
                     gui::save_view::show(
                         ui,

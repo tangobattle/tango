@@ -308,7 +308,7 @@ pub fn show(
                                                             language,
                                                             &format!(
                                                                 "game-{}.short",
-                                                                local_game.gamedb_entry().family_and_variant.0
+                                                                local_game.gamedb_entry().family_and_variant().0
                                                             ),
                                                         )
                                                         .unwrap()
@@ -391,7 +391,7 @@ pub fn show(
                         }
                     };
 
-                    let save = match local_game.parse_save(&replay.local_sram) {
+                    let save = match local_game.gamedb_entry().save_from_wram(&replay.local_wram) {
                         Ok(save) => save,
                         Err(e) => {
                             log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -406,7 +406,7 @@ pub fn show(
                         let version = semver::Version::parse(&patch_info.version).ok()?;
                         let version_meta = patch.versions.get(&version)?;
 
-                        let (rom_code, revision) = local_game.gamedb_entry().rom_code_and_revision;
+                        let (rom_code, revision) = local_game.gamedb_entry().rom_code_and_revision();
 
                         local_rom = match patch::apply_patch_from_disk(
                             &local_rom,
@@ -432,20 +432,14 @@ pub fn show(
                         None
                     };
 
-                    let assets = match local_game.load_rom_assets(
+                    let assets = Some(local_game.load_rom_assets(
                         &local_rom,
                         &save.as_raw_wram(),
                         &patch
                             .as_ref()
                             .map(|(_, _, metadata)| metadata.rom_overrides.clone())
                             .unwrap_or_default(),
-                    ) {
-                        Ok(assets) => Some(assets),
-                        Err(e) => {
-                            log::error!("failed to load assets: {:?}", e);
-                            None
-                        }
-                    };
+                    ));
 
                     let remote_rom = roms.get(&remote_game).and_then(|rom| {
                         let mut rom = rom.clone();
@@ -455,7 +449,7 @@ pub fn show(
                                 return None;
                             };
 
-                            let (rom_code, revision) = remote_game.gamedb_entry().rom_code_and_revision;
+                            let (rom_code, revision) = remote_game.gamedb_entry().rom_code_and_revision();
 
                             rom = match patch::apply_patch_from_disk(
                                 &rom,
@@ -591,7 +585,7 @@ pub fn show(
                     });
 
                     if let Some(assets) = assets.as_ref() {
-                        let game_language = crate::game::region_to_language(local_game.gamedb_entry().region);
+                        let game_language = crate::game::region_to_language(local_game.gamedb_entry().region());
                         gui::save_view::show(
                             ui,
                             false,

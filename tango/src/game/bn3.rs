@@ -448,54 +448,12 @@ struct EXE3WImpl;
 pub const EXE3W: &'static (dyn game::Game + Send + Sync) = &EXE3WImpl {};
 
 impl game::Game for EXE3WImpl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::A6BJ_01
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn3::save::Save::from_wram(
-            data,
-            tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::White,
-            },
-        )?))
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        let save = tango_dataview::game::bn3::save::Save::new(data)?;
-        if save.game_info()
-            != &(tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::White,
-            })
-        {
-            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
-        }
-        Ok(Box::new(save))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        wram: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn3::rom::Assets::new(
-                &tango_dataview::game::bn3::rom::A6BJ_01,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn3::rom::JA_CHARSET)),
-                rom.to_vec(),
-                wram.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
@@ -507,54 +465,12 @@ struct EXE3BImpl;
 pub const EXE3B: &'static (dyn game::Game + Send + Sync) = &EXE3BImpl {};
 
 impl game::Game for EXE3BImpl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::A3XJ_01
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn3::save::Save::from_wram(
-            data,
-            tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::Blue,
-            },
-        )?))
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        let save = tango_dataview::game::bn3::save::Save::new(data)?;
-        if save.game_info()
-            != &(tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::Blue,
-            })
-        {
-            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
-        }
-        Ok(Box::new(save))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        wram: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn3::rom::Assets::new(
-                &tango_dataview::game::bn3::rom::A3XJ_01,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn3::rom::JA_CHARSET)),
-                rom.to_vec(),
-                wram.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
@@ -566,54 +482,12 @@ struct BN3WImpl;
 pub const BN3W: &'static (dyn game::Game + Send + Sync) = &BN3WImpl {};
 
 impl game::Game for BN3WImpl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::A6BE_00
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn3::save::Save::from_wram(
-            data,
-            tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::White,
-            },
-        )?))
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        let save = tango_dataview::game::bn3::save::Save::new(data)?;
-        if save.game_info()
-            != &(tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::White,
-            })
-        {
-            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
-        }
-        Ok(Box::new(save))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        wram: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn3::rom::Assets::new(
-                &tango_dataview::game::bn3::rom::A6BE_00,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn3::rom::EN_CHARSET)),
-                rom.to_vec(),
-                wram.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {
@@ -625,54 +499,12 @@ struct BN3BImpl;
 pub const BN3B: &'static (dyn game::Game + Send + Sync) = &BN3BImpl {};
 
 impl game::Game for BN3BImpl {
-    fn gamedb_entry(&self) -> &tango_gamedb::Game {
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
         &tango_gamedb::A3XE_00
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
-    }
-
-    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(tango_dataview::game::bn3::save::Save::from_wram(
-            data,
-            tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::Blue,
-            },
-        )?))
-    }
-
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, anyhow::Error> {
-        let save = tango_dataview::game::bn3::save::Save::new(data)?;
-        if save.game_info()
-            != &(tango_dataview::game::bn3::save::GameInfo {
-                variant: tango_dataview::game::bn3::save::Variant::Blue,
-            })
-        {
-            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
-        }
-        Ok(Box::new(save))
-    }
-
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        wram: &[u8],
-        overrides: &crate::rom::Overrides,
-    ) -> Result<Box<dyn tango_dataview::rom::Assets + Send + Sync>, anyhow::Error> {
-        Ok(Box::new(crate::rom::OverridenAssets::new(
-            tango_dataview::game::bn3::rom::Assets::new(
-                &tango_dataview::game::bn3::rom::A3XE_00,
-                &overrides
-                    .charset
-                    .as_ref()
-                    .map(|charset| std::borrow::Cow::Owned(charset.iter().map(|c| c.as_str()).collect::<Vec<_>>()))
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed(tango_dataview::game::bn3::rom::EN_CHARSET)),
-                rom.to_vec(),
-                wram.to_vec(),
-            ),
-            overrides,
-        )))
     }
 
     fn save_templates(&self) -> &[(&'static str, &(dyn tango_dataview::save::Save + Send + Sync))] {

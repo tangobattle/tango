@@ -6,3 +6,5 @@ edition = "2021"
 
 [dependencies]
 crc32fast = "1"
+tango-dataview = { path = "../tango-dataview" }
+thiserror = "1"

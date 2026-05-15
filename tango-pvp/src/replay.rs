@@ -11,24 +11,39 @@ pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
 
 pub const HEADER: &[u8] = b"TOOT";
-pub const VERSION: u8 = 0x18;
+pub const VERSION: u8 = 0x1A;
 
-/// GBA joyflags only use bits 0..=9 (the ten standard buttons). The replay
-/// repurposes the unused high bits of the first joyflag of each record as
-/// per-round and end-of-replay framing:
-/// - `ROUND_START_FLAG` (bit 15) on the first input of a round.
-/// - `END_OF_REPLAY_FLAG` (bit 14) on a standalone u16 marks a clean shutdown.
-/// Bit 14 + bit 15 never coexist on a real input — we strip both when
-/// surfacing joyflags to the rest of the engine.
-const ROUND_START_FLAG: u16 = 0x8000;
-const END_OF_REPLAY_FLAG: u16 = 0x4000;
-const HIGH_BITS_MASK: u16 = ROUND_START_FLAG | END_OF_REPLAY_FLAG;
+/// Per-input record encoding. GBA joyflags use 10 bits, so each side packs
+/// into 2 high bits in the tag's payload nibble plus 1 low byte that
+/// follows. Most frames are idle or repeat the previous frame, so the tag
+/// byte alone usually suffices.
+///
+/// Tag byte layout:
+///   bit 7 (op): 0 = "default value is zero", 1 = "default value is previous record's value"
+///   bit 6:      1 = p1 takes the default (no p1 byte follows), 0 = p1 explicit
+///   bit 5:      1 = p2 takes the default (no p2 byte follows), 0 = p2 explicit
+///   bit 4:      ROUND_START flag (overlay; resets `prev` to (0,0) for this record)
+///   bits 0..=1: high 2 bits of explicit p1
+///   bits 2..=3: high 2 bits of explicit p2
+///
+/// The all-zero tag byte (0x00) is the end-of-replay sentinel. The op bit
+/// is informationally redundant when both sides are explicit, so the
+/// encoder always sets it (op=1) in that case to keep the tag byte clear
+/// of the EOR sentinel.
+const OP_PREV: u8 = 0b1000_0000;
+const P1_DEFAULT: u8 = 0b0100_0000;
+const P2_DEFAULT: u8 = 0b0010_0000;
+const ROUND_START_FLAG: u8 = 0b0001_0000;
+const END_OF_REPLAY: u8 = 0x00;
 
 pub struct Writer {
     writer: Box<dyn Write + Send>,
-    /// True once a round is open. The next [`write_input`] tags its p1
-    /// joyflag with [`ROUND_START_FLAG`] and then clears this.
+    /// True once a round is open. The next [`write_input`] sets the
+    /// `ROUND_START_FLAG` bit on its tag byte and clears this.
     next_input_is_round_start: bool,
+    /// Last (p1, p2) joyflags emitted, used by the "default = previous"
+    /// tag form. Reset to (0, 0) on every [`start_round`].
+    prev: (u16, u16),
 }
 
 #[derive(Clone)]
@@ -38,8 +53,12 @@ pub struct Replay {
     pub is_offerer: bool,
     pub local_player_index: u8,
     pub rng_seed: [u8; 16],
-    pub local_sram: Vec<u8>,
-    pub remote_sram: Vec<u8>,
+    /// Each side's save data in WRAM-format (i.e. the layout
+    /// [`tango_dataview::save::Save::as_raw_wram`] produces). Use the
+    /// [`Replay::local_sram_dump`] / [`Replay::remote_sram_dump`] helpers
+    /// when you need an SRAM image suitable for `mgba::core::Core::load_save`.
+    pub local_wram: Vec<u8>,
+    pub remote_wram: Vec<u8>,
     pub rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>>,
 }
 
@@ -69,11 +88,12 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Er
     decode_metadata(version, &raw)
 }
 
-// The local and remote SRAMs are stored as two zstd frames concatenated
-// directly in the stream — no length prefixes. `single_frame` + BufRead's
-// exact-consumption semantics leave the reader positioned right after the
-// frame's end marker, so the next zstd frame (and the joyflag records that
-// follow it) are read straight from the same reader.
+// The local and remote save WRAMs are stored as two zstd frames
+// concatenated directly in the stream — no length prefixes.
+// `single_frame` + BufRead's exact-consumption semantics leave the reader
+// positioned right after the frame's end marker, so the next zstd frame
+// (and the joyflag records that follow it) are read straight from the
+// same reader.
 fn read_zstd_frame(r: &mut impl std::io::BufRead) -> std::io::Result<Vec<u8>> {
     let mut decoder = zstd::stream::read::Decoder::with_buffer(r)?.single_frame();
     let mut out = Vec::new();
@@ -93,7 +113,7 @@ impl Replay {
         std::mem::swap(&mut self.metadata.local_side, &mut self.metadata.remote_side);
         self.local_player_index = 1 - self.local_player_index;
         self.is_offerer = !self.is_offerer;
-        std::mem::swap(&mut self.local_sram, &mut self.remote_sram);
+        std::mem::swap(&mut self.local_wram, &mut self.remote_wram);
         for round in self.rounds.iter_mut() {
             for ip in round.iter_mut() {
                 std::mem::swap(&mut ip.local, &mut ip.remote);
@@ -106,6 +126,19 @@ impl Replay {
         self.rounds.iter().map(|r| r.len()).sum()
     }
 
+    /// Decode the local-side WRAM into an SRAM image that
+    /// `mgba::core::Core::load_save` accepts. Looks up the per-game
+    /// `Save::from_wram` via [`tango_gamedb::Game::save_from_wram`] using
+    /// the family/variant from the replay metadata.
+    pub fn local_sram_dump(&self) -> anyhow::Result<Vec<u8>> {
+        sram_dump_from_side(self.metadata.local_side.as_ref(), &self.local_wram, "local")
+    }
+
+    /// Same as [`Replay::local_sram_dump`] for the remote side.
+    pub fn remote_sram_dump(&self) -> anyhow::Result<Vec<u8>> {
+        sram_dump_from_side(self.metadata.remote_side.as_ref(), &self.remote_wram, "remote")
+    }
+
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
         let metadata = read_metadata(&mut r)?;
@@ -116,43 +149,60 @@ impl Replay {
         let mut rng_seed = [0u8; 16];
         r.read_exact(&mut rng_seed)?;
 
-        let local_sram = read_zstd_frame(&mut r)?;
-        let remote_sram = read_zstd_frame(&mut r)?;
+        let local_wram = read_zstd_frame(&mut r)?;
+        let remote_wram = read_zstd_frame(&mut r)?;
 
-        // Streaming round decode: each record is `(p1_jf u16, p2_jf u16)`.
-        // The first record of each round has `ROUND_START_FLAG` set in
-        // p1_jf; subsequent records are bare. Reading a u16 with
-        // `END_OF_REPLAY_FLAG` set (in p1's slot) marks a clean shutdown.
-        // Any unexpected EOF mid-record drops the in-progress round and
-        // leaves is_complete=false.
+        // Streaming round decode: see the tag-byte layout doc near
+        // `OP_PREV` for the per-record encoding. `0x00` ends the stream
+        // cleanly; any unexpected EOF mid-record drops the partial record
+        // and leaves is_complete=false.
         let mut rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>> =
             Vec::new();
         let mut current_round: Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>> =
             Vec::new();
         let mut is_complete = false;
+        let mut prev: (u16, u16) = (0, 0);
 
         loop {
-            let p1_raw = match r.read_u16::<byteorder::LittleEndian>() {
+            let tag = match r.read_u8() {
                 Ok(v) => v,
                 Err(_) => break,
             };
-            if p1_raw & END_OF_REPLAY_FLAG != 0 {
+            if tag == END_OF_REPLAY {
                 is_complete = true;
                 break;
             }
-            let p2_raw = match r.read_u16::<byteorder::LittleEndian>() {
-                Ok(v) => v,
-                Err(_) => break,
-            };
 
-            if p1_raw & ROUND_START_FLAG != 0 && !current_round.is_empty() {
-                rounds.push(std::mem::take(&mut current_round));
+            if tag & ROUND_START_FLAG != 0 {
+                if !current_round.is_empty() {
+                    rounds.push(std::mem::take(&mut current_round));
+                }
+                prev = (0, 0);
             }
 
-            let p1_jf = p1_raw & !HIGH_BITS_MASK;
-            let p2_jf = p2_raw & !HIGH_BITS_MASK;
-            let p1_input = crate::input::PartialInput { joyflags: p1_jf };
-            let p2_input = crate::input::PartialInput { joyflags: p2_jf };
+            let op_prev = tag & OP_PREV != 0;
+            let p1_default = tag & P1_DEFAULT != 0;
+            let p2_default = tag & P2_DEFAULT != 0;
+
+            let p1 = if p1_default {
+                if op_prev { prev.0 } else { 0 }
+            } else {
+                let high = (tag & 0b11) as u16;
+                let Ok(low) = r.read_u8() else { break };
+                (high << 8) | low as u16
+            };
+            let p2 = if p2_default {
+                if op_prev { prev.1 } else { 0 }
+            } else {
+                let high = ((tag >> 2) & 0b11) as u16;
+                let Ok(low) = r.read_u8() else { break };
+                (high << 8) | low as u16
+            };
+
+            prev = (p1, p2);
+
+            let p1_input = crate::input::PartialInput { joyflags: p1 };
+            let p2_input = crate::input::PartialInput { joyflags: p2 };
             let (local, remote) = if local_player_index == 0 {
                 (p1_input, p2_input)
             } else {
@@ -171,11 +221,20 @@ impl Replay {
             is_offerer,
             local_player_index,
             rng_seed,
-            local_sram,
-            remote_sram,
+            local_wram,
+            remote_wram,
             rounds,
         })
     }
+}
+
+fn sram_dump_from_side(side: Option<&metadata::Side>, wram: &[u8], label: &str) -> anyhow::Result<Vec<u8>> {
+    let info = side
+        .and_then(|s| s.game_info.as_ref())
+        .ok_or_else(|| anyhow::anyhow!("replay metadata missing {} game info", label))?;
+    let game = tango_gamedb::find_by_family_and_variant(&info.rom_family, info.rom_variant as u8)
+        .ok_or_else(|| anyhow::anyhow!("unknown {} game: {}/{}", label, info.rom_family, info.rom_variant))?;
+    Ok(game.save_from_wram(wram)?.as_sram_dump())
 }
 
 impl Writer {
@@ -185,8 +244,8 @@ impl Writer {
         is_offerer: bool,
         local_player_index: u8,
         rng_seed: [u8; 16],
-        local_sram: &[u8],
-        remote_sram: &[u8],
+        local_wram: &[u8],
+        remote_wram: &[u8],
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
@@ -198,21 +257,23 @@ impl Writer {
         writer.write_u8(if is_offerer { 1 } else { 0 })?;
         writer.write_u8(local_player_index)?;
         writer.write_all(&rng_seed)?;
-        write_zstd_frame(&mut *writer, local_sram)?;
-        write_zstd_frame(&mut *writer, remote_sram)?;
+        write_zstd_frame(&mut *writer, local_wram)?;
+        write_zstd_frame(&mut *writer, remote_wram)?;
         writer.flush()?;
         Ok(Writer {
             writer,
             next_input_is_round_start: false,
+            prev: (0, 0),
         })
     }
 
     pub fn start_round(&mut self) -> std::io::Result<()> {
-        // The marker is stamped on the next [`write_input`]'s p1_jf; we
+        // The marker is stamped on the next [`write_input`]'s tag byte; we
         // don't emit anything here, so a crash mid-round just leaves the
         // partial inputs on disk and the recovery path will treat the next
         // ROUND_START as starting a fresh round.
         self.next_input_is_round_start = true;
+        self.prev = (0, 0);
         Ok(())
     }
 
@@ -222,24 +283,69 @@ impl Writer {
         ip: &crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>,
     ) -> std::io::Result<()> {
         let (p1, p2) = if local_player_index == 0 {
-            (&ip.local, &ip.remote)
+            (ip.local.joyflags, ip.remote.joyflags)
         } else {
-            (&ip.remote, &ip.local)
+            (ip.remote.joyflags, ip.local.joyflags)
         };
 
-        let mut p1_jf = p1.joyflags;
+        // Pick whichever op (default = zero vs default = previous) lets
+        // more sides "take the default" — fewer explicit sides = smaller
+        // record. Tie-break toward op=0 so the canonical idle frame stays
+        // compact and matches new readers' expectations.
+        let op0_p1_default = p1 == 0;
+        let op0_p2_default = p2 == 0;
+        let op1_p1_default = p1 == self.prev.0;
+        let op1_p2_default = p2 == self.prev.1;
+        let op0_explicit_count = (!op0_p1_default as u32) + (!op0_p2_default as u32);
+        let op1_explicit_count = (!op1_p1_default as u32) + (!op1_p2_default as u32);
+
+        let (mut op_prev, p1_default, p2_default) = if op1_explicit_count < op0_explicit_count {
+            (true, op1_p1_default, op1_p2_default)
+        } else {
+            (false, op0_p1_default, op0_p2_default)
+        };
+
+        // The op bit is informationally redundant when both sides are
+        // explicit; force it high so the tag byte never collides with the
+        // 0x00 EOR sentinel (which it could if both high-bit pairs and the
+        // round-start bit are all zero).
+        if !p1_default && !p2_default {
+            op_prev = true;
+        }
+
+        let mut tag: u8 = 0;
+        if op_prev {
+            tag |= OP_PREV;
+        }
+        if p1_default {
+            tag |= P1_DEFAULT;
+        } else {
+            tag |= ((p1 >> 8) & 0b11) as u8;
+        }
+        if p2_default {
+            tag |= P2_DEFAULT;
+        } else {
+            tag |= (((p2 >> 8) & 0b11) as u8) << 2;
+        }
         if self.next_input_is_round_start {
-            p1_jf |= ROUND_START_FLAG;
+            tag |= ROUND_START_FLAG;
             self.next_input_is_round_start = false;
         }
-        self.writer.write_u16::<byteorder::LittleEndian>(p1_jf)?;
-        self.writer.write_u16::<byteorder::LittleEndian>(p2.joyflags)?;
+
+        self.writer.write_u8(tag)?;
+        if !p1_default {
+            self.writer.write_u8((p1 & 0xff) as u8)?;
+        }
+        if !p2_default {
+            self.writer.write_u8((p2 & 0xff) as u8)?;
+        }
+
+        self.prev = (p1, p2);
         Ok(())
     }
 
     pub fn finish(mut self) -> std::io::Result<()> {
-        self.writer
-            .write_u16::<byteorder::LittleEndian>(END_OF_REPLAY_FLAG)?;
+        self.writer.write_u8(END_OF_REPLAY)?;
         self.writer.flush()?;
         Ok(())
     }

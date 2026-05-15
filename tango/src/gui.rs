@@ -37,16 +37,14 @@ impl Selection {
         patch: Option<(String, semver::Version, std::sync::Arc<patch::Version>)>,
         rom: Vec<u8>,
     ) -> Self {
-        let assets = game
-            .load_rom_assets(
-                &rom,
-                &save.save.as_raw_wram(),
-                &patch
-                    .as_ref()
-                    .map(|(_, _, metadata)| metadata.rom_overrides.clone())
-                    .unwrap_or_default(),
-            )
-            .ok();
+        let assets = Some(game.load_rom_assets(
+            &rom,
+            &save.save.as_raw_wram(),
+            &patch
+                .as_ref()
+                .map(|(_, _, metadata)| metadata.rom_overrides.clone())
+                .unwrap_or_default(),
+        ));
         Self {
             game,
             assets,
@@ -59,7 +57,7 @@ impl Selection {
 
     pub fn reload_save(&mut self, saves_scanner: &mut save::Scanner) -> anyhow::Result<()> {
         let raw = std::fs::read(&self.save.path)?;
-        self.save.save = self.game.parse_save(&raw)?;
+        self.save.save = self.game.gamedb_entry().parse_save(&raw)?;
         self.save_view_state = save_view::State::new();
 
         saves_scanner.modify(|saves_map| {
