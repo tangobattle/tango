@@ -86,7 +86,15 @@ impl MGBAStream {
             handle,
             sample_rate,
             resampler: mgba::audio::AudioResampler::new(),
-            dest_buffer: mgba::audio::AudioBuffer::new(0x4000, NUM_CHANNELS as u32),
+            // Sized just over one callback's worth of frames. The resampler
+            // writes whatever the source produced this cycle (bounded by
+            // audio_high_water below at ~`SAMPLES + 24` source frames →
+            // <= ~`SAMPLES + 32` dest frames at typical rate ratios); any
+            // surplus over `SAMPLES` carries to the next fill. Bigger than
+            // this just buffers up audio that arrives later than the matching
+            // video frame — perceptible audio lag. Smaller risks dropping
+            // a tail when the resampler can't fit its output.
+            dest_buffer: mgba::audio::AudioBuffer::new(SAMPLES * 2, NUM_CHANNELS as u32),
         }
     }
 }
