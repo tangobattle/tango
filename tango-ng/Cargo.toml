@@ -22,8 +22,15 @@ mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
 tango-pvp = { path = "../tango-pvp" }
+tango-filesync = { path = "../tango-filesync" }
 chrono = "0.4"
 itertools = "0.13"
+steamlocate = "2"
+zip = "0.6"
+reqwest = { version = "0.11", features = ["stream", "json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["fs", "io-util", "time", "rt"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
 fluent-templates = "0.8"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 tango-gamedb = { path = "../tango-gamedb" }

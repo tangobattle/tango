@@ -110,6 +110,8 @@ play-you = 自分
 
 # Patches
 patches-update = 更新
+patches-updating = 更新中…
+patches-update-failed = 更新に失敗しました
 patches-open-folder = フォルダを開く
 patches-repo-label = リポジトリ
 patches-installed = インストール済み

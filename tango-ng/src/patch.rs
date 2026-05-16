@@ -5,10 +5,13 @@
 use crate::rom::GameRef;
 use crate::rom_overrides::Overrides;
 use crate::scanner;
+use futures::StreamExt;
+use itertools::Itertools;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Deserialize, Debug)]
 struct Metadata {
@@ -58,6 +61,76 @@ pub struct Patch {
 
 pub type PatchMap = BTreeMap<String, Arc<Patch>>;
 pub type Scanner = scanner::Scanner<PatchMap>;
+
+/// Fetch the patch repo's index.json and download any missing /
+/// updated files via tango_filesync. Mirrors `tango/src/patch.rs::update`.
+pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&root)?;
+
+    let client = reqwest::Client::new();
+    let entries = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        async {
+            Ok::<_, anyhow::Error>(
+                client
+                    .get(format!("{}/index.json", url))
+                    .header("User-Agent", "tango-ng")
+                    .send()
+                    .await?
+                    .json::<tango_filesync::Entries>()
+                    .await?,
+            )
+        },
+    )
+    .await??;
+
+    tango_filesync::sync(
+        &root,
+        &entries,
+        {
+            let url = url.clone();
+            let root = root.clone();
+            move |path| {
+                let url = url.clone();
+                let root = root.clone();
+                Box::pin(async move {
+                    let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
+                    let client = reqwest::Client::new();
+                    let mut stream = tokio::time::timeout(
+                        std::time::Duration::from_secs(30),
+                        client
+                            .get(format!(
+                                "{}/{}",
+                                url,
+                                path.components()
+                                    .map(|v| v.as_os_str().to_string_lossy())
+                                    .join("/")
+                            ))
+                            .header("User-Agent", "tango-ng")
+                            .send(),
+                    )
+                    .await?
+                    .map_err(std::io::Error::other)?
+                    .bytes_stream();
+                    while let Some(chunk) = tokio::time::timeout(
+                        std::time::Duration::from_secs(30),
+                        stream.next(),
+                    )
+                    .await?
+                    {
+                        let chunk = chunk.map_err(std::io::Error::other)?;
+                        output_file.write_all(&chunk).await?;
+                    }
+                    log::info!("filesynced: {}", path.display());
+                    Ok(())
+                })
+            }
+        },
+        4,
+    )
+    .await?;
+    Ok(())
+}
 
 /// Read and decode the .bps for `game` from `patches_path/<patch_name>/v<version>/`,
 /// then apply it on top of the supplied ROM. Returns the patched ROM bytes.

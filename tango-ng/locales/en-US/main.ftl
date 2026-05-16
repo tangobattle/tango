@@ -110,6 +110,8 @@ play-you = You
 
 # Patches
 patches-update = Update
+patches-updating = Updating…
+patches-update-failed = Update failed
 patches-open-folder = Open folder
 patches-repo-label = Repository
 patches-installed = Installed

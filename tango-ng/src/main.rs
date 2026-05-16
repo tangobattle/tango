@@ -583,6 +583,32 @@ impl App {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
             }
+            M::Update => {
+                if !self.patches.updating {
+                    self.patches.updating = true;
+                    self.patches.last_update_error = None;
+                    let url = self.config.patch_repo.clone();
+                    let root = self.config.data_path.join("patches");
+                    return iced::Task::perform(
+                        async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
+                        M::UpdateFinished,
+                    );
+                }
+            }
+            M::UpdateFinished(res) => {
+                self.patches.updating = false;
+                match res {
+                    Ok(()) => {
+                        self.patches.last_update_error = None;
+                        self.scanners.rescan(&self.config);
+                        self.refresh_loaded();
+                    }
+                    Err(e) => {
+                        log::warn!("patch update failed: {e}");
+                        self.patches.last_update_error = Some(e);
+                    }
+                }
+            }
         }
         iced::Task::none()
     }

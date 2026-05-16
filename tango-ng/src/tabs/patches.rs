@@ -14,18 +14,18 @@ pub enum Message {
     OpenFolder(std::path::PathBuf),
     ReadmeLinkClicked(iced::widget::markdown::Url),
     Rescan,
+    Update,
+    UpdateFinished(Result<(), String>),
 }
 
 #[derive(Default)]
 pub struct PatchesState {
     pub selected: Option<String>,
     pub version: Option<semver::Version>,
-    /// Parsed markdown items for the current selection's README. Cached
-    /// so we don't re-parse the whole README on every frame.
     pub readme_items: Vec<iced::widget::markdown::Item>,
-    /// Name + version the cache was built for, so we know when to
-    /// invalidate.
     pub readme_cache_key: Option<(String, semver::Version)>,
+    pub updating: bool,
+    pub last_update_error: Option<String>,
 }
 
 impl PatchesState {
@@ -60,25 +60,45 @@ impl PatchesState {
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
-        let top = container(
-            row![
-                text(format!(
-                    "{}: {}",
-                    t(lang, "patches-installed"),
-                    patches.len()
-                ))
-                .size(11)
-                .style(save_view::muted_text_style),
-                horizontal_space(),
-                button(text(t(lang, "rescan")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::Rescan),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(8),
-        )
-        .width(Fill);
+        let mut update_btn =
+            button(text(t(lang, "patches-update")).size(STANDARD_TEXT_SIZE)).padding(STANDARD_PADDING);
+        if !self.updating {
+            update_btn = update_btn.on_press(Message::Update);
+        }
+
+        let mut top_row = row![
+            text(format!(
+                "{}: {}",
+                t(lang, "patches-installed"),
+                patches.len()
+            ))
+            .size(11)
+            .style(save_view::muted_text_style),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        if self.updating {
+            top_row = top_row.push(
+                text(t(lang, "patches-updating"))
+                    .size(11)
+                    .style(save_view::muted_text_style),
+            );
+        } else if let Some(err) = &self.last_update_error {
+            top_row = top_row.push(
+                text(format!("{}: {}", t(lang, "patches-update-failed"), err))
+                    .size(11)
+                    .style(text::danger),
+            );
+        }
+
+        top_row = top_row.push(horizontal_space()).push(update_btn).push(
+            button(text(t(lang, "rescan")).size(STANDARD_TEXT_SIZE))
+                .padding(STANDARD_PADDING)
+                .on_press(Message::Rescan),
+        );
+
+        let top = container(top_row.padding(8)).width(Fill);
 
         let mut list = column![].spacing(2).padding(8);
         for (name, patch) in patches.iter() {
