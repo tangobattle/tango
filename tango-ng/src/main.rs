@@ -512,8 +512,12 @@ impl App {
             }
             M::SaveTabSelected(t) => self.play.save_tab = Some(t),
             M::ToggleFolderGrouped(g) => self.play.folder_grouped = g,
-            M::LinkCodeChanged(s) => self.play.link_code = s,
+            M::LinkCodeChanged(s) => {
+                self.play.link_code = s;
+                self.play.flash_status = None;
+            }
             M::PlayPressed => {
+                self.play.flash_status = None;
                 // Single-player path only for now — netplay (when
                 // link_code is non-empty) isn't wired up yet.
                 if self.play.link_code.trim().is_empty() {
@@ -523,10 +527,15 @@ impl App {
                             self.session_frame = None;
                             self.play.playing = true;
                         }
-                        Err(e) => log::warn!("singleplayer start failed: {e}"),
+                        Err(e) => {
+                            log::warn!("singleplayer start failed: {e}");
+                            self.play.flash_status = Some(format!("{e}"));
+                        }
                     }
                 } else {
                     log::warn!("netplay sessions not yet implemented");
+                    self.play.flash_status =
+                        Some(t(&self.config.language, "play-netplay-todo"));
                 }
             }
             M::Rescan => {

@@ -40,6 +40,7 @@ play-play = Play
 play-cancel = Cancel
 play-status-idle = Enter a link code, or leave blank to host.
 play-status-connecting = Connecting…
+play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 
 # Save view sub-tabs
 save-tab-cover = Cover

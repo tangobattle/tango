@@ -103,6 +103,11 @@ pub struct PlayState {
     pub save_action: SaveAction,
     pub link_code: String,
     pub playing: bool,
+    /// Transient one-shot status message shown beneath the link-code
+    /// input; reset by the next user action. Used today to flag that
+    /// netplay isn't implemented; will likely host real lobby status
+    /// messages once it is.
+    pub flash_status: Option<String>,
     /// Part index currently under the cursor on the NaviCust image, or
     /// None when not hovered.
     pub hovered_ncp_idx: Option<usize>,
@@ -132,6 +137,7 @@ impl Default for PlayState {
             save_action: SaveAction::None,
             link_code: String::new(),
             playing: false,
+            flash_status: None,
             hovered_ncp_idx: None,
         }
     }
@@ -506,7 +512,9 @@ impl PlayState {
                 .on_press(Message::PlayPressed)
         };
 
-        let status: Element<'_, _> = if self.playing {
+        let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
+            text(flash.clone()).size(12).style(text::danger).into()
+        } else if self.playing {
             text(t(lang, "play-status-connecting")).size(13).style(text::primary).into()
         } else {
             text(t(lang, "play-status-idle")).size(12).into()
