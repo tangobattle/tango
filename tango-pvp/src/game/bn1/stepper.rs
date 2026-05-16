@@ -1,5 +1,4 @@
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
@@ -72,16 +71,26 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 munger.start_battle_from_comm_menu(core);
             })
         }),
-        (hooks.offsets.rom.round_start_ret, {
+        (hooks.offsets.rom.round_start_entry, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
-                let mut inner = stepper_state.lock_inner();
-                inner.advance_to_next_replay_round_if_pending();
-                let Some(rng) = inner.replay_rng().cloned() else {
+                let Some(rng) = stepper_state.lock_inner().replay_rng().cloned() else {
                     return;
                 };
-                munger.set_battle_stage(core, rng.lock().gen_range(0..0xc));
+                let mut rng = rng.lock();
+                let rng_state = pick_rng_state(
+                    &mut *rng,
+                    stepper_state.lock_inner().replay_is_offerer(),
+                );
+                munger.set_rng_state(core, rng_state);
+                munger.set_frame_counter(core, rng_state as u16);
+            })
+        }),
+        (hooks.offsets.rom.round_start_ret, {
+            let stepper_state = stepper_state.clone();
+            Box::new(move |_core| {
+                stepper_state.lock_inner().advance_to_next_replay_round_if_pending();
             })
         }),
         (hooks.offsets.rom.battle_start_play_music_call, {
@@ -137,11 +146,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let current_tick = state.current_tick();
 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
-                    if let Some(rng) = state.replay_rng().cloned() {
-                        let mut rng = rng.lock();
-                        let rng_state = pick_rng_state(&mut *rng, state.replay_is_offerer());
-                        munger.set_rng_state(core, rng_state);
-                    }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_committed_state(core.save_state().expect("save committed state"));
                 }

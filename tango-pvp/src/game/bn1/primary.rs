@@ -1,5 +1,3 @@
-use rand::Rng;
-
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
 use super::rng::pick_rng_state;
@@ -58,15 +56,24 @@ pub(super) fn traps(
                 match_.end_round().expect("end round");
             })
         }),
-        (hooks.offsets.rom.round_start_ret, {
+        (hooks.offsets.rom.round_start_entry, {
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
-                crate::sync::block_on(match_.start_round()).expect("start round");
                 let mut rng = match_.lock_rng();
-                munger.set_battle_stage(core, rng.gen_range(0..0xc));
+                let rng_state = pick_rng_state(&mut *rng, match_.is_offerer());
+                munger.set_rng_state(core, rng_state);
+                munger.set_frame_counter(core, rng_state as u16);
+            })
+        }),
+        (hooks.offsets.rom.round_start_ret, {
+            let match_ = match_.clone();
+            Box::new(move |_core| {
+                let guard = match_.blocking_lock();
+                let Some(match_) = guard.as_ref() else { return };
+                crate::sync::block_on(match_.start_round()).expect("start round");
             })
         }),
         (hooks.offsets.rom.link_is_p2_ret, {
@@ -89,10 +96,6 @@ pub(super) fn traps(
                 let Some(round) = round_state.as_mut() else { return };
 
                 if !round.has_committed_state() {
-                    let mut rng = match_.lock_rng();
-                    let rng_state = pick_rng_state(&mut *rng, match_.is_offerer());
-                    munger.set_rng_state(core, rng_state);
-
                     match_
                         .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
                         .expect("record first commit");

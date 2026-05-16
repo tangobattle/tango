@@ -1,5 +1,3 @@
-use rand::Rng;
-
 use crate::hooks::Trap;
 
 use super::rng::pick_rng_state;
@@ -63,13 +61,20 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 munger.start_battle_from_comm_menu(core);
             })
         }),
-        (hooks.offsets.rom.round_start_ret, {
+        (hooks.offsets.rom.round_start_entry, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
-                shadow_state.start_round();
                 let mut rng = shadow_state.lock_rng();
-                munger.set_battle_stage(core, rng.gen_range(0..0xc));
+                let rng_state = pick_rng_state(&mut *rng, !shadow_state.is_offerer());
+                munger.set_rng_state(core, rng_state);
+                munger.set_frame_counter(core, rng_state as u16);
+            })
+        }),
+        (hooks.offsets.rom.round_start_ret, {
+            let shadow_state = shadow_state.clone();
+            Box::new(move |_core| {
+                shadow_state.start_round();
             })
         }),
         (hooks.offsets.rom.round_end_entry, {
@@ -99,10 +104,6 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 };
 
                 if !round.has_first_committed_state() {
-                    let mut rng = shadow_state.lock_rng();
-                    let rng_state = pick_rng_state(&mut *rng, !shadow_state.is_offerer());
-                    munger.set_rng_state(core, rng_state);
-
                     round.set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
                     log::info!("shadow rng state: {:08x}", munger.rng_state(core));
                     log::info!("shadow state committed on {}", round.current_tick());

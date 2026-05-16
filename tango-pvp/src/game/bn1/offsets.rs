@@ -18,7 +18,11 @@ pub(super) struct EWRAMOffsets {
     /// Shared RNG state. Must be synced.
     pub(super) rng_state: u32,
 
-    pub(super) battle_state: u32,
+    /// Main-loop tick counter (`frames_since_boot`). The battle-start
+    /// routine reads this halfword and uses it as `stage = counter % 12`,
+    /// so Tango overwrites it from `rng_state` before each round to make
+    /// the game's own stage pick come out synced across peers.
+    pub(super) frame_counter: u32,
 
     pub(super) packet_seqnum: u32,
 }
@@ -53,6 +57,11 @@ pub(super) struct ROMOffsets {
     pub(super) handle_input_in_turn_send_and_receive_call: u32,
 
     pub(super) round_call_jump_table_ret: u32,
+
+    /// First instruction of the battle-start routine (the `push {r5, lr}`
+    /// prologue). Tango uses this to seed `rng_state` early enough that the
+    /// stage-pick code further down the same function sees a synced value.
+    pub(super) round_start_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -94,8 +103,8 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     subsystem_control:      0x02006cb8,
     submenu_control:        0x020062e0,
     rng_state:              0x02006cc0,
+    frame_counter:          0x020064a0,
     packet_seqnum:          0x0200c1dc,
-    battle_state:           0x02003710,
 };
 
 #[derive(Clone, Copy)]
@@ -118,6 +127,7 @@ pub static AREE_00: Offsets = Offsets {
         handle_input_custom_send_and_receive_call:  0x08007842,
         handle_input_in_turn_send_and_receive_call: 0x08007aea,
         round_call_jump_table_ret:                  0x0800589a,
+        round_start_entry:                          0x080051f4,
         round_start_ret:                            0x0800527a,
         round_end_set_win:                          0x08006d18,
         round_end_set_loss:                         0x08006d20,
@@ -145,6 +155,7 @@ pub static AREJ_00: Offsets = Offsets {
         handle_input_custom_send_and_receive_call:  0x0800782e,
         handle_input_in_turn_send_and_receive_call: 0x08007aba,
         round_call_jump_table_ret:                  0x0800588a,
+        round_start_entry:                          0x080051e4,
         round_start_ret:                            0x0800526a,
         round_end_set_win:                          0x08006d08,
         round_end_set_loss:                         0x08006d10,
