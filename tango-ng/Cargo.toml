@@ -1,0 +1,39 @@
+[package]
+name = "tango-ng"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "tango-ng"
+path = "src/main.rs"
+
+[dependencies]
+iced = { version = "0.13", features = ["tokio", "image-without-codecs", "markdown"] }
+image = "0.25"
+tiny-skia = "0.11"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+semver = { version = "1", features = ["serde"] }
+regex = "1"
+mailparse = "0.14"
+open = "5"
+bps = { path = "../bps" }
+tango-pvp = { path = "../tango-pvp" }
+chrono = "0.4"
+itertools = "0.13"
+fluent-templates = "0.8"
+unic-langid = { version = "0.9", features = ["likelysubtags"] }
+tango-gamedb = { path = "../tango-gamedb" }
+tango-dataview = { path = "../tango-dataview" }
+walkdir = "2"
+directories-next = "2"
+parking_lot = "0.12"
+log = "0.4"
+env_logger = "0.9"
+anyhow = "1"
+indexmap = "2"
+
+[lints]
+workspace = true

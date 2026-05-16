@@ -1,0 +1,142 @@
+# Window
+window-title = Tango
+
+# Top-bar tabs
+tab-play = 対戦
+tab-replays = リプレイ
+tab-patches = パッチ
+tab-settings = 設定
+
+# Play selectors
+play-no-game = ゲーム未選択
+play-no-save = セーブを選択
+play-no-patch = パッチなし
+play-version = バージョン
+play-version-placeholder = —
+
+# Play bottom strip
+play-link-code = リンクコード
+play-play = 対戦
+play-cancel = キャンセル
+play-status-idle = リンクコードを入力するか、空欄でホストします。
+play-status-connecting = 接続中…
+
+# Save view sub-tabs
+save-tab-cover = カバー
+save-tab-navi = ナビ
+save-tab-folder = フォルダ
+save-tab-patch-cards = パッチカード
+save-tab-auto-battle-data = オートバトルデータ
+save-cover-description = このタブは意図的に空白にしてあります。
+
+# Navi pane
+navi-style = スタイル
+navi-level = レベル
+navi-stat-hp = HP
+navi-stat-attack = アタック
+navi-stat-rapid = ラピッド
+navi-stat-charge = チャージ
+navi-modcards = モッドカード
+
+# Folder pane
+folder-col-count = 枚数
+folder-col-code = コード
+folder-col-chip = チップ
+folder-col-element = 属性
+folder-col-power = 威力
+folder-regular-chip = レギュラー
+folder-tag-chips = タグ
+folder-group = チップでまとめる
+
+# Navi pane
+navi-id = ナビID
+navi-style-unset = （スタイルなし）
+navicust-grid-size = グリッド
+navicust-parts = 設定済みパーツ
+navicust-empty = （未設定）
+
+# Patch cards pane
+patch-cards-count = 装備数
+patch-cards-4-title = パッチカード(4)
+
+# Auto Battle Data pane
+auto-battle-data-secondary-standard-chips = スタンダードチップ（補助）
+auto-battle-data-standard-chips = スタンダードチップ
+auto-battle-data-mega-chips = メガチップ
+auto-battle-data-giga-chip = ギガチップ
+auto-battle-data-combos = コンボ
+auto-battle-data-program-advance = プログラムアドバンス
+
+# Common
+save-empty = このセーブにはこのビューのデータがありません。
+play-no-selection = 検査するゲームとセーブを選択してください。
+
+# Patch Cards / Auto Battle Data placeholders (legacy)
+placeholder-patch-cards = パッチカードのグリッドがここに表示されます。
+placeholder-auto-battle-data = オートバトルデータの表がここに表示されます。
+
+# Replays
+replays-folder-label = フォルダ
+replays-watch = 再生
+replays-export = エクスポート
+replays-all-replays = すべてのリプレイ
+replays-select-prompt = リプレイを選択してください。
+replays-preview-placeholder = セーブ／フォルダ／チップのプレビューがここに表示されます。
+replays-round = ラウンド
+replays-opponent = 相手
+replays-match-type = マッチタイプ
+play-you = 自分
+
+# Patches
+patches-update = 更新
+patches-open-folder = フォルダを開く
+patches-repo-label = リポジトリ
+patches-installed = インストール済み
+patches-select-prompt = パッチを選択してください。
+patches-readme = README
+patches-readme-placeholder = このパッチにはREADMEがありません。
+patches-details-authors = 作者
+patches-details-license = ライセンス
+patches-details-source = ソース
+patches-details-games = 対応ゲーム
+patches-netplay-compatibility = ネットプレイ互換性
+
+# Settings panel
+settings-section-general = 一般
+settings-section-graphics = グラフィック
+settings-section-audio = オーディオ
+settings-section-netplay = ネットプレイ
+settings-nickname = ニックネーム
+settings-language = 言語
+settings-renderer = レンダラー
+settings-scale = 拡大率
+settings-audio-backend = バックエンド
+settings-signaling = シグナリング
+settings-data-path = データパス
+settings-streamer-mode = 配信プライバシーモード
+
+# Common actions
+rescan = 再スキャン
+
+# Game names
+game-exe1-v0 = ロックマンエグゼ
+game-bn1-v0 = Mega Man Battle Network
+game-exe2-v0 = ロックマンエグゼ2
+game-bn2-v0 = Mega Man Battle Network 2
+game-exe3-v0 = ロックマンエグゼ3
+game-exe3-v1 = ロックマンエグゼ3 BLACK
+game-bn3-v0 = Mega Man Battle Network 3 White
+game-bn3-v1 = Mega Man Battle Network 3 Blue
+game-exe4-v0 = ロックマンエグゼ4 トーナメント レッドサン
+game-exe4-v1 = ロックマンエグゼ4 トーナメント ブルームーン
+game-bn4-v0 = Mega Man Battle Network 4 Red Sun
+game-bn4-v1 = Mega Man Battle Network 4 Blue Moon
+game-exe45-v0 = ロックマンエグゼ4.5 リアルオペレーション
+game-exe5-v0 = ロックマンエグゼ5 チーム オブ ブルース
+game-exe5-v1 = ロックマンエグゼ5 チーム オブ カーネル
+game-bn5-v0 = Mega Man Battle Network 5 Team Protoman
+game-bn5-v1 = Mega Man Battle Network 5 Team Colonel
+game-exe6-v0 = ロックマンエグゼ6 電脳獣グレイガ
+game-exe6-v1 = ロックマンエグゼ6 電脳獣ファルザー
+game-bn6-v0 = Mega Man Battle Network 6 Cybeast Gregar
+game-bn6-v1 = Mega Man Battle Network 6 Cybeast Falzar
