@@ -616,6 +616,12 @@ fn templates_for_selection<'a>(
 
 /// Write a template's SRAM to `saves_dir/<name>.sav`. The filename is
 /// taken verbatim from `name` (trimmed); on collisions returns Err.
+///
+/// `rebuild_checksum()` is required before `as_sram_dump()` — without
+/// it the SRAM checksum is stale (computed at template-construction
+/// time, before this game-specific clone) and both the GBA game and
+/// Tango's `parse_save` reject the resulting file. The legacy app
+/// does the same in `gui/save_select_view.rs::create_new_save`.
 pub fn create_new_save(
     saves_dir: &std::path::Path,
     name: &str,
@@ -638,7 +644,9 @@ pub fn create_new_save(
         anyhow::bail!("destination already exists");
     }
     std::fs::create_dir_all(saves_dir)?;
-    let sram = template.as_sram_dump();
+    let mut save = template.clone_box();
+    save.rebuild_checksum();
+    let sram = save.as_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
 }
