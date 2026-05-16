@@ -1,4 +1,4 @@
-//! Regression suite for the committed golden replays in `repo/golden/`.
+//! Regression suite for the committed golden replays in `tests/golden/`.
 //!
 //! For each `*.tangoreplay`, decode it, look up its local + remote ROMs
 //! by family/variant against a directory of `*.gba` files, and drive
@@ -29,7 +29,7 @@ fn roms_dir() -> PathBuf {
 }
 
 fn golden_dir() -> PathBuf {
-    workspace_root().join("golden")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden")
 }
 
 /// (family, variant) -> verified ROM bytes. `tango_gamedb::detect`
