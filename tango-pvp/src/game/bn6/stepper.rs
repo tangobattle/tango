@@ -1,9 +1,7 @@
-use rand::Rng;
-
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{generate_rng1_state, generate_rng2_state};
+use super::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     vec![
@@ -24,10 +22,9 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let r1_seed: u32 = rng.gen();
-                let r2_seed: u32 = rng.gen();
-                munger.set_rng1_state(core, r1_seed);
-                munger.set_rng2_state(core, r2_seed);
+                let seed = generate_rng2_state(&mut *rng);
+                munger.set_rng1_state(core, seed);
+                munger.set_rng2_state(core, seed);
                 munger.select_battle_init_substate(core, 0x18);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa6);
@@ -102,17 +99,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock();
-                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                        munger.set_rng1_state(
-                            core,
-                            if state.replay_is_offerer() {
-                                offerer_rng1_state
-                            } else {
-                                answerer_rng1_state
-                            },
-                        );
-                        let rng2_state = generate_rng2_state(&mut *rng);
+                        let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
+                        munger.set_rng1_state(core, rng1_state);
                         munger.set_rng2_state(core, rng2_state);
                         // HACK: matches primary — BN6's jump table goes
                         // straight from deinit to init, leaving the game

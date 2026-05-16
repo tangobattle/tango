@@ -2,7 +2,7 @@ use rand::Rng;
 
 use crate::hooks::Trap;
 
-use super::rng::generate_rng_state;
+use super::rng::pick_rng_state;
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
@@ -83,7 +83,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
             })
         }),
@@ -92,20 +94,14 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
 
                 if !round.has_first_committed_state() {
                     let mut rng = shadow_state.lock_rng();
-                    let offerer_rng_state = generate_rng_state(&mut *rng);
-                    let answerer_rng_state = generate_rng_state(&mut *rng);
-                    munger.set_rng_state(
-                        core,
-                        if shadow_state.is_offerer() {
-                            answerer_rng_state
-                        } else {
-                            offerer_rng_state
-                        },
-                    );
+                    let rng_state = pick_rng_state(&mut *rng, !shadow_state.is_offerer());
+                    munger.set_rng_state(core, rng_state);
 
                     round.set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
                     log::info!("shadow rng state: {:08x}", munger.rng_state(core));
@@ -156,7 +152,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 if !round.has_first_committed_state() {
                     return;
                 }

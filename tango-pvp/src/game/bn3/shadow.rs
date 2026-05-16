@@ -1,9 +1,8 @@
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::hooks::Trap;
 
-use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state};
+use super::rng::{bn3_match_type, generate_rng2_state, pick_rng1_state};
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
@@ -72,16 +71,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
 
                 // rng1 is the local rng, it should not be synced.
                 // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                munger.set_rng1_state(
-                    core,
-                    if shadow_state.is_offerer() {
-                        answerer_rng1_state
-                    } else {
-                        offerer_rng1_state
-                    },
-                );
+                let rng1_state = pick_rng1_state(&mut *rng, !shadow_state.is_offerer());
+                munger.set_rng1_state(core, rng1_state);
                 munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, shadow_state.match_type()));
             })
         }),
@@ -90,7 +81,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 let mut rng = shadow_state.lock_rng();
-                let r2_seed: u32 = rng.gen();
+                let r2_seed = generate_rng2_state(&mut *rng);
                 munger.set_rng2_state(core, r2_seed);
                 munger.select_battle_init_substate(core, 0x30);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
@@ -141,7 +132,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     let mut rng = shadow_state.lock_rng();
 
                     // rng2 is the shared rng, it must be synced.
-                    munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                    let rng2_state = generate_rng2_state(&mut *rng);
+                    munger.set_rng2_state(core, rng2_state);
 
                     round.set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
                     log::info!(

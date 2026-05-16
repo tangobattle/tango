@@ -2,7 +2,7 @@ use rand::Rng;
 
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::generate_rng_state;
+use super::rng::pick_rng_state;
 use super::INIT_RX;
 
 pub(super) fn traps(
@@ -90,16 +90,8 @@ pub(super) fn traps(
 
                 if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
-                    let offerer_rng_state = generate_rng_state(&mut *rng);
-                    let answerer_rng_state = generate_rng_state(&mut *rng);
-                    munger.set_rng_state(
-                        core,
-                        if match_.is_offerer() {
-                            offerer_rng_state
-                        } else {
-                            answerer_rng_state
-                        },
-                    );
+                    let rng_state = pick_rng_state(&mut *rng, match_.is_offerer());
+                    munger.set_rng_state(core, rng_state);
 
                     match_
                         .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
@@ -108,10 +100,12 @@ pub(super) fn traps(
                     log::info!("battle state committed on {}", round.current_tick());
                 }
 
-                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                    core,
-                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                )) {
+                if let Err(e) =
+                    crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    ))
+                {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }

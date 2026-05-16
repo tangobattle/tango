@@ -1,8 +1,6 @@
-use rand::Rng;
-
 use crate::hooks::Trap;
 
-use super::rng::generate_rng_state;
+use super::rng::{generate_rng_state, pick_rng_state};
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
@@ -62,16 +60,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
                 let mut rng = shadow_state.lock_rng();
-                let offerer_rng_state = generate_rng_state(&mut *rng);
-                let answerer_rng_state = generate_rng_state(&mut *rng);
-                munger.set_rng_state(
-                    core,
-                    if shadow_state.is_offerer() {
-                        answerer_rng_state
-                    } else {
-                        offerer_rng_state
-                    },
-                );
+                let non_shared_rng_state = pick_rng_state(&mut *rng, !shadow_state.is_offerer());
+                munger.set_rng_state(core, non_shared_rng_state);
                 munger.start_battle_from_comm_menu(core);
             })
         }),
@@ -80,8 +70,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 let mut rng = shadow_state.lock_rng();
-                let rng_seed: u32 = rng.gen();
-                munger.set_rng_state(core, rng_seed);
+                let shared_rng_seed = generate_rng_state(&mut *rng);
+                munger.set_rng_state(core, shared_rng_seed);
                 munger.select_battle_init_substate(core, 0x2c);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x70);
@@ -104,7 +94,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
             })
         }),
@@ -113,12 +105,14 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
 
                 if !munger.is_linking(core) && !round.has_first_committed_state() {
                     let mut rng = shadow_state.lock_rng();
-                    let rng_state = generate_rng_state(&mut *rng);
-                    munger.set_rng_state(core, rng_state);
+                    let shared_rng_state = generate_rng_state(&mut *rng);
+                    munger.set_rng_state(core, shared_rng_state);
                     return;
                 }
 
@@ -172,7 +166,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 if !round.has_first_committed_state() {
                     return;
                 }

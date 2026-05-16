@@ -1,10 +1,9 @@
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::generate_rng_state;
+use super::rng::{generate_rng_state, pick_rng_state};
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
@@ -74,16 +73,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let offerer_rng_state = generate_rng_state(&mut *rng);
-                let answerer_rng_state = generate_rng_state(&mut *rng);
-                munger.set_rng_state(
-                    core,
-                    if stepper_state.replay_is_offerer() {
-                        offerer_rng_state
-                    } else {
-                        answerer_rng_state
-                    },
-                );
+                let non_shared_rng_state = pick_rng_state(&mut *rng, stepper_state.replay_is_offerer());
+                munger.set_rng_state(core, non_shared_rng_state);
                 munger.start_battle_from_comm_menu(core);
             })
         }),
@@ -96,8 +87,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let rng_seed: u32 = rng.gen();
-                munger.set_rng_state(core, rng_seed);
+                let shared_rng_seed = generate_rng_state(&mut *rng);
+                munger.set_rng_state(core, shared_rng_seed);
                 munger.select_battle_init_substate(core, 0x2c);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x70);
@@ -170,15 +161,14 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
-                {
+                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     // Mirror primary: re-seed rng_state at first commit. Primary
                     // sets it once at comm_menu_init_ret (used during init) and
                     // again here (used in-battle). Without this second seed in
                     // replay, the in-battle shared rng diverges from recording.
                     if let Some(rng) = state.replay_rng().cloned() {
-                        let rng_state = generate_rng_state(&mut *rng.lock());
-                        munger.set_rng_state(core, rng_state);
+                        let shared_rng_state = generate_rng_state(&mut *rng.lock());
+                        munger.set_rng_state(core, shared_rng_state);
                     }
                     // v0x18 replay stores joyflags only; seed local_packet
                     // from the game's tx_packet (set by the comm-menu

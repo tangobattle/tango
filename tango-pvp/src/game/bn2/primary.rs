@@ -1,8 +1,6 @@
-use rand::Rng;
-
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::generate_rng_state;
+use super::rng::{generate_rng_state, pick_rng_state};
 use super::INIT_RX;
 
 pub(super) fn traps(
@@ -33,16 +31,8 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
-                let offerer_rng_state = generate_rng_state(&mut *rng);
-                let answerer_rng_state = generate_rng_state(&mut *rng);
-                munger.set_rng_state(
-                    core,
-                    if match_.is_offerer() {
-                        offerer_rng_state
-                    } else {
-                        answerer_rng_state
-                    },
-                );
+                let non_shared_rng_state = pick_rng_state(&mut *rng, match_.is_offerer());
+                munger.set_rng_state(core, non_shared_rng_state);
                 munger.start_battle_from_comm_menu(core);
             })
         }),
@@ -57,8 +47,8 @@ pub(super) fn traps(
                 // Tango's comm_menu_init_ret seeded it to a per-peer
                 // value (offerer vs answerer) — override to a shared
                 // value so both peers compute the same bg.
-                let rng_seed: u32 = rng.gen();
-                munger.set_rng_state(core, rng_seed);
+                let shared_rng_seed = generate_rng_state(&mut *rng);
+                munger.set_rng_state(core, shared_rng_seed);
                 // Advance submenu_control[1]=0x2c so once the handler
                 // returns the next outer-dispatcher tick lands at
                 // Tango's working post-handshake state.
@@ -126,8 +116,8 @@ pub(super) fn traps(
 
                 if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
-                    let rng_state = generate_rng_state(&mut *rng);
-                    munger.set_rng_state(core, rng_state);
+                    let shared_rng_state = generate_rng_state(&mut *rng);
+                    munger.set_rng_state(core, shared_rng_state);
 
                     match_
                         .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
@@ -136,10 +126,12 @@ pub(super) fn traps(
                     log::info!("battle state committed on {}", round.current_tick());
                 }
 
-                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                    core,
-                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                )) {
+                if let Err(e) =
+                    crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    ))
+                {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }

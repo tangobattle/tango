@@ -26,7 +26,7 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.menu_control + 0x5, -1, 0x01);
     }
 
-    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef, extended: bool) {
+    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef, match_type: u8) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         // Route the comm-menu state machine through the in-game
         // settings-handler function so the ROM generator writes
@@ -40,13 +40,13 @@ impl Munger {
         // init_battle_entry, which consumes the just-written settings.
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x04);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x14);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, match_type * 2);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x15, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, 0x01);
         // [0x3e] is the halfword the settings handler loads as the
         // generator's match_type argument: 0 = normal range (0..0x44),
         // 1 = extended range (0..0x60).
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3e, -1, if extended { 1 } else { 0 });
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3e, -1, match_type / 2);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3f, -1, 0x00);
     }
 

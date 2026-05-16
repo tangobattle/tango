@@ -1,8 +1,6 @@
-use rand::Rng;
-
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng1_state, generate_rng2_state};
+use super::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -27,14 +25,9 @@ pub(super) fn traps(
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
-                // Pre-seed rng1 (local) and rng2 (shared) right before
-                // the handler runs the generator transitively. Both
-                // peers seed from the synced match RNG so the
-                // generator produces an agreed (settings, bg) pair.
-                let r1_seed: u32 = rng.gen();
-                let r2_seed: u32 = rng.gen();
-                munger.set_rng1_state(core, r1_seed);
-                munger.set_rng2_state(core, r2_seed);
+                let seed = generate_rng2_state(&mut *rng);
+                munger.set_rng1_state(core, seed);
+                munger.set_rng2_state(core, seed);
             })
         }),
         (
@@ -111,19 +104,9 @@ pub(super) fn traps(
 
                     // rng1 is the local rng, it should not be synced.
                     // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                    let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                    let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                    munger.set_rng1_state(
-                        core,
-                        if match_.is_offerer() {
-                            offerer_rng1_state
-                        } else {
-                            answerer_rng1_state
-                        },
-                    );
-
                     // rng2 is the shared rng, it must be synced.
-                    let rng2_state = generate_rng2_state(&mut *rng);
+                    let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, match_.is_offerer());
+                    munger.set_rng1_state(core, rng1_state);
                     munger.set_rng2_state(core, rng2_state);
 
                     match_
@@ -137,10 +120,12 @@ pub(super) fn traps(
                     log::info!("battle state committed on {}", round.current_tick());
                 }
 
-                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                    core,
-                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                )) {
+                if let Err(e) =
+                    crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    ))
+                {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }

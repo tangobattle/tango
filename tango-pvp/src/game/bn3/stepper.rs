@@ -1,10 +1,9 @@
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state};
+use super::rng::{bn3_match_type, generate_rng2_state, pick_rng1_state};
 use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
@@ -73,16 +72,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                munger.set_rng1_state(
-                    core,
-                    if stepper_state.replay_is_offerer() {
-                        offerer_rng1_state
-                    } else {
-                        answerer_rng1_state
-                    },
-                );
+                let rng1_state = pick_rng1_state(&mut *rng, stepper_state.replay_is_offerer());
+                munger.set_rng1_state(core, rng1_state);
                 munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, stepper_state.match_type()));
             })
         }),
@@ -95,7 +86,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let r2_seed: u32 = rng.gen();
+                let r2_seed = generate_rng2_state(&mut *rng);
                 munger.set_rng2_state(core, r2_seed);
                 munger.select_battle_init_substate(core, 0x30);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
@@ -161,7 +152,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
                 {
                     if let Some(rng) = state.replay_rng().cloned() {
-                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng.lock()));
+                        let rng2_state = generate_rng2_state(&mut *rng.lock());
+                        munger.set_rng2_state(core, rng2_state);
                     }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_committed_state(core.save_state().expect("save committed state"));

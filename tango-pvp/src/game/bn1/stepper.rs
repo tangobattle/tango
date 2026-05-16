@@ -4,7 +4,7 @@ use rand::Rng;
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::generate_rng_state;
+use super::rng::pick_rng_state;
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
     let make_send_and_receive_call_hook = || {
@@ -139,16 +139,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock();
-                        let offerer_rng_state = generate_rng_state(&mut *rng);
-                        let answerer_rng_state = generate_rng_state(&mut *rng);
-                        munger.set_rng_state(
-                            core,
-                            if state.replay_is_offerer() {
-                                offerer_rng_state
-                            } else {
-                                answerer_rng_state
-                            },
-                        );
+                        let rng_state = pick_rng_state(&mut *rng, state.replay_is_offerer());
+                        munger.set_rng_state(core, rng_state);
                     }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_committed_state(core.save_state().expect("save committed state"));

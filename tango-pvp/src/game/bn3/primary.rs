@@ -1,9 +1,8 @@
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{bn3_match_type, generate_rng1_state, generate_rng2_state};
+use super::rng::{bn3_match_type, generate_rng2_state, pick_rng1_state};
 use super::INIT_RX;
 
 pub(super) fn traps(
@@ -53,16 +52,8 @@ pub(super) fn traps(
 
                 // rng1 is the local rng, it should not be synced.
                 // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                munger.set_rng1_state(
-                    core,
-                    if match_.is_offerer() {
-                        offerer_rng1_state
-                    } else {
-                        answerer_rng1_state
-                    },
-                );
+                let rng1_state = pick_rng1_state(&mut *rng, match_.is_offerer());
+                munger.set_rng1_state(core, rng1_state);
                 munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, match_.match_type()));
             })
         }),
@@ -76,7 +67,7 @@ pub(super) fn traps(
                 // The ROM bg generator reads rng2 (shared). Pre-seed
                 // it from the synced match RNG so both peers compute
                 // the same bg.
-                let r2_seed: u32 = rng.gen();
+                let r2_seed = generate_rng2_state(&mut *rng);
                 munger.set_rng2_state(core, r2_seed);
                 // Advance to Tango's original post-handshake state so
                 // once the handler returns, the next outer-dispatcher
@@ -149,7 +140,8 @@ pub(super) fn traps(
                     let mut rng = match_.lock_rng();
 
                     // rng2 is the shared rng, it must be synced.
-                    munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                    let rng2_state = generate_rng2_state(&mut *rng);
+                    munger.set_rng2_state(core, rng2_state);
 
                     match_
                         .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
@@ -162,10 +154,12 @@ pub(super) fn traps(
                     log::info!("battle state committed on {}", round.current_tick());
                 }
 
-                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(
-                    core,
-                    joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                )) {
+                if let Err(e) =
+                    crate::sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    ))
+                {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }
