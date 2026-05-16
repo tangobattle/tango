@@ -91,6 +91,14 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut state = stepper_state.lock_inner();
+                // In replay mode, gate on round_active: this PC is hit in every
+                // scene, not just battle. Without it the panic check below
+                // would read battle_state outside a battle (matches the exe6
+                // crash bn6 hit), and stale joyflags would land in r4 during
+                // pre-battle code.
+                if state.is_replaying() && !state.round_active() {
+                    return;
+                }
                 let current_tick = state.current_tick();
 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {

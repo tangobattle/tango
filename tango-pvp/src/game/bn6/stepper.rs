@@ -94,6 +94,14 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut state = stepper_state.lock_inner();
+                // PC 0x080003fa is a system-level joyflag read and fires in
+                // every scene, not just battle. Without this gate the panic
+                // check below reads battle_state+0x60 outside a battle —
+                // harmless on US ROMs where that EWRAM happens to be zero
+                // during pre-battle, but exe6 JP holds non-zero data there.
+                if state.is_replaying() && !state.round_active() {
+                    return;
+                }
                 let current_tick = state.current_tick();
 
                 if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
