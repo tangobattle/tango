@@ -4,7 +4,7 @@ const Packet = tango.signaling.Packet;
 const AbortReason = Packet.Abort.Reason;
 
 const X_SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At";
-const EXPECTED_PROTOCOL_VERSION = 58;
+const EXPECTED_PROTOCOL_VERSION = 0x3b;
 const SESSION_TTL_SECONDS = 60 * 60;
 
 interface Attachment {
