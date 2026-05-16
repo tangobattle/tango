@@ -5,6 +5,7 @@ mod navicust;
 mod patch;
 mod replay_session;
 mod replays;
+mod singleplayer_session;
 mod rom;
 mod rom_overrides;
 mod save;
@@ -119,15 +120,44 @@ struct App {
     replays: ReplaysState,
     patches: PatchesState,
 
-    /// Active replay playback session. While `Some`, the main body is
-    /// replaced by the playback view and a 60Hz subscription keeps
-    /// `playback_frame` in sync with the mgba framebuffer.
-    playback: Option<replay_session::ReplaySession>,
-    playback_frame: Option<iced::widget::image::Handle>,
-    /// Last `current_tick` we cached an image handle for. Used to skip
-    /// re-uploading the texture when the emulator is paused and the
-    /// framebuffer hasn't changed.
-    playback_last_tick: Option<u32>,
+    /// Active emulator session — at most one of replay playback or
+    /// single-player play. While `Some`, the main body is replaced by
+    /// the session view and a 60Hz subscription keeps `session_frame`
+    /// in sync with the mgba framebuffer.
+    session: Option<ActiveSession>,
+    session_frame: Option<iced::widget::image::Handle>,
+    /// Counter incremented each tick we consume a frame, used to drive
+    /// fresh `image::Handle` ids — without distinct ids iced caches the
+    /// texture and the picture stops updating.
+    session_frame_counter: u64,
+}
+
+enum ActiveSession {
+    Replay(replay_session::ReplaySession),
+    SinglePlayer(singleplayer_session::SinglePlayerSession),
+}
+
+impl ActiveSession {
+    fn snapshot_vbuf(&self) -> Vec<u8> {
+        match self {
+            Self::Replay(s) => s.snapshot_vbuf(),
+            Self::SinglePlayer(s) => s.snapshot_vbuf(),
+        }
+    }
+    fn request_close(&self) {
+        match self {
+            Self::Replay(s) => s.request_close(),
+            Self::SinglePlayer(s) => s.request_close(),
+        }
+    }
+    /// Progress text shown in the session view header. `(current, total)`
+    /// for replays, `None` for single-player (no fixed length).
+    fn progress(&self) -> Option<(u32, u32)> {
+        match self {
+            Self::Replay(s) => Some((s.current_tick(), s.total_ticks())),
+            Self::SinglePlayer(_) => None,
+        }
+    }
 }
 
 impl App {
@@ -193,9 +223,9 @@ impl App {
             play,
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
-            playback: None,
-            playback_frame: None,
-            playback_last_tick: None,
+            session: None,
+            session_frame: None,
+            session_frame_counter: 0,
         };
         app.refresh_loaded();
         (app, iced::Task::none())
@@ -322,8 +352,12 @@ enum Message {
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
-    PlaybackTick,
-    PlaybackClose,
+    SessionTick,
+    SessionClose,
+    /// Key mapped to an mgba joypad bit went down.
+    SessionKeyDown(u32),
+    /// Key mapped to an mgba joypad bit went up.
+    SessionKeyUp(u32),
 }
 
 impl App {
@@ -357,44 +391,53 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::PlaybackTick => {
-                if let Some(session) = self.playback.as_ref() {
-                    let tick = session.current_tick();
-                    // Skip the memcpy + Handle alloc when the emulator
-                    // hasn't advanced since the last cached frame —
-                    // mostly happens when playback completes and the
-                    // user is just sitting on the last frame.
-                    if self.playback_last_tick != Some(tick) || self.playback_frame.is_none() {
-                        let pixels = session.snapshot_vbuf();
-                        self.playback_frame = Some(iced::widget::image::Handle::from_rgba(
-                            replay_session::SCREEN_WIDTH,
-                            replay_session::SCREEN_HEIGHT,
-                            pixels,
-                        ));
-                        self.playback_last_tick = Some(tick);
-                    }
+            Message::SessionTick => {
+                if let Some(session) = self.session.as_ref() {
+                    let pixels = session.snapshot_vbuf();
+                    self.session_frame = Some(iced::widget::image::Handle::from_rgba(
+                        replay_session::SCREEN_WIDTH,
+                        replay_session::SCREEN_HEIGHT,
+                        pixels,
+                    ));
+                    self.session_frame_counter = self.session_frame_counter.wrapping_add(1);
                 }
                 iced::Task::none()
             }
-            Message::PlaybackClose => {
-                if let Some(s) = self.playback.as_ref() {
+            Message::SessionClose => {
+                if let Some(s) = self.session.as_ref() {
                     s.request_close();
                 }
-                self.playback = None;
-                self.playback_frame = None;
-                self.playback_last_tick = None;
+                self.session = None;
+                self.session_frame = None;
+                iced::Task::none()
+            }
+            Message::SessionKeyDown(bit) => {
+                if let Some(ActiveSession::SinglePlayer(s)) = self.session.as_ref() {
+                    s.set_joyflag(bit, true);
+                }
+                iced::Task::none()
+            }
+            Message::SessionKeyUp(bit) => {
+                if let Some(ActiveSession::SinglePlayer(s)) = self.session.as_ref() {
+                    s.set_joyflag(bit, false);
+                }
                 iced::Task::none()
             }
         }
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        if self.playback.is_some() {
-            iced::time::every(std::time::Duration::from_millis(16))
-                .map(|_| Message::PlaybackTick)
-        } else {
-            iced::Subscription::none()
+        let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
+        if self.session.is_some() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::SessionTick),
+            );
         }
+        if matches!(self.session, Some(ActiveSession::SinglePlayer(_))) {
+            subs.push(iced::event::listen_with(map_keyboard_event));
+        }
+        iced::Subscription::batch(subs)
     }
 
     fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<tabs::play::Message> {
@@ -443,7 +486,22 @@ impl App {
             M::SaveTabSelected(t) => self.play.save_tab = Some(t),
             M::ToggleFolderGrouped(g) => self.play.folder_grouped = g,
             M::LinkCodeChanged(s) => self.play.link_code = s,
-            M::PlayPressed => self.play.playing = !self.play.playing,
+            M::PlayPressed => {
+                // Single-player path only for now — netplay (when
+                // link_code is non-empty) isn't wired up yet.
+                if self.play.link_code.trim().is_empty() {
+                    match self.spawn_singleplayer() {
+                        Ok(session) => {
+                            self.session = Some(ActiveSession::SinglePlayer(session));
+                            self.session_frame = None;
+                            self.play.playing = true;
+                        }
+                        Err(e) => log::warn!("singleplayer start failed: {e}"),
+                    }
+                } else {
+                    log::warn!("netplay sessions not yet implemented");
+                }
+            }
             M::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
@@ -682,9 +740,8 @@ impl App {
             }
             M::Watch(p) => match self.build_playback(&p) {
                 Ok(session) => {
-                    self.playback = Some(session);
-                    self.playback_frame = None;
-                    self.playback_last_tick = None;
+                    self.session = Some(ActiveSession::Replay(session));
+                    self.session_frame = None;
                 }
                 Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
             },
@@ -751,8 +808,8 @@ impl App {
             return welcome_view(lang, &self.welcome_nickname).map(Message::Welcome);
         }
 
-        if self.playback.is_some() {
-            return self.playback_view(lang);
+        if self.session.is_some() {
+            return self.session_view(lang);
         }
 
         let body: Element<'_, Message> = match self.tab {
@@ -781,10 +838,10 @@ impl App {
             .into()
     }
 
-    fn playback_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
+    fn session_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
         use iced::widget::{image, Space};
-        let session = self.playback.as_ref().expect("playback_view: no session");
-        let frame: Element<'_, Message> = if let Some(handle) = self.playback_frame.as_ref() {
+        let session = self.session.as_ref().expect("session_view: no session");
+        let frame: Element<'_, Message> = if let Some(handle) = self.session_frame.as_ref() {
             image(handle.clone())
                 .width(Fill)
                 .height(Fill)
@@ -795,22 +852,26 @@ impl App {
             Space::new(Fill, Fill).into()
         };
 
-        let tick = session.current_tick();
-        let total = session.total_ticks();
-        let header = container(
-            row![
-                text(t(lang, "replays-watch")).size(14),
-                horizontal_space(),
-                text(format!("{tick} / {total}")).size(12).style(save_view::muted_text_style),
-                button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::PlaybackClose),
-            ]
+        let title_key = match session {
+            ActiveSession::Replay(_) => "replays-watch",
+            ActiveSession::SinglePlayer(_) => "play-play",
+        };
+        let mut header_row = row![text(t(lang, title_key)).size(14), horizontal_space(),]
             .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(8),
-        )
-        .width(Fill);
+            .align_y(Alignment::Center);
+        if let Some((cur, total)) = session.progress() {
+            header_row = header_row.push(
+                text(format!("{cur} / {total}"))
+                    .size(12)
+                    .style(save_view::muted_text_style),
+            );
+        }
+        header_row = header_row.push(
+            button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
+                .padding(STANDARD_PADDING)
+                .on_press(Message::SessionClose),
+        );
+        let header = container(header_row.padding(8)).width(Fill);
 
         column![header, horizontal_rule(1), container(frame).center(Fill).padding(8)]
             .spacing(0)
@@ -871,6 +932,48 @@ impl App {
         replay_session::ReplaySession::new(local_game, local_rom, remote_game, remote_rom, replay)
     }
 
+    /// Boot the currently-loaded ROM in single-player mode using the
+    /// active save selection. Errors out if anything's missing —
+    /// callers should gate the Play button on a complete selection.
+    fn spawn_singleplayer(&self) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
+        let loaded = self
+            .loaded
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no game / save selected"))?;
+        let game = game::from_gamedb_entry(loaded.game).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no tango-ng game impl for {:?}",
+                loaded.game.family_and_variant()
+            )
+        })?;
+        // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
+        // grab them back from the scanner and re-apply the patch if any
+        // so the emulator sees the same image it would in the legacy app.
+        let raw = self
+            .scanners
+            .roms
+            .read()
+            .get(&loaded.game)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
+        let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
+            patch::apply_patch_from_disk(
+                &raw,
+                loaded.game,
+                &self.config.patches_path(),
+                &p.name,
+                &p.version,
+            )?
+        } else {
+            raw
+        };
+        singleplayer_session::SinglePlayerSession::new(
+            game,
+            std::sync::Arc::new(rom_bytes),
+            &loaded.save_path,
+        )
+    }
+
     fn theme(&self) -> Theme {
         // Custom palettes derived from the built-in Light/Dark, with the
         // accent (primary) swapped to the BN-green that the main egui
@@ -896,6 +999,26 @@ impl App {
                 },
             ),
         }
+    }
+}
+
+/// `iced::event::listen_with` needs a free `fn` (no captures), so we
+/// fold the key→mgba-bit translation into the subscription itself and
+/// only emit messages for keys we actually bind.
+fn map_keyboard_event(
+    event: iced::Event,
+    _status: iced::event::Status,
+    _window: iced::window::Id,
+) -> Option<Message> {
+    use iced::keyboard::Event as Kb;
+    match event {
+        iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
+            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyDown)
+        }
+        iced::Event::Keyboard(Kb::KeyReleased { key, .. }) => {
+            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyUp)
+        }
+        _ => None,
     }
 }
 
