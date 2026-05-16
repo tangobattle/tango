@@ -12,6 +12,7 @@ pub enum Message {
     FolderFilterSelected(FolderOption),
     Selected(std::path::PathBuf),
     OpenFolder(std::path::PathBuf),
+    Watch(std::path::PathBuf),
     Rescan,
 }
 
@@ -225,12 +226,10 @@ fn replay_detail<'a>(
             row![
                 text(format!("{} #{}", t(lang, "replays-round"), md.round)).size(18),
                 horizontal_space(),
-                // Disabled until the playback session is wired up;
-                // no on_press so they're noop-grey instead of pretending
-                // to work.
                 button(text(t(lang, "replays-watch")).size(STANDARD_TEXT_SIZE))
                     .padding(STANDARD_PADDING)
-                    .style(button::secondary),
+                    .style(button::primary)
+                    .on_press(Message::Watch(r.path.clone())),
                 button(text(t(lang, "replays-export")).size(STANDARD_TEXT_SIZE))
                     .padding(STANDARD_PADDING)
                     .style(button::secondary),

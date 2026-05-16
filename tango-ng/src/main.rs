@@ -3,6 +3,7 @@ mod game;
 mod i18n;
 mod navicust;
 mod patch;
+mod replay_session;
 mod replays;
 mod rom;
 mod rom_overrides;
@@ -54,6 +55,7 @@ pub fn main() -> iced::Result {
 
     iced::application(App::title, App::update, App::view)
         .theme(App::theme)
+        .subscription(App::subscription)
         .window_size((1000.0, 640.0))
         .font(FONT_NOTO_SANS)
         .font(FONT_NOTO_SANS_JP)
@@ -116,6 +118,16 @@ struct App {
     play: PlayState,
     replays: ReplaysState,
     patches: PatchesState,
+
+    /// Active replay playback session. While `Some`, the main body is
+    /// replaced by the playback view and a 60Hz subscription keeps
+    /// `playback_frame` in sync with the mgba framebuffer.
+    playback: Option<replay_session::ReplaySession>,
+    playback_frame: Option<iced::widget::image::Handle>,
+    /// Last `current_tick` we cached an image handle for. Used to skip
+    /// re-uploading the texture when the emulator is paused and the
+    /// framebuffer hasn't changed.
+    playback_last_tick: Option<u32>,
 }
 
 impl App {
@@ -181,6 +193,9 @@ impl App {
             play,
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
+            playback: None,
+            playback_frame: None,
+            playback_last_tick: None,
         };
         app.refresh_loaded();
         (app, iced::Task::none())
@@ -307,6 +322,8 @@ enum Message {
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
+    PlaybackTick,
+    PlaybackClose,
 }
 
 impl App {
@@ -340,6 +357,43 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
+            Message::PlaybackTick => {
+                if let Some(session) = self.playback.as_ref() {
+                    let tick = session.current_tick();
+                    // Skip the memcpy + Handle alloc when the emulator
+                    // hasn't advanced since the last cached frame —
+                    // mostly happens when playback completes and the
+                    // user is just sitting on the last frame.
+                    if self.playback_last_tick != Some(tick) || self.playback_frame.is_none() {
+                        let pixels = session.snapshot_vbuf();
+                        self.playback_frame = Some(iced::widget::image::Handle::from_rgba(
+                            replay_session::SCREEN_WIDTH,
+                            replay_session::SCREEN_HEIGHT,
+                            pixels,
+                        ));
+                        self.playback_last_tick = Some(tick);
+                    }
+                }
+                iced::Task::none()
+            }
+            Message::PlaybackClose => {
+                if let Some(s) = self.playback.as_ref() {
+                    s.request_close();
+                }
+                self.playback = None;
+                self.playback_frame = None;
+                self.playback_last_tick = None;
+                iced::Task::none()
+            }
+        }
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        if self.playback.is_some() {
+            iced::time::every(std::time::Duration::from_millis(16))
+                .map(|_| Message::PlaybackTick)
+        } else {
+            iced::Subscription::none()
         }
     }
 
@@ -626,6 +680,14 @@ impl App {
                     log::error!("open folder {}: {e}", p.display());
                 }
             }
+            M::Watch(p) => match self.build_playback(&p) {
+                Ok(session) => {
+                    self.playback = Some(session);
+                    self.playback_frame = None;
+                    self.playback_last_tick = None;
+                }
+                Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
+            },
             M::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
@@ -689,6 +751,10 @@ impl App {
             return welcome_view(lang, &self.welcome_nickname).map(Message::Welcome);
         }
 
+        if self.playback.is_some() {
+            return self.playback_view(lang);
+        }
+
         let body: Element<'_, Message> = match self.tab {
             Tab::Play => self
                 .play
@@ -713,6 +779,96 @@ impl App {
             .width(Fill)
             .height(Fill)
             .into()
+    }
+
+    fn playback_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
+        use iced::widget::{image, Space};
+        let session = self.playback.as_ref().expect("playback_view: no session");
+        let frame: Element<'_, Message> = if let Some(handle) = self.playback_frame.as_ref() {
+            image(handle.clone())
+                .width(Fill)
+                .height(Fill)
+                .filter_method(image::FilterMethod::Nearest)
+                .content_fit(iced::ContentFit::Contain)
+                .into()
+        } else {
+            Space::new(Fill, Fill).into()
+        };
+
+        let tick = session.current_tick();
+        let total = session.total_ticks();
+        let header = container(
+            row![
+                text(t(lang, "replays-watch")).size(14),
+                horizontal_space(),
+                text(format!("{tick} / {total}")).size(12).style(save_view::muted_text_style),
+                button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
+                    .padding(STANDARD_PADDING)
+                    .on_press(Message::PlaybackClose),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .padding(8),
+        )
+        .width(Fill);
+
+        column![header, horizontal_rule(1), container(frame).center(Fill).padding(8)]
+            .spacing(0)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    /// Decode a `.tangoreplay` and spin up an mgba playback thread for
+    /// it. Resolves both sides' ROMs (and BPS patches, if any) from the
+    /// current scanners. Returns Err if any side can't be resolved.
+    fn build_playback(
+        &self,
+        path: &std::path::Path,
+    ) -> anyhow::Result<replay_session::ReplaySession> {
+        let f = std::fs::File::open(path)?;
+        let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
+        let resolve_rom = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
+            &'static (dyn game::Game + Send + Sync),
+            std::sync::Arc<Vec<u8>>,
+        )> {
+            let gi = side
+                .and_then(|s| s.game_info.as_ref())
+                .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
+            let variant = u8::try_from(gi.rom_variant).map_err(|_| {
+                anyhow::anyhow!("variant {} out of range", gi.rom_variant)
+            })?;
+            let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant)
+                })?;
+            let g = game::from_gamedb_entry(entry)
+                .ok_or_else(|| anyhow::anyhow!("no tango-ng impl for {}/{}", gi.rom_family, gi.rom_variant))?;
+            let rom = self
+                .scanners
+                .roms
+                .read()
+                .get(&entry)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
+            let rom = if let Some(patch_info) = gi.patch.as_ref() {
+                let v = semver::Version::parse(&patch_info.version)?;
+                patch::apply_patch_from_disk(
+                    &rom,
+                    entry,
+                    &self.config.patches_path(),
+                    &patch_info.name,
+                    &v,
+                )?
+            } else {
+                rom
+            };
+            Ok((g, std::sync::Arc::new(rom)))
+        };
+
+        let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
+        let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
+        replay_session::ReplaySession::new(local_game, local_rom, remote_game, remote_rom, replay)
     }
 
     fn theme(&self) -> Theme {

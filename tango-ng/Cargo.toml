@@ -21,8 +21,11 @@ regex = "1"
 mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
+mgba = { path = "../mgba" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
+rand = "0.8"
+rand_pcg = { version = "0.3", features = ["serde1"] }
 chrono = "0.4"
 itertools = "0.13"
 steamlocate = "2"
