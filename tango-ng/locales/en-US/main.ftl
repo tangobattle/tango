@@ -10,6 +10,26 @@ tab-settings = Settings
 # Play selectors
 play-no-game = No game selected
 play-no-save = Select save
+
+# Save management
+save-open-folder = Open folder
+save-duplicate = Duplicate
+save-rename = Rename
+save-delete = Delete
+save-rename-confirm = Save
+save-delete-confirm = Delete
+save-action-cancel = Cancel
+save-delete-prompt = Delete this save?
+save-name-placeholder = New name
+save-new = New save
+save-new-confirm = Create
+save-template-default = (default)
+
+# Empty-state hints
+empty-no-roms-title = No game ROMs found
+empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
+empty-no-saves-title = No save files for this game
+empty-no-saves-body = Drop a .sav for this game into:
 play-no-patch = No patch
 play-version = Version
 play-version-placeholder = —
@@ -47,6 +67,7 @@ folder-col-power = Power
 folder-regular-chip = Regular
 folder-tag-chips = Tag
 folder-group = Group by chip
+save-copy = Copy
 
 # Navi pane
 navi-id = Navi ID
@@ -114,6 +135,17 @@ settings-audio-backend = Backend
 settings-signaling = Signaling
 settings-data-path = Data path
 settings-streamer-mode = Streamer privacy mode
+settings-section-about = About
+settings-theme = Theme
+settings-matchmaking-endpoint = Matchmaking endpoint
+settings-patch-repo = Patches repository
+settings-version = Version
+settings-about-blurb = tango-ng — an iced prototype of the Tango UI. Not feature-complete.
+
+# Welcome screen
+welcome-title = Welcome to Tango
+welcome-subtitle = Pick a nickname to get started. You can change it later in Settings.
+welcome-continue = Continue
 
 # Common actions
 rescan = Rescan

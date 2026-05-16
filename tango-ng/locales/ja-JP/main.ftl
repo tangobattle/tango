@@ -10,6 +10,26 @@ tab-settings = 設定
 # Play selectors
 play-no-game = ゲーム未選択
 play-no-save = セーブを選択
+
+# Save management
+save-open-folder = フォルダを開く
+save-duplicate = 複製
+save-rename = 名前変更
+save-delete = 削除
+save-rename-confirm = 保存
+save-delete-confirm = 削除
+save-action-cancel = キャンセル
+save-delete-prompt = このセーブを削除しますか？
+save-name-placeholder = 新しい名前
+save-new = 新規セーブ
+save-new-confirm = 作成
+save-template-default = （デフォルト）
+
+# Empty-state hints
+empty-no-roms-title = ROMが見つかりません
+empty-no-roms-body = バトルネットワーク／ロックマンエグゼの .gba ファイルを次の場所に置いてください：
+empty-no-saves-title = このゲームのセーブがありません
+empty-no-saves-body = このゲームの .sav ファイルを次の場所に置いてください：
 play-no-patch = パッチなし
 play-version = バージョン
 play-version-placeholder = —
@@ -47,6 +67,7 @@ folder-col-power = 威力
 folder-regular-chip = レギュラー
 folder-tag-chips = タグ
 folder-group = チップでまとめる
+save-copy = コピー
 
 # Navi pane
 navi-id = ナビID
@@ -114,6 +135,17 @@ settings-audio-backend = バックエンド
 settings-signaling = シグナリング
 settings-data-path = データパス
 settings-streamer-mode = 配信プライバシーモード
+settings-section-about = アプリ情報
+settings-theme = テーマ
+settings-matchmaking-endpoint = マッチメイキングエンドポイント
+settings-patch-repo = パッチリポジトリ
+settings-version = バージョン
+settings-about-blurb = tango-ng — Tango UI の iced 試作版。機能はまだ揃っていません。
+
+# Welcome screen
+welcome-title = Tango へようこそ
+welcome-subtitle = ニックネームを入力してください。後から設定で変更できます。
+welcome-continue = 続ける
 
 # Common actions
 rescan = 再スキャン

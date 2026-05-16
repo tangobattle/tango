@@ -34,7 +34,49 @@ pub struct Loaded {
     pub navi_emblems: HashMap<usize, iced_image::Handle>,
     /// Precomputed NaviCust grid image for the Navicust variant. None
     /// for LinkNavi games or when no navicust_layout is published.
-    pub navicust_image: Option<(u32, u32, iced_image::Handle)>,
+    pub navicust_render: Option<NavicustRender>,
+}
+
+/// Cached NaviCust image plus everything needed to translate a pointer
+/// position over the displayed image back to a part index (for hover
+/// highlighting in the parts list).
+pub struct NavicustRender {
+    pub source_w: u32,
+    pub source_h: u32,
+    pub handle: iced_image::Handle,
+    /// Top-left of the cell grid in source-image coordinates.
+    pub body_origin_x: f32,
+    pub body_origin_y: f32,
+    /// Edge length of one cell in source-image coordinates.
+    pub cell_size: f32,
+    pub cols: usize,
+    pub rows: usize,
+    /// Flat row-major materialized grid; `None` = empty cell, `Some(i)`
+    /// = `navicust_part(i)` index.
+    pub cell_part_idx: Vec<Option<usize>>,
+}
+
+impl NavicustRender {
+    /// Translate a point in displayed (scaled) widget coords back to a
+    /// part index using the given on-screen image dimensions.
+    pub fn part_at(&self, point: iced::Point, display_w: f32, display_h: f32) -> Option<usize> {
+        if display_w <= 0.0 || display_h <= 0.0 {
+            return None;
+        }
+        let scale_x = self.source_w as f32 / display_w;
+        let scale_y = self.source_h as f32 / display_h;
+        let sx = point.x * scale_x - self.body_origin_x;
+        let sy = point.y * scale_y - self.body_origin_y;
+        if sx < 0.0 || sy < 0.0 {
+            return None;
+        }
+        let col = (sx / self.cell_size) as usize;
+        let row = (sy / self.cell_size) as usize;
+        if col >= self.cols || row >= self.rows {
+            return None;
+        }
+        self.cell_part_idx.get(row * self.cols + col).copied().flatten()
+    }
 }
 
 impl Loaded {
@@ -117,7 +159,7 @@ impl Loaded {
         }
 
         // Render the NaviCust grid once per save+game.
-        let navicust_image = build_navicust_image(save.as_ref(), assets.as_ref());
+        let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref());
 
         Self {
             game,
@@ -129,15 +171,15 @@ impl Loaded {
             chip_images,
             element_icons,
             navi_emblems,
-            navicust_image,
+            navicust_render,
         }
     }
 }
 
-fn build_navicust_image(
+fn build_navicust_render(
     save: &(dyn tango_dataview::save::Save + Send + Sync),
     assets: &(dyn tango_dataview::rom::Assets + Send + Sync),
-) -> Option<(u32, u32, iced_image::Handle)> {
+) -> Option<NavicustRender> {
     let nv = save.view_navi()?;
     let view = match nv {
         tango_dataview::save::NaviView::Navicust(v) => v,
@@ -147,7 +189,33 @@ fn build_navicust_image(
     let materialized = view.materialized();
     let img = crate::navicust::render(&materialized, &layout, view.as_ref(), assets);
     let (w, h) = (img.width(), img.height());
-    Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
+
+    // Mirrors the constants in navicust.rs (PADDING_H/PADDING_V/SQUARE_SIZE/BORDER_WIDTH).
+    // We don't expose them publicly because they're internal to the
+    // tiny-skia rendering; duplicating here is cheap and keeps the
+    // module boundary clean.
+    const PADDING_H: f32 = 20.0;
+    const PADDING_V: f32 = 20.0;
+    const SQUARE_SIZE: f32 = 60.0;
+    const BORDER_WIDTH: f32 = 6.0;
+    let (rows, cols) = materialized.dim();
+    let color_bar_h = (SQUARE_SIZE / 2.0 + BORDER_WIDTH).round();
+    let body_origin_x = PADDING_H + BORDER_WIDTH / 2.0;
+    let body_origin_y = PADDING_V + color_bar_h + PADDING_V + BORDER_WIDTH / 2.0;
+
+    let cell_part_idx: Vec<Option<usize>> = materialized.iter().copied().collect();
+
+    Some(NavicustRender {
+        source_w: w,
+        source_h: h,
+        handle: iced_image::Handle::from_rgba(w, h, img.into_raw()),
+        body_origin_x,
+        body_origin_y,
+        cell_size: SQUARE_SIZE,
+        cols,
+        rows,
+        cell_part_idx,
+    })
 }
 
 fn cropped_handle(src: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> iced_image::Handle {

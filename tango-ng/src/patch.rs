@@ -37,6 +37,11 @@ pub struct Version {
     pub rom_overrides: Overrides,
     pub netplay_compatibility: String,
     pub supported_games: HashSet<GameRef>,
+    /// Per-game save templates the patch ships. Keyed by template name
+    /// (empty string = the default template); values are owned Save
+    /// trait objects ready to be serialized via `as_sram_dump`.
+    pub save_templates:
+        std::collections::HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
 }
 
 pub struct Patch {
@@ -91,6 +96,8 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
     };
 
     let patch_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})\.bps$").unwrap();
+    let save_template_filename_re =
+        regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?))\.sav$").unwrap();
 
     for entry in read_dir {
         let entry = match entry {
@@ -155,17 +162,48 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
             };
 
             let mut supported_games: HashSet<GameRef> = HashSet::new();
+            let mut save_templates: std::collections::HashMap<
+                GameRef,
+                BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>,
+            > = std::collections::HashMap::new();
             for f in vread {
                 let Ok(f) = f else { continue };
                 let Some(filename) = f.file_name().into_string().ok() else { continue };
-                let Some(captures) = patch_filename_re.captures(&filename) else { continue };
-                let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
-                    Ok(b) => b,
-                    Err(_) => continue,
-                };
-                let Ok(revision) = captures[2].parse::<u8>() else { continue };
-                let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
-                supported_games.insert(game);
+
+                if let Some(captures) = patch_filename_re.captures(&filename) {
+                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
+                    supported_games.insert(game);
+                } else if let Some(captures) = save_template_filename_re.captures(&filename) {
+                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
+                    let template_name =
+                        captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
+                    let raw = match std::fs::read(f.path()) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::warn!("{}: {e}", f.path().display());
+                            continue;
+                        }
+                    };
+                    match game.parse_save(&raw) {
+                        Ok(save) => {
+                            save_templates
+                                .entry(game)
+                                .or_default()
+                                .insert(template_name, save);
+                        }
+                        Err(e) => log::warn!("{}: not a valid template save: {e}", f.path().display()),
+                    }
+                }
             }
 
             versions.insert(
@@ -174,6 +212,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     rom_overrides: ver.rom_overrides,
                     netplay_compatibility: ver.netplay_compatibility,
                     supported_games,
+                    save_templates,
                 }),
             );
         }

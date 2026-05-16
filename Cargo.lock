@@ -6807,6 +6807,7 @@ dependencies = [
  "regex",
  "semver",
  "serde",
+ "serde_json",
  "tango-dataview",
  "tango-gamedb",
  "tango-pvp",
