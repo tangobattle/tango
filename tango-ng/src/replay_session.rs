@@ -27,6 +27,9 @@ pub struct ReplaySession {
     replay: Arc<tango_pvp::replay::Replay>,
     stepper_state: tango_pvp::stepper::State,
     total_ticks: u32,
+    /// Held so the binding survives for the session's lifetime; the
+    /// LateBinder swaps back to silence when this Drops.
+    _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
 
@@ -37,6 +40,7 @@ impl ReplaySession {
         remote_game: &'static (dyn crate::game::Game + Send + Sync),
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
+        audio_binder: &crate::audio::LateBinder,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango-ng")?;
         core.enable_video_buffer();
@@ -136,6 +140,21 @@ impl ReplaySession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
+        // Bind audio after start so the cpal callback only finds a live
+        // mgba thread to pull from. Failure to bind (rare — only if
+        // another session forgot to drop its binding) just leaves the
+        // replay silent rather than aborting playback.
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
+            thread.handle(),
+            audio_binder.sample_rate(),
+        )))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("replay: audio bind failed: {e:?}");
+                None
+            }
+        };
+
         Ok(Self {
             vbuf,
             completion_token,
@@ -144,6 +163,7 @@ impl ReplaySession {
             replay,
             stepper_state,
             total_ticks,
+            _audio_binding: audio_binding,
             _thread: thread,
         })
     }

@@ -18,6 +18,7 @@ pub struct SinglePlayerSession {
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
     pause_on_next_frame: Arc<AtomicBool>,
+    _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
 
@@ -26,6 +27,7 @@ impl SinglePlayerSession {
         game: &'static (dyn crate::game::Game + Send + Sync),
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
+        audio_binder: &crate::audio::LateBinder,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango-ng")?;
         core.enable_video_buffer();
@@ -72,11 +74,23 @@ impl SinglePlayerSession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
+        let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
+            thread.handle(),
+            audio_binder.sample_rate(),
+        )))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("singleplayer: audio bind failed: {e:?}");
+                None
+            }
+        };
+
         Ok(Self {
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
             pause_on_next_frame,
+            _audio_binding: audio_binding,
             _thread: thread,
         })
     }

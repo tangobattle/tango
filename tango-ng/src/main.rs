@@ -1,3 +1,4 @@
+mod audio;
 mod config;
 mod game;
 mod i18n;
@@ -111,6 +112,13 @@ struct App {
     /// config.nickname.
     welcome_nickname: String,
     scanners: Scanners,
+    /// Cloned into every session so they can bind their MGBAStream
+    /// without owning the cpal backend. The cpal Backend lives in
+    /// `_audio_backend` so the underlying stream keeps playing.
+    audio_binder: audio::LateBinder,
+    /// Kept alive for the program's lifetime; dropping it would tear
+    /// down the cpal output stream and the app would go silent.
+    _audio_backend: Option<audio::cpal::Backend>,
 
     /// Owned game+save+assets for the current selection. Rebuilt only
     /// when game or save changes; per-frame view() borrows it.
@@ -213,12 +221,31 @@ impl App {
         }
         let welcome_nickname = config.nickname.clone().unwrap_or_default();
 
+        // Spin up cpal once at startup with the LateBinder as the
+        // source. Sessions later bind their MGBAStream into the binder
+        // and the cpal stream keeps going across selections.
+        let mut audio_binder = audio::LateBinder::new();
+        let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
+            Ok(b) => {
+                use audio::Backend;
+                audio_binder.set_sample_rate(b.sample_rate());
+                log::info!("audio: cpal backend up at {} Hz", b.sample_rate());
+                Some(b)
+            }
+            Err(e) => {
+                log::warn!("audio: cpal init failed, running silent: {e:?}");
+                None
+            }
+        };
+
         let mut app = Self {
             config,
             tab: Tab::default(),
             settings_tab: SettingsTab::General,
             welcome_nickname,
             scanners,
+            audio_binder,
+            _audio_backend: audio_backend,
             loaded: None,
             play,
             replays: ReplaysState::default(),
@@ -929,7 +956,14 @@ impl App {
 
         let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
         let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-        replay_session::ReplaySession::new(local_game, local_rom, remote_game, remote_rom, replay)
+        replay_session::ReplaySession::new(
+            local_game,
+            local_rom,
+            remote_game,
+            remote_rom,
+            replay,
+            &self.audio_binder,
+        )
     }
 
     /// Boot the currently-loaded ROM in single-player mode using the
@@ -971,6 +1005,7 @@ impl App {
             game,
             std::sync::Arc::new(rom_bytes),
             &loaded.save_path,
+            &self.audio_binder,
         )
     }
 
