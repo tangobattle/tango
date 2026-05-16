@@ -1,5 +1,5 @@
 /// Outcome of a single round, as detected by the per-game `round_end_*` traps.
-#[derive(Clone, Copy, PartialEq, serde_repr::Serialize_repr)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr)]
 #[repr(i8)]
 pub enum BattleOutcome {
     Draw = -1,

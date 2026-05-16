@@ -1,9 +1,29 @@
 //! Regression suite for the committed golden replays in `tests/golden/`.
 //!
-//! For each `*.tangoreplay`, decode it, look up its local + remote ROMs
-//! by family/variant against a directory of `*.gba` files, and drive
-//! `tango_pvp::replay::playback::run_prefetch` end-to-end. The replay
-//! passes if the playback worker reaches the end without erroring.
+//! For each `*.tangoreplay`, decode it, look up its local + remote ROMs by
+//! family/variant against a directory of `*.gba` files, and drive the
+//! replay end-to-end through a stepper + shadow pair. Compute a
+//! determinism fingerprint along the way and compare against the
+//! sidecar `*.tangoreplay.expected` checked in next to each replay.
+//!
+//! The fingerprint captures:
+//!   - shadow_packets_sha256 -- SHA256 of every shadow-generated remote
+//!     packet across all rounds. Catches any divergence in the shadow's
+//!     per-tick behavior.
+//!   - per-round outcomes -- (index, tick, Win/Loss/Draw). Human-readable
+//!     summary that makes failures interpretable without a hash diff.
+//!
+//! A local-core RAM hash was prototyped and abandoned: even after
+//! restricting to WRAM+IWRAM and snapshotting at a deterministic moment,
+//! exe45 specifically produced different bytes across runs without
+//! perturbing shadow output. Likely mgba's per-process EWRAM allocation
+//! leaves some bytes whose initial contents the game's unused regions
+//! never overwrite. The shadow_packets digest is independent of this and
+//! still catches any real cross-run divergence.
+//!
+//! Set `TANGO_GOLDEN_BLESS=1` to overwrite the sidecars from the current
+//! run instead of asserting against them. Use this after an intentional
+//! determinism-affecting change.
 //!
 //! ROMs are sourced from `$TANGO_TEST_ROMS_DIR` (default: `repo/roms/`).
 //! Copyrighted ROMs aren't committed, so any replay whose ROM isn't on
@@ -12,8 +32,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Arc;
+
+use parking_lot::Mutex;
+use sha2::{Digest, Sha256};
+use tango_pvp::stepper::BattleOutcome;
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -30,6 +53,10 @@ fn roms_dir() -> PathBuf {
 
 fn golden_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden")
+}
+
+fn bless_mode() -> bool {
+    matches!(std::env::var("TANGO_GOLDEN_BLESS").as_deref(), Ok("1"))
 }
 
 /// (family, variant) -> verified ROM bytes. `tango_gamedb::detect`
@@ -54,10 +81,99 @@ fn discover_roms() -> HashMap<(&'static str, u8), Vec<u8>> {
     out
 }
 
-enum CaseResult {
-    Ok,
-    Skip(String),
-    Fail(anyhow::Error),
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RoundFingerprint {
+    index: u32,
+    tick: u32,
+    outcome: BattleOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Fingerprint {
+    shadow_packets_sha256: [u8; 32],
+    rounds: Vec<RoundFingerprint>,
+}
+
+fn outcome_str(o: BattleOutcome) -> &'static str {
+    match o {
+        BattleOutcome::Win => "Win",
+        BattleOutcome::Loss => "Loss",
+        BattleOutcome::Draw => "Draw",
+    }
+}
+
+fn parse_outcome(s: &str) -> anyhow::Result<BattleOutcome> {
+    Ok(match s {
+        "Win" => BattleOutcome::Win,
+        "Loss" => BattleOutcome::Loss,
+        "Draw" => BattleOutcome::Draw,
+        other => anyhow::bail!("unknown outcome {:?}", other),
+    })
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
+    s
+}
+
+fn hex_decode_32(s: &str) -> anyhow::Result<[u8; 32]> {
+    if s.len() != 64 {
+        anyhow::bail!("expected 64 hex chars, got {}", s.len());
+    }
+    let mut out = [0u8; 32];
+    for i in 0..32 {
+        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)?;
+    }
+    Ok(out)
+}
+
+impl Fingerprint {
+    fn to_text(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("shadow_packets_sha256 = {}\n", hex_encode(&self.shadow_packets_sha256)));
+        for r in &self.rounds {
+            s.push_str(&format!("round {} = {} @ {}\n", r.index, outcome_str(r.outcome), r.tick));
+        }
+        s
+    }
+
+    fn from_text(text: &str) -> anyhow::Result<Self> {
+        let mut shadow_packets_sha256 = None;
+        let mut rounds = vec![];
+        for (lineno, raw) in text.lines().enumerate() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let lineno = lineno + 1;
+            if let Some(rest) = line.strip_prefix("shadow_packets_sha256 = ") {
+                shadow_packets_sha256 = Some(hex_decode_32(rest)?);
+            } else if let Some(rest) = line.strip_prefix("round ") {
+                // format: "round <idx> = <outcome> @ <tick>"
+                let (idx_str, after_idx) = rest
+                    .split_once(" = ")
+                    .ok_or_else(|| anyhow::anyhow!("line {}: missing ' = '", lineno))?;
+                let (outcome_str, tick_str) = after_idx
+                    .split_once(" @ ")
+                    .ok_or_else(|| anyhow::anyhow!("line {}: missing ' @ '", lineno))?;
+                rounds.push(RoundFingerprint {
+                    index: idx_str.parse()?,
+                    outcome: parse_outcome(outcome_str)?,
+                    tick: tick_str.parse()?,
+                });
+            } else {
+                anyhow::bail!("line {}: unrecognized: {:?}", lineno, line);
+            }
+        }
+        Ok(Fingerprint {
+            shadow_packets_sha256: shadow_packets_sha256
+                .ok_or_else(|| anyhow::anyhow!("missing shadow_packets_sha256"))?,
+            rounds,
+        })
+    }
 }
 
 fn resolve_side(
@@ -77,7 +193,158 @@ fn resolve_side(
     Ok((game, hooks))
 }
 
-fn run_one(path: &Path, roms: &HashMap<(&'static str, u8), Vec<u8>>) -> CaseResult {
+/// Custom driver that mirrors `run_prefetch` but threads a determinism
+/// fingerprint through the playback loop. Watches `output_pairs()` to
+/// hash every shadow-generated remote packet across round transitions,
+/// and snapshots `round_result()` while the round is still in the Ended
+/// phase (before `load_replay_round` clears it).
+fn compute_fingerprint(
+    local_rom: &[u8],
+    remote_rom: &[u8],
+    replay: &tango_pvp::replay::Replay,
+    local_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    remote_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+) -> anyhow::Result<Fingerprint> {
+    let mut core = mgba::core::Core::new_gba("tango-test")?;
+    core.enable_video_buffer();
+    core.as_mut().load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
+    core.as_mut()
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
+    core.as_mut().reset();
+    local_hooks.patch(core.as_mut());
+
+    let total_replay_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
+    let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+
+    use rand::SeedableRng;
+    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
+    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
+    let shadow = tango_pvp::shadow::Shadow::new_from_sram(
+        remote_rom,
+        &replay.remote_sram_dump()?,
+        remote_hooks,
+        match_type,
+        replay.is_offerer,
+        replay.local_player_index,
+        shadow_rng,
+    )?;
+    let shadow = Arc::new(Mutex::new(shadow));
+
+    let stepper_state = tango_pvp::stepper::State::new(
+        match_type,
+        replay.local_player_index,
+        replay.rounds.clone(),
+        0,
+        replay.rng_seed,
+        replay.is_offerer,
+        total_replay_ticks,
+        shadow.clone(),
+        Box::new(|| {}),
+    );
+
+    let mut traps = local_hooks.common_traps();
+    traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
+    core.set_traps(traps);
+
+    // Determinism collection. Two independent things per loop iter:
+    //   1. Hash any newly-appended `output_pairs[i].remote.packet` bytes.
+    //      output_pairs resets to [] across `load_replay_round`, so a
+    //      len drop = round transition (also signalled by round_idx).
+    //   2. Track the latest `round_result()` we've seen for the current
+    //      round and commit it when round_idx advances (clean transition)
+    //      or when the replay terminates (last round).
+    //
+    // Polling `is_round_ended()` directly is fragile: the per-game trap
+    // order varies, and on multi-round replays the Ended->InProgress
+    // round_result-clearing window may close before we next sample. The
+    // round_idx-change signal is monotonic and unambiguous.
+    let mut packet_hasher = Sha256::new();
+    let mut hashed_count: usize = 0;
+    let mut rounds: Vec<RoundFingerprint> = vec![];
+    let mut current_round_result: Option<tango_pvp::stepper::RoundResult> = None;
+    let mut last_seen_round_idx: u32 = 0;
+    let mut frames_after_drain: u32 = 0;
+    // 10s of game time should be enough for any end-of-round animation
+    // to fire round_end_set_*. Past this we give up and record whatever
+    // we have (which may be None for genuinely incomplete replays).
+    const MAX_DRAIN_FRAMES: u32 = 600;
+
+    loop {
+        let (total_left, abs_tick, round_idx, ended, result) = {
+            let inner = stepper_state.lock_inner();
+            let pairs = inner.output_pairs();
+            if pairs.len() < hashed_count {
+                hashed_count = 0;
+            }
+            for p in &pairs[hashed_count..] {
+                packet_hasher.update(&p.remote.packet);
+            }
+            hashed_count = pairs.len();
+            (
+                inner.total_input_pairs_left(),
+                inner.absolute_tick(),
+                inner.current_round_index(),
+                inner.is_round_ended(),
+                inner.round_result(),
+            )
+        };
+
+        // Round transition: commit the just-finished round's latest seen result.
+        if round_idx != last_seen_round_idx {
+            if let Some(rr) = current_round_result.take() {
+                rounds.push(RoundFingerprint {
+                    index: last_seen_round_idx,
+                    tick: rr.tick,
+                    outcome: rr.outcome,
+                });
+            }
+            last_seen_round_idx = round_idx;
+        }
+
+        // Track latest seen result for the current round. set_round_result
+        // may overwrite earlier values within the same round; we record
+        // whatever was last set before the round ends.
+        if let Some(rr) = result {
+            current_round_result = Some(rr);
+        }
+
+        if total_left == 0 && abs_tick > 0 {
+            // Last round's inputs are drained. Keep running so the game
+            // can fire round_end_set_* before we exit; stop as soon as
+            // we have both `ended` and a result, or after the budget.
+            let have_result = current_round_result.is_some();
+            if (ended && have_result) || frames_after_drain >= MAX_DRAIN_FRAMES {
+                if let Some(rr) = current_round_result.take() {
+                    rounds.push(RoundFingerprint {
+                        index: last_seen_round_idx,
+                        tick: rr.tick,
+                        outcome: rr.outcome,
+                    });
+                }
+                break;
+            }
+            frames_after_drain += 1;
+        }
+
+        core.as_mut().run_frame();
+    }
+
+    let mut shadow_packets_sha256 = [0u8; 32];
+    shadow_packets_sha256.copy_from_slice(&packet_hasher.finalize());
+
+    Ok(Fingerprint {
+        shadow_packets_sha256,
+        rounds,
+    })
+}
+
+enum CaseResult {
+    Ok,
+    Skip(String),
+    Fail(anyhow::Error),
+}
+
+fn run_one(path: &Path, roms: &HashMap<(&'static str, u8), Vec<u8>>, bless: bool) -> CaseResult {
     let replay = match std::fs::File::open(path)
         .map_err(anyhow::Error::from)
         .and_then(|mut f| Ok(tango_pvp::replay::Replay::decode(&mut f)?))
@@ -104,26 +371,12 @@ fn run_one(path: &Path, roms: &HashMap<(&'static str, u8), Vec<u8>>) -> CaseResu
         return CaseResult::Skip(format!("missing remote ROM {}/{}", remote_key.0, remote_key.1));
     };
 
-    let store = tango_pvp::replay::playback::SnapshotStore::new();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let progress = Arc::new(AtomicU32::new(0));
-
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tango_pvp::replay::playback::run_prefetch(
-            local_rom,
-            remote_rom,
-            &replay,
-            local_hooks,
-            remote_hooks,
-            store,
-            cancel,
-            progress,
-        )
+    let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compute_fingerprint(local_rom, remote_rom, &replay, local_hooks, remote_hooks)
     }));
-
-    match result {
-        Ok(Ok(())) => CaseResult::Ok,
-        Ok(Err(e)) => CaseResult::Fail(e),
+    let computed = match computed {
+        Ok(Ok(fp)) => fp,
+        Ok(Err(e)) => return CaseResult::Fail(e),
         Err(panic) => {
             let msg = if let Some(s) = panic.downcast_ref::<&'static str>() {
                 (*s).to_string()
@@ -132,9 +385,62 @@ fn run_one(path: &Path, roms: &HashMap<(&'static str, u8), Vec<u8>>) -> CaseResu
             } else {
                 "<non-string panic payload>".to_string()
             };
-            CaseResult::Fail(anyhow::anyhow!("panic during playback: {}", msg))
+            return CaseResult::Fail(anyhow::anyhow!("panic during playback: {}", msg));
         }
+    };
+
+    let expected_path = path.with_extension("tangoreplay.expected");
+
+    if bless {
+        if let Err(e) = std::fs::write(&expected_path, computed.to_text()) {
+            return CaseResult::Fail(anyhow::anyhow!("write expected {}: {}", expected_path.display(), e));
+        }
+        return CaseResult::Ok;
     }
+
+    let expected_text = match std::fs::read_to_string(&expected_path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return CaseResult::Fail(anyhow::anyhow!(
+                "missing expected file {} (run with TANGO_GOLDEN_BLESS=1 to create)",
+                expected_path.display()
+            ));
+        }
+        Err(e) => return CaseResult::Fail(e.into()),
+    };
+    let expected = match Fingerprint::from_text(&expected_text) {
+        Ok(fp) => fp,
+        Err(e) => {
+            return CaseResult::Fail(anyhow::anyhow!(
+                "parse expected {}: {}",
+                expected_path.display(),
+                e
+            ));
+        }
+    };
+
+    if computed != expected {
+        return CaseResult::Fail(diff_fingerprints(&expected, &computed));
+    }
+    CaseResult::Ok
+}
+
+fn diff_fingerprints(expected: &Fingerprint, actual: &Fingerprint) -> anyhow::Error {
+    let mut diffs = vec![];
+    if expected.shadow_packets_sha256 != actual.shadow_packets_sha256 {
+        diffs.push(format!(
+            "shadow_packets_sha256: expected {} got {}",
+            hex_encode(&expected.shadow_packets_sha256),
+            hex_encode(&actual.shadow_packets_sha256),
+        ));
+    }
+    if expected.rounds != actual.rounds {
+        diffs.push(format!(
+            "rounds:\n  expected: {:?}\n  actual:   {:?}",
+            expected.rounds, actual.rounds,
+        ));
+    }
+    anyhow::anyhow!("fingerprint mismatch (re-bless with TANGO_GOLDEN_BLESS=1 if intentional):\n  {}", diffs.join("\n  "))
 }
 
 #[test]
@@ -149,6 +455,8 @@ fn golden_replays() {
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("tangoreplay"))
         .collect();
     replays.sort();
+
+    let bless = bless_mode();
 
     if roms.is_empty() {
         eprintln!(
@@ -170,9 +478,9 @@ fn golden_replays() {
             .unwrap()
             .to_string_lossy()
             .into_owned();
-        match run_one(replay_path, &roms) {
+        match run_one(replay_path, &roms, bless) {
             CaseResult::Ok => {
-                eprintln!("ok   {}", name);
+                eprintln!("{}   {}", if bless { "bless" } else { "ok " }, name);
                 passed += 1;
             }
             CaseResult::Skip(reason) => {
@@ -187,8 +495,9 @@ fn golden_replays() {
     }
 
     eprintln!(
-        "\nsummary: {} ok, {} failed, {} skipped (of {} total)",
+        "\nsummary: {} {}, {} failed, {} skipped (of {} total)",
         passed,
+        if bless { "blessed" } else { "ok" },
         failed.len(),
         skipped.len(),
         replays.len(),
