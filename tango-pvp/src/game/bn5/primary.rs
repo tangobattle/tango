@@ -15,7 +15,7 @@ pub(super) fn traps(
             Box::new(move |core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
-                munger.start_battle_from_comm_menu(core, match_.match_type().0);
+                munger.start_battle_from_comm_menu(core, match_.match_type().0 * 2 + match_.match_type().1);
             })
         }),
         (hooks.offsets.rom.round_set_ending, {
