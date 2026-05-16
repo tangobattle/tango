@@ -10,17 +10,13 @@
 //!   - shadow_packets_sha256 -- SHA256 of every shadow-generated remote
 //!     packet across all rounds. Catches any divergence in the shadow's
 //!     per-tick behavior.
+//!   - final_ram_sha256 -- SHA256 of the playback core's WRAM + IWRAM
+//!     at the deterministic moment all replay inputs are consumed.
+//!     The local core's RTC is pinned via `Core::set_rtc_fixed` to the
+//!     replay's metadata timestamp; without that pin exe45 reads the
+//!     host wallclock into WRAM and the hash drifts between runs.
 //!   - per-round outcomes -- (index, tick, Win/Loss/Draw). Human-readable
 //!     summary that makes failures interpretable without a hash diff.
-//!
-//! A local-core RAM hash was prototyped and abandoned: exe45 reads the
-//! cart's GPIO RTC chip (mgba seeds the RTC's `unixTime` callback from
-//! host wallclock) and stores BCD-encoded seconds into WRAM, so two
-//! runs minutes apart see four bytes differ at WRAM+0xf856/0xf860 and
-//! adjacent. Other BN games either don't read RTC in the battle path
-//! or the difference doesn't perturb shadow output. To make a RAM hash
-//! viable we'd need to install a fixed `mRTCSource` on the core (mgba
-//! exposes one) -- not worth the plumbing yet.
 //!
 //! Set `TANGO_GOLDEN_BLESS=1` to overwrite the sidecars from the current
 //! run instead of asserting against them. Use this after an intentional
@@ -92,6 +88,7 @@ struct RoundFingerprint {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Fingerprint {
     shadow_packets_sha256: [u8; 32],
+    final_ram_sha256: [u8; 32],
     rounds: Vec<RoundFingerprint>,
 }
 
@@ -135,6 +132,7 @@ impl Fingerprint {
     fn to_text(&self) -> String {
         let mut s = String::new();
         s.push_str(&format!("shadow_packets_sha256 = {}\n", hex_encode(&self.shadow_packets_sha256)));
+        s.push_str(&format!("final_ram_sha256 = {}\n", hex_encode(&self.final_ram_sha256)));
         for r in &self.rounds {
             s.push_str(&format!("round {} = {} @ {}\n", r.index, outcome_str(r.outcome), r.tick));
         }
@@ -143,6 +141,7 @@ impl Fingerprint {
 
     fn from_text(text: &str) -> anyhow::Result<Self> {
         let mut shadow_packets_sha256 = None;
+        let mut final_ram_sha256 = None;
         let mut rounds = vec![];
         for (lineno, raw) in text.lines().enumerate() {
             let line = raw.trim();
@@ -152,6 +151,8 @@ impl Fingerprint {
             let lineno = lineno + 1;
             if let Some(rest) = line.strip_prefix("shadow_packets_sha256 = ") {
                 shadow_packets_sha256 = Some(hex_decode_32(rest)?);
+            } else if let Some(rest) = line.strip_prefix("final_ram_sha256 = ") {
+                final_ram_sha256 = Some(hex_decode_32(rest)?);
             } else if let Some(rest) = line.strip_prefix("round ") {
                 // format: "round <idx> = <outcome> @ <tick>"
                 let (idx_str, after_idx) = rest
@@ -172,6 +173,8 @@ impl Fingerprint {
         Ok(Fingerprint {
             shadow_packets_sha256: shadow_packets_sha256
                 .ok_or_else(|| anyhow::anyhow!("missing shadow_packets_sha256"))?,
+            final_ram_sha256: final_ram_sha256
+                .ok_or_else(|| anyhow::anyhow!("missing final_ram_sha256"))?,
             rounds,
         })
     }
@@ -211,6 +214,10 @@ fn compute_fingerprint(
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
         .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
+    // Pin the cart RTC before reset so games that surface RTC into RAM
+    // (e.g. exe45) produce a byte-stable fingerprint.
+    let replay_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(replay.metadata.ts);
+    core.set_rtc_fixed(replay_time);
     core.as_mut().reset();
     local_hooks.patch(core.as_mut());
 
@@ -265,6 +272,10 @@ fn compute_fingerprint(
     let mut current_round_result: Option<tango_pvp::stepper::RoundResult> = None;
     let mut last_seen_round_idx: u32 = 0;
     let mut frames_after_drain: u32 = 0;
+    // Snapshot WRAM+IWRAM at the deterministic moment all inputs are
+    // drained, not at loop exit. The exit point can fuzz by a frame
+    // depending on per-game round_end_* timing; this point can't.
+    let mut ram_snapshot: Option<(Vec<u8>, Vec<u8>)> = None;
     // 10s of game time should be enough for any end-of-round animation
     // to fire round_end_set_*. Past this we give up and record whatever
     // we have (which may be None for genuinely incomplete replays).
@@ -310,6 +321,10 @@ fn compute_fingerprint(
         }
 
         if total_left == 0 && abs_tick > 0 {
+            if ram_snapshot.is_none() {
+                let s = core.as_mut().save_state()?;
+                ram_snapshot = Some((s.wram().to_vec(), s.iwram().to_vec()));
+            }
             // Last round's inputs are drained. Keep running so the game
             // can fire round_end_set_* before we exit; stop as soon as
             // we have both `ended` and a result, or after the budget.
@@ -330,11 +345,20 @@ fn compute_fingerprint(
         core.as_mut().run_frame();
     }
 
+    let (wram, iwram) = ram_snapshot
+        .ok_or_else(|| anyhow::anyhow!("replay exited before consuming any inputs"))?;
+    let mut ram_hasher = Sha256::new();
+    ram_hasher.update(&wram);
+    ram_hasher.update(&iwram);
+
     let mut shadow_packets_sha256 = [0u8; 32];
     shadow_packets_sha256.copy_from_slice(&packet_hasher.finalize());
+    let mut final_ram_sha256 = [0u8; 32];
+    final_ram_sha256.copy_from_slice(&ram_hasher.finalize());
 
     Ok(Fingerprint {
         shadow_packets_sha256,
+        final_ram_sha256,
         rounds,
     })
 }
@@ -433,6 +457,13 @@ fn diff_fingerprints(expected: &Fingerprint, actual: &Fingerprint) -> anyhow::Er
             "shadow_packets_sha256: expected {} got {}",
             hex_encode(&expected.shadow_packets_sha256),
             hex_encode(&actual.shadow_packets_sha256),
+        ));
+    }
+    if expected.final_ram_sha256 != actual.final_ram_sha256 {
+        diffs.push(format!(
+            "final_ram_sha256: expected {} got {}",
+            hex_encode(&expected.final_ram_sha256),
+            hex_encode(&actual.final_ram_sha256),
         ));
     }
     if expected.rounds != actual.rounds {

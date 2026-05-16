@@ -9,6 +9,10 @@ pub struct Core {
     pub(super) ptr: *mut mgba_sys::mCore,
     video_buffer: Option<Vec<u8>>,
     trapper: Option<trapper::Trapper>,
+    // Box so the heap location stays stable across Core moves; mgba's
+    // mCoreSetRTC stores a `*mut mRTCSource` that points inside this
+    // allocation and dereferences it on every cart RTC read.
+    rtc: Option<Box<mgba_sys::mRTCGenericSource>>,
 }
 
 unsafe impl Send for Core {}
@@ -38,7 +42,29 @@ impl Core {
             ptr,
             video_buffer: None,
             trapper: None,
+            rtc: None,
         })
+    }
+
+    /// Pin the cart's RTC chip to a fixed time instead of host wallclock.
+    /// Required for byte-stable replay playback of games that store RTC
+    /// reads into RAM (e.g. BN4.5 surfaces seconds into WRAM). Call
+    /// before `reset()` -- the game reads RTC during boot. Times before
+    /// the unix epoch clamp to the epoch (the cart RTC has nowhere
+    /// sensible to represent them).
+    pub fn set_rtc_fixed(&mut self, time: std::time::SystemTime) {
+        let unix_seconds = time
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut rtc = Box::new(unsafe { std::mem::zeroed::<mgba_sys::mRTCGenericSource>() });
+        unsafe {
+            mgba_sys::mRTCGenericSourceInit(rtc.as_mut() as *mut _, self.ptr);
+            rtc.override_ = mgba_sys::mRTCGenericType_RTC_FIXED;
+            rtc.value = unix_seconds;
+            mgba_sys::mCoreSetRTC(self.ptr, &mut rtc.d as *mut _);
+        }
+        self.rtc = Some(rtc);
     }
 
     pub fn enable_video_buffer(&mut self) {

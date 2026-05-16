@@ -1,3 +1,4 @@
 shadow_packets_sha256 = ebd6941b8def51f6dd40ba1c66ab40485e4e38764ef861d04ef46afa51e7d513
+final_ram_sha256 = 8d5472a2fac22e59ebf0130fb3f3ea347247b55516f508443b65ce11501cca15
 round 0 = Loss @ 10920
 round 1 = Loss @ 6764
