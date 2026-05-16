@@ -13,13 +13,14 @@
 //!   - per-round outcomes -- (index, tick, Win/Loss/Draw). Human-readable
 //!     summary that makes failures interpretable without a hash diff.
 //!
-//! A local-core RAM hash was prototyped and abandoned: even after
-//! restricting to WRAM+IWRAM and snapshotting at a deterministic moment,
-//! exe45 specifically produced different bytes across runs without
-//! perturbing shadow output. Likely mgba's per-process EWRAM allocation
-//! leaves some bytes whose initial contents the game's unused regions
-//! never overwrite. The shadow_packets digest is independent of this and
-//! still catches any real cross-run divergence.
+//! A local-core RAM hash was prototyped and abandoned: exe45 reads the
+//! cart's GPIO RTC chip (mgba seeds the RTC's `unixTime` callback from
+//! host wallclock) and stores BCD-encoded seconds into WRAM, so two
+//! runs minutes apart see four bytes differ at WRAM+0xf856/0xf860 and
+//! adjacent. Other BN games either don't read RTC in the battle path
+//! or the difference doesn't perturb shadow output. To make a RAM hash
+//! viable we'd need to install a fixed `mRTCSource` on the core (mgba
+//! exposes one) -- not worth the plumbing yet.
 //!
 //! Set `TANGO_GOLDEN_BLESS=1` to overwrite the sidecars from the current
 //! run instead of asserting against them. Use this after an intentional
