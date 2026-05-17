@@ -1,16 +1,22 @@
 //! Netplay state + connection lifecycle.
 //!
-//! Round-1 scope wired `tango_signaling::connect` so Play with a link
-//! code lights up the WebRTC data channel. Round 2 splits the channel
-//! into Sender + Receiver and runs the Hello-exchange `negotiate()`
-//! handshake from `crate::net` — after which the lifecycle lands in
-//! the Lobby phase. Settings exchange + the live battle loop come in
-//! subsequent rounds.
-//!
 //! Phase transitions:
-//! `Idle → Connecting → Negotiating → Lobby` (or `→ Failed`).
+//! `Idle → Connecting → Negotiating → Lobby` (any → `Failed` on
+//! error; any → `Idle` on user Disconnect). A live [`CancellationToken`]
+//! kept on the State aborts the in-flight async task on Disconnect /
+//! re-Connect — without it the orphaned future would keep racing the
+//! new one and clobber state when it eventually resolved. Each
+//! Message handler verifies `phase` before applying so late results
+//! from a cancelled task no-op cleanly.
+//!
+//! The lobby background loop (post-negotiate) lives in an iced
+//! `Subscription::run_with_id`-keyed by `session_id`, so a fresh
+//! Connect tears the previous subscription down by changing the id.
+//! The loop pings every second + reads packets — anything other
+//! than Ping/Pong/Settings ends the session with `Failed`.
 
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 /// Same protocol version the legacy app speaks (`tango/src/net/protocol.rs`).
 /// Bumped in lockstep with the signaling server's allowlist; keep
@@ -29,8 +35,8 @@ pub enum Phase {
     /// Data channel up; exchanging Hello packets / verifying both
     /// peers speak the same `protocol::VERSION`.
     Negotiating { link_code: String },
-    /// Both peers agreed on the protocol. Ready for settings
-    /// exchange (round 3) and then match start.
+    /// Both peers agreed on the protocol. Lobby loop is running in
+    /// the background; settings exchange + match start come next.
     Lobby { link_code: String },
     /// Last attempt failed. Stays here until the user starts a new
     /// connection or clears the field.
@@ -43,18 +49,43 @@ impl Default for Phase {
     }
 }
 
-#[derive(Default)]
 pub struct State {
     pub phase: Phase,
-    /// Live connection objects, when post-Connecting. Cleared on
+    /// Live connection objects, when post-negotiate. Cleared on
     /// Disconnect / Failed / on the next Connect.
     conn: Option<ConnectionHandles>,
+    /// Cancellation token shared with every in-flight async task
+    /// (signaling, negotiate, lobby loop). `Disconnect` calls
+    /// `cancel()`, which makes the running task short-circuit via
+    /// the `tokio::select!` arms below; the late result Message
+    /// then no-ops because `phase` no longer matches.
+    cancel: CancellationToken,
+    /// Monotonic counter for the iced subscription key. Bumped on
+    /// every Connect so the prior lobby subscription is torn down
+    /// even if the user reconnects within the same Phase::Lobby.
+    session_id: u64,
+    /// Receiver handed off to the lobby subscription on first poll.
+    /// Stored as a once-take Arc<Mutex<Option<_>>> so the closure
+    /// can take it without needing &mut access to the State.
+    pending_receiver: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            phase: Phase::Idle,
+            conn: None,
+            cancel: CancellationToken::new(),
+            session_id: 0,
+            pending_receiver: Arc::new(parking_lot::Mutex::new(None)),
+        }
+    }
 }
 
 /// Handles we hang onto for the duration of a connected session:
-/// the Sender (locked behind a tokio Mutex because future rounds
-/// will share it with the lobby ping loop + the battle loop), and
-/// the peer-connection itself so the underlying RTC stays up.
+/// the Sender (locked behind a tokio Mutex because the lobby loop
+/// + the eventual battle loop share it), and the peer-connection
+/// itself so the underlying RTC stays up.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -67,17 +98,28 @@ pub enum Message {
     /// User pressed Play with a link code. Kicks off the async
     /// connect task.
     Connect { link_code: String, endpoint: String },
-    /// Tear down the active / pending connection.
+    /// Tear down the active / pending connection. Cancels the
+    /// running async task; drops the connection handles.
     Disconnect,
     /// Internal: the signaling + WebRTC handshake resolved. We then
     /// kick off the protocol negotiate task before lifecycle moves
     /// out of Connecting.
     SignalingDone(Slot<ConnectionPayload>),
     /// Internal: protocol negotiate succeeded. Receiver is parked
-    /// in the slot for the lobby / match loops to pick up later.
+    /// in the slot for the lobby subscription to take.
     NegotiationDone(Slot<NegotiationOutput>),
-    /// Internal: any step (signaling, datachannel, negotiate) failed.
+    /// Internal: any step (signaling, datachannel, negotiate, or
+    /// lobby loop) failed. Includes the user-readable error
+    /// message.
     Failed(String),
+    /// Internal: lobby loop noticed the peer disconnected (data
+    /// channel closed cleanly without a Failed-worthy error).
+    /// We end the session quietly back at Idle.
+    PeerDisconnected,
+    /// Internal: lobby loop measured a round-trip ping. Doesn't
+    /// affect phase; reserved for the latency-indicator we'll
+    /// surface in a later round.
+    PingMeasured(std::time::Duration),
 }
 
 /// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
@@ -98,9 +140,9 @@ impl std::fmt::Debug for ConnectionPayload {
     }
 }
 
-/// Output of the negotiate task — the post-handshake sender / receiver
-/// (the lobby + match loops own them from here) and the peer-conn
-/// handle they need to stay alive against.
+/// Output of the negotiate task — the post-handshake sender /
+/// receiver (the lobby + match loops own them from here) and the
+/// peer-conn handle they need to stay alive against.
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
@@ -122,43 +164,44 @@ impl State {
         !matches!(self.phase, Phase::Idle | Phase::Failed { .. })
     }
 
+    /// Reset the cancellation token + bump session_id. Called from
+    /// every transition that starts or stops async work so the
+    /// background tasks notice and the subscription rekeys.
+    fn cancel_and_renew(&mut self) {
+        self.cancel.cancel();
+        self.cancel = CancellationToken::new();
+        self.session_id = self.session_id.wrapping_add(1);
+        *self.pending_receiver.lock() = None;
+        self.conn = None;
+    }
+
     /// Apply a Message. Returns the iced Task to schedule for any
-    /// async follow-up — currently the signaling handshake and the
-    /// post-connect `negotiate()`.
+    /// async follow-up.
     pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
         match msg {
             Message::Connect { link_code, endpoint } => {
-                self.conn = None;
+                self.cancel_and_renew();
                 self.phase = Phase::Connecting {
                     link_code: link_code.clone(),
                 };
+                let cancel = self.cancel.clone();
                 iced::Task::perform(
-                    async move { run_connect(endpoint, link_code).await },
-                    |result| match result {
-                        Ok(payload) => Message::SignalingDone(slot(payload)),
-                        Err(e) => Message::Failed(e),
-                    },
+                    run_connect(endpoint, link_code, cancel),
+                    map_connect_result,
                 )
             }
             Message::SignalingDone(slot_rx) => {
                 let link_code = match &self.phase {
                     Phase::Connecting { link_code } => link_code.clone(),
+                    // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
                 let Some(payload) = slot_rx.lock().take() else {
                     return iced::Task::none();
                 };
                 self.phase = Phase::Negotiating { link_code };
-                // Split the channel + run protocol::negotiate on a
-                // tokio task. Sender stays in the slot bundle so we
-                // can drop it back into State on success.
-                iced::Task::perform(
-                    async move { run_negotiate(payload).await },
-                    |result| match result {
-                        Ok(out) => Message::NegotiationDone(slot(out)),
-                        Err(e) => Message::Failed(e),
-                    },
-                )
+                let cancel = self.cancel.clone();
+                iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
             }
             Message::NegotiationDone(slot_rx) => {
                 let link_code = match &self.phase {
@@ -168,25 +211,37 @@ impl State {
                 let Some(out) = slot_rx.lock().take() else {
                     return iced::Task::none();
                 };
-                // Drop the receiver for now — the lobby + match
-                // loops in later rounds will own it. Sender + peer
-                // conn stay alive in self.conn so the channel
-                // doesn't tear down.
-                let NegotiationOutput { sender, peer_conn, receiver: _ } = out;
                 self.conn = Some(ConnectionHandles {
-                    sender,
-                    _peer_conn: peer_conn,
+                    sender: out.sender,
+                    _peer_conn: out.peer_conn,
                 });
+                // Park the receiver for the lobby subscription to
+                // pick up on its first poll.
+                *self.pending_receiver.lock() = Some(out.receiver);
                 self.phase = Phase::Lobby { link_code };
                 iced::Task::none()
             }
+            Message::PingMeasured(_dur) => {
+                // Latency UI surface comes later; the ping itself
+                // matters as a liveness check, which the lobby
+                // loop is already doing.
+                iced::Task::none()
+            }
             Message::Failed(e) => {
-                self.conn = None;
+                self.cancel_and_renew();
                 self.phase = Phase::Failed { error: e };
                 iced::Task::none()
             }
+            Message::PeerDisconnected => {
+                // Clean remote-side close (data channel went None
+                // without a Failed-worthy error). Quietly return
+                // to Idle.
+                self.cancel_and_renew();
+                self.phase = Phase::Idle;
+                iced::Task::none()
+            }
             Message::Disconnect => {
-                self.conn = None;
+                self.cancel_and_renew();
                 self.phase = Phase::Idle;
                 iced::Task::none()
             }
@@ -194,43 +249,165 @@ impl State {
     }
 }
 
+/// Subscription that runs the lobby background loop while we're in
+/// Phase::Lobby. Re-keyed on `session_id` so a fresh Connect tears
+/// the previous loop down, and short-circuits to empty when we're
+/// not in the lobby phase.
+pub fn subscription(state: &State) -> iced::Subscription<Message> {
+    if !matches!(state.phase, Phase::Lobby { .. }) {
+        return iced::Subscription::none();
+    }
+    let Some(handles) = state.conn.as_ref() else {
+        return iced::Subscription::none();
+    };
+    let sender = handles.sender.clone();
+    let pending = state.pending_receiver.clone();
+    let cancel = state.cancel.clone();
+    iced::Subscription::run_with_id(
+        ("netplay-lobby", state.session_id),
+        iced::stream::channel(16, move |tx| async move {
+            let Some(receiver) = pending.lock().take() else {
+                return;
+            };
+            run_lobby_loop(receiver, sender, tx, cancel).await;
+        }),
+    )
+}
+
 fn slot<T>(payload: T) -> Slot<T> {
     Arc::new(parking_lot::Mutex::new(Some(payload)))
 }
 
-/// Split the data channel into its sender + receiver halves and run
-/// `protocol::negotiate` (Hello exchange) on top. Returns the post-
-/// handshake sender/receiver bundled with the peer-conn handle.
-async fn run_negotiate(payload: ConnectionPayload) -> Result<NegotiationOutput, String> {
+fn map_connect_result(result: Result<ConnectionPayload, String>) -> Message {
+    match result {
+        Ok(payload) => Message::SignalingDone(slot(payload)),
+        Err(e) => Message::Failed(e),
+    }
+}
+
+fn map_negotiate_result(result: Result<NegotiationOutput, String>) -> Message {
+    match result {
+        Ok(out) => Message::NegotiationDone(slot(out)),
+        Err(e) => Message::Failed(e),
+    }
+}
+
+/// Run the two-stage signaling handshake (`connect()` websocket +
+/// the WebRTC ICE exchange) until the data channel is open. Aborts
+/// cleanly if the cancellation token fires.
+async fn run_connect(
+    endpoint: String,
+    link_code: String,
+    cancel: CancellationToken,
+) -> Result<ConnectionPayload, String> {
+    let work = async {
+        let connecting = tango_signaling::connect(
+            &endpoint,
+            &link_code,
+            // None = let the server pick: STUN by default, TURN
+            // when peers can't reach each other directly.
+            None,
+            PROTOCOL_VERSION,
+        )
+        .await
+        .map_err(|e| format!("signaling: {e}"))?;
+        let (dc, peer_conn) = connecting.await.map_err(|e| format!("webrtc: {e}"))?;
+        Ok::<_, String>(ConnectionPayload { dc, peer_conn })
+    };
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err("cancelled".to_string()),
+        out = work => out,
+    }
+}
+
+/// Split the data channel + run `protocol::negotiate`. Aborts on
+/// cancel.
+async fn run_negotiate(
+    payload: ConnectionPayload,
+    cancel: CancellationToken,
+) -> Result<NegotiationOutput, String> {
     let ConnectionPayload { dc, peer_conn } = payload;
     let (dc_tx, dc_rx) = dc.split();
     let mut sender = crate::net::Sender::new(dc_tx);
     let mut receiver = crate::net::Receiver::new(dc_rx);
-    crate::net::negotiate(&mut sender, &mut receiver)
-        .await
-        .map_err(|e| format!("negotiate: {e}"))?;
-    Ok(NegotiationOutput {
-        sender: Arc::new(tokio::sync::Mutex::new(sender)),
-        receiver,
-        peer_conn,
-    })
+    let work = crate::net::negotiate(&mut sender, &mut receiver);
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err("cancelled".to_string()),
+        result = work => {
+            result.map_err(|e| format!("negotiate: {e}"))?;
+            Ok(NegotiationOutput {
+                sender: Arc::new(tokio::sync::Mutex::new(sender)),
+                receiver,
+                peer_conn,
+            })
+        }
+    }
 }
 
-/// Run the two-stage signaling handshake: open the websocket
-/// (`connect()`), then drive the WebRTC ICE exchange (`Connecting`
-/// future) until the data channel is open. Returns a `String` error
-/// on failure so the message can stay `Clone`.
-async fn run_connect(endpoint: String, link_code: String) -> Result<ConnectionPayload, String> {
-    let connecting = tango_signaling::connect(
-        &endpoint,
-        &link_code,
-        // `use_relay = None` lets the server pick — STUN by default,
-        // TURN if the peers can't reach each other directly.
-        None,
-        PROTOCOL_VERSION,
-    )
-    .await
-    .map_err(|e| format!("signaling: {e}"))?;
-    let (dc, peer_conn) = connecting.await.map_err(|e| format!("webrtc: {e}"))?;
-    Ok(ConnectionPayload { dc, peer_conn })
+/// Lobby background loop: pings every second, reads incoming
+/// packets, responds to Ping with Pong, measures Pong RTT. Any
+/// other packet kind for now is logged and ignored (Settings /
+/// Commit / Chunk wiring lands in the next round). Exits cleanly
+/// when the cancel token fires; emits `PeerDisconnected` on a
+/// clean channel close, `Failed` on a transport error.
+async fn run_lobby_loop(
+    mut receiver: crate::net::Receiver,
+    sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    mut tx: futures::channel::mpsc::Sender<Message>,
+    cancel: CancellationToken,
+) {
+    use futures::SinkExt;
+    let mut ping_timer = tokio::time::interval(crate::net::PING_INTERVAL);
+    // First interval tick fires immediately by default; skip so
+    // we don't ping before the peer is ready.
+    ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut last_ping_sent: Option<std::time::SystemTime> = None;
+    loop {
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return,
+            _ = ping_timer.tick() => {
+                let ts = std::time::SystemTime::now();
+                last_ping_sent = Some(ts);
+                if let Err(e) = sender.lock().await.send_ping(ts).await {
+                    log::warn!("lobby: send_ping failed: {e}");
+                    let _ = tx.send(Message::Failed(format!("ping: {e}"))).await;
+                    return;
+                }
+            }
+            packet = receiver.receive() => {
+                match packet {
+                    Ok(crate::net::protocol::Packet::Ping(p)) => {
+                        if let Err(e) = sender.lock().await.send_pong(p.ts).await {
+                            log::warn!("lobby: send_pong failed: {e}");
+                            let _ = tx.send(Message::Failed(format!("pong: {e}"))).await;
+                            return;
+                        }
+                    }
+                    Ok(crate::net::protocol::Packet::Pong(p)) => {
+                        if let Ok(dt) = std::time::SystemTime::now().duration_since(p.ts) {
+                            let _ = tx.send(Message::PingMeasured(dt)).await;
+                        }
+                        let _ = last_ping_sent.take();
+                    }
+                    Ok(other) => {
+                        // Round 4 will handle these in earnest.
+                        log::debug!("lobby: ignoring {:?}", std::mem::discriminant(&other));
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                        log::info!("lobby: peer disconnected (channel closed)");
+                        let _ = tx.send(Message::PeerDisconnected).await;
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!("lobby: receive failed: {e}");
+                        let _ = tx.send(Message::Failed(format!("recv: {e}"))).await;
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }

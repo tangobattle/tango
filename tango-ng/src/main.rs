@@ -418,7 +418,10 @@ impl App {
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        session::subscription(&self.session).map(Message::Session)
+        iced::Subscription::batch([
+            session::subscription(&self.session).map(Message::Session),
+            netplay::subscription(&self.netplay).map(Message::Netplay),
+        ])
     }
 
     fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<tabs::play::Message> {
