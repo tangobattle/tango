@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// Bumped in lockstep with the signaling server's allowlist; keep
 /// this in sync or the server rejects the handshake with
 /// `AbortReason::ProtocolVersionTooOld` / `TooNew`.
-pub const PROTOCOL_VERSION: u32 = 0x3b;
+pub const PROTOCOL_VERSION: u32 = 0x3a;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -96,13 +96,13 @@ impl State {
         match msg {
             Message::Connect { link_code, endpoint } => {
                 self.conn = None;
-                self.phase = Phase::Connecting { link_code: link_code.clone() };
+                self.phase = Phase::Connecting {
+                    link_code: link_code.clone(),
+                };
                 iced::Task::perform(
                     async move { run_connect(endpoint, link_code).await },
                     |result| match result {
-                        Ok(payload) => Message::Connected(Arc::new(parking_lot::Mutex::new(
-                            Some(payload),
-                        ))),
+                        Ok(payload) => Message::Connected(Arc::new(parking_lot::Mutex::new(Some(payload)))),
                         Err(e) => Message::Failed(e),
                     },
                 )

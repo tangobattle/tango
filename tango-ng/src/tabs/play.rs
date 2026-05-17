@@ -98,7 +98,6 @@ pub struct PlayState {
     /// Inline state for the save-management actions (rename / delete).
     pub save_action: SaveAction,
     pub link_code: String,
-    pub playing: bool,
     /// Transient one-shot status message shown beneath the link-code
     /// input; reset by the next user action. Used today to flag that
     /// netplay isn't implemented; will likely host real lobby status
@@ -128,7 +127,6 @@ impl Default for PlayState {
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             link_code: String::new(),
-            playing: false,
             flash_status: None,
         }
     }
@@ -472,19 +470,17 @@ impl PlayState {
         lang: &'a LanguageIdentifier,
         netplay: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
-        let netplay_active = !matches!(
-            netplay,
-            crate::netplay::Phase::Idle | crate::netplay::Phase::Failed { .. }
-        );
-        let play_button: Element<'a, Message> = if self.playing || netplay_active {
+        use crate::netplay::Phase;
+        // The Play tab is only visible when no session is running
+        // (App::view dispatches to session::view otherwise), so the
+        // only "in-progress" state we need to surface here is netplay.
+        // Cancel = disconnect, all phases other than Idle / Failed.
+        let netplay_in_flight = matches!(netplay, Phase::Connecting { .. } | Phase::Connected { .. });
+        let play_button: Element<'a, Message> = if netplay_in_flight {
             icons::labeled_icon_button(
                 icons::CLOSE,
                 t(lang, "play-cancel"),
-                if netplay_active {
-                    Message::NetplayDisconnect
-                } else {
-                    Message::PlayPressed
-                },
+                Message::NetplayDisconnect,
                 PRIMARY_TEXT_SIZE,
                 PRIMARY_PADDING,
                 button::danger,
@@ -500,18 +496,20 @@ impl PlayState {
             )
         };
 
+        // flash_status (single-player launch error etc.) takes priority
+        // over the netplay phase label.
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
             text(flash.clone()).size(12).style(text::danger).into()
         } else {
             match netplay {
-                crate::netplay::Phase::Connecting { link_code } => text(format!(
+                Phase::Connecting { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-connecting")
                 ))
                 .size(13)
                 .style(text::primary)
                 .into(),
-                crate::netplay::Phase::Connected { link_code } => text(format!(
+                Phase::Connected { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-connected")
                 ))
@@ -520,22 +518,13 @@ impl PlayState {
                     color: Some(theme.palette().success),
                 })
                 .into(),
-                crate::netplay::Phase::Failed { error } => {
+                Phase::Failed { error } => {
                     text(format!("{}: {error}", t(lang, "play-status-failed")))
                         .size(12)
                         .style(text::danger)
                         .into()
                 }
-                crate::netplay::Phase::Idle => {
-                    if self.playing {
-                        text(t(lang, "play-status-connecting"))
-                            .size(13)
-                            .style(text::primary)
-                            .into()
-                    } else {
-                        text(t(lang, "play-status-idle")).size(12).into()
-                    }
-                }
+                Phase::Idle => text(t(lang, "play-status-idle")).size(12).into(),
             }
         };
 

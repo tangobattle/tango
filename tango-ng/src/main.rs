@@ -395,7 +395,6 @@ impl App {
                 if !self.play.link_code.trim().is_empty() =>
             {
                 self.play.flash_status = None;
-                self.play.playing = true;
                 let link_code = self.play.link_code.trim().to_string();
                 let endpoint = self.config.matchmaking_endpoint.clone();
                 self.netplay
@@ -403,7 +402,6 @@ impl App {
                     .map(Message::Netplay)
             }
             Message::Play(tabs::play::Message::NetplayDisconnect) => {
-                self.play.playing = false;
                 self.netplay
                     .update(netplay::Message::Disconnect)
                     .map(Message::Netplay)
@@ -499,7 +497,6 @@ impl App {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::SinglePlayer(s));
                         self.session.frame = None;
-                        self.play.playing = true;
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
