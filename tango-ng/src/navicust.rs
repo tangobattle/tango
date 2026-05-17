@@ -1,11 +1,13 @@
 //! NaviCust grid rendering. Ported from `tango/src/gui/save_view/navi_view/navicust_view.rs`.
-//! For BN3 the color bar carries the style name on its left
-//! edge — rasterized via ab_glyph against the bundled NotoSans
-//! font so the baked image still reads correctly when copied
-//! or exported. Outputs an RGBA image we can hand to iced's
-//! image widget.
+//! Outputs an RGBA image we can hand to iced's image widget. For BN3 the
+//! color bar carries the style name on its left edge — rasterized through
+//! cosmic-text (the same shaper iced uses, via iced's shared font system)
+//! so script-aware font fallback picks up the bundled JP / SC / TC Noto
+//! faces for non-Latin style names instead of tofu-ing out.
 
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
+use iced::advanced::graphics::text::cosmic_text;
+use iced::advanced::graphics::text::font_system as iced_font_system;
+use parking_lot::Mutex;
 use std::sync::LazyLock;
 use tango_dataview::{
     navicust::MaterializedNavicust,
@@ -13,16 +15,14 @@ use tango_dataview::{
     save::NavicustView,
 };
 
-/// Font used to bake the BN3 style label onto the color bar.
-/// Same Noto Sans face the rest of the UI uses, so the on-image
-/// label visually matches the iced widgets around it.
-static LABEL_FONT: LazyLock<FontRef<'static>> = LazyLock::new(|| {
-    FontRef::try_from_slice(include_bytes!("../../tango/fonts/NotoSans-Regular.ttf"))
-        .expect("bundled Noto Sans is a valid TTF")
-});
+/// Glyph-pixel cache. cosmic-text rasterizes glyphs through swash; the
+/// cache is just memoization keyed by (face, size, glyph) — no locale
+/// or font state, so a single static is fine.
+static SWASH_CACHE: LazyLock<Mutex<cosmic_text::SwashCache>> =
+    LazyLock::new(|| Mutex::new(cosmic_text::SwashCache::new()));
 
-const BORDER_WIDTH: f32 = 6.0;
-const SQUARE_SIZE: f32 = 60.0;
+pub const BORDER_WIDTH: f32 = 6.0;
+pub const SQUARE_SIZE: f32 = 60.0;
 
 const BG_FILL_COLOR: [u8; 4] = [0x20, 0x20, 0x20, 0xff];
 const BORDER_STROKE_COLOR: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -42,121 +42,201 @@ fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
     }
 }
 
-const PADDING_H: u32 = 20;
-const PADDING_V: u32 = 20;
+pub const PADDING_H: u32 = 20;
+pub const PADDING_V: u32 = 20;
+
+/// Map a BCP-47 language id to the Noto font family name we want
+/// cosmic-text to prefer when rasterizing the BN3 style label.
+/// Latin scripts get plain "Noto Sans"; JP/SC/TC each get their
+/// dedicated face so Han-unified codepoints render with the right
+/// regional glyph forms.
+fn family_for_locale(lang: &unic_langid::LanguageIdentifier) -> &'static str {
+    use std::str::FromStr;
+    let mut lang = lang.clone();
+    lang.maximize();
+    match lang.script {
+        Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "Noto Sans JP",
+        Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "Noto Sans SC",
+        Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "Noto Sans TC",
+        _ => "Noto Sans",
+    }
+}
 
 /// Background fill + color bar + body. For BN3 (style is Some)
 /// the bar is widened to span the body and the style name is
 /// rasterized on the left edge — same layout the legacy egui
 /// app produces.
+///
+/// `lang` selects the Noto face used to bake the BN3 style label
+/// (see `family_for_locale`).
+///
+/// `target_w`: if `Some(w)`, the composed image is Lanczos-resampled
+/// down to width `w` BEFORE the style label is baked in, then the
+/// label is rasterized at display resolution so its glyphs are
+/// pixel-crisp instead of being a re-scaled high-res blur. Pass
+/// `None` (clipboard / export path) to keep the full native size.
 pub fn render(
     materialized: &MaterializedNavicust,
     layout: &NavicustLayout,
     view: &dyn NavicustView,
     assets: &dyn Assets,
+    lang: &unic_langid::LanguageIdentifier,
+    target_w: Option<u32>,
 ) -> image::RgbaImage {
     let body = render_grid(materialized, layout, view, assets);
 
-    let color_bar = if let Some(style_id) = view.style() {
+    let style_name: Option<String> = view.style().and_then(|sid| assets.style(sid).and_then(|s| s.name()));
+    let (color_bar, tiles_w_native) = if let Some(style_id) = view.style() {
         let extra_color = assets.style(style_id).and_then(|s| s.extra_ncp_color());
-        let style_name = assets.style(style_id).and_then(|s| s.name());
         let tiles = render_color_bar_bn3(extra_color);
-        // Widen the bar to the body width so the tiles can sit
-        // flush against the right edge while the style name fits
-        // on the left. Same shape the legacy app produces.
         let mut bar = image::RgbaImage::new(body.width(), tiles.height());
         let bar_w = bar.width();
-        let bar_h = bar.height();
-        image::imageops::overlay(
-            &mut bar,
-            &tiles,
-            (bar_w - tiles.width()) as i64,
-            0,
-        );
-        if let Some(name) = style_name {
-            // Leave a small pad so the glyphs don't kiss the
-            // left edge / the tile stripe.
-            let label_pad = (BORDER_WIDTH as i64) + 4;
-            let max_label_w = (bar_w as i64) - tiles.width() as i64 - label_pad * 2;
-            if max_label_w > 0 {
-                // Noto Sans line height = ascent − descent ≈ 1.36 ×
-                // em, so an em equal to the bar height would crop
-                // top + bottom. 0.72 leaves a hair of margin while
-                // keeping the label visually present.
-                let font_height = (bar_h as f32) * 0.72;
-                rasterize_label(&mut bar, &name, label_pad, font_height, max_label_w as u32);
-            }
-        }
-        bar
+        image::imageops::overlay(&mut bar, &tiles, (bar_w - tiles.width()) as i64, 0);
+        (bar, tiles.width())
     } else {
-        render_color_bar_bn456(body.width(), view, assets)
+        (render_color_bar_bn456(body.width(), view, assets), 0)
     };
 
+    let bar_h_native = color_bar.height();
+    let bar_w_native = color_bar.width();
     let total_w = body.width() + PADDING_H * 2;
-    let total_h = body.height() + PADDING_V * 3 + color_bar.height();
-    let mut out = image::RgbaImage::new(total_w, total_h);
-    for px in out.pixels_mut() {
+    let total_h = body.height() + PADDING_V * 3 + bar_h_native;
+    let mut native = image::RgbaImage::new(total_w, total_h);
+    for px in native.pixels_mut() {
         *px = layout.background;
     }
-    image::imageops::overlay(&mut out, &color_bar, PADDING_H as i64, PADDING_V as i64);
+    image::imageops::overlay(&mut native, &color_bar, PADDING_H as i64, PADDING_V as i64);
     image::imageops::overlay(
-        &mut out,
+        &mut native,
         &body,
         PADDING_H as i64,
-        (PADDING_V + color_bar.height() + PADDING_V) as i64,
+        (PADDING_V + bar_h_native + PADDING_V) as i64,
     );
+
+    // Resize the (label-free) composite to display size if a target
+    // was requested. Nearest matches the iced image widget's pixel-art
+    // look and keeps the grid borders sharp. The label, when present,
+    // is baked AFTER this so its glyphs are rasterized at the final
+    // display resolution (cosmic-text rasterizes at the exact font
+    // size we ask for, so no scaling fuzz).
+    let (mut out, scale) = match target_w {
+        Some(w) if w < native.width() => {
+            let scale = w as f32 / native.width() as f32;
+            let new_w = w;
+            let new_h = (native.height() as f32 * scale).round() as u32;
+            (
+                image::imageops::resize(&native, new_w, new_h, image::imageops::FilterType::Nearest),
+                scale,
+            )
+        }
+        _ => (native, 1.0),
+    };
+
+    if let Some(name) = style_name {
+        // Label sits in the gap between the bar's left edge and the
+        // right-flush tile stripe, padded inward by `label_pad`.
+        let label_pad = BORDER_WIDTH + 4.0;
+        let max_label_w_native = bar_w_native as f32 - tiles_w_native as f32 - label_pad * 2.0;
+        if max_label_w_native > 0.0 {
+            let label_x0 = ((PADDING_H as f32 + label_pad) * scale).round() as i64;
+            let bar_y = (PADDING_V as f32 * scale).round() as i64;
+            let bar_h = (bar_h_native as f32 * scale).round() as u32;
+            let max_label_w = (max_label_w_native * scale).round() as u32;
+            // Noto Sans line height ≈ 1.36 × em — 0.72 × bar height
+            // leaves a hair of vertical margin while keeping the
+            // label readable.
+            let font_height = bar_h as f32 * 0.72;
+            rasterize_label(
+                &mut out,
+                &name,
+                label_x0,
+                bar_y,
+                bar_h,
+                font_height,
+                max_label_w,
+                family_for_locale(lang),
+            );
+        }
+    }
     out
 }
 
-/// Blit a left-aligned white label onto `dst` starting at `x0`,
-/// vertically centered. Glyph pixels are written as solid white
-/// with coverage as alpha — `image::imageops::overlay` later
-/// composites the whole bar (including these alpha glyphs) over
-/// the navicust background with the right blend, so we don't
-/// need to do the bg/fg mix in here. Trims trailing chars that
-/// would push the run past `max_width`.
-fn rasterize_label(dst: &mut image::RgbaImage, text: &str, x0: i64, font_height: f32, max_width: u32) {
-    let scale = PxScale::from(font_height);
-    let font = LABEL_FONT.as_scaled(scale);
-    // Center the line vertically: baseline sits at (h - line_h)/2
-    // + ascent. ab_glyph reports a positive ascent and a negative
-    // descent, so the line height collapses to ascent - descent
-    // and the centered baseline is (h + ascent + descent) / 2.
-    let h = dst.height() as f32;
-    let baseline_y = (h + font.ascent() + font.descent()) / 2.0;
+/// Blit a left-aligned white label onto `dst` inside the rect
+/// (x0, bar_y, max_width, bar_h), routing through cosmic-text via
+/// iced's shared FontSystem. The font system already has all the
+/// bundled Noto faces (Sans + JP + SC + TC + Emoji) loaded by
+/// `main.rs::main`, so cosmic-text's script-aware fallback handles
+/// CJK / emoji style names natively — no per-call font setup, no
+/// tofu.
+fn rasterize_label(
+    dst: &mut image::RgbaImage,
+    text: &str,
+    x0: i64,
+    bar_y: i64,
+    bar_h: u32,
+    font_height: f32,
+    max_width: u32,
+    family: &str,
+) {
+    let mut fs_lock = iced_font_system().write().expect("font system write lock");
+    let font_system = fs_lock.raw();
+    let mut swash = SWASH_CACHE.lock();
 
-    let mut cursor_x = x0 as f32;
-    let max_x = (x0 + max_width as i64) as f32;
-    for ch in text.chars() {
-        let glyph_id = font.glyph_id(ch);
-        let advance = font.h_advance(glyph_id);
-        if cursor_x + advance > max_x {
-            break;
+    let line_height = font_height * 1.2;
+    let metrics = cosmic_text::Metrics::new(font_height, line_height);
+    let mut buffer = cosmic_text::Buffer::new(font_system, metrics);
+    let mut buf = buffer.borrow_with(font_system);
+
+    // Cap layout width so cosmic-text trims overflow on its own.
+    buf.set_size(Some(max_width as f32), Some(line_height));
+    // Primary family is the script-appropriate Noto face for the
+    // game's locale (Sans / Sans JP / SC / TC). The shared FontSystem
+    // still falls back across the other loaded faces for codepoints
+    // the primary family lacks.
+    let attrs = cosmic_text::Attrs::new().family(cosmic_text::Family::Name(family));
+    buf.set_text(text, &attrs, cosmic_text::Shaping::Advanced, None);
+    buf.shape_until_scroll(true);
+
+    // Center the line vertically inside the bar's rect.
+    let y_offset = bar_y + ((bar_h as f32 - line_height) / 2.0).round() as i64;
+    let dst_w = dst.width() as i32;
+    let dst_h = dst.height() as i32;
+    let white = cosmic_text::Color::rgb(0xff, 0xff, 0xff);
+
+    buf.draw(&mut swash, white, |gx, gy, gw, gh, color| {
+        let a = color.a();
+        if a == 0 {
+            return;
         }
-        let glyph = glyph_id.with_scale_and_position(scale, ab_glyph::point(cursor_x, baseline_y));
-        if let Some(outlined) = font.font().outline_glyph(glyph) {
-            let bounds = outlined.px_bounds();
-            outlined.draw(|px, py, coverage| {
-                let ix = bounds.min.x as i32 + px as i32;
-                let iy = bounds.min.y as i32 + py as i32;
-                if ix < 0 || iy < 0 || ix >= dst.width() as i32 || iy >= dst.height() as i32 {
-                    return;
-                }
-                let a = (coverage.clamp(0.0, 1.0) * 255.0).round() as u8;
-                if a == 0 {
-                    return;
+        let coverage = a as f32 / 255.0;
+        let (sr, sg, sb) = (color.r() as f32, color.g() as f32, color.b() as f32);
+        for dy in 0..gh as i32 {
+            for dx in 0..gw as i32 {
+                let ix = x0 as i32 + gx + dx;
+                let iy = y_offset as i32 + gy + dy;
+                if ix < 0 || iy < 0 || ix >= dst_w || iy >= dst_h {
+                    continue;
                 }
                 let pixel = dst.get_pixel_mut(ix as u32, iy as u32);
-                // Take the max alpha so glyphs that touch don't
-                // darken the overlap by overwriting a higher
-                // coverage with a lower one.
-                if a > pixel.0[3] {
-                    pixel.0 = [255, 255, 255, a];
-                }
-            });
+                // Standard "src over dst" alpha blend. The label is
+                // baked AFTER the bar has been composited onto the
+                // opaque background, so the destination is already
+                // opaque — we blend white onto the existing color
+                // weighted by glyph coverage. The previous "max
+                // alpha" path silently skipped every pixel because
+                // it compared against alpha=255.
+                let dr = pixel.0[0] as f32;
+                let dg = pixel.0[1] as f32;
+                let db = pixel.0[2] as f32;
+                let inv = 1.0 - coverage;
+                pixel.0[0] = (sr * coverage + dr * inv).round() as u8;
+                pixel.0[1] = (sg * coverage + dg * inv).round() as u8;
+                pixel.0[2] = (sb * coverage + db * inv).round() as u8;
+                // Keep destination alpha (already opaque); no need
+                // to touch pixel.0[3].
+            }
         }
-        cursor_x += advance;
-    }
+    });
 }
 
 /// BN3-style color bar: White / Pink / Yellow / (extra from style).

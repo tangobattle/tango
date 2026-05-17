@@ -10,7 +10,7 @@ name = "tango-ng"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas"] }
+iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
 image = "0.25"
 tiny-skia = "0.11"
 serde = { version = "1", features = ["derive"] }
@@ -30,7 +30,6 @@ bincode = "1"
 async-trait = "0.1"
 gilrs = "0.10"
 rfd = "0.14"
-ab_glyph = "0.2"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 # Netplay ready-handshake: rand for the nonce, sha3 for the
 # Shake128 commitment, zstd for chunk compression, subtle for the
@@ -48,7 +47,7 @@ chrono = "0.4"
 itertools = "0.13"
 steamlocate = "2"
 zip = "0.6"
-reqwest = { version = "0.11", features = ["stream", "json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.11", features = ["stream", "json", "native-tls"], default-features = false }
 tokio = { version = "1", features = ["fs", "io-util", "time", "rt"] }
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 futures = "0.3"

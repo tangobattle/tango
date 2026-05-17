@@ -92,7 +92,7 @@ pub fn view<'a>(
                 Message::OpenRomsFolder,
                 STANDARD_TEXT_SIZE,
                 STANDARD_PADDING,
-                button::secondary,
+                icons::neutral,
             ),
             icons::labeled_icon_button(
                 icons::RESCAN,
@@ -100,7 +100,7 @@ pub fn view<'a>(
                 Message::RescanRoms,
                 STANDARD_TEXT_SIZE,
                 STANDARD_PADDING,
-                button::secondary,
+                icons::neutral,
             ),
         ]
         .spacing(8),
@@ -126,7 +126,7 @@ pub fn view<'a>(
     if can_continue {
         continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
     } else {
-        continue_btn = continue_btn.style(button::secondary);
+        continue_btn = continue_btn.style(icons::neutral);
     }
 
     let mut nickname_block = column![

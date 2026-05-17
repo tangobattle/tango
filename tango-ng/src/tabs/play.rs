@@ -407,7 +407,7 @@ impl PlayState {
                 // here, bump this.
                 container(lobby_view(lang, netplay_lobby, self.local_game, scanners))
                     .width(Fill)
-                    .height(Length::Fixed(360.0)),
+                    .height(Length::Fixed(220.0)),
             ]
             .height(Fill)
             .into(),
@@ -613,7 +613,10 @@ impl PlayState {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::ConfirmDelete => row![
-                text(t(lang, "save-delete-prompt")).style(save_view::muted_text_style).width(Length::Fill),
+                text(t(lang, "save-delete-prompt"))
+                    .size(STANDARD_TEXT_SIZE)
+                    .style(save_view::muted_text_style)
+                    .width(Length::Fill),
                 icons::labeled_icon_button(
                     icons::DELETE,
                     t(lang, "save-delete-confirm"),
@@ -996,18 +999,38 @@ fn lobby_view<'a>(
     local_game: Option<rom::GameRef>,
     scanners: &'a Scanners,
 ) -> Element<'a, Message> {
-    let side = |label: String, settings: Option<&crate::net::protocol::Settings>| -> Element<'static, Message> {
+    // Compact "you / opponent" card — 2 lines max so the lobby
+    // strip can fit in ~220 px without losing the ready button.
+    // `ready` paints a green dot when that side has committed.
+    let side = |label: String, settings: Option<&crate::net::protocol::Settings>, ready: bool| -> Element<'static, Message> {
+        let dot_color = |ready: bool| -> Element<'static, Message> {
+            let bg = if ready {
+                iced::Color::from_rgb8(0x4c, 0xaf, 0x50)
+            } else {
+                iced::Color::from_rgb8(0x66, 0x66, 0x66)
+            };
+            container(iced::widget::Space::new().width(Length::Fixed(10.0)).height(Length::Fixed(10.0)))
+                .style(move |_theme: &iced::Theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(bg)),
+                    border: iced::Border { radius: 5.0.into(), ..Default::default() },
+                    ..Default::default()
+                })
+                .into()
+        };
         let Some(settings) = settings else {
             return container(
-                column![
-                    text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                    text(t(lang, "lobby-waiting"))
-                        .size(TEXT_BODY)
-                        .style(save_view::muted_text_style),
+                row![
+                    dot_color(false),
+                    column![
+                        text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        text(t(lang, "lobby-waiting")).size(TEXT_BODY).style(save_view::muted_text_style),
+                    ]
+                    .spacing(2),
                 ]
-                .spacing(4),
+                .spacing(8)
+                .align_y(Alignment::Center),
             )
-            .padding(12)
+            .padding(8)
             .width(Length::Fill)
             .into();
         };
@@ -1015,51 +1038,50 @@ fn lobby_view<'a>(
         let game_label = settings
             .game_info
             .as_ref()
-            .and_then(|gi| {
-                let (family, variant) = (gi.family_and_variant.0.as_str(), gi.family_and_variant.1);
-                tango_gamedb::find_by_family_and_variant(family, variant)
-                    .map(|g| crate::game::display_name(lang, g))
+            .map(|gi| {
+                let family = gi.family_and_variant.0.as_str();
+                let base = t(lang, &format!("game-{family}"));
+                if base.starts_with("⟦") {
+                    format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1)
+                } else {
+                    base
+                }
             })
-            .or_else(|| settings.game_info.as_ref().map(|gi| {
-                format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1)
-            }))
             .unwrap_or_else(|| t(lang, "lobby-no-game"));
         let patch = settings
             .game_info
             .as_ref()
             .and_then(|gi| gi.patch.as_ref())
-            .map(|p| format!("{} v{}", p.name, p.version));
+            .map(|p| format!(" · {} v{}", p.name, p.version));
+        // Game line: "<game name> · <patch> · <match-type>" packed
+        // onto a single caption row so the card stays 2 lines tall.
         let mt = crate::game::match_type_name(
             lang,
-            settings
-                .game_info
-                .as_ref()
-                .map(|gi| gi.family_and_variant.0.as_str())
-                .unwrap_or(""),
+            settings.game_info.as_ref().map(|gi| gi.family_and_variant.0.as_str()).unwrap_or(""),
             settings.match_type.0,
             settings.match_type.1,
         );
-        let mut col = column![
-            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-            text(nickname).size(TEXT_HEADING),
-            text(game_label).size(TEXT_CAPTION),
-        ]
-        .spacing(4);
+        let mut subline = game_label;
         if let Some(p) = patch {
-            col = col.push(
-                text(p)
-                    .size(TEXT_CAPTION)
-                    .style(|theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(theme.palette().primary),
-                    }),
-            );
+            subline.push_str(&p);
         }
-        col = col.push(
-            text(format!("{}: {mt}", t(lang, "replays-match-type")))
-                .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
-        );
-        container(col).padding(12).width(Length::Fill).into()
+        subline.push_str(&format!(" · {mt}"));
+        container(
+            row![
+                dot_color(ready),
+                column![
+                    text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                    text(nickname).size(TEXT_HEADING),
+                    text(subline).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                ]
+                .spacing(2),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding(8)
+        .width(Length::Fill)
+        .into()
     };
 
     let header_line = if let Some(d) = lobby.latency {
@@ -1143,36 +1165,28 @@ fn lobby_view<'a>(
     };
 
     let controls = row![
-        column![
-            text(t(lang, "replays-match-type"))
+        row![
+            text(format!("{}:", t(lang, "replays-match-type")))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
             mt_picker,
         ]
-        .spacing(4),
-        column![
-            text(format!(
-                "{}: {}",
-                t(lang, "lobby-input-delay"),
-                lobby.input_delay
-            ))
-            .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),
-            id_slider,
-        ]
-        .spacing(4)
-        .width(Length::Fixed(220.0)),
-        column![
-            text(t(lang, "lobby-reveal-setup"))
+        .spacing(6)
+        .align_y(Alignment::Center),
+        row![
+            text(format!("{}: {}", t(lang, "lobby-input-delay"), lobby.input_delay))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
-            iced::widget::checkbox(lobby.reveal_setup).label(t(lang, "lobby-reveal-mine"))
-                .on_toggle(Message::NetplaySetRevealSetup)
-                .size(TEXT_HEADING)
-                .text_size(STANDARD_TEXT_SIZE),
-            text(reveal_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+            id_slider,
         ]
-        .spacing(4),
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Length::Fixed(220.0)),
+        iced::widget::checkbox(lobby.reveal_setup)
+            .label(format!("{} ({reveal_label})", t(lang, "lobby-reveal-mine")))
+            .on_toggle(Message::NetplaySetRevealSetup)
+            .size(TEXT_HEADING)
+            .text_size(STANDARD_TEXT_SIZE),
     ]
     .spacing(20)
     .align_y(Alignment::Center);
@@ -1222,110 +1236,74 @@ fn lobby_view<'a>(
             ),
         };
 
-    // Ready button. Disabled until compat says OK + the user
-    // actually has a save selected (App routes NetplayReady to a
-    // Commit packet built from that save's SRAM). Toggles to
-    // Unready once we've sent our Commit. Match-ready overrides
-    // both with a "starting…" affordance.
-    let ready_button: Element<'a, Message> = if lobby.match_ready {
-        icons::labeled_icon_button(
-            icons::PLAY,
-            t(lang, "lobby-match-starting"),
-            Message::NetplayUnready,
-            STANDARD_TEXT_SIZE,
-            STANDARD_PADDING,
-            button::success,
-        )
+    // Big primary ready button on the right of the lobby header
+    // row. The visible label changes with state — Ready / Unready /
+    // Starting… — so the user always sees what clicking it will do.
+    // Disabled in the not-yet-ready state when compat says no.
+    let (ready_icon, ready_label, ready_msg, ready_style): (
+        &'static str,
+        String,
+        Option<Message>,
+        fn(&iced::Theme, button::Status) -> button::Style,
+    ) = if lobby.match_ready {
+        (icons::PLAY, t(lang, "lobby-match-starting"), Some(Message::NetplayUnready), button::success)
     } else if lobby.local_ready {
-        icons::labeled_icon_button(
-            icons::CLOSE,
-            t(lang, "lobby-unready"),
-            Message::NetplayUnready,
-            STANDARD_TEXT_SIZE,
-            STANDARD_PADDING,
-            button::secondary,
-        )
+        (icons::CLOSE, t(lang, "lobby-unready"), Some(Message::NetplayUnready), button::secondary)
     } else {
-        icons::icon_button_styled(
+        (
             icons::CONFIRM,
             t(lang, "lobby-ready"),
-            if compat_ok {
-                Some(Message::NetplayReady)
-            } else {
-                None
-            },
-            STANDARD_TEXT_SIZE,
-            STANDARD_PADDING,
+            if compat_ok { Some(Message::NetplayReady) } else { None },
             button::primary,
         )
     };
-
-    // "You: ready / Opponent: ready" pair. Muted while neither
-    // has clicked Ready; promotes to primary when each side
-    // commits so the user can tell at a glance who's holding
-    // things up.
-    let ready_status = {
-        let style_for = |ready: bool| -> fn(&iced::Theme) -> iced::widget::text::Style {
-            if ready {
-                |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().success),
-                }
-            } else {
-                save_view::muted_text_style
-            }
-        };
-        row![
-            text(format!(
-                "{}: {}",
-                t(lang, "play-you"),
-                if lobby.local_ready {
-                    t(lang, "lobby-ready-yes")
-                } else {
-                    t(lang, "lobby-ready-no")
-                }
-            ))
-            .size(TEXT_CAPTION)
-            .style(style_for(lobby.local_ready)),
-            text("·").size(TEXT_CAPTION).style(save_view::muted_text_style),
-            text(format!(
-                "{}: {}",
-                t(lang, "replays-opponent"),
-                if lobby.remote_ready {
-                    t(lang, "lobby-ready-yes")
-                } else {
-                    t(lang, "lobby-ready-no")
-                }
-            ))
-            .size(TEXT_CAPTION)
-            .style(style_for(lobby.remote_ready)),
+    // Big version of labeled_icon_button — bumped font + padding so
+    // the Ready button reads as the single primary action in the
+    // lobby strip. Falls back to a disabled-styled button when no
+    // message is available (compat blocks ready).
+    let ready_button: Element<'a, Message> = {
+        const READY_TEXT: f32 = 16.0;
+        const READY_PAD: [f32; 2] = [10.0, 22.0];
+        let label_widget = row![
+            icons::glyph(ready_icon, READY_TEXT),
+            text(ready_label).size(READY_TEXT),
         ]
         .spacing(8)
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Center);
+        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(ready_style);
+        if let Some(m) = ready_msg {
+            btn = btn.on_press(m);
+        }
+        btn.into()
     };
+
+    // Header row: latency / verdict on the left, big ready button
+    // on the right. Single line so the Ready button is unmissable
+    // and visually anchored.
+    let header_row = row![
+        column![header_line, verdict_line].spacing(2),
+        horizontal_space(),
+        ready_button,
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center);
 
     container(
         column![
-            header_line,
+            header_row,
             iced::widget::row![
-                side(t(lang, "play-you"), lobby.local.as_ref()),
+                side(t(lang, "play-you"), lobby.local.as_ref(), lobby.local_ready),
                 iced::widget::rule::vertical(1),
-                side(t(lang, "replays-opponent"), lobby.remote.as_ref()),
+                side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
             ]
             .spacing(12),
             horizontal_rule(1),
             controls,
-            verdict_line,
-            row![ready_button, horizontal_space(), ready_status]
-                .spacing(12)
-                .align_y(Alignment::Center),
         ]
-        .spacing(12)
-        .padding(16),
+        .spacing(10)
+        .padding(12),
     )
     .width(Fill)
-    // Outer wrapper in play::view sets the actual height (Fixed
-    // 360); we Fill into that slot so padding/spacing distributes
-    // evenly rather than clumping at the top.
     .height(Fill)
     .into()
 }

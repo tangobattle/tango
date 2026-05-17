@@ -5,22 +5,22 @@ mod i18n;
 mod icons;
 mod input;
 mod navicust;
+mod net;
+mod netplay;
 mod patch;
+mod pvp_session;
 mod randomcode;
 mod replay_session;
 mod replays;
-mod singleplayer_session;
-mod pvp_session;
 mod rom;
 mod rom_overrides;
 mod save;
 mod save_view;
-mod net;
-mod netplay;
 mod scanner;
 mod scrubber;
 mod selection;
 mod session;
+mod singleplayer_session;
 mod tabs;
 
 use session::ActiveSession;
@@ -69,10 +69,7 @@ use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
 use unic_langid::LanguageIdentifier;
 
-pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
-    unic_langid::langid!("en-US"),
-    unic_langid::langid!("ja-JP"),
-];
+pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[unic_langid::langid!("en-US"), unic_langid::langid!("ja-JP")];
 
 // Button sizing constants — three tiers that everything else maps onto.
 // `NAV` for the top-level nav strip; `PRIMARY` for the single big
@@ -129,8 +126,7 @@ pub fn main() -> iced::Result {
         .window_size((1000.0, 640.0))
         .font(FONT_NOTO_SANS)
         .font(FONT_NOTO_SANS_JP)
-        .font(FONT_NOTO_SANS_SC)
-        .font(FONT_NOTO_SANS_TC)
+        .font
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
         .font(FONT_LUCIDE)
@@ -237,7 +233,12 @@ impl App {
                     if let Some(n) = config.last_patch.as_ref() {
                         if let Some(p) = scanners.patches.read().get(n) {
                             let v = config.last_patch_version.as_ref().and_then(|v| {
-                                if p.versions.contains_key(v) && p.versions.get(v).map(|vm| vm.supported_games.contains(&game)).unwrap_or(false) {
+                                if p.versions.contains_key(v)
+                                    && p.versions
+                                        .get(v)
+                                        .map(|vm| vm.supported_games.contains(&game))
+                                        .unwrap_or(false)
+                                {
                                     Some(v.clone())
                                 } else {
                                     None
@@ -322,6 +323,27 @@ impl App {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
+        // If the current lobby match_type doesn't exist for the
+        // selected game (e.g. game just changed, or first-time
+        // lobby entry with a game preselected), pick a sensible
+        // default: Triple (mode=1) if the game supports it, else
+        // Single (mode=0). The user-explicit-choice case stays
+        // sticky because we only touch it when the current value
+        // is invalid for the new game.
+        if let Some(game) = self.play.local_game {
+            let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types()).unwrap_or(&[]);
+            let (mode, sub) = self.netplay.lobby.match_type;
+            let current_valid =
+                (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
+            if !current_valid {
+                let new_mt = if mt_table.get(1).copied().unwrap_or(0) > 0 {
+                    (1, 0) // Triple
+                } else {
+                    (0, 0) // Single
+                };
+                self.netplay.lobby.match_type = new_mt;
+            }
+        }
         let settings = self.make_local_settings();
         self.netplay
             .update(netplay::Message::SendLocalSettings(Box::new(settings)))
@@ -369,9 +391,7 @@ impl App {
         }
     }
 
-    fn loaded_key(
-        &self,
-    ) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
+    fn loaded_key(&self) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
         let game = self.play.local_game?;
         let save_path = self.play.local_save.clone()?;
         let patch = match (&self.play.local_patch, &self.play.local_patch_version) {
@@ -393,10 +413,7 @@ impl App {
 
         // Reuse existing if all inputs still match.
         if let Some(l) = &self.loaded {
-            let cur_patch = l
-                .patch
-                .as_ref()
-                .map(|p| (p.name.clone(), p.version.clone()));
+            let cur_patch = l.patch.as_ref().map(|p| (p.name.clone(), p.version.clone()));
             if l.game == game && l.save_path == save_path && cur_patch == patch {
                 return;
             }
@@ -409,10 +426,7 @@ impl App {
             self.loaded = None;
             return;
         };
-        let Some(scanned) = saves
-            .get(&game)
-            .and_then(|v| v.iter().find(|s| s.path == save_path))
-        else {
+        let Some(scanned) = saves.get(&game).and_then(|v| v.iter().find(|s| s.path == save_path)) else {
             self.loaded = None;
             return;
         };
@@ -518,10 +532,28 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::Session(m) => self
-                .session
-                .update(m, &self.config.input_mapping)
-                .map(Message::Session),
+            Message::Session(m) => {
+                // The active session may have mutated the user's
+                // save file on disk (single-player writes via
+                // mgba's RW VFile). On Close, drop the session
+                // first so mgba's thread joins + flushes its
+                // file handle, then re-scan saves + force a
+                // Loaded rebuild so the play tab's save view
+                // reflects the fresh on-disk SRAM.
+                let sp_closing = matches!(m, session::Message::Close)
+                    && matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
+                let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
+                if sp_closing {
+                    let saves_path = self.config.saves_path();
+                    self.scanners.saves.rescan(|| Some(save::scan_saves(&saves_path)));
+                    // Bypass refresh_loaded's same-key dedupe —
+                    // the path + game haven't changed, only the
+                    // bytes have.
+                    self.loaded = None;
+                    self.refresh_loaded();
+                }
+                task
+            }
             Message::Netplay(netplay::Message::MatchHandoffReady) => {
                 // Drain the lobby-side state into a PreMatchData
                 // and kick off async PvP setup. The lobby loop
@@ -536,31 +568,15 @@ impl App {
                 let config = self.config.clone();
                 let audio_binder = self.audio_binder.clone();
                 let local_game = self.play.local_game;
-                let local_patch = self
-                    .play
-                    .local_patch
-                    .clone()
-                    .zip(self.play.local_patch_version.clone());
+                let local_patch = self.play.local_patch.clone().zip(self.play.local_patch_version.clone());
                 iced::Task::perform(
                     async move {
                         let Some(local_game) = local_game else {
                             return Err(anyhow::anyhow!("no local game selected"));
                         };
-                        session::spawn_pvp(
-                            scanners,
-                            config,
-                            audio_binder,
-                            local_game,
-                            local_patch,
-                            pre_match,
-                        )
-                        .await
+                        session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
                     },
-                    |result| {
-                        Message::PvpSessionBuilt(std::sync::Arc::new(parking_lot::Mutex::new(
-                            Some(result),
-                        )))
-                    },
+                    |result| Message::PvpSessionBuilt(std::sync::Arc::new(parking_lot::Mutex::new(Some(result)))),
                 )
             }
             Message::Netplay(m) => {
@@ -604,7 +620,10 @@ impl App {
     }
 
     fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
-        let Some(effect) = self.play.update(msg, &self.scanners, &self.config, self.loaded.as_ref()) else {
+        let Some(effect) = self
+            .play
+            .update(msg, &self.scanners, &self.config, self.loaded.as_ref())
+        else {
             return iced::Task::none();
         };
         use tabs::play::Effect as E;
@@ -715,9 +734,7 @@ impl App {
             }
             E::SaveNew { name, template } => {
                 if let Some(game) = self.play.local_game {
-                    if let Some(templates) =
-                        tabs::play::templates_for_selection_public(&self.play, &self.scanners)
-                    {
+                    if let Some(templates) = tabs::play::templates_for_selection_public(&self.play, &self.scanners) {
                         // Use the chosen template name; fall back
                         // to default ("") then first available.
                         let chosen = templates
@@ -838,17 +855,19 @@ impl App {
                             replay: replay_for_msg.clone(),
                             output,
                         },
-                        // User cancelled — no-op; ExportDismiss
-                        // bounces back into the update cycle
-                        // without touching status (status was
-                        // left Idle by ExportPanelOpen anyway).
-                        None => tabs::replays::Message::ExportDismiss,
+                        // User cancelled — no-op. Dismiss on a
+                        // path that never had a job entry is a
+                        // safe HashMap remove; status untouched.
+                        None => tabs::replays::Message::ExportDismiss(replay_for_msg.clone()),
                     },
                 )
             }
-            E::StartExport { replay, output, settings, rounds } => {
-                self.spawn_replay_export(replay, output, settings, rounds)
-            }
+            E::StartExport {
+                replay,
+                output,
+                settings,
+                rounds,
+            } => self.spawn_replay_export(replay, output, settings, rounds),
         }
     }
 
@@ -905,19 +924,27 @@ impl App {
         let prep = match prep {
             Ok(p) => p,
             Err(e) => {
-                self.replays.export_status = tabs::replays::ExportStatus::Done {
-                    replay: replay_path,
-                    result: Err(format!("{e}")),
-                };
+                self.replays.export_jobs.insert(
+                    replay_path,
+                    tabs::replays::ExportJob {
+                        completed: 0,
+                        total: 0,
+                        result: Some(Err(format!("{e}"))),
+                    },
+                );
                 return iced::Task::none();
             }
         };
 
         if !rounds_mask.iter().any(|b| *b) {
-            self.replays.export_status = tabs::replays::ExportStatus::Done {
-                replay: replay_path,
-                result: Err("no rounds selected for export".to_string()),
-            };
+            self.replays.export_jobs.insert(
+                replay_path,
+                tabs::replays::ExportJob {
+                    completed: 0,
+                    total: 0,
+                    result: Some(Err("no rounds selected for export".to_string())),
+                },
+            );
             return iced::Task::none();
         }
 
@@ -943,8 +970,7 @@ impl App {
             } else {
                 Some(user_settings.scale as usize)
             };
-            let mut settings =
-                tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
+            let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
             settings.disable_bgm = user_settings.disable_bgm;
             let selected_rounds = vec![rounds_mask];
             let progress_tx = parking_lot::Mutex::new(progress_tx);
@@ -1123,11 +1149,8 @@ impl App {
         // Custom palettes derived from the built-in Light/Dark, with the
         // accent (primary) swapped to the BN-green that the main egui
         // app uses for selection / accents.
-        const TANGO_GREEN: iced::Color = iced::Color::from_rgb(
-            0x4c as f32 / 255.0,
-            0xaf as f32 / 255.0,
-            0x50 as f32 / 255.0,
-        );
+        const TANGO_GREEN: iced::Color =
+            iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
         match self.config.theme {
             config::ThemeMode::Light => Theme::custom(
                 "Tango Light".to_string(),
@@ -1148,8 +1171,25 @@ impl App {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
+    use iced::widget::button;
+    // Filled primary fill on the active tab + transparent text on
+    // the rest — the same shape the app shipped with before the
+    // underline-style `tab_button` experiment. The filled tab pops
+    // more clearly as "you are here" than a thin underline.
     let tab = |icon, label, target: Tab| {
-        icons::tab_button(icon, label, Message::TabSelected(target), target == active)
+        let style: fn(&Theme, button::Status) -> button::Style = if target == active {
+            button::primary
+        } else {
+            button::text
+        };
+        icons::labeled_icon_button(
+            icon,
+            label,
+            Message::TabSelected(target),
+            NAV_TEXT_SIZE,
+            NAV_PADDING,
+            style,
+        )
     };
     container(
         row![
@@ -1160,7 +1200,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             tab(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
         ]
         .spacing(2)
-        .align_y(Alignment::End)
+        .align_y(Alignment::Center)
         .padding([4, 6]),
     )
     .width(Fill)

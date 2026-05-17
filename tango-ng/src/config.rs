@@ -122,8 +122,11 @@ impl Config {
     pub fn load_or_create() -> Self {
         match config_path() {
             Some(p) => match std::fs::read_to_string(&p) {
-                Ok(s) => match serde_json::from_str(&s) {
-                    Ok(c) => return c,
+                Ok(s) => match serde_json::from_str::<Self>(&s) {
+                    Ok(mut c) => {
+                        c.migrate();
+                        return c;
+                    }
                     Err(e) => log::warn!("config parse failed, using defaults: {e}"),
                 },
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -134,6 +137,27 @@ impl Config {
         let c = Self::default();
         let _ = c.save();
         c
+    }
+
+    /// One-shot config migrations applied on load. Keeps stale
+    /// values from breaking the app after a default change.
+    fn migrate(&mut self) {
+        // Old default pointed at the github repo page, which serves
+        // HTML — the patch updater needs the static-file host. If
+        // the user is still on the legacy default, silently move
+        // them to the new one.
+        const STALE_PATCH_REPOS: &[&str] = &[
+            "https://github.com/tangobattle/patches",
+            "https://github.com/tangobattle/patches/",
+        ];
+        if STALE_PATCH_REPOS.iter().any(|u| self.patch_repo.eq(*u)) {
+            log::info!(
+                "migrating stale patch_repo {:?} -> {:?}",
+                self.patch_repo, DEFAULT_PATCH_REPO,
+            );
+            self.patch_repo = DEFAULT_PATCH_REPO.to_string();
+            let _ = self.save();
+        }
     }
 
     pub fn save(&self) -> std::io::Result<()> {

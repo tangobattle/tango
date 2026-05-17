@@ -47,7 +47,10 @@ pub enum Message {
         result: Result<std::path::PathBuf, String>,
     },
     /// User dismissed the post-export status line.
-    ExportDismiss,
+    /// Dismiss a finished (or failed) export job from the per-
+    /// replay job map. Path identifies which job to drop so the
+    /// detail panel can offer a per-replay close button.
+    ExportDismiss(std::path::PathBuf),
     /// Open the rendered video with the OS's default handler.
     OpenFile(std::path::PathBuf),
     /// Export settings widgets — scale, lossless, disable-BGM.
@@ -64,25 +67,20 @@ pub enum Message {
     SaveViewAction(save_view::Action),
 }
 
-/// What the replays tab is currently showing about an in-flight
-/// or recent export. The `replay` field scopes the status to a
-/// specific replay so that switching selection mid-export doesn't
-/// bleed the progress / result into the new selection's detail
-/// view.
-#[derive(Default)]
-pub enum ExportStatus {
-    #[default]
-    Idle,
-    InProgress {
-        replay: std::path::PathBuf,
-        completed: usize,
-        total: usize,
-    },
-    Done {
-        replay: std::path::PathBuf,
-        result: Result<std::path::PathBuf, String>,
-    },
+/// Per-replay export state. Lives in a HashMap keyed by replay
+/// path so multiple renders can run concurrently — the sidebar
+/// spinner + detail panel both look up by path. `result` flips to
+/// `Some` when the export task finishes; until the user dismisses
+/// it, the job stays in the map so the detail panel can show the
+/// success/failure line.
+#[derive(Debug, Clone)]
+pub struct ExportJob {
+    pub completed: usize,
+    pub total: usize,
+    pub result: Option<Result<std::path::PathBuf, String>>,
 }
+
+pub type ExportJobs = std::collections::HashMap<std::path::PathBuf, ExportJob>;
 
 /// User-tunable settings the export form passes to
 /// `tango_pvp::replay::export::export(...)`. Defaults match the
@@ -122,7 +120,7 @@ pub struct ReplaysState {
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
     pub save_view: save_view::State,
-    pub export_status: ExportStatus,
+    pub export_jobs: ExportJobs,
     pub export_settings: ExportSettings,
     /// Per-round include/exclude mask for the currently-selected
     /// replay's export. Repopulated whenever `loaded_cache_path`
@@ -175,12 +173,7 @@ impl ReplaysState {
     /// in-place; anything that needs the App's collaborators
     /// (clipboard, file dialog, session host, …) is bubbled up
     /// as a single optional [`Effect`].
-    pub fn update(
-        &mut self,
-        msg: Message,
-        scanners: &Scanners,
-        config: &config::Config,
-    ) -> Option<Effect> {
+    pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
         match msg {
             Message::GameFilterSelected(o) => {
                 self.game_filter = o.pair;
@@ -214,9 +207,7 @@ impl ReplaysState {
                     save_view::Action::CopyTab(tab) => {
                         save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
                     }
-                    save_view::Action::CopyTabImage(tab) => {
-                        save_view::tab_as_image(tab, loaded).map(Effect::CopyImage)
-                    }
+                    save_view::Action::CopyTabImage(tab) => save_view::tab_as_image(tab, loaded).map(Effect::CopyImage),
                     _ => None,
                 }
             }
@@ -235,11 +226,10 @@ impl ReplaysState {
                     // computed" race.
                     rounds = vec![true];
                 }
-                self.export_status = ExportStatus::InProgress {
-                    replay: replay.clone(),
-                    completed: 0,
-                    total: 0,
-                };
+                self.export_jobs.insert(
+                    replay.clone(),
+                    ExportJob { completed: 0, total: 0, result: None },
+                );
                 self.export_panel_open = false;
                 Some(Effect::StartExport {
                     replay,
@@ -248,27 +238,28 @@ impl ReplaysState {
                     rounds,
                 })
             }
-            Message::ExportProgress { replay, completed, total } => {
-                // Drop stale ticks that don't match the in-flight
-                // target (defensive — shouldn't happen because the
-                // Export button is gated on InProgress).
-                if let ExportStatus::InProgress { replay: cur, .. } = &self.export_status {
-                    if cur == &replay {
-                        self.export_status = ExportStatus::InProgress {
-                            replay,
-                            completed,
-                            total,
-                        };
+            Message::ExportProgress {
+                replay,
+                completed,
+                total,
+            } => {
+                if let Some(job) = self.export_jobs.get_mut(&replay) {
+                    if job.result.is_none() {
+                        job.completed = completed;
+                        job.total = total;
                     }
                 }
                 None
             }
             Message::ExportFinished { replay, result } => {
-                self.export_status = ExportStatus::Done { replay, result };
+                self.export_jobs
+                    .entry(replay)
+                    .or_insert_with(|| ExportJob { completed: 0, total: 0, result: None })
+                    .result = Some(result);
                 None
             }
-            Message::ExportDismiss => {
-                self.export_status = ExportStatus::Idle;
+            Message::ExportDismiss(p) => {
+                self.export_jobs.remove(&p);
                 None
             }
             Message::OpenFile(p) => Some(Effect::OpenPath(p)),
@@ -290,11 +281,12 @@ impl ReplaysState {
                 }
                 None
             }
-            Message::ExportPanelOpen(_) => {
+            Message::ExportPanelOpen(p) => {
                 self.export_panel_open = true;
-                // Stale Done status from a previous export
-                // clutters the panel; reset for a fresh start.
-                self.export_status = ExportStatus::Idle;
+                // Stale Done status from a previous export of this
+                // same replay clutters the panel; reset for a fresh
+                // start. Other replays' jobs stay untouched.
+                self.export_jobs.remove(&p);
                 None
             }
             Message::ExportPanelClose => {
@@ -398,14 +390,11 @@ impl ReplaysState {
                     .text_size(STANDARD_TEXT_SIZE)
                     .padding(STANDARD_PADDING),
                 text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
-                iced::widget::text_input(
-                    &t(lang, "replays-filter-opponent-placeholder"),
-                    &self.opponent_filter,
-                )
-                .on_input(Message::OpponentFilterChanged)
-                .padding(STANDARD_PADDING)
-                .size(STANDARD_TEXT_SIZE)
-                .width(Length::Fixed(180.0)),
+                iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
+                    .on_input(Message::OpponentFilterChanged)
+                    .padding(STANDARD_PADDING)
+                    .size(STANDARD_TEXT_SIZE)
+                    .width(Length::Fixed(180.0)),
                 horizontal_space(),
                 icons::icon_button(
                     icons::RESCAN,
@@ -435,10 +424,7 @@ impl ReplaysState {
                             .local_side
                             .as_ref()
                             .and_then(|s| s.game_info.as_ref())
-                            .map(|gi| {
-                                gi.rom_family == *family
-                                    && u8::try_from(gi.rom_variant).ok() == Some(*variant)
-                            })
+                            .map(|gi| gi.rom_family == *family && u8::try_from(gi.rom_variant).ok() == Some(*variant))
                             .unwrap_or(false)
                     })
                     .unwrap_or(true);
@@ -483,20 +469,61 @@ impl ReplaysState {
             };
 
             let selected = self.selected.as_ref() == Some(&r.path);
-            let style = if selected { button::primary } else { button::text };
+            // Show a render-in-progress glyph for replays whose
+            // export job is still running. Multiple renders can
+            // run at once now, so this is the only way to see
+            // background progress without selecting each replay.
+            let job_state = self.export_jobs.get(&r.path);
+            let rendering = matches!(job_state, Some(j) if j.result.is_none());
+            let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
+            let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
+            let badge: Element<'_, Message> = if rendering {
+                container(icons::glyph(icons::RENDER, TEXT_BODY).style(|theme: &iced::Theme| {
+                    iced::widget::text::Style { color: Some(theme.palette().primary) }
+                }))
+                .padding([0, 4])
+                .into()
+            } else if render_done_ok {
+                container(icons::glyph(icons::CONFIRM, TEXT_BODY).style(|theme: &iced::Theme| {
+                    iced::widget::text::Style { color: Some(theme.palette().success) }
+                }))
+                .padding([0, 4])
+                .into()
+            } else if render_done_err {
+                container(icons::glyph(icons::CANCEL, TEXT_BODY).style(|theme: &iced::Theme| {
+                    iced::widget::text::Style { color: Some(theme.palette().danger) }
+                }))
+                .padding([0, 4])
+                .into()
+            } else {
+                Space::new().width(Length::Fixed(0.0)).into()
+            };
             list = list.push(
                 button(
-                    column![
-                        text(ts_str).size(TEXT_BODY),
-                        text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
-                            .size(TEXT_CAPTION)
-                            .style(save_view::muted_text_style),
+                    row![
+                        column![
+                            text(ts_str).size(TEXT_BODY),
+                            // Selected → inherit the button's foreground
+                            // (iced picks one readable on the primary-
+                            // weak background). Unselected → muted gray.
+                            text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
+                                .size(TEXT_CAPTION)
+                                .style(move |theme: &iced::Theme| if selected {
+                                    iced::widget::text::Style { color: None }
+                                } else {
+                                    save_view::muted_text_style(theme)
+                                }),
+                        ]
+                        .spacing(2)
+                        .width(Fill),
+                        badge,
                     ]
-                    .spacing(2),
+                    .spacing(0)
+                    .align_y(Alignment::Center),
                 )
                 .padding([6, 10])
                 .width(Fill)
-                .style(style)
+                .style(icons::list_item(selected))
                 .on_press(Message::Selected(r.path.clone())),
             );
         }
@@ -638,10 +665,16 @@ fn replay_detail<'a>(
                     icons::RENDER,
                     t(lang, "replays-export"),
                     // Toggle the inline options panel. Disabled
-                    // entirely while an export is running (one
-                    // ffmpeg child at a time) — the in-flight
-                    // status line below replaces this affordance.
-                    if matches!(state.export_status, ExportStatus::InProgress { .. }) {
+                    // only when THIS replay already has an in-
+                    // flight render — other replays' jobs run
+                    // concurrently and the per-replay status line
+                    // below shows progress.
+                    if state
+                        .export_jobs
+                        .get(&r.path)
+                        .map(|j| j.result.is_none())
+                        .unwrap_or(false)
+                    {
                         None
                     } else if state.export_panel_open {
                         Some(Message::ExportPanelClose)
@@ -668,7 +701,7 @@ fn replay_detail<'a>(
                 &state.selected_rounds,
                 &r.path,
             ),
-            export_status_line(lang, &state.export_status, &r.path),
+            export_status_line(lang, &state.export_jobs, &r.path),
             text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
@@ -727,37 +760,30 @@ impl std::fmt::Display for GameFilterOption {
     }
 }
 
-
-/// One-line status line under the export button. Scoped to a
-/// specific replay path — picking a different replay mid-export
-/// hides the status from the new selection's detail (the export
-/// itself keeps running). Renders the percentage while in-flight;
-/// on completion, success/failure + a dismiss chip and (on
-/// success) an Open-Replay button that launches the .mp4 with
-/// the OS's default player.
+/// One-line status line under the export button for the currently-
+/// detailed replay. Looks up `detail_path` in the per-replay job
+/// map; renders nothing if there's no job for it (other replays'
+/// jobs are surfaced via the sidebar spinner). In-flight shows
+/// percentage; finished shows success + Open / failure + Dismiss.
 fn export_status_line<'a>(
     lang: &'a LanguageIdentifier,
-    status: &'a ExportStatus,
+    jobs: &'a ExportJobs,
     detail_path: &std::path::Path,
 ) -> Element<'a, Message> {
-    match status {
-        ExportStatus::InProgress {
-            replay,
-            completed,
-            total,
-        } if replay == detail_path => {
-            let label = if *total > 0 {
-                let pct = (*completed as f32 / *total as f32 * 100.0).round() as u32;
+    let Some(job) = jobs.get(detail_path) else {
+        return Space::new().height(0).into();
+    };
+    match &job.result {
+        None => {
+            let label = if job.total > 0 {
+                let pct = (job.completed as f32 / job.total as f32 * 100.0).round() as u32;
                 format!("{}: {pct}%", t(lang, "replays-export-progress"))
             } else {
                 t(lang, "replays-export-progress")
             };
             text(label).size(TEXT_CAPTION).style(save_view::muted_text_style).into()
         }
-        ExportStatus::Done {
-            replay,
-            result: Ok(path),
-        } if replay == detail_path => row![
+        Some(Ok(path)) => row![
             text(format!("{}: {}", t(lang, "replays-export-success"), path.display())).size(TEXT_CAPTION),
             horizontal_space(),
             icons::icon_button(
@@ -770,7 +796,7 @@ fn export_status_line<'a>(
             icons::icon_button(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
-                Message::ExportDismiss,
+                Message::ExportDismiss(detail_path.to_path_buf()),
                 STANDARD_TEXT_SIZE,
                 STANDARD_PADDING,
             ),
@@ -778,7 +804,7 @@ fn export_status_line<'a>(
         .spacing(6)
         .align_y(Alignment::Center)
         .into(),
-        ExportStatus::Done { replay, result: Err(e) } if replay == detail_path => row![
+        Some(Err(e)) => row![
             text(format!("{}: {e}", t(lang, "replays-export-error")))
                 .size(TEXT_CAPTION)
                 .style(iced::widget::text::danger),
@@ -786,7 +812,7 @@ fn export_status_line<'a>(
             icons::icon_button(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
-                Message::ExportDismiss,
+                Message::ExportDismiss(detail_path.to_path_buf()),
                 STANDARD_TEXT_SIZE,
                 STANDARD_PADDING,
             ),
@@ -794,7 +820,6 @@ fn export_status_line<'a>(
         .spacing(6)
         .align_y(Alignment::Center)
         .into(),
-        _ => Space::new().height(0).into(),
     }
 }
 
@@ -817,28 +842,36 @@ fn export_panel<'a>(
     // shows when no export is running, so there's no in-flight
     // race to worry about.
     let in_flight = false;
-    let scale_label = text(format!("{}: {}×", t(lang, "replays-export-scale"), settings.scale))
-        .size(TEXT_CAPTION)
-        .style(save_view::muted_text_style);
-    let scale_slider: Element<'a, Message> = if settings.lossless || in_flight {
-        // Both lossless mode + in-flight disable scale editing.
-        text(if settings.lossless {
-            t(lang, "replays-export-scale-na-lossless")
+    let scale_label = text(format!(
+        "{}: {}",
+        t(lang, "replays-export-scale"),
+        if settings.lossless {
+            "".into()
         } else {
-            "".to_string()
-        })
-        .size(TEXT_CAPTION)
-        .style(save_view::muted_text_style)
-        .into()
+            format!("{}×", settings.scale)
+        }
+    ))
+    .size(TEXT_CAPTION)
+    .style(save_view::muted_text_style);
+    // Scale isn't used when lossless (libx264rgb -qp 0 ignores
+    // the swscale neighbor filter that would carry the factor);
+    // hide the slider in that case to make the disabled state
+    // visually unambiguous. iced 0.14 has no `slider.enabled()`,
+    // so we just swap the widget.
+    let scale_slider: Element<'a, Message> = if settings.lossless {
+        text(t(lang, "replays-export-scale-na-lossless"))
+            .size(TEXT_CAPTION)
+            .width(Length::Fixed(140.0))
+            .style(save_view::muted_text_style)
+            .into()
     } else {
         iced::widget::slider(1..=10u8, settings.scale, Message::SetExportScale)
             .width(Length::Fixed(140.0))
             .into()
     };
-    let lossless_chk =
-        iced::widget::checkbox(settings.lossless)
-            .label(t(lang, "replays-export-lossless"))
-            .text_size(STANDARD_TEXT_SIZE);
+    let lossless_chk = iced::widget::checkbox(settings.lossless)
+        .label(t(lang, "replays-export-lossless"))
+        .text_size(STANDARD_TEXT_SIZE);
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
     } else {
@@ -881,30 +914,36 @@ fn export_panel<'a>(
     // Action row: Save As… commits + Cancel closes the panel.
     // Save As… is disabled if every round is unchecked.
     let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
-    let actions = row![
-        horizontal_space(),
-        icons::icon_button(
-            icons::CANCEL,
-            t(lang, "save-action-cancel"),
-            Message::ExportPanelClose,
-            STANDARD_TEXT_SIZE,
-            STANDARD_PADDING,
-        ),
-        icons::icon_button_styled(
-            icons::RENDER,
+    // Labeled "Save As…" button — text + icon together so it reads
+    // as a real call-to-action rather than a bare check-mark glyph.
+    // Disabled (no on_press) when nothing is selected for export.
+    let save_as_btn: Element<'a, Message> = if any_round {
+        icons::labeled_icon_button(
+            icons::EXPORT,
             t(lang, "replays-export-save-as"),
-            if any_round {
-                Some(Message::Export(replay_path.to_path_buf()))
-            } else {
-                None
-            },
+            Message::Export(replay_path.to_path_buf()),
             STANDARD_TEXT_SIZE,
             STANDARD_PADDING,
             iced::widget::button::primary,
-        ),
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center);
+        )
+    } else {
+        // No labeled_icon_button_maybe helper, so build the disabled
+        // variant inline.
+        iced::widget::button(
+            iced::widget::row![
+                icons::glyph(icons::EXPORT, STANDARD_TEXT_SIZE),
+                text(t(lang, "replays-export-save-as")).size(STANDARD_TEXT_SIZE),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding(STANDARD_PADDING)
+        .style(icons::neutral)
+        .into()
+    };
+    let actions = row![horizontal_space(), save_as_btn]
+        .spacing(6)
+        .align_y(Alignment::Center);
     col = col.push(actions);
 
     container(col.padding(12))

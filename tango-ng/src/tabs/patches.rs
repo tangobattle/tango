@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use crate::icons;
-use crate::{game, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION};
+use crate::{game, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
@@ -42,10 +42,7 @@ pub enum Effect {
     /// User clicked Update; App spawns `patch::update(url, root)`
     /// and dispatches `Message::UpdateFinished` on completion.
     /// Carries the repo URL + on-disk root.
-    StartUpdate {
-        url: String,
-        root: std::path::PathBuf,
-    },
+    StartUpdate { url: String, root: std::path::PathBuf },
     /// Patch update finished cleanly — App should re-scan +
     /// refresh loaded.
     UpdateRescan,
@@ -54,12 +51,7 @@ pub enum Effect {
 impl PatchesState {
     /// Apply a tab message. See [`crate::tabs::replays::Effect`]
     /// for the side-effect surface convention.
-    pub fn update(
-        &mut self,
-        msg: Message,
-        scanners: &Scanners,
-        config: &crate::config::Config,
-    ) -> Option<Effect> {
+    pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &crate::config::Config) -> Option<Effect> {
         match msg {
             Message::Selected(p) => {
                 let v = scanners
@@ -121,35 +113,19 @@ impl PatchesState {
         self.readme_cache_key = key.clone();
         self.readme_items = key
             .as_ref()
-            .and_then(|(n, _)| {
-                scanners
-                    .patches
-                    .read()
-                    .get(n)
-                    .and_then(|p| p.readme.clone())
-            })
+            .and_then(|(n, _)| scanners.patches.read().get(n).and_then(|p| p.readme.clone()))
             .map(|md| iced::widget::markdown::parse(&md).collect())
             .unwrap_or_default();
     }
 
-    pub fn view<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-    ) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
         let update_msg = if self.updating { None } else { Some(Message::Update) };
 
-        let mut top_row = row![
-            text(format!(
-                "{}: {}",
-                t(lang, "patches-installed"),
-                patches.len()
-            ))
+        let mut top_row = row![text(format!("{}: {}", t(lang, "patches-installed"), patches.len()))
             .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),
-        ]
+            .style(save_view::muted_text_style),]
         .spacing(8)
         .align_y(Alignment::Center);
 
@@ -189,18 +165,27 @@ impl PatchesState {
         let mut list = column![].spacing(1).padding(8);
         for (name, patch) in patches.iter() {
             let selected = self.selected.as_deref() == Some(name.as_str());
-            let style = if selected { button::primary } else { button::text };
             list = list.push(
                 button(
                     column![
                         text(patch.title.clone()).size(TEXT_BODY),
-                        text(name.clone()).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        // Selected: inherit the button's
+                        // foreground (iced picks one readable on
+                        // the primary-weak background). Unselected:
+                        // standard muted gray.
+                        text(name.clone())
+                            .size(TEXT_CAPTION)
+                            .style(move |theme: &iced::Theme| if selected {
+                                iced::widget::text::Style { color: None }
+                            } else {
+                                save_view::muted_text_style(theme)
+                            },),
                     ]
                     .spacing(2),
                 )
                 .padding([6, 10])
                 .width(Fill)
-                .style(style)
+                .style(icons::list_item(selected))
                 .on_press(Message::Selected(name.clone())),
             );
         }
@@ -217,19 +202,13 @@ impl PatchesState {
                 .filter(|v| patch.versions.contains_key(v))
                 .or_else(|| versions.first().cloned());
 
-            let version_info = selected_version
-                .as_ref()
-                .and_then(|v| patch.versions.get(v))
-                .cloned();
+            let version_info = selected_version.as_ref().and_then(|v| patch.versions.get(v)).cloned();
 
             let supported_games_str = version_info
                 .as_ref()
                 .map(|v| {
-                    let mut names: Vec<String> = v
-                        .supported_games
-                        .iter()
-                        .map(|g| game::display_name(lang, *g))
-                        .collect();
+                    let mut names: Vec<String> =
+                        v.supported_games.iter().map(|g| game::display_name(lang, *g)).collect();
                     names.sort();
                     if names.is_empty() {
                         "—".to_string()
@@ -245,7 +224,7 @@ impl PatchesState {
                 .unwrap_or_default();
 
             let header = row![
-                text(patch.title.clone()).size(20),
+                text(patch.title.clone()).size(TEXT_TITLE),
                 horizontal_space(),
                 pick_list(versions, selected_version, Message::VersionSelected)
                     .text_size(STANDARD_TEXT_SIZE)
@@ -261,44 +240,34 @@ impl PatchesState {
             .spacing(8)
             .align_y(Alignment::Center);
 
-            let mut details = column![].spacing(4);
+            // Single key:value row helper — muted label, plain value,
+            // so the readable density matches the rest of the UI's
+            // caption rows (e.g. save list metadata).
+            let detail_row = |label_key: &'static str, value: String| -> Element<'_, Message> {
+                row![
+                    text(format!("{}:", t(lang, label_key)))
+                        .size(TEXT_CAPTION)
+                        .style(save_view::muted_text_style),
+                    text(value).size(TEXT_CAPTION),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .into()
+            };
+
+            let mut details = column![].spacing(3);
             if !patch.authors.is_empty() {
-                details = details.push(
-                    text(format!(
-                        "{}: {}",
-                        t(lang, "patches-details-authors"),
-                        patch.authors.join(", ")
-                    ))
-                    .size(TEXT_CAPTION),
-                );
+                details = details.push(detail_row("patches-details-authors", patch.authors.join(", ")));
             }
             if let Some(license) = &patch.license {
-                details = details.push(
-                    text(format!("{}: {}", t(lang, "patches-details-license"), license)).size(TEXT_CAPTION),
-                );
+                details = details.push(detail_row("patches-details-license", license.clone()));
             }
             if let Some(source) = &patch.source {
-                details = details.push(
-                    text(format!("{}: {}", t(lang, "patches-details-source"), source)).size(TEXT_CAPTION),
-                );
+                details = details.push(detail_row("patches-details-source", source.clone()));
             }
-            details = details.push(
-                text(format!(
-                    "{}: {}",
-                    t(lang, "patches-details-games"),
-                    supported_games_str
-                ))
-                .size(TEXT_CAPTION),
-            );
+            details = details.push(detail_row("patches-details-games", supported_games_str));
             if !netplay_compat.is_empty() {
-                details = details.push(
-                    text(format!(
-                        "{}: {}",
-                        t(lang, "patches-netplay-compatibility"),
-                        netplay_compat
-                    ))
-                    .size(TEXT_CAPTION),
-                );
+                details = details.push(detail_row("patches-netplay-compatibility", netplay_compat));
             }
 
             // Markdown README, parsed and cached in self.readme_items.
@@ -308,9 +277,9 @@ impl PatchesState {
                 let theme = iced::Theme::Dark;
                 iced::widget::markdown::view(
                     &self.readme_items,
-                    iced::widget::markdown::Settings::with_style(
-                        iced::widget::markdown::Style::from_palette(theme.palette()),
-                    ),
+                    iced::widget::markdown::Settings::with_style(iced::widget::markdown::Style::from_palette(
+                        theme.palette(),
+                    )),
                 )
                 .map(Message::ReadmeLinkClicked)
             };
@@ -323,11 +292,12 @@ impl PatchesState {
                     Space::new().height(8),
                     details,
                     Space::new().height(12),
-                    text(t(lang, "patches-readme")).size(TEXT_BODY).style(text::primary),
+                    text(t(lang, "patches-readme")).size(TEXT_HEADING),
                     horizontal_rule(1),
+                    Space::new().height(4),
                     scrollable(container(readme_body).padding(4)).height(Fill),
                 ]
-                .spacing(6)
+                .spacing(4)
                 .padding(16),
             )
             .width(Fill)

@@ -63,11 +63,10 @@ pub fn glyph<'a>(g: &'static str, size: f32) -> Text<'a> {
     text(g).size(size).font(FONT)
 }
 
-/// Icon-only button for low-emphasis toolbar actions (rescan, copy,
-/// open-folder, etc.). Renders with `button::secondary` so a row of
-/// these doesn't look like a row of "primary" actions all shouting
-/// for attention. The plain-text label is exposed as a hover
-/// tooltip.
+/// Icon-only button for low-emphasis toolbar actions (rescan,
+/// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
+/// aware style that doesn't compete with primary CTAs in the
+/// same row. The plain-text label is exposed as a hover tooltip.
 pub fn icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
@@ -75,7 +74,7 @@ pub fn icon_button<'a, M: Clone + 'a>(
     text_size: f32,
     padding: [f32; 2],
 ) -> Element<'a, M> {
-    icon_button_styled(icon, label, Some(msg), text_size, padding, button::secondary)
+    icon_button_styled(icon, label, Some(msg), text_size, padding, neutral)
 }
 
 /// `icon_button` with the on_press wrapped in an Option so callers
@@ -88,7 +87,75 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
     text_size: f32,
     padding: [f32; 2],
 ) -> Element<'a, M> {
-    icon_button_styled(icon, label, msg, text_size, padding, button::secondary)
+    icon_button_styled(icon, label, msg, text_size, padding, neutral)
+}
+
+/// List-item button style for selectable rows (patches list,
+/// replays list). When `selected`, paints a SUBTLE primary tint
+/// instead of the bright `button::primary` so muted subtitle
+/// text stays readable on top. Inactive rows are transparent;
+/// hover gets a faint background tone.
+pub fn list_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme: &Theme, status: button::Status| {
+        let p = theme.extended_palette();
+        let base = button::Style {
+            background: if selected {
+                Some(iced::Background::Color(p.primary.weak.color))
+            } else {
+                None
+            },
+            text_color: if selected {
+                p.primary.weak.text
+            } else {
+                theme.palette().text
+            },
+            border: iced::Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        match status {
+            button::Status::Active | button::Status::Pressed => base,
+            button::Status::Hovered if !selected => button::Style {
+                background: Some(iced::Background::Color(p.background.weak.color)),
+                ..base
+            },
+            button::Status::Hovered => base,
+            button::Status::Disabled => base,
+        }
+    }
+}
+
+/// Theme-aware "neutral" button style for low-emphasis toolbar
+/// actions. Reads as a clear button at rest (faint background
+/// tint + 1 px border in the palette's `background.strong`
+/// tone), brightens on hover, dims when disabled. Picks up
+/// theme palette derivations so it never collides with the
+/// accent color and stays readable on both light + dark.
+pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
+    let p = theme.extended_palette();
+    let base = button::Style {
+        background: Some(iced::Background::Color(p.background.weak.color)),
+        text_color: theme.palette().text,
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: p.background.strong.color,
+        },
+        ..Default::default()
+    };
+    match status {
+        button::Status::Active | button::Status::Pressed => base,
+        button::Status::Hovered => button::Style {
+            background: Some(iced::Background::Color(p.background.strong.color)),
+            ..base
+        },
+        button::Status::Disabled => button::Style {
+            text_color: crate::save_view::muted_color(theme),
+            ..base
+        },
+    }
 }
 
 /// Lower-level helper for callers that need to pick the button

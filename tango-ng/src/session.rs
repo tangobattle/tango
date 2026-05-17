@@ -266,15 +266,18 @@ impl State {
 
 /// Per-frame redraw tick (only while a session is active) + keyboard
 /// subscription (only for single-player sessions, where joyflag input
-/// is meaningful). The tick comes from `iced::window::frames`, which
-/// fires once per host-display vsync — much better than a fixed-rate
-/// timer because the texture upload happens in lock-step with the
-/// surface present, with no overshoot when the display is slower or
-/// faster than 60 Hz.
+/// is meaningful). Tick uses `time::every(8ms)` rather than
+/// `window::frames()` because iced 0.14's reactive renderer only
+/// pumps `frames()` while the runtime is requesting redraws — when
+/// nothing in our state has changed iced quiesces and the
+/// framebuffer would stop updating. A fixed 125 Hz interval keeps
+/// the loop alive; the per-session frame-id check inside the Tick
+/// handler still gates the actual GPU upload to mgba's emulator
+/// fps, so we don't waste work on a high-refresh host.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
     if state.is_active() {
-        subs.push(iced::window::frames().map(|_| Message::Tick));
+        subs.push(iced::time::every(std::time::Duration::from_millis(8)).map(|_| Message::Tick));
     }
     if matches!(
         state.active,

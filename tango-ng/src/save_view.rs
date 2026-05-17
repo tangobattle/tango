@@ -2,9 +2,7 @@ use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
 use iced::widget::rule::horizontal as horizontal_rule;
-use iced::widget::{
-    column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space,
-};
+use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
 /// hover) is handled by tooltip/canvas widgets that manage their own
@@ -97,7 +95,10 @@ pub struct State {
 
 impl State {
     pub fn new() -> Self {
-        Self { active_tab: None, folder_grouped: true }
+        Self {
+            active_tab: None,
+            folder_grouped: true,
+        }
     }
 
     /// Apply an `Action` to the state. `CopyTab` is left for the
@@ -160,28 +161,29 @@ pub fn view<'a>(
         tab_row = tab_row.push(extras);
     }
 
-    let opts = RenderOpts { folder_grouped: state.folder_grouped };
+    let opts = RenderOpts {
+        folder_grouped: state.folder_grouped,
+    };
     let body = render::<Action>(lang, active, loaded, opts);
 
-    column![
-        container(tab_row.padding([4, 8])).width(Fill),
-        body,
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
+    column![container(tab_row.padding([4, 8])).width(Fill), body,]
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 /// Per-tab extras (folder group-by toggle, copy button) shown on the
 /// right of the tab strip. `None` = tab has no extras.
-fn tab_extras<'a>(
-    lang: &'a LanguageIdentifier,
-    tab: Tab,
-    state: &'a State,
-) -> Option<Element<'a, Action>> {
+fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> Option<Element<'a, Action>> {
     use crate::icons;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
-        icons::icon_button(icons::COPY, t(lang, "save-copy"), Action::CopyTab(tab), 13.0, [4.0, 10.0])
+        icons::icon_button(
+            icons::COPY,
+            t(lang, "save-copy"),
+            Action::CopyTab(tab),
+            13.0,
+            [4.0, 10.0],
+        )
     };
     let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
         icons::icon_button(
@@ -195,7 +197,8 @@ fn tab_extras<'a>(
     match tab {
         Tab::Folder => Some(
             row![
-                iced::widget::checkbox(state.folder_grouped).label(t(lang, "folder-group"))
+                iced::widget::checkbox(state.folder_grouped)
+                    .label(t(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
                     .size(TEXT_BODY)
                     .text_size(12),
@@ -223,11 +226,7 @@ fn horizontal_space() -> iced::widget::Space {
 
 /// Plain-text representation of the active save-view tab, for the
 /// clipboard. `None` = tab not exportable in this form.
-pub fn tab_as_text(
-    _lang: &LanguageIdentifier,
-    tab: Tab,
-    loaded: &Loaded,
-) -> Option<String> {
+pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded) -> Option<String> {
     let assets = loaded.assets.as_ref();
     match tab {
         Tab::Folder => {
@@ -265,11 +264,8 @@ pub fn tab_as_text(
                     out.push_str("\t[REG]");
                 }
                 if let Some(ti) = tag_idxs {
-                    if ti[0] == i {
-                        out.push_str("\t[TAG1]");
-                    }
-                    if ti[1] == i {
-                        out.push_str("\t[TAG2]");
+                    if ti.contains(&i) {
+                        out.push_str("\t[TAG]");
                     }
                 }
                 out.push('\n');
@@ -332,10 +328,7 @@ pub fn tab_as_text(
                 }
                 out.push('\n');
             };
-            section(
-                "Secondary standard",
-                mat.secondary_standard_chips(),
-            );
+            section("Secondary standard", mat.secondary_standard_chips());
             section("Standard", mat.standard_chips());
             section("Mega", mat.mega_chips());
             section("Giga", &[mat.giga_chip()]);
@@ -349,7 +342,10 @@ pub fn tab_as_text(
             match view {
                 tango_dataview::save::NaviView::LinkNavi(v) => {
                     let id = v.navi();
-                    let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
+                    let name = assets
+                        .navi(id)
+                        .and_then(|n| n.name())
+                        .unwrap_or_else(|| format!("#{id}"));
                     out.push_str(&format!("{name}\n"));
                 }
                 tango_dataview::save::NaviView::Navicust(v) => {
@@ -398,11 +394,15 @@ pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
     }
     let layout = loaded.assets.navicust_layout()?;
     let materialized = v.materialized();
+    let lang = crate::game::region_to_language(loaded.game.region());
+    // Clipboard / export path: render at native (high) resolution.
     Some(crate::navicust::render(
         &materialized,
         &layout,
         v.as_ref(),
         loaded.assets.as_ref(),
+        &lang,
+        None,
     ))
 }
 
@@ -433,8 +433,7 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     let chips_have_mb = assets.chips_have_mb();
 
     // Pull the 30-chip folder.
-    let mut chips: Vec<Option<tango_dataview::save::Chip>> =
-        (0..30).map(|i| chips_view.chip(folder_idx, i)).collect();
+    let mut chips: Vec<Option<tango_dataview::save::Chip>> = (0..30).map(|i| chips_view.chip(folder_idx, i)).collect();
     let regular_display_idx = if !assets.regular_chip_is_in_place() {
         if let Some(ri) = regular_idx {
             let c = chips.remove(0);
@@ -474,9 +473,7 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
             .into_iter()
             .enumerate()
             .map(|(i, c)| {
-                let [t1, t2] = tag_idxs
-                    .map(|t| [t[0] == i, t[1] == i])
-                    .unwrap_or([false, false]);
+                let [t1, t2] = tag_idxs.map(|t| [t[0] == i, t[1] == i]).unwrap_or([false, false]);
                 (
                     c,
                     GroupedChip {
@@ -579,34 +576,33 @@ fn chip_row<M: 'static>(
         text(name_text).size(TEXT_BODY).into()
     };
 
-    // REG / TAG indicators sit under the title as small badges.
+    // REG / TAG indicators sit inline with the title so the
+    // row stays single-line and the card height stops growing
+    // with metadata.
     let mut indicator_row = row![].spacing(4).align_y(Alignment::Center);
     if g.is_regular {
         indicator_row = indicator_row.push(badge("REG", iced::Color::from_rgb8(0xff, 0x42, 0xa5)));
     }
-    if g.has_tag1 {
-        indicator_row = indicator_row.push(badge("TAG1", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
-    }
-    if g.has_tag2 {
-        indicator_row = indicator_row.push(badge("TAG2", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
+    // Tag chips come in pairs (tag1 + tag2). For the chip list
+    // it's the chip-IS-a-tag-chip status the user cares about,
+    // not which slot — collapse both flags into a single "TAG".
+    for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
+        indicator_row = indicator_row.push(badge("TAG", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
     }
 
     // Right-side stats: fixed-width right-aligned columns so the
     // numbers line up vertically across rows. Both inherit the theme's
     // text color — no hard-coded white/yellow that breaks on light.
-    let power_text: Element<'static, M> = container(
-        text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY),
-    )
-    .width(Length::Fixed(50.0))
-    .align_x(iced::alignment::Horizontal::Right)
-    .into();
+    let power_text: Element<'static, M> =
+        container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
+            .width(Length::Fixed(50.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into();
     let mb_text: Element<'static, M> = if chips_have_mb {
-        container(
-            text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION),
-        )
-        .width(Length::Fixed(50.0))
-        .align_x(iced::alignment::Horizontal::Right)
-        .into()
+        container(text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION))
+            .width(Length::Fixed(50.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
     } else {
         Space::new().width(Length::Fixed(0.0)).into()
     };
@@ -632,9 +628,7 @@ fn chip_row<M: 'static>(
     }
     r = r
         .push(icon)
-        .push(
-            container(column![title, indicator_row].spacing(2)).width(Length::Fill),
-        )
+        .push(container(row![title, indicator_row].spacing(8).align_y(Alignment::Center)).width(Length::Fill))
         .push(element_icon)
         .push(power_text)
         .push(mb_text);
@@ -684,10 +678,7 @@ fn chip_row<M: 'static>(
 /// the whole row), but it's set to the theme's page background colour
 /// so it visually disappears against the surrounding pane chrome —
 /// gives the list a denser look without the shaded-card noise.
-fn card_wrap<M: 'static>(
-    inner: Element<'static, M>,
-    accent: Option<iced::Color>,
-) -> Element<'static, M> {
+fn card_wrap<M: 'static>(inner: Element<'static, M>, accent: Option<iced::Color>) -> Element<'static, M> {
     let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
     let card_body = container(inner)
         .width(Fill)
@@ -714,7 +705,6 @@ fn card_wrap<M: 'static>(
         .clip(true)
         .into()
 }
-
 
 /// Accent color for the left edge of a chip row. None = no accent (the
 /// row reads as a default chip with no class adornment).
@@ -747,7 +737,6 @@ fn code_badge<M: 'static>(code: String) -> Element<'static, M> {
         })
         .into()
 }
-
 
 fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
     container(text(label).size(10).color(iced::Color::WHITE))
@@ -793,15 +782,42 @@ fn colored_badge_sized<M: 'static>(
 fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
     use NavicustPartColor as N;
     match color {
-        N::Red => (iced::Color::from_rgb8(0xde, 0x10, 0x00), iced::Color::from_rgb8(0xbd, 0x00, 0x00)),
-        N::Pink => (iced::Color::from_rgb8(0xde, 0x8c, 0xc6), iced::Color::from_rgb8(0xbd, 0x6b, 0xa5)),
-        N::Yellow => (iced::Color::from_rgb8(0xde, 0xde, 0x00), iced::Color::from_rgb8(0xbd, 0xbd, 0x00)),
-        N::Green => (iced::Color::from_rgb8(0x18, 0xc6, 0x00), iced::Color::from_rgb8(0x00, 0xa5, 0x00)),
-        N::Blue => (iced::Color::from_rgb8(0x29, 0x84, 0xde), iced::Color::from_rgb8(0x08, 0x60, 0xb8)),
-        N::White => (iced::Color::from_rgb8(0xde, 0xde, 0xde), iced::Color::from_rgb8(0xbd, 0xbd, 0xbd)),
-        N::Orange => (iced::Color::from_rgb8(0xde, 0x7b, 0x00), iced::Color::from_rgb8(0xbd, 0x5a, 0x00)),
-        N::Purple => (iced::Color::from_rgb8(0x94, 0x00, 0xce), iced::Color::from_rgb8(0x73, 0x00, 0xad)),
-        N::Gray => (iced::Color::from_rgb8(0x84, 0x84, 0x84), iced::Color::from_rgb8(0x63, 0x63, 0x63)),
+        N::Red => (
+            iced::Color::from_rgb8(0xde, 0x10, 0x00),
+            iced::Color::from_rgb8(0xbd, 0x00, 0x00),
+        ),
+        N::Pink => (
+            iced::Color::from_rgb8(0xde, 0x8c, 0xc6),
+            iced::Color::from_rgb8(0xbd, 0x6b, 0xa5),
+        ),
+        N::Yellow => (
+            iced::Color::from_rgb8(0xde, 0xde, 0x00),
+            iced::Color::from_rgb8(0xbd, 0xbd, 0x00),
+        ),
+        N::Green => (
+            iced::Color::from_rgb8(0x18, 0xc6, 0x00),
+            iced::Color::from_rgb8(0x00, 0xa5, 0x00),
+        ),
+        N::Blue => (
+            iced::Color::from_rgb8(0x29, 0x84, 0xde),
+            iced::Color::from_rgb8(0x08, 0x60, 0xb8),
+        ),
+        N::White => (
+            iced::Color::from_rgb8(0xde, 0xde, 0xde),
+            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
+        ),
+        N::Orange => (
+            iced::Color::from_rgb8(0xde, 0x7b, 0x00),
+            iced::Color::from_rgb8(0xbd, 0x5a, 0x00),
+        ),
+        N::Purple => (
+            iced::Color::from_rgb8(0x94, 0x00, 0xce),
+            iced::Color::from_rgb8(0x73, 0x00, 0xad),
+        ),
+        N::Gray => (
+            iced::Color::from_rgb8(0x84, 0x84, 0x84),
+            iced::Color::from_rgb8(0x63, 0x63, 0x63),
+        ),
     }
 }
 
@@ -819,12 +835,26 @@ fn effect_badge<M: 'static>(e: &tango_dataview::rom::PatchCard56Effect, enabled:
     colored_badge(name, bg, iced::Color::BLACK)
 }
 
-/// Reduced-opacity text color for "secondary" labels. Works on both
-/// light and dark themes because it sits on top of the palette's main
-/// text color rather than a hard-coded grey.
+/// Theme-aware muted text color: mix the palette's text into the
+/// background until the contrast drops to "secondary". Works on
+/// both light + dark themes — alpha-fading the text on a dark bg
+/// turns it into a washed-out near-bg blob; mixing yields a true
+/// mid-tone gray instead.
 pub fn muted_color(theme: &iced::Theme) -> iced::Color {
-    let base = theme.palette().text;
-    iced::Color { a: 0.55, ..base }
+    let p = theme.palette();
+    fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
+        iced::Color {
+            r: a.r * (1.0 - t) + b.r * t,
+            g: a.g * (1.0 - t) + b.g * t,
+            b: a.b * (1.0 - t) + b.b * t,
+            a: 1.0,
+        }
+    }
+    // Heavy mix breaks contrast on Dark (text tops out at 0.9
+    // and bg is ~0.18, so 0.45 lands at ~2.8:1 contrast —
+    // basically invisible). 0.25 stays around 4:1 on both
+    // themes — visibly secondary but still legible.
+    mix(p.text, p.background, 0.25)
 }
 
 pub fn muted_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
@@ -848,10 +878,7 @@ fn tooltip_style(_theme: &iced::Theme) -> container::Style {
 
 // ---------- Navi ----------
 
-fn render_navi<M: 'static>(
-    lang: &LanguageIdentifier,
-    loaded: &Loaded,
-) -> Element<'static, M> {
+fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(navi_view) = loaded.save.view_navi() else {
         return placeholder(t(lang, "save-empty"));
     };
@@ -909,9 +936,12 @@ fn render_navicust<M: 'static>(
     let assets = loaded.assets.as_ref();
     // BN4/5/6 don't have styles — `view.style()` is None there. Only
     // surface the row when the save actually exposes a style id.
-    let style_name: Option<String> = v
-        .style()
-        .map(|id| assets.style(id).and_then(|s| s.name()).unwrap_or_else(|| t(lang, "navi-style-unset")));
+    let style_name: Option<String> = v.style().map(|id| {
+        assets
+            .style(id)
+            .and_then(|s| s.name())
+            .unwrap_or_else(|| t(lang, "navi-style-unset"))
+    });
     let [cols, rows_n] = v.size();
 
     // Big rendered grid (tiny-skia, cached at load time). Scale down to
@@ -925,20 +955,24 @@ fn render_navicust<M: 'static>(
     // needed.
     let grid_el: Element<'static, M> = match loaded.navicust_render.as_ref() {
         Some(nc) => {
-            let cap_w = 440.0_f32;
-            let scale = (cap_w / nc.source_w as f32).min(1.0);
-            let dw = nc.source_w as f32 * scale;
-            let dh = nc.source_h as f32 * scale;
-            let body_x = nc.body_origin_x * scale;
-            let body_y = nc.body_origin_y * scale;
-            let cell_size = nc.cell_size * scale;
+            // `source_w/h` are now in DISPLAY coords (see selection.rs);
+            // the underlying Handle is 2× that, and iced linear-
+            // downsamples it for HiDPI crispness.
+            let dw = nc.source_w as f32;
+            let dh = nc.source_h as f32;
+            let body_x = nc.body_origin_x;
+            let body_y = nc.body_origin_y;
+            let cell_size = nc.cell_size;
             let g_cols = nc.cols;
             let g_rows = nc.rows;
 
             let image: Element<'static, M> = Image::new(nc.handle.clone())
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh))
-                .filter_method(iced_image::FilterMethod::Nearest)
+                // Linear (not Nearest) so the 2× backing buffer
+                // downsamples to display size with smooth glyph
+                // edges instead of dropped pixels.
+                .filter_method(iced_image::FilterMethod::Linear)
                 .content_fit(ContentFit::Contain)
                 .into();
 
@@ -960,10 +994,15 @@ fn render_navicust<M: 'static>(
                             tip_col = tip_col.push(text(desc).size(TEXT_CAPTION));
                         }
                         let tip = container(tip_col).padding(8).style(tooltip_style);
-                        let space = Space::new().width(Length::Fixed(cell_size)).height(Length::Fixed(cell_size));
+                        let space = Space::new()
+                            .width(Length::Fixed(cell_size))
+                            .height(Length::Fixed(cell_size));
                         tooltip(space, tip, tooltip::Position::FollowCursor).gap(12).into()
                     } else {
-                        Space::new().width(Length::Fixed(cell_size)).height(Length::Fixed(cell_size)).into()
+                        Space::new()
+                            .width(Length::Fixed(cell_size))
+                            .height(Length::Fixed(cell_size))
+                            .into()
                     };
                     cell_row = cell_row.push(cell);
                 }
@@ -975,14 +1014,9 @@ fn render_navicust<M: 'static>(
                 .height(Length::Fixed(dh));
             container(stacked).center_x(Fill).into()
         }
-        None => text(format!(
-            "{}: {} × {}",
-            t(lang, "navicust-grid-size"),
-            cols,
-            rows_n
-        ))
-        .size(TEXT_CAPTION)
-        .into(),
+        None => text(format!("{}: {} × {}", t(lang, "navicust-grid-size"), cols, rows_n))
+            .size(TEXT_CAPTION)
+            .into(),
     };
 
     // Parts list: two columns — solid parts (left), plus parts (right) —
@@ -1001,16 +1035,13 @@ fn render_navicust<M: 'static>(
         let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
         let description = info.description();
         let is_solid = info.is_solid();
-        let (solid_color, plus_color) = info
-            .color()
-            .map(ncp_colors)
-            .unwrap_or((
-                iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
-                iced::Color::from_rgb8(0x88, 0x88, 0x88),
-            ));
+        let (solid_color, plus_color) = info.color().map(ncp_colors).unwrap_or((
+            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
+            iced::Color::from_rgb8(0x88, 0x88, 0x88),
+        ));
         let bg = if is_solid { solid_color } else { plus_color };
         let _ = i; // index no longer needed now that the list-highlight is gone
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, 15.0, [4.0, 8.0]);
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 6.0]);
         let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
@@ -1091,11 +1122,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 } else {
                     text(name).size(TEXT_BODY).style(muted_text_style)
                 };
-                let name_col = column![
-                    name_text,
-                    text(format!("{mb}MB")).size(10).style(muted_text_style),
-                ]
-                .spacing(2);
+                let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style),].spacing(2);
 
                 let mut ability_col = column![].spacing(2);
                 for e in effects.iter().filter(|e| e.is_ability) {
@@ -1107,7 +1134,9 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 }
 
                 let row = row![
-                    text(format!("{:>2}", i + 1)).size(TEXT_CAPTION).width(Length::Fixed(24.0)),
+                    text(format!("{:>2}", i + 1))
+                        .size(TEXT_CAPTION)
+                        .width(Length::Fixed(24.0)),
                     container(name_col).width(Length::Fill),
                     container(ability_col).width(Length::Fixed(180.0)),
                     container(bug_col).width(Length::Fixed(180.0)),
@@ -1132,10 +1161,18 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
 
                 let mut details_col = column![].spacing(2);
                 if let Some(e) = effect {
-                    details_col = details_col.push(text(e).size(TEXT_CAPTION).color(iced::Color::from_rgb8(0xff, 0xbd, 0x18)));
+                    details_col = details_col.push(
+                        text(e)
+                            .size(TEXT_CAPTION)
+                            .color(iced::Color::from_rgb8(0xff, 0xbd, 0x18)),
+                    );
                 }
                 if let Some(b) = bug {
-                    details_col = details_col.push(text(b).size(TEXT_CAPTION).color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)));
+                    details_col = details_col.push(
+                        text(b)
+                            .size(TEXT_CAPTION)
+                            .color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)),
+                    );
                 }
 
                 let row = row![
@@ -1183,17 +1220,11 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
             t(lang, "auto-battle-data-secondary-standard-chips"),
             mat.secondary_standard_chips(),
         ),
-        section(
-            t(lang, "auto-battle-data-standard-chips"),
-            mat.standard_chips(),
-        ),
+        section(t(lang, "auto-battle-data-standard-chips"), mat.standard_chips(),),
         section(t(lang, "auto-battle-data-mega-chips"), mat.mega_chips()),
         section(t(lang, "auto-battle-data-giga-chip"), &[mat.giga_chip()]),
         section(t(lang, "auto-battle-data-combos"), mat.combos()),
-        section(
-            t(lang, "auto-battle-data-program-advance"),
-            &[mat.program_advance()],
-        ),
+        section(t(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
     ]
     .spacing(4)
     .padding(8);
