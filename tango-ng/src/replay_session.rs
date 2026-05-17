@@ -194,6 +194,19 @@ impl ReplaySession {
         self.thread.handle().is_paused()
     }
 
+    /// Drive the mgba thread at `factor * 60` fps. 1.0 = realtime,
+    /// 0.5 = slow-mo, 2.0 / 4.0 = fast-forward. Audio paces frames, so
+    /// values above ~4 start dropping samples.
+    pub fn set_speed(&self, factor: f32) {
+        let fps = (EXPECTED_FPS * factor).max(1.0);
+        self.thread.handle().lock_audio().sync_mut().set_fps_target(fps);
+    }
+
+    /// Current factor (current fps / 60).
+    pub fn speed(&self) -> f32 {
+        self.thread.handle().lock_audio().sync().fps_target() / EXPECTED_FPS
+    }
+
     /// Toggle the mgba thread between paused and running. Returns the
     /// new paused state.
     pub fn set_paused(&self, paused: bool) {

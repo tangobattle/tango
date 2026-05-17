@@ -1,10 +1,11 @@
-//! Live emulator-session machinery: a thin enum over the per-mode
-//! session structs in `replay_session` / `singleplayer_session`, the
-//! constructor helpers that wire ROMs + patches + audio into them,
-//! the iced session view, and the keyboard-event subscription mapping.
+//! Live emulator-session machinery: state struct, per-session
+//! Message + update + view + subscription. Owned by App as
+//! `session: session::State` and routed via `Message::Session(_)`.
 //!
-//! Split out of `main.rs` so the top-level App is just routing.
-//! Handlers that need `&mut App` (Message dispatch) stay there.
+//! The Play / Replays tabs are responsible for STARTING sessions
+//! (they construct an ActiveSession via [`build_playback`] /
+//! [`spawn_singleplayer`] and stuff it into `state.active`); this
+//! module handles everything that happens after.
 
 use crate::audio;
 use crate::config;
@@ -16,7 +17,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::{game, Message, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE};
+use crate::{game, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE};
 use iced::widget::{column, container, horizontal_rule, horizontal_space, row, text};
 use iced::{Alignment, Element, Fill};
 use unic_langid::LanguageIdentifier;
@@ -52,13 +53,136 @@ impl ActiveSession {
     }
 }
 
+/// Per-session UI state. App holds `session: State`; the Play and
+/// Replays tabs swap an `ActiveSession` into `active` to start a
+/// session, then [`State::update`] handles the rest until [`Close`]
+/// clears it.
+#[derive(Default)]
+pub struct State {
+    pub active: Option<ActiveSession>,
+    pub frame: Option<iced::widget::image::Handle>,
+    /// Bumped each tick to give the iced `image::Handle::Rgba` an
+    /// always-fresh id (without that, iced caches the texture and the
+    /// emulator picture freezes).
+    pub frame_counter: u64,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// True iff a session is running. Drives main.rs's view routing.
+    pub fn is_active(&self) -> bool {
+        self.active.is_some()
+    }
+}
+
+/// Messages the session pane emits + handles. All variants are
+/// inert when `state.active` is `None`.
+#[derive(Debug, Clone)]
+pub enum Message {
+    /// 60 Hz tick from the subscription. Pulls a fresh framebuffer
+    /// out of the emulator and updates `state.frame`.
+    Tick,
+    /// Close the session and return to the previous tab.
+    Close,
+    /// Mapped key went down; payload is the mgba joypad bit. Inert
+    /// for replay sessions.
+    KeyDown(u32),
+    /// Mapped key went up.
+    KeyUp(u32),
+    /// Toggle play/pause on a replay session. No-op for single-player.
+    TogglePlay,
+    /// Drag the scrub bar — fires on every value change. Replay-only.
+    Seek(u32),
+    /// Set the playback speed factor (1.0 = realtime). Replay-only.
+    SetSpeed(f32),
+}
+
+impl State {
+    /// Apply a session message to the state. Returns the iced Task
+    /// that should be scheduled (always Task::none today — kept for
+    /// API parity with the other tabs).
+    pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        match msg {
+            Message::Tick => {
+                if let Some(session) = self.active.as_ref() {
+                    let pixels = session.snapshot_vbuf();
+                    self.frame = Some(iced::widget::image::Handle::from_rgba(
+                        replay_session::SCREEN_WIDTH,
+                        replay_session::SCREEN_HEIGHT,
+                        pixels,
+                    ));
+                    self.frame_counter = self.frame_counter.wrapping_add(1);
+                }
+            }
+            Message::Close => {
+                if let Some(s) = self.active.as_ref() {
+                    s.request_close();
+                }
+                self.active = None;
+                self.frame = None;
+            }
+            Message::KeyDown(bit) => {
+                if let Some(ActiveSession::SinglePlayer(s)) = self.active.as_ref() {
+                    s.set_joyflag(bit, true);
+                }
+            }
+            Message::KeyUp(bit) => {
+                if let Some(ActiveSession::SinglePlayer(s)) = self.active.as_ref() {
+                    s.set_joyflag(bit, false);
+                }
+            }
+            Message::TogglePlay => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.set_paused(!s.is_paused());
+                }
+            }
+            Message::Seek(target) => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.seek_to(target);
+                }
+            }
+            Message::SetSpeed(factor) => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.set_speed(factor);
+                }
+            }
+        }
+        iced::Task::none()
+    }
+}
+
+/// Per-frame redraw tick (only while a session is active) + keyboard
+/// subscription (only for single-player sessions, where joyflag input
+/// is meaningful). The tick comes from `iced::window::frames`, which
+/// fires once per host-display vsync — much better than a fixed-rate
+/// timer because the texture upload happens in lock-step with the
+/// surface present, with no overshoot when the display is slower or
+/// faster than 60 Hz.
+pub fn subscription(state: &State) -> iced::Subscription<Message> {
+    let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
+    if state.is_active() {
+        subs.push(iced::window::frames().map(|_| Message::Tick));
+    }
+    if matches!(state.active, Some(ActiveSession::SinglePlayer(_))) {
+        subs.push(iced::event::listen_with(map_keyboard_event));
+    }
+    iced::Subscription::batch(subs)
+}
+
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
+/// Pass the App's `session: State` borrow.
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
-    frame_handle: Option<&'a iced::widget::image::Handle>,
+    state: &'a State,
 ) -> Element<'a, Message> {
+    let Some(session) = state.active.as_ref() else {
+        return iced::widget::Space::new(Fill, Fill).into();
+    };
+    let frame_handle = state.frame.as_ref();
     use iced::widget::{image, Space};
 
     let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
@@ -84,7 +208,7 @@ pub fn view<'a>(
             icons::icon_button(
                 icons::CLOSE,
                 t(lang, "playback-close"),
-                Message::SessionClose,
+                Message::Close,
                 STANDARD_TEXT_SIZE,
                 STANDARD_PADDING,
             ),
@@ -114,9 +238,25 @@ pub fn view<'a>(
         } else {
             (icons::PAUSE, "playback-pause")
         };
-        let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::SessionSeek)
+        let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
             .round_boundaries(r.round_boundaries())
             .view();
+
+        // Speed selector — values that don't drift audio noticeably
+        // (mgba audio sync starts dropping samples above ~4x).
+        let speed_opts = vec![
+            SpeedOption(0.5),
+            SpeedOption(1.0),
+            SpeedOption(2.0),
+            SpeedOption(4.0),
+        ];
+        let current_speed = SpeedOption(r.speed());
+        let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
+            Message::SetSpeed(o.0)
+        })
+        .text_size(STANDARD_TEXT_SIZE)
+        .padding(STANDARD_PADDING);
+
         layout = layout.push(horizontal_rule(1));
         layout = layout.push(
             container(
@@ -124,7 +264,7 @@ pub fn view<'a>(
                     icons::icon_button(
                         play_pause_icon,
                         t(lang, play_pause_key),
-                        Message::SessionTogglePlay,
+                        Message::TogglePlay,
                         STANDARD_TEXT_SIZE,
                         STANDARD_PADDING,
                     ),
@@ -134,6 +274,7 @@ pub fn view<'a>(
                     text(format!("{pct}%"))
                         .size(11)
                         .style(save_view::muted_text_style),
+                    speed_picker,
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -255,12 +396,34 @@ pub fn map_keyboard_event(
     use iced::keyboard::Event as Kb;
     match event {
         iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
-            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyDown)
+            singleplayer_session::key_to_mgba_bit(&key).map(Message::KeyDown)
         }
         iced::Event::Keyboard(Kb::KeyReleased { key, .. }) => {
-            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyUp)
+            singleplayer_session::key_to_mgba_bit(&key).map(Message::KeyUp)
         }
         _ => None,
+    }
+}
+
+/// pick_list option newtype for the playback speed selector. f32
+/// alone can't go in a pick_list because it doesn't impl Eq/Hash.
+#[derive(Clone, Copy)]
+pub struct SpeedOption(pub f32);
+
+impl PartialEq for SpeedOption {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 - other.0).abs() < 1e-3
+    }
+}
+impl Eq for SpeedOption {}
+
+impl std::fmt::Display for SpeedOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if (self.0 - self.0.trunc()).abs() < 1e-3 {
+            write!(f, "{}x", self.0 as i32)
+        } else {
+            write!(f, "{:.1}x", self.0)
+        }
     }
 }
 

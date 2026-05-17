@@ -141,16 +141,10 @@ struct App {
     replays: ReplaysState,
     patches: PatchesState,
 
-    /// Active emulator session — at most one of replay playback or
-    /// single-player play. While `Some`, the main body is replaced by
-    /// the session view and a 60Hz subscription keeps `session_frame`
-    /// in sync with the mgba framebuffer.
-    session: Option<ActiveSession>,
-    session_frame: Option<iced::widget::image::Handle>,
-    /// Counter incremented each tick we consume a frame, used to drive
-    /// fresh `image::Handle` ids — without distinct ids iced caches the
-    /// texture and the picture stops updating.
-    session_frame_counter: u64,
+    /// Active emulator session (replay playback or single-player) plus
+    /// the cached framebuffer Handle. While `session.is_active()`, the
+    /// main body is replaced by `session::view`.
+    session: session::State,
 }
 
 impl App {
@@ -235,9 +229,7 @@ impl App {
             play,
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
-            session: None,
-            session_frame: None,
-            session_frame_counter: 0,
+            session: session::State::new(),
         };
         app.refresh_loaded();
         (app, iced::Task::none())
@@ -364,16 +356,7 @@ pub enum Message {
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
-    SessionTick,
-    SessionClose,
-    /// Key mapped to an mgba joypad bit went down.
-    SessionKeyDown(u32),
-    /// Key mapped to an mgba joypad bit went up.
-    SessionKeyUp(u32),
-    /// Toggle play/pause on a replay session. No-op for single-player.
-    SessionTogglePlay,
-    /// Drag the scrub bar — fires on every value change. Replay-only.
-    SessionSeek(u32),
+    Session(session::Message),
 }
 
 impl App {
@@ -407,65 +390,12 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::SessionTick => {
-                if let Some(session) = self.session.as_ref() {
-                    let pixels = session.snapshot_vbuf();
-                    self.session_frame = Some(iced::widget::image::Handle::from_rgba(
-                        replay_session::SCREEN_WIDTH,
-                        replay_session::SCREEN_HEIGHT,
-                        pixels,
-                    ));
-                    self.session_frame_counter = self.session_frame_counter.wrapping_add(1);
-                }
-                iced::Task::none()
-            }
-            Message::SessionClose => {
-                if let Some(s) = self.session.as_ref() {
-                    s.request_close();
-                }
-                self.session = None;
-                self.session_frame = None;
-                iced::Task::none()
-            }
-            Message::SessionKeyDown(bit) => {
-                if let Some(ActiveSession::SinglePlayer(s)) = self.session.as_ref() {
-                    s.set_joyflag(bit, true);
-                }
-                iced::Task::none()
-            }
-            Message::SessionKeyUp(bit) => {
-                if let Some(ActiveSession::SinglePlayer(s)) = self.session.as_ref() {
-                    s.set_joyflag(bit, false);
-                }
-                iced::Task::none()
-            }
-            Message::SessionTogglePlay => {
-                if let Some(s) = self.session.as_ref().and_then(ActiveSession::as_replay) {
-                    s.set_paused(!s.is_paused());
-                }
-                iced::Task::none()
-            }
-            Message::SessionSeek(target) => {
-                if let Some(s) = self.session.as_ref().and_then(ActiveSession::as_replay) {
-                    s.seek_to(target);
-                }
-                iced::Task::none()
-            }
+            Message::Session(m) => self.session.update(m).map(Message::Session),
         }
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
-        if self.session.is_some() {
-            subs.push(
-                iced::time::every(std::time::Duration::from_millis(16))
-                    .map(|_| Message::SessionTick),
-            );
-        }
-        if matches!(self.session, Some(ActiveSession::SinglePlayer(_))) {
-            subs.push(iced::event::listen_with(session::map_keyboard_event));
-        }
-        iced::Subscription::batch(subs)
+        session::subscription(&self.session).map(Message::Session)
     }
 
     fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<tabs::play::Message> {
@@ -541,9 +471,9 @@ impl App {
                         &self.audio_binder,
                         loaded,
                     ) {
-                        Ok(session) => {
-                            self.session = Some(ActiveSession::SinglePlayer(session));
-                            self.session_frame = None;
+                        Ok(s) => {
+                            self.session.active = Some(ActiveSession::SinglePlayer(s));
+                            self.session.frame = None;
                             self.play.playing = true;
                         }
                         Err(e) => {
@@ -795,8 +725,8 @@ impl App {
                 &p,
             ) {
                 Ok(s) => {
-                    self.session = Some(ActiveSession::Replay(s));
-                    self.session_frame = None;
+                    self.session.active = Some(ActiveSession::Replay(s));
+                    self.session.frame = None;
                 }
                 Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
             },
@@ -904,8 +834,8 @@ impl App {
             return welcome_view(lang, &self.welcome_nickname).map(Message::Welcome);
         }
 
-        if let Some(active) = self.session.as_ref() {
-            return session::view(lang, active, self.session_frame.as_ref());
+        if self.session.is_active() {
+            return session::view(lang, &self.session).map(Message::Session);
         }
 
         let body: Element<'_, Message> = match self.tab {
