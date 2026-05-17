@@ -12,6 +12,7 @@ mod rom;
 mod rom_overrides;
 mod save;
 mod save_view;
+mod netplay;
 mod scanner;
 mod scrubber;
 mod selection;
@@ -136,6 +137,7 @@ struct App {
     patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
+    netplay: netplay::State,
 
     /// Active emulator session (replay playback or single-player) plus
     /// the cached framebuffer Handle. While `session.is_active()`, the
@@ -227,6 +229,7 @@ impl App {
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
             session: session::State::new(),
+            netplay: netplay::State::new(),
         };
         app.refresh_loaded();
         (app, iced::Task::none())
@@ -354,6 +357,7 @@ pub enum Message {
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
     Session(session::Message),
+    Netplay(netplay::Message),
 }
 
 impl App {
@@ -382,12 +386,35 @@ impl App {
                 self.tab = t;
                 iced::Task::none()
             }
+            // PlayPressed branches to the netplay path when the user
+            // typed a link code. We special-case it here because
+            // update_play returns Task<play::Message>, not
+            // Task<crate::Message> — kicking off a netplay::Connect
+            // task needs the broader return type.
+            Message::Play(tabs::play::Message::PlayPressed)
+                if !self.play.link_code.trim().is_empty() =>
+            {
+                self.play.flash_status = None;
+                self.play.playing = true;
+                let link_code = self.play.link_code.trim().to_string();
+                let endpoint = self.config.matchmaking_endpoint.clone();
+                self.netplay
+                    .update(netplay::Message::Connect { link_code, endpoint })
+                    .map(Message::Netplay)
+            }
+            Message::Play(tabs::play::Message::NetplayDisconnect) => {
+                self.play.playing = false;
+                self.netplay
+                    .update(netplay::Message::Disconnect)
+                    .map(Message::Netplay)
+            }
             Message::Play(m) => self.update_play(m).map(Message::Play),
             Message::Patches(m) => self.update_patches(m).map(Message::Patches),
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
             Message::Session(m) => self.session.update(m).map(Message::Session),
+            Message::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
         }
     }
 
@@ -453,36 +480,36 @@ impl App {
                 self.play.flash_status = None;
             }
             M::PlayPressed => {
+                // Netplay branch is handled in App::update before this
+                // (it needs to return Task<Message::Netplay>); we only
+                // see PlayPressed here when link_code is empty, i.e.
+                // the single-player path.
                 self.play.flash_status = None;
-                // Single-player path only for now — netplay (when
-                // link_code is non-empty) isn't wired up yet.
-                if self.play.link_code.trim().is_empty() {
-                    let Some(loaded) = self.loaded.as_ref() else {
-                        self.play.flash_status =
-                            Some(t(&self.config.language, "play-no-selection"));
-                        return iced::Task::none();
-                    };
-                    match session::spawn_singleplayer(
-                        &self.scanners,
-                        &self.config,
-                        &self.audio_binder,
-                        loaded,
-                    ) {
-                        Ok(s) => {
-                            self.session.active = Some(ActiveSession::SinglePlayer(s));
-                            self.session.frame = None;
-                            self.play.playing = true;
-                        }
-                        Err(e) => {
-                            log::warn!("singleplayer start failed: {e}");
-                            self.play.flash_status = Some(format!("{e}"));
-                        }
-                    }
-                } else {
-                    log::warn!("netplay sessions not yet implemented");
+                let Some(loaded) = self.loaded.as_ref() else {
                     self.play.flash_status =
-                        Some(t(&self.config.language, "play-netplay-todo"));
+                        Some(t(&self.config.language, "play-no-selection"));
+                    return iced::Task::none();
+                };
+                match session::spawn_singleplayer(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    loaded,
+                ) {
+                    Ok(s) => {
+                        self.session.active = Some(ActiveSession::SinglePlayer(s));
+                        self.session.frame = None;
+                        self.play.playing = true;
+                    }
+                    Err(e) => {
+                        log::warn!("singleplayer start failed: {e}");
+                        self.play.flash_status = Some(format!("{e}"));
+                    }
                 }
+            }
+            M::NetplayDisconnect => {
+                // Handled at App::update with the broader return type.
+                // No-op here; we should never actually land in this arm.
             }
             M::Rescan => {
                 self.scanners.rescan(&self.config);
@@ -851,6 +878,7 @@ impl App {
                     self.loaded.as_ref(),
                     self.config.streamer_mode,
                     &self.config,
+                    &self.netplay.phase,
                 )
                 .map(Message::Play),
             Tab::Replays => self

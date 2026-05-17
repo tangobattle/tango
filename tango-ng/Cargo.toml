@@ -24,6 +24,8 @@ bps = { path = "../bps" }
 mgba = { path = "../mgba" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
+tango-signaling = { path = "../tango-signaling" }
+datachannel-wrapper = { path = "../datachannel-wrapper" }
 cpal = "0.16"
 bytemuck = "1"
 thiserror = "1"

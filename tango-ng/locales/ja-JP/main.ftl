@@ -39,7 +39,9 @@ play-link-code = リンクコード
 play-play = 対戦
 play-cancel = キャンセル
 play-status-idle = リンクコードを入力するか、空欄でホストします。
-play-status-connecting = 接続中…
+play-status-connecting = 接続中:
+play-status-connected = 接続済み:
+play-status-failed = 接続失敗
 play-netplay-todo = ネットプレイは未実装です。リンクコードを空にすると一人用セッションを開始できます。
 
 # Save view sub-tabs

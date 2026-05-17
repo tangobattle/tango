@@ -21,6 +21,7 @@ pub enum Message {
     SaveViewAction(save_view::Action),
     LinkCodeChanged(String),
     PlayPressed,
+    NetplayDisconnect,
     Rescan,
 
     SaveOpenFolder,
@@ -141,12 +142,13 @@ impl PlayState {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         config: &'a config::Config,
+        netplay: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         column![
             self.selector_strip(lang, scanners),
             self.body(lang, scanners, loaded, streamer_mode, config),
             horizontal_rule(1),
-            self.bottom_strip(lang),
+            self.bottom_strip(lang, netplay),
         ]
         .width(Fill)
         .height(Fill)
@@ -465,12 +467,24 @@ impl PlayState {
             .map(Message::SaveViewAction)
     }
 
-    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-        let play_button: Element<'a, Message> = if self.playing {
+    fn bottom_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        netplay: &'a crate::netplay::Phase,
+    ) -> Element<'a, Message> {
+        let netplay_active = !matches!(
+            netplay,
+            crate::netplay::Phase::Idle | crate::netplay::Phase::Failed { .. }
+        );
+        let play_button: Element<'a, Message> = if self.playing || netplay_active {
             icons::labeled_icon_button(
                 icons::CLOSE,
                 t(lang, "play-cancel"),
-                Message::PlayPressed,
+                if netplay_active {
+                    Message::NetplayDisconnect
+                } else {
+                    Message::PlayPressed
+                },
                 PRIMARY_TEXT_SIZE,
                 PRIMARY_PADDING,
                 button::danger,
@@ -488,10 +502,41 @@ impl PlayState {
 
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
             text(flash.clone()).size(12).style(text::danger).into()
-        } else if self.playing {
-            text(t(lang, "play-status-connecting")).size(13).style(text::primary).into()
         } else {
-            text(t(lang, "play-status-idle")).size(12).into()
+            match netplay {
+                crate::netplay::Phase::Connecting { link_code } => text(format!(
+                    "{} {link_code}",
+                    t(lang, "play-status-connecting")
+                ))
+                .size(13)
+                .style(text::primary)
+                .into(),
+                crate::netplay::Phase::Connected { link_code } => text(format!(
+                    "{} {link_code}",
+                    t(lang, "play-status-connected")
+                ))
+                .size(13)
+                .style(|theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().success),
+                })
+                .into(),
+                crate::netplay::Phase::Failed { error } => {
+                    text(format!("{}: {error}", t(lang, "play-status-failed")))
+                        .size(12)
+                        .style(text::danger)
+                        .into()
+                }
+                crate::netplay::Phase::Idle => {
+                    if self.playing {
+                        text(t(lang, "play-status-connecting"))
+                            .size(13)
+                            .style(text::primary)
+                            .into()
+                    } else {
+                        text(t(lang, "play-status-idle")).size(12).into()
+                    }
+                }
+            }
         };
 
         container(
