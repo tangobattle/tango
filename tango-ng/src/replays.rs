@@ -47,7 +47,6 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
         (
             std::cmp::Reverse(r.metadata.ts),
             r.metadata.link_code.clone(),
-            r.metadata.round,
         )
     });
     out
