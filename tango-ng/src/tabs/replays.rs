@@ -230,7 +230,17 @@ fn replay_detail<'a>(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
-    let title = format!("{} @ {}", t(lang, "replays-watch"), md.link_code);
+    // Title uses the local side's game short tag (BN6 / EXE5K / ...)
+    // — same shape as the list rows for at-a-glance recognition.
+    let game_short = md
+        .local_side
+        .as_ref()
+        .and_then(|s| s.game_info.as_ref())
+        .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
+        .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+        .map(|g| crate::game::short_name(lang, g))
+        .unwrap_or_else(|| "?".to_string());
+    let title = format!("{game_short} @ {}", md.link_code);
 
     // Embedded save view for the local side. App fills `state.loaded`
     // when a replay is selected; until then (or if the parse fails)
