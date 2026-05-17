@@ -302,7 +302,6 @@ impl Session {
                             }),
                             reveal_setup: remote_settings.reveal_setup,
                         }),
-                        round: 0,
                         match_type: match_type.0 as u32,
                         match_subtype: match_type.1 as u32,
                     },

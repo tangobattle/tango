@@ -23,7 +23,11 @@ message Metadata {
   string link_code = 2;
   Side local_side = 3;
   Side remote_side = 4;
-  uint32 round = 5;
+  // Field 5 was a `round` index, never populated to anything useful —
+  // replays already cover all rounds of a match, so the field was
+  // always zero and just confused the UI. Reserved so future schema
+  // additions don't collide on the wire.
+  reserved 5;
   uint32 match_type = 6;
   uint32 match_subtype = 7;
 }

@@ -88,11 +88,7 @@ impl State {
                         replays.push((path.to_path_buf(), metadata));
                     }
                     replays.sort_by_key(|(_, metadata)| {
-                        (
-                            std::cmp::Reverse(metadata.ts),
-                            metadata.link_code.clone(),
-                            metadata.round,
-                        )
+                        (std::cmp::Reverse(metadata.ts), metadata.link_code.clone())
                     });
                     Some(replays)
                 });
