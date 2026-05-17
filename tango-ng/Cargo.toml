@@ -24,8 +24,6 @@ bps = { path = "../bps" }
 mgba = { path = "../mgba" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
-rand = "0.8"
-rand_pcg = { version = "0.3", features = ["serde1"] }
 cpal = "0.16"
 bytemuck = "1"
 thiserror = "1"

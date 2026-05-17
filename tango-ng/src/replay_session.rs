@@ -69,20 +69,7 @@ impl ReplaySession {
         );
 
         let remote_hooks = remote_game.hooks();
-        use rand::SeedableRng;
-        let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-        // Burn one RNG draw — mirrors the legacy session, which uses the
-        // post-bool RNG state for the shadow to match the recorded run.
-        let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-        let shadow = Shadow::new_from_sram(
-            remote_rom.as_ref(),
-            &replay.remote_sram_dump()?,
-            remote_hooks,
-            match_type,
-            replay.is_offerer,
-            replay.local_player_index,
-            shadow_rng,
-        )?;
+        let shadow = Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
         let shadow = Arc::new(Mutex::new(shadow));
 
         let stepper_state = tango_pvp::stepper::State::new(

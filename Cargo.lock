@@ -6909,8 +6909,6 @@ dependencies = [
  "mgba",
  "open 5.3.5",
  "parking_lot 0.12.4",
- "rand 0.8.5",
- "rand_pcg",
  "regex",
  "reqwest",
  "semver",
