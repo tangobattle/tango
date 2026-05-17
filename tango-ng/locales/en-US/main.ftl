@@ -151,9 +151,16 @@ settings-version = Version
 settings-about-blurb = tango-ng — an iced prototype of the Tango UI. Not feature-complete.
 
 # Welcome screen
-welcome-title = Welcome to Tango
-welcome-subtitle = Pick a nickname to get started. You can change it later in Settings.
+welcome-title = Welcome to Tango!
+welcome-subtitle = There's just a few steps you'll need to complete before you can start playing.
 welcome-continue = Continue
+welcome-step-roms = Add your ROMs
+welcome-step-roms-description = Drop your Battle Network / Rockman EXE .gba files into:
+welcome-step-roms-detected = { $count } ROMs detected.
+welcome-step-nickname = Set your nickname
+welcome-step-nickname-description = You can change this at any time in Settings.
+welcome-open-folder = Open ROMs folder
+welcome-roms-needed = Add at least one ROM before continuing.
 
 # Common actions
 rescan = Rescan

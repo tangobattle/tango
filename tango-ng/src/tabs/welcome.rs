@@ -1,7 +1,7 @@
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::tabs::settings::labeled;
-use crate::{save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE};
-use iced::widget::{button, column, container, text, text_input, Space};
+use crate::{icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS};
+use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -9,6 +9,9 @@ use unic_langid::LanguageIdentifier;
 pub enum Message {
     NicknameChanged(String),
     Continue,
+    LanguageSelected(LanguageIdentifier),
+    OpenRomsFolder,
+    RescanRoms,
 }
 
 /// Welcome-screen state: just the in-progress nickname draft until
@@ -29,57 +32,153 @@ impl State {
     /// Returns Some(trimmed_nickname) if the user finalized the
     /// welcome step (clicked Continue or pressed Enter on a non-empty
     /// input). The caller is expected to write it to `config.nickname`.
-    pub fn update(&mut self, msg: Message) -> Option<String> {
-        match msg {
-            Message::NicknameChanged(s) => {
-                self.nickname_draft = s;
-                None
-            }
-            Message::Continue => {
-                let trimmed = self.nickname_draft.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            }
+    pub fn finalize_nickname(&self) -> Option<String> {
+        let trimmed = self.nickname_draft.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
         }
     }
 }
 
-pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Element<'a, Message> {
-    let draft = &state.nickname_draft;
-    let can_continue = !draft.trim().is_empty();
-    let mut continue_btn = button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE))
-        .padding(PRIMARY_PADDING)
-        .style(button::primary);
-    if can_continue {
-        continue_btn = continue_btn.on_press(Message::Continue);
+/// Two-step welcome: drop ROMs in the data folder, then pick a
+/// nickname. Mirrors the legacy app's `gui/welcome.rs` layout —
+/// language picker at top, step rows with status glyphs, gated
+/// Continue button.
+pub fn view<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    roms_count: usize,
+    roms_path: &std::path::Path,
+) -> Element<'a, Message> {
+    let has_roms = roms_count > 0;
+
+    // Language selector — lets the user switch before nickname so the
+    // rest of the welcome flow shows in the language they picked.
+    let lang_picker = pick_list(
+        SUPPORTED_LANGS.to_vec(),
+        Some(lang.clone()),
+        Message::LanguageSelected,
+    );
+
+    let step_marker = |done: bool| -> &'static str {
+        if done {
+            icons::CONFIRM
+        } else {
+            icons::RESCAN
+        }
+    };
+
+    // Step 1 — ROMs.
+    let mut roms_block = column![
+        row![
+            icons::glyph(step_marker(has_roms), 16),
+            text(t(lang, "welcome-step-roms")).size(18),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        text(t(lang, "welcome-step-roms-description"))
+            .size(12)
+            .style(save_view::muted_text_style),
+        text(roms_path.display().to_string())
+            .size(12)
+            .font(iced::Font::MONOSPACE),
+        row![
+            icons::labeled_icon_button(
+                icons::FOLDER,
+                t(lang, "welcome-open-folder"),
+                Message::OpenRomsFolder,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+                button::secondary,
+            ),
+            icons::labeled_icon_button(
+                icons::RESCAN,
+                t(lang, "rescan"),
+                Message::RescanRoms,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+                button::secondary,
+            ),
+        ]
+        .spacing(8),
+    ]
+    .spacing(6);
+    if has_roms {
+        roms_block = roms_block.push(
+            text(t_args(
+                lang,
+                "welcome-step-roms-detected",
+                &[("count", (roms_count as i64).into())],
+            ))
+            .size(12)
+            .style(|theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(theme.palette().primary),
+            }),
+        );
     }
+
+    // Step 2 — nickname. Gated until at least one ROM is detected.
+    let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
+    let mut continue_btn =
+        button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE)).padding(PRIMARY_PADDING);
+    if can_continue {
+        continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
+    } else {
+        continue_btn = continue_btn.style(button::secondary);
+    }
+
+    let mut nickname_block = column![
+        row![
+            icons::glyph(
+                step_marker(!state.nickname_draft.trim().is_empty()),
+                16,
+            ),
+            text(t(lang, "welcome-step-nickname")).size(18),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        text(t(lang, "welcome-step-nickname-description"))
+            .size(12)
+            .style(save_view::muted_text_style),
+        labeled::<Message>(
+            t(lang, "settings-nickname"),
+            text_input("", &state.nickname_draft)
+                .on_input(Message::NicknameChanged)
+                .on_submit(Message::Continue)
+                .padding(10)
+                .width(Length::Fixed(280.0)),
+        ),
+    ]
+    .spacing(6);
+    if !has_roms {
+        nickname_block = nickname_block.push(
+            text(t(lang, "welcome-roms-needed"))
+                .size(11)
+                .style(save_view::muted_text_style),
+        );
+    }
+    nickname_block = nickname_block.push(Space::with_height(8)).push(continue_btn);
 
     container(
         column![
-            text(t(lang, "welcome-title")).size(28),
+            row![text(t(lang, "welcome-title")).size(28), Space::with_width(Fill), lang_picker]
+                .align_y(Alignment::Center),
             text(t(lang, "welcome-subtitle"))
                 .size(13)
                 .style(save_view::muted_text_style),
             Space::with_height(16),
-            labeled::<Message>(
-                t(lang, "settings-nickname"),
-                text_input("", draft)
-                    .on_input(Message::NicknameChanged)
-                    .on_submit(Message::Continue)
-                    .padding(10)
-                    .width(Length::Fixed(280.0)),
-            ),
-            Space::with_height(8),
-            continue_btn,
+            roms_block,
+            Space::with_height(20),
+            nickname_block,
         ]
         .spacing(8)
         .align_x(Alignment::Start)
         .padding(24)
-        .max_width(420),
+        .max_width(560),
     )
     .center(Fill)
     .into()
 }
+

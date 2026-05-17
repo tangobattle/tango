@@ -151,9 +151,16 @@ settings-version = バージョン
 settings-about-blurb = tango-ng — Tango UI の iced 試作版。機能はまだ揃っていません。
 
 # Welcome screen
-welcome-title = Tango へようこそ
-welcome-subtitle = ニックネームを入力してください。後から設定で変更できます。
+welcome-title = Tango へようこそ！
+welcome-subtitle = 対戦できる前にいくつかの初期設定をしてください。
 welcome-continue = 続ける
+welcome-step-roms = ROM を追加
+welcome-step-roms-description = ロックマンエグゼ／Battle Network の .gba ファイルを次の場所に置いてください：
+welcome-step-roms-detected = { $count } 個の ROM を検出しました。
+welcome-step-nickname = ニックネームを設定
+welcome-step-nickname-description = 設定からいつでも変更できます。
+welcome-open-folder = ROM フォルダを開く
+welcome-roms-needed = 続行するには ROM を 1 つ以上追加してください。
 
 # Common actions
 rescan = 再スキャン

@@ -798,9 +798,32 @@ impl App {
     }
 
     fn update_welcome(&mut self, msg: tabs::welcome::Message) -> iced::Task<tabs::welcome::Message> {
-        if let Some(nickname) = self.welcome.update(msg) {
-            self.config.nickname = Some(nickname);
-            self.persist_config();
+        use tabs::welcome::Message as M;
+        match msg {
+            M::NicknameChanged(s) => {
+                self.welcome.nickname_draft = s;
+            }
+            M::Continue => {
+                if let Some(nickname) = self.welcome.finalize_nickname() {
+                    self.config.nickname = Some(nickname);
+                    self.persist_config();
+                }
+            }
+            M::LanguageSelected(l) => {
+                self.config.language = l;
+                self.persist_config();
+            }
+            M::OpenRomsFolder => {
+                let p = self.config.roms_path();
+                let _ = std::fs::create_dir_all(&p);
+                if let Err(e) = open::that(&p) {
+                    log::error!("open roms folder: {e}");
+                }
+            }
+            M::RescanRoms => {
+                self.scanners.rescan(&self.config);
+                self.refresh_loaded();
+            }
         }
         iced::Task::none()
     }
@@ -810,7 +833,9 @@ impl App {
 
         // First-run gate: no main UI until the user picks a nickname.
         if self.config.nickname.is_none() {
-            return tabs::welcome::view(lang, &self.welcome).map(Message::Welcome);
+            let roms_count = self.scanners.roms.read().len();
+            return tabs::welcome::view(lang, &self.welcome, roms_count, &self.config.roms_path())
+                .map(Message::Welcome);
         }
 
         if self.session.is_active() {
