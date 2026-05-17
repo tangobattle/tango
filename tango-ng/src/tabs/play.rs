@@ -296,7 +296,10 @@ impl PlayState {
             Message::LinkCodeRandom => {
                 self.link_code = crate::randomcode::generate(&config.language);
                 self.flash_status = None;
-                None
+                // Drop the freshly-generated code straight onto the
+                // clipboard so the user can paste it into chat
+                // without an extra select+copy round-trip.
+                Some(Effect::CopyText(self.link_code.clone()))
             }
             Message::PlayPressed => {
                 self.flash_status = None;
@@ -1293,43 +1296,52 @@ fn lobby_view<'a>(
             ),
         };
 
-    // Big primary ready button on the right of the lobby header
-    // row. The visible label changes with state — Ready / Unready /
-    // Starting… — so the user always sees what clicking it will do.
-    // Disabled in the not-yet-ready state when compat says no.
-    let (ready_icon, ready_label, ready_msg, ready_style): (
-        &'static str,
-        String,
-        Option<Message>,
-        fn(&iced::Theme, button::Status) -> button::Style,
-    ) = if lobby.match_ready {
-        (icons::PLAY, t(lang, "lobby-match-starting"), Some(Message::NetplayUnready), button::success)
-    } else if lobby.local_ready {
-        (icons::CLOSE, t(lang, "lobby-unready"), Some(Message::NetplayUnready), button::secondary)
-    } else {
-        (
-            icons::CONFIRM,
-            t(lang, "lobby-ready"),
-            if compat_ok { Some(Message::NetplayReady) } else { None },
-            button::primary,
+    // Big primary "Ready" button on the right of the lobby header.
+    // The action only really exists in the pre-ready state — once
+    // the user has committed, we replace the big button with a
+    // success badge ("Ready ✓" / "Starting…") + a small icon-only
+    // × to unready. Avoids the old "label transforms Ready ⇆
+    // Unready" toggle which read as the button text mutating
+    // under the cursor.
+    const READY_TEXT: f32 = 16.0;
+    const READY_PAD: [f32; 2] = [10.0, 22.0];
+    let ready_button: Element<'a, Message> = if lobby.match_ready || lobby.local_ready {
+        let (status_icon, status_key, status_style): (&'static str, &'static str, fn(&iced::Theme, button::Status) -> button::Style) =
+            if lobby.match_ready {
+                (icons::PLAY, "lobby-match-starting", button::success)
+            } else {
+                (icons::CONFIRM, "lobby-ready-committed", button::success)
+            };
+        let status_badge = iced::widget::button(
+            row![
+                icons::glyph(status_icon).size(READY_TEXT),
+                text(t(lang, status_key)).size(READY_TEXT),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
         )
-    };
-    // Big version of labeled_icon_button — bumped font + padding so
-    // the Ready button reads as the single primary action in the
-    // lobby strip. Falls back to a disabled-styled button when no
-    // message is available (compat blocks ready).
-    let ready_button: Element<'a, Message> = {
-        const READY_TEXT: f32 = 16.0;
-        const READY_PAD: [f32; 2] = [10.0, 22.0];
+        .padding(READY_PAD)
+        .style(status_style);
+        let unready_btn = icons::icon_button(
+            icons::CLOSE,
+            t(lang, "lobby-unready"),
+            Message::NetplayUnready,
+            STANDARD_PADDING,
+        );
+        row![status_badge, unready_btn]
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+    } else {
         let label_widget = row![
-            icons::glyph(ready_icon).size(READY_TEXT),
-            text(ready_label).size(READY_TEXT),
+            icons::glyph(icons::CONFIRM).size(READY_TEXT),
+            text(t(lang, "lobby-ready")).size(READY_TEXT),
         ]
         .spacing(8)
         .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(ready_style);
-        if let Some(m) = ready_msg {
-            btn = btn.on_press(m);
+        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(button::primary);
+        if compat_ok {
+            btn = btn.on_press(Message::NetplayReady);
         }
         btn.into()
     };

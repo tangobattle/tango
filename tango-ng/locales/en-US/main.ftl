@@ -58,6 +58,7 @@ lobby-compat-missing-rom = Game or patch isn't installed on both sides.
 lobby-compat-version-mismatch = Game versions don't match (different patch / rom).
 lobby-compat-match-mismatch = Match type doesn't match.
 lobby-ready = Ready
+lobby-ready-committed = Ready
 lobby-unready = Unready
 lobby-ready-yes = ready
 lobby-ready-no = not ready

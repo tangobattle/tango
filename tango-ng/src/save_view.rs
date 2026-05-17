@@ -186,7 +186,7 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
     };
     let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
         icons::icon_button(
-            icons::EXPORT,
+            icons::COPY_IMAGE,
             t(lang, "save-copy-image"),
             Action::CopyTabImage(tab),
             [4.0, 10.0],
@@ -209,7 +209,7 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
         Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
         Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
         Tab::Navi => Some(
-            row![copy_btn(Tab::Navi), copy_img_btn(Tab::Navi)]
+            row![copy_img_btn(Tab::Navi), copy_btn(Tab::Navi)]
                 .spacing(6)
                 .align_y(iced::Alignment::Center)
                 .into(),

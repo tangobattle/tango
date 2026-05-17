@@ -4,7 +4,18 @@
 //! emits the caller's seek message; release ends the drag.
 
 use iced::widget::canvas::{self, Canvas, Frame, Path, Stroke};
-use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+
+/// Linear-blend two colors. `t` runs 0..1; 0 returns `a`, 1 returns `b`.
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color::from_rgba(
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t,
+        a.a + (b.a - a.a) * t,
+    )
+}
 
 pub struct Scrubber<F> {
     current: u32,
@@ -28,7 +39,9 @@ impl<F> Scrubber<F> {
             prefetched,
             round_boundaries: Vec::new(),
             on_seek,
-            height: 18.0,
+            // Tall enough for the playhead handle to protrude
+            // above + below the slim track without clipping.
+            height: 22.0,
         }
     }
 
@@ -66,11 +79,11 @@ where
 
     fn draw(
         &self,
-        _state: &State,
+        state: &State,
         renderer: &Renderer,
         theme: &Theme,
         bounds: Rectangle,
-        _cursor: mouse::Cursor,
+        cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let palette = theme.extended_palette();
@@ -78,50 +91,70 @@ where
         let h = bounds.height;
         let total = self.total.max(1) as f32;
 
-        // Full-width unplayed/unprefetched track.
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            Size::new(w, h),
-            palette.background.weak.color,
-        );
+        // Slim rounded track centered vertically. The canvas bounds
+        // are tall (22 px) so the round playhead handle has room to
+        // protrude above + below — the track itself is just 6 px.
+        const TRACK_H: f32 = 6.0;
+        let track_y = ((h - TRACK_H) / 2.0).round();
+        let track_radius = TRACK_H / 2.0;
 
-        // Prefetched range — same hue as the played fill but at the
-        // weak slot for a lower-contrast underlay.
+        // Full-width unplayed/unprefetched track.
+        let track = Path::rounded_rectangle(Point::new(0.0, track_y), Size::new(w, TRACK_H), track_radius.into());
+        frame.fill(&track, palette.background.weak.color);
+
+        // Prefetched range — primary hue at weak strength so it reads
+        // as a lower-contrast underlay beneath the played fill.
         let prefetched_w = (self.prefetched as f32 / total).clamp(0.0, 1.0) * w;
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            Size::new(prefetched_w, h),
-            palette.primary.weak.color,
-        );
+        if prefetched_w > 0.0 {
+            let prefetched = Path::rounded_rectangle(
+                Point::new(0.0, track_y),
+                Size::new(prefetched_w, TRACK_H),
+                track_radius.into(),
+            );
+            frame.fill(&prefetched, palette.primary.weak.color);
+        }
 
         // Played portion.
         let played_w = (self.current as f32 / total).clamp(0.0, 1.0) * w;
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            Size::new(played_w, h),
-            palette.primary.base.color,
-        );
-
-        // Round-boundary tick marks. Strong-background gives a visible
-        // line on both Light and Dark themes without needing a separate
-        // palette pick.
-        let stroke = Stroke::default()
-            .with_color(palette.background.strong.color)
-            .with_width(1.0);
-        for &b in &self.round_boundaries {
-            let x = (b as f32 / total).clamp(0.0, 1.0) * w;
-            let path = Path::line(Point::new(x, 0.0), Point::new(x, h));
-            frame.stroke(&path, stroke.clone());
+        if played_w > 0.0 {
+            let played = Path::rounded_rectangle(
+                Point::new(0.0, track_y),
+                Size::new(played_w, TRACK_H),
+                track_radius.into(),
+            );
+            frame.fill(&played, palette.primary.base.color);
         }
 
-        // Playhead: a 2px column at the current position so it stays
-        // visible against either the played or unplayed fill.
-        let thumb_x = played_w.clamp(1.0, w - 1.0);
-        frame.fill_rectangle(
-            Point::new(thumb_x - 1.0, 0.0),
-            Size::new(2.0, h),
-            palette.primary.strong.color,
-        );
+        // Round-boundary tick marks — short notches half the track
+        // height, centered. Subtle enough not to compete with the
+        // playhead but visible enough to spot at a glance.
+        let notch_color = mix(palette.background.strong.color, palette.background.base.color, 0.4);
+        let notch_stroke = Stroke::default().with_color(notch_color).with_width(1.0);
+        let notch_h = TRACK_H * 0.6;
+        let notch_top = ((h - notch_h) / 2.0).round();
+        for &b in &self.round_boundaries {
+            // Skip 0 + total — they overlap the track ends.
+            if b == 0 || b >= self.total {
+                continue;
+            }
+            let x = (b as f32 / total).clamp(0.0, 1.0) * w;
+            let notch = Path::line(Point::new(x, notch_top), Point::new(x, notch_top + notch_h));
+            frame.stroke(&notch, notch_stroke.clone());
+        }
+
+        // Playhead: filled circle with a thin border, sized larger
+        // than the track height so it sits proud of the bar. Grows
+        // slightly while dragging / hovering for tactile feedback.
+        let hovered = state.dragging || cursor.is_over(bounds);
+        let handle_r = if hovered { 7.0 } else { 6.0 };
+        let handle_x = played_w.clamp(handle_r, w - handle_r);
+        let handle_y = h / 2.0;
+        let handle = Path::circle(Point::new(handle_x, handle_y), handle_r);
+        // Outer ring (same color as the track bg) so the handle has
+        // a halo against both played + unplayed regions.
+        let halo = Path::circle(Point::new(handle_x, handle_y), handle_r + 1.5);
+        frame.fill(&halo, palette.background.base.color);
+        frame.fill(&handle, palette.primary.strong.color);
 
         vec![frame.into_geometry()]
     }

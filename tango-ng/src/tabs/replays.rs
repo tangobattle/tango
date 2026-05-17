@@ -631,8 +631,11 @@ fn replay_detail<'a>(
     // think they had infinite vertical room, producing a meter-tall
     // scrollbar.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
+        // No outer padding: save_view brings its own tab strip +
+        // body insets, and the extra 8 px container padding made
+        // the embedded view feel awkwardly hemmed-in against the
+        // replay-detail card it sits inside.
         container(save_view::view(lang, loaded, &state.save_view, false).map(Message::SaveViewAction))
-            .padding(8)
             .height(Fill)
             .into()
     } else {

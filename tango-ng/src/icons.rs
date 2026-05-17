@@ -41,8 +41,9 @@ pub const FOLDER: &str = "\u{e0d7}"; // folder
 pub const NEW: &str = "\u{e13d}"; // plus
 pub const RENAME: &str = "\u{e1f9}"; // pencil
 pub const DELETE: &str = "\u{e18d}"; // trash
-pub const DUPLICATE: &str = "\u{e09e}"; // copy
 pub const COPY: &str = "\u{e09e}"; // copy
+pub const DUPLICATE: &str = "\u{e3fd}"; // copy-plus
+pub const COPY_IMAGE: &str = "\u{e53c}"; // image-down
 pub const WATCH: &str = "\u{e13c}"; // play
 pub const EXPORT: &str = "\u{e19e}"; // upload
 pub const RENDER: &str = "\u{e29b}"; // clapperboard — replay render action
@@ -50,8 +51,6 @@ pub const DICE: &str = "\u{e28b}"; // dice-5 — random link-code generator
 pub const FIGHT: &str = "\u{e2b4}"; // swords — Fight button (netplay Play)
 pub const CONFIRM: &str = "\u{e06c}"; // check
 pub const CANCEL: &str = "\u{e1b2}"; // x
-// Input-mapping chip glyphs — visual hint for "where this binding
-// comes from" (physical keyboard vs gamepad).
 pub const KEYBOARD: &str = "\u{e284}"; // keyboard
 pub const GAMEPAD: &str = "\u{e0de}"; // gamepad
 /// "Asset missing" badge — currently used as a prefix in the game
@@ -75,12 +74,7 @@ pub fn glyph<'a>(g: &'static str) -> Text<'a> {
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
 /// aware style that doesn't compete with primary CTAs in the
 /// same row. The plain-text label is exposed as a hover tooltip.
-pub fn icon_button<'a, M: Clone + 'a>(
-    icon: &'static str,
-    label: String,
-    msg: M,
-    padding: [f32; 2],
-) -> Element<'a, M> {
+pub fn icon_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M, padding: [f32; 2]) -> Element<'a, M> {
     icon_button_styled(icon, label, Some(msg), padding, neutral)
 }
 
@@ -196,15 +190,11 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
-    button(
-        row![glyph(icon), text(label)]
-            .spacing(8)
-            .align_y(Alignment::Center),
-    )
-    .padding(padding)
-    .style(style)
-    .on_press(msg)
-    .into()
+    button(row![glyph(icon), text(label)].spacing(8).align_y(Alignment::Center))
+        .padding(padding)
+        .style(style)
+        .on_press(msg)
+        .into()
 }
 
 /// Flat compact tab — icon + label, transparent until
@@ -215,41 +205,32 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
 /// Width is whatever the button's content needs. The underline
 /// is rendered as a `Stack` overlay so it spans the button's
 /// width without forcing the tab to flex.
-pub fn tab_button<'a, M: Clone + 'a>(
-    icon: &'static str,
-    label: String,
-    msg: M,
-    active: bool,
-) -> Element<'a, M> {
+pub fn tab_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M, active: bool) -> Element<'a, M> {
     use iced::widget::{stack, Space};
-    let btn = button(
-        row![glyph(icon), text(label)]
-            .spacing(6)
-            .align_y(Alignment::Center),
-    )
-    .padding([4, 10])
-    .style(move |theme: &Theme, status: button::Status| {
-        let p = theme.extended_palette();
-        let bg = match status {
-            button::Status::Hovered if !active => Some(iced::Background::Color(p.background.weak.color)),
-            _ => None,
-        };
-        let text_color = if active {
-            p.primary.base.color
-        } else {
-            theme.palette().text
-        };
-        button::Style {
-            background: bg,
-            text_color,
-            border: iced::Border {
-                radius: 4.0.into(),
+    let btn = button(row![glyph(icon), text(label)].spacing(6).align_y(Alignment::Center))
+        .padding([4, 10])
+        .style(move |theme: &Theme, status: button::Status| {
+            let p = theme.extended_palette();
+            let bg = match status {
+                button::Status::Hovered if !active => Some(iced::Background::Color(p.background.weak.color)),
+                _ => None,
+            };
+            let text_color = if active {
+                p.primary.base.color
+            } else {
+                theme.palette().text
+            };
+            button::Style {
+                background: bg,
+                text_color,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        }
-    })
-    .on_press(msg);
+            }
+        })
+        .on_press(msg);
 
     // Stack picks its size from the FIRST child, so the button
     // drives the tab's width. The underline overlay then takes
