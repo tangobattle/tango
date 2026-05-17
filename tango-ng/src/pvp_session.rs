@@ -22,12 +22,13 @@ pub struct PvpSession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
-    /// Flipped true by the network/match background task when it
-    /// exits — clean finish, peer disconnect, comm error, or
-    /// user-cancel all converge to setting this. Polled by the
-    /// session-view Tick so the UI can self-close instead of
-    /// freezing on the last received frame.
-    session_ended: Arc<AtomicBool>,
+    /// Per-game in-match hook fires `completion_token.complete()`
+    /// once the match has actually reached its end-game screen.
+    /// We hold a handle to poll it from the UI tick so the
+    /// session can self-close — same trigger as the legacy
+    /// `Session::completed()` check (see `tango/src/gui.rs`'s
+    /// `should_close` block).
+    completion_token: tango_pvp::hooks::CompletionToken,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
@@ -210,12 +211,10 @@ impl PvpSession {
         // until the receiver errors (peer disconnected) or the
         // cancellation_token fires. On exit, drop the handle out
         // of the shared slot so the session knows the match's gone.
-        let session_ended = Arc::new(AtomicBool::new(false));
         {
             let match_handle = match_handle.clone();
             let inner_match = inner_match.clone();
             let completion_token = completion_token.clone();
-            let session_ended = session_ended.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
@@ -244,13 +243,6 @@ impl PvpSession {
                     }
                 }
                 *match_handle.lock().await = None;
-                // Signal the UI: the match is done (clean win,
-                // peer disconnect, comm error, user-cancel — all
-                // converge here). The session-view tick handler
-                // polls this and tears the session down so the
-                // user is never stuck on a frozen frame after a
-                // remote drop.
-                session_ended.store(true, Ordering::SeqCst);
             });
         }
 
@@ -294,7 +286,7 @@ impl PvpSession {
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
-            session_ended,
+            completion_token,
             _audio_binding: audio_binding,
             _thread: thread,
             cancellation_token,
@@ -329,12 +321,13 @@ impl PvpSession {
         self.cancellation_token.cancel();
     }
 
-    /// True once the match background task has wound down — the
-    /// session view polls this each tick and emits `Message::Close`
-    /// so the UI doesn't get stuck on a frozen final frame after
-    /// a peer drop or comm error.
+    /// True once the per-game in-match hook has signaled match
+    /// completion (someone won / quit out / the game reached its
+    /// end screen). Mirrors `tango::session::Session::completed`
+    /// — the session-view tick polls this and auto-closes so the
+    /// user lands back in the main UI when the match is over.
     pub fn is_ended(&self) -> bool {
-        self.session_ended.load(Ordering::Acquire)
+        self.completion_token.is_complete()
     }
 
     /// Median ping over the last few seconds — drives the in-
