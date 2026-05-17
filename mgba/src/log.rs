@@ -16,12 +16,15 @@ unsafe extern "C" fn c_log(
 ) {
     let level = match level {
         mgba_sys::mLogLevel_mLOG_STUB => log::Level::Trace,
-        mgba_sys::mLogLevel_mLOG_DEBUG => log::Level::Debug,
+        // GAME_ERROR is the ROM doing something weird (divide-by-zero
+        // SWIs, misaligned CpuSets, malformed LZ77 streams). Retail
+        // BN/EXE games trip these constantly — surfacing them as
+        // log::Error spams the console at the default `info` filter.
+        // Demote to Debug so they only show under RUST_LOG=debug.
+        mgba_sys::mLogLevel_mLOG_DEBUG | mgba_sys::mLogLevel_mLOG_GAME_ERROR => log::Level::Debug,
         mgba_sys::mLogLevel_mLOG_INFO => log::Level::Info,
         mgba_sys::mLogLevel_mLOG_WARN => log::Level::Warn,
-        mgba_sys::mLogLevel_mLOG_ERROR | mgba_sys::mLogLevel_mLOG_FATAL | mgba_sys::mLogLevel_mLOG_GAME_ERROR => {
-            log::Level::Error
-        }
+        mgba_sys::mLogLevel_mLOG_ERROR | mgba_sys::mLogLevel_mLOG_FATAL => log::Level::Error,
         _ => log::Level::Info,
     };
 
