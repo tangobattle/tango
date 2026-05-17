@@ -8,6 +8,7 @@ use unic_langid::LanguageIdentifier;
 pub enum SettingsTab {
     #[default]
     General,
+    Audio,
     Netplay,
     About,
 }
@@ -21,6 +22,7 @@ pub enum Message {
     MatchmakingEndpointChanged(String),
     PatchRepoChanged(String),
     ThemeChanged(config::ThemeMode),
+    VolumeChanged(u8),
 }
 
 pub fn settings_panel<'a>(
@@ -42,6 +44,7 @@ pub fn settings_panel<'a>(
             text(t(lang, "tab-settings")).size(18),
             Space::with_height(8),
             side_btn("settings-section-general", SettingsTab::General),
+            side_btn("settings-section-audio", SettingsTab::Audio),
             side_btn("settings-section-netplay", SettingsTab::Netplay),
             side_btn("settings-section-about", SettingsTab::About),
         ]
@@ -53,6 +56,7 @@ pub fn settings_panel<'a>(
 
     let body: Element<'a, Message> = match active {
         SettingsTab::General => settings_general(lang, config),
+        SettingsTab::Audio => settings_audio(lang, config),
         SettingsTab::Netplay => settings_netplay(lang, config),
         SettingsTab::About => settings_about(lang),
     };
@@ -113,6 +117,17 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         labeled::<Message>(
             t(lang, "settings-data-path"),
             text(config.data_path.display().to_string()).size(11),
+        ),
+    ]
+    .spacing(14)
+    .into()
+}
+
+fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
+    column![
+        labeled::<Message>(
+            format!("{}: {}%", t(lang, "settings-volume"), config.volume),
+            iced::widget::slider(0..=100u8, config.volume, Message::VolumeChanged),
         ),
     ]
     .spacing(14)

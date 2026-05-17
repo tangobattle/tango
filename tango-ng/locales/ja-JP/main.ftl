@@ -133,6 +133,7 @@ patches-netplay-compatibility = ネットプレイ互換性
 settings-section-general = 一般
 settings-section-graphics = グラフィック
 settings-section-audio = オーディオ
+settings-volume = 音量
 settings-section-netplay = ネットプレイ
 settings-nickname = ニックネーム
 settings-language = 言語

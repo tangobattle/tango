@@ -204,6 +204,7 @@ impl App {
         // source. Sessions later bind their MGBAStream into the binder
         // and the cpal stream keeps going across selections.
         let mut audio_binder = audio::LateBinder::new();
+        audio_binder.set_volume(config.volume);
         let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
             Ok(b) => {
                 use audio::Backend;
@@ -805,6 +806,11 @@ impl App {
             }
             M::ThemeChanged(t) => {
                 self.config.theme = t;
+                self.persist_config();
+            }
+            M::VolumeChanged(v) => {
+                self.config.volume = v;
+                self.audio_binder.set_volume(v);
                 self.persist_config();
             }
         }

@@ -133,6 +133,7 @@ patches-netplay-compatibility = Netplay compatibility
 settings-section-general = General
 settings-section-graphics = Graphics
 settings-section-audio = Audio
+settings-volume = Volume
 settings-section-netplay = Netplay
 settings-nickname = Nickname
 settings-language = Language

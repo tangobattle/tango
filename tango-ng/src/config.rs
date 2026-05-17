@@ -73,6 +73,14 @@ pub struct Config {
     pub last_save: Option<std::path::PathBuf>,
     pub last_patch: Option<String>,
     pub last_patch_version: Option<semver::Version>,
+
+    /// Master volume (0..=100). 100 = no attenuation.
+    #[serde(default = "default_volume")]
+    pub volume: u8,
+}
+
+fn default_volume() -> u8 {
+    100
 }
 
 impl Default for Config {
@@ -94,6 +102,7 @@ impl Default for Config {
             last_save: None,
             last_patch: None,
             last_patch_version: None,
+            volume: default_volume(),
         }
     }
 }
