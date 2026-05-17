@@ -3,10 +3,9 @@ use crate::icons;
 use crate::{
     config, replays, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
 };
-use iced::widget::{
-    button, column, container, horizontal_rule, horizontal_space, pick_list, row, scrollable, text, vertical_rule,
-    Space,
-};
+use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -674,9 +673,9 @@ fn replay_detail<'a>(
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
-            Space::with_height(8),
+            Space::new().height(8),
             horizontal_rule(1),
-            Space::with_height(8),
+            Space::new().height(8),
             row![
                 row_for_side(t(lang, "play-you"), md.local_side.as_ref()),
                 vertical_rule(1),
@@ -684,7 +683,7 @@ fn replay_detail<'a>(
             ]
             .spacing(12)
             .height(Length::Shrink),
-            Space::with_height(8),
+            Space::new().height(8),
             text({
                 let family = md
                     .local_side
@@ -696,7 +695,7 @@ fn replay_detail<'a>(
                 format!("{}: {}", t(lang, "replays-match-type"), label)
             })
             .size(TEXT_CAPTION),
-            Space::with_height(8),
+            Space::new().height(8),
             horizontal_rule(1),
             preview,
         ]
@@ -795,7 +794,7 @@ fn export_status_line<'a>(
         .spacing(6)
         .align_y(Alignment::Center)
         .into(),
-        _ => Space::with_height(0).into(),
+        _ => Space::new().height(0).into(),
     }
 }
 
@@ -812,7 +811,7 @@ fn export_panel<'a>(
     replay_path: &std::path::Path,
 ) -> Element<'a, Message> {
     if !open {
-        return Space::with_height(0).into();
+        return Space::new().height(0).into();
     }
     // Settings are always editable here — the panel itself only
     // shows when no export is running, so there's no in-flight
@@ -837,13 +836,16 @@ fn export_panel<'a>(
             .into()
     };
     let lossless_chk =
-        iced::widget::checkbox(t(lang, "replays-export-lossless"), settings.lossless).text_size(STANDARD_TEXT_SIZE);
+        iced::widget::checkbox(settings.lossless)
+            .label(t(lang, "replays-export-lossless"))
+            .text_size(STANDARD_TEXT_SIZE);
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
     } else {
         lossless_chk.on_toggle(Message::SetExportLossless).into()
     };
-    let bgm_chk = iced::widget::checkbox(t(lang, "replays-export-disable-bgm"), settings.disable_bgm)
+    let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
+        .label(t(lang, "replays-export-disable-bgm"))
         .text_size(STANDARD_TEXT_SIZE);
     let bgm_chk: Element<'a, Message> = if in_flight {
         bgm_chk.into()
@@ -864,7 +866,9 @@ fn export_panel<'a>(
             .style(save_view::muted_text_style);
         let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);
         for (i, picked) in selected_rounds.iter().enumerate() {
-            let cb = iced::widget::checkbox(format!("{}", i + 1), *picked).text_size(STANDARD_TEXT_SIZE);
+            let cb = iced::widget::checkbox(*picked)
+                .label(format!("{}", i + 1))
+                .text_size(STANDARD_TEXT_SIZE);
             let cb: Element<'a, Message> = if in_flight {
                 cb.into()
             } else {

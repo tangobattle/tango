@@ -867,23 +867,58 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
     let Some(handles) = state.conn.as_ref() else {
         return iced::Subscription::none();
     };
-    let sender = handles.sender.clone();
-    let pending = state.pending_receiver.clone();
-    let cancel = state.cancel.clone();
-    let post = state.post_lobby_receiver.clone();
-    iced::Subscription::run_with_id(
-        ("netplay-lobby", state.session_id),
-        iced::stream::channel(16, move |tx| async move {
-            let Some(receiver) = pending.lock().take() else {
-                return;
-            };
-            // Loop returns the receiver back so the PvP-handoff
-            // path can wrap it in a PvpReceiver. Stored in the
-            // shared slot the State exposes via PreMatchData.
-            let receiver = run_lobby_loop(receiver, sender, tx, cancel).await;
-            *post.lock() = Some(receiver);
-        }),
+    iced::Subscription::run_with(
+        LobbyTag {
+            session_id: state.session_id,
+            pending: state.pending_receiver.clone(),
+            sender: handles.sender.clone(),
+            cancel: state.cancel.clone(),
+            post: state.post_lobby_receiver.clone(),
+        },
+        build_lobby_stream,
     )
+}
+
+/// Identity + payload for the lobby subscription. iced 0.14
+/// hashes this to decide whether to keep the existing stream or
+/// tear it down + restart: only `session_id` is mixed into the
+/// hash, so the Arcs can change freely without re-keying.
+struct LobbyTag {
+    session_id: u64,
+    pending: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    cancel: CancellationToken,
+    post: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+}
+
+impl std::hash::Hash for LobbyTag {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        // Tag string + session id only. cancel_and_renew bumps
+        // session_id so a fresh Connect re-keys the subscription.
+        "netplay-lobby".hash(h);
+        self.session_id.hash(h);
+    }
+}
+
+/// Body of the lobby subscription. Pulled out as a free `fn`
+/// because iced 0.14's `run_with` takes a function pointer, not
+/// a closure, so the only state available is what comes in
+/// through the [`LobbyTag`] argument.
+fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
+    let pending = tag.pending.clone();
+    let sender = tag.sender.clone();
+    let cancel = tag.cancel.clone();
+    let post = tag.post.clone();
+    iced::stream::channel(16, move |tx| async move {
+        let Some(receiver) = pending.lock().take() else {
+            return;
+        };
+        // Loop returns the receiver back so the PvP-handoff
+        // path can wrap it in a PvpReceiver. Stored in the
+        // shared slot the State exposes via PreMatchData.
+        let receiver = run_lobby_loop(receiver, sender, tx, cancel).await;
+        *post.lock() = Some(receiver);
+    })
 }
 
 fn slot<T>(payload: T) -> Slot<T> {

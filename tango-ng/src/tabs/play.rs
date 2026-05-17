@@ -4,9 +4,9 @@ use crate::{
     config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING,
     STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE,
 };
-use iced::widget::{
-    button, column, container, horizontal_rule, horizontal_space, pick_list, row, text, text_input,
-};
+use iced::widget::rule::horizontal as horizontal_rule;
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{button, column, container, pick_list, row, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -1166,7 +1166,7 @@ fn lobby_view<'a>(
             text(t(lang, "lobby-reveal-setup"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
-            iced::widget::checkbox(t(lang, "lobby-reveal-mine"), lobby.reveal_setup)
+            iced::widget::checkbox(lobby.reveal_setup).label(t(lang, "lobby-reveal-mine"))
                 .on_toggle(Message::NetplaySetRevealSetup)
                 .size(TEXT_HEADING)
                 .text_size(STANDARD_TEXT_SIZE),
@@ -1308,7 +1308,7 @@ fn lobby_view<'a>(
             header_line,
             iced::widget::row![
                 side(t(lang, "play-you"), lobby.local.as_ref()),
-                iced::widget::vertical_rule(1),
+                iced::widget::rule::vertical(1),
                 side(t(lang, "replays-opponent"), lobby.remote.as_ref()),
             ]
             .spacing(12),

@@ -74,7 +74,7 @@ pub fn view<'a>(
     // Step 1 — ROMs.
     let mut roms_block = column![
         row![
-            icons::glyph(step_marker(has_roms), 16),
+            icons::glyph(step_marker(has_roms), 16.0),
             text(t(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -131,7 +131,7 @@ pub fn view<'a>(
 
     let mut nickname_block = column![
         row![
-            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty()), 16,),
+            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty()), 16.0,),
             text(t(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -157,22 +157,22 @@ pub fn view<'a>(
                 .style(save_view::muted_text_style),
         );
     }
-    nickname_block = nickname_block.push(Space::with_height(8)).push(continue_btn);
+    nickname_block = nickname_block.push(Space::new().height(8)).push(continue_btn);
 
     container(
         column![
             row![
                 text(t(lang, "welcome-title")).size(TEXT_DISPLAY),
-                Space::with_width(Fill),
+                Space::new().width(Fill),
                 lang_picker
             ]
             .align_y(Alignment::Center),
             text(t(lang, "welcome-subtitle"))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style),
-            Space::with_height(16),
+            Space::new().height(16),
             roms_block,
-            Space::with_height(20),
+            Space::new().height(20),
             nickname_block,
         ]
         .spacing(8)

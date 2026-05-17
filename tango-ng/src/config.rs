@@ -13,7 +13,7 @@ const ORGANIZATION: &str = "n1gp";
 const APPLICATION: &str = "tango-ng";
 
 pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
-pub const DEFAULT_PATCH_REPO: &str = "https://github.com/tangobattle/patches";
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
 
 fn default_matchmaking_endpoint() -> String {
     DEFAULT_MATCHMAKING_ENDPOINT.to_string()

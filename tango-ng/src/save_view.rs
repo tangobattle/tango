@@ -1,8 +1,9 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
+use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::{
-    column, container, horizontal_rule, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space,
+    column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space,
 };
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
@@ -180,21 +181,21 @@ fn tab_extras<'a>(
 ) -> Option<Element<'a, Action>> {
     use crate::icons;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
-        icons::icon_button(icons::COPY, t(lang, "save-copy"), Action::CopyTab(tab), 13, [4, 10])
+        icons::icon_button(icons::COPY, t(lang, "save-copy"), Action::CopyTab(tab), 13.0, [4.0, 10.0])
     };
     let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
         icons::icon_button(
             icons::EXPORT,
             t(lang, "save-copy-image"),
             Action::CopyTabImage(tab),
-            13,
-            [4, 10],
+            13.0,
+            [4.0, 10.0],
         )
     };
     match tab {
         Tab::Folder => Some(
             row![
-                iced::widget::checkbox(t(lang, "folder-group"), state.folder_grouped)
+                iced::widget::checkbox(state.folder_grouped).label(t(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
                     .size(TEXT_BODY)
                     .text_size(12),
@@ -217,7 +218,7 @@ fn tab_extras<'a>(
 }
 
 fn horizontal_space() -> iced::widget::Space {
-    iced::widget::Space::with_width(Fill)
+    iced::widget::space::horizontal()
 }
 
 /// Plain-text representation of the active save-view tab, for the
@@ -538,7 +539,7 @@ fn chip_row<M: 'static>(
             .filter_method(iced_image::FilterMethod::Nearest)
             .content_fit(ContentFit::Contain)
             .into(),
-        None => Space::with_width(Length::Fixed(22.0)).into(),
+        None => Space::new().width(Length::Fixed(22.0)).into(),
     };
 
     // Element icon, sits next to the name. Reserve width so columns
@@ -554,7 +555,7 @@ fn chip_row<M: 'static>(
                 .content_fit(ContentFit::Contain)
                 .into()
         })
-        .unwrap_or_else(|| Space::with_width(Length::Fixed(16.0)).into());
+        .unwrap_or_else(|| Space::new().width(Length::Fixed(16.0)).into());
 
     let name_text = info
         .as_ref()
@@ -607,7 +608,7 @@ fn chip_row<M: 'static>(
         .align_x(iced::alignment::Horizontal::Right)
         .into()
     } else {
-        Space::with_width(Length::Fixed(0.0)).into()
+        Space::new().width(Length::Fixed(0.0)).into()
     };
 
     // Count column on the left for grouped mode. Theme-aware text:
@@ -763,7 +764,7 @@ fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static
 }
 
 fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, M> {
-    colored_badge_sized(label, bg, text_color, 11, [2, 6])
+    colored_badge_sized(label, bg, text_color, 11.0, [2.0, 6.0])
 }
 
 /// Variant that lets callers (NCP parts list) pick a larger text size
@@ -772,8 +773,8 @@ fn colored_badge_sized<M: 'static>(
     label: String,
     bg: iced::Color,
     text_color: iced::Color,
-    size: u16,
-    padding: [u16; 2],
+    size: f32,
+    padding: [f32; 2],
 ) -> Element<'static, M> {
     container(text(label).size(size).color(text_color))
         .padding(padding)
@@ -875,7 +876,7 @@ fn render_navi<M: 'static>(
                         .content_fit(ContentFit::Contain)
                         .into()
                 })
-                .unwrap_or_else(|| Space::with_height(Length::Fixed(64.0)).into());
+                .unwrap_or_else(|| Space::new().height(Length::Fixed(64.0)).into());
             // Top-aligned column — `.center(Fill)` collapsed to zero
             // inside the replays scrollable (Fill inside infinite-
             // height scroll content evaluates to Shrink), and the
@@ -944,9 +945,9 @@ fn render_navicust<M: 'static>(
             // Build the overlay: a fixed-size column of fixed-size rows
             // matching the grid. Each cell is either a no-op Space or
             // a tooltip-wrapped Space carrying the part's name + desc.
-            let mut overlay_col = column![Space::with_height(Length::Fixed(body_y))];
+            let mut overlay_col = column![Space::new().height(Length::Fixed(body_y))];
             for row_idx in 0..g_rows {
-                let mut cell_row = row![Space::with_width(Length::Fixed(body_x))];
+                let mut cell_row = row![Space::new().width(Length::Fixed(body_x))];
                 for col_idx in 0..g_cols {
                     let cell_idx = nc.cell_part_idx.get(row_idx * g_cols + col_idx).copied().flatten();
                     let info = cell_idx
@@ -959,10 +960,10 @@ fn render_navicust<M: 'static>(
                             tip_col = tip_col.push(text(desc).size(TEXT_CAPTION));
                         }
                         let tip = container(tip_col).padding(8).style(tooltip_style);
-                        let space = Space::new(Length::Fixed(cell_size), Length::Fixed(cell_size));
+                        let space = Space::new().width(Length::Fixed(cell_size)).height(Length::Fixed(cell_size));
                         tooltip(space, tip, tooltip::Position::FollowCursor).gap(12).into()
                     } else {
-                        Space::new(Length::Fixed(cell_size), Length::Fixed(cell_size)).into()
+                        Space::new().width(Length::Fixed(cell_size)).height(Length::Fixed(cell_size)).into()
                     };
                     cell_row = cell_row.push(cell);
                 }
@@ -1009,7 +1010,7 @@ fn render_navicust<M: 'static>(
             ));
         let bg = if is_solid { solid_color } else { plus_color };
         let _ = i; // index no longer needed now that the list-highlight is gone
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, 15, [4, 8]);
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, 15.0, [4.0, 8.0]);
         let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
@@ -1041,7 +1042,7 @@ fn render_navicust<M: 'static>(
         text(format!("{}:", t(lang, "navicust-parts")))
             .size(TEXT_BODY)
             .style(muted_text_style),
-        Space::with_height(6),
+        Space::new().height(6),
         parts_list,
     ];
 
@@ -1174,7 +1175,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         for id in slots {
             col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb));
         }
-        col.push(Space::with_height(14)).into()
+        col.push(Space::new().height(14)).into()
     };
 
     let list = column![

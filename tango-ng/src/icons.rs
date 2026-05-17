@@ -59,7 +59,7 @@ use iced::{Alignment, Element, Theme};
 /// Build a `text(...)` widget configured to render an icon glyph
 /// (forces the icon font + bumps the line height so it sits flush
 /// with adjacent label text in a row).
-pub fn glyph<'a>(g: &'static str, size: u16) -> Text<'a> {
+pub fn glyph<'a>(g: &'static str, size: f32) -> Text<'a> {
     text(g).size(size).font(FONT)
 }
 
@@ -72,8 +72,8 @@ pub fn icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: M,
-    text_size: u16,
-    padding: [u16; 2],
+    text_size: f32,
+    padding: [f32; 2],
 ) -> Element<'a, M> {
     icon_button_styled(icon, label, Some(msg), text_size, padding, button::secondary)
 }
@@ -85,8 +85,8 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: Option<M>,
-    text_size: u16,
-    padding: [u16; 2],
+    text_size: f32,
+    padding: [f32; 2],
 ) -> Element<'a, M> {
     icon_button_styled(icon, label, msg, text_size, padding, button::secondary)
 }
@@ -98,8 +98,8 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: Option<M>,
-    text_size: u16,
-    padding: [u16; 2],
+    text_size: f32,
+    padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
     let mut btn = button(glyph(icon, text_size)).padding(padding).style(style);
@@ -125,8 +125,8 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: M,
-    text_size: u16,
-    padding: [u16; 2],
+    text_size: f32,
+    padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
     button(
@@ -156,7 +156,7 @@ pub fn tab_button<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     use iced::widget::{stack, Space};
     let btn = button(
-        row![glyph(icon, 13), text(label).size(13)]
+        row![glyph(icon, 13.0), text(label).size(13.0)]
             .spacing(6)
             .align_y(Alignment::Center),
     )
@@ -190,7 +190,7 @@ pub fn tab_button<'a, M: Clone + 'a>(
     // the button's measured bounds, so the bar spans exactly the
     // button width and the tab never grows beyond its content.
     let underline = container(
-        container(Space::with_width(iced::Length::Fill))
+        container(Space::new().width(iced::Length::Fill))
             .height(iced::Length::Fixed(2.0))
             .width(iced::Length::Fill)
             .style(move |theme: &Theme| iced::widget::container::Style {

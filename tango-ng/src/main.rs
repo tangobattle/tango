@@ -60,7 +60,9 @@ struct ExportPrep {
 }
 
 use i18n::{t, FALLBACK_LANG};
-use iced::widget::{column, container, horizontal_rule, horizontal_space, row};
+use iced::widget::rule::horizontal as horizontal_rule;
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{column, container, row};
 use iced::{Alignment, Element, Fill, Theme};
 use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
@@ -75,12 +77,12 @@ pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
 // Button sizing constants — three tiers that everything else maps onto.
 // `NAV` for the top-level nav strip; `PRIMARY` for the single big
 // call-to-action (Play); `STANDARD` for everything else.
-pub const NAV_TEXT_SIZE: u16 = 14;
-pub const NAV_PADDING: [u16; 2] = [8, 16];
-pub const PRIMARY_TEXT_SIZE: u16 = 13;
-pub const PRIMARY_PADDING: [u16; 2] = [6, 14];
-pub const STANDARD_TEXT_SIZE: u16 = 13;
-pub const STANDARD_PADDING: [u16; 2] = [6, 14];
+pub const NAV_TEXT_SIZE: f32 = 14.0;
+pub const NAV_PADDING: [f32; 2] = [8.0, 16.0];
+pub const PRIMARY_TEXT_SIZE: f32 = 13.0;
+pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
+pub const STANDARD_TEXT_SIZE: f32 = 13.0;
+pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
 // Typographic scale. Everything that renders text picks from this
 // list; one-off sizes outside it tend to look like UI bugs
@@ -92,11 +94,11 @@ pub const STANDARD_PADDING: [u16; 2] = [6, 14];
 //   HEADING — sub-section labels (nickname on side cards).
 //   BODY    — default body copy. Same value as STANDARD_TEXT_SIZE.
 //   CAPTION — muted hints, status lines, metadata labels.
-pub const TEXT_DISPLAY: u16 = 22;
-pub const TEXT_TITLE: u16 = 18;
-pub const TEXT_HEADING: u16 = 15;
-pub const TEXT_BODY: u16 = STANDARD_TEXT_SIZE;
-pub const TEXT_CAPTION: u16 = 11;
+pub const TEXT_DISPLAY: f32 = 22.0;
+pub const TEXT_TITLE: f32 = 18.0;
+pub const TEXT_HEADING: f32 = 15.0;
+pub const TEXT_BODY: f32 = STANDARD_TEXT_SIZE;
+pub const TEXT_CAPTION: f32 = 11.0;
 
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the
@@ -120,7 +122,8 @@ pub fn main() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
-    iced::application(App::title, App::update, App::view)
+    iced::application(App::new, App::update, App::view)
+        .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
         .window_size((1000.0, 640.0))
@@ -131,11 +134,12 @@ pub fn main() -> iced::Result {
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
         .font(FONT_LUCIDE)
-        // Default to the Latin Noto Sans. cosmic-text will fall
-        // back through the other Noto faces (JP / SC / TC / Emoji
-        // / Lucide) for any glyph the default doesn't carry.
+        // iced 0.14's cosmic-text falls back across registered
+        // faces, so we can default to the Latin Noto Sans and let
+        // CJK / emoji glyphs come from the JP / SC / TC / Emoji
+        // fonts above.
         .default_font(iced::Font::with_name("Noto Sans"))
-        .run_with(App::new)
+        .run()
 }
 
 #[derive(Clone)]

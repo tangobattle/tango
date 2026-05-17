@@ -129,27 +129,27 @@ where
     fn update(
         &self,
         state: &mut State,
-        event: canvas::Event,
+        event: &iced::Event,
         bounds: Rectangle,
         cursor: mouse::Cursor,
-    ) -> (canvas::event::Status, Option<M>) {
-        use canvas::Event;
+    ) -> Option<iced::widget::Action<M>> {
+        use iced::widget::Action;
         let inside = cursor.position_in(bounds);
         match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some(p) = inside {
                     state.dragging = true;
                     let target = self.tick_at_x(p.x, bounds.width);
-                    return (canvas::event::Status::Captured, Some((self.on_seek)(target)));
+                    return Some(Action::publish((self.on_seek)(target)).and_capture());
                 }
             }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 if state.dragging {
                     state.dragging = false;
-                    return (canvas::event::Status::Captured, None);
+                    return Some(Action::capture());
                 }
             }
-            Event::Mouse(mouse::Event::CursorMoved { .. }) if state.dragging => {
+            iced::Event::Mouse(mouse::Event::CursorMoved { .. }) if state.dragging => {
                 // Track outside the bar's bounds too, so dragging past
                 // either edge clamps to start/end instead of stopping
                 // wherever the cursor crossed the edge. `position_in`
@@ -158,12 +158,12 @@ where
                 if let Some(raw) = cursor.position() {
                     let relative_x = raw.x - bounds.x;
                     let target = self.tick_at_x(relative_x, bounds.width);
-                    return (canvas::event::Status::Captured, Some((self.on_seek)(target)));
+                    return Some(Action::publish((self.on_seek)(target)).and_capture());
                 }
             }
             _ => {}
         }
-        (canvas::event::Status::Ignored, None)
+        None
     }
 
     fn mouse_interaction(

@@ -19,7 +19,9 @@ use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
 use crate::{game, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_CAPTION, TEXT_HEADING};
-use iced::widget::{column, container, horizontal_rule, horizontal_space, row, text};
+use iced::widget::rule::horizontal as horizontal_rule;
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{column, container, row, text};
 use iced::{Alignment, Element, Fill};
 use unic_langid::LanguageIdentifier;
 
@@ -289,43 +291,47 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
 /// iced doesn't tear it down + recreate it every frame. Uses a
 /// short blocking-with-timeout poll so we don't peg a CPU core.
 fn gamepad_subscription() -> iced::Subscription<Message> {
-    iced::Subscription::run_with_id(
-        "tango-ng-gamepad",
-        iced::stream::channel(64, |mut tx| async move {
-            use futures::SinkExt;
-            let mut gilrs = match gilrs::Gilrs::new() {
-                Ok(g) => g,
-                Err(e) => {
-                    log::warn!("gilrs init failed: {e:?}");
-                    return;
-                }
-            };
-            // gilrs is sync; bounce its event polling through
-            // spawn_blocking so iced's reactor stays unblocked.
-            // Polling every 4 ms is plenty for input fidelity
-            // (250 Hz) and well under one GBA frame.
-            loop {
-                tokio::time::sleep(std::time::Duration::from_millis(4)).await;
-                while let Some(event) = gilrs.next_event() {
-                    let msg = match event.event {
-                        gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
-                            .map(|btn| InputEvent::Button { button: btn, pressed: true }),
-                        gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
-                            .map(|btn| InputEvent::Button { button: btn, pressed: false }),
-                        gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
-                            .map(|axis| InputEvent::Axis { axis, value: v }),
-                        gilrs::EventType::Disconnected => Some(InputEvent::GamepadDisconnected),
-                        _ => None,
-                    };
-                    if let Some(ev) = msg {
-                        if tx.send(Message::Input(ev)).await.is_err() {
-                            return;
-                        }
+    // Stateless — the `fn` pointer alone is the subscription's
+    // identity. Iced 0.14 requires the builder to be a plain
+    // function (not a closure), so we hoist the body out.
+    iced::Subscription::run(gamepad_stream)
+}
+
+fn gamepad_stream() -> impl futures::Stream<Item = Message> {
+    iced::stream::channel(64, |mut tx: futures::channel::mpsc::Sender<Message>| async move {
+        use futures::SinkExt;
+        let mut gilrs = match gilrs::Gilrs::new() {
+            Ok(g) => g,
+            Err(e) => {
+                log::warn!("gilrs init failed: {e:?}");
+                return;
+            }
+        };
+        // gilrs is sync; bounce its event polling through a
+        // short async sleep so iced's reactor stays unblocked.
+        // Polling every 4 ms is plenty for input fidelity
+        // (250 Hz) and well under one GBA frame.
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(4)).await;
+            while let Some(event) = gilrs.next_event() {
+                let msg = match event.event {
+                    gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                        .map(|btn| InputEvent::Button { button: btn, pressed: true }),
+                    gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                        .map(|btn| InputEvent::Button { button: btn, pressed: false }),
+                    gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
+                        .map(|axis| InputEvent::Axis { axis, value: v }),
+                    gilrs::EventType::Disconnected => Some(InputEvent::GamepadDisconnected),
+                    _ => None,
+                };
+                if let Some(ev) = msg {
+                    if tx.send(Message::Input(ev)).await.is_err() {
+                        return;
                     }
                 }
             }
-        }),
-    )
+        }
+    })
 }
 
 /// Render the active session — framebuffer, header, and (for replays
@@ -336,7 +342,7 @@ pub fn view<'a>(
     state: &'a State,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
-        return iced::widget::Space::new(Fill, Fill).into();
+        return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
     let frame_handle = state.frame.as_ref();
     use iced::widget::{image, Space};
@@ -349,7 +355,7 @@ pub fn view<'a>(
             .content_fit(iced::ContentFit::Contain)
             .into()
     } else {
-        Space::new(Fill, Fill).into()
+        Space::new().width(Fill).height(Fill).into()
     };
 
     let (title_icon, title_key) = match session {
@@ -378,7 +384,7 @@ pub fn view<'a>(
         _ => None,
     };
     let mut header_row = row![
-        icons::glyph(title_icon, 14),
+        icons::glyph(title_icon, 14.0),
         text(t(lang, title_key)).size(TEXT_HEADING),
         horizontal_space(),
     ]
@@ -412,7 +418,7 @@ pub fn view<'a>(
                 .map(Message::OpponentSaveViewAction);
             iced::widget::row![
                 container(frame).center(Fill).padding(8),
-                iced::widget::vertical_rule(1),
+                iced::widget::rule::vertical(1),
                 container(panel)
                     .width(iced::Length::Fixed(380.0))
                     .height(Fill),

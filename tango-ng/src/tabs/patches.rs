@@ -1,10 +1,9 @@
 use crate::i18n::t;
 use crate::icons;
 use crate::{game, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION};
-use iced::widget::{
-    button, column, container, horizontal_rule, horizontal_space, pick_list, row, scrollable, text, vertical_rule,
-    Space,
-};
+use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -13,7 +12,7 @@ pub enum Message {
     Selected(String),
     VersionSelected(semver::Version),
     OpenFolder(std::path::PathBuf),
-    ReadmeLinkClicked(iced::widget::markdown::Url),
+    ReadmeLinkClicked(iced::widget::markdown::Uri),
     Rescan,
     Update,
     UpdateFinished(Result<(), String>),
@@ -309,8 +308,9 @@ impl PatchesState {
                 let theme = iced::Theme::Dark;
                 iced::widget::markdown::view(
                     &self.readme_items,
-                    iced::widget::markdown::Settings::default(),
-                    iced::widget::markdown::Style::from_palette(theme.palette()),
+                    iced::widget::markdown::Settings::with_style(
+                        iced::widget::markdown::Style::from_palette(theme.palette()),
+                    ),
                 )
                 .map(Message::ReadmeLinkClicked)
             };
@@ -318,11 +318,11 @@ impl PatchesState {
             container(
                 column![
                     header,
-                    Space::with_height(8),
+                    Space::new().height(8),
                     horizontal_rule(1),
-                    Space::with_height(8),
+                    Space::new().height(8),
                     details,
-                    Space::with_height(12),
+                    Space::new().height(12),
                     text(t(lang, "patches-readme")).size(TEXT_BODY).style(text::primary),
                     horizontal_rule(1),
                     scrollable(container(readme_body).padding(4)).height(Fill),

@@ -3,7 +3,9 @@ use crate::icons;
 use crate::{
     config, input, save_view, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
 };
-use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, vertical_rule, Space};
+use iced::widget::rule::vertical as vertical_rule;
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
 use iced::{Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -119,48 +121,52 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
         }
         _ => None,
     });
-    let pad = iced::Subscription::run_with_id(
-        "tango-ng-settings-pad-capture",
-        iced::stream::channel(8, |mut tx| async move {
-            use futures::SinkExt;
-            let Ok(mut gilrs) = gilrs::Gilrs::new() else { return };
-            loop {
-                tokio::time::sleep(std::time::Duration::from_millis(4)).await;
-                while let Some(event) = gilrs.next_event() {
-                    let captured = match event.event {
-                        gilrs::EventType::ButtonPressed(b, _) => {
-                            input::GamepadButton::from_gilrs(b).map(input::PhysicalInput::Button)
+    let pad = iced::Subscription::run(pad_capture_stream);
+    iced::Subscription::batch([kbd, pad])
+}
+
+/// Builds the binding-capture gamepad polling stream. Stateless
+/// — iced 0.14 requires subscription builders to be plain
+/// functions (not closures), so this lives outside `subscription`.
+fn pad_capture_stream() -> impl futures::Stream<Item = Message> {
+    iced::stream::channel(8, |mut tx: futures::channel::mpsc::Sender<Message>| async move {
+        use futures::SinkExt;
+        let Ok(mut gilrs) = gilrs::Gilrs::new() else { return };
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(4)).await;
+            while let Some(event) = gilrs.next_event() {
+                let captured = match event.event {
+                    gilrs::EventType::ButtonPressed(b, _) => {
+                        input::GamepadButton::from_gilrs(b).map(input::PhysicalInput::Button)
+                    }
+                    gilrs::EventType::AxisChanged(a, v, _) => {
+                        // Treat an axis as captured when it
+                        // crosses the activation threshold —
+                        // mirrors the runtime activation rule
+                        // so the binding will fire next time.
+                        if v.abs() > input::AXIS_THRESHOLD {
+                            input::GamepadAxis::from_gilrs(a).map(|axis| input::PhysicalInput::Axis {
+                                axis,
+                                dir: if v > 0.0 {
+                                    input::AxisDir::Positive
+                                } else {
+                                    input::AxisDir::Negative
+                                },
+                            })
+                        } else {
+                            None
                         }
-                        gilrs::EventType::AxisChanged(a, v, _) => {
-                            // Treat an axis as captured when it
-                            // crosses the activation threshold —
-                            // mirrors the runtime activation rule
-                            // so the binding will fire next time.
-                            if v.abs() > input::AXIS_THRESHOLD {
-                                input::GamepadAxis::from_gilrs(a).map(|axis| input::PhysicalInput::Axis {
-                                    axis,
-                                    dir: if v > 0.0 {
-                                        input::AxisDir::Positive
-                                    } else {
-                                        input::AxisDir::Negative
-                                    },
-                                })
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
-                    };
-                    if let Some(p) = captured {
-                        if tx.send(Message::BindingCaptured(p)).await.is_err() {
-                            return;
-                        }
+                    }
+                    _ => None,
+                };
+                if let Some(p) = captured {
+                    if tx.send(Message::BindingCaptured(p)).await.is_err() {
+                        return;
                     }
                 }
             }
-        }),
-    );
-    iced::Subscription::batch([kbd, pad])
+        }
+    })
 }
 
 pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state: &'a State) -> Element<'a, Message> {
@@ -246,7 +252,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .padding(STANDARD_PADDING)
             .width(Fill),
         ),
-        iced::widget::checkbox(t(lang, "settings-streamer-mode"), config.streamer_mode)
+        iced::widget::checkbox(config.streamer_mode).label(t(lang, "settings-streamer-mode"))
             .on_toggle(Message::ToggleStreamerMode)
             .text_size(STANDARD_TEXT_SIZE),
         labeled::<Message>(
@@ -325,7 +331,7 @@ fn settings_input<'a>(
         let row = row![
             container(text(label).size(STANDARD_TEXT_SIZE)).width(Length::Fixed(120.0)),
             chips,
-            iced::widget::horizontal_space(),
+            horizontal_space(),
             action,
         ]
         .spacing(8)
@@ -340,8 +346,8 @@ fn settings_input<'a>(
         STANDARD_PADDING,
     );
     col = col
-        .push(Space::with_height(8))
-        .push(row![iced::widget::horizontal_space(), reset]);
+        .push(Space::new().height(8))
+        .push(row![horizontal_space(), reset]);
     scrollable(col.padding(4)).into()
 }
 
@@ -371,7 +377,7 @@ fn settings_about<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Message> {
             env!("CARGO_PKG_VERSION")
         ))
         .size(TEXT_CAPTION),
-        Space::with_height(8),
+        Space::new().height(8),
         text(t(lang, "settings-about-blurb")).size(TEXT_CAPTION),
     ]
     .spacing(6)
