@@ -855,7 +855,26 @@ fn render_navicust(
                     )
                 })
                 .on_exit(Message::NavicustHover(None));
-            container(area).center_x(Fill).into()
+
+            // Cursor-following tooltip for the currently hovered NCP.
+            // Empty container when the cursor is over a blank cell so
+            // the tooltip widget renders as a no-op instead of an empty
+            // chrome box.
+            let hovered_part = hovered_ncp_idx
+                .and_then(|i| v.navicust_part(i))
+                .and_then(|p| assets.navicust_part(p.id));
+            let tip: Element<'static, Message> = if let Some(info) = hovered_part {
+                let name = info.name().unwrap_or_else(|| "?".to_string());
+                let mut col = column![text(name).size(13)].spacing(2);
+                if let Some(desc) = info.description() {
+                    col = col.push(text(desc).size(11));
+                }
+                container(col).padding(8).style(tooltip_style).into()
+            } else {
+                container(Space::new(0, 0)).into()
+            };
+            let area_with_tip = tooltip(area, tip, tooltip::Position::FollowCursor).gap(12);
+            container(area_with_tip).center_x(Fill).into()
         }
         None => text(format!(
             "{}: {} × {}",
