@@ -862,9 +862,6 @@ fn render_navi<M: 'static>(
                 .navi(navi_id)
                 .and_then(|n| n.name())
                 .unwrap_or_else(|| format!("Navi #{navi_id}"));
-            // Centered portrait — bigger than the in-row icon but still
-            // proportional to the pane chrome (was 48 pre-redesign,
-            // 120 was way too much).
             let emblem: Element<'static, M> = loaded
                 .navi_emblems
                 .get(&navi_id)
@@ -878,6 +875,10 @@ fn render_navi<M: 'static>(
                         .into()
                 })
                 .unwrap_or_else(|| Space::with_height(Length::Fixed(64.0)).into());
+            // Top-aligned column — `.center(Fill)` collapsed to zero
+            // inside the replays scrollable (Fill inside infinite-
+            // height scroll content evaluates to Shrink), and the
+            // user saw an empty pane.
             container(
                 column![
                     emblem,
@@ -890,7 +891,8 @@ fn render_navi<M: 'static>(
                 .padding(20)
                 .align_x(Alignment::Center),
             )
-            .center(Fill)
+            .width(Fill)
+            .align_x(Alignment::Center)
             .into()
         }
         tango_dataview::save::NaviView::Navicust(v) => render_navicust(lang, loaded, v.as_ref()),
