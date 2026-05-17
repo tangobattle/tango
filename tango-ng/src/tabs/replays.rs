@@ -130,8 +130,8 @@ impl ReplaysState {
                     column![
                         text(ts_str).size(13),
                         text(format!(
-                            "{game_family} @ {}  ·  {nick_pair}  ·  round {}",
-                            md.link_code, md.round
+                            "{game_family} @ {}  ·  {nick_pair}",
+                            md.link_code
                         ))
                         .size(11)
                         .style(save_view::muted_text_style),
@@ -221,10 +221,11 @@ fn replay_detail<'a>(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
+    let title = format!("{} @ {}", t(lang, "replays-watch"), md.link_code);
     container(
         column![
             row![
-                text(format!("{} #{}", t(lang, "replays-round"), md.round)).size(18),
+                text(title).size(18),
                 horizontal_space(),
                 button(text(t(lang, "replays-watch")).size(STANDARD_TEXT_SIZE))
                     .padding(STANDARD_PADDING)
