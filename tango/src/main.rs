@@ -74,6 +74,12 @@ fn main() -> Result<(), anyhow::Error> {
         .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
+    // Route mgba's global default logger through `c_log` too. Without
+    // this, any Core not driven by `mgba::thread::Thread` (the replay
+    // prefetcher, the shadow worker, the fastforwarder) prints
+    // unprefixed `GBA BIOS: SWI: ...` lines straight to stdout.
+    mgba::log::install_default_logger();
+
     log::info!("welcome to tango {}!", version::current());
 
     if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {

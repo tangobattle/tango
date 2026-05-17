@@ -3,7 +3,7 @@ pub mod audio;
 pub mod core;
 pub mod gba;
 pub mod input;
-mod log;
+pub mod log;
 pub mod state;
 pub mod sync;
 pub mod thread;
