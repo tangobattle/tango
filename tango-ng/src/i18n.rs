@@ -10,10 +10,30 @@ fluent_templates::static_loader! {
     };
 }
 
+/// Look up `key` in the bundle; returns `None` if the locale (and
+/// the fallback locale) don't define it. Prefer this over [`t`]
+/// when the caller branches on "is the string actually defined".
+pub fn t_opt(lang: &unic_langid::LanguageIdentifier, key: &str) -> Option<String> {
+    LOCALES.lookup(lang, key)
+}
+
 pub fn t(lang: &unic_langid::LanguageIdentifier, key: &str) -> String {
-    LOCALES
-        .lookup(lang, key)
-        .unwrap_or_else(|| format!("⟦{key}⟧"))
+    // The `⟦…⟧` wrapping is a debug-only visual sentinel so a
+    // missing string sticks out in the UI. Never pattern-match it
+    // — use `t_opt` if you need the missing-key signal.
+    t_opt(lang, key).unwrap_or_else(|| format!("⟦{key}⟧"))
+}
+
+/// Like [`t_opt`], but substitutes Fluent placeholders. Returns
+/// `None` if the locale (and fallback locale) don't define `key`.
+pub fn t_args_opt(
+    lang: &unic_langid::LanguageIdentifier,
+    key: &str,
+    args: &[(&'static str, FluentValue<'_>)],
+) -> Option<String> {
+    let map: std::collections::HashMap<&str, FluentValue<'_>> =
+        args.iter().map(|(k, v)| (*k, v.clone())).collect();
+    LOCALES.lookup_with_args(lang, key, &map)
 }
 
 /// Like [`t`], but substitutes Fluent placeholders. Pass each
@@ -28,9 +48,5 @@ pub fn t_args(
     key: &str,
     args: &[(&'static str, FluentValue<'_>)],
 ) -> String {
-    let map: std::collections::HashMap<&str, FluentValue<'_>> =
-        args.iter().map(|(k, v)| (*k, v.clone())).collect();
-    LOCALES
-        .lookup_with_args(lang, key, &map)
-        .unwrap_or_else(|| format!("⟦{key}⟧"))
+    t_args_opt(lang, key, args).unwrap_or_else(|| format!("⟦{key}⟧"))
 }

@@ -1087,12 +1087,8 @@ fn lobby_view<'a>(
             .as_ref()
             .map(|gi| {
                 let family = gi.family_and_variant.0.as_str();
-                let base = t(lang, &format!("game-{family}"));
-                if base.starts_with("⟦") {
-                    format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1)
-                } else {
-                    base
-                }
+                crate::i18n::t_opt(lang, &format!("game-{family}"))
+                    .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
             })
             .unwrap_or_else(|| t(lang, "lobby-no-game"));
         let patch = settings
