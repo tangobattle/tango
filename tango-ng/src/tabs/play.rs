@@ -322,12 +322,13 @@ impl PlayState {
                     .on_submit(Message::SaveRenameConfirm)
                     .padding(8)
                     .width(Length::Fill),
-                icons::icon_button(
+                icons::icon_button_styled(
                     icons::CONFIRM,
                     t(lang, "save-rename-confirm"),
-                    Message::SaveRenameConfirm,
+                    Some(Message::SaveRenameConfirm),
                     STANDARD_TEXT_SIZE,
                     STANDARD_PADDING,
+                    button::primary,
                 ),
                 icons::icon_button(
                     icons::CANCEL,
@@ -445,6 +446,18 @@ impl PlayState {
                 STANDARD_PADDING,
             )
         };
+        // Destructive variant for Delete — flags it red so it
+        // doesn't look like just another toolbar action.
+        let mk_danger = |icon: &'static str, label: String, msg: Message, on: bool| {
+            icons::icon_button_styled(
+                icon,
+                label,
+                if on { Some(msg) } else { None },
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+                iced::widget::button::danger,
+            )
+        };
         // "New save" is enabled only when the active patch+version ships
         // a save template for the selected game.
         let can_new = templates_for_selection(self, scanners).is_some();
@@ -453,7 +466,7 @@ impl PlayState {
             mk(icons::FOLDER, t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
             mk(icons::DUPLICATE, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
             mk(icons::RENAME, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
-            mk(icons::DELETE, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
+            mk_danger(icons::DELETE, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
         .spacing(6)
         .align_y(Alignment::Center)
@@ -551,6 +564,7 @@ impl PlayState {
             row![
                 text_input(&t(lang, "play-link-code"), &self.link_code)
                     .on_input(Message::LinkCodeChanged)
+                    .on_submit(Message::PlayPressed)
                     .padding(8)
                     .width(Length::Fixed(260.0)),
                 play_button,

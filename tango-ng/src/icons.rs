@@ -60,10 +60,11 @@ pub fn glyph<'a>(g: &'static str, size: u16) -> Text<'a> {
     text(g).size(size).font(FONT)
 }
 
-/// Icon-only button with the plain-text label exposed as a hover
-/// tooltip. Keep the original i18n string in `label` — that text is
-/// still what shows up in tooltips and for screen-reader-style
-/// browsing, only the chrome gets the glyph.
+/// Icon-only button for low-emphasis toolbar actions (rescan, copy,
+/// open-folder, etc.). Renders with `button::secondary` so a row of
+/// these doesn't look like a row of "primary" actions all shouting
+/// for attention. The plain-text label is exposed as a hover
+/// tooltip.
 pub fn icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
@@ -71,12 +72,12 @@ pub fn icon_button<'a, M: Clone + 'a>(
     text_size: u16,
     padding: [u16; 2],
 ) -> Element<'a, M> {
-    icon_button_maybe(icon, label, Some(msg), text_size, padding)
+    icon_button_styled(icon, label, Some(msg), text_size, padding, button::secondary)
 }
 
-/// Same as [`icon_button`] but with the on_press wrapped in an Option
-/// so callers can render a disabled (greyed-out, no on_press) variant
-/// without duplicating the chrome.
+/// `icon_button` with the on_press wrapped in an Option so callers
+/// can render a disabled (greyed-out, no on_press) variant without
+/// duplicating the chrome.
 pub fn icon_button_maybe<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
@@ -84,7 +85,21 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
     text_size: u16,
     padding: [u16; 2],
 ) -> Element<'a, M> {
-    let mut btn = button(glyph(icon, text_size)).padding(padding);
+    icon_button_styled(icon, label, msg, text_size, padding, button::secondary)
+}
+
+/// Lower-level helper for callers that need to pick the button
+/// style explicitly — `button::primary` for the one emphasized
+/// action in a row, `button::danger` for destructive ones, etc.
+pub fn icon_button_styled<'a, M: Clone + 'a>(
+    icon: &'static str,
+    label: String,
+    msg: Option<M>,
+    text_size: u16,
+    padding: [u16; 2],
+    style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
+) -> Element<'a, M> {
+    let mut btn = button(glyph(icon, text_size)).padding(padding).style(style);
     if let Some(m) = msg {
         btn = btn.on_press(m);
     }

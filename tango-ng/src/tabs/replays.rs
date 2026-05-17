@@ -268,12 +268,15 @@ fn replay_detail<'a>(
             row![
                 text(title).size(18),
                 horizontal_space(),
-                icons::icon_button(
+                // Watch is the main action of the detail view —
+                // promote to primary so it's visually obvious.
+                icons::icon_button_styled(
                     icons::WATCH,
                     t(lang, "replays-watch"),
-                    Message::Watch(r.path.clone()),
+                    Some(Message::Watch(r.path.clone())),
                     STANDARD_TEXT_SIZE,
                     STANDARD_PADDING,
+                    iced::widget::button::primary,
                 ),
                 icons::icon_button_maybe::<Message>(
                     icons::EXPORT,
