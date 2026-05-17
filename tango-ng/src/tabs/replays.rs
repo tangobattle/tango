@@ -1,6 +1,8 @@
 use crate::i18n::t;
 use crate::icons;
-use crate::{config, replays, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE};
+use crate::{
+    config, replays, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
+};
 use iced::widget::{
     button, column, container, horizontal_rule, horizontal_space, pick_list, row, scrollable, text, vertical_rule,
     Space,
@@ -10,19 +12,109 @@ use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    FolderFilterSelected(FolderOption),
+    /// Picked a game from the Game filter dropdown. `None` =
+    /// "All games".
+    GameFilterSelected(GameFilterOption),
+    /// Typed in the opponent-filter text input. Empty = no
+    /// filter; otherwise a substring (case-insensitive) match
+    /// against the remote side's nickname.
+    OpponentFilterChanged(String),
     Selected(std::path::PathBuf),
     OpenFolder(std::path::PathBuf),
     Watch(std::path::PathBuf),
+    /// User clicked Save As in the export panel. App opens an
+    /// async file dialog and, on result, dispatches `ExportStart`.
+    Export(std::path::PathBuf),
+    /// Internal: file dialog returned. Carries the source replay
+    /// path + the user-picked output path. App spawns the actual
+    /// export task in this handler.
+    ExportStart {
+        replay: std::path::PathBuf,
+        output: std::path::PathBuf,
+    },
+    /// Progress tick from the running export task: (completed,
+    /// total) frame pairs. Includes the source replay path so the
+    /// detail view can decide whether to render its status line.
+    ExportProgress {
+        replay: std::path::PathBuf,
+        completed: usize,
+        total: usize,
+    },
+    /// Export task completed. Carries the output path on success
+    /// or an error description on failure. Same replay-scoping as
+    /// `ExportProgress`.
+    ExportFinished {
+        replay: std::path::PathBuf,
+        result: Result<std::path::PathBuf, String>,
+    },
+    /// User dismissed the post-export status line.
+    ExportDismiss,
+    /// Open the rendered video with the OS's default handler.
+    OpenFile(std::path::PathBuf),
+    /// Export settings widgets — scale, lossless, disable-BGM.
+    SetExportScale(u8),
+    SetExportLossless(bool),
+    SetExportDisableBgm(bool),
+    /// Toggle the Nth round in `selected_rounds`.
+    ToggleExportRound(usize, bool),
+    /// Open / close the inline export-options panel. Distinct
+    /// from `Export(_)` (which actually triggers the export).
+    ExportPanelOpen(std::path::PathBuf),
+    ExportPanelClose,
     Rescan,
     SaveViewAction(save_view::Action),
 }
 
+/// What the replays tab is currently showing about an in-flight
+/// or recent export. The `replay` field scopes the status to a
+/// specific replay so that switching selection mid-export doesn't
+/// bleed the progress / result into the new selection's detail
+/// view.
+#[derive(Default)]
+pub enum ExportStatus {
+    #[default]
+    Idle,
+    InProgress {
+        replay: std::path::PathBuf,
+        completed: usize,
+        total: usize,
+    },
+    Done {
+        replay: std::path::PathBuf,
+        result: Result<std::path::PathBuf, String>,
+    },
+}
+
+/// User-tunable settings the export form passes to
+/// `tango_pvp::replay::export::export(...)`. Defaults match the
+/// legacy replay-dump window.
+#[derive(Clone, Copy, Debug)]
+pub struct ExportSettings {
+    pub scale: u8,
+    pub lossless: bool,
+    pub disable_bgm: bool,
+}
+
+impl Default for ExportSettings {
+    fn default() -> Self {
+        Self {
+            scale: 5,
+            lossless: false,
+            disable_bgm: false,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ReplaysState {
-    /// `None` = no folder filter (show all); `Some` = restrict to direct
-    /// children of this dir.
-    pub folder_filter: Option<std::path::PathBuf>,
+    /// `(family, variant)` pair the replays' local-side must match.
+    /// `None` = "All games". Cleared when the corresponding pair
+    /// no longer appears in the scanned replays (e.g. user
+    /// deleted them).
+    pub game_filter: Option<(String, u8)>,
+    /// Substring (case-insensitive) match against the remote
+    /// side's nickname. Empty = no filter.
+    pub opponent_filter: String,
     pub selected: Option<std::path::PathBuf>,
     /// Cached Loaded for the currently-selected replay's local side.
     /// Rebuilt by the App's `Selected` handler; view borrows read-only.
@@ -31,9 +123,233 @@ pub struct ReplaysState {
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
     pub save_view: save_view::State,
+    pub export_status: ExportStatus,
+    pub export_settings: ExportSettings,
+    /// Per-round include/exclude mask for the currently-selected
+    /// replay's export. Repopulated whenever `loaded_cache_path`
+    /// is refreshed. Empty until a replay decodes successfully.
+    pub selected_rounds: Vec<bool>,
+    /// Inline export-options panel visibility. Toggled on by the
+    /// Export button + off by Cancel; the panel itself contains
+    /// the actual Save As… button that kicks off the export. Auto-
+    /// closes once an export starts (the in-flight status replaces
+    /// it visually).
+    pub export_panel_open: bool,
+}
+
+/// Side-effects the tab can't perform itself (because they touch
+/// the file system, clipboard, session host, or async runtime).
+/// `ReplaysState::update` returns at most one of these per
+/// dispatch; the App handler interprets it.
+#[derive(Debug)]
+pub enum Effect {
+    /// `open::that(_)` — folder or rendered video.
+    OpenPath(std::path::PathBuf),
+    /// User clicked Watch on a replay; App spawns the playback
+    /// session and stuffs it into `session.active`.
+    Watch(std::path::PathBuf),
+    /// User clicked Rescan; App re-scans roms / saves / patches /
+    /// replays + refreshes any cached Loaded.
+    Rescan,
+    /// Copy plain text to the clipboard.
+    CopyText(String),
+    /// Copy a raster image to the clipboard.
+    CopyImage(image::RgbaImage),
+    /// Open the native Save-File dialog for the given replay's
+    /// rendered video. App picks a path async and dispatches
+    /// `Message::ExportStart`.
+    OpenExportSaveDialog(std::path::PathBuf),
+    /// User confirmed an export. App decodes the replay, resolves
+    /// hooks + ROMs, spawns the tango_pvp::replay::export task,
+    /// and streams `Message::ExportProgress` / `ExportFinished`
+    /// back into this module.
+    StartExport {
+        replay: std::path::PathBuf,
+        output: std::path::PathBuf,
+        settings: ExportSettings,
+        rounds: Vec<bool>,
+    },
 }
 
 impl ReplaysState {
+    /// Apply a tab message. Pure UI-state mutations happen
+    /// in-place; anything that needs the App's collaborators
+    /// (clipboard, file dialog, session host, …) is bubbled up
+    /// as a single optional [`Effect`].
+    pub fn update(
+        &mut self,
+        msg: Message,
+        scanners: &Scanners,
+        config: &config::Config,
+    ) -> Option<Effect> {
+        match msg {
+            Message::GameFilterSelected(o) => {
+                self.game_filter = o.pair;
+                // Filter change can hide the current selection;
+                // drop the cached Loaded so the next interaction
+                // doesn't show a now-filtered-out detail panel.
+                self.clear_selection();
+                None
+            }
+            Message::OpponentFilterChanged(s) => {
+                // Don't clear the selection on every keystroke —
+                // the user might be refining the filter while
+                // keeping a replay open. The view simply omits
+                // the detail panel when the selected path no
+                // longer matches the current filtered list.
+                self.opponent_filter = s;
+                None
+            }
+            Message::Selected(p) => {
+                self.selected = Some(p);
+                self.refresh_loaded(scanners, config);
+                None
+            }
+            Message::OpenFolder(p) => Some(Effect::OpenPath(p)),
+            Message::Watch(p) => Some(Effect::Watch(p)),
+            Message::Rescan => Some(Effect::Rescan),
+            Message::SaveViewAction(action) => {
+                self.save_view.apply(&action);
+                let loaded = self.loaded.as_ref()?;
+                match action {
+                    save_view::Action::CopyTab(tab) => {
+                        save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
+                    }
+                    save_view::Action::CopyTabImage(tab) => {
+                        save_view::tab_as_image(tab, loaded).map(Effect::CopyImage)
+                    }
+                    _ => None,
+                }
+            }
+            Message::Export(replay_path) => Some(Effect::OpenExportSaveDialog(replay_path)),
+            Message::ExportStart { replay, output } => {
+                // Snapshot the form + round mask exactly as the
+                // user has it right now. Disabling the form
+                // widgets while in-flight is the lock — no need
+                // to re-read state when progress messages arrive.
+                let settings = self.export_settings;
+                let mut rounds = self.selected_rounds.clone();
+                if rounds.is_empty() {
+                    // Single-round replays don't show the rounds
+                    // selector at all, so this guards the "user
+                    // hit Save As before any rounds were
+                    // computed" race.
+                    rounds = vec![true];
+                }
+                self.export_status = ExportStatus::InProgress {
+                    replay: replay.clone(),
+                    completed: 0,
+                    total: 0,
+                };
+                self.export_panel_open = false;
+                Some(Effect::StartExport {
+                    replay,
+                    output,
+                    settings,
+                    rounds,
+                })
+            }
+            Message::ExportProgress { replay, completed, total } => {
+                // Drop stale ticks that don't match the in-flight
+                // target (defensive — shouldn't happen because the
+                // Export button is gated on InProgress).
+                if let ExportStatus::InProgress { replay: cur, .. } = &self.export_status {
+                    if cur == &replay {
+                        self.export_status = ExportStatus::InProgress {
+                            replay,
+                            completed,
+                            total,
+                        };
+                    }
+                }
+                None
+            }
+            Message::ExportFinished { replay, result } => {
+                self.export_status = ExportStatus::Done { replay, result };
+                None
+            }
+            Message::ExportDismiss => {
+                self.export_status = ExportStatus::Idle;
+                None
+            }
+            Message::OpenFile(p) => Some(Effect::OpenPath(p)),
+            Message::SetExportScale(s) => {
+                self.export_settings.scale = s.clamp(1, 10);
+                None
+            }
+            Message::SetExportLossless(b) => {
+                self.export_settings.lossless = b;
+                None
+            }
+            Message::SetExportDisableBgm(b) => {
+                self.export_settings.disable_bgm = b;
+                None
+            }
+            Message::ToggleExportRound(idx, picked) => {
+                if let Some(slot) = self.selected_rounds.get_mut(idx) {
+                    *slot = picked;
+                }
+                None
+            }
+            Message::ExportPanelOpen(_) => {
+                self.export_panel_open = true;
+                // Stale Done status from a previous export
+                // clutters the panel; reset for a fresh start.
+                self.export_status = ExportStatus::Idle;
+                None
+            }
+            Message::ExportPanelClose => {
+                self.export_panel_open = false;
+                None
+            }
+        }
+    }
+
+    fn clear_selection(&mut self) {
+        self.selected = None;
+        self.loaded = None;
+        self.loaded_cache_path = None;
+        self.selected_rounds.clear();
+    }
+
+    /// Decode the currently-selected replay just enough to build
+    /// its save-view Loaded + populate the round count for the
+    /// export form. Cached against the selected path so this only
+    /// re-runs on selection change.
+    fn refresh_loaded(&mut self, scanners: &Scanners, config: &config::Config) {
+        let Some(path) = self.selected.clone() else {
+            self.loaded = None;
+            self.loaded_cache_path = None;
+            self.selected_rounds.clear();
+            return;
+        };
+        if self.loaded_cache_path.as_ref() == Some(&path) {
+            return;
+        }
+        let res = (|| -> anyhow::Result<(crate::selection::Loaded, usize)> {
+            let f = std::fs::File::open(&path)?;
+            let replay = tango_pvp::replay::Replay::decode(f)?;
+            let rounds = replay.rounds.len();
+            let loaded = crate::selection::Loaded::for_replay_local(scanners, config, &replay)?;
+            Ok((loaded, rounds))
+        })();
+        match res {
+            Ok((loaded, rounds)) => {
+                self.loaded = Some(loaded);
+                self.loaded_cache_path = Some(path);
+                // Default to all-rounds-checked on every fresh
+                // selection; export form reads this snapshot.
+                self.selected_rounds = vec![true; rounds];
+            }
+            Err(e) => {
+                log::warn!("replay save preview failed: {e}");
+                self.loaded = None;
+                self.loaded_cache_path = None;
+                self.selected_rounds.clear();
+            }
+        }
+    }
+
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
@@ -43,34 +359,54 @@ impl ReplaysState {
         let replays_path = config.replays_path();
         let replays = scanners.replays.read();
 
-        // Top: folder filter dropdown. Default option is "all".
-        let all_label = t(lang, "replays-all-replays");
-        let mut folder_options = vec![FolderOption::all(all_label.clone())];
+        // Top: game + opponent filter dropdowns. Options are
+        // derived from the distinct values seen across the
+        // scanned replays' local/remote metadata; "All …" is
+        // always the first option.
+        let all_games = t(lang, "replays-filter-all-games");
+        let mut game_options = vec![GameFilterOption::all(all_games.clone())];
         {
             use itertools::Itertools;
-            let mut parents: Vec<std::path::PathBuf> = replays
+            let mut seen: Vec<(String, u8)> = replays
                 .iter()
-                .flat_map(|r| r.path.parent().map(|p| p.to_path_buf()))
+                .filter_map(|r| {
+                    let gi = r.metadata.local_side.as_ref()?.game_info.as_ref()?;
+                    let v = u8::try_from(gi.rom_variant).ok()?;
+                    Some((gi.rom_family.clone(), v))
+                })
                 .unique()
                 .collect();
-            parents.sort();
-            for p in parents {
-                let display = replays::format_rel_path(&replays_path, &p);
-                folder_options.push(FolderOption {
-                    path: Some(p),
+            seen.sort();
+            for (family, variant) in seen {
+                let display = tango_gamedb::find_by_family_and_variant(&family, variant)
+                    .map(|g| crate::game::short_name(lang, g))
+                    .unwrap_or_else(|| format!("{family} v{variant}"));
+                game_options.push(GameFilterOption {
+                    pair: Some((family, variant)),
                     display,
                 });
             }
         }
-        let selected_folder = folder_options
+        let selected_game = game_options
             .iter()
-            .find(|f| f.path == self.folder_filter)
+            .find(|o| o.pair == self.game_filter)
             .cloned()
-            .unwrap_or_else(|| folder_options[0].clone());
+            .unwrap_or_else(|| game_options[0].clone());
         let top = container(
             row![
-                text(format!("{}:", t(lang, "replays-folder-label"))),
-                pick_list(folder_options, Some(selected_folder), Message::FolderFilterSelected),
+                text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
+                pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
+                    .text_size(STANDARD_TEXT_SIZE)
+                    .padding(STANDARD_PADDING),
+                text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
+                iced::widget::text_input(
+                    &t(lang, "replays-filter-opponent-placeholder"),
+                    &self.opponent_filter,
+                )
+                .on_input(Message::OpponentFilterChanged)
+                .padding(STANDARD_PADDING)
+                .size(STANDARD_TEXT_SIZE)
+                .width(Length::Fixed(180.0)),
                 horizontal_space(),
                 icons::icon_button(
                     icons::RESCAN,
@@ -86,18 +422,41 @@ impl ReplaysState {
         )
         .width(Fill);
 
-        // Left list. Pre-filter by folder, then build rows.
-        let folder_filter = self.folder_filter.as_ref();
+        // Left list — AND of game + opponent filters. Opponent
+        // match is case-insensitive substring (mirrors the
+        // text-input UX).
+        let game_filter = self.game_filter.as_ref();
+        let opp_needle = self.opponent_filter.trim().to_lowercase();
         let filtered: Vec<&replays::ScannedReplay> = replays
             .iter()
             .filter(|r| {
-                folder_filter
-                    .map(|f| r.path.parent().map(|p| p == f.as_path()).unwrap_or(false))
-                    .unwrap_or(true)
+                let g_ok = game_filter
+                    .map(|(family, variant)| {
+                        r.metadata
+                            .local_side
+                            .as_ref()
+                            .and_then(|s| s.game_info.as_ref())
+                            .map(|gi| {
+                                gi.rom_family == *family
+                                    && u8::try_from(gi.rom_variant).ok() == Some(*variant)
+                            })
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true);
+                let o_ok = if opp_needle.is_empty() {
+                    true
+                } else {
+                    r.metadata
+                        .remote_side
+                        .as_ref()
+                        .map(|s| s.nickname.to_lowercase().contains(&opp_needle))
+                        .unwrap_or(false)
+                };
+                g_ok && o_ok
             })
             .collect();
 
-        let mut list = column![].spacing(0).padding(8);
+        let mut list = column![].spacing(1).padding(8);
         for r in &filtered {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
@@ -114,9 +473,7 @@ impl ReplaysState {
             let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
             let game_label = local_gi
                 .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-                .and_then(|(family, variant)| {
-                    tango_gamedb::find_by_family_and_variant(family, variant)
-                })
+                .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
                 .map(|g| crate::game::short_name(lang, g))
                 .or_else(|| local_gi.map(|g| g.rom_family.clone()))
                 .unwrap_or_default();
@@ -131,17 +488,14 @@ impl ReplaysState {
             list = list.push(
                 button(
                     column![
-                        text(ts_str).size(13),
-                        text(format!(
-                            "{game_label} @ {}  ·  {nick_pair}",
-                            md.link_code
-                        ))
-                        .size(11)
-                        .style(save_view::muted_text_style),
+                        text(ts_str).size(TEXT_BODY),
+                        text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
+                            .size(TEXT_CAPTION)
+                            .style(save_view::muted_text_style),
                     ]
                     .spacing(2),
                 )
-                .padding(6)
+                .padding([6, 10])
                 .width(Fill)
                 .style(style)
                 .on_press(Message::Selected(r.path.clone())),
@@ -156,12 +510,12 @@ impl ReplaysState {
             if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
                 replay_detail(lang, r, &replays_path, self)
             } else {
-                container(text(t(lang, "replays-select-prompt")).size(13))
+                container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
                     .into()
             }
         } else {
-            container(text(t(lang, "replays-select-prompt")).size(13))
+            container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                 .center(Fill)
                 .into()
         };
@@ -200,17 +554,19 @@ fn replay_detail<'a>(
             .map(|g| crate::game::display_name(lang, g))
             .or_else(|| gi.map(|g| format!("{} v{}", g.rom_family, g.rom_variant)))
             .unwrap_or_default();
-        let patch = gi.and_then(|g| g.patch.as_ref()).map(|p| format!("{} v{}", p.name, p.version));
+        let patch = gi
+            .and_then(|g| g.patch.as_ref())
+            .map(|p| format!("{} v{}", p.name, p.version));
         let mut col = column![
-            text(label).size(11).style(save_view::muted_text_style),
-            text(nick).size(14),
-            text(game).size(12),
+            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+            text(nick).size(TEXT_HEADING),
+            text(game).size(TEXT_CAPTION),
         ]
         .spacing(2);
         if let Some(p) = patch {
             col = col.push(
                 text(p)
-                    .size(11)
+                    .size(TEXT_CAPTION)
                     .style(|theme: &iced::Theme| iced::widget::text::Style {
                         color: Some(theme.palette().primary),
                     }),
@@ -250,17 +606,18 @@ fn replay_detail<'a>(
     // think they had infinite vertical room, producing a meter-tall
     // scrollbar.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
+        container(save_view::view(lang, loaded, &state.save_view, false).map(Message::SaveViewAction))
+            .padding(8)
+            .height(Fill)
+            .into()
+    } else {
         container(
-            save_view::view(lang, loaded, &state.save_view, false)
-                .map(Message::SaveViewAction),
+            text(t(lang, "save-empty"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style),
         )
         .padding(8)
-        .height(Fill)
         .into()
-    } else {
-        container(text(t(lang, "save-empty")).size(12).style(save_view::muted_text_style))
-            .padding(8)
-            .into()
     };
 
     container(
@@ -279,26 +636,44 @@ fn replay_detail<'a>(
                     iced::widget::button::primary,
                 ),
                 icons::icon_button_maybe::<Message>(
-                    icons::EXPORT,
+                    icons::RENDER,
                     t(lang, "replays-export"),
-                    None,
+                    // Toggle the inline options panel. Disabled
+                    // entirely while an export is running (one
+                    // ffmpeg child at a time) — the in-flight
+                    // status line below replaces this affordance.
+                    if matches!(state.export_status, ExportStatus::InProgress { .. }) {
+                        None
+                    } else if state.export_panel_open {
+                        Some(Message::ExportPanelClose)
+                    } else {
+                        Some(Message::ExportPanelOpen(r.path.clone()))
+                    },
                     STANDARD_TEXT_SIZE,
                     STANDARD_PADDING,
                 ),
                 icons::icon_button(
                     icons::FOLDER,
                     t(lang, "patches-open-folder"),
-                    Message::OpenFolder(
-                        r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
-                    ),
+                    Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
                     STANDARD_TEXT_SIZE,
                     STANDARD_PADDING,
                 ),
             ]
             .spacing(6)
             .align_y(Alignment::Center),
-            text(ts_str).size(12).style(save_view::muted_text_style),
-            text(format!("{parent_str}{filename}")).size(11).style(save_view::muted_text_style),
+            export_panel(
+                lang,
+                state.export_panel_open,
+                &state.export_settings,
+                &state.selected_rounds,
+                &r.path,
+            ),
+            export_status_line(lang, &state.export_status, &r.path),
+            text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
+            text(format!("{parent_str}{filename}"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style),
             Space::with_height(8),
             horizontal_rule(1),
             Space::with_height(8),
@@ -317,15 +692,10 @@ fn replay_detail<'a>(
                     .and_then(|s| s.game_info.as_ref())
                     .map(|g| g.rom_family.clone())
                     .unwrap_or_default();
-                let label = crate::game::match_type_name(
-                    lang,
-                    &family,
-                    md.match_type as u8,
-                    md.match_subtype as u8,
-                );
+                let label = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
                 format!("{}: {}", t(lang, "replays-match-type"), label)
             })
-            .size(12),
+            .size(TEXT_CAPTION),
             Space::with_height(8),
             horizontal_rule(1),
             preview,
@@ -339,17 +709,202 @@ fn replay_detail<'a>(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FolderOption {
-    pub path: Option<std::path::PathBuf>,
+pub struct GameFilterOption {
+    /// `None` = "all games" sentinel; otherwise (family, variant).
+    pub pair: Option<(String, u8)>,
     pub display: String,
 }
-impl FolderOption {
+impl GameFilterOption {
     fn all(label: String) -> Self {
-        Self { path: None, display: label }
+        Self {
+            pair: None,
+            display: label,
+        }
     }
 }
-impl std::fmt::Display for FolderOption {
+impl std::fmt::Display for GameFilterOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
+}
+
+
+/// One-line status line under the export button. Scoped to a
+/// specific replay path — picking a different replay mid-export
+/// hides the status from the new selection's detail (the export
+/// itself keeps running). Renders the percentage while in-flight;
+/// on completion, success/failure + a dismiss chip and (on
+/// success) an Open-Replay button that launches the .mp4 with
+/// the OS's default player.
+fn export_status_line<'a>(
+    lang: &'a LanguageIdentifier,
+    status: &'a ExportStatus,
+    detail_path: &std::path::Path,
+) -> Element<'a, Message> {
+    match status {
+        ExportStatus::InProgress {
+            replay,
+            completed,
+            total,
+        } if replay == detail_path => {
+            let label = if *total > 0 {
+                let pct = (*completed as f32 / *total as f32 * 100.0).round() as u32;
+                format!("{}: {pct}%", t(lang, "replays-export-progress"))
+            } else {
+                t(lang, "replays-export-progress")
+            };
+            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style).into()
+        }
+        ExportStatus::Done {
+            replay,
+            result: Ok(path),
+        } if replay == detail_path => row![
+            text(format!("{}: {}", t(lang, "replays-export-success"), path.display())).size(TEXT_CAPTION),
+            horizontal_space(),
+            icons::icon_button(
+                icons::WATCH,
+                t(lang, "replays-export-open"),
+                Message::OpenFile(path.clone()),
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            ),
+            icons::icon_button(
+                icons::CANCEL,
+                t(lang, "save-action-cancel"),
+                Message::ExportDismiss,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into(),
+        ExportStatus::Done { replay, result: Err(e) } if replay == detail_path => row![
+            text(format!("{}: {e}", t(lang, "replays-export-error")))
+                .size(TEXT_CAPTION)
+                .style(iced::widget::text::danger),
+            horizontal_space(),
+            icons::icon_button(
+                icons::CANCEL,
+                t(lang, "save-action-cancel"),
+                Message::ExportDismiss,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into(),
+        _ => Space::with_height(0).into(),
+    }
+}
+
+/// Inline export-options panel. Hidden by default — only appears
+/// after the user clicks Export to open it. Contains the
+/// scale / lossless / mute / round-mask controls plus the Save
+/// As… (commits) and Cancel buttons. While closed: zero-height
+/// element so the detail layout collapses around it.
+fn export_panel<'a>(
+    lang: &'a LanguageIdentifier,
+    open: bool,
+    settings: &'a ExportSettings,
+    selected_rounds: &'a [bool],
+    replay_path: &std::path::Path,
+) -> Element<'a, Message> {
+    if !open {
+        return Space::with_height(0).into();
+    }
+    // Settings are always editable here — the panel itself only
+    // shows when no export is running, so there's no in-flight
+    // race to worry about.
+    let in_flight = false;
+    let scale_label = text(format!("{}: {}×", t(lang, "replays-export-scale"), settings.scale))
+        .size(TEXT_CAPTION)
+        .style(save_view::muted_text_style);
+    let scale_slider: Element<'a, Message> = if settings.lossless || in_flight {
+        // Both lossless mode + in-flight disable scale editing.
+        text(if settings.lossless {
+            t(lang, "replays-export-scale-na-lossless")
+        } else {
+            "".to_string()
+        })
+        .size(TEXT_CAPTION)
+        .style(save_view::muted_text_style)
+        .into()
+    } else {
+        iced::widget::slider(1..=10u8, settings.scale, Message::SetExportScale)
+            .width(Length::Fixed(140.0))
+            .into()
+    };
+    let lossless_chk =
+        iced::widget::checkbox(t(lang, "replays-export-lossless"), settings.lossless).text_size(STANDARD_TEXT_SIZE);
+    let lossless_chk: Element<'a, Message> = if in_flight {
+        lossless_chk.into()
+    } else {
+        lossless_chk.on_toggle(Message::SetExportLossless).into()
+    };
+    let bgm_chk = iced::widget::checkbox(t(lang, "replays-export-disable-bgm"), settings.disable_bgm)
+        .text_size(STANDARD_TEXT_SIZE);
+    let bgm_chk: Element<'a, Message> = if in_flight {
+        bgm_chk.into()
+    } else {
+        bgm_chk.on_toggle(Message::SetExportDisableBgm).into()
+    };
+    // Round-selection row — only shown for multi-round replays
+    // since a single-round replay's "rounds" selector is pointless.
+    let mut col = column![
+        row![column![scale_label, scale_slider].spacing(2), lossless_chk, bgm_chk,]
+            .spacing(16)
+            .align_y(Alignment::Center)
+    ]
+    .spacing(6);
+    if selected_rounds.len() > 1 {
+        let label = text(format!("{}:", t(lang, "replays-export-rounds")))
+            .size(TEXT_CAPTION)
+            .style(save_view::muted_text_style);
+        let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);
+        for (i, picked) in selected_rounds.iter().enumerate() {
+            let cb = iced::widget::checkbox(format!("{}", i + 1), *picked).text_size(STANDARD_TEXT_SIZE);
+            let cb: Element<'a, Message> = if in_flight {
+                cb.into()
+            } else {
+                cb.on_toggle(move |v| Message::ToggleExportRound(i, v)).into()
+            };
+            rounds_row = rounds_row.push(cb);
+        }
+        col = col.push(rounds_row);
+    }
+    // Action row: Save As… commits + Cancel closes the panel.
+    // Save As… is disabled if every round is unchecked.
+    let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
+    let actions = row![
+        horizontal_space(),
+        icons::icon_button(
+            icons::CANCEL,
+            t(lang, "save-action-cancel"),
+            Message::ExportPanelClose,
+            STANDARD_TEXT_SIZE,
+            STANDARD_PADDING,
+        ),
+        icons::icon_button_styled(
+            icons::RENDER,
+            t(lang, "replays-export-save-as"),
+            if any_round {
+                Some(Message::Export(replay_path.to_path_buf()))
+            } else {
+                None
+            },
+            STANDARD_TEXT_SIZE,
+            STANDARD_PADDING,
+            iced::widget::button::primary,
+        ),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
+    col = col.push(actions);
+
+    container(col.padding(12))
+        .width(Fill)
+        .style(iced::widget::container::bordered_box)
+        .into()
 }

@@ -27,6 +27,20 @@ tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 bincode = "1"
+async-trait = "0.1"
+gilrs = "0.10"
+rfd = "0.14"
+ab_glyph = "0.2"
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+# Netplay ready-handshake: rand for the nonce, sha3 for the
+# Shake128 commitment, zstd for chunk compression, subtle for the
+# constant-time commitment compare, rand_pcg for re-seeding the
+# stepper's RNG from the XOR'd nonces.
+rand = "0.8"
+rand_pcg = { version = "0.3", features = ["serde1"] }
+sha3 = "0.10"
+zstd = "0.13"
+subtle = "2"
 cpal = "0.16"
 bytemuck = "1"
 thiserror = "1"

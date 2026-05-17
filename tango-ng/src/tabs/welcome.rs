@@ -1,6 +1,9 @@
 use crate::i18n::{t, t_args};
 use crate::tabs::settings::labeled;
-use crate::{icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS};
+use crate::{
+    icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS,
+    TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE,
+};
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
@@ -56,11 +59,9 @@ pub fn view<'a>(
 
     // Language selector — lets the user switch before nickname so the
     // rest of the welcome flow shows in the language they picked.
-    let lang_picker = pick_list(
-        SUPPORTED_LANGS.to_vec(),
-        Some(lang.clone()),
-        Message::LanguageSelected,
-    );
+    let lang_picker = pick_list(SUPPORTED_LANGS.to_vec(), Some(lang.clone()), Message::LanguageSelected)
+        .text_size(STANDARD_TEXT_SIZE)
+        .padding(STANDARD_PADDING);
 
     let step_marker = |done: bool| -> &'static str {
         if done {
@@ -74,15 +75,15 @@ pub fn view<'a>(
     let mut roms_block = column![
         row![
             icons::glyph(step_marker(has_roms), 16),
-            text(t(lang, "welcome-step-roms")).size(18),
+            text(t(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
         text(t(lang, "welcome-step-roms-description"))
-            .size(12)
+            .size(TEXT_CAPTION)
             .style(save_view::muted_text_style),
         text(roms_path.display().to_string())
-            .size(12)
+            .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE),
         row![
             icons::labeled_icon_button(
@@ -112,7 +113,7 @@ pub fn view<'a>(
                 "welcome-step-roms-detected",
                 &[("count", (roms_count as i64).into())],
             ))
-            .size(12)
+            .size(TEXT_CAPTION)
             .style(|theme: &iced::Theme| iced::widget::text::Style {
                 color: Some(theme.palette().primary),
             }),
@@ -121,8 +122,7 @@ pub fn view<'a>(
 
     // Step 2 — nickname. Gated until at least one ROM is detected.
     let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
-    let mut continue_btn =
-        button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE)).padding(PRIMARY_PADDING);
+    let mut continue_btn = button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE)).padding(PRIMARY_PADDING);
     if can_continue {
         continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
     } else {
@@ -131,23 +131,21 @@ pub fn view<'a>(
 
     let mut nickname_block = column![
         row![
-            icons::glyph(
-                step_marker(!state.nickname_draft.trim().is_empty()),
-                16,
-            ),
-            text(t(lang, "welcome-step-nickname")).size(18),
+            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty()), 16,),
+            text(t(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
         text(t(lang, "welcome-step-nickname-description"))
-            .size(12)
+            .size(TEXT_CAPTION)
             .style(save_view::muted_text_style),
         labeled::<Message>(
             t(lang, "settings-nickname"),
             text_input("", &state.nickname_draft)
                 .on_input(Message::NicknameChanged)
                 .on_submit(Message::Continue)
-                .padding(10)
+                .size(STANDARD_TEXT_SIZE)
+                .padding(STANDARD_PADDING)
                 .width(Length::Fixed(280.0)),
         ),
     ]
@@ -155,7 +153,7 @@ pub fn view<'a>(
     if !has_roms {
         nickname_block = nickname_block.push(
             text(t(lang, "welcome-roms-needed"))
-                .size(11)
+                .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
         );
     }
@@ -163,10 +161,14 @@ pub fn view<'a>(
 
     container(
         column![
-            row![text(t(lang, "welcome-title")).size(28), Space::with_width(Fill), lang_picker]
-                .align_y(Alignment::Center),
+            row![
+                text(t(lang, "welcome-title")).size(TEXT_DISPLAY),
+                Space::with_width(Fill),
+                lang_picker
+            ]
+            .align_y(Alignment::Center),
             text(t(lang, "welcome-subtitle"))
-                .size(13)
+                .size(TEXT_BODY)
                 .style(save_view::muted_text_style),
             Space::with_height(16),
             roms_block,
@@ -181,4 +183,3 @@ pub fn view<'a>(
     .center(Fill)
     .into()
 }
-

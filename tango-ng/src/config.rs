@@ -74,13 +74,11 @@ pub struct Config {
     pub last_patch: Option<String>,
     pub last_patch_version: Option<semver::Version>,
 
-    /// Master volume (0..=100). 100 = no attenuation.
-    #[serde(default = "default_volume")]
-    pub volume: u8,
-}
-
-fn default_volume() -> u8 {
-    100
+    /// User-editable input bindings (keyboard + gamepad). See
+    /// [`crate::input::Mapping::default`] for the out-of-the-box
+    /// layout. Each mgba key can have multiple bindings.
+    #[serde(default)]
+    pub input_mapping: crate::input::Mapping,
 }
 
 impl Default for Config {
@@ -102,7 +100,7 @@ impl Default for Config {
             last_save: None,
             last_patch: None,
             last_patch_version: None,
-            volume: default_volume(),
+            input_mapping: crate::input::Mapping::default(),
         }
     }
 }

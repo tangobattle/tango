@@ -1,12 +1,25 @@
-//! NaviCust grid rendering. Ported from `tango/src/gui/save_view/navi_view/navicust_view.rs`,
-//! omitting the color bar (which needed font rendering against the egui atlas).
-//! Outputs an RGBA image we can hand to iced's image widget.
+//! NaviCust grid rendering. Ported from `tango/src/gui/save_view/navi_view/navicust_view.rs`.
+//! For BN3 the color bar carries the style name on its left
+//! edge — rasterized via ab_glyph against the bundled NotoSans
+//! font so the baked image still reads correctly when copied
+//! or exported. Outputs an RGBA image we can hand to iced's
+//! image widget.
 
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
+use std::sync::LazyLock;
 use tango_dataview::{
     navicust::MaterializedNavicust,
     rom::{Assets, NavicustLayout, NavicustPartColor},
     save::NavicustView,
 };
+
+/// Font used to bake the BN3 style label onto the color bar.
+/// Same Noto Sans face the rest of the UI uses, so the on-image
+/// label visually matches the iced widgets around it.
+static LABEL_FONT: LazyLock<FontRef<'static>> = LazyLock::new(|| {
+    FontRef::try_from_slice(include_bytes!("../../tango/fonts/NotoSans-Regular.ttf"))
+        .expect("bundled Noto Sans is a valid TTF")
+});
 
 const BORDER_WIDTH: f32 = 6.0;
 const SQUARE_SIZE: f32 = 60.0;
@@ -32,8 +45,10 @@ fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
 const PADDING_H: u32 = 20;
 const PADDING_V: u32 = 20;
 
-/// Background fill + color bar + body. Matches the egui app's
-/// `render_navicust`, minus the style name text overlaid on the bar.
+/// Background fill + color bar + body. For BN3 (style is Some)
+/// the bar is widened to span the body and the style name is
+/// rasterized on the left edge — same layout the legacy egui
+/// app produces.
 pub fn render(
     materialized: &MaterializedNavicust,
     layout: &NavicustLayout,
@@ -43,8 +58,36 @@ pub fn render(
     let body = render_grid(materialized, layout, view, assets);
 
     let color_bar = if let Some(style_id) = view.style() {
-        let extra = assets.style(style_id).and_then(|s| s.extra_ncp_color());
-        render_color_bar_bn3(body.width(), extra)
+        let extra_color = assets.style(style_id).and_then(|s| s.extra_ncp_color());
+        let style_name = assets.style(style_id).and_then(|s| s.name());
+        let tiles = render_color_bar_bn3(extra_color);
+        // Widen the bar to the body width so the tiles can sit
+        // flush against the right edge while the style name fits
+        // on the left. Same shape the legacy app produces.
+        let mut bar = image::RgbaImage::new(body.width(), tiles.height());
+        let bar_w = bar.width();
+        let bar_h = bar.height();
+        image::imageops::overlay(
+            &mut bar,
+            &tiles,
+            (bar_w - tiles.width()) as i64,
+            0,
+        );
+        if let Some(name) = style_name {
+            // Leave a small pad so the glyphs don't kiss the
+            // left edge / the tile stripe.
+            let label_pad = (BORDER_WIDTH as i64) + 4;
+            let max_label_w = (bar_w as i64) - tiles.width() as i64 - label_pad * 2;
+            if max_label_w > 0 {
+                // Noto Sans line height = ascent − descent ≈ 1.36 ×
+                // em, so an em equal to the bar height would crop
+                // top + bottom. 0.72 leaves a hair of margin while
+                // keeping the label visually present.
+                let font_height = (bar_h as f32) * 0.72;
+                rasterize_label(&mut bar, &name, label_pad, font_height, max_label_w as u32);
+            }
+        }
+        bar
     } else {
         render_color_bar_bn456(body.width(), view, assets)
     };
@@ -65,8 +108,61 @@ pub fn render(
     out
 }
 
+/// Blit a left-aligned white label onto `dst` starting at `x0`,
+/// vertically centered. Glyph pixels are written as solid white
+/// with coverage as alpha — `image::imageops::overlay` later
+/// composites the whole bar (including these alpha glyphs) over
+/// the navicust background with the right blend, so we don't
+/// need to do the bg/fg mix in here. Trims trailing chars that
+/// would push the run past `max_width`.
+fn rasterize_label(dst: &mut image::RgbaImage, text: &str, x0: i64, font_height: f32, max_width: u32) {
+    let scale = PxScale::from(font_height);
+    let font = LABEL_FONT.as_scaled(scale);
+    // Center the line vertically: baseline sits at (h - line_h)/2
+    // + ascent. ab_glyph reports a positive ascent and a negative
+    // descent, so the line height collapses to ascent - descent
+    // and the centered baseline is (h + ascent + descent) / 2.
+    let h = dst.height() as f32;
+    let baseline_y = (h + font.ascent() + font.descent()) / 2.0;
+
+    let mut cursor_x = x0 as f32;
+    let max_x = (x0 + max_width as i64) as f32;
+    for ch in text.chars() {
+        let glyph_id = font.glyph_id(ch);
+        let advance = font.h_advance(glyph_id);
+        if cursor_x + advance > max_x {
+            break;
+        }
+        let glyph = glyph_id.with_scale_and_position(scale, ab_glyph::point(cursor_x, baseline_y));
+        if let Some(outlined) = font.font().outline_glyph(glyph) {
+            let bounds = outlined.px_bounds();
+            outlined.draw(|px, py, coverage| {
+                let ix = bounds.min.x as i32 + px as i32;
+                let iy = bounds.min.y as i32 + py as i32;
+                if ix < 0 || iy < 0 || ix >= dst.width() as i32 || iy >= dst.height() as i32 {
+                    return;
+                }
+                let a = (coverage.clamp(0.0, 1.0) * 255.0).round() as u8;
+                if a == 0 {
+                    return;
+                }
+                let pixel = dst.get_pixel_mut(ix as u32, iy as u32);
+                // Take the max alpha so glyphs that touch don't
+                // darken the overlap by overwriting a higher
+                // coverage with a lower one.
+                if a > pixel.0[3] {
+                    pixel.0 = [255, 255, 255, a];
+                }
+            });
+        }
+        cursor_x += advance;
+    }
+}
+
 /// BN3-style color bar: White / Pink / Yellow / (extra from style).
-fn render_color_bar_bn3(body_width: u32, extra: Option<NavicustPartColor>) -> image::RgbaImage {
+/// Returns only the tile stripe; the wrapper in `render` pads
+/// it to body width and overlays the style label on the left.
+fn render_color_bar_bn3(extra: Option<NavicustPartColor>) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE / 4.0;
     let mut pixmap = tiny_skia::Pixmap::new(
         (TILE_WIDTH * 4.0 + BORDER_WIDTH) as u32,
@@ -108,9 +204,9 @@ fn render_color_bar_bn3(body_width: u32, extra: Option<NavicustPartColor>) -> im
         pixmap.stroke_path(&path, &border_paint, &stroke, transform, None);
     }
 
-    // Pad bar to body width so it lines up with the grid.
-    let bar = image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
-    pad_left(bar, body_width)
+    // Wrapper in `render` will pad this to body width + bake
+    // the style label.
+    image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
 /// BN4/5/6 color bar: up to 4 non-bug colors on the left, optional bug

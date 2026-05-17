@@ -19,7 +19,6 @@ const EXPECTED_FPS: f32 = 60.0;
 pub struct ReplaySession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     completion_token: tango_pvp::hooks::CompletionToken,
-    pause_on_next_frame: Arc<AtomicBool>,
     close_requested: Arc<AtomicBool>,
     replay: Arc<tango_pvp::replay::Replay>,
     stepper_state: tango_pvp::stepper::State,
@@ -27,6 +26,8 @@ pub struct ReplaySession {
     snapshots: SnapshotStore,
     prefetch_progress: Arc<AtomicU32>,
     total_ticks: u32,
+    /// See `singleplayer_session::SinglePlayerSession::frame_id`.
+    frame_id: Arc<std::sync::atomic::AtomicU64>,
     /// Held so the audio binding survives for the session's lifetime;
     /// the LateBinder swaps back to silence when this Drops.
     _audio_binding: Option<crate::audio::Binding>,
@@ -96,7 +97,6 @@ impl ReplaySession {
             0u8;
             (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize
         ]));
-        let pause_on_next_frame = Arc::new(AtomicBool::new(false));
 
         let snapshots = SnapshotStore::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
@@ -110,17 +110,19 @@ impl ReplaySession {
             prefetch_progress.clone(),
         );
 
+        let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let completion_token = completion_token.clone();
             let stepper_state = stepper_state.clone();
-            let pause_on_next_frame = pause_on_next_frame.clone();
             let snapshots = snapshots.clone();
             let shadow = shadow.clone();
+            let frame_id = frame_id.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
+                frame_id.fetch_add(1, Ordering::Release);
 
                 if let Some(err) = stepper_state.lock_inner().take_error() {
                     log::error!("replay stepper error: {err:?}");
@@ -144,7 +146,7 @@ impl ReplaySession {
                     completion_token.complete();
                 }
 
-                if pause_on_next_frame.swap(false, Ordering::SeqCst) || completion_token.is_complete() {
+                if completion_token.is_complete() {
                     thread_handle.pause();
                 }
             }
@@ -167,7 +169,6 @@ impl ReplaySession {
         Ok(Self {
             vbuf,
             completion_token,
-            pause_on_next_frame,
             close_requested: Arc::new(AtomicBool::new(false)),
             replay,
             stepper_state,
@@ -175,6 +176,7 @@ impl ReplaySession {
             snapshots,
             prefetch_progress,
             total_ticks,
+            frame_id,
             _audio_binding: audio_binding,
             _prefetcher: prefetcher,
             thread,
@@ -186,8 +188,9 @@ impl ReplaySession {
         self.vbuf.lock().clone()
     }
 
-    pub fn is_complete(&self) -> bool {
-        self.completion_token.is_complete()
+    /// See `singleplayer_session::SinglePlayerSession::frame_id`.
+    pub fn frame_id(&self) -> u64 {
+        self.frame_id.load(Ordering::Acquire)
     }
 
     pub fn is_paused(&self) -> bool {
@@ -225,10 +228,6 @@ impl ReplaySession {
         self.close_requested.store(true, Ordering::SeqCst);
     }
 
-    pub fn close_requested(&self) -> bool {
-        self.close_requested.load(Ordering::SeqCst)
-    }
-
     /// Absolute playhead tick: how many emulated ticks the stepper has
     /// consumed since the start of the replay. Saturates at
     /// `total_ticks` once the replay finishes.
@@ -245,10 +244,6 @@ impl ReplaySession {
     /// prefetcher has run to completion.
     pub fn prefetch_progress(&self) -> u32 {
         self.prefetch_progress.load(Ordering::Relaxed)
-    }
-
-    pub fn replay(&self) -> &Arc<tango_pvp::replay::Replay> {
-        &self.replay
     }
 
     /// Cumulative tick at the end of each round *except* the last —

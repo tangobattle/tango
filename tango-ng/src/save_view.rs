@@ -1,5 +1,6 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
+use crate::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
 use iced::widget::{
     column, container, horizontal_rule, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space,
 };
@@ -105,20 +106,22 @@ impl State {
         match action {
             Action::SelectTab(t) => self.active_tab = Some(*t),
             Action::ToggleFolderGrouped(g) => self.folder_grouped = *g,
-            Action::CopyTab(_) => {}
+            Action::CopyTab(_) | Action::CopyTabImage(_) => {}
         }
     }
 }
 
 /// User-driven changes the embedded save view wants to surface. The
 /// caller `.map`s its top-level Message onto this and dispatches:
-/// most variants just need `state.apply(&action)`; `CopyTab` needs
-/// the caller's `tab_as_text` + clipboard write.
+/// most variants just need `state.apply(&action)`; the Copy
+/// variants need the caller's `tab_as_text` / `tab_as_image` plus
+/// a clipboard write.
 #[derive(Debug, Clone)]
 pub enum Action {
     SelectTab(Tab),
     ToggleFolderGrouped(bool),
     CopyTab(Tab),
+    CopyTabImage(Tab),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -131,8 +134,6 @@ pub fn view<'a>(
     streamer_mode: bool,
 ) -> Element<'a, Action> {
     use crate::icons;
-    use crate::{STANDARD_PADDING, STANDARD_TEXT_SIZE};
-    use iced::widget::button;
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded.save.as_ref(), streamer_mode);
@@ -144,16 +145,13 @@ pub fn view<'a>(
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
 
-    let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
+    let mut tab_row = row![].spacing(2).align_y(Alignment::End);
     for tab in &available {
-        let style = if *tab == active { button::primary } else { button::text };
-        tab_row = tab_row.push(icons::labeled_icon_button(
+        tab_row = tab_row.push(icons::tab_button(
             tab_icon(*tab),
             t(lang, tab_key(*tab)),
             Action::SelectTab(*tab),
-            STANDARD_TEXT_SIZE,
-            STANDARD_PADDING,
-            style,
+            *tab == active,
         ));
     }
     tab_row = tab_row.push(horizontal_space());
@@ -184,12 +182,21 @@ fn tab_extras<'a>(
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
         icons::icon_button(icons::COPY, t(lang, "save-copy"), Action::CopyTab(tab), 13, [4, 10])
     };
+    let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
+        icons::icon_button(
+            icons::EXPORT,
+            t(lang, "save-copy-image"),
+            Action::CopyTabImage(tab),
+            13,
+            [4, 10],
+        )
+    };
     match tab {
         Tab::Folder => Some(
             row![
                 iced::widget::checkbox(t(lang, "folder-group"), state.folder_grouped)
                     .on_toggle(Action::ToggleFolderGrouped)
-                    .size(14)
+                    .size(TEXT_BODY)
                     .text_size(12),
                 copy_btn(Tab::Folder),
             ]
@@ -199,6 +206,12 @@ fn tab_extras<'a>(
         ),
         Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
         Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
+        Tab::Navi => Some(
+            row![copy_btn(Tab::Navi), copy_img_btn(Tab::Navi)]
+                .spacing(6)
+                .align_y(iced::Alignment::Center)
+                .into(),
+        ),
         _ => None,
     }
 }
@@ -329,12 +342,71 @@ pub fn tab_as_text(
             section("Program advance", &[mat.program_advance()]);
             Some(out)
         }
-        Tab::Navi | Tab::Cover => None,
+        Tab::Navi => {
+            let view = loaded.save.view_navi()?;
+            let mut out = String::new();
+            match view {
+                tango_dataview::save::NaviView::LinkNavi(v) => {
+                    let id = v.navi();
+                    let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
+                    out.push_str(&format!("{name}\n"));
+                }
+                tango_dataview::save::NaviView::Navicust(v) => {
+                    // Style name first (BN3 only), then a flat
+                    // list of solid + plus parts — matches the
+                    // legacy `.navi-cust-grid` clipboard export.
+                    if let Some(style_id) = v.style() {
+                        if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
+                            out.push_str(&name);
+                            out.push('\n');
+                        }
+                    }
+                    for i in 0..v.count() {
+                        let Some(part) = v.navicust_part(i) else {
+                            continue;
+                        };
+                        let info = assets.navicust_part(part.id);
+                        let name = info
+                            .as_ref()
+                            .and_then(|n| n.name())
+                            .unwrap_or_else(|| format!("#{}", part.id));
+                        out.push_str(&name);
+                        out.push('\n');
+                    }
+                }
+            }
+            Some(out)
+        }
+        Tab::Cover => None,
     }
 }
 
+/// Render a save-view tab to an RGBA image, for clipboard
+/// "copy as image". Currently only Navi/Navicust supports this
+/// (the rendered grid is already an image; we just hand back a
+/// fresh copy). Returns `None` for tabs without a meaningful
+/// image representation.
+pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
+    let nv = loaded.save.view_navi()?;
+    let v = match nv {
+        tango_dataview::save::NaviView::Navicust(v) => v,
+        _ => return None,
+    };
+    if !matches!(tab, Tab::Navi) {
+        return None;
+    }
+    let layout = loaded.assets.navicust_layout()?;
+    let materialized = v.materialized();
+    Some(crate::navicust::render(
+        &materialized,
+        &layout,
+        v.as_ref(),
+        loaded.assets.as_ref(),
+    ))
+}
+
 fn render_cover<M: 'static>(lang: &LanguageIdentifier) -> Element<'static, M> {
-    container(text(t(lang, "save-cover-description")).size(13))
+    container(text(t(lang, "save-cover-description")).size(TEXT_BODY))
         .center(Fill)
         .into()
 }
@@ -422,72 +494,51 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     // strip would be redundant — and labels are what make it read as a
     // spreadsheet. When ungrouped, skip empty slots so we don't waste
     // a full-height row on each "—".
-    let mut body = column![].spacing(4).padding(8);
+    // Tight stack — rows already have their own padding + accent
+    // stripe; extra column spacing here adds dead gaps that read
+    // as "spreadsheet" rather than "chip list".
+    let mut body = column![].spacing(1).padding(8);
     for (chip, g) in &items {
         if !grouped && chip.is_none() {
             continue;
         }
-        let row_el = chip_row(lang, loaded, chip.as_ref(), g, grouped, chips_have_mb);
-
-        // Hover tooltip with chip image preview + description.
         let chip_id = chip.as_ref().map(|c| c.id);
-        let description = chip_id.and_then(|id| loaded.assets.chip(id).and_then(|info| info.description()));
-        let image_handle = chip_id.and_then(|id| loaded.chip_images.get(id).cloned().flatten());
-        let row_el: Element<'static, M> = if description.is_some() || image_handle.is_some() {
-            let mut tip = column![].spacing(6);
-            if let Some((w, h, h_handle)) = image_handle {
-                tip = tip.push(
-                    Image::new(h_handle)
-                        .width(Length::Fixed(w as f32 * 2.0))
-                        .height(Length::Fixed(h as f32 * 2.0))
-                        .filter_method(iced_image::FilterMethod::Nearest)
-                        .content_fit(ContentFit::Contain),
-                );
-            }
-            if let Some(desc) = description {
-                tip = tip.push(text(desc).size(12));
-            }
-            tooltip(
-                row_el,
-                container(tip).padding(8).style(tooltip_style),
-                tooltip::Position::FollowCursor,
-            )
-            .gap(8)
-            .into()
-        } else {
-            row_el
-        };
-        body = body.push(row_el);
+        let code = chip.as_ref().map(|c| c.code.to_string());
+        body = body.push(chip_row(loaded, chip_id, code, g, grouped, chips_have_mb));
     }
 
     let _ = grouped;
     scrollable(body).height(Fill).width(Fill).into()
 }
 
+// `code = None` skips the code badge (Auto Battle Data slots
+// have a chip id but no code). `show_count_cell` toggles the
+// leading "N×" column — on for the folder's grouped mode, off
+// for ABD.
 fn chip_row<M: 'static>(
-    _lang: &LanguageIdentifier,
     loaded: &Loaded,
-    chip: Option<&tango_dataview::save::Chip>,
+    chip_id: Option<usize>,
+    code: Option<String>,
     g: &GroupedChip,
-    grouped: bool,
+    show_count_cell: bool,
     chips_have_mb: bool,
 ) -> Element<'static, M> {
-    let info = chip.and_then(|c| loaded.assets.chip(c.id));
+    let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
     let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
     let accent = class_accent(chip_class, dark);
-    let is_empty_slot = chip.is_none();
+    let is_empty_slot = chip_id.is_none();
 
     // Chip icon — keep the in-game sprite at native scale (16→28),
     // big enough to recognize without dominating the row.
-    let icon: Element<'static, M> = match chip.and_then(|c| loaded.chip_icons.get(c.id).cloned().flatten()) {
+    let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0))
+            .width(Length::Fixed(22.0))
+            .height(Length::Fixed(22.0))
             .filter_method(iced_image::FilterMethod::Nearest)
             .content_fit(ContentFit::Contain)
             .into(),
-        None => Space::with_width(Length::Fixed(28.0)).into(),
+        None => Space::with_width(Length::Fixed(22.0)).into(),
     };
 
     // Element icon, sits next to the name. Reserve width so columns
@@ -497,36 +548,34 @@ fn chip_row<M: 'static>(
         .and_then(|id| loaded.element_icons.get(&id).cloned())
         .map(|h| {
             Image::new(h)
-                .width(Length::Fixed(18.0))
-                .height(Length::Fixed(18.0))
+                .width(Length::Fixed(16.0))
+                .height(Length::Fixed(16.0))
                 .filter_method(iced_image::FilterMethod::Nearest)
                 .content_fit(ContentFit::Contain)
                 .into()
         })
-        .unwrap_or_else(|| Space::with_width(Length::Fixed(18.0)).into());
+        .unwrap_or_else(|| Space::with_width(Length::Fixed(16.0)).into());
 
     let name_text = info
         .as_ref()
         .and_then(|i| i.name())
         .unwrap_or_else(|| "???".to_string());
-    let code_str = chip.map(|c| c.code.to_string()).unwrap_or_default();
     let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
     let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
 
-    // Name (larger) + code letter as a styled monospace badge.
+    // Name + (optional) code badge.
     let title: Element<'static, M> = if is_empty_slot {
         text("—")
-            .size(14)
+            .size(TEXT_BODY)
             .color(iced::Color::from_rgb8(0x60, 0x60, 0x60))
             .into()
+    } else if let Some(code_str) = code.filter(|s| !s.is_empty()) {
+        row![text(name_text).size(TEXT_BODY), code_badge(code_str)]
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
     } else {
-        row![
-            text(name_text).size(15),
-            code_badge(code_str),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into()
+        text(name_text).size(TEXT_BODY).into()
     };
 
     // REG / TAG indicators sit under the title as small badges.
@@ -545,14 +594,14 @@ fn chip_row<M: 'static>(
     // numbers line up vertically across rows. Both inherit the theme's
     // text color — no hard-coded white/yellow that breaks on light.
     let power_text: Element<'static, M> = container(
-        text(if power > 0 { format!("{power}") } else { String::new() }).size(14),
+        text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY),
     )
     .width(Length::Fixed(50.0))
     .align_x(iced::alignment::Horizontal::Right)
     .into();
     let mb_text: Element<'static, M> = if chips_have_mb {
         container(
-            text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(12),
+            text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION),
         )
         .width(Length::Fixed(50.0))
         .align_x(iced::alignment::Horizontal::Right)
@@ -565,12 +614,12 @@ fn chip_row<M: 'static>(
     // full strength for count > 1, muted for count == 1 (since "1×" is
     // visual noise) — both readable on light + dark.
     let mut r = row![].spacing(10).align_y(Alignment::Center);
-    if grouped {
+    if show_count_cell {
         let count_is_one = g.count == 1;
         r = r.push(
             text(format!("{}×", g.count))
-                .size(14)
-                .width(Length::Fixed(28.0))
+                .size(TEXT_BODY)
+                .width(Length::Fixed(22.0))
                 .style(move |theme: &iced::Theme| iced::widget::text::Style {
                     color: Some(if count_is_one {
                         muted_color(theme)
@@ -589,7 +638,40 @@ fn chip_row<M: 'static>(
         .push(power_text)
         .push(mb_text);
 
-    card_wrap(r.padding([8, 12]).into(), accent)
+    let card = card_wrap(r.padding([3, 12]).into(), accent);
+    // Hover tooltip with chip image preview + description.
+    // Always rendered when the chip has either; the folder list
+    // and Auto Battle Data both want this affordance, so it
+    // lives at the bottom of chip_row instead of as a wrapper
+    // the callers have to remember to use.
+    let Some(id) = chip_id else {
+        return card;
+    };
+    let description = loaded.assets.chip(id).and_then(|info| info.description());
+    let image_handle = loaded.chip_images.get(id).cloned().flatten();
+    if description.is_none() && image_handle.is_none() {
+        return card;
+    }
+    let mut tip = column![].spacing(6);
+    if let Some((w, h, h_handle)) = image_handle {
+        tip = tip.push(
+            Image::new(h_handle)
+                .width(Length::Fixed(w as f32 * 2.0))
+                .height(Length::Fixed(h as f32 * 2.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain),
+        );
+    }
+    if let Some(desc) = description {
+        tip = tip.push(text(desc).size(TEXT_CAPTION));
+    }
+    tooltip(
+        card,
+        container(tip).padding(8).style(tooltip_style),
+        tooltip::Position::FollowCursor,
+    )
+    .gap(8)
+    .into()
 }
 
 /// Wraps the inner row content with a 4 px colored stripe on the left
@@ -623,96 +705,15 @@ fn card_wrap<M: 'static>(
         })
         .style(move |_| container::Style {
             background: Some(iced::Background::Color(accent_color)),
-            border: iced::Border {
-                radius: 6.0.into(),
-                ..Default::default()
-            },
+            // Square corners — the rounded stripe was reading as
+            // a "tab" or "pill" rather than a flush accent edge.
+            border: iced::Border::default(),
             ..Default::default()
         })
         .clip(true)
         .into()
 }
 
-/// Folder-style card row for an auto-battle-data slot, which only has
-/// a chip id (no code, no REG/TAG indicators).
-fn auto_battle_row<M: 'static>(
-    loaded: &Loaded,
-    chip_id: Option<usize>,
-    chips_have_mb: bool,
-) -> Element<'static, M> {
-    let info = chip_id.and_then(|id| loaded.assets.chip(id));
-    let chip_class = info.as_ref().map(|i| i.class());
-    let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
-    let accent = class_accent(chip_class, dark);
-
-    let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
-        Some(h) => Image::new(h)
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0))
-            .filter_method(iced_image::FilterMethod::Nearest)
-            .content_fit(ContentFit::Contain)
-            .into(),
-        None => Space::with_width(Length::Fixed(28.0)).into(),
-    };
-
-    let element_id = info.as_ref().map(|i| i.element());
-    let element_icon: Element<'static, M> = element_id
-        .and_then(|id| loaded.element_icons.get(&id).cloned())
-        .map(|h| {
-            Image::new(h)
-                .width(Length::Fixed(18.0))
-                .height(Length::Fixed(18.0))
-                .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::Contain)
-                .into()
-        })
-        .unwrap_or_else(|| Space::with_width(Length::Fixed(18.0)).into());
-
-    let name_text = info
-        .as_ref()
-        .and_then(|i| i.name())
-        .unwrap_or_else(|| chip_id.map(|id| format!("#{id}")).unwrap_or_default());
-    let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
-    let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
-
-    let title: Element<'static, M> = if chip_id.is_some() {
-        text(name_text).size(15).into()
-    } else {
-        text("—")
-            .size(14)
-            .color(iced::Color::from_rgb8(0x60, 0x60, 0x60))
-            .into()
-    };
-
-    let power_text: Element<'static, M> = container(
-        text(if power > 0 { format!("{power}") } else { String::new() }).size(14),
-    )
-    .width(Length::Fixed(50.0))
-    .align_x(iced::alignment::Horizontal::Right)
-    .into();
-    let mb_text: Element<'static, M> = if chips_have_mb {
-        container(
-            text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(12),
-        )
-        .width(Length::Fixed(50.0))
-        .align_x(iced::alignment::Horizontal::Right)
-        .into()
-    } else {
-        Space::with_width(Length::Fixed(0.0)).into()
-    };
-
-    let r = row![
-        icon,
-        container(title).width(Length::Fill),
-        element_icon,
-        power_text,
-        mb_text,
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    card_wrap(r.padding([8, 12]).into(), accent)
-}
 
 /// Accent color for the left edge of a chip row. None = no accent (the
 /// row reads as a default chip with no class adornment).
@@ -730,7 +731,7 @@ fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Op
 fn code_badge<M: 'static>(code: String) -> Element<'static, M> {
     // Theme-aware: opaque "strong" background from the palette, text
     // colour inherits from the theme so it reads on both light + dark.
-    container(text(code).size(13).font(iced::Font::MONOSPACE))
+    container(text(code).size(TEXT_BODY).font(iced::Font::MONOSPACE))
         .padding([1, 6])
         .style(|theme: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(
@@ -882,9 +883,9 @@ fn render_navi<M: 'static>(
             container(
                 column![
                     emblem,
-                    text(name).size(22),
+                    text(name).size(TEXT_DISPLAY),
                     text(format!("{}: #{navi_id}", t(lang, "navi-id")))
-                        .size(11)
+                        .size(TEXT_CAPTION)
                         .style(muted_text_style),
                 ]
                 .spacing(8)
@@ -953,9 +954,9 @@ fn render_navicust<M: 'static>(
                         .and_then(|p| assets.navicust_part(p.id));
                     let cell: Element<'static, M> = if let Some(info) = info {
                         let name = info.name().unwrap_or_else(|| "?".to_string());
-                        let mut tip_col = column![text(name).size(13)].spacing(2);
+                        let mut tip_col = column![text(name).size(TEXT_BODY)].spacing(2);
                         if let Some(desc) = info.description() {
-                            tip_col = tip_col.push(text(desc).size(11));
+                            tip_col = tip_col.push(text(desc).size(TEXT_CAPTION));
                         }
                         let tip = container(tip_col).padding(8).style(tooltip_style);
                         let space = Space::new(Length::Fixed(cell_size), Length::Fixed(cell_size));
@@ -979,7 +980,7 @@ fn render_navicust<M: 'static>(
             cols,
             rows_n
         ))
-        .size(12)
+        .size(TEXT_CAPTION)
         .into(),
     };
 
@@ -1012,7 +1013,7 @@ fn render_navicust<M: 'static>(
         let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
-                container(text(desc).size(12)).padding(8).style(tooltip_style),
+                container(text(desc).size(TEXT_CAPTION)).padding(8).style(tooltip_style),
                 tooltip::Position::FollowCursor,
             )
             .gap(8)
@@ -1029,7 +1030,7 @@ fn render_navicust<M: 'static>(
         }
     }
     if installed_solid + installed_plus == 0 {
-        solid_col = solid_col.push(text(t(lang, "navicust-empty")).size(12));
+        solid_col = solid_col.push(text(t(lang, "navicust-empty")).size(TEXT_CAPTION));
     }
     let parts_list = row![solid_col, plus_col].spacing(12);
 
@@ -1038,7 +1039,7 @@ fn render_navicust<M: 'static>(
     // list so it doesn't push the grid down.
     let parts_block = column![
         text(format!("{}:", t(lang, "navicust-parts")))
-            .size(13)
+            .size(TEXT_BODY)
             .style(muted_text_style),
         Space::with_height(6),
         parts_list,
@@ -1053,7 +1054,7 @@ fn render_navicust<M: 'static>(
 
     let mut col = column![].spacing(8).padding(16);
     if let Some(name) = style_name {
-        col = col.push(text(format!("{}: {}", t(lang, "navi-style"), name)).size(16));
+        col = col.push(text(format!("{}: {}", t(lang, "navi-style"), name)).size(TEXT_HEADING));
     }
     col = col.push(layout);
 
@@ -1072,7 +1073,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
     let mut list = column![].spacing(2).padding(16);
     match view {
         tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
-            list = list.push(text(format!("{}: {}", t(lang, "patch-cards-count"), v.count())).size(13));
+            list = list.push(text(format!("{}: {}", t(lang, "patch-cards-count"), v.count())).size(TEXT_BODY));
             list = list.push(horizontal_rule(1));
             for i in 0..v.count() {
                 let Some(card) = v.patch_card(i) else { continue };
@@ -1085,9 +1086,9 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 let effects: Vec<_> = info.as_ref().map(|c| c.effects()).unwrap_or_default();
 
                 let name_text = if card.enabled {
-                    text(name).size(13)
+                    text(name).size(TEXT_BODY)
                 } else {
-                    text(name).size(13).style(muted_text_style)
+                    text(name).size(TEXT_BODY).style(muted_text_style)
                 };
                 let name_col = column![
                     name_text,
@@ -1105,7 +1106,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 }
 
                 let row = row![
-                    text(format!("{:>2}", i + 1)).size(12).width(Length::Fixed(24.0)),
+                    text(format!("{:>2}", i + 1)).size(TEXT_CAPTION).width(Length::Fixed(24.0)),
                     container(name_col).width(Length::Fill),
                     container(ability_col).width(Length::Fixed(180.0)),
                     container(bug_col).width(Length::Fixed(180.0)),
@@ -1116,7 +1117,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
             }
         }
         tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
-            list = list.push(text(t(lang, "patch-cards-4-title")).size(13));
+            list = list.push(text(t(lang, "patch-cards-4-title")).size(TEXT_BODY));
             list = list.push(horizontal_rule(1));
             for i in 0..6 {
                 let card = v.patch_card(i);
@@ -1130,17 +1131,17 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
 
                 let mut details_col = column![].spacing(2);
                 if let Some(e) = effect {
-                    details_col = details_col.push(text(e).size(11).color(iced::Color::from_rgb8(0xff, 0xbd, 0x18)));
+                    details_col = details_col.push(text(e).size(TEXT_CAPTION).color(iced::Color::from_rgb8(0xff, 0xbd, 0x18)));
                 }
                 if let Some(b) = bug {
-                    details_col = details_col.push(text(b).size(11).color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)));
+                    details_col = details_col.push(text(b).size(TEXT_CAPTION).color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)));
                 }
 
                 let row = row![
                     text(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
-                        .size(12)
-                        .width(Length::Fixed(28.0)),
-                    text(label).size(13).width(Length::Fill),
+                        .size(TEXT_CAPTION)
+                        .width(Length::Fixed(22.0)),
+                    text(label).size(TEXT_BODY).width(Length::Fill),
                     details_col,
                 ]
                 .spacing(8)
@@ -1164,10 +1165,14 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
 
     let chips_have_mb = assets.chips_have_mb();
 
+    // ABD slots have no chip code and no REG/TAG indicators, so
+    // pass `code=None` and a default-zeroed badge struct. Hover
+    // preview comes for free from chip_row.
     let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
-        let mut col = column![text(title).size(13).style(muted_text_style)].spacing(4);
+        let mut col = column![text(title).size(TEXT_BODY).style(muted_text_style)].spacing(1);
+        let empty_badges = GroupedChip::default();
         for id in slots {
-            col = col.push(auto_battle_row(loaded, *id, chips_have_mb));
+            col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb));
         }
         col.push(Space::with_height(14)).into()
     };
@@ -1196,5 +1201,5 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
-    container(text(msg).size(13)).center(Fill).into()
+    container(text(msg).size(TEXT_BODY)).center(Fill).into()
 }

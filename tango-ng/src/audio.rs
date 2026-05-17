@@ -38,9 +38,6 @@ impl Drop for Binding {
 pub struct LateBinder {
     sample_rate: u32,
     stream: std::sync::Arc<parking_lot::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
-    /// 0..=100 master volume — scales every sample post-fill. Cheap
-    /// atomic read in the cpal callback hot path.
-    volume: std::sync::Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl LateBinder {
@@ -48,7 +45,6 @@ impl LateBinder {
         Self {
             sample_rate: 0,
             stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            volume: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(100)),
         }
     }
 
@@ -58,16 +54,6 @@ impl LateBinder {
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
-    }
-
-    /// Set master volume in [0, 100]. Values > 100 clamp; 0 mutes.
-    pub fn set_volume(&self, volume: u8) {
-        self.volume
-            .store(volume.min(100), std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn volume(&self) -> u8 {
-        self.volume.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn bind(
@@ -86,7 +72,7 @@ impl LateBinder {
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut s = self.stream.lock();
-        let n = match &mut *s {
+        match &mut *s {
             None => {
                 // Silence when nothing's bound. Returning buf.len()
                 // means we consider the whole buffer "filled" so cpal
@@ -97,17 +83,7 @@ impl Stream for LateBinder {
                 buf.len()
             }
             Some(stream) => stream.fill(buf),
-        };
-        let v = self.volume.load(std::sync::atomic::Ordering::Relaxed) as i32;
-        if v < 100 {
-            // Keep the multiply in i32 to avoid mid-product clip;
-            // divide brings it back into i16 range.
-            for px in buf[..n].iter_mut() {
-                px[0] = ((px[0] as i32 * v) / 100) as i16;
-                px[1] = ((px[1] as i32 * v) / 100) as i16;
-            }
         }
-        n
     }
 }
 

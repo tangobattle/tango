@@ -1,6 +1,9 @@
 use crate::i18n::t;
-use crate::{config, save_view, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS};
-use iced::widget::{button, column, container, pick_list, row, text, text_input, vertical_rule, Space};
+use crate::icons;
+use crate::{
+    config, input, save_view, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
+};
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, vertical_rule, Space};
 use iced::{Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -8,7 +11,7 @@ use unic_langid::LanguageIdentifier;
 pub enum SettingsTab {
     #[default]
     General,
-    Audio,
+    Input,
     Netplay,
     About,
 }
@@ -19,6 +22,11 @@ pub enum SettingsTab {
 #[derive(Default)]
 pub struct State {
     pub active_tab: SettingsTab,
+    /// When `Some(k)`, the next keyboard/gamepad event captured by
+    /// the settings subscription is appended to the bindings list
+    /// for `k`. UI displays a "press a key…" hint on the matching
+    /// row.
+    pub capture_target: Option<input::MappedKey>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,7 +38,18 @@ pub enum Message {
     MatchmakingEndpointChanged(String),
     PatchRepoChanged(String),
     ThemeChanged(config::ThemeMode),
-    VolumeChanged(u8),
+    /// User clicked "Add binding" for `k`. The next key/button
+    /// event captured by the settings subscription is appended.
+    BindingCaptureStart(input::MappedKey),
+    /// User clicked × to abort the current capture.
+    BindingCaptureCancel,
+    /// Settings subscription saw an input event while
+    /// `capture_target.is_some()`. Append + clear the target.
+    BindingCaptured(input::PhysicalInput),
+    /// User clicked Remove on the Nth binding for `k`.
+    BindingRemove(input::MappedKey, usize),
+    /// User clicked Reset to defaults.
+    BindingsReset,
 }
 
 /// Messages the settings panel emits that affect persisted
@@ -45,7 +64,9 @@ pub enum ConfigChange {
     MatchmakingEndpoint(String),
     PatchRepo(String),
     Theme(config::ThemeMode),
-    Volume(u8),
+    AddInputBinding(input::MappedKey, input::PhysicalInput),
+    RemoveInputBinding(input::MappedKey, usize),
+    ResetInputBindings,
 }
 
 impl State {
@@ -64,16 +85,85 @@ impl State {
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
-            Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
+            Message::BindingCaptureStart(k) => {
+                self.capture_target = Some(k);
+                None
+            }
+            Message::BindingCaptureCancel => {
+                self.capture_target = None;
+                None
+            }
+            Message::BindingCaptured(p) => {
+                let Some(target) = self.capture_target.take() else {
+                    return None;
+                };
+                Some(ConfigChange::AddInputBinding(target, p))
+            }
+            Message::BindingRemove(k, idx) => Some(ConfigChange::RemoveInputBinding(k, idx)),
+            Message::BindingsReset => Some(ConfigChange::ResetInputBindings),
         }
     }
 }
 
-pub fn view<'a>(
-    lang: &'a LanguageIdentifier,
-    config: &'a config::Config,
-    state: &'a State,
-) -> Element<'a, Message> {
+/// Subscription that listens for the *next* key/button event when
+/// we're in binding-capture mode. Silent otherwise. Modifier
+/// keys are filtered out so a user trying to bind "A" doesn't
+/// accidentally bind Shift.
+pub fn subscription(state: &State) -> iced::Subscription<Message> {
+    if state.capture_target.is_none() {
+        return iced::Subscription::none();
+    }
+    let kbd = iced::event::listen_with(|event, _, _| match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
+            input::KeyId::from_iced(&key).map(|k| Message::BindingCaptured(input::PhysicalInput::Key(k)))
+        }
+        _ => None,
+    });
+    let pad = iced::Subscription::run_with_id(
+        "tango-ng-settings-pad-capture",
+        iced::stream::channel(8, |mut tx| async move {
+            use futures::SinkExt;
+            let Ok(mut gilrs) = gilrs::Gilrs::new() else { return };
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(4)).await;
+                while let Some(event) = gilrs.next_event() {
+                    let captured = match event.event {
+                        gilrs::EventType::ButtonPressed(b, _) => {
+                            input::GamepadButton::from_gilrs(b).map(input::PhysicalInput::Button)
+                        }
+                        gilrs::EventType::AxisChanged(a, v, _) => {
+                            // Treat an axis as captured when it
+                            // crosses the activation threshold —
+                            // mirrors the runtime activation rule
+                            // so the binding will fire next time.
+                            if v.abs() > input::AXIS_THRESHOLD {
+                                input::GamepadAxis::from_gilrs(a).map(|axis| input::PhysicalInput::Axis {
+                                    axis,
+                                    dir: if v > 0.0 {
+                                        input::AxisDir::Positive
+                                    } else {
+                                        input::AxisDir::Negative
+                                    },
+                                })
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(p) = captured {
+                        if tx.send(Message::BindingCaptured(p)).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }),
+    );
+    iced::Subscription::batch([kbd, pad])
+}
+
+pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state: &'a State) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
     let side_btn = |key: &'static str, tab: SettingsTab| {
@@ -86,10 +176,8 @@ pub fn view<'a>(
     };
     let sidebar = container(
         column![
-            text(t(lang, "tab-settings")).size(18),
-            Space::with_height(8),
             side_btn("settings-section-general", SettingsTab::General),
-            side_btn("settings-section-audio", SettingsTab::Audio),
+            side_btn("settings-section-input", SettingsTab::Input),
             side_btn("settings-section-netplay", SettingsTab::Netplay),
             side_btn("settings-section-about", SettingsTab::About),
         ]
@@ -101,7 +189,7 @@ pub fn view<'a>(
 
     let body: Element<'a, Message> = match active {
         SettingsTab::General => settings_general(lang, config),
-        SettingsTab::Audio => settings_audio(lang, config),
+        SettingsTab::Input => settings_input(lang, config, state),
         SettingsTab::Netplay => settings_netplay(lang, config),
         SettingsTab::About => settings_about(lang),
     };
@@ -118,12 +206,9 @@ pub fn view<'a>(
 
 /// Generic over Message so the welcome screen can use it too with its
 /// own Message type.
-pub fn labeled<'a, M: Clone + 'a>(
-    label: String,
-    ctrl: impl Into<Element<'a, M>>,
-) -> Element<'a, M> {
+pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
     column![
-        text(label).size(11).style(save_view::muted_text_style),
+        text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
         ctrl.into(),
     ]
     .spacing(4)
@@ -136,7 +221,8 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-nickname"),
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
-                .padding(8),
+                .size(STANDARD_TEXT_SIZE)
+                .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
             t(lang, "settings-language"),
@@ -145,6 +231,8 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Some(config.language.clone()),
                 Message::LanguageSelected,
             )
+            .text_size(STANDARD_TEXT_SIZE)
+            .padding(STANDARD_PADDING)
             .width(Fill),
         ),
         labeled::<Message>(
@@ -154,6 +242,8 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Some(config.theme),
                 Message::ThemeChanged,
             )
+            .text_size(STANDARD_TEXT_SIZE)
+            .padding(STANDARD_PADDING)
             .width(Fill),
         ),
         iced::widget::checkbox(t(lang, "settings-streamer-mode"), config.streamer_mode)
@@ -161,18 +251,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .text_size(STANDARD_TEXT_SIZE),
         labeled::<Message>(
             t(lang, "settings-data-path"),
-            text(config.data_path.display().to_string()).size(11),
-        ),
-    ]
-    .spacing(14)
-    .into()
-}
-
-fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    column![
-        labeled::<Message>(
-            format!("{}: {}%", t(lang, "settings-volume"), config.volume),
-            iced::widget::slider(0..=100u8, config.volume, Message::VolumeChanged),
+            text(config.data_path.display().to_string()).size(TEXT_CAPTION),
         ),
     ]
     .spacing(14)
@@ -185,25 +264,115 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
-                .padding(8),
+                .size(STANDARD_TEXT_SIZE)
+                .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
             t(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
-                .padding(8),
+                .size(STANDARD_TEXT_SIZE)
+                .padding(STANDARD_PADDING),
         ),
     ]
     .spacing(14)
     .into()
 }
 
+fn settings_input<'a>(
+    lang: &'a LanguageIdentifier,
+    config: &'a config::Config,
+    state: &'a State,
+) -> Element<'a, Message> {
+    let mut col = column![].spacing(8);
+    let slots = config.input_mapping.slots();
+    for (k, bindings) in slots.iter() {
+        let k = *k;
+        let label = t(lang, k.label_key());
+        let bindings: &Vec<input::PhysicalInput> = bindings;
+        // Capture-mode hint for the currently-targeted slot;
+        // matches show "press a key…" + a cancel chip instead
+        // of the usual Add button.
+        let action: Element<'a, Message> = if state.capture_target == Some(k) {
+            row![
+                text(t(lang, "settings-input-press-key"))
+                    .size(STANDARD_TEXT_SIZE)
+                    .style(save_view::muted_text_style),
+                icons::icon_button(
+                    icons::CANCEL,
+                    t(lang, "save-action-cancel"),
+                    Message::BindingCaptureCancel,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center)
+            .into()
+        } else {
+            icons::icon_button(
+                icons::NEW,
+                t(lang, "settings-input-add"),
+                Message::BindingCaptureStart(k),
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            )
+        };
+        let mut chips = row![].spacing(6).align_y(iced::Alignment::Center);
+        for (i, b) in bindings.iter().enumerate() {
+            chips = chips.push(binding_chip(b, k, i));
+        }
+        let row = row![
+            container(text(label).size(STANDARD_TEXT_SIZE)).width(Length::Fixed(120.0)),
+            chips,
+            iced::widget::horizontal_space(),
+            action,
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center);
+        col = col.push(row);
+    }
+    let reset = icons::icon_button(
+        icons::RESCAN,
+        t(lang, "settings-input-reset"),
+        Message::BindingsReset,
+        STANDARD_TEXT_SIZE,
+        STANDARD_PADDING,
+    );
+    col = col
+        .push(Space::with_height(8))
+        .push(row![iced::widget::horizontal_space(), reset]);
+    scrollable(col.padding(4)).into()
+}
+
+fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: usize) -> Element<'a, Message> {
+    container(
+        row![
+            text(input::describe(binding)).size(TEXT_CAPTION),
+            button(text("×").size(TEXT_CAPTION))
+                .padding([2, 6])
+                .style(button::danger)
+                .on_press(Message::BindingRemove(key, idx)),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([2, 6])
+    .style(iced::widget::container::bordered_box)
+    .into()
+}
+
 fn settings_about<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Message> {
     column![
-        text("tango-ng").size(22),
-        text(format!("{}: {}", t(lang, "settings-version"), env!("CARGO_PKG_VERSION"))).size(12),
+        text("tango-ng").size(TEXT_DISPLAY),
+        text(format!(
+            "{}: {}",
+            t(lang, "settings-version"),
+            env!("CARGO_PKG_VERSION")
+        ))
+        .size(TEXT_CAPTION),
         Space::with_height(8),
-        text(t(lang, "settings-about-blurb")).size(12),
+        text(t(lang, "settings-about-blurb")).size(TEXT_CAPTION),
     ]
     .spacing(6)
     .into()

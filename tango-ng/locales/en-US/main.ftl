@@ -36,7 +36,9 @@ play-version-placeholder = —
 
 # Play bottom strip
 play-link-code = Link code
+play-link-code-random = Random link code
 play-play = Play
+play-fight = Fight
 play-cancel = Cancel
 play-status-idle = Enter a link code to start netplay, or leave blank for single-player.
 play-status-connecting = Connecting to
@@ -55,6 +57,18 @@ lobby-compat-missing-game = One side hasn't picked a game.
 lobby-compat-missing-rom = Game or patch isn't installed on both sides.
 lobby-compat-version-mismatch = Game versions don't match (different patch / rom).
 lobby-compat-match-mismatch = Match type doesn't match.
+lobby-ready = Ready
+lobby-unready = Unready
+lobby-ready-yes = ready
+lobby-ready-no = not ready
+lobby-match-starting = Starting…
+lobby-reveal-setup = Reveal setup
+lobby-reveal-mine = Reveal my setup to opponent
+lobby-reveal-peer-on = Opponent is revealing their setup.
+lobby-reveal-peer-off = Opponent isn't revealing.
+lobby-reveal-peer-unknown = (waiting on opponent)
+session-show-opponent = Show opponent
+session-hide-opponent = Hide opponent
 play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 
 # Save view sub-tabs
@@ -84,6 +98,7 @@ folder-regular-chip = Regular
 folder-tag-chips = Tag
 folder-group = Group by chip
 save-copy = Copy
+save-copy-image = Copy as image
 
 # Navi pane
 navi-id = Navi ID
@@ -114,8 +129,23 @@ placeholder-auto-battle-data = Auto battle data table would render here.
 
 # Replays
 replays-folder-label = Folder
+replays-filter-game = Game
+replays-filter-opponent = Opponent
+replays-filter-all-games = All games
+replays-filter-all-opponents = All opponents
+replays-filter-opponent-placeholder = Any
 replays-watch = Watch
-replays-export = Export
+replays-export = Render
+replays-export-progress = Rendering…
+replays-export-success = Rendered
+replays-export-error = Render failed
+replays-export-open = Open render
+replays-export-scale = Scale
+replays-export-scale-na-lossless = (lossless — scale ignored)
+replays-export-lossless = Lossless
+replays-export-disable-bgm = Mute music
+replays-export-rounds = Rounds
+replays-export-save-as = Save as…
 playback-close = Close
 playback-failed = Couldn't play replay
 playback-play = Play
@@ -147,8 +177,6 @@ patches-netplay-compatibility = Netplay compatibility
 # Settings panel
 settings-section-general = General
 settings-section-graphics = Graphics
-settings-section-audio = Audio
-settings-volume = Volume
 settings-section-netplay = Netplay
 settings-nickname = Nickname
 settings-language = Language
@@ -159,6 +187,21 @@ settings-signaling = Signaling
 settings-data-path = Data path
 settings-streamer-mode = Streamer privacy mode
 settings-section-about = About
+settings-section-input = Input
+settings-input-press-key = Press a key or button…
+settings-input-add = Add binding
+settings-input-reset = Reset to defaults
+input-key-up = Up
+input-key-down = Down
+input-key-left = Left
+input-key-right = Right
+input-key-a = A
+input-key-b = B
+input-key-l = L
+input-key-r = R
+input-key-start = Start
+input-key-select = Select
+input-key-speed-up = Fast-forward
 settings-theme = Theme
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-patch-repo = Patches repository

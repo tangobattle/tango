@@ -58,7 +58,7 @@ impl Sender {
         Self { dc_tx }
     }
 
-    async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
+    pub async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
         self.dc_tx
             .send(p.serialize().unwrap().as_slice())
             .await?;
@@ -122,3 +122,127 @@ impl Receiver {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 }
+
+/// Median-of-window latency tracker. Identical to the legacy
+/// `tango/src/stats.rs::LatencyCounter` — used by the PvP loop
+/// to report ping in the running match.
+pub struct LatencyCounter {
+    marks: std::collections::VecDeque<std::time::Duration>,
+    window_size: usize,
+}
+
+impl LatencyCounter {
+    pub fn new(window_size: usize) -> Self {
+        Self {
+            marks: std::collections::VecDeque::with_capacity(window_size),
+            window_size,
+        }
+    }
+
+    pub fn mark(&mut self, d: std::time::Duration) {
+        while self.marks.len() >= self.window_size {
+            self.marks.pop_front();
+        }
+        self.marks.push_back(d);
+    }
+
+    pub fn median(&self) -> std::time::Duration {
+        if self.marks.is_empty() {
+            return std::time::Duration::ZERO;
+        }
+        let mut marks = self.marks.iter().collect::<Vec<_>>();
+        let (_, v, _) = marks.select_nth_unstable(self.marks.len() / 2);
+        **v
+    }
+}
+
+/// `tango_pvp::net::Sender` adapter — forwards inputs as
+/// `Packet::Input` over the shared peer-connection Sender.
+pub struct PvpSender {
+    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+}
+
+impl PvpSender {
+    pub fn new(sender: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
+        Self { sender }
+    }
+}
+
+#[async_trait::async_trait]
+impl tango_pvp::net::Sender for PvpSender {
+    async fn send(&mut self, input: &tango_pvp::net::Input) -> std::io::Result<()> {
+        self.sender
+            .lock()
+            .await
+            .send_packet(&protocol::Packet::Input(input.clone()))
+            .await
+    }
+}
+
+/// `tango_pvp::net::Receiver` adapter — pulls Input packets,
+/// silently round-trips ping/pong, errors on anything else.
+/// The ping timer here keeps the round-trip clock ticking
+/// during the live match (the lobby loop's interval was for
+/// the pre-match phase only).
+pub struct PvpReceiver {
+    receiver: Receiver,
+    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+    latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
+    ping_timer: tokio::time::Interval,
+}
+
+impl PvpReceiver {
+    pub fn new(
+        receiver: Receiver,
+        sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+        latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
+    ) -> Self {
+        Self {
+            receiver,
+            sender,
+            latency_counter,
+            ping_timer: tokio::time::interval(PING_INTERVAL),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl tango_pvp::net::Receiver for PvpReceiver {
+    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Input> {
+        loop {
+            tokio::select! {
+                _ = self.ping_timer.tick() => {
+                    self.sender
+                        .lock()
+                        .await
+                        .send_ping(std::time::SystemTime::now())
+                        .await?;
+                }
+                p = self.receiver.receive() => {
+                    match p? {
+                        protocol::Packet::Ping(ping) => {
+                            self.sender.lock().await.send_pong(ping.ts).await?;
+                        }
+                        protocol::Packet::Pong(pong) => {
+                            if let Ok(dt) =
+                                std::time::SystemTime::now().duration_since(pong.ts)
+                            {
+                                self.latency_counter.lock().await.mark(dt);
+                            }
+                        }
+                        protocol::Packet::Input(input) => {
+                            return Ok(input);
+                        }
+                        p => {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("invalid in-match packet: {p:?}"),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

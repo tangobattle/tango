@@ -17,7 +17,11 @@ pub struct SinglePlayerSession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
-    pause_on_next_frame: Arc<AtomicBool>,
+    /// Bumped once per emulator frame in the frame callback. The UI
+    /// tick reads this to decide whether to rebuild the iced
+    /// `Handle` (which would otherwise re-upload the same texture
+    /// to the GPU on every vsync of a high-refresh display).
+    frame_id: Arc<std::sync::atomic::AtomicU64>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
@@ -49,7 +53,7 @@ impl SinglePlayerSession {
         hooks.patch(core.as_mut());
 
         let joyflags = Arc::new(AtomicU32::new(0));
-        let pause_on_next_frame = Arc::new(AtomicBool::new(false));
+        let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let thread = mgba::thread::Thread::new(core);
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -59,15 +63,13 @@ impl SinglePlayerSession {
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
-            let pause_on_next_frame = pause_on_next_frame.clone();
-            move |mut core, video_buffer, mut thread_handle| {
+            let frame_id = frame_id.clone();
+            move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
-                if pause_on_next_frame.swap(false, Ordering::SeqCst) {
-                    thread_handle.pause();
-                }
+                frame_id.fetch_add(1, Ordering::Release);
             }
         });
 
@@ -89,30 +91,32 @@ impl SinglePlayerSession {
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
-            pause_on_next_frame,
+            frame_id,
             _audio_binding: audio_binding,
             _thread: thread,
         })
+    }
+
+    /// Monotonically-increasing counter of frames the emulator
+    /// has rendered. Read by the UI tick to skip redundant
+    /// texture uploads when the host vsync is faster than mgba.
+    pub fn frame_id(&self) -> u64 {
+        self.frame_id.load(Ordering::Acquire)
     }
 
     pub fn snapshot_vbuf(&self) -> Vec<u8> {
         self.vbuf.lock().clone()
     }
 
-    pub fn set_joyflag(&self, mgba_key_bit: u32, pressed: bool) {
-        if pressed {
-            self.joyflags.fetch_or(mgba_key_bit, Ordering::Relaxed);
-        } else {
-            self.joyflags.fetch_and(!mgba_key_bit, Ordering::Relaxed);
-        }
+    /// Overwrite the entire mgba joyflag bitmap — the configurable
+    /// input mapping resolves multiple held bindings into one
+    /// flag word and pushes the result here every event.
+    pub fn set_joyflags(&self, mgba_keys: u32) {
+        self.joyflags.store(mgba_keys, Ordering::Relaxed);
     }
 
     pub fn request_close(&self) {
         self.close_requested.store(true, Ordering::SeqCst);
-    }
-
-    pub fn request_pause(&self) {
-        self.pause_on_next_frame.store(true, Ordering::SeqCst);
     }
 
     /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,
@@ -134,26 +138,3 @@ fn fix_vbuf_alpha(vbuf: &mut [u8]) {
     }
 }
 
-/// Default keyboard → mgba-key mapping. Mirrors the legacy app's
-/// defaults (Z/X for A/B, A/S for L/R, Enter/Space for Start/Select,
-/// arrow keys for the d-pad). Returns `None` for keys we don't bind.
-pub fn key_to_mgba_bit(key: &iced::keyboard::Key) -> Option<u32> {
-    use iced::keyboard::key::{Key, Named};
-    use mgba::input::keys;
-    match key {
-        Key::Named(Named::ArrowLeft) => Some(keys::LEFT),
-        Key::Named(Named::ArrowRight) => Some(keys::RIGHT),
-        Key::Named(Named::ArrowUp) => Some(keys::UP),
-        Key::Named(Named::ArrowDown) => Some(keys::DOWN),
-        Key::Named(Named::Enter) => Some(keys::START),
-        Key::Named(Named::Space) => Some(keys::SELECT),
-        Key::Character(s) => match s.as_str() {
-            "z" | "Z" => Some(keys::A),
-            "x" | "X" => Some(keys::B),
-            "a" | "A" => Some(keys::L),
-            "s" | "S" => Some(keys::R),
-            _ => None,
-        },
-        _ => None,
-    }
-}

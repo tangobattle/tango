@@ -3,11 +3,14 @@ mod config;
 mod game;
 mod i18n;
 mod icons;
+mod input;
 mod navicust;
 mod patch;
+mod randomcode;
 mod replay_session;
 mod replays;
 mod singleplayer_session;
+mod pvp_session;
 mod rom;
 mod rom_overrides;
 mod save;
@@ -22,11 +25,45 @@ mod tabs;
 
 use session::ActiveSession;
 
+/// Push an RGBA image to the OS clipboard. iced's clipboard API
+/// only handles text, so we drop down to `arboard` on a tokio
+/// background task — both because it can block briefly and
+/// because arboard's Clipboard handle isn't Send-safe to keep on
+/// the UI thread.
+fn copy_image_to_clipboard(img: image::RgbaImage) {
+    let (width, height) = (img.width() as usize, img.height() as usize);
+    let bytes = img.into_raw();
+    tokio::task::spawn_blocking(move || match arboard::Clipboard::new() {
+        Ok(mut cb) => {
+            let data = arboard::ImageData {
+                width,
+                height,
+                bytes: bytes.into(),
+            };
+            if let Err(e) = cb.set_image(data) {
+                log::warn!("clipboard set_image failed: {e}");
+            }
+        }
+        Err(e) => log::warn!("clipboard open failed: {e}"),
+    });
+}
+
+/// Bundle of decoded-replay state the export task needs.
+/// Pulled together synchronously in `start_replay_export` so the
+/// spawned future doesn't have to touch `&self`.
+struct ExportPrep {
+    local_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    local_rom: Vec<u8>,
+    remote_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+    remote_rom: Vec<u8>,
+    replay: tango_pvp::replay::Replay,
+}
+
 use i18n::{t, FALLBACK_LANG};
-use iced::widget::{button, column, container, horizontal_rule, horizontal_space, row};
+use iced::widget::{column, container, horizontal_rule, horizontal_space, row};
 use iced::{Alignment, Element, Fill, Theme};
 use tabs::patches::PatchesState;
-use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState, SaveAction};
+use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
 use unic_langid::LanguageIdentifier;
 
@@ -40,10 +77,26 @@ pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
 // call-to-action (Play); `STANDARD` for everything else.
 pub const NAV_TEXT_SIZE: u16 = 14;
 pub const NAV_PADDING: [u16; 2] = [8, 16];
-pub const PRIMARY_TEXT_SIZE: u16 = 14;
-pub const PRIMARY_PADDING: [u16; 2] = [10, 24];
+pub const PRIMARY_TEXT_SIZE: u16 = 13;
+pub const PRIMARY_PADDING: [u16; 2] = [6, 14];
 pub const STANDARD_TEXT_SIZE: u16 = 13;
 pub const STANDARD_PADDING: [u16; 2] = [6, 14];
+
+// Typographic scale. Everything that renders text picks from this
+// list; one-off sizes outside it tend to look like UI bugs
+// (random 12px next to 11px next to 13px). If you need a new
+// size, add it here and update the audit.
+//
+//   DISPLAY — splash titles ("Welcome to Tango").
+//   TITLE   — section headers ("tab-settings", empty-state cards).
+//   HEADING — sub-section labels (nickname on side cards).
+//   BODY    — default body copy. Same value as STANDARD_TEXT_SIZE.
+//   CAPTION — muted hints, status lines, metadata labels.
+pub const TEXT_DISPLAY: u16 = 22;
+pub const TEXT_TITLE: u16 = 18;
+pub const TEXT_HEADING: u16 = 15;
+pub const TEXT_BODY: u16 = STANDARD_TEXT_SIZE;
+pub const TEXT_CAPTION: u16 = 11;
 
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the
@@ -78,12 +131,10 @@ pub fn main() -> iced::Result {
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
         .font(FONT_LUCIDE)
-        // cosmic-text in iced 0.13 doesn't reliably auto-fall-back from
-        // a Latin-only family to a CJK one for missing glyphs, so we
-        // default to Noto Sans JP whose Latin coverage is designed to
-        // integrate with CJK. Hans/Hant get covered automatically by
-        // the registered fallbacks; Latin reads fine inline.
-        .default_font(iced::Font::with_name("Noto Sans JP"))
+        // Default to the Latin Noto Sans. cosmic-text will fall
+        // back through the other Noto faces (JP / SC / TC / Emoji
+        // / Lucide) for any glyph the default doesn't carry.
+        .default_font(iced::Font::with_name("Noto Sans"))
         .run_with(App::new)
 }
 
@@ -203,7 +254,6 @@ impl App {
         // source. Sessions later bind their MGBAStream into the binder
         // and the cpal stream keeps going across selections.
         let mut audio_binder = audio::LateBinder::new();
-        audio_binder.set_volume(config.volume);
         let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
             Ok(b) => {
                 use audio::Backend;
@@ -311,7 +361,7 @@ impl App {
                 .iter()
                 .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
                 .collect(),
-            reveal_setup: false,
+            reveal_setup: self.netplay.lobby.reveal_setup,
         }
     }
 
@@ -415,6 +465,10 @@ pub enum Message {
     Welcome(tabs::welcome::Message),
     Session(session::Message),
     Netplay(netplay::Message),
+    /// Carries the freshly-constructed PvP session back into the
+    /// App after the async build task in `spawn_pvp` resolves.
+    /// `Slot` because PvpSession isn't Clone.
+    PvpSessionBuilt(netplay::Slot<anyhow::Result<pvp_session::PvpSession>>),
 }
 
 impl App {
@@ -446,52 +500,65 @@ impl App {
             // PlayPressed branches to the netplay path when the user
             // typed a link code. We special-case it here because
             // update_play returns Task<play::Message>, not
-            // Task<crate::Message> — kicking off a netplay::Connect
-            // task needs the broader return type.
-            Message::Play(tabs::play::Message::PlayPressed)
-                if !self.play.link_code.trim().is_empty() =>
-            {
-                self.play.flash_status = None;
-                let link_code = self.play.link_code.trim().to_string();
-                let endpoint = self.config.matchmaking_endpoint.clone();
-                self.netplay
-                    .update(netplay::Message::Connect { link_code, endpoint })
-                    .map(Message::Netplay)
-            }
-            Message::Play(tabs::play::Message::NetplayDisconnect) => {
-                self.netplay
-                    .update(netplay::Message::Disconnect)
-                    .map(Message::Netplay)
-            }
-            Message::Play(tabs::play::Message::NetplaySetMatchType(mt)) => {
-                let task = self
-                    .netplay
-                    .update(netplay::Message::SetMatchType(mt))
-                    .map(Message::Netplay);
-                iced::Task::batch([task, self.resend_settings_if_lobby()])
-            }
-            Message::Play(tabs::play::Message::NetplaySetInputDelay(d)) => {
-                self.netplay
-                    .update(netplay::Message::SetInputDelay(d))
-                    .map(Message::Netplay)
-                // Input delay isn't part of protocol::Settings, so
-                // no resend; it lives in NegotiatedState (round 5).
-            }
             Message::Play(m) => {
-                // After every Play handler dispatch, always try
-                // to resend Settings — the netplay handler dedupes
-                // against the last-sent value via `Settings: Eq`,
-                // so unchanged dispatches are free. Saves the
-                // hand-rolled fingerprint that would have to
-                // track every field that flows into Settings.
-                let task = self.update_play(m).map(Message::Play);
+                // Play tab handlers funnel through update_play +
+                // an Effect dispatch (including the netplay ones).
+                // Always follow with a Settings resend — the
+                // netplay handler dedupes against the last-sent
+                // value via `Settings: Eq`, so unchanged
+                // dispatches are free.
+                let task = self.update_play(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
             Message::Patches(m) => self.update_patches(m).map(Message::Patches),
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::Session(m) => self.session.update(m).map(Message::Session),
+            Message::Session(m) => self
+                .session
+                .update(m, &self.config.input_mapping)
+                .map(Message::Session),
+            Message::Netplay(netplay::Message::MatchHandoffReady) => {
+                // Drain the lobby-side state into a PreMatchData
+                // and kick off async PvP setup. The lobby loop
+                // has been cancel-signaled; spawn_pvp polls the
+                // receiver-handoff slot until the loop releases
+                // ownership. On success we land back in
+                // Message::PvpSessionBuilt below.
+                let Some(pre_match) = self.netplay.take_pre_match() else {
+                    return iced::Task::none();
+                };
+                let scanners = self.scanners.clone();
+                let config = self.config.clone();
+                let audio_binder = self.audio_binder.clone();
+                let local_game = self.play.local_game;
+                let local_patch = self
+                    .play
+                    .local_patch
+                    .clone()
+                    .zip(self.play.local_patch_version.clone());
+                iced::Task::perform(
+                    async move {
+                        let Some(local_game) = local_game else {
+                            return Err(anyhow::anyhow!("no local game selected"));
+                        };
+                        session::spawn_pvp(
+                            scanners,
+                            config,
+                            audio_binder,
+                            local_game,
+                            local_patch,
+                            pre_match,
+                        )
+                        .await
+                    },
+                    |result| {
+                        Message::PvpSessionBuilt(std::sync::Arc::new(parking_lot::Mutex::new(
+                            Some(result),
+                        )))
+                    },
+                )
+            }
             Message::Netplay(m) => {
                 // Always resend after a netplay message too: this
                 // covers the Negotiating → Lobby transition (first
@@ -502,6 +569,25 @@ impl App {
                 let task = self.netplay.update(m).map(Message::Netplay);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
+            Message::PvpSessionBuilt(slot) => {
+                let Some(result) = slot.lock().take() else {
+                    return iced::Task::none();
+                };
+                match result {
+                    Ok(session) => {
+                        let has_opponent_panel = session.opponent_loaded.is_some();
+                        self.session.active = Some(ActiveSession::PvP(session));
+                        self.session.frame = None;
+                        self.session.show_opponent_panel = has_opponent_panel;
+                    }
+                    Err(e) => {
+                        log::error!("pvp session build failed: {e}");
+                        self.play.flash_status = Some(format!("{e}"));
+                        // netplay state is already back to Idle.
+                    }
+                }
+                iced::Task::none()
+            }
         }
     }
 
@@ -509,83 +595,42 @@ impl App {
         iced::Subscription::batch([
             session::subscription(&self.session).map(Message::Session),
             netplay::subscription(&self.netplay).map(Message::Netplay),
+            tabs::settings::subscription(&self.settings).map(Message::Settings),
         ])
     }
 
-    fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<tabs::play::Message> {
-        use tabs::play::Message as M;
-        match msg {
-            M::LocalGameSelected(g) => {
-                self.play.local_game = Some(g.game);
-                self.play.local_save = self
-                    .scanners
-                    .saves
-                    .read()
-                    .get(&g.game)
-                    .and_then(|v| v.first().map(|s| s.path.clone()));
-                self.play.local_patch = None;
-                self.play.local_patch_version = None;
+    fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
+        let Some(effect) = self.play.update(msg, &self.scanners, &self.config, self.loaded.as_ref()) else {
+            return iced::Task::none();
+        };
+        use tabs::play::Effect as E;
+        match effect {
+            E::SelectionChanged => {
                 self.refresh_loaded();
                 self.persist_selection();
+                iced::Task::none()
             }
-            M::LocalSaveSelected(s) => {
-                self.play.local_save = Some(s.path);
+            E::Rescan => {
+                self.scanners.rescan(&self.config);
                 self.refresh_loaded();
-                self.persist_selection();
+                iced::Task::none()
             }
-            M::LocalPatchSelected(p) => {
-                if p == t(&self.config.language, "play-no-patch") {
-                    self.play.local_patch = None;
-                    self.play.local_patch_version = None;
-                } else {
-                    let v = self
-                        .scanners
-                        .patches
-                        .read()
-                        .get(&p)
-                        .and_then(|patch| patch.versions.keys().max().cloned());
-                    self.play.local_patch = Some(p);
-                    self.play.local_patch_version = v;
+            E::OpenPath(p) => {
+                if let Err(e) = open::that(&p) {
+                    log::error!("open {}: {e}", p.display());
                 }
-                self.refresh_loaded();
-                self.persist_selection();
+                iced::Task::none()
             }
-            M::LocalPatchVersionSelected(v) => {
-                self.play.local_patch_version = Some(v);
-                self.refresh_loaded();
-                self.persist_selection();
+            E::CopyText(s) => iced::clipboard::write(s),
+            E::CopyImage(img) => {
+                copy_image_to_clipboard(img);
+                iced::Task::none()
             }
-            M::SaveViewAction(action) => {
-                self.play.save_view.apply(&action);
-                if let save_view::Action::CopyTab(tab) = action {
-                    if let Some(loaded) = self.loaded.as_ref() {
-                        if let Some(s) = save_view::tab_as_text(&self.config.language, tab, loaded) {
-                            return iced::clipboard::write(s);
-                        }
-                    }
-                }
-            }
-            M::LinkCodeChanged(s) => {
-                self.play.link_code = s;
-                self.play.flash_status = None;
-            }
-            M::PlayPressed => {
-                // Netplay branch is handled in App::update before this
-                // (it needs to return Task<Message::Netplay>); we only
-                // see PlayPressed here when link_code is empty, i.e.
-                // the single-player path.
-                self.play.flash_status = None;
+            E::StartSinglePlayer => {
                 let Some(loaded) = self.loaded.as_ref() else {
-                    self.play.flash_status =
-                        Some(t(&self.config.language, "play-no-selection"));
                     return iced::Task::none();
                 };
-                match session::spawn_singleplayer(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    loaded,
-                ) {
+                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::SinglePlayer(s));
                         self.session.frame = None;
@@ -595,27 +640,26 @@ impl App {
                         self.play.flash_status = Some(format!("{e}"));
                     }
                 }
+                iced::Task::none()
             }
-            M::NetplayDisconnect
-            | M::NetplaySetMatchType(_)
-            | M::NetplaySetInputDelay(_) => {
-                // All three are handled at App::update with the
-                // broader Task<crate::Message> return type — we
-                // short-circuit them out before reaching here.
-                // No-op arms for exhaustiveness.
+            E::NetplayConnect(link_code) => {
+                let endpoint = self.config.matchmaking_endpoint.clone();
+                self.netplay
+                    .update(netplay::Message::Connect { link_code, endpoint })
+                    .map(Message::Netplay)
             }
-            M::Rescan => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
+            E::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
+            E::NetplayReadyWithSave => {
+                let Some(loaded) = self.loaded.as_ref() else {
+                    self.play.flash_status = Some(t(&self.config.language, "play-no-selection"));
+                    return iced::Task::none();
+                };
+                let save_sram = loaded.save.as_sram_dump();
+                self.netplay
+                    .update(netplay::Message::Commit { save_sram })
+                    .map(Message::Netplay)
             }
-            M::SaveOpenFolder => {
-                if let Some(p) = self.play.local_save.as_ref().and_then(|p| p.parent()) {
-                    if let Err(e) = open::that(p) {
-                        log::error!("open save folder: {e}");
-                    }
-                }
-            }
-            M::SaveDuplicate => {
+            E::SaveDuplicate => {
                 if let Some(src) = self.play.local_save.clone() {
                     match duplicate_save(&src) {
                         Ok(dst) => {
@@ -628,26 +672,11 @@ impl App {
                         Err(e) => log::error!("duplicate save: {e}"),
                     }
                 }
+                iced::Task::none()
             }
-            M::SaveRenameStart => {
-                let draft = self
-                    .play
-                    .local_save
-                    .as_ref()
-                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
-                    .unwrap_or_default();
-                self.play.save_action = SaveAction::Renaming { draft };
-            }
-            M::SaveRenameDraftChanged(s) => {
-                if let SaveAction::Renaming { draft } = &mut self.play.save_action {
-                    *draft = s;
-                }
-            }
-            M::SaveRenameConfirm => {
-                if let (Some(src), SaveAction::Renaming { draft }) =
-                    (self.play.local_save.clone(), self.play.save_action.clone())
-                {
-                    match rename_save(&src, draft.trim()) {
+            E::SaveRename { new_stem } => {
+                if let Some(src) = self.play.local_save.clone() {
+                    match rename_save(&src, &new_stem) {
                         Ok(dst) => {
                             log::info!("renamed save: {} → {}", src.display(), dst.display());
                             self.scanners.rescan(&self.config);
@@ -658,12 +687,9 @@ impl App {
                         Err(e) => log::error!("rename save: {e}"),
                     }
                 }
-                self.play.save_action = SaveAction::None;
+                iced::Task::none()
             }
-            M::SaveDeleteStart => {
-                self.play.save_action = SaveAction::ConfirmDelete;
-            }
-            M::SaveDeleteConfirm => {
+            E::SaveDelete => {
                 if let Some(src) = self.play.local_save.clone() {
                     if let Err(e) = std::fs::remove_file(&src) {
                         log::error!("delete save: {e}");
@@ -671,229 +697,315 @@ impl App {
                         log::info!("deleted save: {}", src.display());
                     }
                     self.scanners.rescan(&self.config);
-                    self.play.local_save = self
-                        .play
-                        .local_game
-                        .and_then(|g| {
-                            self.scanners
-                                .saves
-                                .read()
-                                .get(&g)
-                                .and_then(|v| v.first().map(|s| s.path.clone()))
-                        });
+                    self.play.local_save = self.play.local_game.and_then(|g| {
+                        self.scanners
+                            .saves
+                            .read()
+                            .get(&g)
+                            .and_then(|v| v.first().map(|s| s.path.clone()))
+                    });
                     self.refresh_loaded();
                     self.persist_selection();
                 }
-                self.play.save_action = SaveAction::None;
+                iced::Task::none()
             }
-            M::SaveActionCancel => {
-                self.play.save_action = SaveAction::None;
-            }
-            M::SaveNewStart => {
-                let saves_dir = self.config.saves_path();
-                let mut draft = "new save".to_string();
-                for n in 2..100 {
-                    if !saves_dir.join(format!("{draft}.sav")).exists() {
-                        break;
-                    }
-                    draft = format!("new save {n}");
-                }
-                self.play.save_action = SaveAction::NewSave {
-                    draft,
-                    template: String::new(),
-                };
-            }
-            M::SaveNewDraftChanged(s) => {
-                if let SaveAction::NewSave { draft, .. } = &mut self.play.save_action {
-                    *draft = s;
-                }
-            }
-            M::SaveNewTemplateSelected(name) => {
-                if let SaveAction::NewSave { template, .. } = &mut self.play.save_action {
-                    *template = name;
-                }
-            }
-            M::SaveNewConfirm => {
-                if let SaveAction::NewSave { draft, template } = self.play.save_action.clone() {
-                    if let Some(game) = self.play.local_game {
-                        if let Some(templates) =
-                            tabs::play::templates_for_selection_public(&self.play, &self.scanners)
-                        {
-                            // Use the chosen template name; fall back to default
-                            // ("") and then to whatever's first.
-                            let chosen = templates
-                                .get(template.as_str())
-                                .or_else(|| templates.get(""))
-                                .or_else(|| templates.values().next())
-                                .map(|s| s.clone_box());
-                            if let Some(template) = chosen {
-                                match create_new_save(
-                                    &self.config.saves_path(),
-                                    draft.trim(),
-                                    template.as_ref(),
-                                ) {
-                                    Ok(dst) => {
-                                        log::info!(
-                                            "created new save for {:?}: {}",
-                                            game.family_and_variant(),
-                                            dst.display()
-                                        );
-                                        self.scanners.rescan(&self.config);
-                                        self.play.local_save = Some(dst);
-                                        self.refresh_loaded();
-                                        self.persist_selection();
-                                    }
-                                    Err(e) => log::error!("create save: {e}"),
+            E::SaveNew { name, template } => {
+                if let Some(game) = self.play.local_game {
+                    if let Some(templates) =
+                        tabs::play::templates_for_selection_public(&self.play, &self.scanners)
+                    {
+                        // Use the chosen template name; fall back
+                        // to default ("") then first available.
+                        let chosen = templates
+                            .get(template.as_str())
+                            .or_else(|| templates.get(""))
+                            .or_else(|| templates.values().next())
+                            .map(|s| s.clone_box());
+                        if let Some(template) = chosen {
+                            match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
+                                Ok(dst) => {
+                                    log::info!(
+                                        "created new save for {:?}: {}",
+                                        game.family_and_variant(),
+                                        dst.display()
+                                    );
+                                    self.scanners.rescan(&self.config);
+                                    self.play.local_save = Some(dst);
+                                    self.refresh_loaded();
+                                    self.persist_selection();
                                 }
+                                Err(e) => log::error!("create save: {e}"),
                             }
                         }
                     }
                 }
-                self.play.save_action = SaveAction::None;
+                iced::Task::none()
             }
         }
-        iced::Task::none()
     }
 
     fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<tabs::patches::Message> {
-        use tabs::patches::Message as M;
-        match msg {
-            M::Selected(p) => {
-                let v = self
-                    .scanners
-                    .patches
-                    .read()
-                    .get(&p)
-                    .and_then(|patch| patch.versions.keys().max().cloned());
-                self.patches.selected = Some(p);
-                self.patches.version = v;
-                self.patches.refresh_readme(&self.scanners);
-            }
-            M::VersionSelected(v) => {
-                self.patches.version = Some(v);
-                self.patches.refresh_readme(&self.scanners);
-            }
-            M::OpenFolder(p) => {
-                if let Err(e) = open::that(&p) {
-                    log::error!("open folder {}: {e}", p.display());
+        let Some(effect) = self.patches.update(msg, &self.scanners, &self.config) else {
+            return iced::Task::none();
+        };
+        use tabs::patches::Effect as E;
+        match effect {
+            E::OpenPath(s) => {
+                if let Err(e) = open::that(&s) {
+                    log::error!("open {s}: {e}");
                 }
+                iced::Task::none()
             }
-            M::ReadmeLinkClicked(url) => {
-                if let Err(e) = open::that(url.as_str()) {
-                    log::error!("open url {url}: {e}");
-                }
-            }
-            M::Rescan => {
+            E::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
+                iced::Task::none()
             }
-            M::Update => {
-                if !self.patches.updating {
-                    self.patches.updating = true;
-                    self.patches.last_update_error = None;
-                    let url = self.config.patch_repo.clone();
-                    let root = self.config.data_path.join("patches");
-                    return iced::Task::perform(
-                        async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
-                        M::UpdateFinished,
-                    );
-                }
+            E::UpdateRescan => {
+                self.scanners.rescan(&self.config);
+                self.refresh_loaded();
+                iced::Task::none()
             }
-            M::UpdateFinished(res) => {
-                self.patches.updating = false;
-                match res {
-                    Ok(()) => {
-                        self.patches.last_update_error = None;
-                        self.scanners.rescan(&self.config);
-                        self.refresh_loaded();
-                    }
-                    Err(e) => {
-                        log::warn!("patch update failed: {e}");
-                        self.patches.last_update_error = Some(e);
-                    }
-                }
-            }
+            E::StartUpdate { url, root } => iced::Task::perform(
+                async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
+                tabs::patches::Message::UpdateFinished,
+            ),
         }
-        iced::Task::none()
     }
 
     fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<tabs::replays::Message> {
-        use tabs::replays::Message as M;
-        match msg {
-            M::FolderFilterSelected(f) => {
-                self.replays.folder_filter = f.path;
-                self.replays.selected = None;
-                self.replays.loaded = None;
-                self.replays.loaded_cache_path = None;
-            }
-            M::Selected(p) => {
-                self.replays.selected = Some(p);
-                self.refresh_replay_loaded();
-            }
-            M::OpenFolder(p) => {
+        // Pure state mutations live in the tab module; only side
+        // effects (clipboard, OS open, session host handoff,
+        // file dialog, export task spawn) come back here as an
+        // Effect for the App to interpret.
+        let Some(effect) = self.replays.update(msg, &self.scanners, &self.config) else {
+            return iced::Task::none();
+        };
+        use tabs::replays::Effect as E;
+        match effect {
+            E::OpenPath(p) => {
                 if let Err(e) = open::that(&p) {
-                    log::error!("open folder {}: {e}", p.display());
+                    log::error!("open {}: {e}", p.display());
                 }
+                iced::Task::none()
             }
-            M::Watch(p) => match session::build_playback(
-                &self.scanners,
-                &self.config,
-                &self.audio_binder,
-                &p,
-            ) {
-                Ok(s) => {
-                    self.session.active = Some(ActiveSession::Replay(s));
-                    self.session.frame = None;
+            E::Watch(p) => {
+                match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p) {
+                    Ok(s) => {
+                        self.session.active = Some(ActiveSession::Replay(s));
+                        self.session.frame = None;
+                    }
+                    Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
                 }
-                Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
-            },
-            M::Rescan => {
+                iced::Task::none()
+            }
+            E::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
+                iced::Task::none()
             }
-            M::SaveViewAction(action) => {
-                self.replays.save_view.apply(&action);
-                if let save_view::Action::CopyTab(tab) = action {
-                    if let Some(loaded) = self.replays.loaded.as_ref() {
-                        if let Some(s) = save_view::tab_as_text(&self.config.language, tab, loaded) {
-                            return iced::clipboard::write(s);
+            E::CopyText(s) => iced::clipboard::write(s),
+            E::CopyImage(img) => {
+                copy_image_to_clipboard(img);
+                iced::Task::none()
+            }
+            E::OpenExportSaveDialog(replay_path) => {
+                let default_name = replay_path
+                    .file_stem()
+                    .map(|s| format!("{}.mp4", s.to_string_lossy()))
+                    .unwrap_or_else(|| "replay.mp4".to_string());
+                let initial_dir = replay_path
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| self.config.replays_path());
+                let replay_for_msg = replay_path;
+                iced::Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .set_directory(&initial_dir)
+                            .set_file_name(&default_name)
+                            .add_filter("MP4", &["mp4"])
+                            .save_file()
+                            .await
+                            .map(|h| h.path().to_path_buf())
+                    },
+                    move |maybe_path| match maybe_path {
+                        Some(output) => tabs::replays::Message::ExportStart {
+                            replay: replay_for_msg.clone(),
+                            output,
+                        },
+                        // User cancelled — no-op; ExportDismiss
+                        // bounces back into the update cycle
+                        // without touching status (status was
+                        // left Idle by ExportPanelOpen anyway).
+                        None => tabs::replays::Message::ExportDismiss,
+                    },
+                )
+            }
+            E::StartExport { replay, output, settings, rounds } => {
+                self.spawn_replay_export(replay, output, settings, rounds)
+            }
+        }
+    }
+
+    /// Spawn the tango_pvp::replay::export task with a progress
+    /// callback that forwards into the replays-tab message
+    /// stream. The user-picked output path + form snapshot come
+    /// from the tab module's `ExportStart` effect.
+    fn spawn_replay_export(
+        &mut self,
+        replay_path: std::path::PathBuf,
+        output_path: std::path::PathBuf,
+        user_settings: tabs::replays::ExportSettings,
+        rounds_mask: Vec<bool>,
+    ) -> iced::Task<tabs::replays::Message> {
+        // Decode just enough of the replay to get the local side's
+        // metadata + hook lookups + raw ROM bytes. Failures show up
+        // as a Done(Err) status — same as runtime errors below.
+        let prep = (|| -> anyhow::Result<ExportPrep> {
+            let f = std::fs::File::open(&replay_path)?;
+            let replay = tango_pvp::replay::Replay::decode(f)?;
+            let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
+                &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
+                Vec<u8>,
+            )> {
+                let gi = side
+                    .and_then(|s| s.game_info.as_ref())
+                    .ok_or_else(|| anyhow::anyhow!("replay side missing game info"))?;
+                let variant = u8::try_from(gi.rom_variant)?;
+                let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, variant)
+                    })?;
+                let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(entry)
+                    .ok_or_else(|| anyhow::anyhow!("no hooks for {:?}", entry.family_and_variant()))?;
+                let rom = self
+                    .scanners
+                    .roms
+                    .read()
+                    .get(&entry)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("rom for {:?} not scanned", entry.family_and_variant()))?;
+                Ok((hooks, rom))
+            };
+            let (local_hooks, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
+            let (remote_hooks, remote_rom) = resolve(replay.metadata.remote_side.as_ref())?;
+            Ok(ExportPrep {
+                local_hooks,
+                local_rom,
+                remote_hooks,
+                remote_rom,
+                replay,
+            })
+        })();
+        let prep = match prep {
+            Ok(p) => p,
+            Err(e) => {
+                self.replays.export_status = tabs::replays::ExportStatus::Done {
+                    replay: replay_path,
+                    result: Err(format!("{e}")),
+                };
+                return iced::Task::none();
+            }
+        };
+
+        if !rounds_mask.iter().any(|b| *b) {
+            self.replays.export_status = tabs::replays::ExportStatus::Done {
+                replay: replay_path,
+                result: Err("no rounds selected for export".to_string()),
+            };
+            return iced::Task::none();
+        }
+
+        let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();
+        let done_arc: std::sync::Arc<parking_lot::Mutex<Option<Result<std::path::PathBuf, String>>>> =
+            std::sync::Arc::new(parking_lot::Mutex::new(None));
+        let done_arc_task = done_arc.clone();
+        let output_for_task = output_path.clone();
+        tokio::task::spawn(async move {
+            let ExportPrep {
+                local_hooks,
+                local_rom,
+                remote_hooks,
+                remote_rom,
+                replay,
+            } = prep;
+            // Lossless => Settings::ffmpeg_video_flags uses
+            // libx264rgb -qp 0 (legacy parity); otherwise pass
+            // the scale factor through to the swscale neighbor
+            // filter inside default_with_scale.
+            let scale_arg = if user_settings.lossless {
+                None
+            } else {
+                Some(user_settings.scale as usize)
+            };
+            let mut settings =
+                tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
+            settings.disable_bgm = user_settings.disable_bgm;
+            let selected_rounds = vec![rounds_mask];
+            let progress_tx = parking_lot::Mutex::new(progress_tx);
+            let cb = |current: usize, total: usize| {
+                let _ = progress_tx.lock().unbounded_send((current, total));
+            };
+            let result = tango_pvp::replay::export::export(
+                &local_rom,
+                local_hooks,
+                &remote_rom,
+                remote_hooks,
+                &[replay],
+                &selected_rounds,
+                &output_for_task,
+                &settings,
+                cb,
+            )
+            .await
+            .map(|()| output_for_task)
+            .map_err(|e| format!("{e}"));
+            *done_arc_task.lock() = Some(result);
+        });
+
+        // Drain progress + a synthetic final ExportFinished from
+        // the same stream. We poll done_arc whenever the channel
+        // drains so the finished message arrives even if the
+        // export errored before sending any progress.
+        let replay_for_stream = replay_path;
+        let stream = futures::stream::unfold(
+            (progress_rx, done_arc, replay_for_stream, false),
+            |(mut rx, done, replay, finished_sent)| async move {
+                use futures::StreamExt;
+                if finished_sent {
+                    return None;
+                }
+                tokio::select! {
+                    biased;
+                    next = rx.next() => match next {
+                        Some((c, t)) => Some((
+                            tabs::replays::Message::ExportProgress {
+                                replay: replay.clone(),
+                                completed: c,
+                                total: t,
+                            },
+                            (rx, done, replay, false),
+                        )),
+                        None => {
+                            // Channel closed — the task is done.
+                            // Pull the result out of done_arc.
+                            let r = done.lock().take().unwrap_or_else(|| {
+                                Err("export task ended without result".to_string())
+                            });
+                            Some((
+                                tabs::replays::Message::ExportFinished {
+                                    replay: replay.clone(),
+                                    result: r,
+                                },
+                                (rx, done, replay, true),
+                            ))
                         }
                     }
                 }
-            }
-        }
-        iced::Task::none()
-    }
-
-    /// Lazily rebuild `replays.loaded` for the currently-selected
-    /// replay's local side. No-op when the cache path already matches.
-    /// Failures log + clear the cache so the detail panel falls back
-    /// to the metadata-only summary.
-    fn refresh_replay_loaded(&mut self) {
-        let Some(path) = self.replays.selected.clone() else {
-            self.replays.loaded = None;
-            self.replays.loaded_cache_path = None;
-            return;
-        };
-        if self.replays.loaded_cache_path.as_ref() == Some(&path) {
-            return;
-        }
-        let res = (|| -> anyhow::Result<selection::Loaded> {
-            let f = std::fs::File::open(&path)?;
-            let replay = tango_pvp::replay::Replay::decode(f)?;
-            selection::Loaded::for_replay_local(&self.scanners, &self.config, &replay)
-        })();
-        match res {
-            Ok(loaded) => {
-                self.replays.loaded = Some(loaded);
-                self.replays.loaded_cache_path = Some(path);
-            }
-            Err(e) => {
-                log::warn!("replay save preview failed: {e}");
-                self.replays.loaded = None;
-                self.replays.loaded_cache_path = None;
-            }
-        }
+            },
+        );
+        iced::Task::stream(stream)
     }
 
     fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {
@@ -908,9 +1020,22 @@ impl App {
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::PatchRepo(s) => self.config.patch_repo = s,
             C::Theme(t) => self.config.theme = t,
-            C::Volume(v) => {
-                self.config.volume = v;
-                self.audio_binder.set_volume(v);
+            C::AddInputBinding(slot, binding) => {
+                let bindings = self.config.input_mapping.slot_mut(slot);
+                // Avoid dupes — a single binding could be added
+                // twice if the user hits the same key fast.
+                if !bindings.contains(&binding) {
+                    bindings.push(binding);
+                }
+            }
+            C::RemoveInputBinding(slot, idx) => {
+                let bindings = self.config.input_mapping.slot_mut(slot);
+                if idx < bindings.len() {
+                    bindings.remove(idx);
+                }
+            }
+            C::ResetInputBindings => {
+                self.config.input_mapping = input::Mapping::default();
             }
         }
         self.persist_config();
@@ -1019,29 +1144,20 @@ impl App {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
-    let tab_button = |icon: &'static str, label: String, tab: Tab| {
-        let style = if tab == active { button::primary } else { button::text };
-        icons::labeled_icon_button(
-            icon,
-            label,
-            Message::TabSelected(tab),
-            NAV_TEXT_SIZE,
-            NAV_PADDING,
-            style,
-        )
+    let tab = |icon, label, target: Tab| {
+        icons::tab_button(icon, label, Message::TabSelected(target), target == active)
     };
-
     container(
         row![
-            tab_button(icons::TAB_PLAY, t(lang, "tab-play"), Tab::Play),
-            tab_button(icons::TAB_REPLAYS, t(lang, "tab-replays"), Tab::Replays),
-            tab_button(icons::TAB_PATCHES, t(lang, "tab-patches"), Tab::Patches),
+            tab(icons::TAB_PLAY, t(lang, "tab-play"), Tab::Play),
+            tab(icons::TAB_REPLAYS, t(lang, "tab-replays"), Tab::Replays),
+            tab(icons::TAB_PATCHES, t(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
-            tab_button(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
+            tab(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
         ]
-        .spacing(4)
-        .align_y(Alignment::Center)
-        .padding(6),
+        .spacing(2)
+        .align_y(Alignment::End)
+        .padding([4, 6]),
     )
     .width(Fill)
     .into()
