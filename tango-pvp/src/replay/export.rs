@@ -294,60 +294,22 @@ pub async fn export(
         let kept_replay_len = kept_input_pairs(replay, selected);
 
         let last_round_idx = replay.rounds.len().saturating_sub(1);
-        // Two stuck-loop cases we have to break out of, both BN3-ish:
-        //
-        //   1. !is_complete + stepper never enters the partial last
-        //      round: pairs_left stays > 0 forever (the round_active
-        //      gate never fires, so the stepper never pops). Watch
-        //      for "pairs_left held constant for 1 s of frames".
-        //   2. is_complete + the last round was clipped mid-fight:
-        //      stepper consumes every queued pair (pairs_left → 0)
-        //      but `is_ended` never flips because the in-game round
-        //      logic was cut off. Watch for "pairs_left has been 0
-        //      with no round_idx / is_ended change for 5 s". The
-        //      generous budget preserves the legit fade-to-black
-        //      tail (~2 s) on healthy complete replays.
-        //
-        // Both watchdogs gate breaking on absence-of-progress, so
-        // healthy runs (advancing round / consuming input) never
-        // touch them.
-        const STUCK_INCOMPLETE_FRAMES: u32 = 60;   // 1 s @ 60 fps
-        const STUCK_COMPLETE_FRAMES: u32 = 5 * 60; // 5 s
-        let mut last_progress_key: Option<(usize, bool, usize)> = None;
-        let mut no_progress_frames: u32 = 0;
         loop {
             let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
                 (state.current_round_index() as usize, state.is_round_ended(), state.total_input_pairs_left())
             };
 
+            // Incomplete: stop the moment the stepper has fed the
+            // last queued pair (no fade-to-black tail to wait for).
+            // Complete: wait for the final round to actually end +
+            // play through the fade. `is_complete` here means
+            // "the match was played out", not "the writer finished
+            // cleanly" — see `Match::finish_replay`'s call site
+            // in pvp_session.rs.
             if (!replay.is_complete && pairs_left == 0) || (is_ended && cur_round_idx >= last_round_idx) {
                 break;
             }
-
-            // No-progress watchdog. "Progress" = any change in
-            // (round_idx, is_ended, pairs_left) — the same fields
-            // the break check above looks at, so if they're all
-            // stuck we have nothing to react to anyway.
-            let key = (cur_round_idx, is_ended, pairs_left);
-            if last_progress_key == Some(key) {
-                no_progress_frames += 1;
-                let budget = if replay.is_complete {
-                    STUCK_COMPLETE_FRAMES
-                } else {
-                    STUCK_INCOMPLETE_FRAMES
-                };
-                if no_progress_frames >= budget {
-                    log::info!(
-                        "replay export: stepper stuck at round {} is_ended={} pairs_left={} for {} frames (is_complete={}), stopping",
-                        cur_round_idx, is_ended, pairs_left, budget, replay.is_complete,
-                    );
-                    break;
-                }
-            } else {
-                no_progress_frames = 0;
-            }
-            last_progress_key = Some(key);
 
             if last_selected_round.is_none_or(|last| cur_round_idx > last) {
                 break;

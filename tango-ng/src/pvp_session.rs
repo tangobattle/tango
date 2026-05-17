@@ -207,6 +207,7 @@ impl PvpSession {
         {
             let match_handle = match_handle.clone();
             let inner_match = inner_match.clone();
+            let completion_token = completion_token.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
@@ -221,8 +222,18 @@ impl PvpSession {
                         log::info!("pvp match thread cancelled");
                     }
                 }
-                if let Err(e) = inner_match.finish_replay() {
-                    log::error!("finish replay failed: {e}");
+                // Only stamp END_OF_REPLAY when the in-game match
+                // hooks fired `completion_token.complete()` — i.e.
+                // the match was actually played to its end-game
+                // screen. Disconnects, cancels, errors, and any
+                // other premature exit drop the writer instead,
+                // leaving the replay marked incomplete so the
+                // export loop's "stop at pairs_left == 0" can
+                // catch it cleanly.
+                if completion_token.is_complete() {
+                    if let Err(e) = inner_match.finish_replay() {
+                        log::error!("finish replay failed: {e}");
+                    }
                 }
                 *match_handle.lock().await = None;
             });
