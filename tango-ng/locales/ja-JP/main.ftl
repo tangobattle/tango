@@ -43,6 +43,10 @@ play-status-connecting = 接続中:
 play-status-negotiating = ネゴシエーション中:
 play-status-lobby = ロビー:
 play-status-failed = 接続失敗
+lobby-waiting = 設定待ち…
+lobby-no-game = （ゲーム未選択）
+lobby-latency = Ping
+lobby-handshake = 設定交換中…
 play-netplay-todo = ネットプレイは未実装です。リンクコードを空にすると一人用セッションを開始できます。
 
 # Save view sub-tabs

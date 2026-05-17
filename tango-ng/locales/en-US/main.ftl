@@ -43,6 +43,10 @@ play-status-connecting = Connecting to
 play-status-negotiating = Negotiating with
 play-status-lobby = In lobby with
 play-status-failed = Connection failed
+lobby-waiting = Waiting for settings…
+lobby-no-game = (no game selected)
+lobby-latency = Ping
+lobby-handshake = Exchanging settings…
 play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 
 # Save view sub-tabs

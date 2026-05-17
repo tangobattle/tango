@@ -140,13 +140,23 @@ impl PlayState {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         config: &'a config::Config,
-        netplay: &'a crate::netplay::Phase,
+        netplay_phase: &'a crate::netplay::Phase,
+        netplay_lobby: &'a crate::netplay::LobbyState,
     ) -> Element<'a, Message> {
+        // When the netplay handshake has reached Lobby, take over
+        // the body with the lobby pane (same shape as the per-side
+        // info on the replay detail). Selector + bottom strip
+        // still show so the user can see / Cancel.
+        let body: Element<'a, Message> = match netplay_phase {
+            crate::netplay::Phase::Lobby { .. } => lobby_view(lang, netplay_lobby),
+            _ => self.body(lang, scanners, loaded, streamer_mode, config),
+        };
+
         column![
             self.selector_strip(lang, scanners),
-            self.body(lang, scanners, loaded, streamer_mode, config),
+            body,
             horizontal_rule(1),
-            self.bottom_strip(lang, netplay),
+            self.bottom_strip(lang, netplay_phase),
         ]
         .width(Fill)
         .height(Fill)
@@ -639,6 +649,112 @@ pub fn create_new_save(
     let sram = save.as_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
+}
+
+/// Lobby pane shown in the Play tab body while netplay is in
+/// `Phase::Lobby`. Two columns — you on the left, opponent on the
+/// right — plus a latency line at the top. Settings round-trips
+/// asynchronously, so either side may be `None` for a tick.
+fn lobby_view<'a>(
+    lang: &'a LanguageIdentifier,
+    lobby: &'a crate::netplay::LobbyState,
+) -> Element<'a, Message> {
+    let side = |label: String, settings: Option<&crate::net::protocol::Settings>| -> Element<'static, Message> {
+        let Some(settings) = settings else {
+            return container(
+                column![
+                    text(label).size(11).style(save_view::muted_text_style),
+                    text(t(lang, "lobby-waiting"))
+                        .size(13)
+                        .style(save_view::muted_text_style),
+                ]
+                .spacing(4),
+            )
+            .padding(12)
+            .width(Length::Fill)
+            .into();
+        };
+        let nickname = settings.nickname.clone();
+        let game_label = settings
+            .game_info
+            .as_ref()
+            .and_then(|gi| {
+                let (family, variant) = (gi.family_and_variant.0.as_str(), gi.family_and_variant.1);
+                tango_gamedb::find_by_family_and_variant(family, variant)
+                    .map(|g| crate::game::display_name(lang, g))
+            })
+            .or_else(|| settings.game_info.as_ref().map(|gi| {
+                format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1)
+            }))
+            .unwrap_or_else(|| t(lang, "lobby-no-game"));
+        let patch = settings
+            .game_info
+            .as_ref()
+            .and_then(|gi| gi.patch.as_ref())
+            .map(|p| format!("{} v{}", p.name, p.version));
+        let mt = crate::game::match_type_name(
+            lang,
+            settings
+                .game_info
+                .as_ref()
+                .map(|gi| gi.family_and_variant.0.as_str())
+                .unwrap_or(""),
+            settings.match_type.0,
+            settings.match_type.1,
+        );
+        let mut col = column![
+            text(label).size(11).style(save_view::muted_text_style),
+            text(nickname).size(16),
+            text(game_label).size(12),
+        ]
+        .spacing(4);
+        if let Some(p) = patch {
+            col = col.push(
+                text(p)
+                    .size(11)
+                    .style(|theme: &iced::Theme| iced::widget::text::Style {
+                        color: Some(theme.palette().primary),
+                    }),
+            );
+        }
+        col = col.push(
+            text(format!("{}: {mt}", t(lang, "replays-match-type")))
+                .size(11)
+                .style(save_view::muted_text_style),
+        );
+        container(col).padding(12).width(Length::Fill).into()
+    };
+
+    let header_line = if let Some(d) = lobby.latency {
+        text(format!(
+            "{}: {} ms",
+            t(lang, "lobby-latency"),
+            d.as_millis()
+        ))
+        .size(11)
+        .style(save_view::muted_text_style)
+    } else {
+        text(t(lang, "lobby-handshake"))
+            .size(11)
+            .style(save_view::muted_text_style)
+    };
+
+    container(
+        column![
+            header_line,
+            iced::widget::row![
+                side(t(lang, "play-you"), lobby.local.as_ref()),
+                iced::widget::vertical_rule(1),
+                side(t(lang, "replays-opponent"), lobby.remote.as_ref()),
+            ]
+            .spacing(12),
+        ]
+        .spacing(12)
+        .padding(16),
+    )
+    .width(Fill)
+    .height(Fill)
+    .into()
 }
 
 /// Centered card used for the no-roms / no-saves hints. Title is

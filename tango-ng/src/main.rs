@@ -259,6 +259,47 @@ impl App {
 
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
+    /// Build a `protocol::Settings` packet from the App's current
+    /// state: nickname from config, match_type defaults to (0, 0),
+    /// game_info from the Play tab's local selection, and the
+    /// available_games / available_patches lists from the scanners
+    /// so the peer can see what we have locally. Mirrors
+    /// `tango/src/gui/play_pane.rs::make_local_settings`.
+    fn make_local_settings(&self) -> net::protocol::Settings {
+        use net::protocol::{GameInfo, PatchInfo, Settings};
+        let roms = self.scanners.roms.read();
+        let patches = self.scanners.patches.read();
+        Settings {
+            nickname: self.config.nickname.clone().unwrap_or_default(),
+            match_type: (0, 0),
+            game_info: self.play.local_game.map(|game| {
+                let (family, variant) = game.family_and_variant();
+                GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: match (&self.play.local_patch, &self.play.local_patch_version) {
+                        (Some(name), Some(version)) => Some(PatchInfo {
+                            name: name.clone(),
+                            version: version.clone(),
+                        }),
+                        _ => None,
+                    },
+                }
+            }),
+            available_games: roms
+                .keys()
+                .map(|g| {
+                    let (family, variant) = g.family_and_variant();
+                    (family.to_string(), variant)
+                })
+                .collect(),
+            available_patches: patches
+                .iter()
+                .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
+                .collect(),
+            reveal_setup: false,
+        }
+    }
+
     fn loaded_key(
         &self,
     ) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
@@ -413,7 +454,27 @@ impl App {
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
             Message::Session(m) => self.session.update(m).map(Message::Session),
-            Message::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
+            Message::Netplay(m) => {
+                // Watch for Negotiating → Lobby. The first time we
+                // land in Lobby we push a SendLocalSettings so the
+                // peer sees our nickname / game / match type. Done
+                // outside the netplay module because it needs the
+                // App's view of the world (config + scanners +
+                // PlayState selection).
+                let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
+                let task = self.netplay.update(m).map(Message::Netplay);
+                let now_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
+                if !was_lobby && now_lobby {
+                    let settings = self.make_local_settings();
+                    let send = self
+                        .netplay
+                        .update(netplay::Message::SendLocalSettings(Box::new(settings)))
+                        .map(Message::Netplay);
+                    iced::Task::batch([task, send])
+                } else {
+                    task
+                }
+            }
         }
     }
 
@@ -880,6 +941,7 @@ impl App {
                     self.config.streamer_mode,
                     &self.config,
                     &self.netplay.phase,
+                    &self.netplay.lobby,
                 )
                 .map(Message::Play),
             Tab::Replays => self

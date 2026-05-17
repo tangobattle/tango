@@ -68,6 +68,20 @@ pub struct State {
     /// Stored as a once-take Arc<Mutex<Option<_>>> so the closure
     /// can take it without needing &mut access to the State.
     pending_receiver: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    /// Lobby-only state — what each side has advertised so far.
+    /// `local` is what we sent; `remote` is what came in over the
+    /// Settings packet. Both being `Some` means the lobby pane
+    /// can render the symmetric "you vs them" view.
+    pub lobby: LobbyState,
+}
+
+#[derive(Default, Clone)]
+pub struct LobbyState {
+    pub local: Option<crate::net::protocol::Settings>,
+    pub remote: Option<crate::net::protocol::Settings>,
+    /// Most recent measured round-trip ping. None before the first
+    /// Pong; updated by `PingMeasured` from the lobby loop.
+    pub latency: Option<std::time::Duration>,
 }
 
 impl Default for State {
@@ -78,6 +92,7 @@ impl Default for State {
             cancel: CancellationToken::new(),
             session_id: 0,
             pending_receiver: Arc::new(parking_lot::Mutex::new(None)),
+            lobby: LobbyState::default(),
         }
     }
 }
@@ -116,10 +131,19 @@ pub enum Message {
     /// channel closed cleanly without a Failed-worthy error).
     /// We end the session quietly back at Idle.
     PeerDisconnected,
-    /// Internal: lobby loop measured a round-trip ping. Doesn't
-    /// affect phase; reserved for the latency-indicator we'll
-    /// surface in a later round.
+    /// Internal: lobby loop measured a round-trip ping. Drives the
+    /// latency indicator on the lobby pane.
     PingMeasured(std::time::Duration),
+    /// User has reached the lobby and we have the data needed to
+    /// build a Settings packet — send it over the wire. App
+    /// dispatches this exactly once per Lobby entry.
+    SendLocalSettings(Box<crate::net::protocol::Settings>),
+    /// Internal: lobby loop saw a Settings packet from the peer.
+    RemoteSettings(Box<crate::net::protocol::Settings>),
+    /// Internal: best-effort ack that our Settings made it onto the
+    /// wire. No-op message; just bumps the state-changed counter
+    /// so iced re-renders.
+    LocalSettingsSent,
 }
 
 /// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
@@ -173,6 +197,7 @@ impl State {
         self.session_id = self.session_id.wrapping_add(1);
         *self.pending_receiver.lock() = None;
         self.conn = None;
+        self.lobby = LobbyState::default();
     }
 
     /// Apply a Message. Returns the iced Task to schedule for any
@@ -221,10 +246,38 @@ impl State {
                 self.phase = Phase::Lobby { link_code };
                 iced::Task::none()
             }
-            Message::PingMeasured(_dur) => {
-                // Latency UI surface comes later; the ping itself
-                // matters as a liveness check, which the lobby
-                // loop is already doing.
+            Message::PingMeasured(dur) => {
+                self.lobby.latency = Some(dur);
+                iced::Task::none()
+            }
+            Message::SendLocalSettings(settings) => {
+                // Only meaningful in Lobby phase; ignore late
+                // arrivals after a Disconnect/Failed.
+                if !matches!(self.phase, Phase::Lobby { .. }) {
+                    return iced::Task::none();
+                }
+                let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
+                    return iced::Task::none();
+                };
+                self.lobby.local = Some(*settings.clone());
+                iced::Task::perform(
+                    async move {
+                        sender
+                            .lock()
+                            .await
+                            .send_settings(*settings)
+                            .await
+                            .map_err(|e| format!("send_settings: {e}"))
+                    },
+                    |r| match r {
+                        Ok(()) => Message::LocalSettingsSent,
+                        Err(e) => Message::Failed(e),
+                    },
+                )
+            }
+            Message::LocalSettingsSent => iced::Task::none(),
+            Message::RemoteSettings(settings) => {
+                self.lobby.remote = Some(*settings);
                 iced::Task::none()
             }
             Message::Failed(e) => {
@@ -392,8 +445,13 @@ async fn run_lobby_loop(
                         }
                         let _ = last_ping_sent.take();
                     }
+                    Ok(crate::net::protocol::Packet::Settings(s)) => {
+                        let _ = tx.send(Message::RemoteSettings(Box::new(s))).await;
+                    }
                     Ok(other) => {
-                        // Round 4 will handle these in earnest.
+                        // Commit / Chunk / StartMatch / Input land
+                        // in the next netplay round; ignore for now
+                        // so they don't kill the lobby connection.
                         log::debug!("lobby: ignoring {:?}", std::mem::discriminant(&other));
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
