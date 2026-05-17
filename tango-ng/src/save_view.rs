@@ -179,7 +179,7 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
 use lucide_icons::Icon;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
         widgets::icon_button(
-            Icon::Copy,
+            Icon::ClipboardCopy,
             t(lang, "save-copy"),
             Action::CopyTab(tab),
             [4.0, 10.0],

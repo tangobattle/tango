@@ -572,6 +572,12 @@ impl App {
                 // reflects the fresh on-disk SRAM.
                 let sp_closing = matches!(m, session::Message::Close)
                     && matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
+                // PvP sessions write a `.tangoreplay` next to the
+                // saves dir on match end; once the session closes
+                // we want the new file to show up in the Replays
+                // tab without a manual rescan.
+                let pvp_closing = matches!(m, session::Message::Close)
+                    && matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
                 if sp_closing {
                     let saves_path = self.config.saves_path();
@@ -581,6 +587,12 @@ impl App {
                     // bytes have.
                     self.loaded = None;
                     self.refresh_loaded();
+                }
+                if pvp_closing {
+                    let replays_path = self.config.replays_path();
+                    self.scanners
+                        .replays
+                        .rescan(|| Some(replays::scan_replays(&replays_path)));
                 }
                 task
             }
