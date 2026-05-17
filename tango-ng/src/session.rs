@@ -18,8 +18,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION, TEXT_HEADING};
-use iced::widget::rule::horizontal as horizontal_rule;
+use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, text};
 use iced::{Alignment, Element, Fill};
@@ -360,14 +359,10 @@ pub fn view<'a>(
         Space::new().width(Fill).height(Fill).into()
     };
 
-    let (title_icon, title_key) = match session {
-        ActiveSession::Replay(_) => (icons::WATCH, "replays-watch"),
-        ActiveSession::SinglePlayer(_) => (icons::TAB_PLAY, "play-play"),
-        ActiveSession::PvP(_) => (icons::TAB_PLAY, "play-play"),
-    };
     // PvP-only: if the opponent revealed their setup, expose a
     // toggle for the side panel so the user can collapse it
-    // mid-match without losing it.
+    // mid-match without losing it. Folded into the controls strip
+    // below alongside the close button.
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
             let (icon, label_key) = if state.show_opponent_panel {
@@ -384,26 +379,14 @@ pub fn view<'a>(
         }
         _ => None,
     };
-    let mut header_row = row![
-        icons::glyph(title_icon).size(14.0),
-        text(t(lang, title_key)).size(TEXT_HEADING),
-        horizontal_space(),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .padding(8);
-    if let Some(toggle) = opponent_toggle {
-        header_row = header_row.push(toggle);
-    }
-    header_row = header_row.push(icons::icon_button(
+    let close_btn = icons::icon_button(
         icons::CLOSE,
         t(lang, "playback-close"),
         Message::Close,
         STANDARD_PADDING,
-    ));
-    let header = container(header_row).width(Fill);
+    );
 
-    let mut layout = column![header, horizontal_rule(1)]
+    let mut layout = column![]
         .spacing(0)
         .width(Fill)
         .height(Fill);
@@ -430,8 +413,12 @@ pub fn view<'a>(
     };
     layout = layout.push(body);
 
-    // Transport (play/pause + scrubber) only makes sense for replay
-    // playback — single-player has no defined timeline.
+    // Controls strip. Replay sessions get the full transport
+    // (play/pause + scrubber + speed); single-player + PvP get a
+    // thin strip with just the opponent-panel toggle (PvP only)
+    // and the close button. Either way the close lives here so
+    // there's no separate header eating vertical space.
+    let mut controls = row![].spacing(8).align_y(Alignment::Center).padding(8);
     if let Some(r) = session.as_replay() {
         let total = r.total_ticks().max(1);
         let cur = r.current_tick().min(total);
@@ -458,34 +445,30 @@ pub fn view<'a>(
         let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
             Message::SetSpeed(o.0)
         })
-        
         .padding(STANDARD_PADDING);
 
-        layout = layout.push(horizontal_rule(1));
-        layout = layout.push(
-            container(
-                row![
-                    icons::icon_button(
-                        play_pause_icon,
-                        t(lang, play_pause_key),
-                        Message::TogglePlay,
-                        STANDARD_PADDING,
-                    ),
-                    text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                    scrub,
-                    text(format_tick(total)).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                    text(format!("{pct}%"))
-                        .size(TEXT_CAPTION)
-                        .style(save_view::muted_text_style),
-                    speed_picker,
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .padding(8),
-            )
-            .width(Fill),
-        );
+        controls = controls
+            .push(icons::icon_button(
+                play_pause_icon,
+                t(lang, play_pause_key),
+                Message::TogglePlay,
+                STANDARD_PADDING,
+            ))
+            .push(text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(scrub)
+            .push(text(format_tick(total)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(text(format!("{pct}%")).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(speed_picker);
+    } else {
+        // No transport widgets for SP/PvP — push a spacer so the
+        // close button (and opponent toggle) hug the right edge.
+        controls = controls.push(horizontal_space());
     }
+    if let Some(toggle) = opponent_toggle {
+        controls = controls.push(toggle);
+    }
+    controls = controls.push(close_btn);
+    layout = layout.push(container(controls).width(Fill));
 
     layout.into()
 }

@@ -54,6 +54,10 @@ pub const CANCEL: &str = "\u{e1b2}"; // x
 // comes from" (physical keyboard vs gamepad).
 pub const KEYBOARD: &str = "\u{e284}"; // keyboard
 pub const GAMEPAD: &str = "\u{e0de}"; // gamepad
+/// "Asset missing" badge — currently used as a prefix in the game
+/// dropdown for entries whose ROM hasn't been scanned. Lucide
+/// `file-x` (filename outline with an x).
+pub const MISSING: &str = "\u{e0cd}"; // file-x
 
 // ----- widget helpers -----
 

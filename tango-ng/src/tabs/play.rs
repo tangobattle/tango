@@ -84,7 +84,12 @@ impl std::fmt::Display for GameOption {
         if self.available {
             f.write_str(&self.display)
         } else {
-            write!(f, "{} (no ROM)", self.display)
+            // Lucide "file-x" glyph as a prefix marker. cosmic-text
+            // falls back across loaded fonts for codepoints the
+            // primary face doesn't have, so the PUA codepoint
+            // resolves to the lucide.ttf face inside pick_list's
+            // single-text-color renderer.
+            write!(f, "{} {}", icons::MISSING, self.display)
         }
     }
 }
