@@ -12,6 +12,7 @@ mod rom_overrides;
 mod save;
 mod save_view;
 mod scanner;
+mod scrubber;
 mod selection;
 mod tabs;
 
@@ -54,6 +55,10 @@ const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../../tango/fonts/NotoEmoji-Regul
 
 pub fn main() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Route mgba's global default logger through `c_log` too — without
+    // this, the prefetcher's bare Core falls through to mgba's printf
+    // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
+    mgba::log::install_default_logger();
 
     iced::application(App::title, App::update, App::view)
         .theme(App::theme)
@@ -889,7 +894,7 @@ impl App {
     }
 
     fn session_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
-        use iced::widget::{image, slider, Space};
+        use iced::widget::{image, Space};
         let session = self.session.as_ref().expect("session_view: no session");
         let frame: Element<'_, Message> = if let Some(handle) = self.session_frame.as_ref() {
             image(handle.clone())
@@ -939,7 +944,9 @@ impl App {
             } else {
                 t(lang, "playback-pause")
             };
-            let scrubber = slider(0..=total, cur, Message::SessionSeek).step(1u32);
+            let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::SessionSeek)
+                .round_boundaries(r.round_boundaries())
+                .view();
             layout = layout.push(horizontal_rule(1));
             layout = layout.push(
                 container(
@@ -948,7 +955,7 @@ impl App {
                             .padding(STANDARD_PADDING)
                             .on_press(Message::SessionTogglePlay),
                         text(format_tick(cur)).size(11).style(save_view::muted_text_style),
-                        scrubber,
+                        scrub,
                         text(format_tick(total)).size(11).style(save_view::muted_text_style),
                         text(format!("{pct}%"))
                             .size(11)

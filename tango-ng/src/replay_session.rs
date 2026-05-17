@@ -251,6 +251,23 @@ impl ReplaySession {
         &self.replay
     }
 
+    /// Cumulative tick at the end of each round *except* the last —
+    /// the inter-round boundaries the scrubber draws marks at. Empty
+    /// for a single-round replay.
+    pub fn round_boundaries(&self) -> Vec<u32> {
+        let n = self.replay.rounds.len();
+        if n <= 1 {
+            return Vec::new();
+        }
+        let mut acc = 0u32;
+        let mut out = Vec::with_capacity(n - 1);
+        for r in self.replay.rounds.iter().take(n - 1) {
+            acc += r.len() as u32;
+            out.push(acc);
+        }
+        out
+    }
+
     /// Jump the playhead to `target`. Submits the snapshot load + frame
     /// catch-up onto the mgba thread so the seek runs synchronously
     /// against the live core, but returns immediately. The UI's next

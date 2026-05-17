@@ -10,7 +10,7 @@ name = "tango-ng"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.13", features = ["tokio", "image-without-codecs", "markdown"] }
+iced = { version = "0.13", features = ["tokio", "image-without-codecs", "markdown", "canvas"] }
 image = "0.25"
 tiny-skia = "0.11"
 serde = { version = "1", features = ["derive"] }
