@@ -181,7 +181,6 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
             icons::COPY,
             t(lang, "save-copy"),
             Action::CopyTab(tab),
-            13.0,
             [4.0, 10.0],
         )
     };
@@ -190,7 +189,6 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
             icons::EXPORT,
             t(lang, "save-copy-image"),
             Action::CopyTabImage(tab),
-            13.0,
             [4.0, 10.0],
         )
     };

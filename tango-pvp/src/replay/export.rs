@@ -294,6 +294,21 @@ pub async fn export(
         let kept_replay_len = kept_input_pairs(replay, selected);
 
         let last_round_idx = replay.rounds.len().saturating_sub(1);
+        // For incomplete replays, the stepper can sit in a half-
+        // started state forever (e.g. BN3's last partial round
+        // waits on a round_start hook that never fires because the
+        // recording was cut short). `pairs_left == 0` only fires
+        // once the stepper has actually consumed every queued
+        // input; if it never enters the consuming state, that
+        // check never trips. Watch for "no pair consumed in the
+        // last second" as a separate end-of-replay signal: in a
+        // healthy run the stepper consumes ~60 pairs/sec, so a
+        // full second of stillness means we're stuck.
+        // Complete replays don't take this path because
+        // `replay.is_complete` is true.
+        const NO_PROGRESS_FRAME_BUDGET: u32 = 60;
+        let mut last_pairs_left: Option<usize> = None;
+        let mut no_progress_frames: u32 = 0;
         loop {
             let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
@@ -302,6 +317,22 @@ pub async fn export(
 
             if (!replay.is_complete && pairs_left == 0) || (is_ended && cur_round_idx >= last_round_idx) {
                 break;
+            }
+
+            if !replay.is_complete {
+                if last_pairs_left == Some(pairs_left) {
+                    no_progress_frames += 1;
+                    if no_progress_frames >= NO_PROGRESS_FRAME_BUDGET {
+                        log::info!(
+                            "incomplete replay export: stepper stuck at round {} with {} pairs unconsumed for {} frames, stopping",
+                            cur_round_idx, pairs_left, NO_PROGRESS_FRAME_BUDGET,
+                        );
+                        break;
+                    }
+                } else {
+                    no_progress_frames = 0;
+                }
+                last_pairs_left = Some(pairs_left);
             }
 
             if last_selected_round.is_none_or(|last| cur_round_idx > last) {

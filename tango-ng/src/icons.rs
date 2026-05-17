@@ -57,10 +57,10 @@ use iced::widget::{button, container, row, text, tooltip, Text};
 use iced::{Alignment, Element, Theme};
 
 /// Build a `text(...)` widget configured to render an icon glyph
-/// (forces the icon font + bumps the line height so it sits flush
-/// with adjacent label text in a row).
-pub fn glyph<'a>(g: &'static str, size: f32) -> Text<'a> {
-    text(g).size(size).font(FONT)
+/// (forces the icon font). No size override — picks up the iced
+/// renderer's default text size, same as the labels next to it.
+pub fn glyph<'a>(g: &'static str) -> Text<'a> {
+    text(g).font(FONT)
 }
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
@@ -71,10 +71,9 @@ pub fn icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: M,
-    text_size: f32,
     padding: [f32; 2],
 ) -> Element<'a, M> {
-    icon_button_styled(icon, label, Some(msg), text_size, padding, neutral)
+    icon_button_styled(icon, label, Some(msg), padding, neutral)
 }
 
 /// `icon_button` with the on_press wrapped in an Option so callers
@@ -84,10 +83,9 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: Option<M>,
-    text_size: f32,
     padding: [f32; 2],
 ) -> Element<'a, M> {
-    icon_button_styled(icon, label, msg, text_size, padding, neutral)
+    icon_button_styled(icon, label, msg, padding, neutral)
 }
 
 /// List-item button style for selectable rows (patches list,
@@ -161,11 +159,10 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: Option<M>,
-    text_size: f32,
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
-    let mut btn = button(glyph(icon, text_size)).padding(padding).style(style);
+    let mut btn = button(glyph(icon)).padding(padding).style(style);
     if let Some(m) = msg {
         btn = btn.on_press(m);
     }
@@ -188,12 +185,11 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
     icon: &'static str,
     label: String,
     msg: M,
-    text_size: f32,
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
     button(
-        row![glyph(icon, text_size), text(label).size(text_size)]
+        row![glyph(icon), text(label)]
             .spacing(8)
             .align_y(Alignment::Center),
     )
@@ -219,7 +215,7 @@ pub fn tab_button<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     use iced::widget::{stack, Space};
     let btn = button(
-        row![glyph(icon, 13.0), text(label).size(13.0)]
+        row![glyph(icon), text(label)]
             .spacing(6)
             .align_y(Alignment::Center),
     )

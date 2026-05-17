@@ -79,7 +79,6 @@ pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[unic_langid::langid!("en-US
 // explicit size inherit the app default.
 pub const NAV_TEXT_SIZE: f32 = 14.0;
 pub const NAV_PADDING: [f32; 2] = [8.0, 16.0];
-pub const PRIMARY_TEXT_SIZE: f32 = 13.0;
 pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
@@ -126,8 +125,19 @@ pub fn main() -> iced::Result {
     // UI. Iced's bare default is 16 px; 13 matches what the rest
     // of the typographic scale (TEXT_TITLE / TEXT_HEADING /
     // TEXT_CAPTION) was tuned against.
+    //
+    // `vsync: false` cuts the present queue. With vsync iced 0.14
+    // pipes frames through wgpu's vsync-locked surface, which on
+    // 60 Hz monitors adds a full frame (~16 ms) of presentation
+    // latency on top of the emulator's own 1-frame input delay.
+    // Without vsync the emulator's freshly rendered frame paints
+    // immediately, dropping the perceived input lag from ~3 frames
+    // to ~1. Risks light tearing on a 60 Hz monitor; the screen
+    // area being moved (the GBA screen) is mostly static so this
+    // is barely visible in practice.
     let settings = iced::Settings {
         default_text_size: iced::Pixels(13.0),
+        vsync: false,
         ..iced::Settings::default()
     };
     iced::application(App::new, App::update, App::view)

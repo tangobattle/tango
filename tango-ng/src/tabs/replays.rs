@@ -387,20 +387,19 @@ impl ReplaysState {
             row![
                 text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
-                    .text_size(13.0)
+                    
                     .padding(STANDARD_PADDING),
                 text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
                 iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
-                    .size(13.0)
+                    
                     .width(Length::Fixed(180.0)),
                 horizontal_space(),
                 icons::icon_button(
                     icons::RESCAN,
                     t(lang, "rescan"),
                     Message::Rescan,
-                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -478,19 +477,19 @@ impl ReplaysState {
             let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
             let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
             let badge: Element<'_, Message> = if rendering {
-                container(icons::glyph(icons::RENDER, TEXT_BODY).style(|theme: &iced::Theme| {
+                container(icons::glyph(icons::RENDER).style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().primary) }
                 }))
                 .padding([0, 4])
                 .into()
             } else if render_done_ok {
-                container(icons::glyph(icons::CONFIRM, TEXT_BODY).style(|theme: &iced::Theme| {
+                container(icons::glyph(icons::CONFIRM).style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().success) }
                 }))
                 .padding([0, 4])
                 .into()
             } else if render_done_err {
-                container(icons::glyph(icons::CANCEL, TEXT_BODY).style(|theme: &iced::Theme| {
+                container(icons::glyph(icons::CANCEL).style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().danger) }
                 }))
                 .padding([0, 4])
@@ -657,7 +656,6 @@ fn replay_detail<'a>(
                     icons::WATCH,
                     t(lang, "replays-watch"),
                     Some(Message::Watch(r.path.clone())),
-                    13.0,
                     STANDARD_PADDING,
                     iced::widget::button::primary,
                 ),
@@ -681,14 +679,12 @@ fn replay_detail<'a>(
                     } else {
                         Some(Message::ExportPanelOpen(r.path.clone()))
                     },
-                    13.0,
                     STANDARD_PADDING,
                 ),
                 icons::icon_button(
                     icons::FOLDER,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
-                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -790,14 +786,12 @@ fn export_status_line<'a>(
                 icons::WATCH,
                 t(lang, "replays-export-open"),
                 Message::OpenFile(path.clone()),
-                13.0,
                 STANDARD_PADDING,
             ),
             icons::icon_button(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
-                13.0,
                 STANDARD_PADDING,
             ),
         ]
@@ -813,7 +807,6 @@ fn export_status_line<'a>(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
-                13.0,
                 STANDARD_PADDING,
             ),
         ]
@@ -871,7 +864,7 @@ fn export_panel<'a>(
     };
     let lossless_chk = iced::widget::checkbox(settings.lossless)
         .label(t(lang, "replays-export-lossless"))
-        .text_size(13.0);
+        ;
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
     } else {
@@ -879,7 +872,7 @@ fn export_panel<'a>(
     };
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
         .label(t(lang, "replays-export-disable-bgm"))
-        .text_size(13.0);
+        ;
     let bgm_chk: Element<'a, Message> = if in_flight {
         bgm_chk.into()
     } else {
@@ -901,7 +894,7 @@ fn export_panel<'a>(
         for (i, picked) in selected_rounds.iter().enumerate() {
             let cb = iced::widget::checkbox(*picked)
                 .label(format!("{}", i + 1))
-                .text_size(13.0);
+                ;
             let cb: Element<'a, Message> = if in_flight {
                 cb.into()
             } else {
@@ -922,7 +915,6 @@ fn export_panel<'a>(
             icons::EXPORT,
             t(lang, "replays-export-save-as"),
             Message::Export(replay_path.to_path_buf()),
-            13.0,
             STANDARD_PADDING,
             iced::widget::button::primary,
         )
@@ -931,8 +923,8 @@ fn export_panel<'a>(
         // variant inline.
         iced::widget::button(
             iced::widget::row![
-                icons::glyph(icons::EXPORT, 13.0),
-                text(t(lang, "replays-export-save-as")).size(13.0),
+                icons::glyph(icons::EXPORT),
+                text(t(lang, "replays-export-save-as")),
             ]
             .spacing(8)
             .align_y(Alignment::Center),

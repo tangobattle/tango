@@ -1,7 +1,7 @@
 use crate::i18n::{t, t_args};
 use crate::tabs::settings::labeled;
 use crate::{
-    icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, SUPPORTED_LANGS,
+    icons, save_view, PRIMARY_PADDING, STANDARD_PADDING, SUPPORTED_LANGS,
     TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE,
 };
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
@@ -60,7 +60,7 @@ pub fn view<'a>(
     // Language selector — lets the user switch before nickname so the
     // rest of the welcome flow shows in the language they picked.
     let lang_picker = pick_list(SUPPORTED_LANGS.to_vec(), Some(lang.clone()), Message::LanguageSelected)
-        .text_size(13.0)
+        
         .padding(STANDARD_PADDING);
 
     let step_marker = |done: bool| -> &'static str {
@@ -74,7 +74,7 @@ pub fn view<'a>(
     // Step 1 — ROMs.
     let mut roms_block = column![
         row![
-            icons::glyph(step_marker(has_roms), 16.0),
+            icons::glyph(step_marker(has_roms)).size(16.0),
             text(t(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -90,7 +90,6 @@ pub fn view<'a>(
                 icons::FOLDER,
                 t(lang, "welcome-open-folder"),
                 Message::OpenRomsFolder,
-                13.0,
                 STANDARD_PADDING,
                 icons::neutral,
             ),
@@ -98,7 +97,6 @@ pub fn view<'a>(
                 icons::RESCAN,
                 t(lang, "rescan"),
                 Message::RescanRoms,
-                13.0,
                 STANDARD_PADDING,
                 icons::neutral,
             ),
@@ -122,7 +120,7 @@ pub fn view<'a>(
 
     // Step 2 — nickname. Gated until at least one ROM is detected.
     let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
-    let mut continue_btn = button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE)).padding(PRIMARY_PADDING);
+    let mut continue_btn = button(text(t(lang, "welcome-continue"))).padding(PRIMARY_PADDING);
     if can_continue {
         continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
     } else {
@@ -131,7 +129,7 @@ pub fn view<'a>(
 
     let mut nickname_block = column![
         row![
-            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty()), 16.0,),
+            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty())).size(16.0),
             text(t(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -144,7 +142,7 @@ pub fn view<'a>(
             text_input("", &state.nickname_draft)
                 .on_input(Message::NicknameChanged)
                 .on_submit(Message::Continue)
-                .size(13.0)
+                
                 .padding(STANDARD_PADDING)
                 .width(Length::Fixed(280.0)),
         ),
