@@ -38,10 +38,6 @@ pub enum Message {
     SaveNewDraftChanged(String),
     SaveNewTemplateSelected(String),
     SaveNewConfirm,
-
-    /// Mouse moved over the NaviCust image; payload is the resolved
-    /// part index from the materialized grid, or None when no cell.
-    NavicustHover(Option<usize>),
 }
 
 // ---------- Game / Save pick_list options ----------
@@ -109,9 +105,6 @@ pub struct PlayState {
     /// netplay isn't implemented; will likely host real lobby status
     /// messages once it is.
     pub flash_status: Option<String>,
-    /// Part index currently under the cursor on the NaviCust image, or
-    /// None when not hovered.
-    pub hovered_ncp_idx: Option<usize>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -139,7 +132,6 @@ impl Default for PlayState {
             link_code: String::new(),
             playing: false,
             flash_status: None,
-            hovered_ncp_idx: None,
         }
     }
 }
@@ -487,7 +479,6 @@ impl PlayState {
 
         let opts = save_view::RenderOpts {
             folder_grouped: self.folder_grouped,
-            hovered_ncp_idx: self.hovered_ncp_idx,
         };
 
         let tab_button = |tab: save_view::Tab| {
@@ -520,7 +511,7 @@ impl PlayState {
                 ..iced::widget::container::Style::default()
             });
 
-        let body = save_view::render(lang, active, loaded, opts);
+        let body = save_view::render::<Message>(lang, active, loaded, opts);
 
         column![tabs, body].width(Fill).height(Fill).into()
     }

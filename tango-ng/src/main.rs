@@ -637,9 +637,6 @@ impl App {
             M::SaveActionCancel => {
                 self.play.save_action = SaveAction::None;
             }
-            M::NavicustHover(idx) => {
-                self.play.hovered_ncp_idx = idx;
-            }
             M::SaveNewStart => {
                 let saves_dir = self.config.saves_path();
                 let mut draft = "new save".to_string();
@@ -774,8 +771,13 @@ impl App {
             M::FolderFilterSelected(f) => {
                 self.replays.folder_filter = f.path;
                 self.replays.selected = None;
+                self.replays.loaded = None;
+                self.replays.loaded_cache_key = None;
             }
-            M::Selected(p) => self.replays.selected = Some(p),
+            M::Selected(p) => {
+                self.replays.selected = Some(p);
+                self.refresh_replay_loaded();
+            }
             M::OpenFolder(p) => {
                 if let Err(e) = open::that(&p) {
                     log::error!("open folder {}: {e}", p.display());
@@ -797,8 +799,50 @@ impl App {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
             }
+            M::SaveTabSelected(t) => self.replays.save_tab = Some(t),
+            M::SaveSideSelected(side) => {
+                self.replays.save_side = side;
+                self.refresh_replay_loaded();
+            }
         }
         iced::Task::none()
+    }
+
+    /// Lazily rebuild `replays.loaded` for the currently-selected
+    /// replay + chosen side. No-op when the cache key already matches.
+    /// Failures log + clear the cache so the detail panel falls back
+    /// to the metadata-only summary.
+    fn refresh_replay_loaded(&mut self) {
+        let Some(path) = self.replays.selected.clone() else {
+            self.replays.loaded = None;
+            self.replays.loaded_cache_key = None;
+            return;
+        };
+        let key = (path.clone(), self.replays.save_side);
+        if self.replays.loaded_cache_key.as_ref() == Some(&key) {
+            return;
+        }
+        let res = (|| -> anyhow::Result<selection::Loaded> {
+            let f = std::fs::File::open(&path)?;
+            let replay = tango_pvp::replay::Replay::decode(f)?;
+            selection::Loaded::for_replay_side(
+                &self.scanners,
+                &self.config,
+                &replay,
+                self.replays.save_side,
+            )
+        })();
+        match res {
+            Ok(loaded) => {
+                self.replays.loaded = Some(loaded);
+                self.replays.loaded_cache_key = Some(key);
+            }
+            Err(e) => {
+                log::warn!("replay save preview failed: {e}");
+                self.replays.loaded = None;
+                self.replays.loaded_cache_key = None;
+            }
+        }
     }
 
     fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {

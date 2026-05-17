@@ -1,15 +1,13 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
-// All `Message` references in this module refer to the Play tab's
-// Message enum, because save view widgets are only embedded inside the
-// Play tab. The actual rendering helpers (chip rows, navicust, etc.)
-// don't construct any messages — they're read-only — so they're
-// compatible with any Message type at the iced level, but we type them
-// against `play::Message` to keep the call sites simple.
-use crate::tabs::play::Message;
 use iced::widget::{
-    column, container, horizontal_rule, image as iced_image, row, scrollable, text, tooltip, Image, Space,
+    column, container, horizontal_rule, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space,
 };
+
+/// Save view is read-only — every interactive bit (NCP hover, chip
+/// hover) is handled by tooltip/canvas widgets that manage their own
+/// state internally, so render fns never emit caller-visible messages.
+/// The Element is generic over the embedder's Message type.
 use iced::{Alignment, ContentFit, Element, Fill, Length};
 use tango_dataview::rom::NavicustPartColor;
 use tango_dataview::save::Save;
@@ -27,9 +25,6 @@ pub enum Tab {
 #[derive(Default, Clone, Copy)]
 pub struct RenderOpts {
     pub folder_grouped: bool,
-    /// NaviCust part the mouse is hovering over, if any. Used to
-    /// highlight the matching badge in the parts list.
-    pub hovered_ncp_idx: Option<usize>,
 }
 
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
@@ -62,15 +57,15 @@ pub fn tab_key(tab: Tab) -> &'static str {
     }
 }
 
-pub fn render(
+pub fn render<M: 'static>(
     lang: &LanguageIdentifier,
     tab: Tab,
     loaded: &Loaded,
     opts: RenderOpts,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     match tab {
         Tab::Cover => render_cover(lang),
-        Tab::Navi => render_navi(lang, loaded, opts.hovered_ncp_idx),
+        Tab::Navi => render_navi(lang, loaded),
         Tab::Folder => render_folder(lang, loaded, opts.folder_grouped),
         Tab::PatchCards => render_patch_cards(lang, loaded),
         Tab::AutoBattleData => render_auto_battle_data(lang, loaded),
@@ -208,7 +203,7 @@ pub fn tab_as_text(
     }
 }
 
-fn render_cover(lang: &LanguageIdentifier) -> Element<'static, Message> {
+fn render_cover<M: 'static>(lang: &LanguageIdentifier) -> Element<'static, M> {
     container(text(t(lang, "save-cover-description")).size(13))
         .center(Fill)
         .into()
@@ -224,7 +219,7 @@ struct GroupedChip {
     has_tag2: bool,
 }
 
-fn render_folder(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> Element<'static, Message> {
+fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> Element<'static, M> {
     let Some(chips_view) = loaded.save.view_chips() else {
         return placeholder(t(lang, "save-empty"));
     };
@@ -308,7 +303,7 @@ fn render_folder(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> E
         let chip_id = chip.as_ref().map(|c| c.id);
         let description = chip_id.and_then(|id| loaded.assets.chip(id).and_then(|info| info.description()));
         let image_handle = chip_id.and_then(|id| loaded.chip_images.get(id).cloned().flatten());
-        let row_el: Element<'static, Message> = if description.is_some() || image_handle.is_some() {
+        let row_el: Element<'static, M> = if description.is_some() || image_handle.is_some() {
             let mut tip = column![].spacing(6);
             if let Some((w, h, h_handle)) = image_handle {
                 tip = tip.push(
@@ -339,14 +334,14 @@ fn render_folder(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> E
     scrollable(body).height(Fill).width(Fill).into()
 }
 
-fn chip_row(
+fn chip_row<M: 'static>(
     _lang: &LanguageIdentifier,
     loaded: &Loaded,
     chip: Option<&tango_dataview::save::Chip>,
     g: &GroupedChip,
     grouped: bool,
     chips_have_mb: bool,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     let info = chip.and_then(|c| loaded.assets.chip(c.id));
     let chip_class = info.as_ref().map(|i| i.class());
     let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
@@ -355,7 +350,7 @@ fn chip_row(
 
     // Chip icon — keep the in-game sprite at native scale (16→28),
     // big enough to recognize without dominating the row.
-    let icon: Element<'static, Message> = match chip.and_then(|c| loaded.chip_icons.get(c.id).cloned().flatten()) {
+    let icon: Element<'static, M> = match chip.and_then(|c| loaded.chip_icons.get(c.id).cloned().flatten()) {
         Some(h) => Image::new(h)
             .width(Length::Fixed(28.0))
             .height(Length::Fixed(28.0))
@@ -368,7 +363,7 @@ fn chip_row(
     // Element icon, sits next to the name. Reserve width so columns
     // still align loosely without needing a header.
     let element_id = info.as_ref().map(|i| i.element());
-    let element_icon: Element<'static, Message> = element_id
+    let element_icon: Element<'static, M> = element_id
         .and_then(|id| loaded.element_icons.get(&id).cloned())
         .map(|h| {
             Image::new(h)
@@ -389,7 +384,7 @@ fn chip_row(
     let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
 
     // Name (larger) + code letter as a styled monospace badge.
-    let title: Element<'static, Message> = if is_empty_slot {
+    let title: Element<'static, M> = if is_empty_slot {
         text("—")
             .size(14)
             .color(iced::Color::from_rgb8(0x60, 0x60, 0x60))
@@ -419,13 +414,13 @@ fn chip_row(
     // Right-side stats: fixed-width right-aligned columns so the
     // numbers line up vertically across rows. Both inherit the theme's
     // text color — no hard-coded white/yellow that breaks on light.
-    let power_text: Element<'static, Message> = container(
+    let power_text: Element<'static, M> = container(
         text(if power > 0 { format!("{power}") } else { String::new() }).size(14),
     )
     .width(Length::Fixed(50.0))
     .align_x(iced::alignment::Horizontal::Right)
     .into();
-    let mb_text: Element<'static, Message> = if chips_have_mb {
+    let mb_text: Element<'static, M> = if chips_have_mb {
         container(
             text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(12),
         )
@@ -476,10 +471,10 @@ fn chip_row(
 /// the whole row), but it's set to the theme's page background colour
 /// so it visually disappears against the surrounding pane chrome —
 /// gives the list a denser look without the shaded-card noise.
-fn card_wrap(
-    inner: Element<'static, Message>,
+fn card_wrap<M: 'static>(
+    inner: Element<'static, M>,
     accent: Option<iced::Color>,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
     let card_body = container(inner)
         .width(Fill)
@@ -510,17 +505,17 @@ fn card_wrap(
 
 /// Folder-style card row for an auto-battle-data slot, which only has
 /// a chip id (no code, no REG/TAG indicators).
-fn auto_battle_row(
+fn auto_battle_row<M: 'static>(
     loaded: &Loaded,
     chip_id: Option<usize>,
     chips_have_mb: bool,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
     let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
     let accent = class_accent(chip_class, dark);
 
-    let icon: Element<'static, Message> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
+    let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
             .width(Length::Fixed(28.0))
             .height(Length::Fixed(28.0))
@@ -531,7 +526,7 @@ fn auto_battle_row(
     };
 
     let element_id = info.as_ref().map(|i| i.element());
-    let element_icon: Element<'static, Message> = element_id
+    let element_icon: Element<'static, M> = element_id
         .and_then(|id| loaded.element_icons.get(&id).cloned())
         .map(|h| {
             Image::new(h)
@@ -550,7 +545,7 @@ fn auto_battle_row(
     let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
     let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
 
-    let title: Element<'static, Message> = if chip_id.is_some() {
+    let title: Element<'static, M> = if chip_id.is_some() {
         text(name_text).size(15).into()
     } else {
         text("—")
@@ -559,13 +554,13 @@ fn auto_battle_row(
             .into()
     };
 
-    let power_text: Element<'static, Message> = container(
+    let power_text: Element<'static, M> = container(
         text(if power > 0 { format!("{power}") } else { String::new() }).size(14),
     )
     .width(Length::Fixed(50.0))
     .align_x(iced::alignment::Horizontal::Right)
     .into();
-    let mb_text: Element<'static, Message> = if chips_have_mb {
+    let mb_text: Element<'static, M> = if chips_have_mb {
         container(
             text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(12),
         )
@@ -602,7 +597,7 @@ fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Op
     }
 }
 
-fn code_badge(code: String) -> Element<'static, Message> {
+fn code_badge<M: 'static>(code: String) -> Element<'static, M> {
     // Theme-aware: opaque "strong" background from the palette, text
     // colour inherits from the theme so it reads on both light + dark.
     container(text(code).size(13).font(iced::Font::MONOSPACE))
@@ -622,7 +617,7 @@ fn code_badge(code: String) -> Element<'static, Message> {
 }
 
 
-fn badge(label: &'static str, color: iced::Color) -> Element<'static, Message> {
+fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
     container(text(label).size(10).color(iced::Color::WHITE))
         .padding([1, 4])
         .style(move |_| container::Style {
@@ -636,52 +631,28 @@ fn badge(label: &'static str, color: iced::Color) -> Element<'static, Message> {
         .into()
 }
 
-fn colored_badge(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, Message> {
+fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, M> {
     colored_badge_sized(label, bg, text_color, 11, [2, 6])
 }
 
 /// Variant that lets callers (NCP parts list) pick a larger text size
 /// when the badge is being used as primary content rather than chrome.
-fn colored_badge_sized(
+fn colored_badge_sized<M: 'static>(
     label: String,
     bg: iced::Color,
     text_color: iced::Color,
     size: u16,
     padding: [u16; 2],
-) -> Element<'static, Message> {
-    colored_badge_highlighted(label, bg, text_color, size, padding, false)
-}
-
-/// Badge with an optional "highlighted" treatment (a white outline ring)
-/// for showing which NCP is currently under the cursor on the grid.
-fn colored_badge_highlighted(
-    label: String,
-    bg: iced::Color,
-    text_color: iced::Color,
-    size: u16,
-    padding: [u16; 2],
-    highlighted: bool,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     container(text(label).size(size).color(text_color))
         .padding(padding)
-        .style(move |theme: &iced::Theme| {
-            let border = if highlighted {
-                iced::Border {
-                    radius: 3.0.into(),
-                    width: 2.0,
-                    color: theme.palette().text,
-                }
-            } else {
-                iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                }
-            };
-            container::Style {
-                background: Some(iced::Background::Color(bg)),
-                border,
+        .style(move |_theme: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(bg)),
+            border: iced::Border {
+                radius: 3.0.into(),
                 ..Default::default()
-            }
+            },
+            ..Default::default()
         })
         .into()
 }
@@ -702,7 +673,7 @@ fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
     }
 }
 
-fn effect_badge(e: &tango_dataview::rom::PatchCard56Effect, enabled: bool) -> Element<'static, Message> {
+fn effect_badge<M: 'static>(e: &tango_dataview::rom::PatchCard56Effect, enabled: bool) -> Element<'static, M> {
     let name = e.name.clone().unwrap_or_else(|| "???".to_string());
     let bg = if enabled {
         if e.is_debuff {
@@ -745,11 +716,10 @@ fn tooltip_style(_theme: &iced::Theme) -> container::Style {
 
 // ---------- Navi ----------
 
-fn render_navi(
+fn render_navi<M: 'static>(
     lang: &LanguageIdentifier,
     loaded: &Loaded,
-    hovered_ncp_idx: Option<usize>,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     let Some(navi_view) = loaded.save.view_navi() else {
         return placeholder(t(lang, "save-empty"));
     };
@@ -765,7 +735,7 @@ fn render_navi(
             // Centered portrait — bigger than the in-row icon but still
             // proportional to the pane chrome (was 48 pre-redesign,
             // 120 was way too much).
-            let emblem: Element<'static, Message> = loaded
+            let emblem: Element<'static, M> = loaded
                 .navi_emblems
                 .get(&navi_id)
                 .cloned()
@@ -793,16 +763,15 @@ fn render_navi(
             .center(Fill)
             .into()
         }
-        tango_dataview::save::NaviView::Navicust(v) => render_navicust(lang, loaded, v.as_ref(), hovered_ncp_idx),
+        tango_dataview::save::NaviView::Navicust(v) => render_navicust(lang, loaded, v.as_ref()),
     }
 }
 
-fn render_navicust(
+fn render_navicust<M: 'static>(
     lang: &LanguageIdentifier,
     loaded: &Loaded,
     v: &dyn tango_dataview::save::NavicustView,
-    hovered_ncp_idx: Option<usize>,
-) -> Element<'static, Message> {
+) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
     // BN4/5/6 don't have styles — `view.style()` is None there. Only
     // surface the row when the save actually exposes a style id.
@@ -814,67 +783,63 @@ fn render_navicust(
     // Big rendered grid (tiny-skia, cached at load time). Scale down to
     // ~440 px wide if larger (5×5 grids render around 360 wide native;
     // bigger grids get scaled). Wrapped in mouse_area so hovering over
-    // a cell highlights the matching part in the list to the right.
-    let grid_el: Element<'static, Message> = match loaded.navicust_render.as_ref() {
+    // Per-cell tooltip overlay: render the image as one layer of a
+    // Stack and a column-of-rows-of-cell-sized empty widgets as the
+    // second layer. Each cell that's covered by an installed part gets
+    // its own tooltip wrapper, so iced's tooltip widget manages the
+    // hover state internally — no NavicustHover message round-trip
+    // needed.
+    let grid_el: Element<'static, M> = match loaded.navicust_render.as_ref() {
         Some(nc) => {
             let cap_w = 440.0_f32;
             let scale = (cap_w / nc.source_w as f32).min(1.0);
             let dw = nc.source_w as f32 * scale;
             let dh = nc.source_h as f32 * scale;
-            // Snapshot the lookup data so the on_move closure doesn't
-            // borrow `loaded` (the closure has to be 'static).
-            let lookup_w = nc.source_w as f32;
-            let lookup_h = nc.source_h as f32;
-            let body_x = nc.body_origin_x;
-            let body_y = nc.body_origin_y;
-            let cell_size = nc.cell_size;
+            let body_x = nc.body_origin_x * scale;
+            let body_y = nc.body_origin_y * scale;
+            let cell_size = nc.cell_size * scale;
             let g_cols = nc.cols;
             let g_rows = nc.rows;
-            let cell_idx = nc.cell_part_idx.clone();
-            let image = Image::new(nc.handle.clone())
+
+            let image: Element<'static, M> = Image::new(nc.handle.clone())
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh))
                 .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::Contain);
-            let area = iced::widget::mouse_area(image)
-                .on_move(move |p| {
-                    let scale_x = lookup_w / dw;
-                    let scale_y = lookup_h / dh;
-                    let sx = p.x * scale_x - body_x;
-                    let sy = p.y * scale_y - body_y;
-                    if sx < 0.0 || sy < 0.0 {
-                        return Message::NavicustHover(None);
-                    }
-                    let col = (sx / cell_size) as usize;
-                    let row = (sy / cell_size) as usize;
-                    if col >= g_cols || row >= g_rows {
-                        return Message::NavicustHover(None);
-                    }
-                    Message::NavicustHover(
-                        cell_idx.get(row * g_cols + col).copied().flatten(),
-                    )
-                })
-                .on_exit(Message::NavicustHover(None));
+                .content_fit(ContentFit::Contain)
+                .into();
 
-            // Cursor-following tooltip for the currently hovered NCP.
-            // Empty container when the cursor is over a blank cell so
-            // the tooltip widget renders as a no-op instead of an empty
-            // chrome box.
-            let hovered_part = hovered_ncp_idx
-                .and_then(|i| v.navicust_part(i))
-                .and_then(|p| assets.navicust_part(p.id));
-            let tip: Element<'static, Message> = if let Some(info) = hovered_part {
-                let name = info.name().unwrap_or_else(|| "?".to_string());
-                let mut col = column![text(name).size(13)].spacing(2);
-                if let Some(desc) = info.description() {
-                    col = col.push(text(desc).size(11));
+            // Build the overlay: a fixed-size column of fixed-size rows
+            // matching the grid. Each cell is either a no-op Space or
+            // a tooltip-wrapped Space carrying the part's name + desc.
+            let mut overlay_col = column![Space::with_height(Length::Fixed(body_y))];
+            for row_idx in 0..g_rows {
+                let mut cell_row = row![Space::with_width(Length::Fixed(body_x))];
+                for col_idx in 0..g_cols {
+                    let cell_idx = nc.cell_part_idx.get(row_idx * g_cols + col_idx).copied().flatten();
+                    let info = cell_idx
+                        .and_then(|pi| v.navicust_part(pi))
+                        .and_then(|p| assets.navicust_part(p.id));
+                    let cell: Element<'static, M> = if let Some(info) = info {
+                        let name = info.name().unwrap_or_else(|| "?".to_string());
+                        let mut tip_col = column![text(name).size(13)].spacing(2);
+                        if let Some(desc) = info.description() {
+                            tip_col = tip_col.push(text(desc).size(11));
+                        }
+                        let tip = container(tip_col).padding(8).style(tooltip_style);
+                        let space = Space::new(Length::Fixed(cell_size), Length::Fixed(cell_size));
+                        tooltip(space, tip, tooltip::Position::FollowCursor).gap(12).into()
+                    } else {
+                        Space::new(Length::Fixed(cell_size), Length::Fixed(cell_size)).into()
+                    };
+                    cell_row = cell_row.push(cell);
                 }
-                container(col).padding(8).style(tooltip_style).into()
-            } else {
-                container(Space::new(0, 0)).into()
-            };
-            let area_with_tip = tooltip(area, tip, tooltip::Position::FollowCursor).gap(12);
-            container(area_with_tip).center_x(Fill).into()
+                overlay_col = overlay_col.push(cell_row);
+            }
+
+            let stacked = stack![image, overlay_col]
+                .width(Length::Fixed(dw))
+                .height(Length::Fixed(dh));
+            container(stacked).center_x(Fill).into()
         }
         None => text(format!(
             "{}: {} × {}",
@@ -910,9 +875,9 @@ fn render_navicust(
                 iced::Color::from_rgb8(0x88, 0x88, 0x88),
             ));
         let bg = if is_solid { solid_color } else { plus_color };
-        let hovered = hovered_ncp_idx == Some(i);
-        let badge_el = colored_badge_highlighted(part_name, bg, iced::Color::BLACK, 15, [4, 8], hovered);
-        let badge_el: Element<'static, Message> = if let Some(desc) = description {
+        let _ = i; // index no longer needed now that the list-highlight is gone
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, 15, [4, 8]);
+        let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
                 container(text(desc).size(12)).padding(8).style(tooltip_style),
@@ -966,7 +931,7 @@ fn render_navicust(
 
 // ---------- Patch cards ----------
 
-fn render_patch_cards(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, Message> {
+fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(view) = loaded.save.view_patch_cards() else {
         return placeholder(t(lang, "save-empty"));
     };
@@ -1058,7 +1023,7 @@ fn render_patch_cards(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'st
 
 // ---------- Auto Battle Data ----------
 
-fn render_auto_battle_data(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, Message> {
+fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(view) = loaded.save.view_auto_battle_data() else {
         return placeholder(t(lang, "save-empty"));
     };
@@ -1067,7 +1032,7 @@ fn render_auto_battle_data(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
 
     let chips_have_mb = assets.chips_have_mb();
 
-    let section = |title: String, slots: &[Option<usize>]| -> Element<'static, Message> {
+    let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
         let mut col = column![text(title).size(13).style(muted_text_style)].spacing(4);
         for id in slots {
             col = col.push(auto_battle_row(loaded, *id, chips_have_mb));
@@ -1098,6 +1063,6 @@ fn render_auto_battle_data(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
     container(scrollable(list)).width(Fill).height(Fill).into()
 }
 
-fn placeholder(msg: String) -> Element<'static, Message> {
+fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     container(text(msg).size(13)).center(Fill).into()
 }

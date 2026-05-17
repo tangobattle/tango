@@ -174,6 +174,72 @@ impl Loaded {
             navicust_render,
         }
     }
+
+    /// Build a Loaded for one side of a replay. Used by the replays tab
+    /// to embed the save view directly in the detail panel.
+    /// `which_side` picks `local_side` vs `remote_side`. Pulls the
+    /// matching ROM out of the scanners cache; returns Err if it's
+    /// missing or any field on the replay side is incomplete.
+    pub fn for_replay_side(
+        scanners: &crate::Scanners,
+        config: &crate::config::Config,
+        replay: &tango_pvp::replay::Replay,
+        which_side: ReplaySide,
+    ) -> anyhow::Result<Self> {
+        let side = match which_side {
+            ReplaySide::Local => replay.metadata.local_side.as_ref(),
+            ReplaySide::Remote => replay.metadata.remote_side.as_ref(),
+        }
+        .ok_or_else(|| anyhow::anyhow!("replay missing {which_side:?} side metadata"))?;
+        let gi = side
+            .game_info
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
+        let variant = u8::try_from(gi.rom_variant)
+            .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
+        let game = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+            .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
+        let rom = scanners
+            .roms
+            .read()
+            .get(&game)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
+
+        // Per-side wram dump → Save via the gamedb's parse_wram.
+        let wram = match which_side {
+            ReplaySide::Local => &replay.local_wram,
+            ReplaySide::Remote => &replay.remote_wram,
+        };
+        let save = game.save_from_wram(wram)?;
+
+        // Optional patch info — pull the Arc<Version> from the patch
+        // scanner so we get the same rom_overrides (charset etc.) as
+        // the play tab.
+        let patch_meta = gi.patch.as_ref().and_then(|p| {
+            let v = semver::Version::parse(&p.version).ok()?;
+            let patches = scanners.patches.read();
+            let pinfo = patches.get(&p.name)?;
+            let vmeta = pinfo.versions.get(&v)?.clone();
+            Some((p.name.clone(), v, vmeta))
+        });
+
+        Ok(Self::build(
+            game,
+            rom,
+            std::path::PathBuf::new(),
+            save,
+            &config.patches_path(),
+            patch_meta,
+        ))
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplaySide {
+    #[default]
+    Local,
+    Remote,
 }
 
 fn build_navicust_render(
