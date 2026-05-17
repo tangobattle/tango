@@ -26,8 +26,6 @@ use iced::{Alignment, Element, Fill, Theme};
 use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState, SaveAction};
 use tabs::replays::ReplaysState;
-use tabs::settings::{settings_panel, SettingsTab};
-use tabs::welcome::welcome_view;
 use unic_langid::LanguageIdentifier;
 
 pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
@@ -120,10 +118,6 @@ impl Scanners {
 struct App {
     config: config::Config,
     tab: Tab,
-    settings_tab: SettingsTab,
-    /// Draft nickname for the welcome screen, before we commit it to
-    /// config.nickname.
-    welcome_nickname: String,
     scanners: Scanners,
     /// Cloned into every session so they can bind their MGBAStream
     /// without owning the cpal backend. The cpal Backend lives in
@@ -140,6 +134,8 @@ struct App {
     play: PlayState,
     replays: ReplaysState,
     patches: PatchesState,
+    settings: tabs::settings::State,
+    welcome: tabs::welcome::State,
 
     /// Active emulator session (replay playback or single-player) plus
     /// the cached framebuffer Handle. While `session.is_active()`, the
@@ -198,7 +194,7 @@ impl App {
                 }
             }
         }
-        let welcome_nickname = config.nickname.clone().unwrap_or_default();
+        let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
         // Spin up cpal once at startup with the LateBinder as the
         // source. Sessions later bind their MGBAStream into the binder
@@ -221,8 +217,8 @@ impl App {
         let mut app = Self {
             config,
             tab: Tab::default(),
-            settings_tab: SettingsTab::General,
-            welcome_nickname,
+            welcome,
+            settings: tabs::settings::State::default(),
             scanners,
             audio_binder,
             _audio_backend: audio_backend,
@@ -781,53 +777,30 @@ impl App {
     }
 
     fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {
-        use tabs::settings::Message as M;
-        match msg {
-            M::TabSelected(t) => self.settings_tab = t,
-            M::LanguageSelected(l) => {
-                self.config.language = l;
-                self.persist_config();
-            }
-            M::NicknameChanged(s) => {
-                self.config.nickname = if s.is_empty() { None } else { Some(s) };
-                self.persist_config();
-            }
-            M::ToggleStreamerMode(s) => {
-                self.config.streamer_mode = s;
-                self.persist_config();
-            }
-            M::MatchmakingEndpointChanged(s) => {
-                self.config.matchmaking_endpoint = s;
-                self.persist_config();
-            }
-            M::PatchRepoChanged(s) => {
-                self.config.patch_repo = s;
-                self.persist_config();
-            }
-            M::ThemeChanged(t) => {
-                self.config.theme = t;
-                self.persist_config();
-            }
-            M::VolumeChanged(v) => {
+        use tabs::settings::ConfigChange as C;
+        let Some(change) = self.settings.update(msg) else {
+            return iced::Task::none();
+        };
+        match change {
+            C::Language(l) => self.config.language = l,
+            C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
+            C::StreamerMode(b) => self.config.streamer_mode = b,
+            C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
+            C::PatchRepo(s) => self.config.patch_repo = s,
+            C::Theme(t) => self.config.theme = t,
+            C::Volume(v) => {
                 self.config.volume = v;
                 self.audio_binder.set_volume(v);
-                self.persist_config();
             }
         }
+        self.persist_config();
         iced::Task::none()
     }
 
     fn update_welcome(&mut self, msg: tabs::welcome::Message) -> iced::Task<tabs::welcome::Message> {
-        use tabs::welcome::Message as M;
-        match msg {
-            M::NicknameChanged(s) => self.welcome_nickname = s,
-            M::Continue => {
-                let trimmed = self.welcome_nickname.trim().to_string();
-                if !trimmed.is_empty() {
-                    self.config.nickname = Some(trimmed);
-                    self.persist_config();
-                }
-            }
+        if let Some(nickname) = self.welcome.update(msg) {
+            self.config.nickname = Some(nickname);
+            self.persist_config();
         }
         iced::Task::none()
     }
@@ -837,7 +810,7 @@ impl App {
 
         // First-run gate: no main UI until the user picks a nickname.
         if self.config.nickname.is_none() {
-            return welcome_view(lang, &self.welcome_nickname).map(Message::Welcome);
+            return tabs::welcome::view(lang, &self.welcome).map(Message::Welcome);
         }
 
         if self.session.is_active() {
@@ -860,7 +833,7 @@ impl App {
                 .view(lang, &self.scanners, &self.config)
                 .map(Message::Replays),
             Tab::Patches => self.patches.view(lang, &self.scanners).map(Message::Patches),
-            Tab::Settings => settings_panel(lang, &self.config, self.settings_tab).map(Message::Settings),
+            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings).map(Message::Settings),
         };
 
         column![top_bar(lang, self.tab), horizontal_rule(1), body]

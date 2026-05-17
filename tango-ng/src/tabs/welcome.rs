@@ -11,7 +11,44 @@ pub enum Message {
     Continue,
 }
 
-pub fn welcome_view(lang: &LanguageIdentifier, draft: &str) -> Element<'static, Message> {
+/// Welcome-screen state: just the in-progress nickname draft until
+/// the user hits Continue, at which point App copies it into
+/// `config.nickname` and the welcome screen is never shown again.
+#[derive(Default)]
+pub struct State {
+    pub nickname_draft: String,
+}
+
+impl State {
+    pub fn from_nickname(nickname: Option<&str>) -> Self {
+        Self {
+            nickname_draft: nickname.unwrap_or_default().to_string(),
+        }
+    }
+
+    /// Returns Some(trimmed_nickname) if the user finalized the
+    /// welcome step (clicked Continue or pressed Enter on a non-empty
+    /// input). The caller is expected to write it to `config.nickname`.
+    pub fn update(&mut self, msg: Message) -> Option<String> {
+        match msg {
+            Message::NicknameChanged(s) => {
+                self.nickname_draft = s;
+                None
+            }
+            Message::Continue => {
+                let trimmed = self.nickname_draft.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+        }
+    }
+}
+
+pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Element<'a, Message> {
+    let draft = &state.nickname_draft;
     let can_continue = !draft.trim().is_empty();
     let mut continue_btn = button(text(t(lang, "welcome-continue")).size(PRIMARY_TEXT_SIZE))
         .padding(PRIMARY_PADDING)

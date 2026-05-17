@@ -13,6 +13,14 @@ pub enum SettingsTab {
     About,
 }
 
+/// Settings tab UI state. Just the active sub-tab today — anything
+/// configurable lives in `config::Config`, not here, since it has to
+/// survive a restart.
+#[derive(Default)]
+pub struct State {
+    pub active_tab: SettingsTab,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     TabSelected(SettingsTab),
@@ -25,11 +33,48 @@ pub enum Message {
     VolumeChanged(u8),
 }
 
-pub fn settings_panel<'a>(
+/// Messages the settings panel emits that affect persisted
+/// config — used by App's update handler to apply to its
+/// `config::Config` and call `persist_config()`. The TabSelected
+/// variant is handled internally and never appears here.
+#[derive(Debug, Clone)]
+pub enum ConfigChange {
+    Language(LanguageIdentifier),
+    Nickname(String),
+    StreamerMode(bool),
+    MatchmakingEndpoint(String),
+    PatchRepo(String),
+    Theme(config::ThemeMode),
+    Volume(u8),
+}
+
+impl State {
+    /// Apply a settings message to local UI state. Returns
+    /// `Some(ConfigChange)` for variants the caller needs to persist
+    /// to disk; `None` for purely-local navigation like TabSelected.
+    pub fn update(&mut self, msg: Message) -> Option<ConfigChange> {
+        match msg {
+            Message::TabSelected(t) => {
+                self.active_tab = t;
+                None
+            }
+            Message::LanguageSelected(l) => Some(ConfigChange::Language(l)),
+            Message::NicknameChanged(s) => Some(ConfigChange::Nickname(s)),
+            Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
+            Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
+            Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
+            Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
+            Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
+        }
+    }
+}
+
+pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
-    active: SettingsTab,
+    state: &'a State,
 ) -> Element<'a, Message> {
+    let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
     let side_btn = |key: &'static str, tab: SettingsTab| {
         let style = if tab == active { button::primary } else { button::text };
