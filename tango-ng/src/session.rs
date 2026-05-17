@@ -393,9 +393,9 @@ pub fn view<'a>(
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
             let (icon, label_key) = if state.show_opponent_panel {
-                (Icon::X, "session-hide-opponent")
+                (Icon::ArrowRightFromLine, "session-hide-opponent")
             } else {
-                (Icon::Play, "session-show-opponent")
+                (Icon::ArrowLeftFromLine, "session-show-opponent")
             };
             Some(widgets::icon_button(
                 icon,
@@ -489,10 +489,59 @@ pub fn view<'a>(
         // close button (and opponent toggle) hug the right edge.
         controls = controls.push(horizontal_space());
     }
+    // PvP-only status readout: P1/P2, TPS, rollback ticks, ping.
+    // Mirrors the legacy bottom-bar metrics in
+    // `tango/src/gui/session_view.rs`. Monospaced so values don't
+    // wiggle as they tick up. PvP also DOESN'T expose a manual
+    // close button — leaving a match is the in-game match-end
+    // hook's job (auto-close); the session view auto-tears down
+    // when `completion_token.is_complete()`.
+    let is_pvp = matches!(session, ActiveSession::PvP(_));
+    if let ActiveSession::PvP(pvp) = session {
+        let stats = pvp.round_stats();
+        let ping_ms = pvp.latency_blocking().as_millis();
+        let tps = pvp.tps();
+        let mut metrics = row![].spacing(10).align_y(Alignment::Center);
+        if let Some(s) = stats {
+            metrics = metrics.push(
+                text(format!("P{}", s.local_player_index + 1))
+                    .size(TEXT_CAPTION)
+                    .font(iced::Font::MONOSPACE)
+                    .style(save_view::muted_text_style),
+            );
+        }
+        metrics = metrics.push(
+            text(format!("tps {:5.1}", tps))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(save_view::muted_text_style),
+        );
+        if let Some(s) = stats {
+            metrics = metrics.push(
+                text(format!("rollback {:+}", s.rollback_ticks()))
+                    .size(TEXT_CAPTION)
+                    .font(iced::Font::MONOSPACE)
+                    .style(save_view::muted_text_style),
+            );
+        }
+        metrics = metrics.push(
+            text(format!("ping {:>3} ms", ping_ms))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(save_view::muted_text_style),
+        );
+        controls = controls.push(metrics);
+    }
     if let Some(toggle) = opponent_toggle {
         controls = controls.push(toggle);
     }
-    controls = controls.push(close_btn);
+    if !is_pvp {
+        controls = controls.push(close_btn);
+    } else {
+        // Silences the unused-binding warning when we skip the
+        // close button on PvP.
+        let _ = close_btn;
+    }
     layout = layout.push(container(controls).width(Fill));
 
     layout.into()

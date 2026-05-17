@@ -7,7 +7,7 @@ use crate::{
 };
 use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, pick_list, row, text, text_input};
+use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -44,6 +44,10 @@ pub enum Message {
     Rescan,
 
     SaveOpenFolder,
+    /// Open an arbitrary folder in the OS file manager. Used by
+    /// the no-saves / no-roms empty-state cards to give the user
+    /// a one-click jump into the right directory.
+    OpenSavesFolder(std::path::PathBuf),
     SaveDuplicate,
     SaveRenameStart,
     SaveRenameDraftChanged(String),
@@ -338,6 +342,7 @@ impl PlayState {
                 .as_ref()
                 .and_then(|p| p.parent())
                 .map(|p| Effect::OpenPath(p.to_path_buf())),
+            Message::OpenSavesFolder(path) => Some(Effect::OpenPath(path)),
             Message::SaveDuplicate => Some(Effect::SaveDuplicate),
             Message::SaveRenameStart => {
                 let draft = self
@@ -491,12 +496,14 @@ impl PlayState {
     ) -> Element<'a, Message> {
         // No ROMs at all: explain where to put them.
         if scanners.roms.read().is_empty() {
+            let roms_path = config.roms_path();
             return empty_state_card(
                 t(lang, "empty-no-roms-title"),
                 vec![
                     t(lang, "empty-no-roms-body"),
-                    config.roms_path().display().to_string(),
+                    roms_path.display().to_string(),
                 ],
+                Some((t(lang, "save-open-folder"), roms_path)),
             );
         }
         // Game selected but no save files for it.
@@ -508,12 +515,14 @@ impl PlayState {
                 .map(|v| !v.is_empty())
                 .unwrap_or(false);
             if !has_saves && self.local_save.is_none() {
+                let saves_path = config.saves_path();
                 return empty_state_card(
                     t(lang, "empty-no-saves-title"),
                     vec![
                         t(lang, "empty-no-saves-body"),
-                        config.saves_path().display().to_string(),
+                        saves_path.display().to_string(),
                     ],
+                    Some((t(lang, "save-open-folder"), saves_path)),
                 );
             }
         }
@@ -1526,10 +1535,27 @@ impl std::fmt::Display for MatchTypeOption {
 
 /// Centered card used for the no-roms / no-saves hints. Title is
 /// rendered larger, body lines stack underneath in muted text.
-fn empty_state_card(title: String, body_lines: Vec<String>) -> Element<'static, Message> {
+/// When `folder` is provided, appends an "Open Folder" button —
+/// usually the same path as the body's last line, so the user
+/// can click straight through instead of copy-pasting it into
+/// their file manager.
+fn empty_state_card(
+    title: String,
+    body_lines: Vec<String>,
+    open_folder: Option<(String, std::path::PathBuf)>,
+) -> Element<'static, Message> {
     let mut col = column![text(title).size(TEXT_TITLE)].spacing(8).align_x(Alignment::Center);
     for line in body_lines {
         col = col.push(text(line).size(TEXT_CAPTION).style(save_view::muted_text_style));
+    }
+    if let Some((label, path)) = open_folder {
+        col = col.push(Space::new().height(4)).push(widgets::labeled_icon_button(
+            Icon::Folder,
+            label,
+            Message::OpenSavesFolder(path),
+            STANDARD_PADDING,
+            widgets::neutral,
+        ));
     }
     container(col.padding(20).max_width(520))
         .center(Fill)

@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod audio;
 mod config;
 mod game;
@@ -20,6 +22,7 @@ mod scrubber;
 mod selection;
 mod session;
 mod singleplayer_session;
+mod stats;
 mod tabs;
 mod widgets;
 
@@ -521,22 +524,7 @@ pub enum Message {
 
 impl App {
     fn title(&self) -> String {
-        let base = t(&self.config.language, "window-title");
-        // Append "<game name> (<save filename>)" when a selection is
-        // active so multiple Tango windows stay distinguishable.
-        let Some(game) = self.play.local_game else {
-            return base;
-        };
-        let game_name = game::display_name(&self.config.language, game);
-        if let Some(save_path) = self.play.local_save.as_ref() {
-            let save_name = save_path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            format!("{base} — {game_name} ({save_name})")
-        } else {
-            format!("{base} — {game_name}")
-        }
+        t(&self.config.language, "window-title")
     }
 
     fn update(&mut self, message: Message) -> iced::Task<Message> {
@@ -576,8 +564,8 @@ impl App {
                 // saves dir on match end; once the session closes
                 // we want the new file to show up in the Replays
                 // tab without a manual rescan.
-                let pvp_closing = matches!(m, session::Message::Close)
-                    && matches!(self.session.active, Some(ActiveSession::PvP(_)));
+                let pvp_closing =
+                    matches!(m, session::Message::Close) && matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
                 if sp_closing {
                     let saves_path = self.config.saves_path();
@@ -1214,7 +1202,8 @@ impl App {
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
     use lucide_icons::Icon;
-    let tab = |icon, label, target: Tab| widgets::tab_button(icon, label, Message::TabSelected(target), target == active);
+    let tab =
+        |icon, label, target: Tab| widgets::tab_button(icon, label, Message::TabSelected(target), target == active);
     container(
         row![
             tab(Icon::Gamepad, t(lang, "tab-play"), Tab::Play),

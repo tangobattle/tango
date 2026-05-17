@@ -29,6 +29,11 @@ pub struct PvpSession {
     /// `Session::completed()` check (see `tango/src/gui.rs`'s
     /// `should_close` block).
     completion_token: tango_pvp::hooks::CompletionToken,
+    /// Sliding-window timestamp counter marked once per emulator
+    /// frame_callback — yields the true emulator TPS regardless
+    /// of how often the UI polls. Equivalent to legacy
+    /// `tango::stats::Counter` driven by the same callback site.
+    tps_counter: Arc<parking_lot::Mutex<crate::stats::Counter>>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
@@ -38,8 +43,10 @@ pub struct PvpSession {
     latency_counter: Arc<tokio::sync::Mutex<crate::net::LatencyCounter>>,
     _peer_conn: datachannel_wrapper::PeerConnection,
     /// Kept alive so the background `match_.run(receiver)` task
-    /// has a referent. Cleared by that task when it exits.
-    _match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>>,
+    /// has a referent. Cleared by that task when it exits. The UI
+    /// also locks this each tick to scrape the current round's
+    /// player-index / queue-lengths for the status bar.
+    match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>>,
     /// Bumped once per emulator frame in the frame callback —
     /// see `frame_id()` for usage.
     frame_id: Arc<std::sync::atomic::AtomicU64>,
@@ -265,17 +272,21 @@ impl PvpSession {
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize
         ]));
+        // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
+        let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
             let completion_token = completion_token.clone();
             let frame_id = frame_id.clone();
+            let tps_counter = tps_counter.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 frame_id.fetch_add(1, Ordering::Release);
+                tps_counter.lock().mark();
                 if completion_token.is_complete() {
                     thread_handle.pause();
                 }
@@ -287,12 +298,13 @@ impl PvpSession {
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
             completion_token,
+            tps_counter,
             _audio_binding: audio_binding,
             _thread: thread,
             cancellation_token,
             latency_counter,
             _peer_conn: pre_match.peer_conn,
-            _match_handle: match_handle,
+            match_handle,
             frame_id,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
@@ -335,6 +347,50 @@ impl PvpSession {
     /// Pong arrives.
     pub fn latency_blocking(&self) -> std::time::Duration {
         self.latency_counter.blocking_lock().median()
+    }
+
+    /// Smoothed emulator ticks-per-second from the per-frame
+    /// callback's interval samples. Independent of UI refresh
+    /// rate. ZERO until the second sample lands.
+    pub fn tps(&self) -> f32 {
+        let mean = self.tps_counter.lock().mean_duration();
+        if mean.is_zero() {
+            0.0
+        } else {
+            1.0 / mean.as_secs_f32()
+        }
+    }
+
+    /// Snapshot of the current round's metrics for the status bar
+    /// (P1/P2, rollback ticks). `None` between rounds or before
+    /// the first round starts.
+    pub fn round_stats(&self) -> Option<RoundStats> {
+        let match_ = self.match_handle.blocking_lock();
+        let match_ = match_.as_ref()?;
+        let round_state = match_.lock_round_state();
+        let round = round_state.as_ref()?;
+        Some(RoundStats {
+            local_player_index: round.local_player_index(),
+            local_queue_len: round.local_queue_length(),
+            remote_queue_len: round.remote_queue_length(),
+        })
+    }
+}
+
+/// Subset of `tango_pvp::battle::Round` metrics surfaced in the
+/// status bar.
+#[derive(Clone, Copy, Debug)]
+pub struct RoundStats {
+    pub local_player_index: u8,
+    pub local_queue_len: usize,
+    pub remote_queue_len: usize,
+}
+
+impl RoundStats {
+    /// Signed rollback delta — how many ticks the local side is
+    /// ahead of (positive) or behind (negative) the remote.
+    pub fn rollback_ticks(&self) -> i64 {
+        self.local_queue_len as i64 - self.remote_queue_len as i64
     }
 }
 
