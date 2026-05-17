@@ -40,7 +40,8 @@ play-play = 対戦
 play-cancel = キャンセル
 play-status-idle = ネットプレイするにはリンクコードを入力、空欄で一人用モードになります。
 play-status-connecting = 接続中:
-play-status-connected = 接続済み:
+play-status-negotiating = ネゴシエーション中:
+play-status-lobby = ロビー:
 play-status-failed = 接続失敗
 play-netplay-todo = ネットプレイは未実装です。リンクコードを空にすると一人用セッションを開始できます。
 

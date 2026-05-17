@@ -475,7 +475,7 @@ impl PlayState {
         // (App::view dispatches to session::view otherwise), so the
         // only "in-progress" state we need to surface here is netplay.
         // Cancel = disconnect, all phases other than Idle / Failed.
-        let netplay_in_flight = matches!(netplay, Phase::Connecting { .. } | Phase::Connected { .. });
+        let netplay_in_flight = !matches!(netplay, Phase::Idle | Phase::Failed { .. });
         let play_button: Element<'a, Message> = if netplay_in_flight {
             icons::labeled_icon_button(
                 icons::CLOSE,
@@ -501,22 +501,31 @@ impl PlayState {
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
             text(flash.clone()).size(12).style(text::danger).into()
         } else {
+            let primary_style = text::primary;
+            let success_style = |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(theme.palette().success),
+            };
             match netplay {
                 Phase::Connecting { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-connecting")
                 ))
                 .size(13)
-                .style(text::primary)
+                .style(primary_style)
                 .into(),
-                Phase::Connected { link_code } => text(format!(
+                Phase::Negotiating { link_code } => text(format!(
                     "{} {link_code}",
-                    t(lang, "play-status-connected")
+                    t(lang, "play-status-negotiating")
                 ))
                 .size(13)
-                .style(|theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().success),
-                })
+                .style(primary_style)
+                .into(),
+                Phase::Lobby { link_code } => text(format!(
+                    "{} {link_code}",
+                    t(lang, "play-status-lobby")
+                ))
+                .size(13)
+                .style(success_style)
                 .into(),
                 Phase::Failed { error } => {
                     text(format!("{}: {error}", t(lang, "play-status-failed")))

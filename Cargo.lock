@@ -6892,6 +6892,7 @@ name = "tango-ng"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bps",
  "bytemuck",
  "chrono",

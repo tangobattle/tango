@@ -40,7 +40,8 @@ play-play = Play
 play-cancel = Cancel
 play-status-idle = Enter a link code to start netplay, or leave blank for single-player.
 play-status-connecting = Connecting to
-play-status-connected = Connected:
+play-status-negotiating = Negotiating with
+play-status-lobby = In lobby with
 play-status-failed = Connection failed
 play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 

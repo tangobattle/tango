@@ -26,6 +26,7 @@ tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
+bincode = "1"
 cpal = "0.16"
 bytemuck = "1"
 thiserror = "1"

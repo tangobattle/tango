@@ -12,6 +12,7 @@ mod rom;
 mod rom_overrides;
 mod save;
 mod save_view;
+mod net;
 mod netplay;
 mod scanner;
 mod scrubber;
