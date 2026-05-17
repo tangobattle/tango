@@ -114,6 +114,18 @@ impl SinglePlayerSession {
     pub fn request_pause(&self) {
         self.pause_on_next_frame.store(true, Ordering::SeqCst);
     }
+
+    /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,
+    /// >1.0 = fast-forward. Audio paces frames, so values above ~4x
+    /// start dropping samples; clamp accordingly to keep audio coherent.
+    pub fn set_speed(&self, factor: f32) {
+        let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
+        self._thread
+            .handle()
+            .lock_audio()
+            .sync_mut()
+            .set_fps_target(fps);
+    }
 }
 
 fn fix_vbuf_alpha(vbuf: &mut [u8]) {

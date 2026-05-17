@@ -144,11 +144,11 @@ impl State {
                     s.seek_to(target);
                 }
             }
-            Message::SetSpeed(factor) => {
-                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    s.set_speed(factor);
-                }
-            }
+            Message::SetSpeed(factor) => match self.active.as_ref() {
+                Some(ActiveSession::Replay(s)) => s.set_speed(factor),
+                Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
+                None => {}
+            },
         }
         iced::Task::none()
     }
@@ -387,14 +387,23 @@ pub fn spawn_singleplayer(
 
 /// `iced::event::listen_with` needs a free `fn` (no captures), so we
 /// fold the key→mgba-bit translation into the subscription itself and
-/// only emit messages for keys we actually bind.
+/// only emit messages for keys we actually bind. LShift is a special
+/// hold-to-fast-forward binding — separate from the joypad mapping
+/// so it doesn't collide with any GBA button.
 pub fn map_keyboard_event(
     event: iced::Event,
     _status: iced::event::Status,
     _window: iced::window::Id,
 ) -> Option<Message> {
-    use iced::keyboard::Event as Kb;
+    use iced::keyboard::{key::Named, Event as Kb, Key};
+    const FAST_FORWARD: f32 = 4.0;
     match event {
+        iced::Event::Keyboard(Kb::KeyPressed { key: Key::Named(Named::Shift), .. }) => {
+            Some(Message::SetSpeed(FAST_FORWARD))
+        }
+        iced::Event::Keyboard(Kb::KeyReleased { key: Key::Named(Named::Shift), .. }) => {
+            Some(Message::SetSpeed(1.0))
+        }
         iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
             singleplayer_session::key_to_mgba_bit(&key).map(Message::KeyDown)
         }
