@@ -165,7 +165,11 @@ pub enum SaveAction {
     /// Creating a new save. `template` is the template name (empty
     /// string is the default unnamed template); `draft` is the user's
     /// chosen filename.
-    NewSave { draft: String, template: String },
+    /// `template == None` until the user explicitly picks one
+    /// (auto-selected when only one template is available). The
+    /// Confirm button is disabled in the None state — there's no
+    /// "default" template to fall back on.
+    NewSave { draft: String, template: Option<String> },
 }
 
 impl Default for PlayState {
@@ -384,10 +388,17 @@ impl PlayState {
                     }
                     draft = format!("new save {n}");
                 }
-                self.save_action = SaveAction::NewSave {
-                    draft,
-                    template: String::new(),
-                };
+                // Auto-select if only one template is offered;
+                // otherwise leave None so the user has to pick
+                // explicitly (Confirm stays disabled until they do).
+                let template = templates_for_selection(self, scanners).and_then(|tmpls| {
+                    if tmpls.len() == 1 {
+                        tmpls.keys().next().cloned()
+                    } else {
+                        None
+                    }
+                });
+                self.save_action = SaveAction::NewSave { draft, template };
                 None
             }
             Message::SaveNewDraftChanged(s) => {
@@ -398,16 +409,16 @@ impl PlayState {
             }
             Message::SaveNewTemplateSelected(name) => {
                 if let SaveAction::NewSave { template, .. } = &mut self.save_action {
-                    *template = name;
+                    *template = Some(name);
                 }
                 None
             }
             Message::SaveNewConfirm => {
-                let (name, template) = if let SaveAction::NewSave { draft, template } = &self.save_action {
-                    (draft.trim().to_string(), template.clone())
-                } else {
-                    (String::new(), String::new())
+                let SaveAction::NewSave { draft, template: Some(template) } = &self.save_action else {
+                    return None;
                 };
+                let name = draft.trim().to_string();
+                let template = template.clone();
                 self.save_action = SaveAction::None;
                 if name.is_empty() {
                     None
@@ -690,53 +701,58 @@ impl PlayState {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::NewSave { draft, template } => {
-                // Templates available for the current game+patch (incl.
-                // built-ins). Names get sorted with the default ("") first.
-                let mut names: Vec<String> = templates_for_selection(self, scanners)
-                    .map(|t| t.keys().cloned().collect())
+                // Real template names from disk — no synthesized
+                // "(default)" entry. Each option carries the raw
+                // name plus a locale-aware display label so the
+                // user sees "MegaMan.EXE" / "Saito" etc instead of
+                // the bare filename suffix.
+                let family = self
+                    .local_game
+                    .map(|g| g.family_and_variant().0)
                     .unwrap_or_default();
-                names.sort_by(|a, b| match (a.is_empty(), b.is_empty()) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => a.cmp(b),
-                });
-                // Display the empty string as a localized "(default)".
-                let default_label = t(lang, "save-template-default");
-                let display_names: Vec<String> = names
-                    .iter()
-                    .map(|n| if n.is_empty() { default_label.clone() } else { n.clone() })
-                    .collect();
-                let selected_display = if template.is_empty() {
-                    default_label.clone()
-                } else {
-                    template.clone()
-                };
-                let default_label_for_select = default_label.clone();
-                row![
-                    pick_list(display_names, Some(selected_display), move |picked| {
-                        let real = if picked == default_label_for_select {
-                            String::new()
-                        } else {
-                            picked
-                        };
-                        Message::SaveNewTemplateSelected(real)
+                let mut options: Vec<SaveTemplateOption> = templates_for_selection(self, scanners)
+                    .map(|t| {
+                        t.keys()
+                            .map(|name| SaveTemplateOption::new(lang, family, name))
+                            .collect()
                     })
-                    
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(180.0)),
-                    text_input(&t(lang, "save-name-placeholder"), draft)
-                        .on_input(Message::SaveNewDraftChanged)
-                        .on_submit(Message::SaveNewConfirm)
-                        
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fill),
+                    .unwrap_or_default();
+                options.sort_by(|a, b| a.display.cmp(&b.display));
+                let selected = template
+                    .as_ref()
+                    .and_then(|t| options.iter().find(|o| &o.raw == t).cloned());
+                let can_confirm = template.is_some() && !draft.trim().is_empty();
+                let confirm_btn = if can_confirm {
                     widgets::labeled_icon_button(
                         Icon::Check,
                         t(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
                         STANDARD_PADDING,
                         button::primary,
-                    ),
+                    )
+                } else {
+                    iced::widget::button(
+                        row![Icon::Check.widget(), text(t(lang, "save-new-confirm"))]
+                            .spacing(8)
+                            .align_y(Alignment::Center),
+                    )
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::neutral)
+                    .into()
+                };
+                row![
+                    pick_list(options, selected, |o| {
+                        Message::SaveNewTemplateSelected(o.raw)
+                    })
+                    .placeholder(t(lang, "save-template-pick"))
+                    .padding(STANDARD_PADDING)
+                    .width(Length::Fixed(180.0)),
+                    text_input(&t(lang, "save-name-placeholder"), draft)
+                        .on_input(Message::SaveNewDraftChanged)
+                        .on_submit(Message::SaveNewConfirm)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fill),
+                    confirm_btn,
                     widgets::icon_button(
                         Icon::X,
                         t(lang, "save-action-cancel"),
@@ -1361,6 +1377,55 @@ fn lobby_view<'a>(
     .width(Fill)
     .height(Fill)
     .into()
+}
+
+/// One entry in the "new save" template pick_list. Carries the
+/// raw template name (whatever was scanned off disk) plus a
+/// display label resolved via `game-<family>.save-<name>` so the
+/// user sees "MegaMan.EXE" / "Saito" / "Brother" instead of the
+/// bare filename suffix.
+#[derive(Clone)]
+struct SaveTemplateOption {
+    raw: String,
+    display: String,
+}
+
+impl SaveTemplateOption {
+    fn new(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> Self {
+        // Empty `raw` is the unnamed default-template file that
+        // patches ship as `<rom>_<rev>.sav`. Patches' .save-megaman
+        // attr usually carries the right label for that.
+        let key_suffix = if raw.is_empty() { "megaman" } else { raw };
+        let display = crate::i18n::t_opt(lang, &format!("game-{family}.save-{key_suffix}"))
+            .unwrap_or_else(|| {
+                if raw.is_empty() {
+                    crate::i18n::t(lang, "save-template-default")
+                } else {
+                    raw.to_string()
+                }
+            });
+        Self {
+            raw: raw.to_string(),
+            display,
+        }
+    }
+}
+
+impl PartialEq for SaveTemplateOption {
+    fn eq(&self, other: &Self) -> bool {
+        self.raw == other.raw
+    }
+}
+impl Eq for SaveTemplateOption {}
+impl std::hash::Hash for SaveTemplateOption {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.raw.hash(h);
+    }
+}
+impl std::fmt::Display for SaveTemplateOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.display)
+    }
 }
 
 /// Which ready-button state we're painting. Drives

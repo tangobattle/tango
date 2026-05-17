@@ -4,18 +4,8 @@
 //! emits the caller's seek message; release ends the drag.
 
 use iced::widget::canvas::{self, Canvas, Frame, Path};
-use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-/// Linear-blend two colors. `t` runs 0..1; 0 returns `a`, 1 returns `b`.
-fn mix(a: Color, b: Color, t: f32) -> Color {
-    let t = t.clamp(0.0, 1.0);
-    Color::from_rgba(
-        a.r + (b.r - a.r) * t,
-        a.g + (b.g - a.g) * t,
-        a.b + (b.b - a.b) * t,
-        a.a + (b.a - a.a) * t,
-    )
-}
 
 pub struct Scrubber<F> {
     current: u32,
@@ -51,9 +41,14 @@ impl<F> Scrubber<F> {
     }
 
     /// Translate an x within the bar (0..width) to an absolute tick.
+    /// Clamped to the prefetched range so a click past the loaded
+    /// edge doesn't trigger a long stall while the rest decodes
+    /// (the prefetcher is a background task; let it catch up
+    /// before the user can scrub into uncached frames).
     fn tick_at_x(&self, x: f32, width: f32) -> u32 {
         let pct = (x / width.max(1.0)).clamp(0.0, 1.0);
-        (pct * self.total.max(1) as f32).round() as u32
+        let raw = (pct * self.total.max(1) as f32).round() as u32;
+        raw.min(self.prefetched)
     }
 }
 

@@ -24,6 +24,7 @@ save-name-placeholder = 新しい名前
 save-new = 新規セーブ
 save-new-confirm = 作成
 save-template-default = （デフォルト）
+save-template-pick = テンプレートを選択…
 
 # Empty-state hints
 empty-no-roms-title = ROMが見つかりません

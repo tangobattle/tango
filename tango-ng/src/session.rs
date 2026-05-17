@@ -450,7 +450,6 @@ pub fn view<'a>(
         let total = r.total_ticks().max(1);
         let cur = r.current_tick().min(total);
         let prefetched = r.prefetch_progress().min(total);
-        let pct = (prefetched as f32 / total as f32 * 100.0).round() as u32;
         let (play_pause_icon, play_pause_key) = if r.is_paused() {
             (Icon::Play, "playback-play")
         } else {
@@ -484,7 +483,6 @@ pub fn view<'a>(
             .push(text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style))
             .push(scrub)
             .push(text(format_tick(total)).size(TEXT_CAPTION).style(save_view::muted_text_style))
-            .push(text(format!("{pct}%")).size(TEXT_CAPTION).style(save_view::muted_text_style))
             .push(speed_picker);
     } else {
         // No transport widgets for SP/PvP — push a spacer so the

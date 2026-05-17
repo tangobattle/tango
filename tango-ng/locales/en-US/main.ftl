@@ -24,6 +24,7 @@ save-name-placeholder = New name
 save-new = New save
 save-new-confirm = Create
 save-template-default = (default)
+save-template-pick = Pick a template…
 
 # Empty-state hints
 empty-no-roms-title = No game ROMs found
