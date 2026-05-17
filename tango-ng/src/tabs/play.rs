@@ -18,13 +18,10 @@ pub enum Message {
     LocalSaveSelected(SaveOption),
     LocalPatchSelected(String),
     LocalPatchVersionSelected(semver::Version),
-    SaveTabSelected(save_view::Tab),
-    ToggleFolderGrouped(bool),
+    SaveViewAction(save_view::Action),
     LinkCodeChanged(String),
     PlayPressed,
     Rescan,
-
-    CopyTabAsText(save_view::Tab),
 
     SaveOpenFolder,
     SaveDuplicate,
@@ -93,9 +90,10 @@ pub struct PlayState {
     pub local_save: Option<std::path::PathBuf>,
     pub local_patch: Option<String>,
     pub local_patch_version: Option<semver::Version>,
-    /// Explicit save-tab pick; `None` means "auto-pick from available".
-    pub save_tab: Option<save_view::Tab>,
-    pub folder_grouped: bool,
+    /// Persistent state for the embedded save view (active tab,
+    /// folder grouping). Apply incoming `SaveViewAction`s via
+    /// [`save_view::State::apply`].
+    pub save_view: save_view::State,
     /// Inline state for the save-management actions (rename / delete).
     pub save_action: SaveAction,
     pub link_code: String,
@@ -126,8 +124,7 @@ impl Default for PlayState {
             local_save: None,
             local_patch: None,
             local_patch_version: None,
-            save_tab: None,
-            folder_grouped: true,
+            save_view: save_view::State::new(),
             save_action: SaveAction::None,
             link_code: String::new(),
             playing: false,
@@ -464,56 +461,8 @@ impl PlayState {
                 .center(Fill)
                 .into();
         };
-
-        let available = save_view::available_tabs(loaded.save.as_ref(), streamer_mode);
-        if available.is_empty() {
-            return container(text(t(lang, "save-empty")).size(13))
-                .center(Fill)
-                .into();
-        }
-
-        let active = self
-            .save_tab
-            .filter(|t| available.contains(t))
-            .unwrap_or(available[0]);
-
-        let opts = save_view::RenderOpts {
-            folder_grouped: self.folder_grouped,
-        };
-
-        let tab_button = |tab: save_view::Tab| {
-            let style = if tab == active { button::primary } else { button::text };
-            icons::labeled_icon_button(
-                save_tab_icon(tab),
-                t(lang, save_view::tab_key(tab)),
-                Message::SaveTabSelected(tab),
-                STANDARD_TEXT_SIZE,
-                STANDARD_PADDING,
-                style,
-            )
-        };
-
-        let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
-        for tab in &available {
-            tab_row = tab_row.push(tab_button(*tab));
-        }
-        tab_row = tab_row.push(horizontal_space());
-        // save_view::tab_strip_extras returns Element<save_view::Message>;
-        // it's currently the same Message type for those controls (folder
-        // group toggle, copy). We map them through the play Message.
-        if let Some(extras) = tab_strip_extras(lang, active, opts) {
-            tab_row = tab_row.push(extras);
-        }
-        let tabs = container(tab_row.padding([4, 8]))
-            .width(Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgba8(255, 255, 255, 0.02))),
-                ..iced::widget::container::Style::default()
-            });
-
-        let body = save_view::render::<Message>(lang, active, loaded, opts);
-
-        column![tabs, body].width(Fill).height(Fill).into()
+        save_view::view(lang, loaded, &self.save_view, streamer_mode)
+            .map(Message::SaveViewAction)
     }
 
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
@@ -561,54 +510,6 @@ impl PlayState {
         )
         .width(Fill)
         .into()
-    }
-}
-
-/// Per-save-tab icon glyph. Mirrors `save_view::tab_key`.
-fn save_tab_icon(tab: save_view::Tab) -> &'static str {
-    match tab {
-        save_view::Tab::Cover => icons::SAVE_COVER,
-        save_view::Tab::Navi => icons::SAVE_NAVI,
-        save_view::Tab::Folder => icons::SAVE_FOLDER,
-        save_view::Tab::PatchCards => icons::SAVE_PATCH_CARDS,
-        save_view::Tab::AutoBattleData => icons::SAVE_AUTO_BATTLE,
-    }
-}
-
-/// Play-local wrapper for save_view's tab strip extras. The extras
-/// (folder group toggle + copy buttons) were defined in save_view
-/// against `crate::Message` before the per-tab split; here we
-/// inline them so they emit `play::Message` directly.
-fn tab_strip_extras<'a>(
-    lang: &'a LanguageIdentifier,
-    tab: save_view::Tab,
-    opts: save_view::RenderOpts,
-) -> Option<Element<'static, Message>> {
-    let copy_btn = |tab: save_view::Tab| -> Element<'static, Message> {
-        icons::icon_button(
-            icons::COPY,
-            t(lang, "save-copy"),
-            Message::CopyTabAsText(tab),
-            13,
-            [4, 10],
-        )
-    };
-    match tab {
-        save_view::Tab::Folder => Some(
-            row![
-                iced::widget::checkbox(t(lang, "folder-group"), opts.folder_grouped)
-                    .on_toggle(Message::ToggleFolderGrouped)
-                    .size(14)
-                    .text_size(12),
-                copy_btn(save_view::Tab::Folder),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into(),
-        ),
-        save_view::Tab::PatchCards => Some(copy_btn(save_view::Tab::PatchCards)),
-        save_view::Tab::AutoBattleData => Some(copy_btn(save_view::Tab::AutoBattleData)),
-        _ => None,
     }
 }
 

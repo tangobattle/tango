@@ -175,22 +175,20 @@ impl Loaded {
         }
     }
 
-    /// Build a Loaded for one side of a replay. Used by the replays tab
-    /// to embed the save view directly in the detail panel.
-    /// `which_side` picks `local_side` vs `remote_side`. Pulls the
-    /// matching ROM out of the scanners cache; returns Err if it's
-    /// missing or any field on the replay side is incomplete.
-    pub fn for_replay_side(
+    /// Build a Loaded for the local side of a replay — used by the
+    /// replays tab to embed the save view in its detail panel. Pulls
+    /// the local rom + patch from the scanners cache; returns Err
+    /// if anything's missing.
+    pub fn for_replay_local(
         scanners: &crate::Scanners,
         config: &crate::config::Config,
         replay: &tango_pvp::replay::Replay,
-        which_side: ReplaySide,
     ) -> anyhow::Result<Self> {
-        let side = match which_side {
-            ReplaySide::Local => replay.metadata.local_side.as_ref(),
-            ReplaySide::Remote => replay.metadata.remote_side.as_ref(),
-        }
-        .ok_or_else(|| anyhow::anyhow!("replay missing {which_side:?} side metadata"))?;
+        let side = replay
+            .metadata
+            .local_side
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("replay missing local side metadata"))?;
         let gi = side
             .game_info
             .as_ref()
@@ -206,12 +204,7 @@ impl Loaded {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
 
-        // Per-side wram dump → Save via the gamedb's parse_wram.
-        let wram = match which_side {
-            ReplaySide::Local => &replay.local_wram,
-            ReplaySide::Remote => &replay.remote_wram,
-        };
-        let save = game.save_from_wram(wram)?;
+        let save = game.save_from_wram(&replay.local_wram)?;
 
         // Optional patch info — pull the Arc<Version> from the patch
         // scanner so we get the same rom_overrides (charset etc.) as
@@ -233,13 +226,6 @@ impl Loaded {
             patch_meta,
         ))
     }
-}
-
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ReplaySide {
-    #[default]
-    Local,
-    Remote,
 }
 
 fn build_navicust_render(

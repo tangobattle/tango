@@ -15,8 +15,7 @@ pub enum Message {
     OpenFolder(std::path::PathBuf),
     Watch(std::path::PathBuf),
     Rescan,
-    SaveTabSelected(save_view::Tab),
-    SaveSideSelected(crate::selection::ReplaySide),
+    SaveViewAction(save_view::Action),
 }
 
 #[derive(Default)]
@@ -25,15 +24,13 @@ pub struct ReplaysState {
     /// children of this dir.
     pub folder_filter: Option<std::path::PathBuf>,
     pub selected: Option<std::path::PathBuf>,
-    /// Cached Loaded for the currently-selected replay's chosen side.
-    /// Rebuilt by the App's Selected/SaveSideSelected handlers; the
-    /// view borrows it read-only.
+    /// Cached Loaded for the currently-selected replay's local side.
+    /// Rebuilt by the App's `Selected` handler; view borrows read-only.
     pub loaded: Option<crate::selection::Loaded>,
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
-    pub loaded_cache_key: Option<(std::path::PathBuf, crate::selection::ReplaySide)>,
-    pub save_side: crate::selection::ReplaySide,
-    pub save_tab: Option<save_view::Tab>,
+    pub loaded_cache_path: Option<std::path::PathBuf>,
+    pub save_view: save_view::State,
 }
 
 impl ReplaysState {
@@ -178,10 +175,10 @@ impl ReplaysState {
 
 fn replay_detail<'a>(
     lang: &'a LanguageIdentifier,
-    r: &'a replays::ScannedReplay,
-    replays_path: &'a std::path::Path,
+    r: &replays::ScannedReplay,
+    replays_path: &std::path::Path,
     state: &'a ReplaysState,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let md = &r.metadata;
     let ts_str = std::time::UNIX_EPOCH
         .checked_add(std::time::Duration::from_millis(md.ts))
@@ -227,72 +224,19 @@ fn replay_detail<'a>(
 
     let title = format!("{} @ {}", t(lang, "replays-watch"), md.link_code);
 
-    // Save preview: only renders if the App has built `state.loaded`
-    // for the current selection + side. Builds an internal tab strip
-    // (cover / navi / folder / patch cards / auto battle data) plus a
-    // "You / Opponent" side toggle.
+    // Embedded save view for the local side. App fills `state.loaded`
+    // when a replay is selected; until then (or if the parse fails)
+    // we show a stub.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        let available = save_view::available_tabs(loaded.save.as_ref(), false);
-        if available.is_empty() {
-            container(text(t(lang, "save-empty")).size(12).style(save_view::muted_text_style))
-                .padding(8)
-                .into()
-        } else {
-            let active = state
-                .save_tab
-                .filter(|t| available.contains(t))
-                .unwrap_or(available[0]);
-
-            let opts = save_view::RenderOpts { folder_grouped: true };
-
-            let tab_button = |tab: save_view::Tab| {
-                let style = if tab == active { iced::widget::button::primary } else { iced::widget::button::text };
-                icons::labeled_icon_button(
-                    save_tab_icon(tab),
-                    t(lang, save_view::tab_key(tab)),
-                    Message::SaveTabSelected(tab),
-                    STANDARD_TEXT_SIZE,
-                    STANDARD_PADDING,
-                    style,
-                )
-            };
-            let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
-            for tab in &available {
-                tab_row = tab_row.push(tab_button(*tab));
-            }
-
-            // You / Opponent side toggle.
-            let side_button = |side: crate::selection::ReplaySide, label: String| {
-                let style = if state.save_side == side {
-                    iced::widget::button::primary
-                } else {
-                    iced::widget::button::text
-                };
-                iced::widget::button(text(label).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .style(style)
-                    .on_press(Message::SaveSideSelected(side))
-            };
-            let side_row = row![
-                side_button(crate::selection::ReplaySide::Local, t(lang, "play-you")),
-                side_button(crate::selection::ReplaySide::Remote, t(lang, "replays-opponent")),
-            ]
-            .spacing(4);
-
-            let body = save_view::render::<Message>(lang, active, loaded, opts);
-
-            iced::widget::scrollable(
-                column![
-                    side_row,
-                    tab_row,
-                    body,
-                ]
-                .spacing(8)
-                .padding(8),
+        iced::widget::scrollable(
+            container(
+                save_view::view(lang, loaded, &state.save_view, false)
+                    .map(Message::SaveViewAction),
             )
-            .height(Fill)
-            .into()
-        }
+            .padding(8),
+        )
+        .height(Fill)
+        .into()
     } else {
         container(text(t(lang, "save-empty")).size(12).style(save_view::muted_text_style))
             .padding(8)
@@ -360,18 +304,6 @@ fn replay_detail<'a>(
     .width(Fill)
     .height(Fill)
     .into()
-}
-
-/// Per-save-tab icon glyph. Mirrors `crate::tabs::play::save_tab_icon`.
-fn save_tab_icon(tab: save_view::Tab) -> &'static str {
-    use crate::icons;
-    match tab {
-        save_view::Tab::Cover => icons::SAVE_COVER,
-        save_view::Tab::Navi => icons::SAVE_NAVI,
-        save_view::Tab::Folder => icons::SAVE_FOLDER,
-        save_view::Tab::PatchCards => icons::SAVE_PATCH_CARDS,
-        save_view::Tab::AutoBattleData => icons::SAVE_AUTO_BATTLE,
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

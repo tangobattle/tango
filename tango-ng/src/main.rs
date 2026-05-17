@@ -511,8 +511,16 @@ impl App {
                 self.refresh_loaded();
                 self.persist_selection();
             }
-            M::SaveTabSelected(t) => self.play.save_tab = Some(t),
-            M::ToggleFolderGrouped(g) => self.play.folder_grouped = g,
+            M::SaveViewAction(action) => {
+                self.play.save_view.apply(&action);
+                if let save_view::Action::CopyTab(tab) = action {
+                    if let Some(loaded) = self.loaded.as_ref() {
+                        if let Some(s) = save_view::tab_as_text(&self.config.language, tab, loaded) {
+                            return iced::clipboard::write(s);
+                        }
+                    }
+                }
+            }
             M::LinkCodeChanged(s) => {
                 self.play.link_code = s;
                 self.play.flash_status = None;
@@ -552,13 +560,6 @@ impl App {
             M::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
-            }
-            M::CopyTabAsText(tab) => {
-                if let Some(loaded) = self.loaded.as_ref() {
-                    if let Some(text) = save_view::tab_as_text(&self.config.language, tab, loaded) {
-                        return iced::clipboard::write(text);
-                    }
-                }
             }
             M::SaveOpenFolder => {
                 if let Some(p) = self.play.local_save.as_ref().and_then(|p| p.parent()) {
@@ -776,7 +777,7 @@ impl App {
                 self.replays.folder_filter = f.path;
                 self.replays.selected = None;
                 self.replays.loaded = None;
-                self.replays.loaded_cache_key = None;
+                self.replays.loaded_cache_path = None;
             }
             M::Selected(p) => {
                 self.replays.selected = Some(p);
@@ -803,48 +804,47 @@ impl App {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
             }
-            M::SaveTabSelected(t) => self.replays.save_tab = Some(t),
-            M::SaveSideSelected(side) => {
-                self.replays.save_side = side;
-                self.refresh_replay_loaded();
+            M::SaveViewAction(action) => {
+                self.replays.save_view.apply(&action);
+                if let save_view::Action::CopyTab(tab) = action {
+                    if let Some(loaded) = self.replays.loaded.as_ref() {
+                        if let Some(s) = save_view::tab_as_text(&self.config.language, tab, loaded) {
+                            return iced::clipboard::write(s);
+                        }
+                    }
+                }
             }
         }
         iced::Task::none()
     }
 
     /// Lazily rebuild `replays.loaded` for the currently-selected
-    /// replay + chosen side. No-op when the cache key already matches.
+    /// replay's local side. No-op when the cache path already matches.
     /// Failures log + clear the cache so the detail panel falls back
     /// to the metadata-only summary.
     fn refresh_replay_loaded(&mut self) {
         let Some(path) = self.replays.selected.clone() else {
             self.replays.loaded = None;
-            self.replays.loaded_cache_key = None;
+            self.replays.loaded_cache_path = None;
             return;
         };
-        let key = (path.clone(), self.replays.save_side);
-        if self.replays.loaded_cache_key.as_ref() == Some(&key) {
+        if self.replays.loaded_cache_path.as_ref() == Some(&path) {
             return;
         }
         let res = (|| -> anyhow::Result<selection::Loaded> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_pvp::replay::Replay::decode(f)?;
-            selection::Loaded::for_replay_side(
-                &self.scanners,
-                &self.config,
-                &replay,
-                self.replays.save_side,
-            )
+            selection::Loaded::for_replay_local(&self.scanners, &self.config, &replay)
         })();
         match res {
             Ok(loaded) => {
                 self.replays.loaded = Some(loaded);
-                self.replays.loaded_cache_key = Some(key);
+                self.replays.loaded_cache_path = Some(path);
             }
             Err(e) => {
                 log::warn!("replay save preview failed: {e}");
                 self.replays.loaded = None;
-                self.replays.loaded_cache_key = None;
+                self.replays.loaded_cache_path = None;
             }
         }
     }

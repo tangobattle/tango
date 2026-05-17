@@ -72,10 +72,140 @@ pub fn render<M: 'static>(
     }
 }
 
-// `tab_strip_extras` previously lived here and emitted top-level
-// Messages; it moved to `tabs::play` so the Play tab can build buttons
-// that emit its local `play::Message` directly without going through
-// this module.
+/// Per-tab Lucide icon glyph used by the tab strip in [`view`].
+fn tab_icon(tab: Tab) -> &'static str {
+    use crate::icons;
+    match tab {
+        Tab::Cover => icons::SAVE_COVER,
+        Tab::Navi => icons::SAVE_NAVI,
+        Tab::Folder => icons::SAVE_FOLDER,
+        Tab::PatchCards => icons::SAVE_PATCH_CARDS,
+        Tab::AutoBattleData => icons::SAVE_AUTO_BATTLE,
+    }
+}
+
+/// Persistent UI state for [`view`]. The active tab + folder
+/// grouping live here so callers don't have to mirror the fields
+/// themselves; apply incoming [`Action`]s via [`State::apply`].
+#[derive(Default, Clone)]
+pub struct State {
+    pub active_tab: Option<Tab>,
+    pub folder_grouped: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self { active_tab: None, folder_grouped: true }
+    }
+
+    /// Apply an `Action` to the state. `CopyTab` is left for the
+    /// caller to handle (clipboard side-effects can't happen inside
+    /// `apply`); everything else is folded in.
+    pub fn apply(&mut self, action: &Action) {
+        match action {
+            Action::SelectTab(t) => self.active_tab = Some(*t),
+            Action::ToggleFolderGrouped(g) => self.folder_grouped = *g,
+            Action::CopyTab(_) => {}
+        }
+    }
+}
+
+/// User-driven changes the embedded save view wants to surface. The
+/// caller `.map`s its top-level Message onto this and dispatches:
+/// most variants just need `state.apply(&action)`; `CopyTab` needs
+/// the caller's `tab_as_text` + clipboard write.
+#[derive(Debug, Clone)]
+pub enum Action {
+    SelectTab(Tab),
+    ToggleFolderGrouped(bool),
+    CopyTab(Tab),
+}
+
+/// Wholesale save-view widget: tab strip with Lucide icons, optional
+/// per-tab extras (folder group toggle, copy buttons), and the body.
+/// Embedders just call this and `.map(Message::SaveViewAction)`.
+pub fn view<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+    streamer_mode: bool,
+) -> Element<'a, Action> {
+    use crate::icons;
+    use crate::{STANDARD_PADDING, STANDARD_TEXT_SIZE};
+    use iced::widget::button;
+    use iced::{Alignment, Fill};
+
+    let available = available_tabs(loaded.save.as_ref(), streamer_mode);
+    if available.is_empty() {
+        return placeholder(t(lang, "save-empty"));
+    }
+    let active = state
+        .active_tab
+        .filter(|t| available.contains(t))
+        .unwrap_or(available[0]);
+
+    let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
+    for tab in &available {
+        let style = if *tab == active { button::primary } else { button::text };
+        tab_row = tab_row.push(icons::labeled_icon_button(
+            tab_icon(*tab),
+            t(lang, tab_key(*tab)),
+            Action::SelectTab(*tab),
+            STANDARD_TEXT_SIZE,
+            STANDARD_PADDING,
+            style,
+        ));
+    }
+    tab_row = tab_row.push(horizontal_space());
+    if let Some(extras) = tab_extras(lang, active, state) {
+        tab_row = tab_row.push(extras);
+    }
+
+    let opts = RenderOpts { folder_grouped: state.folder_grouped };
+    let body = render::<Action>(lang, active, loaded, opts);
+
+    column![
+        container(tab_row.padding([4, 8])).width(Fill),
+        body,
+    ]
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
+/// Per-tab extras (folder group-by toggle, copy button) shown on the
+/// right of the tab strip. `None` = tab has no extras.
+fn tab_extras<'a>(
+    lang: &'a LanguageIdentifier,
+    tab: Tab,
+    state: &'a State,
+) -> Option<Element<'a, Action>> {
+    use crate::icons;
+    let copy_btn = |tab: Tab| -> Element<'a, Action> {
+        icons::icon_button(icons::COPY, t(lang, "save-copy"), Action::CopyTab(tab), 13, [4, 10])
+    };
+    match tab {
+        Tab::Folder => Some(
+            row![
+                iced::widget::checkbox(t(lang, "folder-group"), state.folder_grouped)
+                    .on_toggle(Action::ToggleFolderGrouped)
+                    .size(14)
+                    .text_size(12),
+                copy_btn(Tab::Folder),
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center)
+            .into(),
+        ),
+        Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
+        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
+        _ => None,
+    }
+}
+
+fn horizontal_space() -> iced::widget::Space {
+    iced::widget::Space::with_width(Fill)
+}
 
 /// Plain-text representation of the active save-view tab, for the
 /// clipboard. `None` = tab not exportable in this form.
