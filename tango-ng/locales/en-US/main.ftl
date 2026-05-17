@@ -157,25 +157,6 @@ welcome-continue = Continue
 # Common actions
 rescan = Rescan
 
-# Game names — used by play.tab game selector. Falls back to "<family> v<variant>" when missing.
-game-exe1-v0 = Rockman EXE
-game-bn1-v0 = Mega Man Battle Network
-game-exe2-v0 = Rockman EXE 2
-game-bn2-v0 = Mega Man Battle Network 2
-game-exe3-v0 = Rockman EXE 3 (White)
-game-exe3-v1 = Rockman EXE 3 Black
-game-bn3-v0 = Mega Man Battle Network 3 White
-game-bn3-v1 = Mega Man Battle Network 3 Blue
-game-exe4-v0 = Rockman EXE 4 Red Sun
-game-exe4-v1 = Rockman EXE 4 Blue Moon
-game-bn4-v0 = Mega Man Battle Network 4 Red Sun
-game-bn4-v1 = Mega Man Battle Network 4 Blue Moon
-game-exe45-v0 = Rockman EXE 4.5 Real Operation
-game-exe5-v0 = Rockman EXE 5 Team of Blues
-game-exe5-v1 = Rockman EXE 5 Team of Colonel
-game-bn5-v0 = Mega Man Battle Network 5 Team Protoman
-game-bn5-v1 = Mega Man Battle Network 5 Team Colonel
-game-exe6-v0 = Rockman EXE 6 Dennoujuu Glaga
-game-exe6-v1 = Rockman EXE 6 Dennoujuu Falzer
-game-bn6-v0 = Mega Man Battle Network 6 Cybeast Gregar
-game-bn6-v1 = Mega Man Battle Network 6 Cybeast Falzar
+# Game names live in games.ftl — same Fluent attribute scheme the
+# legacy app uses (game-<family> = base name; .variant-N for each
+# regional/colour variant; .match-type-X-Y for per-mode labels).

@@ -111,11 +111,14 @@ impl ReplaysState {
                 })
                 .unwrap_or_else(|| "(?)".to_string());
 
-            let game_family = md
-                .local_side
-                .as_ref()
-                .and_then(|s| s.game_info.as_ref())
-                .map(|g| g.rom_family.clone())
+            let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
+            let game_label = local_gi
+                .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
+                .and_then(|(family, variant)| {
+                    tango_gamedb::find_by_family_and_variant(family, variant)
+                })
+                .map(|g| crate::game::short_name(lang, g))
+                .or_else(|| local_gi.map(|g| g.rom_family.clone()))
                 .unwrap_or_default();
             let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
                 md.link_code.clone()
@@ -130,7 +133,7 @@ impl ReplaysState {
                     column![
                         text(ts_str).size(13),
                         text(format!(
-                            "{game_family} @ {}  ·  {nick_pair}",
+                            "{game_label} @ {}  ·  {nick_pair}",
                             md.link_code
                         ))
                         .size(11)
@@ -191,7 +194,12 @@ fn replay_detail<'a>(
     let row_for_side = |label: String, side: Option<&tango_pvp::replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
-        let game = gi.map(|g| format!("{} v{}", g.rom_family, g.rom_variant)).unwrap_or_default();
+        let game = gi
+            .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
+            .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+            .map(|g| crate::game::display_name(lang, g))
+            .or_else(|| gi.map(|g| format!("{} v{}", g.rom_family, g.rom_variant)))
+            .unwrap_or_default();
         let patch = gi.and_then(|g| g.patch.as_ref()).map(|p| format!("{} v{}", p.name, p.version));
         let mut col = column![
             text(label).size(11).style(save_view::muted_text_style),
@@ -226,15 +234,17 @@ fn replay_detail<'a>(
 
     // Embedded save view for the local side. App fills `state.loaded`
     // when a replay is selected; until then (or if the parse fails)
-    // we show a stub.
+    // we show a stub. No outer scrollable — save_view manages its own
+    // per-tab scrolling (Folder list etc.). Wrapping again in a
+    // scrollable here made Fill-height children inside save_view
+    // think they had infinite vertical room, producing a meter-tall
+    // scrollbar.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        iced::widget::scrollable(
-            container(
-                save_view::view(lang, loaded, &state.save_view, false)
-                    .map(Message::SaveViewAction),
-            )
-            .padding(8),
+        container(
+            save_view::view(lang, loaded, &state.save_view, false)
+                .map(Message::SaveViewAction),
         )
+        .padding(8)
         .height(Fill)
         .into()
     } else {
@@ -287,12 +297,21 @@ fn replay_detail<'a>(
             .spacing(12)
             .height(Length::Shrink),
             Space::with_height(8),
-            text(format!(
-                "{}: {}.{}",
-                t(lang, "replays-match-type"),
-                md.match_type,
-                md.match_subtype
-            ))
+            text({
+                let family = md
+                    .local_side
+                    .as_ref()
+                    .and_then(|s| s.game_info.as_ref())
+                    .map(|g| g.rom_family.clone())
+                    .unwrap_or_default();
+                let label = crate::game::match_type_name(
+                    lang,
+                    &family,
+                    md.match_type as u8,
+                    md.match_subtype as u8,
+                );
+                format!("{}: {}", t(lang, "replays-match-type"), label)
+            })
             .size(12),
             Space::with_height(8),
             horizontal_rule(1),

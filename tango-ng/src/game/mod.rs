@@ -133,14 +133,51 @@ pub fn region_to_language(region: tango_gamedb::Region) -> unic_langid::Language
     }
 }
 
-/// Best-effort display name. Looks up `game-<family>-v<variant>` in the
-/// active locale; falls back to "<family> v<variant>" when missing.
+/// Best-effort full display name (e.g. "Mega Man Battle Network 6:
+/// Cybeast Gregar"). Looks up `game-<family>.variant-<variant>` per
+/// the legacy Fluent attribute scheme; falls back to the base
+/// `game-<family>` value, then to "<family> v<variant>".
 pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
-    let key = format!("game-{family}-v{variant}");
+    let key = format!("game-{family}.variant-{variant}");
+    let s = t(lang, &key);
+    if !s.starts_with("⟦") {
+        return s;
+    }
+    let base = t(lang, &format!("game-{family}"));
+    if !base.starts_with("⟦") {
+        return base;
+    }
+    format!("{family} v{variant}")
+}
+
+/// Short tag (e.g. "BN6"). Same lookup pattern via the `.short`
+/// attribute; falls back to `<family> v<variant>` so unknowns still
+/// produce something identifying.
+pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
+    let (family, variant) = game.family_and_variant();
+    let key = format!("game-{family}.short");
     let s = t(lang, &key);
     if s.starts_with("⟦") {
         format!("{family} v{variant}")
+    } else {
+        s
+    }
+}
+
+/// Localized match-type label for a (mode, subtype) pair (e.g.
+/// "Single" / "Triple" / "Lightweight"). Falls back to "M.S" for
+/// pairs the locale doesn't name.
+pub fn match_type_name(
+    lang: &unic_langid::LanguageIdentifier,
+    family: &str,
+    match_type: u8,
+    match_subtype: u8,
+) -> String {
+    let key = format!("game-{family}.match-type-{match_type}-{match_subtype}");
+    let s = t(lang, &key);
+    if s.starts_with("⟦") {
+        format!("{match_type}.{match_subtype}")
     } else {
         s
     }

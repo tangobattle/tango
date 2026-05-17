@@ -157,25 +157,5 @@ welcome-continue = 続ける
 # Common actions
 rescan = 再スキャン
 
-# Game names
-game-exe1-v0 = ロックマンエグゼ
-game-bn1-v0 = Mega Man Battle Network
-game-exe2-v0 = ロックマンエグゼ2
-game-bn2-v0 = Mega Man Battle Network 2
-game-exe3-v0 = ロックマンエグゼ3
-game-exe3-v1 = ロックマンエグゼ3 BLACK
-game-bn3-v0 = Mega Man Battle Network 3 White
-game-bn3-v1 = Mega Man Battle Network 3 Blue
-game-exe4-v0 = ロックマンエグゼ4 トーナメント レッドサン
-game-exe4-v1 = ロックマンエグゼ4 トーナメント ブルームーン
-game-bn4-v0 = Mega Man Battle Network 4 Red Sun
-game-bn4-v1 = Mega Man Battle Network 4 Blue Moon
-game-exe45-v0 = ロックマンエグゼ4.5 リアルオペレーション
-game-exe5-v0 = ロックマンエグゼ5 チーム オブ ブルース
-game-exe5-v1 = ロックマンエグゼ5 チーム オブ カーネル
-game-bn5-v0 = Mega Man Battle Network 5 Team Protoman
-game-bn5-v1 = Mega Man Battle Network 5 Team Colonel
-game-exe6-v0 = ロックマンエグゼ6 電脳獣グレイガ
-game-exe6-v1 = ロックマンエグゼ6 電脳獣ファルザー
-game-bn6-v0 = Mega Man Battle Network 6 Cybeast Gregar
-game-bn6-v1 = Mega Man Battle Network 6 Cybeast Falzar
+# Game names live in games.ftl (Fluent attribute scheme shared with
+# the legacy app: game-<family>.variant-N, .short, .match-type-X-Y).
