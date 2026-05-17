@@ -967,10 +967,11 @@ fn render_navicust<M: 'static>(
             let image: Element<'static, M> = Image::new(nc.handle.clone())
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh))
-                // Source matches display size 1:1 (see selection.rs
-                // build_navicust_render), so Nearest preserves the
-                // cosmic-text label's pixel-perfect rasterization.
-                .filter_method(iced_image::FilterMethod::Nearest)
+                // Handle is 2× source for HiDPI (see selection.rs
+                // build_navicust_render). On a 2× display iced
+                // presents at native device pixels = perfect; on
+                // a 1× display iced linear-downsamples 2:1.
+                .filter_method(iced_image::FilterMethod::Linear)
                 .content_fit(ContentFit::Contain)
                 .into();
 
