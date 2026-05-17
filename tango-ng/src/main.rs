@@ -126,7 +126,8 @@ pub fn main() -> iced::Result {
         .window_size((1000.0, 640.0))
         .font(FONT_NOTO_SANS)
         .font(FONT_NOTO_SANS_JP)
-        .font
+        .font(FONT_NOTO_SANS_SC)
+        .font(FONT_NOTO_SANS_TC)
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
         .font(FONT_LUCIDE)
