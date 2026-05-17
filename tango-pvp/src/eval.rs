@@ -19,23 +19,7 @@ pub async fn eval(
     let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
-    // Shadow runs the opponent's side of the match, re-deriving each
-    // tick's remote packet from the recorded remote joyflag. The shadow
-    // rng is seeded the same way Match::new seeds it (replay.rng_seed +
-    // one polite-win bool advance) so the shadow's per-game rng-handling
-    // traps stay in sync with the primary core's stepper rng.
-    use rand::SeedableRng;
-    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-    let shadow = crate::shadow::Shadow::new_from_sram(
-        rom,
-        &replay.remote_sram_dump()?,
-        hooks,
-        match_type,
-        replay.is_offerer,
-        replay.local_player_index,
-        shadow_rng,
-    )?;
+    let shadow = crate::shadow::Shadow::new_for_replay(rom, replay, hooks)?;
     let shadow = std::sync::Arc::new(parking_lot::Mutex::new(shadow));
 
     let stepper_state = crate::stepper::State::new(

@@ -224,18 +224,7 @@ fn compute_fingerprint(
     let total_replay_ticks: u32 = replay.rounds.iter().map(|r| r.len() as u32).sum();
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
-    use rand::SeedableRng;
-    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-    let shadow = tango_pvp::shadow::Shadow::new_from_sram(
-        remote_rom,
-        &replay.remote_sram_dump()?,
-        remote_hooks,
-        match_type,
-        replay.is_offerer,
-        replay.local_player_index,
-        shadow_rng,
-    )?;
+    let shadow = tango_pvp::shadow::Shadow::new_for_replay(remote_rom, &replay, remote_hooks)?;
     let shadow = Arc::new(Mutex::new(shadow));
 
     let stepper_state = tango_pvp::stepper::State::new(

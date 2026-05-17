@@ -576,18 +576,7 @@ impl Session {
         // remote joyflag — it has to run the OPPONENT's ROM, which may
         // legitimately differ from `rom` (cross-game replays are common).
         let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
-        use rand::SeedableRng;
-        let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-        let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-        let shadow = tango_pvp::shadow::Shadow::new_from_sram(
-            remote_rom.as_ref(),
-            &replay.remote_sram_dump()?,
-            remote_hooks,
-            match_type,
-            replay.is_offerer,
-            replay.local_player_index,
-            shadow_rng,
-        )?;
+        let shadow = tango_pvp::shadow::Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
         let shadow = Arc::new(parking_lot::Mutex::new(shadow));
 
         let stepper_state = tango_pvp::stepper::State::new(

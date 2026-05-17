@@ -61,18 +61,7 @@ fn make_core_and_state(
     let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
-    use rand::SeedableRng;
-    let mut shadow_rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
-    let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-    let shadow = crate::shadow::Shadow::new_from_sram(
-        shadow_rom,
-        &replay.remote_sram_dump()?,
-        shadow_hooks,
-        match_type,
-        replay.is_offerer,
-        replay.local_player_index,
-        shadow_rng,
-    )?;
+    let shadow = crate::shadow::Shadow::new_for_replay(shadow_rom, replay, shadow_hooks)?;
     let shadow = std::sync::Arc::new(parking_lot::Mutex::new(shadow));
 
     let stepper_state = crate::stepper::State::new(

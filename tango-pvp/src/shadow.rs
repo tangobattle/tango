@@ -50,6 +50,40 @@ impl Shadow {
         Self::new_from_sram(rom, &save.as_sram_dump(), hooks, match_type, is_offerer, local_player_index, rng)
     }
 
+    /// Build a shadow for replay-style reconstruction (playback, export,
+    /// eval, the golden suite). Pulls remote sram + match_type +
+    /// is_offerer + local_player_index from `replay`, seeds the RNG from
+    /// `replay.rng_seed`, and advances it past the one-bool draw that
+    /// [`crate::battle::Match::pick_local_player_index`] would have
+    /// consumed during the live match — so the shadow's per-game
+    /// RNG-handling traps stay in sync with the recorded run.
+    ///
+    /// Live PvP uses [`Shadow::new`] instead: there, the bool draw
+    /// happens during `pick_local_player_index` itself, and the
+    /// post-draw RNG is what gets passed in.
+    pub fn new_for_replay(
+        rom: &[u8],
+        replay: &crate::replay::Replay,
+        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+    ) -> anyhow::Result<Self> {
+        use rand::SeedableRng;
+        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
+        let _ = rand::Rng::gen::<bool>(&mut rng);
+        let match_type = (
+            replay.metadata.match_type as u8,
+            replay.metadata.match_subtype as u8,
+        );
+        Self::new_from_sram(
+            rom,
+            &replay.remote_sram_dump()?,
+            hooks,
+            match_type,
+            replay.is_offerer,
+            replay.local_player_index,
+            rng,
+        )
+    }
+
     /// Same as [`Shadow::new`] but takes the SRAM dump directly. Used by the
     /// replay-via-shadow playback path, where the remote-side save is
     /// stored as raw bytes inside the replay file rather than as a parsed
