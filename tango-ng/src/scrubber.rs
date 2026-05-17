@@ -3,7 +3,7 @@
 //! tick marks at round boundaries. Mouse press + drag inside the bar
 //! emits the caller's seek message; release ends the drag.
 
-use iced::widget::canvas::{self, Canvas, Frame, Path, Stroke};
+use iced::widget::canvas::{self, Canvas, Frame, Path};
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
 /// Linear-blend two colors. `t` runs 0..1; 0 returns `a`, 1 returns `b`.
@@ -125,12 +125,17 @@ where
             frame.fill(&played, palette.primary.base.color);
         }
 
-        // Round-boundary tick marks — short notches half the track
-        // height, centered. Subtle enough not to compete with the
-        // playhead but visible enough to spot at a glance.
-        let notch_color = mix(palette.background.strong.color, palette.background.base.color, 0.4);
-        let notch_stroke = Stroke::default().with_color(notch_color).with_width(1.0);
-        let notch_h = TRACK_H * 0.6;
+        // Round-boundary pips. Drawn as 2-px-wide full-height
+        // notches so they pop on both the unplayed (light) track
+        // and the played fill, with the color tuned for contrast
+        // against whichever band they cross. Using `text` (= the
+        // theme's body text color, near-white on Dark / near-black
+        // on Light) gives reliable visibility everywhere — the
+        // previous mid-bg-tone notches dissolved into the
+        // unprefetched section.
+        let notch_color = palette.background.strong.text;
+        let notch_w = 2.0;
+        let notch_h = TRACK_H + 4.0;
         let notch_top = ((h - notch_h) / 2.0).round();
         for &b in &self.round_boundaries {
             // Skip 0 + total — they overlap the track ends.
@@ -138,8 +143,11 @@ where
                 continue;
             }
             let x = (b as f32 / total).clamp(0.0, 1.0) * w;
-            let notch = Path::line(Point::new(x, notch_top), Point::new(x, notch_top + notch_h));
-            frame.stroke(&notch, notch_stroke.clone());
+            frame.fill_rectangle(
+                Point::new((x - notch_w / 2.0).round(), notch_top),
+                Size::new(notch_w, notch_h),
+                notch_color,
+            );
         }
 
         // Playhead: filled circle with a thin border, sized larger

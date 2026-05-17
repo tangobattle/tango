@@ -252,7 +252,15 @@ impl State {
             }
             Message::TogglePlay => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    s.set_paused(!s.is_paused());
+                    // Play at end-of-replay: rewind to start and
+                    // play through again. Mirrors the behaviour you
+                    // get on any media player — "play" on a finished
+                    // track restarts it.
+                    let paused = s.is_paused();
+                    if paused && s.current_tick() >= s.total_ticks() {
+                        s.seek_to(0);
+                    }
+                    s.set_paused(!paused);
                 }
             }
             Message::Seek(target) => {
