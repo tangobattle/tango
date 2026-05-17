@@ -158,12 +158,10 @@ impl ActiveSession {
             Self::SinglePlayer(s) => s.request_close(),
         }
     }
-    /// Progress text shown in the session view header. `(current, total)`
-    /// for replays, `None` for single-player (no fixed length).
-    fn progress(&self) -> Option<(u32, u32)> {
+    fn as_replay(&self) -> Option<&replay_session::ReplaySession> {
         match self {
-            Self::Replay(s) => Some((s.current_tick(), s.total_ticks())),
-            Self::SinglePlayer(_) => None,
+            Self::Replay(s) => Some(s),
+            _ => None,
         }
     }
 }
@@ -385,6 +383,10 @@ enum Message {
     SessionKeyDown(u32),
     /// Key mapped to an mgba joypad bit went up.
     SessionKeyUp(u32),
+    /// Toggle play/pause on a replay session. No-op for single-player.
+    SessionTogglePlay,
+    /// Drag the scrub bar — fires on every value change. Replay-only.
+    SessionSeek(u32),
 }
 
 impl App {
@@ -447,6 +449,18 @@ impl App {
             Message::SessionKeyUp(bit) => {
                 if let Some(ActiveSession::SinglePlayer(s)) = self.session.as_ref() {
                     s.set_joyflag(bit, false);
+                }
+                iced::Task::none()
+            }
+            Message::SessionTogglePlay => {
+                if let Some(s) = self.session.as_ref().and_then(ActiveSession::as_replay) {
+                    s.set_paused(!s.is_paused());
+                }
+                iced::Task::none()
+            }
+            Message::SessionSeek(target) => {
+                if let Some(s) = self.session.as_ref().and_then(ActiveSession::as_replay) {
+                    s.seek_to(target);
                 }
                 iced::Task::none()
             }
@@ -875,7 +889,7 @@ impl App {
     }
 
     fn session_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
-        use iced::widget::{image, Space};
+        use iced::widget::{image, slider, Space};
         let session = self.session.as_ref().expect("session_view: no session");
         let frame: Element<'_, Message> = if let Some(handle) = self.session_frame.as_ref() {
             image(handle.clone())
@@ -892,28 +906,63 @@ impl App {
             ActiveSession::Replay(_) => "replays-watch",
             ActiveSession::SinglePlayer(_) => "play-play",
         };
-        let mut header_row = row![text(t(lang, title_key)).size(14), horizontal_space(),]
+        let header = container(
+            row![
+                text(t(lang, title_key)).size(14),
+                horizontal_space(),
+                button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
+                    .padding(STANDARD_PADDING)
+                    .on_press(Message::SessionClose),
+            ]
             .spacing(8)
-            .align_y(Alignment::Center);
-        if let Some((cur, total)) = session.progress() {
-            header_row = header_row.push(
-                text(format!("{cur} / {total}"))
-                    .size(12)
-                    .style(save_view::muted_text_style),
-            );
-        }
-        header_row = header_row.push(
-            button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
-                .padding(STANDARD_PADDING)
-                .on_press(Message::SessionClose),
-        );
-        let header = container(header_row.padding(8)).width(Fill);
+            .align_y(Alignment::Center)
+            .padding(8),
+        )
+        .width(Fill);
 
-        column![header, horizontal_rule(1), container(frame).center(Fill).padding(8)]
+        let mut layout = column![header, horizontal_rule(1)]
             .spacing(0)
             .width(Fill)
-            .height(Fill)
-            .into()
+            .height(Fill);
+
+        layout = layout.push(container(frame).center(Fill).padding(8));
+
+        // Transport (play/pause + scrubber) only makes sense for replay
+        // playback — single-player has no defined timeline.
+        if let Some(r) = session.as_replay() {
+            let total = r.total_ticks().max(1);
+            let cur = r.current_tick().min(total);
+            let prefetched = r.prefetch_progress().min(total);
+            let pct = (prefetched as f32 / total as f32 * 100.0).round() as u32;
+            let play_pause_label = if r.is_paused() {
+                t(lang, "playback-play")
+            } else {
+                t(lang, "playback-pause")
+            };
+            let scrubber = slider(0..=total, cur, Message::SessionSeek).step(1u32);
+            layout = layout.push(horizontal_rule(1));
+            layout = layout.push(
+                container(
+                    row![
+                        button(text(play_pause_label).size(STANDARD_TEXT_SIZE))
+                            .padding(STANDARD_PADDING)
+                            .on_press(Message::SessionTogglePlay),
+                        text(format_tick(cur)).size(11).style(save_view::muted_text_style),
+                        scrubber,
+                        text(format_tick(total)).size(11).style(save_view::muted_text_style),
+                        text(format!("{pct}%"))
+                            .size(11)
+                            .style(save_view::muted_text_style),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .padding(8),
+                )
+                .width(Fill),
+            );
+        }
+
+        layout.into()
     }
 
     /// Decode a `.tangoreplay` and spin up an mgba playback thread for
@@ -1064,6 +1113,15 @@ fn map_keyboard_event(
         }
         _ => None,
     }
+}
+
+/// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub
+/// bar's wallclock labels.
+fn format_tick(tick: u32) -> String {
+    let total_s = tick / 60;
+    let m = total_s / 60;
+    let s = total_s % 60;
+    format!("{m}:{s:02}")
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {

@@ -1,36 +1,41 @@
-//! Minimal replay playback session for tango-ng.
+//! Replay playback session for tango-ng.
 //!
-//! Spawns an mgba thread, installs the per-game stepper traps, and
-//! drives playback to completion. Audio is not bound (no `audio_binder`
-//! integration yet); video frames land in `vbuf` and the UI tick loop
-//! is responsible for uploading them to the iced texture.
-//!
-//! This is a pruned mirror of `tango/src/session.rs::build_replayer_from`
-//! — no Prefetcher, no SnapshotStore, no audio. Those come later when we
-//! need scrubbing and synchronized audio output.
+//! Owns an mgba playback thread, installs the per-game stepper traps,
+//! pushes captured snapshots into a [`SnapshotStore`] each frame, and
+//! runs a background [`Prefetcher`] thread that races ahead of the
+//! playhead to keep that store populated for seeks. Audio is bound via
+//! the shared [`crate::audio::LateBinder`].
 
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use tango_pvp::replay::playback::SnapshotStore;
+use tango_pvp::shadow::Shadow;
 
 pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
 pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
 const EXPECTED_FPS: f32 = 60.0;
 
 pub struct ReplaySession {
-    // NB: thread must outlive vbuf — Drop order is field-order, so keep
-    // thread last so the frame callback can't fire after vbuf is freed.
     vbuf: Arc<Mutex<Vec<u8>>>,
     completion_token: tango_pvp::hooks::CompletionToken,
     pause_on_next_frame: Arc<AtomicBool>,
     close_requested: Arc<AtomicBool>,
     replay: Arc<tango_pvp::replay::Replay>,
     stepper_state: tango_pvp::stepper::State,
+    shadow: Arc<Mutex<Shadow>>,
+    snapshots: SnapshotStore,
+    prefetch_progress: Arc<AtomicU32>,
     total_ticks: u32,
-    /// Held so the binding survives for the session's lifetime; the
-    /// LateBinder swaps back to silence when this Drops.
+    /// Held so the audio binding survives for the session's lifetime;
+    /// the LateBinder swaps back to silence when this Drops.
     _audio_binding: Option<crate::audio::Binding>,
-    _thread: mgba::thread::Thread,
+    /// Field order matters — `_prefetcher`'s Drop signals cancel and
+    /// joins the background thread before `_thread` is torn down. Both
+    /// come last so the frame callback (running on `_thread`) is dead
+    /// by the time the earlier fields are freed.
+    _prefetcher: Prefetcher,
+    thread: mgba::thread::Thread,
 }
 
 impl ReplaySession {
@@ -69,7 +74,7 @@ impl ReplaySession {
         // Burn one RNG draw — mirrors the legacy session, which uses the
         // post-bool RNG state for the shadow to match the recorded run.
         let _ = rand::Rng::gen::<bool>(&mut shadow_rng);
-        let shadow = tango_pvp::shadow::Shadow::new_from_sram(
+        let shadow = Shadow::new_from_sram(
             remote_rom.as_ref(),
             &replay.remote_sram_dump()?,
             remote_hooks,
@@ -78,7 +83,7 @@ impl ReplaySession {
             replay.local_player_index,
             shadow_rng,
         )?;
-        let shadow = Arc::new(parking_lot::Mutex::new(shadow));
+        let shadow = Arc::new(Mutex::new(shadow));
 
         let stepper_state = tango_pvp::stepper::State::new(
             match_type,
@@ -88,7 +93,7 @@ impl ReplaySession {
             replay.rng_seed,
             replay.is_offerer,
             total_ticks,
-            shadow,
+            shadow.clone(),
             Box::new({
                 let completion_token = completion_token.clone();
                 move || completion_token.complete()
@@ -106,18 +111,39 @@ impl ReplaySession {
         ]));
         let pause_on_next_frame = Arc::new(AtomicBool::new(false));
 
+        let snapshots = SnapshotStore::new();
+        let prefetch_progress = Arc::new(AtomicU32::new(0));
+        let prefetcher = Prefetcher::spawn(
+            rom.clone(),
+            remote_rom.clone(),
+            replay.clone(),
+            game,
+            remote_game,
+            snapshots.clone(),
+            prefetch_progress.clone(),
+        );
+
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let completion_token = completion_token.clone();
             let stepper_state = stepper_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
-            move |_core, video_buffer, mut thread_handle| {
+            let snapshots = snapshots.clone();
+            let shadow = shadow.clone();
+            move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
 
                 if let Some(err) = stepper_state.lock_inner().take_error() {
                     log::error!("replay stepper error: {err:?}");
+                }
+
+                // Capture round-start + every MID_ROUND_SNAPSHOT_INTERVAL
+                // ticks so backward seeks have a nearby jumping-off point
+                // even if the prefetcher hasn't reached them yet.
+                if let Some(cp) = stepper_state.capture_replay_checkpoint() {
+                    snapshots.capture_if_needed(cp, &mut core, &shadow);
                 }
 
                 let (total_left, is_round_ended) = {
@@ -140,10 +166,6 @@ impl ReplaySession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
-        // Bind audio after start so the cpal callback only finds a live
-        // mgba thread to pull from. Failure to bind (rare — only if
-        // another session forgot to drop its binding) just leaves the
-        // replay silent rather than aborting playback.
         let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
             thread.handle(),
             audio_binder.sample_rate(),
@@ -162,15 +184,17 @@ impl ReplaySession {
             close_requested: Arc::new(AtomicBool::new(false)),
             replay,
             stepper_state,
+            shadow,
+            snapshots,
+            prefetch_progress,
             total_ticks,
             _audio_binding: audio_binding,
-            _thread: thread,
+            _prefetcher: prefetcher,
+            thread,
         })
     }
 
-    /// Clone of the latest framebuffer. RGBA8, 240x160. Cheap-ish — it's
-    /// a 153 600 byte memcpy under a lock — and called at most once per
-    /// UI frame.
+    /// Clone of the latest framebuffer (RGBA8, 240x160).
     pub fn snapshot_vbuf(&self) -> Vec<u8> {
         self.vbuf.lock().clone()
     }
@@ -179,8 +203,22 @@ impl ReplaySession {
         self.completion_token.is_complete()
     }
 
-    pub fn request_pause(&self) {
-        self.pause_on_next_frame.store(true, Ordering::SeqCst);
+    pub fn is_paused(&self) -> bool {
+        self.thread.handle().is_paused()
+    }
+
+    /// Toggle the mgba thread between paused and running. Returns the
+    /// new paused state.
+    pub fn set_paused(&self, paused: bool) {
+        let h = self.thread.handle();
+        if paused {
+            h.pause();
+        } else {
+            // The frame_callback re-pauses when completion_token is set,
+            // so unpausing past the end of a replay only buys one frame
+            // — that's fine and matches the legacy behavior.
+            h.unpause();
+        }
     }
 
     pub fn request_close(&self) {
@@ -191,25 +229,136 @@ impl ReplaySession {
         self.close_requested.load(Ordering::SeqCst)
     }
 
-    /// 0..=total_ticks. Derived from the stepper's remaining input
-    /// pairs, which is the only progress signal we get from the legacy
-    /// stepper without prefetcher snapshots.
+    /// Absolute playhead tick: how many emulated ticks the stepper has
+    /// consumed since the start of the replay. Saturates at
+    /// `total_ticks` once the replay finishes.
     pub fn current_tick(&self) -> u32 {
-        let left = self.stepper_state.lock_inner().total_input_pairs_left() as u32;
-        self.total_ticks.saturating_sub(left)
+        self.stepper_state.lock_inner().absolute_tick()
     }
 
     pub fn total_ticks(&self) -> u32 {
         self.total_ticks
     }
 
+    /// Highest tick the background prefetcher has reached, for the
+    /// progress overlay on the scrub bar. Hits `total_ticks` when the
+    /// prefetcher has run to completion.
+    pub fn prefetch_progress(&self) -> u32 {
+        self.prefetch_progress.load(Ordering::Relaxed)
+    }
+
     pub fn replay(&self) -> &Arc<tango_pvp::replay::Replay> {
         &self.replay
+    }
+
+    /// Jump the playhead to `target`. Submits the snapshot load + frame
+    /// catch-up onto the mgba thread so the seek runs synchronously
+    /// against the live core, but returns immediately. The UI's next
+    /// tick will pick up the post-seek framebuffer.
+    pub fn seek_to(&self, target: u32) {
+        let target = target.min(self.total_ticks);
+        let current = self.stepper_state.lock_inner().absolute_tick();
+        if target == current {
+            return;
+        }
+
+        let start_snap = if target < current {
+            self.snapshots.best_at_or_before(target)
+        } else {
+            self.snapshots.best_in_range(current, target)
+        };
+
+        if target < current && start_snap.is_none() {
+            // Pre-first-round boot window — no snapshot to land on.
+            // Silently drop instead of bubbling up an error; the user
+            // can drag the scrubber further right.
+            log::debug!("seek: no snapshot at or before tick {target}");
+            return;
+        }
+
+        // Clear completion so the frame_callback's pause-on-complete
+        // check doesn't immediately re-pause after we seek backwards
+        // from the end of the replay.
+        self.completion_token.reset();
+
+        let stepper_state = self.stepper_state.clone();
+        let replay = self.replay.clone();
+        let snapshots = self.snapshots.clone();
+        let shadow = self.shadow.clone();
+
+        self.thread.handle().run_on_core(move |core| {
+            if let Err(e) = tango_pvp::replay::playback::seek_on_core(
+                core,
+                target,
+                &stepper_state,
+                &shadow,
+                &replay,
+                &snapshots,
+                start_snap.as_ref(),
+            ) {
+                log::error!("seek to {target} failed: {e:?}");
+            }
+        });
     }
 }
 
 fn fix_vbuf_alpha(vbuf: &mut [u8]) {
     for px in vbuf.chunks_exact_mut(4) {
         px[3] = 0xFF;
+    }
+}
+
+/// Background snapshot-prefetch worker. Spawns a fresh mgba core +
+/// shadow on a std::thread and races ahead of the playhead, pushing
+/// captured snapshots into the shared [`SnapshotStore`] so backward
+/// (and long-forward) seeks have a nearby jumping-off point.
+///
+/// Drop cancels the worker and joins.
+pub struct Prefetcher {
+    cancel: Arc<AtomicBool>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Prefetcher {
+    pub fn spawn(
+        rom: Arc<Vec<u8>>,
+        remote_rom: Arc<Vec<u8>>,
+        replay: Arc<tango_pvp::replay::Replay>,
+        game: &'static (dyn crate::game::Game + Send + Sync),
+        remote_game: &'static (dyn crate::game::Game + Send + Sync),
+        snapshots: SnapshotStore,
+        progress: Arc<AtomicU32>,
+    ) -> Self {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = cancel.clone();
+        let hooks = game.hooks();
+        let remote_hooks = remote_game.hooks();
+        let join_handle = std::thread::spawn(move || {
+            if let Err(e) = tango_pvp::replay::playback::run_prefetch(
+                rom.as_ref(),
+                remote_rom.as_ref(),
+                &replay,
+                hooks,
+                remote_hooks,
+                snapshots,
+                cancel_for_thread,
+                progress,
+            ) {
+                log::error!("replay prefetch worker exited with error: {e:?}");
+            }
+        });
+        Self {
+            cancel,
+            join_handle: Some(join_handle),
+        }
+    }
+}
+
+impl Drop for Prefetcher {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(h) = self.join_handle.take() {
+            let _ = h.join();
+        }
     }
 }
