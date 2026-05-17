@@ -31,6 +31,11 @@ async-trait = "0.1"
 gilrs = "0.10"
 rfd = "0.14"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
+# Auto-generated Rust bindings for the Lucide icon font. Gives us
+# `Icon::Foo`, `char::from(Icon::Foo)`, and (with the iced feature)
+# `LUCIDE_FONT_BYTES` so we don't have to maintain a hand-rolled
+# codepoint table or vendor the ttf ourselves.
+lucide-icons = { version = "1.16", features = ["iced"] }
 # Netplay ready-handshake: rand for the nonce, sha3 for the
 # Shake128 commitment, zstd for chunk compression, subtle for the
 # constant-time commitment compare, rand_pcg for re-seeding the

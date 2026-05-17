@@ -1,5 +1,6 @@
 use crate::i18n::t;
-use crate::icons;
+use crate::widgets;
+use lucide_icons::Icon;
 use crate::{game, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
@@ -145,14 +146,14 @@ impl PatchesState {
 
         top_row = top_row
             .push(horizontal_space())
-            .push(icons::icon_button_maybe(
-                icons::UPDATE,
+            .push(widgets::icon_button_maybe(
+                Icon::Download,
                 t(lang, "patches-update"),
                 update_msg,
                 STANDARD_PADDING,
             ))
-            .push(icons::icon_button(
-                icons::RESCAN,
+            .push(widgets::icon_button(
+                Icon::RefreshCw,
                 t(lang, "rescan"),
                 Message::Rescan,
                 STANDARD_PADDING,
@@ -183,7 +184,7 @@ impl PatchesState {
                 )
                 .padding([6, 10])
                 .width(Fill)
-                .style(icons::list_item(selected))
+                .style(widgets::list_item(selected))
                 .on_press(Message::Selected(name.clone())),
             );
         }
@@ -227,8 +228,8 @@ impl PatchesState {
                 pick_list(versions, selected_version, Message::VersionSelected)
                     
                     .padding(STANDARD_PADDING),
-                icons::icon_button(
-                    icons::FOLDER,
+                widgets::icon_button(
+                    Icon::Folder,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(patch.path.clone()),
                     STANDARD_PADDING,

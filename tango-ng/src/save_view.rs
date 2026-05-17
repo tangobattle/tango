@@ -73,14 +73,14 @@ pub fn render<M: 'static>(
 }
 
 /// Per-tab Lucide icon glyph used by the tab strip in [`view`].
-fn tab_icon(tab: Tab) -> &'static str {
-    use crate::icons;
+fn tab_icon(tab: Tab) -> lucide_icons::Icon {
+    use lucide_icons::Icon;
     match tab {
-        Tab::Cover => icons::SAVE_COVER,
-        Tab::Navi => icons::SAVE_NAVI,
-        Tab::Folder => icons::SAVE_FOLDER,
-        Tab::PatchCards => icons::SAVE_PATCH_CARDS,
-        Tab::AutoBattleData => icons::SAVE_AUTO_BATTLE,
+        Tab::Cover => Icon::Eye,
+        Tab::Navi => Icon::Bot,
+        Tab::Folder => Icon::Files,
+        Tab::PatchCards => Icon::CreditCard,
+        Tab::AutoBattleData => Icon::Swords,
     }
 }
 
@@ -135,7 +135,7 @@ pub fn view<'a>(
     state: &'a State,
     streamer_mode: bool,
 ) -> Element<'a, Action> {
-    use crate::icons;
+    use crate::widgets;
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded.save.as_ref(), streamer_mode);
@@ -149,7 +149,7 @@ pub fn view<'a>(
 
     let mut tab_row = row![].spacing(2).align_y(Alignment::End);
     for tab in &available {
-        tab_row = tab_row.push(icons::tab_button(
+        tab_row = tab_row.push(widgets::tab_button(
             tab_icon(*tab),
             t(lang, tab_key(*tab)),
             Action::SelectTab(*tab),
@@ -175,18 +175,19 @@ pub fn view<'a>(
 /// Per-tab extras (folder group-by toggle, copy button) shown on the
 /// right of the tab strip. `None` = tab has no extras.
 fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> Option<Element<'a, Action>> {
-    use crate::icons;
+    use crate::widgets;
+use lucide_icons::Icon;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
-        icons::icon_button(
-            icons::COPY,
+        widgets::icon_button(
+            Icon::Copy,
             t(lang, "save-copy"),
             Action::CopyTab(tab),
             [4.0, 10.0],
         )
     };
     let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
-        icons::icon_button(
-            icons::COPY_IMAGE,
+        widgets::icon_button(
+            Icon::ImageDown,
             t(lang, "save-copy-image"),
             Action::CopyTabImage(tab),
             [4.0, 10.0],
@@ -858,6 +859,26 @@ pub fn muted_color(theme: &iced::Theme) -> iced::Color {
 pub fn muted_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     iced::widget::text::Style {
         color: Some(muted_color(theme)),
+    }
+}
+
+/// "OK / success" text color tuned for readability on both Light
+/// and Dark themes. The default `extended_palette().success.base`
+/// is a dark teal that disappears on a dark background, so we
+/// reach for the `strong` variant which iced derives by deviating
+/// from base toward higher contrast.
+pub fn success_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(theme.extended_palette().success.strong.color),
+    }
+}
+
+/// Same idea as [`success_text_style`] for danger — the `strong`
+/// variant of palette.danger reads brightly on dark backgrounds
+/// where the base color washes out.
+pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(theme.extended_palette().danger.strong.color),
     }
 }
 

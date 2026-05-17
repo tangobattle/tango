@@ -1,9 +1,10 @@
 use crate::i18n::{t, t_args};
 use crate::tabs::settings::labeled;
 use crate::{
-    icons, save_view, PRIMARY_PADDING, STANDARD_PADDING, SUPPORTED_LANGS,
+    save_view, widgets, PRIMARY_PADDING, STANDARD_PADDING, SUPPORTED_LANGS,
     TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE,
 };
+use lucide_icons::Icon;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
@@ -63,18 +64,18 @@ pub fn view<'a>(
         
         .padding(STANDARD_PADDING);
 
-    let step_marker = |done: bool| -> &'static str {
+    let step_marker = |done: bool| -> Icon {
         if done {
-            icons::CONFIRM
+            Icon::Check
         } else {
-            icons::RESCAN
+            Icon::RefreshCw
         }
     };
 
     // Step 1 — ROMs.
     let mut roms_block = column![
         row![
-            icons::glyph(step_marker(has_roms)).size(16.0),
+            step_marker(has_roms).widget().size(16.0),
             text(t(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
@@ -86,19 +87,19 @@ pub fn view<'a>(
             .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE),
         row![
-            icons::labeled_icon_button(
-                icons::FOLDER,
+            widgets::labeled_icon_button(
+                Icon::Folder,
                 t(lang, "welcome-open-folder"),
                 Message::OpenRomsFolder,
                 STANDARD_PADDING,
-                icons::neutral,
+                widgets::neutral,
             ),
-            icons::labeled_icon_button(
-                icons::RESCAN,
+            widgets::labeled_icon_button(
+                Icon::RefreshCw,
                 t(lang, "rescan"),
                 Message::RescanRoms,
                 STANDARD_PADDING,
-                icons::neutral,
+                widgets::neutral,
             ),
         ]
         .spacing(8),
@@ -124,12 +125,12 @@ pub fn view<'a>(
     if can_continue {
         continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
     } else {
-        continue_btn = continue_btn.style(icons::neutral);
+        continue_btn = continue_btn.style(widgets::neutral);
     }
 
     let mut nickname_block = column![
         row![
-            icons::glyph(step_marker(!state.nickname_draft.trim().is_empty())).size(16.0),
+            step_marker(!state.nickname_draft.trim().is_empty()).widget().size(16.0),
             text(t(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)

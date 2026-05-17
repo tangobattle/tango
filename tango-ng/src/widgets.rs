@@ -1,80 +1,17 @@
-//! UI icon glyphs, all drawn from the bundled Lucide icon font
-//! (https://lucide.dev). Code points sit in the PUA block at U+E000+;
-//! the mapping comes from `lucide-static`'s font/info.json. Swap the
-//! `FONT` constant + glyph code points to switch to another icon
-//! font (Phosphor, Bootstrap Icons, etc.) without touching call sites.
-//!
-//! iced 0.13's cosmic-text doesn't auto-fall-back from the default
-//! family to a PUA-only icon font, so every icon `text(...)` MUST be
-//! `.font(FONT)` — otherwise it tofus out. The helpers in this module
-//! handle that.
-//!
-//! Every icon button still gets a tooltip with the plain-text label
-//! for the same i18n key as before, so screen readers / non-English
-//! locales / colour-blind users aren't relying on the glyph alone.
+//! Small iced widget helpers: icon-buttons (with tooltips), tab
+//! buttons, button styles (`neutral`, `list_item`). Icon glyphs
+//! come straight from the `lucide-icons` crate — call sites pass
+//! `Icon::Foo` directly.
 
-use iced::Font;
-
-/// The font every icon glyph must be rendered with.
-pub const FONT: Font = Font::with_name("lucide");
-
-// Top-level navigation tabs.
-pub const TAB_PLAY: &str = "\u{e0de}"; // gamepad
-pub const TAB_REPLAYS: &str = "\u{e0d0}"; // film
-pub const TAB_PATCHES: &str = "\u{e29c}"; // puzzle
-pub const TAB_SETTINGS: &str = "\u{e154}"; // settings
-
-// Save sub-tabs.
-pub const SAVE_COVER: &str = "\u{e0ba}"; // eye
-pub const SAVE_NAVI: &str = "\u{e1bb}"; // bot
-pub const SAVE_FOLDER: &str = "\u{e0cf}"; // files
-pub const SAVE_PATCH_CARDS: &str = "\u{e0aa}"; // credit-card
-pub const SAVE_AUTO_BATTLE: &str = "\u{e2b4}"; // swords
-
-// Action / transport buttons.
-pub const PLAY: &str = "\u{e13c}"; // play
-pub const PAUSE: &str = "\u{e12e}"; // pause
-pub const CLOSE: &str = "\u{e1b2}"; // x
-pub const RESCAN: &str = "\u{e145}"; // refresh-cw
-pub const UPDATE: &str = "\u{e0b2}"; // download
-pub const FOLDER: &str = "\u{e0d7}"; // folder
-pub const NEW: &str = "\u{e13d}"; // plus
-pub const RENAME: &str = "\u{e1f9}"; // pencil
-pub const DELETE: &str = "\u{e18d}"; // trash
-pub const COPY: &str = "\u{e09e}"; // copy
-pub const DUPLICATE: &str = "\u{e3fd}"; // copy-plus
-pub const COPY_IMAGE: &str = "\u{e53c}"; // image-down
-pub const WATCH: &str = "\u{e13c}"; // play
-pub const EXPORT: &str = "\u{e19e}"; // upload
-pub const RENDER: &str = "\u{e29b}"; // clapperboard — replay render action
-pub const DICE: &str = "\u{e28b}"; // dice-5 — random link-code generator
-pub const FIGHT: &str = "\u{e2b4}"; // swords — Fight button (netplay Play)
-pub const CONFIRM: &str = "\u{e06c}"; // check
-pub const CANCEL: &str = "\u{e1b2}"; // x
-pub const KEYBOARD: &str = "\u{e284}"; // keyboard
-pub const GAMEPAD: &str = "\u{e0de}"; // gamepad
-/// "Asset missing" badge — currently used as a prefix in the game
-/// dropdown for entries whose ROM hasn't been scanned. Lucide
-/// `file-x` (filename outline with an x).
-pub const MISSING: &str = "\u{e0cd}"; // file-x
-
-// ----- widget helpers -----
-
-use iced::widget::{button, container, row, text, tooltip, Text};
+use iced::widget::{button, container, row, text, tooltip};
 use iced::{Alignment, Element, Theme};
-
-/// Build a `text(...)` widget configured to render an icon glyph
-/// (forces the icon font). No size override — picks up the iced
-/// renderer's default text size, same as the labels next to it.
-pub fn glyph<'a>(g: &'static str) -> Text<'a> {
-    text(g).font(FONT)
-}
+use lucide_icons::Icon;
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
 /// aware style that doesn't compete with primary CTAs in the
 /// same row. The plain-text label is exposed as a hover tooltip.
-pub fn icon_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M, padding: [f32; 2]) -> Element<'a, M> {
+pub fn icon_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, padding: [f32; 2]) -> Element<'a, M> {
     icon_button_styled(icon, label, Some(msg), padding, neutral)
 }
 
@@ -82,7 +19,7 @@ pub fn icon_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M,
 /// can render a disabled (greyed-out, no on_press) variant without
 /// duplicating the chrome.
 pub fn icon_button_maybe<'a, M: Clone + 'a>(
-    icon: &'static str,
+    icon: Icon,
     label: String,
     msg: Option<M>,
     padding: [f32; 2],
@@ -91,12 +28,8 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
 }
 
 /// List-item button style for selectable rows (patches list,
-/// replays list). Selected row uses the bright primary fill
-/// (same look the app shipped with originally); inactive rows
-/// are transparent with a faint hover tone. Foreground text on
-/// the selected row picks up `primary.base.text` (iced contrasts
-/// it against the bg) so subtitles must opt into inherit-color
-/// rather than render as muted gray on top.
+/// replays list). Selected row uses the bright primary fill;
+/// inactive rows are transparent with a faint hover tone.
 pub fn list_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
         let p = theme.extended_palette();
@@ -126,9 +59,7 @@ pub fn list_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::S
 /// Theme-aware "neutral" button style for low-emphasis toolbar
 /// actions. Reads as a clear button at rest (faint background
 /// tint + 1 px border in the palette's `background.strong`
-/// tone), brightens on hover, dims when disabled. Picks up
-/// theme palette derivations so it never collides with the
-/// accent color and stays readable on both light + dark.
+/// tone), brightens on hover, dims when disabled.
 pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
     let p = theme.extended_palette();
     let base = button::Style {
@@ -158,13 +89,13 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
 /// style explicitly — `button::primary` for the one emphasized
 /// action in a row, `button::danger` for destructive ones, etc.
 pub fn icon_button_styled<'a, M: Clone + 'a>(
-    icon: &'static str,
+    icon: Icon,
     label: String,
     msg: Option<M>,
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
-    let mut btn = button(glyph(icon)).padding(padding).style(style);
+    let mut btn = button(icon.widget()).padding(padding).style(style);
     if let Some(m) = msg {
         btn = btn.on_press(m);
     }
@@ -179,35 +110,27 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     .into()
 }
 
-/// Icon-plus-label button. Icon and label use distinct fonts (the icon
-/// is Noto Emoji, the label is the app default), so they have to be
-/// laid out as a Row rather than concatenated into one `text(...)` —
-/// iced text widgets can only carry a single font.
+/// Icon-plus-label button. Icon and label use distinct fonts
+/// (icon = lucide, label = app default), laid out as a row.
 pub fn labeled_icon_button<'a, M: Clone + 'a>(
-    icon: &'static str,
+    icon: Icon,
     label: String,
     msg: M,
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
-    button(row![glyph(icon), text(label)].spacing(8).align_y(Alignment::Center))
+    button(row![icon.widget(), text(label)].spacing(8).align_y(Alignment::Center))
         .padding(padding)
         .style(style)
         .on_press(msg)
         .into()
 }
 
-/// Flat compact tab — icon + label, transparent until
-/// hovered, underlined with a 2 px colored bar when active.
-/// Used by both the top-level nav and the save view's sub-tab
-/// strip so they look + feel identical.
-///
-/// Width is whatever the button's content needs. The underline
-/// is rendered as a `Stack` overlay so it spans the button's
-/// width without forcing the tab to flex.
-pub fn tab_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M, active: bool) -> Element<'a, M> {
+/// Flat compact tab — icon + label, transparent until hovered,
+/// underlined with a 2 px colored bar when active.
+pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
     use iced::widget::{stack, Space};
-    let btn = button(row![glyph(icon), text(label)].spacing(6).align_y(Alignment::Center))
+    let btn = button(row![icon.widget(), text(label)].spacing(6).align_y(Alignment::Center))
         .padding([4, 10])
         .style(move |theme: &Theme, status: button::Status| {
             let p = theme.extended_palette();
@@ -232,11 +155,6 @@ pub fn tab_button<'a, M: Clone + 'a>(icon: &'static str, label: String, msg: M, 
         })
         .on_press(msg);
 
-    // Stack picks its size from the FIRST child, so the button
-    // drives the tab's width. The underline overlay then takes
-    // Fill/Fill bounds inside the stack — which iced clamps to
-    // the button's measured bounds, so the bar spans exactly the
-    // button width and the tab never grows beyond its content.
     let underline = container(
         container(Space::new().width(iced::Length::Fill))
             .height(iced::Length::Fixed(2.0))

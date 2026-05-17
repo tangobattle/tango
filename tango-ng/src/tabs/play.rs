@@ -1,5 +1,6 @@
 use crate::i18n::t;
-use crate::icons;
+use crate::widgets;
+use lucide_icons::Icon;
 use crate::{
     config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION,
     TEXT_HEADING, TEXT_TITLE,
@@ -87,9 +88,9 @@ impl std::fmt::Display for GameOption {
             // Lucide "file-x" glyph as a prefix marker. cosmic-text
             // falls back across loaded fonts for codepoints the
             // primary face doesn't have, so the PUA codepoint
-            // resolves to the lucide.ttf face inside pick_list's
+            // resolves to the lucide font inside pick_list's
             // single-text-color renderer.
-            write!(f, "{} {}", icons::MISSING, self.display)
+            write!(f, "{} {}", char::from(Icon::FileX), self.display)
         }
     }
 }
@@ -623,8 +624,8 @@ impl PlayState {
         .padding(STANDARD_PADDING)
         .width(Length::Fixed(100.0));
 
-        let refresh = icons::icon_button(
-            icons::RESCAN,
+        let refresh = widgets::icon_button(
+            Icon::RefreshCw,
             t(lang, "rescan"),
             Message::Rescan,
             STANDARD_PADDING,
@@ -649,15 +650,15 @@ impl PlayState {
                     
                     .padding(STANDARD_PADDING)
                     .width(Length::Fill),
-                icons::icon_button_styled(
-                    icons::CONFIRM,
+                widgets::icon_button_styled(
+                    Icon::Check,
                     t(lang, "save-rename-confirm"),
                     Some(Message::SaveRenameConfirm),
                     STANDARD_PADDING,
                     button::primary,
                 ),
-                icons::icon_button(
-                    icons::CANCEL,
+                widgets::icon_button(
+                    Icon::X,
                     t(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
                     STANDARD_PADDING,
@@ -671,15 +672,15 @@ impl PlayState {
                     
                     .style(save_view::muted_text_style)
                     .width(Length::Fill),
-                icons::labeled_icon_button(
-                    icons::DELETE,
+                widgets::labeled_icon_button(
+                    Icon::Trash,
                     t(lang, "save-delete-confirm"),
                     Message::SaveDeleteConfirm,
                     STANDARD_PADDING,
                     button::danger,
                 ),
-                icons::icon_button(
-                    icons::CANCEL,
+                widgets::icon_button(
+                    Icon::X,
                     t(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
                     STANDARD_PADDING,
@@ -729,15 +730,15 @@ impl PlayState {
                         
                         .padding(STANDARD_PADDING)
                         .width(Length::Fill),
-                    icons::labeled_icon_button(
-                        icons::CONFIRM,
+                    widgets::labeled_icon_button(
+                        Icon::Check,
                         t(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
                         STANDARD_PADDING,
                         button::primary,
                     ),
-                    icons::icon_button(
-                        icons::CANCEL,
+                    widgets::icon_button(
+                        Icon::X,
                         t(lang, "save-action-cancel"),
                         Message::SaveActionCancel,
                         STANDARD_PADDING,
@@ -764,8 +765,8 @@ impl PlayState {
         scanners: &'a Scanners,
     ) -> Element<'a, Message> {
         let enabled = self.local_save.is_some();
-        let mk = |icon: &'static str, label: String, msg: Message, on: bool| {
-            icons::icon_button_maybe(
+        let mk = |icon: Icon, label: String, msg: Message, on: bool| {
+            widgets::icon_button_maybe(
                 icon,
                 label,
                 if on { Some(msg) } else { None },
@@ -774,8 +775,8 @@ impl PlayState {
         };
         // Destructive variant for Delete — flags it red so it
         // doesn't look like just another toolbar action.
-        let mk_danger = |icon: &'static str, label: String, msg: Message, on: bool| {
-            icons::icon_button_styled(
+        let mk_danger = |icon: Icon, label: String, msg: Message, on: bool| {
+            widgets::icon_button_styled(
                 icon,
                 label,
                 if on { Some(msg) } else { None },
@@ -787,11 +788,11 @@ impl PlayState {
         // a save template for the selected game.
         let can_new = templates_for_selection(self, scanners).is_some();
         row![
-            mk(icons::NEW, t(lang, "save-new"), Message::SaveNewStart, can_new),
-            mk(icons::FOLDER, t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
-            mk(icons::DUPLICATE, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
-            mk(icons::RENAME, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
-            mk_danger(icons::DELETE, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
+            mk(Icon::Plus, t(lang, "save-new"), Message::SaveNewStart, can_new),
+            mk(Icon::Folder, t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
+            mk(Icon::CopyPlus, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(Icon::Pencil, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
+            mk_danger(Icon::Trash, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
         .spacing(6)
         .align_y(Alignment::Center)
@@ -825,16 +826,16 @@ impl PlayState {
         // Cancel = disconnect, all phases other than Idle / Failed.
         let netplay_in_flight = !matches!(netplay, Phase::Idle | Phase::Failed { .. });
         let play_button: Element<'a, Message> = if netplay_in_flight {
-            icons::labeled_icon_button(
-                icons::CLOSE,
+            widgets::labeled_icon_button(
+                Icon::X,
                 t(lang, "play-cancel"),
                 Message::NetplayDisconnect,
                 PRIMARY_PADDING,
                 button::danger,
             )
         } else if self.link_code.trim().is_empty() {
-            icons::labeled_icon_button(
-                icons::PLAY,
+            widgets::labeled_icon_button(
+                Icon::Play,
                 t(lang, "play-play"),
                 Message::PlayPressed,
                 PRIMARY_PADDING,
@@ -845,8 +846,8 @@ impl PlayState {
             // explicitly via "Fight" + a swords glyph so the user
             // can tell at a glance they're about to start a
             // match, not a singleplayer session.
-            icons::labeled_icon_button(
-                icons::FIGHT,
+            widgets::labeled_icon_button(
+                Icon::Swords,
                 t(lang, "play-fight"),
                 Message::PlayPressed,
                 PRIMARY_PADDING,
@@ -927,8 +928,8 @@ impl PlayState {
                             .width(Length::Fixed(260.0))
                             .into(),
                     ),
-                    Some(icons::icon_button(
-                        icons::DICE,
+                    Some(widgets::icon_button(
+                        Icon::Dice5,
                         t(lang, "play-link-code-random"),
                         Message::LinkCodeRandom,
                         STANDARD_PADDING,
@@ -1208,11 +1209,9 @@ fn lobby_view<'a>(
     let (reveal_label, reveal_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
         if let Some(r) = lobby.remote.as_ref() {
             if r.reveal_setup {
-                (t(lang, "lobby-reveal-peer-on"), |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().success),
-                })
+                (t(lang, "lobby-reveal-peer-on"), save_view::success_text_style)
             } else {
-                (t(lang, "lobby-reveal-peer-off"), iced::widget::text::danger)
+                (t(lang, "lobby-reveal-peer-off"), save_view::danger_text_style)
             }
         } else {
             (t(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
@@ -1263,23 +1262,19 @@ fn lobby_view<'a>(
                 let (key, style): (&'static str, fn(&iced::Theme) -> iced::widget::text::Style) =
                     match verdict {
                         crate::netplay::compat::Verdict::Compatible => {
-                            ("lobby-compat-ok", |theme: &iced::Theme| {
-                                iced::widget::text::Style {
-                                    color: Some(theme.palette().success),
-                                }
-                            })
+                            ("lobby-compat-ok", save_view::success_text_style)
                         }
                         crate::netplay::compat::Verdict::MissingGame => {
                             ("lobby-compat-missing-game", save_view::muted_text_style)
                         }
                         crate::netplay::compat::Verdict::MissingRomOrPatch => {
-                            ("lobby-compat-missing-rom", iced::widget::text::danger)
+                            ("lobby-compat-missing-rom", save_view::danger_text_style)
                         }
                         crate::netplay::compat::Verdict::DifferentVersions => {
-                            ("lobby-compat-version-mismatch", iced::widget::text::danger)
+                            ("lobby-compat-version-mismatch", save_view::danger_text_style)
                         }
                         crate::netplay::compat::Verdict::DifferentMatchTypes => {
-                            ("lobby-compat-match-mismatch", iced::widget::text::danger)
+                            ("lobby-compat-match-mismatch", save_view::danger_text_style)
                         }
                     };
                 (
@@ -1296,52 +1291,39 @@ fn lobby_view<'a>(
             ),
         };
 
-    // Big primary "Ready" button on the right of the lobby header.
-    // The action only really exists in the pre-ready state — once
-    // the user has committed, we replace the big button with a
-    // success badge ("Ready ✓" / "Starting…") + a small icon-only
-    // × to unready. Avoids the old "label transforms Ready ⇆
-    // Unready" toggle which read as the button text mutating
-    // under the cursor.
+    // Big single toggle: Ready → Unready → Starting…, switching
+    // label + icon + color on click. Same button, same position;
+    // clicking it always does the obvious next thing (ready up,
+    // unready, or wait for match-start).
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
-    let ready_button: Element<'a, Message> = if lobby.match_ready || lobby.local_ready {
-        let (status_icon, status_key, status_style): (&'static str, &'static str, fn(&iced::Theme, button::Status) -> button::Style) =
-            if lobby.match_ready {
-                (icons::PLAY, "lobby-match-starting", button::success)
-            } else {
-                (icons::CONFIRM, "lobby-ready-committed", button::success)
-            };
-        let status_badge = iced::widget::button(
-            row![
-                icons::glyph(status_icon).size(READY_TEXT),
-                text(t(lang, status_key)).size(READY_TEXT),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .padding(READY_PAD)
-        .style(status_style);
-        let unready_btn = icons::icon_button(
-            icons::CLOSE,
-            t(lang, "lobby-unready"),
-            Message::NetplayUnready,
-            STANDARD_PADDING,
-        );
-        row![status_badge, unready_btn]
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .into()
+    let (ready_icon, ready_label_key, ready_msg, ready_style): (
+        Icon,
+        &'static str,
+        Option<Message>,
+        fn(&iced::Theme, button::Status) -> button::Style,
+    ) = if lobby.match_ready {
+        (Icon::Play, "lobby-match-starting", Some(Message::NetplayUnready), button::success)
+    } else if lobby.local_ready {
+        (Icon::Check, "lobby-unready", Some(Message::NetplayUnready), button::success)
     } else {
+        (
+            Icon::Check,
+            "lobby-ready",
+            if compat_ok { Some(Message::NetplayReady) } else { None },
+            button::primary,
+        )
+    };
+    let ready_button: Element<'a, Message> = {
         let label_widget = row![
-            icons::glyph(icons::CONFIRM).size(READY_TEXT),
-            text(t(lang, "lobby-ready")).size(READY_TEXT),
+            ready_icon.widget().size(READY_TEXT),
+            text(t(lang, ready_label_key)).size(READY_TEXT),
         ]
         .spacing(8)
         .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(button::primary);
-        if compat_ok {
-            btn = btn.on_press(Message::NetplayReady);
+        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(ready_style);
+        if let Some(m) = ready_msg {
+            btn = btn.on_press(m);
         }
         btn.into()
     };

@@ -1,5 +1,6 @@
 use crate::i18n::t;
-use crate::icons;
+use crate::widgets;
+use lucide_icons::Icon;
 use crate::{
     config, replays, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
 };
@@ -396,8 +397,8 @@ impl ReplaysState {
                     
                     .width(Length::Fixed(180.0)),
                 horizontal_space(),
-                icons::icon_button(
-                    icons::RESCAN,
+                widgets::icon_button(
+                    Icon::RefreshCw,
                     t(lang, "rescan"),
                     Message::Rescan,
                     STANDARD_PADDING,
@@ -477,19 +478,19 @@ impl ReplaysState {
             let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
             let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
             let badge: Element<'_, Message> = if rendering {
-                container(icons::glyph(icons::RENDER).style(|theme: &iced::Theme| {
+                container(Icon::Clapperboard.widget().style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().primary) }
                 }))
                 .padding([0, 4])
                 .into()
             } else if render_done_ok {
-                container(icons::glyph(icons::CONFIRM).style(|theme: &iced::Theme| {
+                container(Icon::Check.widget().style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().success) }
                 }))
                 .padding([0, 4])
                 .into()
             } else if render_done_err {
-                container(icons::glyph(icons::CANCEL).style(|theme: &iced::Theme| {
+                container(Icon::X.widget().style(|theme: &iced::Theme| {
                     iced::widget::text::Style { color: Some(theme.palette().danger) }
                 }))
                 .padding([0, 4])
@@ -522,7 +523,7 @@ impl ReplaysState {
                 )
                 .padding([6, 10])
                 .width(Fill)
-                .style(icons::list_item(selected))
+                .style(widgets::list_item(selected))
                 .on_press(Message::Selected(r.path.clone())),
             );
         }
@@ -655,15 +656,15 @@ fn replay_detail<'a>(
                 horizontal_space(),
                 // Watch is the main action of the detail view —
                 // promote to primary so it's visually obvious.
-                icons::icon_button_styled(
-                    icons::WATCH,
+                widgets::icon_button_styled(
+                    Icon::Play,
                     t(lang, "replays-watch"),
                     Some(Message::Watch(r.path.clone())),
                     STANDARD_PADDING,
                     iced::widget::button::primary,
                 ),
-                icons::icon_button_maybe::<Message>(
-                    icons::RENDER,
+                widgets::icon_button_maybe::<Message>(
+                    Icon::Clapperboard,
                     t(lang, "replays-export"),
                     // Toggle the inline options panel. Disabled
                     // only when THIS replay already has an in-
@@ -684,8 +685,8 @@ fn replay_detail<'a>(
                     },
                     STANDARD_PADDING,
                 ),
-                icons::icon_button(
-                    icons::FOLDER,
+                widgets::icon_button(
+                    Icon::Folder,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
                     STANDARD_PADDING,
@@ -785,14 +786,14 @@ fn export_status_line<'a>(
         Some(Ok(path)) => row![
             text(format!("{}: {}", t(lang, "replays-export-success"), path.display())).size(TEXT_CAPTION),
             horizontal_space(),
-            icons::icon_button(
-                icons::WATCH,
+            widgets::icon_button(
+                Icon::Play,
                 t(lang, "replays-export-open"),
                 Message::OpenFile(path.clone()),
                 STANDARD_PADDING,
             ),
-            icons::icon_button(
-                icons::CANCEL,
+            widgets::icon_button(
+                Icon::X,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
                 STANDARD_PADDING,
@@ -806,8 +807,8 @@ fn export_status_line<'a>(
                 .size(TEXT_CAPTION)
                 .style(iced::widget::text::danger),
             horizontal_space(),
-            icons::icon_button(
-                icons::CANCEL,
+            widgets::icon_button(
+                Icon::X,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
                 STANDARD_PADDING,
@@ -914,8 +915,8 @@ fn export_panel<'a>(
     // as a real call-to-action rather than a bare check-mark glyph.
     // Disabled (no on_press) when nothing is selected for export.
     let save_as_btn: Element<'a, Message> = if any_round {
-        icons::labeled_icon_button(
-            icons::EXPORT,
+        widgets::labeled_icon_button(
+            Icon::Upload,
             t(lang, "replays-export-save-as"),
             Message::Export(replay_path.to_path_buf()),
             STANDARD_PADDING,
@@ -926,14 +927,14 @@ fn export_panel<'a>(
         // variant inline.
         iced::widget::button(
             iced::widget::row![
-                icons::glyph(icons::EXPORT),
+                Icon::Upload.widget(),
                 text(t(lang, "replays-export-save-as")),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
         )
         .padding(STANDARD_PADDING)
-        .style(icons::neutral)
+        .style(widgets::neutral)
         .into()
     };
     let actions = row![horizontal_space(), save_as_btn]

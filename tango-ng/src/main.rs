@@ -2,7 +2,6 @@ mod audio;
 mod config;
 mod game;
 mod i18n;
-mod icons;
 mod input;
 mod navicust;
 mod net;
@@ -22,6 +21,7 @@ mod selection;
 mod session;
 mod singleplayer_session;
 mod tabs;
+mod widgets;
 
 use session::ActiveSession;
 
@@ -109,9 +109,8 @@ const FONT_NOTO_SANS_SC: &[u8] = include_bytes!("../../tango/fonts/NotoSansSC-Re
 const FONT_NOTO_SANS_TC: &[u8] = include_bytes!("../../tango/fonts/NotoSansTC-Regular.otf");
 const FONT_NOTO_SANS_MONO: &[u8] = include_bytes!("../../tango/fonts/NotoSansMono-Regular.ttf");
 const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../../tango/fonts/NotoEmoji-Regular.ttf");
-/// Lucide icon font (https://lucide.dev). Mapped via Private Use Area
-/// codepoints — see `icons.rs` for the per-glyph constants.
-const FONT_LUCIDE: &[u8] = include_bytes!("../fonts/lucide.ttf");
+// Lucide icon font ships with the `lucide-icons` crate as
+// `LUCIDE_FONT_BYTES`; registered with iced below.
 
 pub fn main() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -152,7 +151,7 @@ pub fn main() -> iced::Result {
         .font(FONT_NOTO_SANS_TC)
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
-        .font(FONT_LUCIDE)
+        .font(lucide_icons::LUCIDE_FONT_BYTES)
         // iced 0.14's cosmic-text falls back across registered
         // faces, so we can default to the Latin Noto Sans and let
         // CJK / emoji glyphs come from the JP / SC / TC / Emoji
@@ -1202,14 +1201,15 @@ impl App {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
-    let tab = |icon, label, target: Tab| icons::tab_button(icon, label, Message::TabSelected(target), target == active);
+    use lucide_icons::Icon;
+    let tab = |icon, label, target: Tab| widgets::tab_button(icon, label, Message::TabSelected(target), target == active);
     container(
         row![
-            tab(icons::TAB_PLAY, t(lang, "tab-play"), Tab::Play),
-            tab(icons::TAB_REPLAYS, t(lang, "tab-replays"), Tab::Replays),
-            tab(icons::TAB_PATCHES, t(lang, "tab-patches"), Tab::Patches),
+            tab(Icon::Gamepad, t(lang, "tab-play"), Tab::Play),
+            tab(Icon::Film, t(lang, "tab-replays"), Tab::Replays),
+            tab(Icon::Puzzle, t(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
-            tab(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
+            tab(Icon::Settings, t(lang, "tab-settings"), Tab::Settings),
         ]
         .spacing(2)
         .align_y(Alignment::End)

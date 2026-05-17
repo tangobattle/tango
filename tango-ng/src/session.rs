@@ -10,7 +10,8 @@
 use crate::audio;
 use crate::config;
 use crate::i18n::t;
-use crate::icons;
+use crate::widgets;
+use lucide_icons::Icon;
 use crate::patch;
 use crate::pvp_session;
 use crate::replay_session;
@@ -366,11 +367,11 @@ pub fn view<'a>(
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
             let (icon, label_key) = if state.show_opponent_panel {
-                (icons::CLOSE, "session-hide-opponent")
+                (Icon::X, "session-hide-opponent")
             } else {
-                (icons::WATCH, "session-show-opponent")
+                (Icon::Play, "session-show-opponent")
             };
-            Some(icons::icon_button(
+            Some(widgets::icon_button(
                 icon,
                 t(lang, label_key),
                 Message::ToggleOpponentPanel,
@@ -379,8 +380,8 @@ pub fn view<'a>(
         }
         _ => None,
     };
-    let close_btn = icons::icon_button(
-        icons::CLOSE,
+    let close_btn = widgets::icon_button(
+        Icon::X,
         t(lang, "playback-close"),
         Message::Close,
         STANDARD_PADDING,
@@ -425,9 +426,9 @@ pub fn view<'a>(
         let prefetched = r.prefetch_progress().min(total);
         let pct = (prefetched as f32 / total as f32 * 100.0).round() as u32;
         let (play_pause_icon, play_pause_key) = if r.is_paused() {
-            (icons::PLAY, "playback-play")
+            (Icon::Play, "playback-play")
         } else {
-            (icons::PAUSE, "playback-pause")
+            (Icon::Pause, "playback-pause")
         };
         let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
             .round_boundaries(r.round_boundaries())
@@ -448,7 +449,7 @@ pub fn view<'a>(
         .padding(STANDARD_PADDING);
 
         controls = controls
-            .push(icons::icon_button(
+            .push(widgets::icon_button(
                 play_pause_icon,
                 t(lang, play_pause_key),
                 Message::TogglePlay,

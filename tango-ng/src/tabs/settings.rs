@@ -1,5 +1,6 @@
 use crate::i18n::t;
-use crate::icons;
+use crate::widgets;
+use lucide_icons::Icon;
 use crate::{
     config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
 };
@@ -310,8 +311,8 @@ fn settings_input<'a>(
                 text(t(lang, "settings-input-press-key"))
                     
                     .style(save_view::muted_text_style),
-                icons::icon_button(
-                    icons::CANCEL,
+                widgets::icon_button(
+                    Icon::X,
                     t(lang, "save-action-cancel"),
                     Message::BindingCaptureCancel,
                     STANDARD_PADDING,
@@ -321,8 +322,8 @@ fn settings_input<'a>(
             .align_y(iced::Alignment::Center)
             .into()
         } else {
-            icons::icon_button(
-                icons::NEW,
+            widgets::icon_button(
+                Icon::Plus,
                 t(lang, "settings-input-add"),
                 Message::BindingCaptureStart(k),
                 STANDARD_PADDING,
@@ -342,8 +343,8 @@ fn settings_input<'a>(
         .align_y(iced::Alignment::Center);
         col = col.push(row);
     }
-    let reset = icons::icon_button(
-        icons::RESCAN,
+    let reset = widgets::icon_button(
+        Icon::RefreshCw,
         t(lang, "settings-input-reset"),
         Message::BindingsReset,
         STANDARD_PADDING,
@@ -357,18 +358,18 @@ fn settings_input<'a>(
 fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: usize) -> Element<'a, Message> {
     let (kind, label) = input::describe(binding);
     let kind_glyph = match kind {
-        input::DescribeKind::Keyboard => icons::KEYBOARD,
-        input::DescribeKind::Gamepad => icons::GAMEPAD,
+        input::DescribeKind::Keyboard => Icon::Keyboard,
+        input::DescribeKind::Gamepad => Icon::Gamepad,
     };
     container(
         row![
             // Lucide source-kind glyph (keyboard / gamepad) sized
             // to match the caption text alongside it.
-            icons::glyph(kind_glyph).size(TEXT_CAPTION),
+            kind_glyph.widget().size(TEXT_CAPTION),
             text(label).size(TEXT_CAPTION),
             // Lucide × for the remove-binding button. Sized to
             // the chip's caption text so the row stays tight.
-            button(icons::glyph(icons::CLOSE).size(TEXT_CAPTION))
+            button(Icon::X.widget().size(TEXT_CAPTION))
                 .padding([2, 6])
                 .style(button::danger)
                 .on_press(Message::BindingRemove(key, idx)),
