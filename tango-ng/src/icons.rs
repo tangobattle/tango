@@ -1,11 +1,13 @@
-//! UI icon glyphs, all drawn from the bundled Noto Emoji font (it
-//! covers both the BMP miscellaneous-symbol block — ⚙ ▶ ⏸ ↻ ✕ ✎ ✓ —
-//! and the SMP emoji block we use for tab badges). Centralized so a
-//! later port to a real icon font only has to touch this file.
+//! UI icon glyphs, all drawn from the bundled Lucide icon font
+//! (https://lucide.dev). Code points sit in the PUA block at U+E000+;
+//! the mapping comes from `lucide-static`'s font/info.json. Swap the
+//! `FONT` constant + glyph code points to switch to another icon
+//! font (Phosphor, Bootstrap Icons, etc.) without touching call sites.
 //!
-//! iced 0.13's cosmic-text won't reliably fall back from the default
-//! Noto Sans JP family to Noto Emoji for missing glyphs, so every
-//! icon `text(...)` MUST be `.font(FONT)` — otherwise it tofus out.
+//! iced 0.13's cosmic-text doesn't auto-fall-back from the default
+//! family to a PUA-only icon font, so every icon `text(...)` MUST be
+//! `.font(FONT)` — otherwise it tofus out. The helpers in this module
+//! handle that.
 //!
 //! Every icon button still gets a tooltip with the plain-text label
 //! for the same i18n key as before, so screen readers / non-English
@@ -14,40 +16,37 @@
 use iced::Font;
 
 /// The font every icon glyph must be rendered with.
-pub const FONT: Font = Font::with_name("Noto Emoji");
+pub const FONT: Font = Font::with_name("lucide");
 
 // Top-level navigation tabs.
-pub const TAB_PLAY: &str = "🎮";
-pub const TAB_REPLAYS: &str = "🎞";
-pub const TAB_PATCHES: &str = "🧩";
-pub const TAB_SETTINGS: &str = "⚙";
+pub const TAB_PLAY: &str = "\u{e0de}"; // gamepad
+pub const TAB_REPLAYS: &str = "\u{e0d0}"; // film
+pub const TAB_PATCHES: &str = "\u{e29c}"; // puzzle
+pub const TAB_SETTINGS: &str = "\u{e154}"; // settings
 
 // Save sub-tabs.
-pub const SAVE_COVER: &str = "👁";
-pub const SAVE_NAVI: &str = "🧑";
-pub const SAVE_FOLDER: &str = "🗂";
-pub const SAVE_PATCH_CARDS: &str = "🎴";
-pub const SAVE_AUTO_BATTLE: &str = "🤖";
+pub const SAVE_COVER: &str = "\u{e0ba}"; // eye
+pub const SAVE_NAVI: &str = "\u{e1bb}"; // bot
+pub const SAVE_FOLDER: &str = "\u{e0cf}"; // files
+pub const SAVE_PATCH_CARDS: &str = "\u{e0aa}"; // credit-card
+pub const SAVE_AUTO_BATTLE: &str = "\u{e2b4}"; // swords
 
-// Action / transport buttons. Picks are constrained to glyphs that
-// have an emoji-presentation form in Noto Emoji — pure text-symbol
-// chars (U+21BB ↻, U+270E ✎, U+2398 ⎘, U+FF0B ＋, U+2913 ⤓) tofu out
-// because they don't ship in the monochrome emoji font.
-pub const PLAY: &str = "▶";
-pub const PAUSE: &str = "⏸";
-pub const CLOSE: &str = "❌";
-pub const RESCAN: &str = "🔄";
-pub const UPDATE: &str = "⬇";
-pub const FOLDER: &str = "📁";
-pub const NEW: &str = "➕";
-pub const RENAME: &str = "✏";
-pub const DELETE: &str = "🗑";
-pub const DUPLICATE: &str = "📑";
-pub const COPY: &str = "📋";
-pub const WATCH: &str = "▶";
-pub const EXPORT: &str = "📤";
-pub const CONFIRM: &str = "✅";
-pub const CANCEL: &str = "❌";
+// Action / transport buttons.
+pub const PLAY: &str = "\u{e13c}"; // play
+pub const PAUSE: &str = "\u{e12e}"; // pause
+pub const CLOSE: &str = "\u{e1b2}"; // x
+pub const RESCAN: &str = "\u{e145}"; // refresh-cw
+pub const UPDATE: &str = "\u{e0b2}"; // download
+pub const FOLDER: &str = "\u{e0d7}"; // folder
+pub const NEW: &str = "\u{e13d}"; // plus
+pub const RENAME: &str = "\u{e1f9}"; // pencil
+pub const DELETE: &str = "\u{e18d}"; // trash
+pub const DUPLICATE: &str = "\u{e09e}"; // copy
+pub const COPY: &str = "\u{e09e}"; // copy
+pub const WATCH: &str = "\u{e13c}"; // play
+pub const EXPORT: &str = "\u{e19e}"; // upload
+pub const CONFIRM: &str = "\u{e06c}"; // check
+pub const CANCEL: &str = "\u{e1b2}"; // x
 
 // ----- widget helpers -----
 

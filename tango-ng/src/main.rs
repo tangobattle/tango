@@ -56,6 +56,9 @@ const FONT_NOTO_SANS_SC: &[u8] = include_bytes!("../../tango/fonts/NotoSansSC-Re
 const FONT_NOTO_SANS_TC: &[u8] = include_bytes!("../../tango/fonts/NotoSansTC-Regular.otf");
 const FONT_NOTO_SANS_MONO: &[u8] = include_bytes!("../../tango/fonts/NotoSansMono-Regular.ttf");
 const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../../tango/fonts/NotoEmoji-Regular.ttf");
+/// Lucide icon font (https://lucide.dev). Mapped via Private Use Area
+/// codepoints — see `icons.rs` for the per-glyph constants.
+const FONT_LUCIDE: &[u8] = include_bytes!("../fonts/lucide.ttf");
 
 pub fn main() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -74,6 +77,7 @@ pub fn main() -> iced::Result {
         .font(FONT_NOTO_SANS_TC)
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
+        .font(FONT_LUCIDE)
         // cosmic-text in iced 0.13 doesn't reliably auto-fall-back from
         // a Latin-only family to a CJK one for missing glyphs, so we
         // default to Noto Sans JP whose Latin coverage is designed to
