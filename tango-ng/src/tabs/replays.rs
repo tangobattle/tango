@@ -574,11 +574,14 @@ fn replay_detail<'a>(
     let row_for_side = |label: String, side: Option<&tango_pvp::replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
+        // Family short name ("BN6"), not the long variant string
+        // — the per-side card is tight and the family identifies
+        // the matchup uniquely enough for a replay listing.
         let game = gi
             .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
             .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
-            .map(|g| crate::game::display_name(lang, g))
-            .or_else(|| gi.map(|g| format!("{} v{}", g.rom_family, g.rom_variant)))
+            .map(|g| crate::game::short_name(lang, g))
+            .or_else(|| gi.map(|g| g.rom_family.clone()))
             .unwrap_or_default();
         let patch = gi
             .and_then(|g| g.patch.as_ref())

@@ -860,40 +860,41 @@ impl PlayState {
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
             // Resolve via the current locale every render — language
             // switches re-translate without needing a fresh fire.
-            text(flash.resolve(lang)).size(TEXT_CAPTION).style(text::danger).into()
+            text(flash.resolve(lang))
+                .size(TEXT_CAPTION)
+                .style(save_view::danger_text_style)
+                .into()
         } else {
-            let primary_style = text::primary;
-            let success_style = |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(theme.palette().success),
-            };
             match netplay {
                 Phase::Connecting { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-connecting")
                 ))
                 .size(TEXT_BODY)
-                .style(primary_style)
+                .style(text::primary)
                 .into(),
                 Phase::Negotiating { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-negotiating")
                 ))
                 .size(TEXT_BODY)
-                .style(primary_style)
+                .style(text::primary)
                 .into(),
+                // Lobby = neutral / muted. The lobby ITSELF is the
+                // accent surface (Ready button, big side cards); the
+                // status line just identifies the link code we're
+                // attached to.
                 Phase::Lobby { link_code } => text(format!(
                     "{} {link_code}",
                     t(lang, "play-status-lobby")
                 ))
                 .size(TEXT_BODY)
-                .style(success_style)
+                .style(save_view::muted_text_style)
                 .into(),
-                Phase::Failed { error } => {
-                    text(format!("{}: {error}", t(lang, "play-status-failed")))
-                        .size(TEXT_CAPTION)
-                        .style(text::danger)
-                        .into()
-                }
+                Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
+                    .size(TEXT_CAPTION)
+                    .style(save_view::danger_text_style)
+                    .into(),
                 Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_CAPTION).into(),
             }
         };
@@ -1293,21 +1294,21 @@ fn lobby_view<'a>(
     // unready, or wait for match-start).
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
-    let (ready_icon, ready_label_key, ready_msg, ready_style): (
+    let (ready_icon, ready_label_key, ready_msg, ready_palette): (
         Icon,
         &'static str,
         Option<Message>,
-        fn(&iced::Theme, button::Status) -> button::Style,
+        ReadyPalette,
     ) = if lobby.match_ready {
-        (Icon::Play, "lobby-match-starting", Some(Message::NetplayUnready), button::success)
+        (Icon::Play, "lobby-match-starting", Some(Message::NetplayUnready), ReadyPalette::Starting)
     } else if lobby.local_ready {
-        (Icon::Check, "lobby-unready", Some(Message::NetplayUnready), button::success)
+        (Icon::Check, "lobby-unready", Some(Message::NetplayUnready), ReadyPalette::Committed)
     } else {
         (
             Icon::Check,
             "lobby-ready",
             if compat_ok { Some(Message::NetplayReady) } else { None },
-            button::primary,
+            ReadyPalette::Idle,
         )
     };
     let ready_button: Element<'a, Message> = {
@@ -1317,7 +1318,9 @@ fn lobby_view<'a>(
         ]
         .spacing(8)
         .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(label_widget).padding(READY_PAD).style(ready_style);
+        let mut btn = iced::widget::button(label_widget)
+            .padding(READY_PAD)
+            .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, ready_palette));
         if let Some(m) = ready_msg {
             btn = btn.on_press(m);
         }
@@ -1353,6 +1356,78 @@ fn lobby_view<'a>(
     .width(Fill)
     .height(Fill)
     .into()
+}
+
+/// Which ready-button state we're painting. Drives
+/// [`ready_button_style`]'s color choice.
+#[derive(Clone, Copy)]
+enum ReadyPalette {
+    /// Pre-commit; the action is "ready up". Accent (primary) so
+    /// it reads as the call-to-action in the strip.
+    Idle,
+    /// Locally committed; the action is "unready". Success-tinted
+    /// (brighter green from `.success.strong`) so it visually
+    /// confirms the commit while the click target stays obvious.
+    Committed,
+    /// Both committed; match is spinning up. Match the committed
+    /// look but a touch quieter — the click still un-commits but
+    /// the user mostly just waits.
+    Starting,
+}
+
+/// Custom style for the lobby's Ready toggle. Hand-rolled instead
+/// of reusing `button::primary` / `button::success` so we can:
+///   - reach for the brighter `palette.X.strong` variants on
+///     Dark theme (iced's `success.base` is a near-invisible
+///     teal there),
+///   - keep a consistent rounded shape + thin border across all
+///     three states,
+///   - give the disabled state a clear "blocked" look (muted bg,
+///     muted text) without inheriting iced's grayed-out default.
+fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
+    let p = theme.extended_palette();
+    let (base_color, hover_color) = match palette {
+        ReadyPalette::Idle => (p.primary.base.color, p.primary.strong.color),
+        ReadyPalette::Committed => (p.success.strong.color, p.success.base.color),
+        ReadyPalette::Starting => (p.success.weak.color, p.success.base.color),
+    };
+    let text_color = match palette {
+        ReadyPalette::Idle => p.primary.base.text,
+        ReadyPalette::Committed => p.success.strong.text,
+        ReadyPalette::Starting => p.success.weak.text,
+    };
+    let border_color = match palette {
+        ReadyPalette::Idle => p.primary.strong.color,
+        ReadyPalette::Committed => p.success.base.color,
+        ReadyPalette::Starting => p.success.weak.color,
+    };
+    let base = button::Style {
+        background: Some(iced::Background::Color(base_color)),
+        text_color,
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: border_color,
+        },
+        ..Default::default()
+    };
+    match status {
+        button::Status::Active | button::Status::Pressed => base,
+        button::Status::Hovered => button::Style {
+            background: Some(iced::Background::Color(hover_color)),
+            ..base
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(iced::Background::Color(p.background.weak.color)),
+            text_color: crate::save_view::muted_color(theme),
+            border: iced::Border {
+                radius: 6.0.into(),
+                width: 1.0,
+                color: p.background.strong.color,
+            },
+            ..Default::default()
+        },
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
