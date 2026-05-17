@@ -15,10 +15,13 @@ mod save_view;
 mod scanner;
 mod scrubber;
 mod selection;
+mod session;
 mod tabs;
 
+use session::ActiveSession;
+
 use i18n::{t, FALLBACK_LANG};
-use iced::widget::{button, column, container, horizontal_rule, horizontal_space, row, text};
+use iced::widget::{button, column, container, horizontal_rule, horizontal_space, row};
 use iced::{Alignment, Element, Fill, Theme};
 use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState, SaveAction};
@@ -144,32 +147,6 @@ struct App {
     /// fresh `image::Handle` ids — without distinct ids iced caches the
     /// texture and the picture stops updating.
     session_frame_counter: u64,
-}
-
-enum ActiveSession {
-    Replay(replay_session::ReplaySession),
-    SinglePlayer(singleplayer_session::SinglePlayerSession),
-}
-
-impl ActiveSession {
-    fn snapshot_vbuf(&self) -> Vec<u8> {
-        match self {
-            Self::Replay(s) => s.snapshot_vbuf(),
-            Self::SinglePlayer(s) => s.snapshot_vbuf(),
-        }
-    }
-    fn request_close(&self) {
-        match self {
-            Self::Replay(s) => s.request_close(),
-            Self::SinglePlayer(s) => s.request_close(),
-        }
-    }
-    fn as_replay(&self) -> Option<&replay_session::ReplaySession> {
-        match self {
-            Self::Replay(s) => Some(s),
-            _ => None,
-        }
-    }
 }
 
 impl App {
@@ -364,7 +341,7 @@ impl App {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-enum Tab {
+pub enum Tab {
     #[default]
     Play,
     Replays,
@@ -376,7 +353,7 @@ enum Tab {
 /// and are wrapped here; the dispatch in `App::update` routes them to
 /// per-tab `update_*` methods below.
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
     TabSelected(Tab),
     Play(tabs::play::Message),
     Patches(tabs::patches::Message),
@@ -482,7 +459,7 @@ impl App {
             );
         }
         if matches!(self.session, Some(ActiveSession::SinglePlayer(_))) {
-            subs.push(iced::event::listen_with(map_keyboard_event));
+            subs.push(iced::event::listen_with(session::map_keyboard_event));
         }
         iced::Subscription::batch(subs)
     }
@@ -541,7 +518,17 @@ impl App {
                 // Single-player path only for now — netplay (when
                 // link_code is non-empty) isn't wired up yet.
                 if self.play.link_code.trim().is_empty() {
-                    match self.spawn_singleplayer() {
+                    let Some(loaded) = self.loaded.as_ref() else {
+                        self.play.flash_status =
+                            Some(t(&self.config.language, "play-no-selection"));
+                        return iced::Task::none();
+                    };
+                    match session::spawn_singleplayer(
+                        &self.scanners,
+                        &self.config,
+                        &self.audio_binder,
+                        loaded,
+                    ) {
                         Ok(session) => {
                             self.session = Some(ActiveSession::SinglePlayer(session));
                             self.session_frame = None;
@@ -794,9 +781,14 @@ impl App {
                     log::error!("open folder {}: {e}", p.display());
                 }
             }
-            M::Watch(p) => match self.build_playback(&p) {
-                Ok(session) => {
-                    self.session = Some(ActiveSession::Replay(session));
+            M::Watch(p) => match session::build_playback(
+                &self.scanners,
+                &self.config,
+                &self.audio_binder,
+                &p,
+            ) {
+                Ok(s) => {
+                    self.session = Some(ActiveSession::Replay(s));
                     self.session_frame = None;
                 }
                 Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
@@ -864,8 +856,8 @@ impl App {
             return welcome_view(lang, &self.welcome_nickname).map(Message::Welcome);
         }
 
-        if self.session.is_some() {
-            return self.session_view(lang);
+        if let Some(active) = self.session.as_ref() {
+            return session::view(lang, active, self.session_frame.as_ref());
         }
 
         let body: Element<'_, Message> = match self.tab {
@@ -894,196 +886,6 @@ impl App {
             .into()
     }
 
-    fn session_view(&self, lang: &LanguageIdentifier) -> Element<'_, Message> {
-        use iced::widget::{image, Space};
-        let session = self.session.as_ref().expect("session_view: no session");
-        let frame: Element<'_, Message> = if let Some(handle) = self.session_frame.as_ref() {
-            image(handle.clone())
-                .width(Fill)
-                .height(Fill)
-                .filter_method(image::FilterMethod::Nearest)
-                .content_fit(iced::ContentFit::Contain)
-                .into()
-        } else {
-            Space::new(Fill, Fill).into()
-        };
-
-        let (title_icon, title_key) = match session {
-            ActiveSession::Replay(_) => (icons::WATCH, "replays-watch"),
-            ActiveSession::SinglePlayer(_) => (icons::TAB_PLAY, "play-play"),
-        };
-        let header = container(
-            row![
-                icons::glyph(title_icon, 14),
-                text(t(lang, title_key)).size(14),
-                horizontal_space(),
-                icons::icon_button(
-                    icons::CLOSE,
-                    t(lang, "playback-close"),
-                    Message::SessionClose,
-                    STANDARD_TEXT_SIZE,
-                    STANDARD_PADDING,
-                ),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(8),
-        )
-        .width(Fill);
-
-        let mut layout = column![header, horizontal_rule(1)]
-            .spacing(0)
-            .width(Fill)
-            .height(Fill);
-
-        layout = layout.push(container(frame).center(Fill).padding(8));
-
-        // Transport (play/pause + scrubber) only makes sense for replay
-        // playback — single-player has no defined timeline.
-        if let Some(r) = session.as_replay() {
-            let total = r.total_ticks().max(1);
-            let cur = r.current_tick().min(total);
-            let prefetched = r.prefetch_progress().min(total);
-            let pct = (prefetched as f32 / total as f32 * 100.0).round() as u32;
-            let (play_pause_icon, play_pause_key) = if r.is_paused() {
-                (icons::PLAY, "playback-play")
-            } else {
-                (icons::PAUSE, "playback-pause")
-            };
-            let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::SessionSeek)
-                .round_boundaries(r.round_boundaries())
-                .view();
-            layout = layout.push(horizontal_rule(1));
-            layout = layout.push(
-                container(
-                    row![
-                        icons::icon_button(
-                            play_pause_icon,
-                            t(lang, play_pause_key),
-                            Message::SessionTogglePlay,
-                            STANDARD_TEXT_SIZE,
-                            STANDARD_PADDING,
-                        ),
-                        text(format_tick(cur)).size(11).style(save_view::muted_text_style),
-                        scrub,
-                        text(format_tick(total)).size(11).style(save_view::muted_text_style),
-                        text(format!("{pct}%"))
-                            .size(11)
-                            .style(save_view::muted_text_style),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .padding(8),
-                )
-                .width(Fill),
-            );
-        }
-
-        layout.into()
-    }
-
-    /// Decode a `.tangoreplay` and spin up an mgba playback thread for
-    /// it. Resolves both sides' ROMs (and BPS patches, if any) from the
-    /// current scanners. Returns Err if any side can't be resolved.
-    fn build_playback(
-        &self,
-        path: &std::path::Path,
-    ) -> anyhow::Result<replay_session::ReplaySession> {
-        let f = std::fs::File::open(path)?;
-        let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
-        let resolve_rom = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
-            &'static (dyn game::Game + Send + Sync),
-            std::sync::Arc<Vec<u8>>,
-        )> {
-            let gi = side
-                .and_then(|s| s.game_info.as_ref())
-                .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-            let variant = u8::try_from(gi.rom_variant).map_err(|_| {
-                anyhow::anyhow!("variant {} out of range", gi.rom_variant)
-            })?;
-            let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant)
-                })?;
-            let g = game::from_gamedb_entry(entry)
-                .ok_or_else(|| anyhow::anyhow!("no tango-ng impl for {}/{}", gi.rom_family, gi.rom_variant))?;
-            let rom = self
-                .scanners
-                .roms
-                .read()
-                .get(&entry)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
-            let rom = if let Some(patch_info) = gi.patch.as_ref() {
-                let v = semver::Version::parse(&patch_info.version)?;
-                patch::apply_patch_from_disk(
-                    &rom,
-                    entry,
-                    &self.config.patches_path(),
-                    &patch_info.name,
-                    &v,
-                )?
-            } else {
-                rom
-            };
-            Ok((g, std::sync::Arc::new(rom)))
-        };
-
-        let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
-        let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-        replay_session::ReplaySession::new(
-            local_game,
-            local_rom,
-            remote_game,
-            remote_rom,
-            replay,
-            &self.audio_binder,
-        )
-    }
-
-    /// Boot the currently-loaded ROM in single-player mode using the
-    /// active save selection. Errors out if anything's missing —
-    /// callers should gate the Play button on a complete selection.
-    fn spawn_singleplayer(&self) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
-        let loaded = self
-            .loaded
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("no game / save selected"))?;
-        let game = game::from_gamedb_entry(loaded.game).ok_or_else(|| {
-            anyhow::anyhow!(
-                "no tango-ng game impl for {:?}",
-                loaded.game.family_and_variant()
-            )
-        })?;
-        // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
-        // grab them back from the scanner and re-apply the patch if any
-        // so the emulator sees the same image it would in the legacy app.
-        let raw = self
-            .scanners
-            .roms
-            .read()
-            .get(&loaded.game)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
-        let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-            patch::apply_patch_from_disk(
-                &raw,
-                loaded.game,
-                &self.config.patches_path(),
-                &p.name,
-                &p.version,
-            )?
-        } else {
-            raw
-        };
-        singleplayer_session::SinglePlayerSession::new(
-            game,
-            std::sync::Arc::new(rom_bytes),
-            &loaded.save_path,
-            &self.audio_binder,
-        )
-    }
-
     fn theme(&self) -> Theme {
         // Custom palettes derived from the built-in Light/Dark, with the
         // accent (primary) swapped to the BN-green that the main egui
@@ -1110,35 +912,6 @@ impl App {
             ),
         }
     }
-}
-
-/// `iced::event::listen_with` needs a free `fn` (no captures), so we
-/// fold the key→mgba-bit translation into the subscription itself and
-/// only emit messages for keys we actually bind.
-fn map_keyboard_event(
-    event: iced::Event,
-    _status: iced::event::Status,
-    _window: iced::window::Id,
-) -> Option<Message> {
-    use iced::keyboard::Event as Kb;
-    match event {
-        iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
-            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyDown)
-        }
-        iced::Event::Keyboard(Kb::KeyReleased { key, .. }) => {
-            singleplayer_session::key_to_mgba_bit(&key).map(Message::SessionKeyUp)
-        }
-        _ => None,
-    }
-}
-
-/// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub
-/// bar's wallclock labels.
-fn format_tick(tick: u32) -> String {
-    let total_s = tick / 60;
-    let m = total_s / 60;
-    let s = total_s % 60;
-    format!("{m}:{s:02}")
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
