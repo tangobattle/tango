@@ -294,16 +294,6 @@ pub async fn export(
         let kept_replay_len = kept_input_pairs(replay, selected);
 
         let last_round_idx = replay.rounds.len().saturating_sub(1);
-        // For incomplete replays, the stepper may stall — e.g. BN3's
-        // last partial round can sit waiting for a round_start hook
-        // that never fires, leaving `pairs_left > 0` indefinitely.
-        // Bail out if pairs_left hasn't moved for a generous budget
-        // of frames so the render finishes instead of looping forever.
-        // Complete replays are unaffected: they don't take this path
-        // because `replay.is_complete` is true.
-        const STALL_FRAME_BUDGET: u32 = 60 * 30; // 30s at 60fps
-        let mut prev_pairs_left: Option<usize> = None;
-        let mut stall_frames: u32 = 0;
         loop {
             let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
@@ -312,22 +302,6 @@ pub async fn export(
 
             if (!replay.is_complete && pairs_left == 0) || (is_ended && cur_round_idx >= last_round_idx) {
                 break;
-            }
-
-            if !replay.is_complete {
-                if prev_pairs_left == Some(pairs_left) {
-                    stall_frames += 1;
-                    if stall_frames >= STALL_FRAME_BUDGET {
-                        log::warn!(
-                            "incomplete replay export bailing after {} stall frames at round {}, {} pairs left",
-                            STALL_FRAME_BUDGET, cur_round_idx, pairs_left,
-                        );
-                        break;
-                    }
-                } else {
-                    stall_frames = 0;
-                }
-                prev_pairs_left = Some(pairs_left);
             }
 
             if last_selected_round.is_none_or(|last| cur_round_idx > last) {

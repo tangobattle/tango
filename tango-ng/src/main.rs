@@ -73,12 +73,14 @@ pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[unic_langid::langid!("en-US
 
 // Button sizing constants — three tiers that everything else maps onto.
 // `NAV` for the top-level nav strip; `PRIMARY` for the single big
-// call-to-action (Play); `STANDARD` for everything else.
+// call-to-action (Play). Standard body text comes from iced's
+// `default_text_size` (set in main()), so there's no standalone
+// STANDARD_TEXT_SIZE constant — widgets that don't pass an
+// explicit size inherit the app default.
 pub const NAV_TEXT_SIZE: f32 = 14.0;
 pub const NAV_PADDING: [f32; 2] = [8.0, 16.0];
 pub const PRIMARY_TEXT_SIZE: f32 = 13.0;
 pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
-pub const STANDARD_TEXT_SIZE: f32 = 13.0;
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
 // Typographic scale. Everything that renders text picks from this
@@ -89,12 +91,12 @@ pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 //   DISPLAY — splash titles ("Welcome to Tango").
 //   TITLE   — section headers ("tab-settings", empty-state cards).
 //   HEADING — sub-section labels (nickname on side cards).
-//   BODY    — default body copy. Same value as STANDARD_TEXT_SIZE.
+//   BODY    — default body copy. Same value as the iced default.
 //   CAPTION — muted hints, status lines, metadata labels.
 pub const TEXT_DISPLAY: f32 = 22.0;
 pub const TEXT_TITLE: f32 = 18.0;
 pub const TEXT_HEADING: f32 = 15.0;
-pub const TEXT_BODY: f32 = STANDARD_TEXT_SIZE;
+pub const TEXT_BODY: f32 = 13.0;
 pub const TEXT_CAPTION: f32 = 11.0;
 
 // Bundled fonts. We reuse the main app's font files (a few MB total)
@@ -119,7 +121,17 @@ pub fn main() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
+    // Body text default. Every text widget that doesn't pass an
+    // explicit `.size(...)` picks this up — that's the bulk of the
+    // UI. Iced's bare default is 16 px; 13 matches what the rest
+    // of the typographic scale (TEXT_TITLE / TEXT_HEADING /
+    // TEXT_CAPTION) was tuned against.
+    let settings = iced::Settings {
+        default_text_size: iced::Pixels(13.0),
+        ..iced::Settings::default()
+    };
     iced::application(App::new, App::update, App::view)
+        .settings(settings)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
@@ -324,25 +336,33 @@ impl App {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
-        // If the current lobby match_type doesn't exist for the
-        // selected game (e.g. game just changed, or first-time
-        // lobby entry with a game preselected), pick a sensible
-        // default: Triple (mode=1) if the game supports it, else
-        // Single (mode=0). The user-explicit-choice case stays
-        // sticky because we only touch it when the current value
-        // is invalid for the new game.
+        // Default match-type policy:
+        //   - Game JUST changed (or first selection in this lobby):
+        //     pick Triple (mode=1) if the game supports it, else
+        //     Single. This is the "default to triple" the user wants
+        //     — keyed off `default_mt_for_game` so it only fires once
+        //     per (lobby, game) pair.
+        //   - Same game, current value invalid for it: same fallback
+        //     (paranoia).
+        //   - Same game, valid value: leave alone — sticky user pick.
         if let Some(game) = self.play.local_game {
             let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types()).unwrap_or(&[]);
+            let game_key = {
+                let (fam, var) = game.family_and_variant();
+                (fam.to_string(), var)
+            };
+            let game_changed = self.netplay.lobby.default_mt_for_game.as_ref() != Some(&game_key);
             let (mode, sub) = self.netplay.lobby.match_type;
             let current_valid =
                 (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
-            if !current_valid {
+            if game_changed || !current_valid {
                 let new_mt = if mt_table.get(1).copied().unwrap_or(0) > 0 {
                     (1, 0) // Triple
                 } else {
                     (0, 0) // Single
                 };
                 self.netplay.lobby.match_type = new_mt;
+                self.netplay.lobby.default_mt_for_game = Some(game_key);
             }
         }
         let settings = self.make_local_settings();
@@ -603,7 +623,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
-                        self.play.flash_status = Some(format!("{e}"));
+                        self.play.flash_status = Some(tabs::play::FlashMessage::Raw(format!("{e}")));
                         // netplay state is already back to Idle.
                     }
                 }
@@ -661,7 +681,7 @@ impl App {
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
-                        self.play.flash_status = Some(format!("{e}"));
+                        self.play.flash_status = Some(tabs::play::FlashMessage::Raw(format!("{e}")));
                     }
                 }
                 iced::Task::none()
@@ -675,7 +695,7 @@ impl App {
             E::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
             E::NetplayReadyWithSave => {
                 let Some(loaded) = self.loaded.as_ref() else {
-                    self.play.flash_status = Some(t(&self.config.language, "play-no-selection"));
+                    self.play.flash_status = Some(tabs::play::FlashMessage::I18n("play-no-selection"));
                     return iced::Task::none();
                 };
                 let save_sram = loaded.save.as_sram_dump();
@@ -1172,26 +1192,7 @@ impl App {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
-    use iced::widget::button;
-    // Filled primary fill on the active tab + transparent text on
-    // the rest — the same shape the app shipped with before the
-    // underline-style `tab_button` experiment. The filled tab pops
-    // more clearly as "you are here" than a thin underline.
-    let tab = |icon, label, target: Tab| {
-        let style: fn(&Theme, button::Status) -> button::Style = if target == active {
-            button::primary
-        } else {
-            button::text
-        };
-        icons::labeled_icon_button(
-            icon,
-            label,
-            Message::TabSelected(target),
-            NAV_TEXT_SIZE,
-            NAV_PADDING,
-            style,
-        )
-    };
+    let tab = |icon, label, target: Tab| icons::tab_button(icon, label, Message::TabSelected(target), target == active);
     container(
         row![
             tab(icons::TAB_PLAY, t(lang, "tab-play"), Tab::Play),
@@ -1201,7 +1202,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             tab(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
         ]
         .spacing(2)
-        .align_y(Alignment::Center)
+        .align_y(Alignment::End)
         .padding([4, 6]),
     )
     .width(Fill)

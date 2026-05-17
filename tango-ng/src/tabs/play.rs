@@ -1,8 +1,8 @@
 use crate::i18n::t;
 use crate::icons;
 use crate::{
-    config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING,
-    STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE,
+    config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, TEXT_BODY,
+    TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE,
 };
 use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
@@ -62,6 +62,10 @@ pub enum Message {
 pub struct GameOption {
     pub game: rom::GameRef,
     pub display: String,
+    /// `false` when no ROM for this game is in the scan results.
+    /// Still shown in the dropdown (so users know what's supported)
+    /// but `LocalGameSelected` ignores picks where this is false.
+    pub available: bool,
 }
 
 impl PartialEq for GameOption {
@@ -77,7 +81,11 @@ impl std::hash::Hash for GameOption {
 }
 impl std::fmt::Display for GameOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.display)
+        if self.available {
+            f.write_str(&self.display)
+        } else {
+            write!(f, "{} (no ROM)", self.display)
+        }
     }
 }
 impl std::fmt::Debug for GameOption {
@@ -117,10 +125,29 @@ pub struct PlayState {
     pub save_action: SaveAction,
     pub link_code: String,
     /// Transient one-shot status message shown beneath the link-code
-    /// input; reset by the next user action. Used today to flag that
-    /// netplay isn't implemented; will likely host real lobby status
-    /// messages once it is.
-    pub flash_status: Option<String>,
+    /// input; reset by the next user action. Resolved at view-time
+    /// (not assignment-time) so a language switch immediately re-
+    /// localizes the visible text.
+    pub flash_status: Option<FlashMessage>,
+}
+
+/// Lazy status message — resolves to the current locale at view
+/// time. `I18n` carries an i18n key for static messages; `Raw`
+/// carries a free-form already-rendered string (errors, etc.) that
+/// can't be auto-translated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FlashMessage {
+    I18n(&'static str),
+    Raw(String),
+}
+
+impl FlashMessage {
+    pub fn resolve(&self, lang: &LanguageIdentifier) -> String {
+        match self {
+            FlashMessage::I18n(key) => t(lang, key),
+            FlashMessage::Raw(s) => s.clone(),
+        }
+    }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -204,6 +231,12 @@ impl PlayState {
     ) -> Option<Effect> {
         match msg {
             Message::LocalGameSelected(g) => {
+                if !g.available {
+                    // Greyed-out entry in the dropdown — ignore the
+                    // pick. The "(no ROM)" suffix in the label tells
+                    // the user why it didn't take.
+                    return None;
+                }
                 self.local_game = Some(g.game);
                 self.local_save = scanners
                     .saves
@@ -265,7 +298,8 @@ impl PlayState {
                 let trimmed = self.link_code.trim();
                 if trimmed.is_empty() {
                     if loaded.is_none() {
-                        self.flash_status = Some(t(&config.language, "play-no-selection"));
+                        let _ = config; // language now resolved at view-time
+                        self.flash_status = Some(FlashMessage::I18n("play-no-selection"));
                         return None;
                     }
                     Some(Effect::StartSinglePlayer)
@@ -474,14 +508,20 @@ impl PlayState {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
 
-        let mut installed_games: Vec<rom::GameRef> = roms.keys().copied().collect();
-        game::sort_games(lang, &mut installed_games);
+        // Show every Battle Network game tango knows about, not
+        // just the ones with a scanned ROM — users want to see
+        // what's supported. The `available` flag is folded into
+        // `GameOption`'s Display impl (adds "(no ROM)") and the
+        // `LocalGameSelected` handler refuses picks where it's false.
+        let mut all_games: Vec<rom::GameRef> = tango_gamedb::GAMES.iter().copied().collect();
+        game::sort_games(lang, &mut all_games);
 
-        let game_options: Vec<GameOption> = installed_games
+        let game_options: Vec<GameOption> = all_games
             .iter()
             .map(|g| GameOption {
                 game: *g,
                 display: game::display_name(lang, *g),
+                available: roms.contains_key(g),
             })
             .collect();
 
@@ -491,7 +531,7 @@ impl PlayState {
 
         let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
             .placeholder(t(lang, "play-no-game"))
-            .text_size(STANDARD_TEXT_SIZE)
+            .text_size(13.0)
             .padding(STANDARD_PADDING)
             .width(Length::FillPortion(3));
 
@@ -508,7 +548,7 @@ impl PlayState {
 
         let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
             .placeholder(t(lang, "play-no-save"))
-            .text_size(STANDARD_TEXT_SIZE)
+            .text_size(13.0)
             .padding(STANDARD_PADDING)
             .width(Length::Fill);
 
@@ -534,7 +574,7 @@ impl PlayState {
             Some(self.local_patch.clone().unwrap_or(no_patch_label)),
             Message::LocalPatchSelected,
         )
-        .text_size(STANDARD_TEXT_SIZE)
+        .text_size(13.0)
         .padding(STANDARD_PADDING)
         .width(Length::FillPortion(2));
 
@@ -562,7 +602,7 @@ impl PlayState {
             Message::LocalPatchVersionSelected,
         )
         .placeholder(t(lang, "play-version-placeholder"))
-        .text_size(STANDARD_TEXT_SIZE)
+        .text_size(13.0)
         .padding(STANDARD_PADDING)
         .width(Length::Fixed(100.0));
 
@@ -570,7 +610,7 @@ impl PlayState {
             icons::RESCAN,
             t(lang, "rescan"),
             Message::Rescan,
-            STANDARD_TEXT_SIZE,
+            13.0,
             STANDARD_PADDING,
         );
 
@@ -590,14 +630,14 @@ impl PlayState {
                 text_input(&t(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
                     .on_submit(Message::SaveRenameConfirm)
-                    .size(STANDARD_TEXT_SIZE)
+                    .size(13.0)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fill),
                 icons::icon_button_styled(
                     icons::CONFIRM,
                     t(lang, "save-rename-confirm"),
                     Some(Message::SaveRenameConfirm),
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                     button::primary,
                 ),
@@ -605,7 +645,7 @@ impl PlayState {
                     icons::CANCEL,
                     t(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -614,14 +654,14 @@ impl PlayState {
             .into(),
             SaveAction::ConfirmDelete => row![
                 text(t(lang, "save-delete-prompt"))
-                    .size(STANDARD_TEXT_SIZE)
+                    .size(13.0)
                     .style(save_view::muted_text_style)
                     .width(Length::Fill),
                 icons::labeled_icon_button(
                     icons::DELETE,
                     t(lang, "save-delete-confirm"),
                     Message::SaveDeleteConfirm,
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                     button::danger,
                 ),
@@ -629,7 +669,7 @@ impl PlayState {
                     icons::CANCEL,
                     t(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -668,20 +708,20 @@ impl PlayState {
                         };
                         Message::SaveNewTemplateSelected(real)
                     })
-                    .text_size(STANDARD_TEXT_SIZE)
+                    .text_size(13.0)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(180.0)),
                     text_input(&t(lang, "save-name-placeholder"), draft)
                         .on_input(Message::SaveNewDraftChanged)
                         .on_submit(Message::SaveNewConfirm)
-                        .size(STANDARD_TEXT_SIZE)
+                        .size(13.0)
                         .padding(STANDARD_PADDING)
                         .width(Length::Fill),
                     icons::labeled_icon_button(
                         icons::CONFIRM,
                         t(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
-                        STANDARD_TEXT_SIZE,
+                        13.0,
                         STANDARD_PADDING,
                         button::primary,
                     ),
@@ -689,7 +729,7 @@ impl PlayState {
                         icons::CANCEL,
                         t(lang, "save-action-cancel"),
                         Message::SaveActionCancel,
-                        STANDARD_TEXT_SIZE,
+                        13.0,
                         STANDARD_PADDING,
                     ),
                 ]
@@ -719,7 +759,7 @@ impl PlayState {
                 icon,
                 label,
                 if on { Some(msg) } else { None },
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             )
         };
@@ -730,7 +770,7 @@ impl PlayState {
                 icon,
                 label,
                 if on { Some(msg) } else { None },
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
                 iced::widget::button::danger,
             )
@@ -812,7 +852,9 @@ impl PlayState {
         // flash_status (single-player launch error etc.) takes priority
         // over the netplay phase label.
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
-            text(flash.clone()).size(TEXT_CAPTION).style(text::danger).into()
+            // Resolve via the current locale every render — language
+            // switches re-translate without needing a fresh fire.
+            text(flash.resolve(lang)).size(TEXT_CAPTION).style(text::danger).into()
         } else {
             let primary_style = text::primary;
             let success_style = |theme: &iced::Theme| iced::widget::text::Style {
@@ -863,7 +905,7 @@ impl PlayState {
                 Phase::Connecting { .. } | Phase::Negotiating { .. } => (
                     Some(
                         text_input(&t(lang, "play-link-code"), &self.link_code)
-                            .size(STANDARD_TEXT_SIZE)
+                            .size(13.0)
                             .padding(STANDARD_PADDING)
                             .width(Length::Fixed(260.0))
                             .into(),
@@ -875,7 +917,7 @@ impl PlayState {
                         text_input(&t(lang, "play-link-code"), &self.link_code)
                             .on_input(Message::LinkCodeChanged)
                             .on_submit(Message::PlayPressed)
-                            .size(STANDARD_TEXT_SIZE)
+                            .size(13.0)
                             .padding(STANDARD_PADDING)
                             .width(Length::Fixed(260.0))
                             .into(),
@@ -884,7 +926,7 @@ impl PlayState {
                         icons::DICE,
                         t(lang, "play-link-code-random"),
                         Message::LinkCodeRandom,
-                        STANDARD_TEXT_SIZE,
+                        13.0,
                         STANDARD_PADDING,
                     )),
                 ),
@@ -1127,20 +1169,20 @@ fn lobby_view<'a>(
             .cloned();
         if options.is_empty() {
             text(t(lang, "lobby-no-match-types"))
-                .size(STANDARD_TEXT_SIZE)
+                .size(13.0)
                 .style(save_view::muted_text_style)
                 .into()
         } else {
             pick_list(options, selected, |o| {
                 Message::NetplaySetMatchType((o.mode, o.subtype))
             })
-            .text_size(STANDARD_TEXT_SIZE)
+            .text_size(13.0)
             .padding(STANDARD_PADDING)
             .into()
         }
     } else {
         text(t(lang, "lobby-pick-game-first"))
-            .size(STANDARD_TEXT_SIZE)
+            .size(13.0)
             .style(save_view::muted_text_style)
             .into()
     };
@@ -1154,15 +1196,33 @@ fn lobby_view<'a>(
     // `play-details-reveal-setup` checkbox — each side picks
     // independently; the peer can see (read-only) what we picked
     // via the remote status next to the checkbox.
-    let reveal_label = if let Some(r) = lobby.remote.as_ref() {
-        if r.reveal_setup {
-            t(lang, "lobby-reveal-peer-on")
+    // Peer's current "reveal my setup" flag — surfaced as a
+    // standalone sentence under the checkbox so the parens-stuffed
+    // label doesn't have to be locale-jammed into the checkbox text.
+    // Color follows the state: green when peer is sharing,
+    // muted/red when not / unknown.
+    let (reveal_label, reveal_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
+        if let Some(r) = lobby.remote.as_ref() {
+            if r.reveal_setup {
+                (t(lang, "lobby-reveal-peer-on"), |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().success),
+                })
+            } else {
+                (t(lang, "lobby-reveal-peer-off"), iced::widget::text::danger)
+            }
         } else {
-            t(lang, "lobby-reveal-peer-off")
-        }
-    } else {
-        t(lang, "lobby-reveal-peer-unknown")
-    };
+            (t(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
+        };
+
+    let reveal_column = column![
+        iced::widget::checkbox(lobby.reveal_setup)
+            .label(t(lang, "lobby-reveal-mine"))
+            .on_toggle(Message::NetplaySetRevealSetup)
+            .size(TEXT_HEADING)
+            .text_size(13.0),
+        text(reveal_label).size(TEXT_CAPTION).style(reveal_style),
+    ]
+    .spacing(2);
 
     let controls = row![
         row![
@@ -1182,11 +1242,7 @@ fn lobby_view<'a>(
         .spacing(6)
         .align_y(Alignment::Center)
         .width(Length::Fixed(220.0)),
-        iced::widget::checkbox(lobby.reveal_setup)
-            .label(format!("{} ({reveal_label})", t(lang, "lobby-reveal-mine")))
-            .on_toggle(Message::NetplaySetRevealSetup)
-            .size(TEXT_HEADING)
-            .text_size(STANDARD_TEXT_SIZE),
+        reveal_column,
     ]
     .spacing(20)
     .align_y(Alignment::Center);

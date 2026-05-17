@@ -18,7 +18,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::{game, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_CAPTION, TEXT_HEADING};
+use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, text};
@@ -266,18 +266,23 @@ impl State {
 
 /// Per-frame redraw tick (only while a session is active) + keyboard
 /// subscription (only for single-player sessions, where joyflag input
-/// is meaningful). Tick uses `time::every(8ms)` rather than
+/// is meaningful). Tick uses `time::every(2ms)` rather than
 /// `window::frames()` because iced 0.14's reactive renderer only
 /// pumps `frames()` while the runtime is requesting redraws — when
 /// nothing in our state has changed iced quiesces and the
-/// framebuffer would stop updating. A fixed 125 Hz interval keeps
-/// the loop alive; the per-session frame-id check inside the Tick
-/// handler still gates the actual GPU upload to mgba's emulator
-/// fps, so we don't waste work on a high-refresh host.
+/// framebuffer would stop updating. A 500 Hz interval keeps the
+/// loop alive AND minimizes the gap between "emulator finished a
+/// frame" and "UI uploads it", which is otherwise a perceptible
+/// chunk of input latency (you press a key, the emu applies it on
+/// the next frame, but if the UI is up to 8 ms behind that frame
+/// the user feels >24 ms of lag before they see the response). The
+/// per-session frame-id check inside the Tick handler still skips
+/// the GPU upload when nothing changed, so the extra polls cost
+/// only an atomic compare on the host.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
     if state.is_active() {
-        subs.push(iced::time::every(std::time::Duration::from_millis(8)).map(|_| Message::Tick));
+        subs.push(iced::time::every(std::time::Duration::from_millis(2)).map(|_| Message::Tick));
     }
     if matches!(
         state.active,
@@ -380,7 +385,7 @@ pub fn view<'a>(
                 icon,
                 t(lang, label_key),
                 Message::ToggleOpponentPanel,
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ))
         }
@@ -401,7 +406,7 @@ pub fn view<'a>(
         icons::CLOSE,
         t(lang, "playback-close"),
         Message::Close,
-        STANDARD_TEXT_SIZE,
+        13.0,
         STANDARD_PADDING,
     ));
     let header = container(header_row).width(Fill);
@@ -461,7 +466,7 @@ pub fn view<'a>(
         let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
             Message::SetSpeed(o.0)
         })
-        .text_size(STANDARD_TEXT_SIZE)
+        .text_size(13.0)
         .padding(STANDARD_PADDING);
 
         layout = layout.push(horizontal_rule(1));
@@ -472,7 +477,7 @@ pub fn view<'a>(
                         play_pause_icon,
                         t(lang, play_pause_key),
                         Message::TogglePlay,
-                        STANDARD_TEXT_SIZE,
+                        13.0,
                         STANDARD_PADDING,
                     ),
                     text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style),

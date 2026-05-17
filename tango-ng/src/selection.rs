@@ -242,56 +242,46 @@ fn build_navicust_render(
     let materialized = view.materialized();
 
     // Mirrors the constants inside navicust.rs's tiny-skia render.
-    // We render the source at `DISPLAY_TARGET_W * OVERSAMPLE` so the
-    // cosmic-text style label is rasterized at HiDPI-friendly pixel
-    // density; the iced widget then linearly downsamples to the
-    // visual `DISPLAY_TARGET_W` for crisp text on both 1x and 2x
-    // displays.
+    // We render the source at EXACTLY the visual display width so
+    // the iced widget can paint 1:1 with Nearest filtering — no
+    // scaling means no fuzz on the cosmic-text label.
     const PADDING_H: f32 = crate::navicust::PADDING_H as f32;
     const PADDING_V: f32 = crate::navicust::PADDING_V as f32;
     const SQUARE_SIZE: f32 = crate::navicust::SQUARE_SIZE;
     const BORDER_WIDTH: f32 = crate::navicust::BORDER_WIDTH;
     /// Visual width the iced widget paints the navicust at.
-    pub const DISPLAY_TARGET_W: u32 = 440;
-    /// HiDPI headroom: render the source at 2× the visual width so
-    /// the rasterized label survives a 2x-DPI display without
-    /// turning into mush.
-    const OVERSAMPLE: u32 = 2;
+    pub const DISPLAY_TARGET_W: u32 = 280;
     let (rows, cols) = materialized.dim();
 
     let lang = crate::game::region_to_language(game.region());
-    let oversampled_w = DISPLAY_TARGET_W * OVERSAMPLE;
     let img = crate::navicust::render(
         &materialized,
         &layout,
         view.as_ref(),
         assets,
         &lang,
-        Some(oversampled_w),
+        Some(DISPLAY_TARGET_W),
     );
     let (w, h) = (img.width(), img.height());
 
-    // Geometry in DISPLAY (post-downsample) coords — the iced widget
-    // paints the image at the display width, so the overlay's
-    // body_origin / cell_size need to be in those units too.
+    // Geometry in DISPLAY coords — the iced widget paints the image
+    // 1:1, so the overlay's body_origin / cell_size are in source-
+    // pixel units exactly. Derive the scale that navicust::render
+    // applied to native geometry so the cell hit-test stays correct
+    // for grids that fit under the cap natively (scale = 1.0 case).
     let body_w_native = cols as f32 * SQUARE_SIZE + BORDER_WIDTH;
     let total_w_native = body_w_native + PADDING_H * 2.0;
-    let display_w = (DISPLAY_TARGET_W as f32).min(total_w_native);
-    let display_scale = display_w / total_w_native;
+    let display_scale = w as f32 / total_w_native;
     let color_bar_h = (SQUARE_SIZE / 2.0 + BORDER_WIDTH).round();
     let body_origin_x = (PADDING_H + BORDER_WIDTH / 2.0) * display_scale;
     let body_origin_y = (PADDING_V + color_bar_h + PADDING_V + BORDER_WIDTH / 2.0) * display_scale;
     let cell_size = SQUARE_SIZE * display_scale;
-    // source_w/h now reports the DISPLAY size (not pixel size of the
-    // underlying Handle), so render_navicust sizes the Image widget
-    // at the visual cap and iced downsamples the 2× backing buffer.
-    let display_h = (h as f32) * (display_w / w as f32);
 
     let cell_part_idx: Vec<Option<usize>> = materialized.iter().copied().collect();
 
     Some(NavicustRender {
-        source_w: display_w.round() as u32,
-        source_h: display_h.round() as u32,
+        source_w: w,
+        source_h: h,
         handle: iced_image::Handle::from_rgba(w, h, img.into_raw()),
         body_origin_x,
         body_origin_y,

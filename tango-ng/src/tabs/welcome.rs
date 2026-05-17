@@ -1,7 +1,7 @@
 use crate::i18n::{t, t_args};
 use crate::tabs::settings::labeled;
 use crate::{
-    icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS,
+    icons, save_view, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING, SUPPORTED_LANGS,
     TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE,
 };
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
@@ -60,7 +60,7 @@ pub fn view<'a>(
     // Language selector — lets the user switch before nickname so the
     // rest of the welcome flow shows in the language they picked.
     let lang_picker = pick_list(SUPPORTED_LANGS.to_vec(), Some(lang.clone()), Message::LanguageSelected)
-        .text_size(STANDARD_TEXT_SIZE)
+        .text_size(13.0)
         .padding(STANDARD_PADDING);
 
     let step_marker = |done: bool| -> &'static str {
@@ -90,7 +90,7 @@ pub fn view<'a>(
                 icons::FOLDER,
                 t(lang, "welcome-open-folder"),
                 Message::OpenRomsFolder,
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
                 icons::neutral,
             ),
@@ -98,7 +98,7 @@ pub fn view<'a>(
                 icons::RESCAN,
                 t(lang, "rescan"),
                 Message::RescanRoms,
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
                 icons::neutral,
             ),
@@ -144,7 +144,7 @@ pub fn view<'a>(
             text_input("", &state.nickname_draft)
                 .on_input(Message::NicknameChanged)
                 .on_submit(Message::Continue)
-                .size(STANDARD_TEXT_SIZE)
+                .size(13.0)
                 .padding(STANDARD_PADDING)
                 .width(Length::Fixed(280.0)),
         ),

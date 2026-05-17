@@ -129,6 +129,11 @@ pub struct LobbyState {
     pub match_ready: bool,
     /// Peer sent us a StartMatch packet. Other half.
     pub remote_match_ready: bool,
+    /// Last `(family, variant)` the App's resend pass applied a
+    /// "default match type" for. Used so that switching games
+    /// triggers a re-default to Triple (when supported), while
+    /// user-explicit picks for the SAME game stick.
+    pub default_mt_for_game: Option<(String, u8)>,
 }
 
 impl Default for LobbyState {
@@ -147,6 +152,7 @@ impl Default for LobbyState {
             remote_ready: false,
             match_ready: false,
             remote_match_ready: false,
+            default_mt_for_game: None,
         }
     }
 }

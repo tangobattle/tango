@@ -1,7 +1,7 @@
 use crate::i18n::t;
 use crate::icons;
 use crate::{
-    config, replays, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
+    config, replays, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
 };
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
@@ -387,20 +387,20 @@ impl ReplaysState {
             row![
                 text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
-                    .text_size(STANDARD_TEXT_SIZE)
+                    .text_size(13.0)
                     .padding(STANDARD_PADDING),
                 text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
                 iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
-                    .size(STANDARD_TEXT_SIZE)
+                    .size(13.0)
                     .width(Length::Fixed(180.0)),
                 horizontal_space(),
                 icons::icon_button(
                     icons::RESCAN,
                     t(lang, "rescan"),
                     Message::Rescan,
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -657,7 +657,7 @@ fn replay_detail<'a>(
                     icons::WATCH,
                     t(lang, "replays-watch"),
                     Some(Message::Watch(r.path.clone())),
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                     iced::widget::button::primary,
                 ),
@@ -681,14 +681,14 @@ fn replay_detail<'a>(
                     } else {
                         Some(Message::ExportPanelOpen(r.path.clone()))
                     },
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
                 icons::icon_button(
                     icons::FOLDER,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -790,14 +790,14 @@ fn export_status_line<'a>(
                 icons::WATCH,
                 t(lang, "replays-export-open"),
                 Message::OpenFile(path.clone()),
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ),
             icons::icon_button(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ),
         ]
@@ -813,7 +813,7 @@ fn export_status_line<'a>(
                 icons::CANCEL,
                 t(lang, "save-action-cancel"),
                 Message::ExportDismiss(detail_path.to_path_buf()),
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ),
         ]
@@ -871,7 +871,7 @@ fn export_panel<'a>(
     };
     let lossless_chk = iced::widget::checkbox(settings.lossless)
         .label(t(lang, "replays-export-lossless"))
-        .text_size(STANDARD_TEXT_SIZE);
+        .text_size(13.0);
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
     } else {
@@ -879,7 +879,7 @@ fn export_panel<'a>(
     };
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
         .label(t(lang, "replays-export-disable-bgm"))
-        .text_size(STANDARD_TEXT_SIZE);
+        .text_size(13.0);
     let bgm_chk: Element<'a, Message> = if in_flight {
         bgm_chk.into()
     } else {
@@ -901,7 +901,7 @@ fn export_panel<'a>(
         for (i, picked) in selected_rounds.iter().enumerate() {
             let cb = iced::widget::checkbox(*picked)
                 .label(format!("{}", i + 1))
-                .text_size(STANDARD_TEXT_SIZE);
+                .text_size(13.0);
             let cb: Element<'a, Message> = if in_flight {
                 cb.into()
             } else {
@@ -922,7 +922,7 @@ fn export_panel<'a>(
             icons::EXPORT,
             t(lang, "replays-export-save-as"),
             Message::Export(replay_path.to_path_buf()),
-            STANDARD_TEXT_SIZE,
+            13.0,
             STANDARD_PADDING,
             iced::widget::button::primary,
         )
@@ -931,8 +931,8 @@ fn export_panel<'a>(
         // variant inline.
         iced::widget::button(
             iced::widget::row![
-                icons::glyph(icons::EXPORT, STANDARD_TEXT_SIZE),
-                text(t(lang, "replays-export-save-as")).size(STANDARD_TEXT_SIZE),
+                icons::glyph(icons::EXPORT, 13.0),
+                text(t(lang, "replays-export-save-as")).size(13.0),
             ]
             .spacing(8)
             .align_y(Alignment::Center),

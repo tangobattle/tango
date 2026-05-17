@@ -1,7 +1,7 @@
 use crate::i18n::t;
 use crate::icons;
 use crate::{
-    config, input, save_view, STANDARD_PADDING, STANDARD_TEXT_SIZE, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
+    config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
 };
 use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
@@ -180,7 +180,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state:
         // user wants the tab affordance to look like.
         let style: fn(&iced::Theme, button::Status) -> button::Style =
             if tab == active { button::primary } else { button::text };
-        button(text(t(lang, key)).size(STANDARD_TEXT_SIZE))
+        button(text(t(lang, key)).size(13.0))
             .padding(STANDARD_PADDING)
             .width(Fill)
             .style(style)
@@ -233,7 +233,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-nickname"),
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
-                .size(STANDARD_TEXT_SIZE)
+                .size(13.0)
                 .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
@@ -243,7 +243,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Some(config.language.clone()),
                 Message::LanguageSelected,
             )
-            .text_size(STANDARD_TEXT_SIZE)
+            .text_size(13.0)
             .padding(STANDARD_PADDING)
             .width(Fill),
         ),
@@ -254,13 +254,13 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Some(config.theme),
                 Message::ThemeChanged,
             )
-            .text_size(STANDARD_TEXT_SIZE)
+            .text_size(13.0)
             .padding(STANDARD_PADDING)
             .width(Fill),
         ),
         iced::widget::checkbox(config.streamer_mode).label(t(lang, "settings-streamer-mode"))
             .on_toggle(Message::ToggleStreamerMode)
-            .text_size(STANDARD_TEXT_SIZE),
+            .text_size(13.0),
         labeled::<Message>(
             t(lang, "settings-data-path"),
             text(config.data_path.display().to_string()).size(TEXT_CAPTION),
@@ -276,14 +276,14 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
-                .size(STANDARD_TEXT_SIZE)
+                .size(13.0)
                 .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
             t(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
-                .size(STANDARD_TEXT_SIZE)
+                .size(13.0)
                 .padding(STANDARD_PADDING),
         ),
     ]
@@ -308,13 +308,13 @@ fn settings_input<'a>(
         let action: Element<'a, Message> = if state.capture_target == Some(k) {
             row![
                 text(t(lang, "settings-input-press-key"))
-                    .size(STANDARD_TEXT_SIZE)
+                    .size(13.0)
                     .style(save_view::muted_text_style),
                 icons::icon_button(
                     icons::CANCEL,
                     t(lang, "save-action-cancel"),
                     Message::BindingCaptureCancel,
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]
@@ -326,7 +326,7 @@ fn settings_input<'a>(
                 icons::NEW,
                 t(lang, "settings-input-add"),
                 Message::BindingCaptureStart(k),
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             )
         };
@@ -335,7 +335,7 @@ fn settings_input<'a>(
             chips = chips.push(binding_chip(b, k, i));
         }
         let row = row![
-            container(text(label).size(STANDARD_TEXT_SIZE)).width(Length::Fixed(120.0)),
+            container(text(label).size(13.0)).width(Length::Fixed(120.0)),
             chips,
             horizontal_space(),
             action,
@@ -348,7 +348,7 @@ fn settings_input<'a>(
         icons::RESCAN,
         t(lang, "settings-input-reset"),
         Message::BindingsReset,
-        STANDARD_TEXT_SIZE,
+        13.0,
         STANDARD_PADDING,
     );
     col = col

@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use crate::icons;
-use crate::{game, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
+use crate::{game, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
@@ -149,14 +149,14 @@ impl PatchesState {
                 icons::UPDATE,
                 t(lang, "patches-update"),
                 update_msg,
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ))
             .push(icons::icon_button(
                 icons::RESCAN,
                 t(lang, "rescan"),
                 Message::Rescan,
-                STANDARD_TEXT_SIZE,
+                13.0,
                 STANDARD_PADDING,
             ));
 
@@ -227,13 +227,13 @@ impl PatchesState {
                 text(patch.title.clone()).size(TEXT_TITLE),
                 horizontal_space(),
                 pick_list(versions, selected_version, Message::VersionSelected)
-                    .text_size(STANDARD_TEXT_SIZE)
+                    .text_size(13.0)
                     .padding(STANDARD_PADDING),
                 icons::icon_button(
                     icons::FOLDER,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(patch.path.clone()),
-                    STANDARD_TEXT_SIZE,
+                    13.0,
                     STANDARD_PADDING,
                 ),
             ]

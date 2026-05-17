@@ -969,10 +969,10 @@ fn render_navicust<M: 'static>(
             let image: Element<'static, M> = Image::new(nc.handle.clone())
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh))
-                // Linear (not Nearest) so the 2× backing buffer
-                // downsamples to display size with smooth glyph
-                // edges instead of dropped pixels.
-                .filter_method(iced_image::FilterMethod::Linear)
+                // Source matches display size 1:1 (see selection.rs
+                // build_navicust_render), so Nearest preserves the
+                // cosmic-text label's pixel-perfect rasterization.
+                .filter_method(iced_image::FilterMethod::Nearest)
                 .content_fit(ContentFit::Contain)
                 .into();
 

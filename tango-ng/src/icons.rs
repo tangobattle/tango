@@ -91,24 +91,21 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
 }
 
 /// List-item button style for selectable rows (patches list,
-/// replays list). When `selected`, paints a SUBTLE primary tint
-/// instead of the bright `button::primary` so muted subtitle
-/// text stays readable on top. Inactive rows are transparent;
-/// hover gets a faint background tone.
+/// replays list). Selected row uses the bright primary fill
+/// (same look the app shipped with originally); inactive rows
+/// are transparent with a faint hover tone. Foreground text on
+/// the selected row picks up `primary.base.text` (iced contrasts
+/// it against the bg) so subtitles must opt into inherit-color
+/// rather than render as muted gray on top.
 pub fn list_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
         let p = theme.extended_palette();
+        if selected {
+            return button::primary(theme, status);
+        }
         let base = button::Style {
-            background: if selected {
-                Some(iced::Background::Color(p.primary.weak.color))
-            } else {
-                None
-            },
-            text_color: if selected {
-                p.primary.weak.text
-            } else {
-                theme.palette().text
-            },
+            background: None,
+            text_color: theme.palette().text,
             border: iced::Border {
                 radius: 4.0.into(),
                 ..Default::default()
@@ -117,11 +114,10 @@ pub fn list_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::S
         };
         match status {
             button::Status::Active | button::Status::Pressed => base,
-            button::Status::Hovered if !selected => button::Style {
+            button::Status::Hovered => button::Style {
                 background: Some(iced::Background::Color(p.background.weak.color)),
                 ..base
             },
-            button::Status::Hovered => base,
             button::Status::Disabled => base,
         }
     }
