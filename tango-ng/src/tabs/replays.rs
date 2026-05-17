@@ -1,4 +1,5 @@
 use crate::i18n::t;
+use crate::icons;
 use crate::{config, replays, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE};
 use iced::widget::{
     button, column, container, horizontal_rule, horizontal_space, pick_list, row, scrollable, text, vertical_rule,
@@ -63,9 +64,13 @@ impl ReplaysState {
                 text(format!("{}:", t(lang, "replays-folder-label"))),
                 pick_list(folder_options, Some(selected_folder), Message::FolderFilterSelected),
                 horizontal_space(),
-                button(text(t(lang, "rescan")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::Rescan),
+                icons::icon_button(
+                    icons::RESCAN,
+                    t(lang, "rescan"),
+                    Message::Rescan,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -85,17 +90,10 @@ impl ReplaysState {
             .collect();
 
         let mut list = column![].spacing(0).padding(8);
-        let mut last_fp: Option<(String, String, String)> = None;
-        let mut alternate = true;
         for r in &filtered {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
             let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-            let fp = (md.link_code.clone(), local_nick.clone(), remote_nick.clone());
-            if Some(&fp) != last_fp.as_ref() {
-                alternate = !alternate;
-                last_fp = Some(fp);
-            }
 
             let ts_str = std::time::UNIX_EPOCH
                 .checked_add(std::time::Duration::from_millis(md.ts))
@@ -118,13 +116,7 @@ impl ReplaysState {
             };
 
             let selected = self.selected.as_ref() == Some(&r.path);
-            let style = if selected {
-                button::primary
-            } else if alternate {
-                button::secondary
-            } else {
-                button::text
-            };
+            let style = if selected { button::primary } else { button::text };
             list = list.push(
                 button(
                     column![
@@ -227,18 +219,29 @@ fn replay_detail<'a>(
             row![
                 text(title).size(18),
                 horizontal_space(),
-                button(text(t(lang, "replays-watch")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .style(button::primary)
-                    .on_press(Message::Watch(r.path.clone())),
-                button(text(t(lang, "replays-export")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .style(button::secondary),
-                button(text(t(lang, "patches-open-folder")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::OpenFolder(
+                icons::icon_button(
+                    icons::WATCH,
+                    t(lang, "replays-watch"),
+                    Message::Watch(r.path.clone()),
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
+                icons::icon_button_maybe::<Message>(
+                    icons::EXPORT,
+                    t(lang, "replays-export"),
+                    None,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
+                icons::icon_button(
+                    icons::FOLDER,
+                    t(lang, "patches-open-folder"),
+                    Message::OpenFolder(
                         r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
-                    )),
+                    ),
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(6)
             .align_y(Alignment::Center),

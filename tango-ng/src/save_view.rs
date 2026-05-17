@@ -467,44 +467,23 @@ fn chip_row(
     card_wrap(r.padding([8, 12]).into(), accent)
 }
 
-/// Wraps the inner row content with the shared chip-card chrome: a
-/// rounded theme-aware background, plus a 4 px colored stripe on the
-/// left exposed via the outer container's background + left padding.
-///
-/// IMPORTANT: the inner body's background MUST be opaque, otherwise
-/// the accent color bleeds through the whole card (which is what made
-/// Mega/Giga/Dark rows look like saturated blocks instead of a stripe).
+/// Wraps the inner row content with a 4 px accent stripe on the left.
+/// No body fill — the rows sit directly on the pane's background so
+/// the list reads as a denser column of content instead of a stack of
+/// shaded cards.
 fn card_wrap(
     inner: Element<'static, Message>,
     accent: Option<iced::Color>,
 ) -> Element<'static, Message> {
     let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
-    let card_body = container(inner)
-        .width(Fill)
-        .style(|theme: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(
-                theme.extended_palette().background.weak.color,
-            )),
-            ..container::Style::default()
-        });
-
-    container(card_body)
-        .width(Fill)
-        .padding(iced::Padding {
-            top: 0.0,
-            right: 0.0,
-            bottom: 0.0,
-            left: 4.0,
-        })
+    let stripe = container(Space::with_width(Length::Fixed(4.0)))
+        .height(Length::Fill)
         .style(move |_| container::Style {
             background: Some(iced::Background::Color(accent_color)),
-            border: iced::Border {
-                radius: 6.0.into(),
-                ..Default::default()
-            },
             ..Default::default()
-        })
-        .clip(true)
+        });
+    row![stripe, container(inner).width(Fill)]
+        .spacing(0)
         .into()
 }
 

@@ -1,4 +1,5 @@
 use crate::i18n::t;
+use crate::icons;
 use crate::{game, save_view, Scanners, STANDARD_PADDING, STANDARD_TEXT_SIZE};
 use iced::widget::{
     button, column, container, horizontal_rule, horizontal_space, pick_list, row, scrollable, text, vertical_rule,
@@ -60,11 +61,7 @@ impl PatchesState {
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
-        let mut update_btn =
-            button(text(t(lang, "patches-update")).size(STANDARD_TEXT_SIZE)).padding(STANDARD_PADDING);
-        if !self.updating {
-            update_btn = update_btn.on_press(Message::Update);
-        }
+        let update_msg = if self.updating { None } else { Some(Message::Update) };
 
         let mut top_row = row![
             text(format!(
@@ -92,11 +89,22 @@ impl PatchesState {
             );
         }
 
-        top_row = top_row.push(horizontal_space()).push(update_btn).push(
-            button(text(t(lang, "rescan")).size(STANDARD_TEXT_SIZE))
-                .padding(STANDARD_PADDING)
-                .on_press(Message::Rescan),
-        );
+        top_row = top_row
+            .push(horizontal_space())
+            .push(icons::icon_button_maybe(
+                icons::UPDATE,
+                t(lang, "patches-update"),
+                update_msg,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            ))
+            .push(icons::icon_button(
+                icons::RESCAN,
+                t(lang, "rescan"),
+                Message::Rescan,
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            ));
 
         let top = container(top_row.padding(8)).width(Fill);
 
@@ -162,12 +170,13 @@ impl PatchesState {
                 text(patch.title.clone()).size(20),
                 horizontal_space(),
                 pick_list(versions, selected_version, Message::VersionSelected),
-                {
-                    let path = patch.path.clone();
-                    button(text(t(lang, "patches-open-folder")).size(STANDARD_TEXT_SIZE))
-                        .padding(STANDARD_PADDING)
-                        .on_press(Message::OpenFolder(path))
-                },
+                icons::icon_button(
+                    icons::FOLDER,
+                    t(lang, "patches-open-folder"),
+                    Message::OpenFolder(patch.path.clone()),
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center);

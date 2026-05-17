@@ -1,4 +1,5 @@
 use crate::i18n::t;
+use crate::icons;
 use crate::{
     config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, PRIMARY_TEXT_SIZE, STANDARD_PADDING,
     STANDARD_TEXT_SIZE,
@@ -296,9 +297,13 @@ impl PlayState {
         .placeholder(t(lang, "play-version-placeholder"))
         .width(Length::Fixed(100.0));
 
-        let refresh = button(text(t(lang, "rescan")).size(STANDARD_TEXT_SIZE))
-            .padding(STANDARD_PADDING)
-            .on_press(Message::Rescan);
+        let refresh = icons::icon_button(
+            icons::RESCAN,
+            t(lang, "rescan"),
+            Message::Rescan,
+            STANDARD_TEXT_SIZE,
+            STANDARD_PADDING,
+        );
 
         let game_row = row![game, patch, version, refresh]
             .spacing(8)
@@ -318,26 +323,41 @@ impl PlayState {
                     .on_submit(Message::SaveRenameConfirm)
                     .padding(8)
                     .width(Length::Fill),
-                button(text(t(lang, "save-rename-confirm")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .style(button::primary)
-                    .on_press(Message::SaveRenameConfirm),
-                button(text(t(lang, "save-action-cancel")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::SaveActionCancel),
+                icons::icon_button(
+                    icons::CONFIRM,
+                    t(lang, "save-rename-confirm"),
+                    Message::SaveRenameConfirm,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
+                icons::icon_button(
+                    icons::CANCEL,
+                    t(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
             .into(),
             SaveAction::ConfirmDelete => row![
                 text(t(lang, "save-delete-prompt")).style(save_view::muted_text_style).width(Length::Fill),
-                button(text(t(lang, "save-delete-confirm")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .style(button::danger)
-                    .on_press(Message::SaveDeleteConfirm),
-                button(text(t(lang, "save-action-cancel")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::SaveActionCancel),
+                icons::labeled_icon_button(
+                    icons::DELETE,
+                    t(lang, "save-delete-confirm"),
+                    Message::SaveDeleteConfirm,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                    button::danger,
+                ),
+                icons::icon_button(
+                    icons::CANCEL,
+                    t(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -380,13 +400,21 @@ impl PlayState {
                         .on_submit(Message::SaveNewConfirm)
                         .padding(8)
                         .width(Length::Fill),
-                    button(text(t(lang, "save-new-confirm")).size(STANDARD_TEXT_SIZE))
-                        .padding(STANDARD_PADDING)
-                        .style(button::primary)
-                        .on_press(Message::SaveNewConfirm),
-                    button(text(t(lang, "save-action-cancel")).size(STANDARD_TEXT_SIZE))
-                        .padding(STANDARD_PADDING)
-                        .on_press(Message::SaveActionCancel),
+                    icons::labeled_icon_button(
+                        icons::CONFIRM,
+                        t(lang, "save-new-confirm"),
+                        Message::SaveNewConfirm,
+                        STANDARD_TEXT_SIZE,
+                        STANDARD_PADDING,
+                        button::primary,
+                    ),
+                    icons::icon_button(
+                        icons::CANCEL,
+                        t(lang, "save-action-cancel"),
+                        Message::SaveActionCancel,
+                        STANDARD_TEXT_SIZE,
+                        STANDARD_PADDING,
+                    ),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -409,30 +437,24 @@ impl PlayState {
         scanners: &'a Scanners,
     ) -> Element<'a, Message> {
         let enabled = self.local_save.is_some();
-        let mk = |label: String, msg: Message, on: bool| {
-            let mut b = button(text(label).size(STANDARD_TEXT_SIZE)).padding(STANDARD_PADDING);
-            if on {
-                b = b.on_press(msg);
-            }
-            b
+        let mk = |icon: &'static str, label: String, msg: Message, on: bool| {
+            icons::icon_button_maybe(
+                icon,
+                label,
+                if on { Some(msg) } else { None },
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+            )
         };
         // "New save" is enabled only when the active patch+version ships
         // a save template for the selected game.
         let can_new = templates_for_selection(self, scanners).is_some();
         row![
-            mk(t(lang, "save-new"), Message::SaveNewStart, can_new).style(if can_new {
-                button::primary
-            } else {
-                button::text
-            }),
-            mk(t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
-            mk(t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
-            mk(t(lang, "save-rename"), Message::SaveRenameStart, enabled),
-            mk(t(lang, "save-delete"), Message::SaveDeleteStart, enabled).style(if enabled {
-                button::danger
-            } else {
-                button::text
-            }),
+            mk(icons::NEW, t(lang, "save-new"), Message::SaveNewStart, can_new),
+            mk(icons::FOLDER, t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
+            mk(icons::DUPLICATE, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(icons::RENAME, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
+            mk(icons::DELETE, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
         .spacing(6)
         .align_y(Alignment::Center)
@@ -468,17 +490,21 @@ impl PlayState {
             hovered_ncp_idx: self.hovered_ncp_idx,
         };
 
-        let tab_button = |label: String, tab: save_view::Tab| {
+        let tab_button = |tab: save_view::Tab| {
             let style = if tab == active { button::primary } else { button::text };
-            button(text(label).size(STANDARD_TEXT_SIZE))
-                .padding(STANDARD_PADDING)
-                .style(style)
-                .on_press(Message::SaveTabSelected(tab))
+            icons::labeled_icon_button(
+                save_tab_icon(tab),
+                t(lang, save_view::tab_key(tab)),
+                Message::SaveTabSelected(tab),
+                STANDARD_TEXT_SIZE,
+                STANDARD_PADDING,
+                style,
+            )
         };
 
         let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
         for tab in &available {
-            tab_row = tab_row.push(tab_button(t(lang, save_view::tab_key(*tab)), *tab));
+            tab_row = tab_row.push(tab_button(*tab));
         }
         tab_row = tab_row.push(horizontal_space());
         // save_view::tab_strip_extras returns Element<save_view::Message>;
@@ -500,16 +526,24 @@ impl PlayState {
     }
 
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-        let play_button = if self.playing {
-            button(text(t(lang, "play-cancel")).size(PRIMARY_TEXT_SIZE))
-                .padding(PRIMARY_PADDING)
-                .style(button::danger)
-                .on_press(Message::PlayPressed)
+        let play_button: Element<'a, Message> = if self.playing {
+            icons::labeled_icon_button(
+                icons::CLOSE,
+                t(lang, "play-cancel"),
+                Message::PlayPressed,
+                PRIMARY_TEXT_SIZE,
+                PRIMARY_PADDING,
+                button::danger,
+            )
         } else {
-            button(text(t(lang, "play-play")).size(PRIMARY_TEXT_SIZE))
-                .padding(PRIMARY_PADDING)
-                .style(button::success)
-                .on_press(Message::PlayPressed)
+            icons::labeled_icon_button(
+                icons::PLAY,
+                t(lang, "play-play"),
+                Message::PlayPressed,
+                PRIMARY_TEXT_SIZE,
+                PRIMARY_PADDING,
+                button::success,
+            )
         };
 
         let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
@@ -539,6 +573,17 @@ impl PlayState {
     }
 }
 
+/// Per-save-tab icon glyph. Mirrors `save_view::tab_key`.
+fn save_tab_icon(tab: save_view::Tab) -> &'static str {
+    match tab {
+        save_view::Tab::Cover => icons::SAVE_COVER,
+        save_view::Tab::Navi => icons::SAVE_NAVI,
+        save_view::Tab::Folder => icons::SAVE_FOLDER,
+        save_view::Tab::PatchCards => icons::SAVE_PATCH_CARDS,
+        save_view::Tab::AutoBattleData => icons::SAVE_AUTO_BATTLE,
+    }
+}
+
 /// Play-local wrapper for save_view's tab strip extras. The extras
 /// (folder group toggle + copy buttons) were defined in save_view
 /// against `crate::Message` before the per-tab split; here we
@@ -549,11 +594,13 @@ fn tab_strip_extras<'a>(
     opts: save_view::RenderOpts,
 ) -> Option<Element<'static, Message>> {
     let copy_btn = |tab: save_view::Tab| -> Element<'static, Message> {
-        button(text(t(lang, "save-copy")).size(13))
-            .padding([4, 10])
-            .style(button::secondary)
-            .on_press(Message::CopyTabAsText(tab))
-            .into()
+        icons::icon_button(
+            icons::COPY,
+            t(lang, "save-copy"),
+            Message::CopyTabAsText(tab),
+            13,
+            [4, 10],
+        )
     };
     match tab {
         save_view::Tab::Folder => Some(

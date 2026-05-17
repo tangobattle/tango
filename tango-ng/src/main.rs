@@ -2,6 +2,7 @@ mod audio;
 mod config;
 mod game;
 mod i18n;
+mod icons;
 mod navicust;
 mod patch;
 mod replay_session;
@@ -907,17 +908,22 @@ impl App {
             Space::new(Fill, Fill).into()
         };
 
-        let title_key = match session {
-            ActiveSession::Replay(_) => "replays-watch",
-            ActiveSession::SinglePlayer(_) => "play-play",
+        let (title_icon, title_key) = match session {
+            ActiveSession::Replay(_) => (icons::WATCH, "replays-watch"),
+            ActiveSession::SinglePlayer(_) => (icons::TAB_PLAY, "play-play"),
         };
         let header = container(
             row![
+                icons::glyph(title_icon, 14),
                 text(t(lang, title_key)).size(14),
                 horizontal_space(),
-                button(text(t(lang, "playback-close")).size(STANDARD_TEXT_SIZE))
-                    .padding(STANDARD_PADDING)
-                    .on_press(Message::SessionClose),
+                icons::icon_button(
+                    icons::CLOSE,
+                    t(lang, "playback-close"),
+                    Message::SessionClose,
+                    STANDARD_TEXT_SIZE,
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -939,10 +945,10 @@ impl App {
             let cur = r.current_tick().min(total);
             let prefetched = r.prefetch_progress().min(total);
             let pct = (prefetched as f32 / total as f32 * 100.0).round() as u32;
-            let play_pause_label = if r.is_paused() {
-                t(lang, "playback-play")
+            let (play_pause_icon, play_pause_key) = if r.is_paused() {
+                (icons::PLAY, "playback-play")
             } else {
-                t(lang, "playback-pause")
+                (icons::PAUSE, "playback-pause")
             };
             let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::SessionSeek)
                 .round_boundaries(r.round_boundaries())
@@ -951,9 +957,13 @@ impl App {
             layout = layout.push(
                 container(
                     row![
-                        button(text(play_pause_label).size(STANDARD_TEXT_SIZE))
-                            .padding(STANDARD_PADDING)
-                            .on_press(Message::SessionTogglePlay),
+                        icons::icon_button(
+                            play_pause_icon,
+                            t(lang, play_pause_key),
+                            Message::SessionTogglePlay,
+                            STANDARD_TEXT_SIZE,
+                            STANDARD_PADDING,
+                        ),
                         text(format_tick(cur)).size(11).style(save_view::muted_text_style),
                         scrub,
                         text(format_tick(total)).size(11).style(save_view::muted_text_style),
@@ -1132,21 +1142,25 @@ fn format_tick(tick: u32) -> String {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
-    let tab_button = |label: String, tab: Tab| {
+    let tab_button = |icon: &'static str, label: String, tab: Tab| {
         let style = if tab == active { button::primary } else { button::text };
-        button(text(label).size(NAV_TEXT_SIZE))
-            .padding(NAV_PADDING)
-            .style(style)
-            .on_press(Message::TabSelected(tab))
+        icons::labeled_icon_button(
+            icon,
+            label,
+            Message::TabSelected(tab),
+            NAV_TEXT_SIZE,
+            NAV_PADDING,
+            style,
+        )
     };
 
     container(
         row![
-            tab_button(t(lang, "tab-play"), Tab::Play),
-            tab_button(t(lang, "tab-replays"), Tab::Replays),
-            tab_button(t(lang, "tab-patches"), Tab::Patches),
+            tab_button(icons::TAB_PLAY, t(lang, "tab-play"), Tab::Play),
+            tab_button(icons::TAB_REPLAYS, t(lang, "tab-replays"), Tab::Replays),
+            tab_button(icons::TAB_PATCHES, t(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
-            tab_button(t(lang, "tab-settings"), Tab::Settings),
+            tab_button(icons::TAB_SETTINGS, t(lang, "tab-settings"), Tab::Settings),
         ]
         .spacing(4)
         .align_y(Alignment::Center)
