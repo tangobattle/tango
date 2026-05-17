@@ -47,6 +47,14 @@ lobby-waiting = Waiting for settings…
 lobby-no-game = (no game selected)
 lobby-latency = Ping
 lobby-handshake = Exchanging settings…
+lobby-input-delay = Input delay (frames)
+lobby-no-match-types = (no match types for this game)
+lobby-pick-game-first = Pick a game first
+lobby-compat-ok = Compatible — ready to play.
+lobby-compat-missing-game = One side hasn't picked a game.
+lobby-compat-missing-rom = Game or patch isn't installed on both sides.
+lobby-compat-version-mismatch = Game versions don't match (different patch / rom).
+lobby-compat-match-mismatch = Match type doesn't match.
 play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 
 # Save view sub-tabs

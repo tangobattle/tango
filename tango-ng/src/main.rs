@@ -259,6 +259,21 @@ impl App {
 
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
+    /// Build the current Settings packet + dispatch SendLocalSettings
+    /// — only meaningful while netplay is in Lobby phase; outside
+    /// that this returns `Task::none()`. Wrapped in a helper because
+    /// it has three callers: lobby entry, selection change, and
+    /// match-type change.
+    fn resend_settings_if_lobby(&mut self) -> iced::Task<Message> {
+        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
+            return iced::Task::none();
+        }
+        let settings = self.make_local_settings();
+        self.netplay
+            .update(netplay::Message::SendLocalSettings(Box::new(settings)))
+            .map(Message::Netplay)
+    }
+
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
     /// game_info from the Play tab's local selection, and the
@@ -271,7 +286,7 @@ impl App {
         let patches = self.scanners.patches.read();
         Settings {
             nickname: self.config.nickname.clone().unwrap_or_default(),
-            match_type: (0, 0),
+            match_type: self.netplay.lobby.match_type,
             game_info: self.play.local_game.map(|game| {
                 let (family, variant) = game.family_and_variant();
                 GameInfo {
@@ -448,32 +463,44 @@ impl App {
                     .update(netplay::Message::Disconnect)
                     .map(Message::Netplay)
             }
-            Message::Play(m) => self.update_play(m).map(Message::Play),
+            Message::Play(tabs::play::Message::NetplaySetMatchType(mt)) => {
+                let task = self
+                    .netplay
+                    .update(netplay::Message::SetMatchType(mt))
+                    .map(Message::Netplay);
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
+            }
+            Message::Play(tabs::play::Message::NetplaySetInputDelay(d)) => {
+                self.netplay
+                    .update(netplay::Message::SetInputDelay(d))
+                    .map(Message::Netplay)
+                // Input delay isn't part of protocol::Settings, so
+                // no resend; it lives in NegotiatedState (round 5).
+            }
+            Message::Play(m) => {
+                // After every Play handler dispatch, always try
+                // to resend Settings — the netplay handler dedupes
+                // against the last-sent value via `Settings: Eq`,
+                // so unchanged dispatches are free. Saves the
+                // hand-rolled fingerprint that would have to
+                // track every field that flows into Settings.
+                let task = self.update_play(m).map(Message::Play);
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
+            }
             Message::Patches(m) => self.update_patches(m).map(Message::Patches),
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
             Message::Session(m) => self.session.update(m).map(Message::Session),
             Message::Netplay(m) => {
-                // Watch for Negotiating → Lobby. The first time we
-                // land in Lobby we push a SendLocalSettings so the
-                // peer sees our nickname / game / match type. Done
-                // outside the netplay module because it needs the
-                // App's view of the world (config + scanners +
-                // PlayState selection).
-                let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
+                // Always resend after a netplay message too: this
+                // covers the Negotiating → Lobby transition (first
+                // announce) and lobby-state mutations like
+                // SetMatchType / SetInputDelay. The dedupe inside
+                // netplay::State::update::SendLocalSettings makes
+                // unchanged dispatches a no-op.
                 let task = self.netplay.update(m).map(Message::Netplay);
-                let now_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
-                if !was_lobby && now_lobby {
-                    let settings = self.make_local_settings();
-                    let send = self
-                        .netplay
-                        .update(netplay::Message::SendLocalSettings(Box::new(settings)))
-                        .map(Message::Netplay);
-                    iced::Task::batch([task, send])
-                } else {
-                    task
-                }
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
         }
     }
@@ -569,9 +596,13 @@ impl App {
                     }
                 }
             }
-            M::NetplayDisconnect => {
-                // Handled at App::update with the broader return type.
-                // No-op here; we should never actually land in this arm.
+            M::NetplayDisconnect
+            | M::NetplaySetMatchType(_)
+            | M::NetplaySetInputDelay(_) => {
+                // All three are handled at App::update with the
+                // broader Task<crate::Message> return type — we
+                // short-circuit them out before reaching here.
+                // No-op arms for exhaustiveness.
             }
             M::Rescan => {
                 self.scanners.rescan(&self.config);

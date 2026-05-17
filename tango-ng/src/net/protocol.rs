@@ -91,19 +91,19 @@ pub struct Pong {
     pub ts: std::time::SystemTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PatchInfo {
     pub name: String,
     pub version: semver::Version,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct GameInfo {
     pub family_and_variant: (String, u8),
     pub patch: Option<PatchInfo>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),

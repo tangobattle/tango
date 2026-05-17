@@ -22,6 +22,12 @@ pub enum Message {
     LinkCodeChanged(String),
     PlayPressed,
     NetplayDisconnect,
+    /// Lobby UI: user picked a different match type. App routes
+    /// this through netplay::Message::SetMatchType so the resend
+    /// machinery picks it up.
+    NetplaySetMatchType((u8, u8)),
+    /// Lobby UI: user dragged the input-delay slider.
+    NetplaySetInputDelay(u8),
     Rescan,
 
     SaveOpenFolder,
@@ -143,12 +149,23 @@ impl PlayState {
         netplay_phase: &'a crate::netplay::Phase,
         netplay_lobby: &'a crate::netplay::LobbyState,
     ) -> Element<'a, Message> {
-        // When the netplay handshake has reached Lobby, take over
-        // the body with the lobby pane (same shape as the per-side
-        // info on the replay detail). Selector + bottom strip
-        // still show so the user can see / Cancel.
+        // In Lobby phase the body splits top/bottom — save view
+        // on top so the user can keep eyeing what they brought to
+        // the match, lobby controls + opponent info underneath.
+        // Outside Lobby, the body is just the save view (or the
+        // empty-state hints).
         let body: Element<'a, Message> = match netplay_phase {
-            crate::netplay::Phase::Lobby { .. } => lobby_view(lang, netplay_lobby),
+            crate::netplay::Phase::Lobby { .. } => column![
+                container(self.body(lang, scanners, loaded, streamer_mode, config))
+                    .width(Fill)
+                    .height(Length::FillPortion(3)),
+                horizontal_rule(1),
+                container(lobby_view(lang, netplay_lobby, self.local_game, scanners))
+                    .width(Fill)
+                    .height(Length::FillPortion(2)),
+            ]
+            .height(Fill)
+            .into(),
             _ => self.body(lang, scanners, loaded, streamer_mode, config),
         };
 
@@ -667,11 +684,14 @@ pub fn create_new_save(
 
 /// Lobby pane shown in the Play tab body while netplay is in
 /// `Phase::Lobby`. Two columns — you on the left, opponent on the
-/// right — plus a latency line at the top. Settings round-trips
-/// asynchronously, so either side may be `None` for a tick.
+/// right — plus a latency line at the top + match-type + input-
+/// delay controls underneath. Settings round-trips asynchronously,
+/// so either side may be `None` for a tick.
 fn lobby_view<'a>(
     lang: &'a LanguageIdentifier,
     lobby: &'a crate::netplay::LobbyState,
+    local_game: Option<rom::GameRef>,
+    scanners: &'a Scanners,
 ) -> Element<'a, Message> {
     let side = |label: String, settings: Option<&crate::net::protocol::Settings>| -> Element<'static, Message> {
         let Some(settings) = settings else {
@@ -753,6 +773,119 @@ fn lobby_view<'a>(
             .style(save_view::muted_text_style)
     };
 
+    // Match-type pick_list — options pulled from the current
+    // local game's Game::match_types() table (mode + subtype
+    // counts), labeled with the per-game Fluent strings via
+    // game::match_type_name. Disabled when no local game is
+    // selected (no way to know what modes exist).
+    let mt_picker: Element<'a, Message> = if let Some(g) = local_game {
+        let game_impl = crate::game::from_gamedb_entry(g);
+        let mt_table = game_impl.map(|gi| gi.match_types()).unwrap_or(&[]);
+        let mut options = Vec::new();
+        for (mode, subtype_count) in mt_table.iter().enumerate() {
+            for sub in 0..*subtype_count {
+                options.push(MatchTypeOption {
+                    mode: mode as u8,
+                    subtype: sub as u8,
+                    label: crate::game::match_type_name(
+                        lang,
+                        g.family_and_variant().0,
+                        mode as u8,
+                        sub as u8,
+                    ),
+                });
+            }
+        }
+        let selected = options
+            .iter()
+            .find(|o| o.mode == lobby.match_type.0 && o.subtype == lobby.match_type.1)
+            .cloned();
+        if options.is_empty() {
+            text(t(lang, "lobby-no-match-types"))
+                .size(STANDARD_TEXT_SIZE)
+                .style(save_view::muted_text_style)
+                .into()
+        } else {
+            pick_list(options, selected, |o| {
+                Message::NetplaySetMatchType((o.mode, o.subtype))
+            })
+            .text_size(STANDARD_TEXT_SIZE)
+            .padding(STANDARD_PADDING)
+            .into()
+        }
+    } else {
+        text(t(lang, "lobby-pick-game-first"))
+            .size(STANDARD_TEXT_SIZE)
+            .style(save_view::muted_text_style)
+            .into()
+    };
+
+    // Input delay slider — legacy app caps at 10 frames. Each
+    // increment is one full GBA frame (~16.7 ms one-way) of
+    // smoothing for jittery connections.
+    let id_slider = iced::widget::slider(0..=10u8, lobby.input_delay, Message::NetplaySetInputDelay);
+
+    let controls = row![
+        column![
+            text(t(lang, "replays-match-type"))
+                .size(11)
+                .style(save_view::muted_text_style),
+            mt_picker,
+        ]
+        .spacing(4),
+        column![
+            text(format!(
+                "{}: {}",
+                t(lang, "lobby-input-delay"),
+                lobby.input_delay
+            ))
+            .size(11)
+            .style(save_view::muted_text_style),
+            id_slider,
+        ]
+        .spacing(4)
+        .width(Length::Fixed(220.0)),
+    ]
+    .spacing(20)
+    .align_y(Alignment::Center);
+
+    // Compatibility verdict line. Computed every render (cheap —
+    // no IO, just lookups against the patches scanner). Drives the
+    // colour + the user-facing reason text.
+    let verdict_line: Element<'a, Message> = match (lobby.local.as_ref(), lobby.remote.as_ref()) {
+        (Some(l), Some(r)) => {
+            let patches = scanners.patches.read();
+            let verdict = crate::netplay::compat::check(l, r, &*patches);
+            let (key, style): (&'static str, fn(&iced::Theme) -> iced::widget::text::Style) =
+                match verdict {
+                    crate::netplay::compat::Verdict::Compatible => {
+                        ("lobby-compat-ok", |theme: &iced::Theme| {
+                            iced::widget::text::Style {
+                                color: Some(theme.palette().success),
+                            }
+                        })
+                    }
+                    crate::netplay::compat::Verdict::MissingGame => {
+                        ("lobby-compat-missing-game", save_view::muted_text_style)
+                    }
+                    crate::netplay::compat::Verdict::MissingRomOrPatch => {
+                        ("lobby-compat-missing-rom", iced::widget::text::danger)
+                    }
+                    crate::netplay::compat::Verdict::DifferentVersions => {
+                        ("lobby-compat-version-mismatch", iced::widget::text::danger)
+                    }
+                    crate::netplay::compat::Verdict::DifferentMatchTypes => {
+                        ("lobby-compat-match-mismatch", iced::widget::text::danger)
+                    }
+                };
+            text(t(lang, key)).size(12).style(style).into()
+        }
+        _ => text(t(lang, "lobby-handshake"))
+            .size(12)
+            .style(save_view::muted_text_style)
+            .into(),
+    };
+
     container(
         column![
             header_line,
@@ -762,6 +895,9 @@ fn lobby_view<'a>(
                 side(t(lang, "replays-opponent"), lobby.remote.as_ref()),
             ]
             .spacing(12),
+            horizontal_rule(1),
+            controls,
+            verdict_line,
         ]
         .spacing(12)
         .padding(16),
@@ -769,6 +905,18 @@ fn lobby_view<'a>(
     .width(Fill)
     .height(Fill)
     .into()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct MatchTypeOption {
+    mode: u8,
+    subtype: u8,
+    label: String,
+}
+impl std::fmt::Display for MatchTypeOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
 }
 
 /// Centered card used for the no-roms / no-saves hints. Title is

@@ -18,6 +18,8 @@
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
+pub mod compat;
+
 /// Same protocol version the legacy app speaks (`tango/src/net/protocol.rs`).
 /// Bumped in lockstep with the signaling server's allowlist; keep
 /// this in sync or the server rejects the handshake with
@@ -82,6 +84,14 @@ pub struct LobbyState {
     /// Most recent measured round-trip ping. None before the first
     /// Pong; updated by `PingMeasured` from the lobby loop.
     pub latency: Option<std::time::Duration>,
+    /// User-picked match type (mode + subtype). Defaults to (0, 0)
+    /// = Single. Local-only UI state; gets folded into Settings
+    /// on send.
+    pub match_type: (u8, u8),
+    /// User-picked input delay frames. Higher = smoother on flaky
+    /// connections, more responsive on good ones. Range 0..=10;
+    /// default 3 matches the legacy app.
+    pub input_delay: u8,
 }
 
 impl Default for State {
@@ -92,7 +102,10 @@ impl Default for State {
             cancel: CancellationToken::new(),
             session_id: 0,
             pending_receiver: Arc::new(parking_lot::Mutex::new(None)),
-            lobby: LobbyState::default(),
+            lobby: LobbyState {
+                input_delay: 3,
+                ..LobbyState::default()
+            },
         }
     }
 }
@@ -144,6 +157,11 @@ pub enum Message {
     /// wire. No-op message; just bumps the state-changed counter
     /// so iced re-renders.
     LocalSettingsSent,
+    /// User changed the match-type pick. Lobby state updates and
+    /// the App resends the Settings packet.
+    SetMatchType((u8, u8)),
+    /// User dragged the input-delay slider. Same resend flow.
+    SetInputDelay(u8),
 }
 
 /// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
@@ -256,6 +274,13 @@ impl State {
                 if !matches!(self.phase, Phase::Lobby { .. }) {
                     return iced::Task::none();
                 }
+                // Dedupe — `make_local_settings()` re-runs on
+                // every Play / Netplay handler dispatch and most
+                // of those don't actually change anything that
+                // crosses the wire.
+                if self.lobby.local.as_ref() == Some(&*settings) {
+                    return iced::Task::none();
+                }
                 let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
                     return iced::Task::none();
                 };
@@ -278,6 +303,14 @@ impl State {
             Message::LocalSettingsSent => iced::Task::none(),
             Message::RemoteSettings(settings) => {
                 self.lobby.remote = Some(*settings);
+                iced::Task::none()
+            }
+            Message::SetMatchType(mt) => {
+                self.lobby.match_type = mt;
+                iced::Task::none()
+            }
+            Message::SetInputDelay(d) => {
+                self.lobby.input_delay = d.min(10);
                 iced::Task::none()
             }
             Message::Failed(e) => {

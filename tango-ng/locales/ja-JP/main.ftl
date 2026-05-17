@@ -47,6 +47,14 @@ lobby-waiting = 設定待ち…
 lobby-no-game = （ゲーム未選択）
 lobby-latency = Ping
 lobby-handshake = 設定交換中…
+lobby-input-delay = 入力遅延（フレーム）
+lobby-no-match-types = （このゲームには対戦モードがありません）
+lobby-pick-game-first = まずゲームを選んでください
+lobby-compat-ok = 互換あり — 対戦できます。
+lobby-compat-missing-game = ゲームが選択されていない側があります。
+lobby-compat-missing-rom = どちらかにゲームまたはパッチがインストールされていません。
+lobby-compat-version-mismatch = ゲームのバージョンが一致しません（パッチ／ROM が異なる）。
+lobby-compat-match-mismatch = 対戦モードが一致しません。
 play-netplay-todo = ネットプレイは未実装です。リンクコードを空にすると一人用セッションを開始できます。
 
 # Save view sub-tabs
