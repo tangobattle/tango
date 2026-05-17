@@ -467,23 +467,44 @@ fn chip_row(
     card_wrap(r.padding([8, 12]).into(), accent)
 }
 
-/// Wraps the inner row content with a 4 px accent stripe on the left.
-/// No body fill — the rows sit directly on the pane's background so
-/// the list reads as a denser column of content instead of a stack of
-/// shaded cards.
+/// Wraps the inner row content with a 4 px colored stripe on the left
+/// — the outer container's background paints the stripe in the
+/// `left: 4` padding band, and the body's opaque page-matched
+/// background masks the stripe everywhere else.
+///
+/// The body has to be opaque (otherwise the accent bleeds through
+/// the whole row), but it's set to the theme's page background colour
+/// so it visually disappears against the surrounding pane chrome —
+/// gives the list a denser look without the shaded-card noise.
 fn card_wrap(
     inner: Element<'static, Message>,
     accent: Option<iced::Color>,
 ) -> Element<'static, Message> {
     let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
-    let stripe = container(Space::with_width(Length::Fixed(4.0)))
-        .height(Length::Fill)
+    let card_body = container(inner)
+        .width(Fill)
+        .style(|theme: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(theme.palette().background)),
+            ..container::Style::default()
+        });
+
+    container(card_body)
+        .width(Fill)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 4.0,
+        })
         .style(move |_| container::Style {
             background: Some(iced::Background::Color(accent_color)),
+            border: iced::Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
-        });
-    row![stripe, container(inner).width(Fill)]
-        .spacing(0)
+        })
+        .clip(true)
         .into()
 }
 

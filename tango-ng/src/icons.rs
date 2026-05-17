@@ -29,22 +29,25 @@ pub const SAVE_FOLDER: &str = "🗂";
 pub const SAVE_PATCH_CARDS: &str = "🎴";
 pub const SAVE_AUTO_BATTLE: &str = "🤖";
 
-// Action / transport buttons.
+// Action / transport buttons. Picks are constrained to glyphs that
+// have an emoji-presentation form in Noto Emoji — pure text-symbol
+// chars (U+21BB ↻, U+270E ✎, U+2398 ⎘, U+FF0B ＋, U+2913 ⤓) tofu out
+// because they don't ship in the monochrome emoji font.
 pub const PLAY: &str = "▶";
 pub const PAUSE: &str = "⏸";
-pub const CLOSE: &str = "✕";
-pub const RESCAN: &str = "↻";
+pub const CLOSE: &str = "❌";
+pub const RESCAN: &str = "🔄";
 pub const UPDATE: &str = "⬇";
 pub const FOLDER: &str = "📁";
-pub const NEW: &str = "＋";
-pub const RENAME: &str = "✎";
+pub const NEW: &str = "➕";
+pub const RENAME: &str = "✏";
 pub const DELETE: &str = "🗑";
-pub const DUPLICATE: &str = "⎘";
+pub const DUPLICATE: &str = "📑";
 pub const COPY: &str = "📋";
 pub const WATCH: &str = "▶";
-pub const EXPORT: &str = "⤓";
-pub const CONFIRM: &str = "✓";
-pub const CANCEL: &str = "✕";
+pub const EXPORT: &str = "📤";
+pub const CONFIRM: &str = "✅";
+pub const CANCEL: &str = "❌";
 
 // ----- widget helpers -----
 
