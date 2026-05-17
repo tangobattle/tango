@@ -65,6 +65,17 @@ impl ActiveSession {
         }
     }
 
+    /// True once the session has ended on its own — currently used
+    /// by PvP so a peer-disconnect / comm error tears the session
+    /// view down automatically instead of leaving the user staring
+    /// at a frozen frame.
+    pub fn is_ended(&self) -> bool {
+        match self {
+            Self::Replay(_) | Self::SinglePlayer(_) => false,
+            Self::PvP(s) => s.is_ended(),
+        }
+    }
+
     pub fn as_replay(&self) -> Option<&replay_session::ReplaySession> {
         match self {
             Self::Replay(s) => Some(s),
@@ -178,6 +189,13 @@ impl State {
         match msg {
             Message::Tick => {
                 if let Some(session) = self.active.as_ref() {
+                    // Match background task signaled it's done
+                    // (clean finish / peer disconnect / comm
+                    // error). Self-close so the user isn't stuck
+                    // on a frozen final frame.
+                    if session.is_ended() {
+                        return iced::Task::done(Message::Close);
+                    }
                     // Skip the rebuild + GPU re-upload when the
                     // emulator hasn't advanced. On a 144 Hz host
                     // running a 60 fps game that's >50% of ticks.

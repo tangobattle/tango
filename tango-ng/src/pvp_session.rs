@@ -22,6 +22,12 @@ pub struct PvpSession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
+    /// Flipped true by the network/match background task when it
+    /// exits — clean finish, peer disconnect, comm error, or
+    /// user-cancel all converge to setting this. Polled by the
+    /// session-view Tick so the UI can self-close instead of
+    /// freezing on the last received frame.
+    session_ended: Arc<AtomicBool>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
@@ -204,10 +210,12 @@ impl PvpSession {
         // until the receiver errors (peer disconnected) or the
         // cancellation_token fires. On exit, drop the handle out
         // of the shared slot so the session knows the match's gone.
+        let session_ended = Arc::new(AtomicBool::new(false));
         {
             let match_handle = match_handle.clone();
             let inner_match = inner_match.clone();
             let completion_token = completion_token.clone();
+            let session_ended = session_ended.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
@@ -236,6 +244,13 @@ impl PvpSession {
                     }
                 }
                 *match_handle.lock().await = None;
+                // Signal the UI: the match is done (clean win,
+                // peer disconnect, comm error, user-cancel — all
+                // converge here). The session-view tick handler
+                // polls this and tears the session down so the
+                // user is never stuck on a frozen frame after a
+                // remote drop.
+                session_ended.store(true, Ordering::SeqCst);
             });
         }
 
@@ -279,6 +294,7 @@ impl PvpSession {
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
+            session_ended,
             _audio_binding: audio_binding,
             _thread: thread,
             cancellation_token,
@@ -311,6 +327,14 @@ impl PvpSession {
     pub fn request_close(&self) {
         self.close_requested.store(true, Ordering::SeqCst);
         self.cancellation_token.cancel();
+    }
+
+    /// True once the match background task has wound down — the
+    /// session view polls this each tick and emits `Message::Close`
+    /// so the UI doesn't get stuck on a frozen final frame after
+    /// a peer drop or comm error.
+    pub fn is_ended(&self) -> bool {
+        self.session_ended.load(Ordering::Acquire)
     }
 
     /// Median ping over the last few seconds — drives the in-

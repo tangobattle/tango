@@ -1300,9 +1300,14 @@ fn lobby_view<'a>(
         Option<Message>,
         ReadyPalette,
     ) = if lobby.match_ready {
-        (Icon::Play, "lobby-match-starting", Some(Message::NetplayUnready), ReadyPalette::Starting)
+        // Both committed — match is spinning up. Button is purely
+        // a status indicator; no click target until the session
+        // actually opens.
+        (Icon::Play, "lobby-match-starting", None, ReadyPalette::Starting)
     } else if lobby.local_ready {
-        (Icon::Check, "lobby-unready", Some(Message::NetplayUnready), ReadyPalette::Committed)
+        // Locally committed, waiting on peer. Action = unready.
+        // Gray / neutral so it doesn't masquerade as a primary CTA.
+        (Icon::X, "lobby-unready", Some(Message::NetplayUnready), ReadyPalette::Committed)
     } else {
         (
             Icon::Check,
@@ -1365,41 +1370,53 @@ enum ReadyPalette {
     /// Pre-commit; the action is "ready up". Accent (primary) so
     /// it reads as the call-to-action in the strip.
     Idle,
-    /// Locally committed; the action is "unready". Success-tinted
-    /// (brighter green from `.success.strong`) so it visually
-    /// confirms the commit while the click target stays obvious.
+    /// Locally committed; the action is "unready". Neutral / gray —
+    /// the commitment isn't a celebration to surface in green;
+    /// what matters is the user can un-commit.
     Committed,
-    /// Both committed; match is spinning up. Match the committed
-    /// look but a touch quieter — the click still un-commits but
-    /// the user mostly just waits.
+    /// Both committed; match is spinning up. Rendered as a passive
+    /// indicator: muted background, no click target, no border.
+    /// Caller sets `on_press = None` to match the disabled look.
     Starting,
 }
 
 /// Custom style for the lobby's Ready toggle. Hand-rolled instead
-/// of reusing `button::primary` / `button::success` so we can:
-///   - reach for the brighter `palette.X.strong` variants on
-///     Dark theme (iced's `success.base` is a near-invisible
-///     teal there),
-///   - keep a consistent rounded shape + thin border across all
-///     three states,
-///   - give the disabled state a clear "blocked" look (muted bg,
-///     muted text) without inheriting iced's grayed-out default.
+/// of reusing `button::primary` / `button::success` / `button::secondary`
+/// so each state lands on the right contrast tier and stays
+/// readable on Dark (iced's `success.base` is a near-invisible
+/// teal there). Consistent 6 px radius + thin border across the
+/// active variants.
 fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
     let p = theme.extended_palette();
-    let (base_color, hover_color) = match palette {
-        ReadyPalette::Idle => (p.primary.base.color, p.primary.strong.color),
-        ReadyPalette::Committed => (p.success.strong.color, p.success.base.color),
-        ReadyPalette::Starting => (p.success.weak.color, p.success.base.color),
-    };
-    let text_color = match palette {
-        ReadyPalette::Idle => p.primary.base.text,
-        ReadyPalette::Committed => p.success.strong.text,
-        ReadyPalette::Starting => p.success.weak.text,
-    };
-    let border_color = match palette {
-        ReadyPalette::Idle => p.primary.strong.color,
-        ReadyPalette::Committed => p.success.base.color,
-        ReadyPalette::Starting => p.success.weak.color,
+    // Starting is a pure indicator — no hover, no on_press. Iced
+    // routes it through Status::Disabled because the caller passed
+    // `on_press = None`, which we render as a muted badge.
+    if matches!(palette, ReadyPalette::Starting) {
+        return button::Style {
+            background: Some(iced::Background::Color(p.background.weak.color)),
+            text_color: crate::save_view::muted_color(theme),
+            border: iced::Border {
+                radius: 6.0.into(),
+                width: 1.0,
+                color: p.background.strong.color,
+            },
+            ..Default::default()
+        };
+    }
+    let (base_color, hover_color, text_color, border_color) = match palette {
+        ReadyPalette::Idle => (
+            p.primary.base.color,
+            p.primary.strong.color,
+            p.primary.base.text,
+            p.primary.strong.color,
+        ),
+        ReadyPalette::Committed => (
+            p.background.weak.color,
+            p.background.strong.color,
+            theme.palette().text,
+            p.background.strong.color,
+        ),
+        ReadyPalette::Starting => unreachable!(),
     };
     let base = button::Style {
         background: Some(iced::Background::Color(base_color)),
