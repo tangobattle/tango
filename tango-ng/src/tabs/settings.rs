@@ -355,10 +355,20 @@ fn settings_input<'a>(
 }
 
 fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: usize) -> Element<'a, Message> {
+    let (kind, label) = input::describe(binding);
+    let kind_glyph = match kind {
+        input::DescribeKind::Keyboard => icons::KEYBOARD,
+        input::DescribeKind::Gamepad => icons::GAMEPAD,
+    };
     container(
         row![
-            text(input::describe(binding)).size(TEXT_CAPTION),
-            button(text("×").size(TEXT_CAPTION))
+            // Lucide source-kind glyph (keyboard / gamepad) sized
+            // to match the caption text alongside it.
+            icons::glyph(kind_glyph).size(TEXT_CAPTION),
+            text(label).size(TEXT_CAPTION),
+            // Lucide × for the remove-binding button. Sized to
+            // the chip's caption text so the row stays tight.
+            button(icons::glyph(icons::CLOSE).size(TEXT_CAPTION))
                 .padding([2, 6])
                 .style(button::danger)
                 .on_press(Message::BindingRemove(key, idx)),

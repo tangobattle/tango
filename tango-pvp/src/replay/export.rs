@@ -294,20 +294,26 @@ pub async fn export(
         let kept_replay_len = kept_input_pairs(replay, selected);
 
         let last_round_idx = replay.rounds.len().saturating_sub(1);
-        // For incomplete replays, the stepper can sit in a half-
-        // started state forever (e.g. BN3's last partial round
-        // waits on a round_start hook that never fires because the
-        // recording was cut short). `pairs_left == 0` only fires
-        // once the stepper has actually consumed every queued
-        // input; if it never enters the consuming state, that
-        // check never trips. Watch for "no pair consumed in the
-        // last second" as a separate end-of-replay signal: in a
-        // healthy run the stepper consumes ~60 pairs/sec, so a
-        // full second of stillness means we're stuck.
-        // Complete replays don't take this path because
-        // `replay.is_complete` is true.
-        const NO_PROGRESS_FRAME_BUDGET: u32 = 60;
-        let mut last_pairs_left: Option<usize> = None;
+        // Two stuck-loop cases we have to break out of, both BN3-ish:
+        //
+        //   1. !is_complete + stepper never enters the partial last
+        //      round: pairs_left stays > 0 forever (the round_active
+        //      gate never fires, so the stepper never pops). Watch
+        //      for "pairs_left held constant for 1 s of frames".
+        //   2. is_complete + the last round was clipped mid-fight:
+        //      stepper consumes every queued pair (pairs_left → 0)
+        //      but `is_ended` never flips because the in-game round
+        //      logic was cut off. Watch for "pairs_left has been 0
+        //      with no round_idx / is_ended change for 5 s". The
+        //      generous budget preserves the legit fade-to-black
+        //      tail (~2 s) on healthy complete replays.
+        //
+        // Both watchdogs gate breaking on absence-of-progress, so
+        // healthy runs (advancing round / consuming input) never
+        // touch them.
+        const STUCK_INCOMPLETE_FRAMES: u32 = 60;   // 1 s @ 60 fps
+        const STUCK_COMPLETE_FRAMES: u32 = 5 * 60; // 5 s
+        let mut last_progress_key: Option<(usize, bool, usize)> = None;
         let mut no_progress_frames: u32 = 0;
         loop {
             let (cur_round_idx, is_ended, pairs_left) = {
@@ -319,21 +325,29 @@ pub async fn export(
                 break;
             }
 
-            if !replay.is_complete {
-                if last_pairs_left == Some(pairs_left) {
-                    no_progress_frames += 1;
-                    if no_progress_frames >= NO_PROGRESS_FRAME_BUDGET {
-                        log::info!(
-                            "incomplete replay export: stepper stuck at round {} with {} pairs unconsumed for {} frames, stopping",
-                            cur_round_idx, pairs_left, NO_PROGRESS_FRAME_BUDGET,
-                        );
-                        break;
-                    }
+            // No-progress watchdog. "Progress" = any change in
+            // (round_idx, is_ended, pairs_left) — the same fields
+            // the break check above looks at, so if they're all
+            // stuck we have nothing to react to anyway.
+            let key = (cur_round_idx, is_ended, pairs_left);
+            if last_progress_key == Some(key) {
+                no_progress_frames += 1;
+                let budget = if replay.is_complete {
+                    STUCK_COMPLETE_FRAMES
                 } else {
-                    no_progress_frames = 0;
+                    STUCK_INCOMPLETE_FRAMES
+                };
+                if no_progress_frames >= budget {
+                    log::info!(
+                        "replay export: stepper stuck at round {} is_ended={} pairs_left={} for {} frames (is_complete={}), stopping",
+                        cur_round_idx, is_ended, pairs_left, budget, replay.is_complete,
+                    );
+                    break;
                 }
-                last_pairs_left = Some(pairs_left);
+            } else {
+                no_progress_frames = 0;
             }
+            last_progress_key = Some(key);
 
             if last_selected_round.is_none_or(|last| cur_round_idx > last) {
                 break;

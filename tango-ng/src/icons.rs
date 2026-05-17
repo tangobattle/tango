@@ -50,6 +50,10 @@ pub const DICE: &str = "\u{e28b}"; // dice-5 — random link-code generator
 pub const FIGHT: &str = "\u{e2b4}"; // swords — Fight button (netplay Play)
 pub const CONFIRM: &str = "\u{e06c}"; // check
 pub const CANCEL: &str = "\u{e1b2}"; // x
+// Input-mapping chip glyphs — visual hint for "where this binding
+// comes from" (physical keyboard vs gamepad).
+pub const KEYBOARD: &str = "\u{e284}"; // keyboard
+pub const GAMEPAD: &str = "\u{e0de}"; // gamepad
 
 // ----- widget helpers -----
 

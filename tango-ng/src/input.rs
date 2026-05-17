@@ -439,27 +439,32 @@ impl HeldState {
     }
 }
 
-/// Pretty-print a binding for the settings UI. Keyboard bindings
-/// show their key string; gamepad bindings show the friendly
-/// button/axis name.
-pub fn describe(p: &PhysicalInput) -> String {
+/// What kind of physical source produced a binding. Used by the
+/// settings UI to pick the right Lucide glyph for the chip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DescribeKind {
+    Keyboard,
+    Gamepad,
+}
+
+/// Pretty-print a binding for the settings UI. Returns the source
+/// kind (for the chip's Lucide glyph) and a plain-text label.
+pub fn describe(p: &PhysicalInput) -> (DescribeKind, String) {
     match p {
-        PhysicalInput::Key(k) => format!("⌨ {}", k.label()),
-        PhysicalInput::Button(b) => format!("🎮 {}", b.label()),
+        PhysicalInput::Key(k) => (DescribeKind::Keyboard, k.label().to_string()),
+        PhysicalInput::Button(b) => (DescribeKind::Gamepad, b.label().to_string()),
         PhysicalInput::Axis { axis, dir } => {
             let sign = match dir {
                 AxisDir::Positive => "+",
                 AxisDir::Negative => "−",
             };
-            format!(
-                "🎮 {sign}{}",
-                match axis {
-                    GamepadAxis::LeftStickX => "Left Stick X",
-                    GamepadAxis::LeftStickY => "Left Stick Y",
-                    GamepadAxis::RightStickX => "Right Stick X",
-                    GamepadAxis::RightStickY => "Right Stick Y",
-                }
-            )
+            let name = match axis {
+                GamepadAxis::LeftStickX => "Left Stick X",
+                GamepadAxis::LeftStickY => "Left Stick Y",
+                GamepadAxis::RightStickX => "Right Stick X",
+                GamepadAxis::RightStickY => "Right Stick Y",
+            };
+            (DescribeKind::Gamepad, format!("{sign}{name}"))
         }
     }
 }
