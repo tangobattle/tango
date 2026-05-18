@@ -293,6 +293,46 @@ fn run_app() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
+    // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
+    // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front
+    // with a throwaway `wgpu::Instance`; if no adapter shows up,
+    // set `WGPU_BACKEND=gl` so iced's wgpu compositor picks the
+    // GL backend instead, which dlopens the bundled `libEGL.dll`
+    // (ANGLE) and translates GLES → D3D11. `enumerate_adapters`
+    // is synchronous and wraps per-backend init internally — a
+    // broken Vulkan driver yields an empty list rather than a
+    // crash — so this is a real check, not a heuristic.
+    //
+    // The `WGPU_BACKEND` env var still wins if the user set it
+    // (e.g. `WGPU_BACKEND=dx12` to force the native path for
+    // diagnostics).
+    #[cfg(windows)]
+    if std::env::var_os("WGPU_BACKEND").is_none() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..Default::default()
+        });
+        let adapters = instance.enumerate_adapters(wgpu::Backends::PRIMARY);
+        if adapters.is_empty() {
+            log::warn!(
+                "no DX12 / Vulkan adapter available — auto-falling back to ANGLE (set WGPU_BACKEND=dx12 or =vulkan to override)"
+            );
+            // SAFETY: still single-threaded here — no tokio
+            // runtime, no iced compositor — so no other thread
+            // can read env concurrently.
+            std::env::set_var("WGPU_BACKEND", "gl");
+        } else {
+            let names: Vec<_> = adapters
+                .iter()
+                .map(|a| {
+                    let info = a.get_info();
+                    format!("{:?} {}", info.backend, info.name)
+                })
+                .collect();
+            log::info!("primary adapter(s) detected: {names:?}");
+        }
+    }
+
     // Body text default. Every text widget that doesn't pass an
     // explicit `.size(...)` picks this up — that's the bulk of the
     // UI. Iced's bare default is 16 px; 13 matches what the rest

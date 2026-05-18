@@ -5952,6 +5952,7 @@ dependencies = [
  "toml 0.8.23",
  "unic-langid",
  "walkdir",
+ "wgpu",
  "zip",
  "zstd 0.13.3",
 ]

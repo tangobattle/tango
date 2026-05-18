@@ -18,6 +18,15 @@ embed-resource = "1"
 
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
+# Used only for a tiny pre-iced adapter probe in `run_app`: we
+# enumerate Backends::PRIMARY and auto-fall-back to ANGLE on
+# Windows if no DX12/Vulkan adapter is present. Version pinned
+# to match iced_wgpu 0.14's transitive `wgpu = "27.0"` so cargo
+# can unify the crate. `default-features = false` because
+# iced_wgpu already pulls in the default feature set
+# (dx12/vulkan/metal/gles/wgsl); cargo unifies, so we don't need
+# to re-list them here.
+wgpu = { version = "27", default-features = false }
 image = "0.25"
 tiny-skia = "0.11"
 serde = { version = "1", features = ["derive"] }
