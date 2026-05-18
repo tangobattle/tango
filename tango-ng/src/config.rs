@@ -118,6 +118,9 @@ impl Config {
     pub fn replays_path(&self) -> std::path::PathBuf {
         self.data_path.join("replays")
     }
+    pub fn logs_path(&self) -> std::path::PathBuf {
+        self.data_path.join("logs")
+    }
 
     pub fn load_or_create() -> Self {
         match config_path() {

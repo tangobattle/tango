@@ -1,6 +1,22 @@
 # Window
 window-title = Tango
 
+# Crash handler dialogs (parent process)
+crash = Tango がエラーで終了しました。
+
+    報告の際は次のログファイルを添付してください：
+
+    { $path }
+crash-no-log = Tango がエラーで終了しました。
+
+    { $error }
+
+# Discord rich presence
+discord-presence-looking = 募集中
+discord-presence-in-single-player = 一人用モード中
+discord-presence-in-lobby = ロビー待機中
+discord-presence-in-progress = 対戦中
+
 # Top-bar tabs
 tab-play = 対戦
 tab-replays = リプレイ

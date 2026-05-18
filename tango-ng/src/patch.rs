@@ -159,6 +159,92 @@ pub fn apply_patch_from_disk(
     Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }
 
+/// Background patch-repo autoupdater. Spawns a tokio task on
+/// [`Autoupdater::start`] that re-runs `update + scan` every
+/// `INTERVAL`, mirroring `tango/src/patch.rs::Autoupdater`. The
+/// task observes its cancellation token between cycles so
+/// `stop` (or the App dropping) tears it down cleanly.
+pub struct Autoupdater {
+    patches_path: std::path::PathBuf,
+    patch_repo: String,
+    patches_scanner: Scanner,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
+}
+
+impl Autoupdater {
+    /// Same cadence as legacy — fast enough to pick up new
+    /// patches within an hour, slow enough not to hammer the
+    /// repo.
+    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    pub fn new(patches_path: std::path::PathBuf, patch_repo: String, patches_scanner: Scanner) -> Self {
+        Self {
+            patches_path,
+            patch_repo,
+            patches_scanner,
+            cancellation_token: None,
+        }
+    }
+
+    /// Start the background loop. Idempotent.
+    pub fn start(&mut self) {
+        if self.cancellation_token.is_some() {
+            return;
+        }
+        log::info!("starting patch autoupdater (every {:?})", Self::INTERVAL);
+        let token = tokio_util::sync::CancellationToken::new();
+        let scanner = self.patches_scanner.clone();
+        let patches_path = self.patches_path.clone();
+        let patch_repo = if self.patch_repo.is_empty() {
+            crate::config::DEFAULT_PATCH_REPO.to_string()
+        } else {
+            self.patch_repo.clone()
+        };
+        tokio::task::spawn({
+            let token = token.clone();
+            async move {
+                'l: loop {
+                    let url = patch_repo.clone();
+                    let path = patches_path.clone();
+                    let scanner = scanner.clone();
+                    // Run the blocking scan+update on a worker
+                    // so the autoupdater task doesn't pin its
+                    // executor thread during the http fetch /
+                    // extract loop.
+                    let _ = tokio::task::spawn_blocking(move || {
+                        scanner.rescan(|| {
+                            if let Err(e) = futures::executor::block_on(update(url.clone(), path.clone())) {
+                                log::error!("patch autoupdate failed: {e:?}");
+                            }
+                            scan(&path).ok()
+                        });
+                        log::info!("patch autoupdate cycle complete");
+                    })
+                    .await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Self::INTERVAL) => {}
+                        _ = token.cancelled() => { break 'l; }
+                    }
+                }
+                log::info!("stopped patch autoupdater");
+            }
+        });
+        self.cancellation_token = Some(token);
+    }
+
+    pub fn stop(&mut self) {
+        if let Some(token) = self.cancellation_token.take() {
+            token.cancel();
+        }
+    }
+}
+
+impl Drop for Autoupdater {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
     let mut patches = BTreeMap::new();
 

@@ -2,7 +2,7 @@ use crate::i18n::t;
 use crate::widgets;
 use lucide_icons::Icon;
 use crate::{
-    config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION, TEXT_DISPLAY,
+    config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION,
 };
 use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
@@ -30,6 +30,10 @@ pub struct State {
     /// for `k`. UI displays a "press a key…" hint on the matching
     /// row.
     pub capture_target: Option<input::MappedKey>,
+    /// Cached parsed markdown for the About tab. Lives here
+    /// (rather than as a `static`) because `markdown::Content`
+    /// is `!Sync`.
+    pub about: AboutMarkdown,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +57,12 @@ pub enum Message {
     BindingRemove(input::MappedKey, usize),
     /// User clicked Reset to defaults.
     BindingsReset,
+    /// User clicked an external link in the About panel. Side
+    /// effect only — opens the URL via `open::that` and returns
+    /// `None` from update. `String` (not `&'static str`) so the
+    /// iced markdown widget can pass its parsed `Uri` straight
+    /// in via `.map(Message::OpenUrl)`.
+    OpenUrl(String),
 }
 
 /// Messages the settings panel emits that affect persisted
@@ -104,6 +114,12 @@ impl State {
             }
             Message::BindingRemove(k, idx) => Some(ConfigChange::RemoveInputBinding(k, idx)),
             Message::BindingsReset => Some(ConfigChange::ResetInputBindings),
+            Message::OpenUrl(url) => {
+                if let Err(e) = open::that(&url) {
+                    log::warn!("open url {url}: {e}");
+                }
+                None
+            }
         }
     }
 }
@@ -204,7 +220,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state:
         SettingsTab::General => settings_general(lang, config),
         SettingsTab::Input => settings_input(lang, config, state),
         SettingsTab::Netplay => settings_netplay(lang, config),
-        SettingsTab::About => settings_about(lang),
+        SettingsTab::About => settings_about(lang, &state.about),
     };
 
     row![
@@ -382,18 +398,105 @@ fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: 
     .into()
 }
 
-fn settings_about<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-    column![
-        text("tango-ng").size(TEXT_DISPLAY),
-        text(format!(
-            "{}: {}",
-            t(lang, "settings-version"),
-            env!("CARGO_PKG_VERSION")
-        ))
-        .size(TEXT_CAPTION),
-        Space::new().height(8),
-        text(t(lang, "settings-about-blurb")).size(TEXT_CAPTION),
-    ]
-    .spacing(6)
-    .into()
+/// English-only Markdown blob for the about screen. Hand-rolled
+/// link/bullet plumbing collapsed away in favor of letting iced's
+/// markdown widget handle headings, lists, emphasis, and inline
+/// links. The version number is the only dynamic bit; we splice
+/// it in once at parse time via `LazyLock`.
+const ABOUT_MARKDOWN_TEMPLATE: &str = r#"
+# Tango {VERSION}
+
+[Tango](https://tango.n1gp.net) would not be a reality without the work of the many people who have helped make this possible.
+
+## Development
+
+- Emulation: [endrift](https://twitter.com/endrift) (mGBA)
+- Reverse engineering: [pnw_ssbmars](https://twitter.com/pnw_ssbmars) (BN3), [XKirby](https://github.com/XKirby) (BN3), [luckytyphlosion](https://github.com/luckytyphlosion) (BN6), [LanHikari22](https://github.com/LanHikari22) (BN6), [GreigaMaster](https://twitter.com/GreigaMaster) (BN), [Prof. 9](https://twitter.com/Prof9) (BN), [National Security Agency](https://www.nsa.gov) (Ghidra), [aldelaro5](https://twitter.com/aldelaro5) (Ghidra)
+- 100% saves: [ore4545](https://github.com/ore4545)
+- Porting: [ubergeek77](https://github.com/ubergeek77) (Linux), [Akatsuki](https://github.com/Akatsuki) (macOS)
+- Game support: [weenie](https://github.com/bigfarts) (BN1-6), [GreigaMaster](https://twitter.com/GreigaMaster) (EXE4.5)
+- Odds and ends: [zachristmas](https://github.com/zachristmas), [Akatsuki](https://github.com/Akatsuki), [sailormoon](https://github.com/sailormoon), [Shiz](https://twitter.com/dev_console), [Karate_Bugman](https://twitter.com/Karate_Bugman)
+- [Countless open source projects](https://tango.n1gp.net/licenses)
+
+## Translation
+
+- Japanese: [weenie](https://github.com/bigfarts), [Nonstopmop](https://twitter.com/seventhfonist42), [dhenva](https://twitch.tv/dhenva)
+- Mandarin (mainland China): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
+- Mandarin (Taiwan): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
+- Spanish (Latin America): [Karate_Bugman](https://twitter.com/Karate_Bugman)
+- Portuguese (Brazil): [Darkgaia](https://ayo.so/darkgaiagames), [mushiguchi](https://twitter.com/mushiguchi)
+- French (France): [Sheriel Phoenix](https://twitter.com/Sheriel_Phoenix), [Justplay](https://twitter.com/justplayfly)
+- German (Germany): [KenDeep](https://twitch.tv/kendeep_fgc), [ChinaTV](https://twitter.com/ChinaTV9)
+- Vietnamese: [ExeDesmond](https://twitter.com/exedesmond), [ShironaNep](https://www.youtube.com/user/minhduc1411vip)
+- Russian (Russia): Passbyword, [Sest0E1emento5](https://www.youtube.com/channel/UCwpjuY9bYqNzsUG1QP50PLQ)
+- Dutch (Netherlands): [Virillion](https://twitter.com/Virillion)
+
+## Art
+
+- Logo: [saladdammit](https://twitter.com/saladdammit)
+
+## Special thanks
+
+- Playtesting: [N1GP](https://n1gp.net)
+- #1 fan: [playerzero](https://twitter.com/Playerzero_exe)
+
+And, of course, a huge thank you to [CAPCOM](https://www.capcom.com) for making Mega Man Battle Network!
+
+Tango is licensed under the terms of the [GNU Affero General Public License v3](https://tldrlegal.com/license/gnu-affero-general-public-license-v3-%28agpl-3.0%29). That means you're free to modify the [source code](https://github.com/tangobattle), as long as you contribute your changes back!
+"#;
+
+/// Holder for the parsed-once markdown Content. Tab state field
+/// because `markdown::Content` is `!Sync` (interior mutability
+/// for incremental parsing) and the parsed Items must outlive
+/// the `Element<'_>` that `markdown::view` borrows from.
+/// `OnceCell` so the parse only runs the first time the About
+/// tab renders.
+#[derive(Default)]
+pub struct AboutMarkdown(std::cell::OnceCell<iced::widget::markdown::Content>);
+
+impl AboutMarkdown {
+    fn content(&self) -> &iced::widget::markdown::Content {
+        self.0.get_or_init(|| {
+            iced::widget::markdown::Content::parse(
+                &ABOUT_MARKDOWN_TEMPLATE.replace("{VERSION}", env!("CARGO_PKG_VERSION")),
+            )
+        })
+    }
+}
+
+fn settings_about<'a>(lang: &'a LanguageIdentifier, about: &'a AboutMarkdown) -> Element<'a, Message> {
+    use iced::widget::image::{Handle, Image};
+    use iced::widget::markdown;
+    use std::sync::LazyLock;
+
+    static EMBLEM: LazyLock<Handle> = LazyLock::new(|| {
+        let raw: &'static [u8] = include_bytes!("../emblem.png");
+        Handle::from_bytes(raw)
+    });
+
+    let _ = lang; // about screen is English-only, matching legacy.
+
+    let emblem = iced::widget::container(Image::new(EMBLEM.clone()).width(Length::Fixed(200.0)))
+        .width(Fill)
+        .align_x(iced::alignment::Horizontal::Center);
+
+    // `Style::from_palette` derives link color from the palette
+    // primary. Inject our TANGO_GREEN so markdown links match
+    // the rest of the app's accent (default-DARK link color is
+    // a generic blue, which clashes here). Other palette slots
+    // are inherited from DARK and aren't used by the markdown
+    // renderer for non-code text.
+    let settings = markdown::Settings::with_text_size(
+        13,
+        markdown::Style::from_palette(iced::theme::Palette {
+            primary: crate::TANGO_GREEN,
+            ..iced::theme::Palette::DARK
+        }),
+    );
+    let body: Element<'a, Message> =
+        markdown::view(about.content().items(), settings).map(Message::OpenUrl);
+
+    scrollable(column![emblem, body].spacing(12).padding([0, 12]))
+        .height(Fill)
+        .into()
 }

@@ -1,6 +1,22 @@
 # Window
 window-title = Tango
 
+# Crash handler dialogs (parent process)
+crash = Oops, Tango has encountered an error and has crashed!
+
+    When reporting this crash, please include the following log file:
+
+    { $path }
+crash-no-log = Oops, Tango has encountered an error and has crashed!
+
+    { $error }
+
+# Discord rich presence
+discord-presence-looking = Looking for match
+discord-presence-in-single-player = In single player
+discord-presence-in-lobby = In lobby
+discord-presence-in-progress = Match in progress
+
 # Top-bar tabs
 tab-play = Play
 tab-replays = Replays

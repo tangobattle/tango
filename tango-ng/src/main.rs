@@ -2,6 +2,7 @@
 
 mod audio;
 mod config;
+mod discord;
 mod game;
 mod i18n;
 mod input;
@@ -101,6 +102,14 @@ pub const TEXT_HEADING: f32 = 15.0;
 pub const TEXT_BODY: f32 = 13.0;
 pub const TEXT_CAPTION: f32 = 11.0;
 
+/// The accent color used across the app — selection highlights,
+/// primary CTA buttons, the active tab underline, markdown link
+/// color in the About panel, etc. Same green the legacy egui
+/// app uses, kept in one const so we never accidentally drift to
+/// a different shade.
+pub const TANGO_GREEN: iced::Color =
+    iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
+
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the
 // monospace chip-code badge matches the rest of the UI. cosmic-text
@@ -115,7 +124,101 @@ const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../../tango/fonts/NotoEmoji-Regul
 // Lucide icon font ships with the `lucide-icons` crate as
 // `LUCIDE_FONT_BYTES`; registered with iced below.
 
-pub fn main() -> iced::Result {
+/// Set by the parent supervisor when it spawns the child UI
+/// process. The presence of this env var (set to `"1"`) tells
+/// `main` to skip the supervisor branch and just run the iced
+/// app. Distinct name from legacy `TANGO_CHILD` so a tango-ng
+/// invocation doesn't get confused with a legacy one if both
+/// happen to be running.
+const TANGO_NG_CHILD_ENV_VAR: &str = "TANGO_NG_CHILD";
+
+pub fn main() {
+    if std::env::var(TANGO_NG_CHILD_ENV_VAR).as_deref() == Ok("1") {
+        // Child process — the actual UI. Stderr is captured by
+        // the parent into the log file, so any panic backtrace
+        // (with RUST_BACKTRACE=1 set by the parent) lands there.
+        if let Err(e) = run_app() {
+            eprintln!("iced app exited with error: {e:?}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    // Parent / supervisor — set up the log file, spawn the
+    // child, and surface an rfd dialog on non-zero child exit.
+    match supervisor_main() {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("crash supervisor failed: {e:?}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Parent half of the crash-handling trampoline. Mirrors
+/// `tango/src/main.rs`'s parent flow:
+///   1. Make sure the logs dir exists; open a timestamped log
+///      file inside it.
+///   2. Spawn `current_exe()` again with `TANGO_NG_CHILD=1` +
+///      `RUST_BACKTRACE=1`, redirecting the child's stderr into
+///      the log file so panics + datachannel/mgba C-side stderr
+///      get captured.
+///   3. Wait. On non-zero exit, pop up a localized rfd dialog
+///      pointing at the log file path.
+///
+/// Returns the exit code we should propagate to the OS.
+fn supervisor_main() -> anyhow::Result<i32> {
+    use std::io::Write;
+    let config = config::Config::load_or_create();
+    let lang = config.language.clone();
+
+    let logs_dir = config.logs_path();
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let ts = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+    let log_path = logs_dir.join(format!("{ts}.log"));
+
+    let mut log_file = match std::fs::File::create(&log_path) {
+        Ok(f) => f,
+        Err(e) => {
+            rfd::MessageDialog::new()
+                .set_title(i18n::t(&lang, "window-title"))
+                .set_description(i18n::t_args(
+                    &lang,
+                    "crash-no-log",
+                    &[("error", format!("{e:?}").into())],
+                ))
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            return Err(e.into());
+        }
+    };
+
+    let exe = std::env::current_exe()?;
+    let status = std::process::Command::new(exe)
+        .args(std::env::args_os().skip(1).collect::<Vec<std::ffi::OsString>>())
+        .env(TANGO_NG_CHILD_ENV_VAR, "1")
+        .env("RUST_BACKTRACE", "1")
+        .stderr(log_file.try_clone()?)
+        .spawn()?
+        .wait()?;
+
+    writeln!(&mut log_file, "exit status: {status:?}")?;
+
+    if !status.success() {
+        rfd::MessageDialog::new()
+            .set_title(i18n::t(&lang, "window-title"))
+            .set_description(i18n::t_args(
+                &lang,
+                "crash",
+                &[("path", log_path.display().to_string().into())],
+            ))
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+    }
+
+    Ok(status.code().unwrap_or(0))
+}
+
+fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     // Route mgba's global default logger through `c_log` too — without
     // this, the prefetcher's bare Core falls through to mgba's printf
@@ -220,6 +323,19 @@ struct App {
     /// the cached framebuffer Handle. While `session.is_active()`, the
     /// main body is replaced by `session::view`.
     session: session::State,
+
+    /// Discord rich-presence client (background tokio task auto-
+    /// reconnects). Activity is pushed once per second via the
+    /// `DiscordTick` subscription, plus on session start/end.
+    discord: discord::Client,
+    /// Wall-clock when the current session was first observed
+    /// active — used as the `start_time` for the
+    /// `make_single_player_activity` / `make_in_progress_activity`
+    /// timestamps. Reset to `None` when the session ends.
+    session_started_at: Option<std::time::SystemTime>,
+    /// Background loop that pulls the patch repo every 15 min
+    /// and refreshes the patches scanner in place.
+    _patch_autoupdater: patch::Autoupdater,
 }
 
 impl App {
@@ -297,6 +413,13 @@ impl App {
             }
         };
 
+        let mut patch_autoupdater = patch::Autoupdater::new(
+            config.patches_path(),
+            config.patch_repo.clone(),
+            scanners.patches.clone(),
+        );
+        patch_autoupdater.start();
+
         let mut app = Self {
             config,
             tab: Tab::default(),
@@ -311,6 +434,9 @@ impl App {
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
+            discord: discord::Client::new(),
+            session_started_at: None,
+            _patch_autoupdater: patch_autoupdater,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -569,6 +695,10 @@ pub enum Message {
     /// App after the async build task in `spawn_pvp` resolves.
     /// `Slot` because PvpSession isn't Clone.
     PvpSessionBuilt(netplay::Slot<anyhow::Result<pvp_session::PvpSession>>),
+    /// 1 Hz tick: refresh Discord rich-presence + drain any
+    /// Discord-initiated join secret into the play link-code
+    /// field.
+    DiscordTick,
 }
 
 impl App {
@@ -596,6 +726,10 @@ impl App {
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
             Message::Patches(m) => self.update_patches(m).map(Message::Patches),
+            Message::DiscordTick => {
+                self.handle_discord_tick();
+                iced::Task::none()
+            }
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
@@ -701,7 +835,75 @@ impl App {
             session::subscription(&self.session).map(Message::Session),
             netplay::subscription(&self.netplay).map(Message::Netplay),
             tabs::settings::subscription(&self.settings).map(Message::Settings),
+            // 1 Hz Discord refresh — cheap (compares activity for
+            // equality before re-sending) and gives us the join-
+            // secret pickup loop too.
+            iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::DiscordTick),
         ])
+    }
+
+    /// Refresh Discord rich-presence + drain any Discord-initiated
+    /// join secret. Called from the 1 Hz tick.
+    fn handle_discord_tick(&mut self) {
+        // Stamp / clear the session-start wall clock based on
+        // whether a session is currently active.
+        match (&self.session.active, &self.session_started_at) {
+            (Some(_), None) => self.session_started_at = Some(std::time::SystemTime::now()),
+            (None, Some(_)) => self.session_started_at = None,
+            _ => {}
+        }
+
+        // Discord "Join Game" handoff: the peer accepted our
+        // invite, Discord handed us their link code as the join
+        // secret. Drop it into the play tab + jump to it.
+        if self.discord.has_current_join_secret() {
+            if let Some(secret) = self.discord.take_current_join_secret() {
+                log::info!("discord: accepted join with link code");
+                self.play.link_code = secret;
+                self.tab = Tab::Play;
+            }
+        }
+
+        let activity = self.derive_discord_activity();
+        self.discord.set_current_activity(Some(activity));
+    }
+
+    /// Derive the current Discord activity from app state. Maps
+    /// roughly:
+    ///   * PvP session active  → make_in_progress_activity
+    ///   * Single-player active → make_single_player_activity
+    ///   * Replay active        → make_base_activity(None)
+    ///   * Netplay lobby (both peers connected) → in_lobby
+    ///   * Netplay connecting/negotiating       → looking
+    ///   * Otherwise → make_base_activity(current game info)
+    fn derive_discord_activity(&self) -> discord::activity::Activity {
+        let lang = &self.config.language;
+        let game_info = self.play.local_game.map(|g| {
+            let patch = self
+                .play
+                .local_patch
+                .as_ref()
+                .zip(self.play.local_patch_version.as_ref())
+                .map(|(n, v)| (n.as_str(), v));
+            discord::make_game_info(g, patch, lang)
+        });
+
+        if let Some(active) = &self.session.active {
+            let start = self.session_started_at.unwrap_or_else(std::time::SystemTime::now);
+            return match active {
+                ActiveSession::Replay(_) => discord::make_base_activity(None),
+                ActiveSession::SinglePlayer(_) => discord::make_single_player_activity(start, lang, game_info),
+                ActiveSession::PvP(_) => discord::make_in_progress_activity(start, lang, game_info),
+            };
+        }
+
+        match &self.netplay.phase {
+            netplay::Phase::Lobby { link_code } => discord::make_in_lobby_activity(link_code, lang, game_info),
+            netplay::Phase::Connecting { link_code } | netplay::Phase::Negotiating { link_code } => {
+                discord::make_looking_activity(link_code, lang, game_info)
+            }
+            netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
+        }
     }
 
     fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
@@ -1232,8 +1434,6 @@ impl App {
         // Custom palettes derived from the built-in Light/Dark, with the
         // accent (primary) swapped to the BN-green that the main egui
         // app uses for selection / accents.
-        const TANGO_GREEN: iced::Color =
-            iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
         match self.config.theme {
             config::ThemeMode::Light => Theme::custom(
                 "Tango Light".to_string(),
