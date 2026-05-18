@@ -1259,6 +1259,12 @@ fn lobby_view<'a>(
     ]
     .spacing(2);
 
+    // Match-type lives on the LEFT and the pick-list grows to
+    // fit its current label (Single / Triple / etc); pushing it
+    // around the input-delay + reveal-setup controls every time
+    // the user changes match type was distracting. Anchor those
+    // two to the right via a `horizontal_space()` spacer so they
+    // stay put regardless of how wide the match-type widget gets.
     let controls = row![
         row![
             text(format!("{}:", t(lang, "replays-match-type")))
@@ -1268,6 +1274,7 @@ fn lobby_view<'a>(
         ]
         .spacing(6)
         .align_y(Alignment::Center),
+        horizontal_space(),
         row![
             text(format!("{}: {}", t(lang, "lobby-input-delay"), lobby.input_delay))
                 .size(TEXT_CAPTION)
