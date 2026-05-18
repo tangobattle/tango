@@ -39,10 +39,17 @@ pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
 
 /// Display names of every filter, in pick-list order. The first
 /// entry is the canonical "no filter" label.
+///
+/// HQ4X is implemented (`filter_by_name("hq4x")` still works) but
+/// omitted from the picker: its 4×4 = 16× output is 2.4 MB per
+/// frame, and iced's `image::Handle` cycles a fresh
+/// `Id::unique()` every Tick so the renderer re-uploads the full
+/// texture 60×/sec. With vsync off (input-latency fix, task #118)
+/// the present races the upload and the user sees flicker. HQ3X
+/// is the practical ceiling for the iced image path.
 pub const FILTERS: &[(&str, &str)] = &[
     ("", "None"),
     ("hq2x", "HQ2x"),
     ("hq3x", "HQ3x"),
-    ("hq4x", "HQ4x"),
     ("mmpx", "MMPX"),
 ];

@@ -226,13 +226,24 @@ impl State {
                     let filter = crate::video::filter_by_name(video_filter)
                         .unwrap_or_else(|| Box::new(crate::video::NullFilter));
                     let [out_w, out_h] = filter.output_size([src_w, src_h]);
-                    let (w, h, buf) = if [out_w, out_h] == [src_w, src_h] {
+                    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
                         (src_w as u32, src_h as u32, pixels)
                     } else {
                         let mut dst = vec![0u8; out_w * out_h * 4];
                         filter.apply(&pixels, &mut dst, [src_w, src_h]);
                         (out_w as u32, out_h as u32, dst)
                     };
+                    // hqx operates on 24-bit RGB and masks the
+                    // alpha byte to 0 in every output pixel
+                    // (see `MASK_RGB = 0x00FFFFFF` in the hqx
+                    // crate). The result reads as fully
+                    // transparent in iced and shows as black /
+                    // strobing depending on what's underneath.
+                    // Pure-2x MMPX preserves alpha, but it's
+                    // cheap to re-stamp unconditionally.
+                    for chunk in buf.chunks_mut(4) {
+                        chunk[3] = 0xff;
+                    }
                     self.frame = Some(iced::widget::image::Handle::from_rgba(w, h, buf));
                     self.frame_counter = self.frame_counter.wrapping_add(1);
                     self.displayed_frame_id = fid;

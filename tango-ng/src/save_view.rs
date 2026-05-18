@@ -176,7 +176,7 @@ pub fn view<'a>(
 /// right of the tab strip. `None` = tab has no extras.
 fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> Option<Element<'a, Action>> {
     use crate::widgets;
-use lucide_icons::Icon;
+    use lucide_icons::Icon;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
         widgets::icon_button(
             Icon::ClipboardCopy,
@@ -560,20 +560,18 @@ fn chip_row<M: 'static>(
     let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
     let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
 
-    // Name + (optional) code badge.
+    // Name only — chip code lives in its own right-aligned
+    // column below so every row's letters line up cleanly with
+    // the element / power / MB stats.
     let title: Element<'static, M> = if is_empty_slot {
         text("—")
             .size(TEXT_BODY)
             .color(iced::Color::from_rgb8(0x60, 0x60, 0x60))
             .into()
-    } else if let Some(code_str) = code.filter(|s| !s.is_empty()) {
-        row![text(name_text).size(TEXT_BODY), code_badge(code_str)]
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .into()
     } else {
         text(name_text).size(TEXT_BODY).into()
     };
+    let code_str = code.unwrap_or_default();
 
     // REG / TAG indicators sit inline with the title so the
     // row stays single-line and the card height stops growing
@@ -592,6 +590,10 @@ fn chip_row<M: 'static>(
     // Right-side stats: fixed-width right-aligned columns so the
     // numbers line up vertically across rows. Both inherit the theme's
     // text color — no hard-coded white/yellow that breaks on light.
+    let code_text: Element<'static, M> = container(text(code_str).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+        .width(Length::Fixed(22.0))
+        .align_x(iced::alignment::Horizontal::Right)
+        .into();
     let power_text: Element<'static, M> =
         container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
             .width(Length::Fixed(50.0))
@@ -629,6 +631,7 @@ fn chip_row<M: 'static>(
         .push(icon)
         .push(container(row![title, indicator_row].spacing(8).align_y(Alignment::Center)).width(Length::Fill))
         .push(element_icon)
+        .push(code_text)
         .push(power_text)
         .push(mb_text);
 
@@ -716,25 +719,6 @@ fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Op
         Some(tango_dataview::rom::ChipClass::Giga) => Some(iced::Color::from_rgb8(0xc4, 0x52, 0x84)),
         _ => None,
     }
-}
-
-fn code_badge<M: 'static>(code: String) -> Element<'static, M> {
-    // Theme-aware: opaque "strong" background from the palette, text
-    // colour inherits from the theme so it reads on both light + dark.
-    container(text(code).size(TEXT_BODY).font(iced::Font::MONOSPACE))
-        .padding([1, 6])
-        .style(|theme: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(
-                theme.extended_palette().background.strong.color,
-            )),
-            text_color: Some(theme.extended_palette().background.strong.text),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .into()
 }
 
 fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
