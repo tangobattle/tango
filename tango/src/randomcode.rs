@@ -1,4 +1,12 @@
+//! Link-code generator. Builds memorable `<adjective>-<word>-<noun>`
+//! handles per locale so users can dictate a code to a friend out
+//! loud. Word lists ported verbatim from
+//! `tango/src/randomcode.rs`; cross-locale sampling simplified
+//! (legacy used reservoir sampling for a one-of-N pick, which is
+//! overkill when N is tiny).
+
 use rand::Rng;
+use std::sync::LazyLock;
 
 struct Choices {
     pub starts: &'static [&'static str],
@@ -6,9 +14,8 @@ struct Choices {
     pub ends: &'static [&'static str],
 }
 
-lazy_static! {
-    static ref CHOICES: std::collections::HashMap<&'static str, Choices> =
-        std::collections::HashMap::from([
+static CHOICES: LazyLock<std::collections::HashMap<&'static str, Choices>> = LazyLock::new(|| {
+    std::collections::HashMap::from([
             (
                 "en",
                 Choices {
@@ -685,8 +692,8 @@ lazy_static! {
             //         ],
             //     }
             // )
-        ]);
-}
+    ])
+});
 
 pub fn generate(lang: &unic_langid::LanguageIdentifier) -> String {
     let mut thread_rng = rand::thread_rng();
@@ -696,14 +703,18 @@ pub fn generate(lang: &unic_langid::LanguageIdentifier) -> String {
         lang_code = "en";
     }
 
-    if thread_rng.gen_range(0..5) <= 0 {
-        let mut output = [&""];
-        reservoir_sampling::unweighted::core::l(
-            CHOICES.keys().filter(|v| **v != lang_code),
-            &mut output[..],
-            &mut thread_rng,
-        );
-        lang_code = *output.first().unwrap();
+    // 1-in-5 we pull from a different locale for variety. Pick a
+    // random non-current locale by sampling an index from the
+    // filtered key set.
+    if thread_rng.gen_range(0..5) == 0 {
+        let others: Vec<&'static str> = CHOICES
+            .keys()
+            .copied()
+            .filter(|k| *k != lang_code)
+            .collect();
+        if !others.is_empty() {
+            lang_code = others[thread_rng.gen_range(0..others.len())];
+        }
     }
 
     let choices = CHOICES.get(lang_code).unwrap();

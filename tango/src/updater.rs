@@ -1,16 +1,23 @@
-/// Autoupdater.
-///
-/// The autoupdater is a little contrived, but it works like this:
-///
-/// 1. We query Github for the latest release that is greater than our current release.
-/// 2. If found, we download it as INCOMPLETE_FILENAME. Once it's downloaded, we rename it to PENDING_FILENAME.
-/// 3. On the next launch of Tango or if manually triggered, if PENDING_FILENAME is found, we run the update routine.
-/// 4. To prevent the updater from getting wedged, we rename PENDING_FILENAME to IN_PROGRESS_FILENAME, such that on a second launch of Tango we don't try a bad upgrade.
-/// 5. We delete IN_PROGRESS_FILENAME.
-use futures_util::StreamExt;
-use tokio::io::AsyncWriteExt;
+//! Self-updater. Ported from `tango/src/updater.rs`.
+//!
+//! Lifecycle (matches legacy):
+//!
+//!   1. Query GitHub for the latest tango release.
+//!   2. If newer than the current build, stream the platform's
+//!      installer asset to `<data>/updater/incomplete`.
+//!   3. On clean download, rename → `pending.<ext>`.
+//!   4. Next launch (or "Update Now" button) renames pending →
+//!      `in_progress.<ext>` and runs it. The rename is a poison
+//!      flag so a busted installer doesn't get re-run on the
+//!      following launch.
+//!   5. The installer replaces the current binary; we exit.
+//!
+//! The `path` passed to [`Updater::new`] is the cache dir for
+//! step (2)/(3)/(4) files — `config.data_path/updater`.
 
-use crate::{config, version};
+use crate::config;
+use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
 
@@ -22,6 +29,9 @@ pub struct Release {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
+    /// Either we haven't queried yet (`release: None`) or we
+    /// queried and the latest is what we're running
+    /// (`release: Some(...)`).
     UpToDate { release: Option<Option<Release>> },
     UpdateAvailable { release: Release },
     Downloading { release: Release, current: u64, total: u64 },
@@ -42,15 +52,6 @@ struct GithubReleaseInfo {
     prerelease: bool,
 }
 
-pub struct Updater {
-    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    ui_callback: std::sync::Arc<tokio::sync::Mutex<Option<Box<dyn Fn() + Sync + Send>>>>,
-    current_version: semver::Version,
-    path: std::path::PathBuf,
-    status: std::sync::Arc<tokio::sync::Mutex<Status>>,
-    cancellation_token: Option<tokio_util::sync::CancellationToken>,
-}
-
 fn is_target_installer(s: &str) -> bool {
     if cfg!(target_os = "macos") {
         s.ends_with("-macos.dmg")
@@ -60,10 +61,6 @@ fn is_target_installer(s: &str) -> bool {
         s.ends_with("-x86_64-linux.AppImage")
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         s.ends_with("-aarch64-linux.AppImage")
-    } else if cfg!(all(target_os = "linux", target_arch = "x86")) {
-        s.ends_with("-i686-linux.AppImage")
-    } else if cfg!(all(target_os = "linux", target_arch = "arm")) {
-        s.ends_with("-armv7-linux.AppImage")
     } else {
         false
     }
@@ -71,164 +68,95 @@ fn is_target_installer(s: &str) -> bool {
 
 const INCOMPLETE_FILENAME: &str = "incomplete";
 
-#[cfg(target_os = "macos")]
-const PENDING_FILENAME: &str = "pending.dmg";
-#[cfg(target_os = "macos")]
-const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
-
 #[cfg(target_os = "windows")]
 const PENDING_FILENAME: &str = "pending.exe";
 #[cfg(target_os = "windows")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.exe";
+
+#[cfg(target_os = "macos")]
+const PENDING_FILENAME: &str = "pending.dmg";
+#[cfg(target_os = "macos")]
+const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
 
 #[cfg(target_os = "linux")]
 const PENDING_FILENAME: &str = "pending.AppImage";
 #[cfg(target_os = "linux")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.AppImage";
 
-#[cfg(target_os = "macos")]
-fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(&dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
-        } else {
-            std::fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
-        }
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn do_update(path: &std::path::Path) {
-    let bundle = core_foundation::bundle::CFBundle::main_bundle();
-    if bundle.info_dictionary().is_empty() {
-        // Application is not bundled.
-        return;
-    }
-
-    let output = std::process::Command::new("/usr/bin/hdiutil")
-        .arg("attach")
-        .arg("-noverify")
-        .arg("-plist")
-        .arg(path)
-        .output()
-        .unwrap();
-
-    let mount_point = std::path::PathBuf::from(
-        plist::Value::from_reader_xml(&mut output.stdout.as_slice())
-            .unwrap()
-            .as_dictionary()
-            .and_then(|d| d.get("system-entities"))
-            .and_then(|e| e.as_array())
-            .and_then(|a| {
-                a.iter()
-                    .flat_map(|v| {
-                        v.as_dictionary()
-                            .and_then(|d| {
-                                d.get("mount-point")
-                                    .and_then(|mp| mp.as_string().map(|s| s.to_string()))
-                            })
-                            .into_iter()
-                    })
-                    .next()
-            })
-            .unwrap(),
-    );
-
-    log::info!("dmg is mounted at {}", mount_point.display());
-
-    if let Err(e) = (|| -> Result<(), anyhow::Error> {
-        let bundle_path = bundle.path().ok_or(anyhow::anyhow!("no bundle path"))?;
-        std::fs::remove_dir_all(&bundle_path)?;
-
-        copy_dir_all(&mount_point.join("Tango.app"), &bundle_path)?;
-
-        let _ = std::process::Command::new("/usr/bin/hdiutil")
-            .arg("detach")
-            .arg(&mount_point)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-
-        std::process::Command::new("/usr/bin/open")
-            .arg(bundle_path)
-            .spawn()
-            .unwrap();
-
-        Ok(())
-    })() {
-        log::error!("failed to update automatically: {:?}", e);
-        // Unable to update automatically, open DMG.
-        std::process::Command::new("/usr/bin/open")
-            .arg(mount_point)
-            .spawn()
-            .unwrap();
-    }
-    std::process::exit(0);
-}
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+const PENDING_FILENAME: &str = "pending.bin";
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+const IN_PROGRESS_FILENAME: &str = "in_progress.bin";
 
 #[cfg(target_os = "windows")]
 fn do_update(path: &std::path::Path) {
+    // Detach so closing tango's process doesn't take the
+    // installer down with it.
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x00000008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-    std::process::Command::new(path)
+    let _ = std::process::Command::new(path)
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-        .spawn()
-        .unwrap();
-    // Is this racy? Can we exit before the installer finishes?
+        .spawn();
     std::process::exit(0);
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "windows"))]
 fn do_update(path: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::process::CommandExt;
-    let appimage_path = std::env::var("APPIMAGE").unwrap();
-    // Unlink the current file first, otherwise we will get ETXTBSY while copying.
-    std::fs::remove_file(&appimage_path).unwrap();
-    std::fs::copy(path, &appimage_path).unwrap();
-    std::fs::set_permissions(&appimage_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    if let nix::unistd::ForkResult::Child = unsafe { nix::unistd::fork() }.unwrap() {
-        nix::unistd::setsid().unwrap();
-        let mut command = std::process::Command::new(appimage_path);
-        panic!("{:?}", command.exec());
-    }
+    // Non-Windows hand-off isn't ported yet (legacy uses macOS
+    // CFBundle + Linux execve gymnastics). Open the downloaded
+    // asset and let the user finish manually rather than fail
+    // silently.
+    let _ = open::that(path);
     std::process::exit(0);
+}
+
+pub struct Updater {
+    path: std::path::PathBuf,
+    current_version: semver::Version,
+    allow_prerelease_upgrades: bool,
+    status: std::sync::Arc<tokio::sync::Mutex<Status>>,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl Updater {
-    pub fn new(path: &std::path::Path, config: std::sync::Arc<parking_lot::RwLock<config::Config>>) -> Updater {
-        let current_version = version::current();
+    /// `path` is the cache directory (downloads land inside).
+    /// `allow_prerelease_upgrades` is sampled once at start —
+    /// changes via Settings take effect on next launch.
+    pub fn new(path: &std::path::Path, allow_prerelease_upgrades: bool) -> Self {
+        let current_version: semver::Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         Self {
-            config,
-            current_version: current_version.clone(),
             path: path.to_owned(),
-            ui_callback: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            current_version,
+            allow_prerelease_upgrades,
             status: std::sync::Arc::new(tokio::sync::Mutex::new(Status::UpToDate { release: None })),
             cancellation_token: None,
         }
     }
 
+    /// If a previous session left a `pending.<ext>` installer in
+    /// the cache, rename it (poison flag) and execute it. Exits
+    /// the process on success. Safe no-op when nothing pending.
     pub fn finish_update(&self) {
         let pending_path = self.path.join(PENDING_FILENAME);
         if std::fs::metadata(&pending_path).is_ok() {
             let new_path = self.path.join(IN_PROGRESS_FILENAME);
-            std::fs::rename(&pending_path, &new_path).unwrap();
-            do_update(&new_path);
+            if std::fs::rename(&pending_path, &new_path).is_ok() {
+                do_update(&new_path);
+            }
         }
     }
 
-    pub fn set_ui_callback(&self, cb: Option<Box<dyn Fn() + Sync + Send>>) {
-        *self.ui_callback.blocking_lock() = cb;
+    pub fn status_blocking(&self) -> Status {
+        self.status.blocking_lock().clone()
     }
 
-    pub fn current_version(&self) -> &semver::Version {
-        &self.current_version
+    pub fn set_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.start();
+        } else {
+            self.stop();
+        }
     }
 
     fn start(&mut self) {
@@ -236,30 +164,25 @@ impl Updater {
             return;
         }
 
+        // Clean up stale crash artifacts; attempt any pending
+        // update again in case a previous session was killed
+        // between rename and exec.
         let _ = std::fs::remove_file(self.path.join(INCOMPLETE_FILENAME));
         let _ = std::fs::remove_file(self.path.join(IN_PROGRESS_FILENAME));
         self.finish_update();
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        let captured_cancellation_token = cancellation_token.clone();
-
+        let captured = cancellation_token.clone();
         let status = self.status.clone();
         let path = self.path.clone();
-        let ui_callback = self.ui_callback.clone();
         let current_version = self.current_version.clone();
-        let allow_prerelease_upgrades = self.config.read().allow_prerelease_upgrades;
+        let allow_prerelease = self.allow_prerelease_upgrades;
 
         tokio::task::spawn(async move {
             'l: loop {
-                let status = status.clone();
-                let path = path.clone();
-                let ui_callback = ui_callback.clone();
-                let current_version = current_version.clone();
-
-                if let Err(e) = async move {
+                let res = async {
                     let client = reqwest::Client::new();
                     let releases = tokio::time::timeout(
-                        // 30 second timeout to get release info.
                         std::time::Duration::from_secs(30),
                         async {
                             Ok::<_, anyhow::Error>(
@@ -275,27 +198,23 @@ impl Updater {
                     )
                     .await??;
 
-                    let (version, info) = if let Some(release) = releases
+                    // Pick the highest semver among non-prerelease
+                    // (or all, if the user opted in).
+                    let Some((version, info)) = releases
                         .into_iter()
                         .flat_map(|r| {
                             if !r.tag_name.starts_with('v') {
-                                return vec![];
+                                return None;
                             }
-                            let Ok(v) = r.tag_name[1..].parse::<semver::Version>() else {
-                                return vec![];
-                            };
-
-                            if !allow_prerelease_upgrades && (r.prerelease || !v.pre.is_empty()) {
-                                return vec![];
+                            let v: semver::Version = r.tag_name[1..].parse().ok()?;
+                            if !allow_prerelease && (r.prerelease || !v.pre.is_empty()) {
+                                return None;
                             }
-
-                            vec![(v, r)]
+                            Some((v, r))
                         })
                         .max_by_key(|(v, _)| v.clone())
-                    {
-                        release
-                    } else {
-                        anyhow::bail!("no releases found at all");
+                    else {
+                        anyhow::bail!("no releases found");
                     };
 
                     let release = Release {
@@ -303,150 +222,113 @@ impl Updater {
                         info: info.body.clone(),
                     };
 
-                    // If this version is older or the one we already know about, skip.
+                    // Skip if we already know about this one.
                     {
-                        let mut status_guard = status.lock().await;
-                        match &*status_guard {
+                        let mut g = status.lock().await;
+                        match &*g {
                             Status::UpToDate { .. } => {
                                 let has_latest = version == current_version
-                                    || (allow_prerelease_upgrades && version < current_version);
-
+                                    || (allow_prerelease && version < current_version);
                                 if has_latest {
-                                    log::info!("current version is already latest: {} vs {}", version, current_version);
-
-                                    *status_guard = Status::UpToDate {
+                                    *g = Status::UpToDate {
                                         release: Some(if version == current_version {
                                             Some(release.clone())
                                         } else {
                                             None
                                         }),
                                     };
-
                                     return Ok(());
                                 }
                             }
-                            Status::ReadyToUpdate {
-                                release:
-                                    Release {
-                                        version: update_version,
-                                        ..
-                                    },
-                            } => {
-                                let has_latest = version == *update_version
-                                    || (allow_prerelease_upgrades && version < *update_version);
-
+                            Status::ReadyToUpdate { release: r } => {
+                                let has_latest = version == r.version
+                                    || (allow_prerelease && version < r.version);
                                 if has_latest {
-                                    log::info!("latest version already downloaded: {} vs {}", version, update_version);
                                     return Ok(());
                                 }
                             }
-                            _ => {
-                                // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
-                            }
+                            _ => {}
                         }
                     }
 
-                    // Find the appropriate release.
-                    let asset =
-                        if let Some(asset) = info.assets.into_iter().find(|asset| is_target_installer(&asset.name)) {
-                            asset
-                        } else {
-                            log::info!("version {} has no assets right now", version);
-                            return Ok(());
-                        };
+                    // Find platform installer asset.
+                    let Some(asset) = info.assets.into_iter().find(|a| is_target_installer(&a.name)) else {
+                        log::info!("release {version} has no asset for this target");
+                        return Ok(());
+                    };
 
                     *status.lock().await = Status::UpdateAvailable {
                         release: release.clone(),
                     };
-                    if let Some(cb) = ui_callback.lock().await.as_ref() {
-                        cb();
-                    }
 
+                    // Stream the download into `incomplete`,
+                    // updating the progress status as we go.
                     let resp = tokio::time::timeout(
-                        // 30 second timeout to initiate connection.
                         std::time::Duration::from_secs(30),
                         reqwest::get(&asset.browser_download_url),
                     )
                     .await??;
-                    let mut current = 0u64;
                     let total = resp.content_length().unwrap_or(0);
-
-                    let incomplete_output_path = path.join(INCOMPLETE_FILENAME);
+                    let mut current = 0u64;
+                    let incomplete_path = path.join(INCOMPLETE_FILENAME);
                     {
-                        let mut output_file = tokio::fs::File::create(&incomplete_output_path).await?;
+                        let mut f = tokio::fs::File::create(&incomplete_path).await?;
                         let mut stream = resp.bytes_stream();
                         while let Some(chunk) = tokio::time::timeout(
-                            // 30 second timeout per stream chunk.
                             std::time::Duration::from_secs(30),
                             stream.next(),
                         )
                         .await?
                         {
                             let chunk = chunk?;
-                            output_file.write_all(&chunk).await?;
+                            f.write_all(&chunk).await?;
                             current += chunk.len() as u64;
                             *status.lock().await = Status::Downloading {
                                 release: release.clone(),
                                 current,
                                 total,
                             };
-                            if let Some(cb) = ui_callback.lock().await.as_ref() {
-                                cb();
-                            }
                         }
                     }
-                    std::fs::rename(incomplete_output_path, path.join(PENDING_FILENAME))?;
-
+                    std::fs::rename(incomplete_path, path.join(PENDING_FILENAME))?;
                     *status.lock().await = Status::ReadyToUpdate { release };
-                    if let Some(cb) = ui_callback.lock().await.as_ref() {
-                        cb();
-                    }
-
                     Ok::<(), anyhow::Error>(())
                 }
-                .await
-                {
-                    log::error!("updater failed: {:?}", e);
+                .await;
+                if let Err(e) = res {
+                    log::warn!("updater failed: {e:?}");
                 }
 
                 tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(30 * 60)) => { }
-                    _ = captured_cancellation_token.cancelled() => { break 'l; }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(30 * 60)) => {}
+                    _ = captured.cancelled() => { break 'l; }
                 }
             }
 
-            let mut status = status.lock().await;
-            if let Status::Downloading { release, .. } = &*status {
-                // Do cleanup.
-                let _ = std::fs::remove_file(path.join(IN_PROGRESS_FILENAME));
-                let _ = std::fs::remove_file(path.join(INCOMPLETE_FILENAME));
-                let _ = std::fs::remove_file(path.join(PENDING_FILENAME));
-                *status = Status::UpdateAvailable {
-                    release: release.clone(),
-                };
-                if let Some(cb) = ui_callback.lock().await.as_ref() {
-                    cb();
-                }
-            }
+            // On cancel: clean up the half-download so we don't
+            // leak it across runs. Pending stays — the user may
+            // still want to apply it on next launch.
+            let _ = std::fs::remove_file(path.join(INCOMPLETE_FILENAME));
         });
         self.cancellation_token = Some(cancellation_token);
     }
 
     fn stop(&mut self) {
-        if let Some(cancellation_token) = self.cancellation_token.take() {
-            cancellation_token.cancel();
+        if let Some(t) = self.cancellation_token.take() {
+            t.cancel();
         }
     }
+}
 
-    pub async fn status(&self) -> Status {
-        self.status.lock().await.clone()
+impl Drop for Updater {
+    fn drop(&mut self) {
+        self.stop();
     }
+}
 
-    pub fn set_enabled(&mut self, enabled: bool) {
-        if enabled {
-            self.start();
-        } else {
-            self.stop();
-        }
-    }
+/// Convenience: where the updater cache lives for a given
+/// config. Used by both `Updater::new` and any UI that needs
+/// to show the user where the downloads are.
+pub fn updater_cache_dir(config: &config::Config) -> std::path::PathBuf {
+    config.data_path.join("updater")
 }

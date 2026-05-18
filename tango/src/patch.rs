@@ -1,57 +1,74 @@
+//! Patch scanner. Slim port of `tango/src/patch.rs` — no autoupdate / HTTP
+//! sync / patch application yet. Just reads `info.toml`, README, and the
+//! per-version directory to discover which games each version supports.
+
+use crate::rom::GameRef;
+use crate::rom_overrides::Overrides;
+use crate::scanner;
 use futures::StreamExt;
 use itertools::Itertools;
+use serde::Deserialize;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
-use crate::{config, game, rom, scanner, sync};
-
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct Metadata {
     pub patch: PatchMetadata,
-    pub versions: std::collections::HashMap<String, VersionMetadata>,
+    pub versions: HashMap<String, VersionMetadata>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct PatchMetadata {
     pub title: String,
+    #[serde(default)]
     pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct VersionMetadata {
     #[serde(default)]
-    pub rom_overrides: rom::Overrides,
+    pub rom_overrides: Overrides,
     pub netplay_compatibility: String,
 }
 
 #[derive(Clone)]
 pub struct Version {
-    pub rom_overrides: rom::Overrides,
+    pub rom_overrides: Overrides,
     pub netplay_compatibility: String,
-    pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
-    pub save_templates: std::collections::HashMap<
-        &'static (dyn game::Game + Send + Sync),
-        std::collections::BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>,
-    >,
+    pub supported_games: HashSet<GameRef>,
+    /// Per-game save templates the patch ships. Keyed by template name
+    /// (empty string = the default template); values are owned Save
+    /// trait objects ready to be serialized via `as_sram_dump`.
+    pub save_templates:
+        std::collections::HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
 }
 
 pub struct Patch {
-    pub path: std::path::PathBuf,
+    pub path: PathBuf,
     pub title: String,
-    pub authors: Vec<mailparse::SingleInfo>,
+    /// Author display strings — parsed via `mailparse` and reduced to a
+    /// display name (or the address if no display name).
+    pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
     pub readme: Option<String>,
-    pub versions: std::collections::HashMap<semver::Version, std::sync::Arc<Version>>,
+    pub versions: BTreeMap<semver::Version, Arc<Version>>,
 }
 
-pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
-    std::fs::create_dir_all(root)?;
+pub type PatchMap = BTreeMap<String, Arc<Patch>>;
+pub type Scanner = scanner::Scanner<PatchMap>;
+
+/// Fetch the patch repo's index.json and download any missing /
+/// updated files via tango_filesync. Mirrors `tango/src/patch.rs::update`.
+pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&root)?;
 
     let client = reqwest::Client::new();
     let entries = tokio::time::timeout(
-        // 30 second timeout to fetch JSON.
         std::time::Duration::from_secs(30),
         async {
             Ok::<_, anyhow::Error>(
@@ -67,7 +84,6 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
     )
     .await??;
 
-    let root = root.to_path_buf();
     tango_filesync::sync(
         &root,
         &entries,
@@ -81,28 +97,28 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                     let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
                     let client = reqwest::Client::new();
                     let mut stream = tokio::time::timeout(
-                        // 30 second timeout to initiate connection.
                         std::time::Duration::from_secs(30),
                         client
                             .get(format!(
                                 "{}/{}",
                                 url,
-                                path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
+                                path.components()
+                                    .map(|v| v.as_os_str().to_string_lossy())
+                                    .join("/")
                             ))
                             .header("User-Agent", "tango")
                             .send(),
                     )
                     .await?
-                    .map_err(|e| std::io::Error::other(e))?
+                    .map_err(std::io::Error::other)?
                     .bytes_stream();
                     while let Some(chunk) = tokio::time::timeout(
-                        // 30 second timeout per stream chunk.
                         std::time::Duration::from_secs(30),
                         stream.next(),
                     )
                     .await?
                     {
-                        let chunk = chunk.map_err(|e| std::io::Error::other(e))?;
+                        let chunk = chunk.map_err(std::io::Error::other)?;
                         output_file.write_all(&chunk).await?;
                     }
                     log::info!("filesynced: {}", path.display());
@@ -116,38 +132,154 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
     Ok(())
 }
 
-pub fn scan(
-    path: &std::path::Path,
-) -> Result<std::collections::BTreeMap<String, std::sync::Arc<Patch>>, std::io::Error> {
-    let mut patches = std::collections::BTreeMap::new();
-    for entry in std::fs::read_dir(path)? {
+/// Read and decode the .bps for `game` from `patches_path/<patch_name>/v<version>/`,
+/// then apply it on top of the supplied ROM. Returns the patched ROM bytes.
+pub fn apply_patch_from_disk(
+    rom: &[u8],
+    game: GameRef,
+    patches_path: &std::path::Path,
+    patch_name: &str,
+    patch_version: &semver::Version,
+) -> anyhow::Result<Vec<u8>> {
+    let patch_name_path = std::path::Path::new(patch_name);
+    if patch_name_path.components().count() > 1 {
+        anyhow::bail!("attempted path traversal in patch name");
+    }
+
+    let (rom_code, revision) = game.rom_code_and_revision();
+    let bps_path = patches_path
+        .join(patch_name_path)
+        .join(format!("v{patch_version}"))
+        .join(format!(
+            "{}_{:02}.bps",
+            std::str::from_utf8(rom_code).unwrap(),
+            revision
+        ));
+    let raw = std::fs::read(&bps_path)?;
+    Ok(bps::Patch::decode(&raw)?.apply(rom)?)
+}
+
+/// Background patch-repo autoupdater. Spawns a tokio task on
+/// [`Autoupdater::start`] that re-runs `update + scan` every
+/// `INTERVAL`, mirroring `tango/src/patch.rs::Autoupdater`. The
+/// task observes its cancellation token between cycles so
+/// `stop` (or the App dropping) tears it down cleanly.
+pub struct Autoupdater {
+    patches_path: std::path::PathBuf,
+    patch_repo: String,
+    patches_scanner: Scanner,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
+}
+
+impl Autoupdater {
+    /// Same cadence as legacy — fast enough to pick up new
+    /// patches within an hour, slow enough not to hammer the
+    /// repo.
+    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    pub fn new(patches_path: std::path::PathBuf, patch_repo: String, patches_scanner: Scanner) -> Self {
+        Self {
+            patches_path,
+            patch_repo,
+            patches_scanner,
+            cancellation_token: None,
+        }
+    }
+
+    /// Start the background loop. Idempotent.
+    pub fn start(&mut self) {
+        if self.cancellation_token.is_some() {
+            return;
+        }
+        log::info!("starting patch autoupdater (every {:?})", Self::INTERVAL);
+        let token = tokio_util::sync::CancellationToken::new();
+        let scanner = self.patches_scanner.clone();
+        let patches_path = self.patches_path.clone();
+        let patch_repo = if self.patch_repo.is_empty() {
+            crate::config::DEFAULT_PATCH_REPO.to_string()
+        } else {
+            self.patch_repo.clone()
+        };
+        tokio::task::spawn({
+            let token = token.clone();
+            async move {
+                'l: loop {
+                    let url = patch_repo.clone();
+                    let path = patches_path.clone();
+                    let scanner = scanner.clone();
+                    // Run the blocking scan+update on a worker
+                    // so the autoupdater task doesn't pin its
+                    // executor thread during the http fetch /
+                    // extract loop.
+                    let _ = tokio::task::spawn_blocking(move || {
+                        scanner.rescan(|| {
+                            if let Err(e) = futures::executor::block_on(update(url.clone(), path.clone())) {
+                                log::error!("patch autoupdate failed: {e:?}");
+                            }
+                            scan(&path).ok()
+                        });
+                        log::info!("patch autoupdate cycle complete");
+                    })
+                    .await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Self::INTERVAL) => {}
+                        _ = token.cancelled() => { break 'l; }
+                    }
+                }
+                log::info!("stopped patch autoupdater");
+            }
+        });
+        self.cancellation_token = Some(token);
+    }
+
+    pub fn stop(&mut self) {
+        if let Some(token) = self.cancellation_token.take() {
+            token.cancel();
+        }
+    }
+}
+
+impl Drop for Autoupdater {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
+    let mut patches = BTreeMap::new();
+
+    let read_dir = match std::fs::read_dir(path) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(patches),
+        Err(e) => return Err(e),
+    };
+
+    let patch_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})\.bps$").unwrap();
+    let save_template_filename_re =
+        regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?))\.sav$").unwrap();
+
+    for entry in read_dir {
         let entry = match entry {
-            Ok(entry) => entry,
+            Ok(e) => e,
             Err(e) => {
-                log::error!("failed to read dir: {:?}", e);
+                log::warn!("patch scan: {e:?}");
                 continue;
             }
         };
-
-        let Some(name) = entry.file_name().to_str().map(|s| s.to_owned()) else {
-            continue;
-        };
-
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else { continue };
         if entry.file_type().ok().map(|ft| !ft.is_dir()).unwrap_or(false) {
             continue;
         }
 
-        let raw_info = match std::fs::read(entry.path().join("info.toml")) {
-            Ok(buf) => buf,
-            Err(_) => {
-                continue;
-            }
+        let info_path = entry.path().join("info.toml");
+        let raw = match std::fs::read_to_string(&info_path) {
+            Ok(s) => s,
+            Err(_) => continue,
         };
-
-        let info = match toml::from_slice::<Metadata>(&raw_info) {
-            Ok(info) => info,
+        let info = match toml::from_str::<Metadata>(&raw) {
+            Ok(i) => i,
             Err(e) => {
-                log::warn!("{}: {}", entry.path().display(), e);
+                log::warn!("{}: {e}", info_path.display());
                 continue;
             }
         };
@@ -157,257 +289,127 @@ pub fn scan(
             .and_then(|mut it| {
                 it.find(|p| {
                     p.as_ref()
-                        .map(|entry| entry.file_name().eq_ignore_ascii_case("readme"))
+                        .map(|e| e.file_name().eq_ignore_ascii_case("readme"))
                         .unwrap_or(false)
                 })
                 .and_then(|r| r.ok())
             })
-            .and_then(|entry| std::fs::read(entry.path()).ok())
+            .and_then(|e| std::fs::read(e.path()).ok())
             .map(|buf| String::from_utf8_lossy(&buf).to_string());
 
-        let mut versions = std::collections::HashMap::new();
-        for (v, version) in info.versions.into_iter() {
+        let mut versions = BTreeMap::new();
+        for (v, ver) in info.versions {
             let sv = match semver::Version::parse(&v) {
-                Ok(sv) => sv,
+                Ok(s) => s,
                 Err(e) => {
-                    log::warn!("{}: {}", entry.path().display(), e);
+                    log::warn!("{}: bad version {v}: {e}", entry.path().display());
                     continue;
                 }
             };
-
             if sv.to_string() != v {
-                log::warn!("{}: semver did not round trip", entry.path().display());
+                log::warn!("{}: semver did not round trip: {v}", entry.path().display());
                 continue;
             }
 
-            let read_version_dir = match std::fs::read_dir(entry.path().join(format!("v{sv}"))) {
-                Ok(read_version_dir) => read_version_dir,
+            let vdir = entry.path().join(format!("v{sv}"));
+            let vread = match std::fs::read_dir(&vdir) {
+                Ok(r) => r,
                 Err(e) => {
-                    log::warn!("{}: {}", entry.path().display(), e);
+                    log::warn!("{}: {e}", vdir.display());
                     continue;
                 }
             };
 
-            let mut supported_games = std::collections::HashSet::new();
-            let mut save_templates = std::collections::HashMap::new();
+            let mut supported_games: HashSet<GameRef> = HashSet::new();
+            let mut save_templates: std::collections::HashMap<
+                GameRef,
+                BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>,
+            > = std::collections::HashMap::new();
+            for f in vread {
+                let Ok(f) = f else { continue };
+                let Some(filename) = f.file_name().into_string().ok() else { continue };
 
-            for entry in read_version_dir {
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(e) => {
-                        log::error!("failed to read dir: {:?}", e);
-                        continue;
-                    }
-                };
-
-                // Try parse file name.
-                let filename = match entry.file_name().into_string() {
-                    Ok(filename) => filename,
-                    Err(e) => {
-                        log::error!("failed to read dir: {:?}", e);
-                        continue;
-                    }
-                };
-
-                lazy_static! {
-                    static ref PATCH_FILENAME_REGEX: regex::Regex =
-                        regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
-                    static ref SAVE_TEMPLATE_FILENAME_REGEX: regex::Regex =
-                        regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?)).sav$").unwrap();
-                }
-
-                enum FileType {
-                    BpsPatch,
-                    SaveTemplate(String),
-                }
-
-                let (rom_id, revision, file_type) = if let Some(captures) = PATCH_FILENAME_REGEX.captures(&filename) {
-                    let rom_id = captures.get(1).unwrap().as_str().to_string();
-                    let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
-                    (rom_id, revision, FileType::BpsPatch)
-                } else if let Some(captures) = SAVE_TEMPLATE_FILENAME_REGEX.captures(&filename) {
-                    let rom_id = captures.get(1).unwrap().as_str().to_string();
-                    let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
-                    let name = captures.get(3).map(|v| v.as_str()).unwrap_or("").to_string();
-                    (rom_id, revision, FileType::SaveTemplate(name))
-                } else {
-                    continue;
-                };
-
-                let Some(game) = game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision) else {
-                    continue;
-                };
-
-                match file_type {
-                    FileType::BpsPatch => {
-                        supported_games.insert(game);
-                    }
-                    FileType::SaveTemplate(name) => {
-                        let save = match std::fs::read(entry.path())
-                            .map_err(anyhow::Error::from)
-                            .and_then(|raw| game.gamedb_entry().parse_save(&raw).map_err(anyhow::Error::from))
-                        {
-                            Ok(save) => save,
-                            Err(e) => {
-                                log::error!("failed to read save template: {:?}", e);
-                                continue;
-                            }
-                        };
-                        save_templates
-                            .entry(game)
-                            .or_insert_with(std::collections::BTreeMap::new)
-                            .insert(name, save);
+                if let Some(captures) = patch_filename_re.captures(&filename) {
+                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
+                    supported_games.insert(game);
+                } else if let Some(captures) = save_template_filename_re.captures(&filename) {
+                    let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
+                    let template_name =
+                        captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
+                    let raw = match std::fs::read(f.path()) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::warn!("{}: {e}", f.path().display());
+                            continue;
+                        }
+                    };
+                    match game.parse_save(&raw) {
+                        Ok(save) => {
+                            save_templates
+                                .entry(game)
+                                .or_default()
+                                .insert(template_name, save);
+                        }
+                        Err(e) => log::warn!("{}: not a valid template save: {e}", f.path().display()),
                     }
                 }
             }
 
             versions.insert(
                 sv,
-                std::sync::Arc::new(Version {
-                    rom_overrides: version.rom_overrides,
-                    netplay_compatibility: version.netplay_compatibility,
+                Arc::new(Version {
+                    rom_overrides: ver.rom_overrides,
+                    netplay_compatibility: ver.netplay_compatibility,
                     supported_games,
                     save_templates,
                 }),
             );
         }
 
+        let authors = info
+            .patch
+            .authors
+            .into_iter()
+            .map(|s| match mailparse::addrparse(&s) {
+                Ok(addrs) => addrs
+                    .iter()
+                    .filter_map(|addr| match addr {
+                        mailparse::MailAddr::Single(info) => Some(
+                            info.display_name
+                                .clone()
+                                .unwrap_or_else(|| info.addr.clone()),
+                        ),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Err(_) => s,
+            })
+            .collect();
+
         patches.insert(
-            name.to_string(),
-            std::sync::Arc::new(Patch {
+            name,
+            Arc::new(Patch {
                 path: entry.path(),
                 title: info.patch.title,
-                authors: info
-                    .patch
-                    .authors
-                    .into_iter()
-                    .flat_map(|author| match mailparse::addrparse(&author) {
-                        Ok(addrs) => addrs
-                            .into_inner()
-                            .into_iter()
-                            .flat_map(|addr| match addr {
-                                mailparse::MailAddr::Group(group) => group.addrs,
-                                mailparse::MailAddr::Single(single) => vec![single],
-                            })
-                            .collect(),
-                        Err(_) => vec![mailparse::SingleInfo {
-                            display_name: Some(author),
-                            addr: "".to_string(),
-                        }],
-                    })
-                    .collect(),
+                authors,
                 license: info.patch.license,
-                readme,
                 source: info.patch.source,
+                readme,
                 versions,
             }),
         );
     }
+
     Ok(patches)
-}
-
-pub type PatchMap = std::collections::BTreeMap<String, std::sync::Arc<Patch>>;
-pub type Scanner = scanner::Scanner<PatchMap>;
-
-pub struct Autoupdater {
-    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    patches_scanner: Scanner,
-    cancellation_token: Option<tokio_util::sync::CancellationToken>,
-}
-
-impl Autoupdater {
-    pub fn new(config: std::sync::Arc<parking_lot::RwLock<config::Config>>, patches_scanner: Scanner) -> Self {
-        Self {
-            config,
-            patches_scanner,
-            cancellation_token: None,
-        }
-    }
-
-    fn start(&mut self) {
-        if self.cancellation_token.is_some() {
-            return;
-        }
-
-        log::info!("starting patch autoupdater");
-        let cancellation_token = tokio_util::sync::CancellationToken::new();
-        tokio::task::spawn({
-            let cancellation_token = cancellation_token.clone();
-            let config = self.config.clone();
-            let patches_scanner = self.patches_scanner.clone();
-            async move {
-                'l: loop {
-                    let (repo_url, patches_path) = {
-                        let config = config.read();
-                        (
-                            if !config.patch_repo.is_empty() {
-                                config.patch_repo.clone()
-                            } else {
-                                config::DEFAULT_PATCH_REPO.to_owned()
-                            },
-                            config.patches_path().to_path_buf(),
-                        )
-                    };
-
-                    let patches_scanner = patches_scanner.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        patches_scanner.rescan(move || {
-                            if let Err(e) = sync::block_on(update(&repo_url, &patches_path)) {
-                                log::error!("failed to update patches: {:?}", e);
-                            }
-                            scan(&patches_path).ok()
-                        });
-                        log::info!("patch autoupdate completed");
-                    })
-                    .await;
-                    tokio::select! {
-                        _ = tokio::time::sleep(std::time::Duration::from_secs(15 * 60)) => { }
-                        _ = cancellation_token.cancelled() => { break 'l; }
-                    }
-                }
-                log::info!("stopped patch autoupdater");
-            }
-        });
-        self.cancellation_token = Some(cancellation_token);
-    }
-
-    fn stop(&mut self) {
-        if let Some(cancellation_token) = self.cancellation_token.take() {
-            cancellation_token.cancel();
-        }
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        if enabled {
-            self.start();
-        } else {
-            self.stop();
-        }
-    }
-}
-
-pub fn apply_patch_from_disk(
-    rom: &[u8],
-    game: &'static (dyn game::Game + Send + Sync),
-    patches_path: &std::path::Path,
-    patch_name: &str,
-    patch_version: &semver::Version,
-) -> Result<Vec<u8>, anyhow::Error> {
-    let patch_name = std::path::Path::new(patch_name);
-    if patch_name.components().count() > 1 {
-        anyhow::bail!("attempted path traversal in patch name");
-    }
-
-    let (rom_code, revision) = game.gamedb_entry().rom_code_and_revision();
-    let raw = std::fs::read(
-        patches_path
-            .join(patch_name)
-            .join(format!("v{}", patch_version))
-            .join(format!(
-                "{}_{:02}.bps",
-                std::str::from_utf8(rom_code).unwrap(),
-                revision
-            )),
-    )?;
-    Ok(bps::Patch::decode(&raw)?.apply(rom)?)
 }

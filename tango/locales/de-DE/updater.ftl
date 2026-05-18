@@ -1,9 +1,0 @@
-updater = Update
-updater-downloading = Lädt Update herunter ({ $percent })...
-updater-update-available = Update verfügbar!
-updater-ready-to-update = Bereit zum Aktualisieren!
-updater-current-version = Momentane Version
-updater-latest-version = Neuste Version
-updater-update-now = Jetzt aktualisieren!
-updater-loading = Lade Versionsinformationen...
-updater-no-info = Zu dieser Version wurden keine Informationen gefunden.

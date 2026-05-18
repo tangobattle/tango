@@ -1,9 +1,13 @@
-#[cfg(feature = "cpal")]
-pub mod cpal;
-#[cfg(feature = "sdl2-audio")]
-pub mod sdl2;
+//! Audio core: a Stream trait, a late-binding mux so the cpal output
+//! stream can outlive any one session, and the MGBAStream adapter that
+//! pulls samples out of an mgba thread and resamples to the host rate.
+//!
+//! Ported with minor cleanups from `tango/src/audio.rs`.
 
-const SAMPLES: usize = 512;
+pub mod cpal;
+
+pub const NUM_CHANNELS: usize = 2;
+pub const SAMPLES: usize = 512;
 
 pub trait Stream {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize;
@@ -15,6 +19,8 @@ pub enum BindingError {
     AlreadyBound,
 }
 
+/// RAII guard for an active binding — when dropped, the LateBinder is
+/// reset to silence.
 pub struct Binding {
     binder: LateBinder,
 }
@@ -25,6 +31,9 @@ impl Drop for Binding {
     }
 }
 
+/// A `Stream` whose underlying source can be swapped at runtime. The
+/// cpal output stream binds to this once at startup; sessions then bind
+/// their MGBAStream into it on open and drop the Binding on close.
 #[derive(Clone)]
 pub struct LateBinder {
     sample_rate: u32,
@@ -40,39 +49,48 @@ impl LateBinder {
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: u32) {
-        self.sample_rate = sample_rate
+        self.sample_rate = sample_rate;
     }
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
 
-    pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
-        let mut stream_guard = self.stream.lock();
-        if stream_guard.is_some() {
+    pub fn bind(
+        &self,
+        stream: Option<Box<dyn Stream + Send + 'static>>,
+    ) -> Result<Binding, BindingError> {
+        let mut g = self.stream.lock();
+        if g.is_some() {
             return Err(BindingError::AlreadyBound);
         }
-
-        *stream_guard = stream;
+        *g = stream;
         Ok(Binding { binder: self.clone() })
     }
 }
 
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
-        let mut stream = self.stream.lock();
-        let Some(stream) = &mut *stream else {
-            for v in buf.iter_mut() {
-                *v = [0, 0];
+        let mut s = self.stream.lock();
+        match &mut *s {
+            None => {
+                // Silence when nothing's bound. Returning buf.len()
+                // means we consider the whole buffer "filled" so cpal
+                // doesn't pad-and-loop the last samples.
+                for v in buf.iter_mut() {
+                    *v = [0, 0];
+                }
+                buf.len()
             }
-            return buf.len() / 2;
-        };
-        stream.fill(buf)
+            Some(stream) => stream.fill(buf),
+        }
     }
 }
 
-pub const NUM_CHANNELS: usize = 2;
-
+/// Pulls audio out of a running mgba thread, resampling from mGBA's
+/// internal rate to the host audio rate. The high-water adjustment
+/// follows the same formula as mGBA's SDL frontend so high-SOUNDBIAS
+/// games (Battle Network 4+) don't starve.
 pub struct MGBAStream {
     handle: mgba::thread::Handle,
     sample_rate: u32,
@@ -86,14 +104,10 @@ impl MGBAStream {
             handle,
             sample_rate,
             resampler: mgba::audio::AudioResampler::new(),
-            // Sized just over one callback's worth of frames. The resampler
-            // writes whatever the source produced this cycle (bounded by
-            // audio_high_water below at ~`SAMPLES + 24` source frames →
-            // <= ~`SAMPLES + 32` dest frames at typical rate ratios); any
-            // surplus over `SAMPLES` carries to the next fill. Bigger than
-            // this just buffers up audio that arrives later than the matching
-            // video frame — perceptible audio lag. Smaller risks dropping
-            // a tail when the resampler can't fit its output.
+            // 2x SAMPLES — enough to hold an above-average single
+            // callback's resampler output without losing the tail,
+            // small enough that the leftover doesn't accumulate into
+            // perceptible A/V lag. See tango/src/audio.rs.
             dest_buffer: mgba::audio::AudioBuffer::new(SAMPLES * 2, NUM_CHANNELS as u32),
         }
     }
@@ -105,7 +119,6 @@ impl Stream for MGBAStream {
         let linear_buf: &mut [i16] = bytemuck::cast_slice_mut(buf);
 
         let mut audio_guard = self.handle.lock_audio();
-
         let mut fps_target = audio_guard.sync().fps_target();
         if fps_target <= 0.0 {
             fps_target = 1.0;
@@ -116,11 +129,9 @@ impl Stream for MGBAStream {
         let core_rate = core.as_ref().audio_sample_rate() as f64;
         let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
 
-        // Rescale audioHighWater for the current source rate so high-
-        // SOUNDBIAS games don't starve the audio thread. Formula matches
-        // mGBA's SDL frontend (src/platform/sdl/sdl-audio.c).
         let dest_rate = self.sample_rate as f64 * faux_clock;
-        let high_water = (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
+        let high_water =
+            (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
         audio_guard.sync_mut().set_audio_high_water(high_water as u32);
 
         self.resampler.set_source(core_buffer_ptr, core_rate, true);

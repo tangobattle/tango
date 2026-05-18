@@ -1,3 +1,6 @@
+//! MMPX 2x upscale bridge. Ported verbatim from
+//! `tango/src/video/mmpx.rs`.
+
 pub struct MMPXFilter;
 impl super::Filter for MMPXFilter {
     fn output_size(&self, [w, h]: [usize; 2]) -> [usize; 2] {

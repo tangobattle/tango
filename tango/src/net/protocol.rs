@@ -1,17 +1,37 @@
+//! Wire protocol for the netplay data channel. Slim port of
+//! `tango/src/net/protocol.rs` — same `Packet` enum + bincode framing,
+//! but the bincode option builders are `std::sync::LazyLock` instead
+//! of the legacy `lazy_static!` macro.
+//!
+//! `VERSION` is shared with [`crate::netplay::PROTOCOL_VERSION`] — keep
+//! the two in sync so the signaling-server reject path and the per-
+//! peer hello path can't ever disagree.
+
 use bincode::Options;
+use std::sync::LazyLock;
 
-pub const VERSION: u8 = 0x3b;
+pub const VERSION: u8 = crate::netplay::PROTOCOL_VERSION as u8;
 
-lazy_static! {
-    static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
-        bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding>,
+static BINCODE_OPTIONS: LazyLock<
+    bincode::config::WithOtherLimit<
+        bincode::config::WithOtherIntEncoding<
+            bincode::config::DefaultOptions,
+            bincode::config::VarintEncoding,
+        >,
         bincode::config::Bounded,
-    > = bincode::DefaultOptions::new()
+    >,
+> = LazyLock::new(|| {
+    bincode::DefaultOptions::new()
         .with_varint_encoding()
-        .with_limit(64 * 1024);
-    static ref STATE_BINCODE_OPTIONS: bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding> =
-        bincode::DefaultOptions::new().with_varint_encoding();
-}
+        .with_limit(64 * 1024)
+});
+
+static STATE_BINCODE_OPTIONS: LazyLock<
+    bincode::config::WithOtherIntEncoding<
+        bincode::config::DefaultOptions,
+        bincode::config::VarintEncoding,
+    >,
+> = LazyLock::new(|| bincode::DefaultOptions::new().with_varint_encoding());
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub enum Packet {
@@ -31,6 +51,11 @@ pub enum Packet {
 
     // In match.
     Input(tango_pvp::net::Input),
+    /// Sent once by each side when its local `match_end_ret`
+    /// hook fires. The peer waits for this before tearing down
+    /// the connection so the lagging side can finish writing its
+    /// replay. See `PvpSession::is_ended` for the wait logic.
+    EndOfMatch(EndOfMatch),
 }
 
 impl Packet {
@@ -71,19 +96,19 @@ pub struct Pong {
     pub ts: std::time::SystemTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PatchInfo {
     pub name: String,
     pub version: semver::Version,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct GameInfo {
     pub family_and_variant: (String, u8),
     pub patch: Option<PatchInfo>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),
@@ -95,6 +120,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct EndOfMatch {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {

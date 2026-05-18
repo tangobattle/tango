@@ -1,3 +1,11 @@
+//! Discord rich-presence Activity payload types. Mirrors the
+//! shape Discord expects in the `SET_ACTIVITY` IPC frame; each
+//! field is `skip_serializing_if = "Option::is_none"` so unused
+//! fields drop out of the JSON rather than being sent as nulls
+//! (Discord rejects those).
+//!
+//! Ported verbatim from `tango/src/discord/rpc/activity.rs`.
+
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Activity {
     #[serde(skip_serializing_if = "Option::is_none")]

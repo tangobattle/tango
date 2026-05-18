@@ -1,3 +1,9 @@
+//! Discord IPC RPC client — Unix-socket / Windows-named-pipe
+//! transport, JSON-over-framed-binary opcodes, async request /
+//! response with nonce matching. Ported verbatim from
+//! `tango/src/discord/rpc.rs`; see that file for the original
+//! comments.
+
 use byteorder::ByteOrder;
 use bytes::{Buf, BufMut};
 use num_traits::FromPrimitive;
@@ -44,7 +50,7 @@ async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::
             return Ok(Box::new(pipe));
         }
     }
-    return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"));
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
@@ -79,7 +85,7 @@ struct Payload {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-struct Error {
+struct ErrorBody {
     code: u32,
     message: String,
 }
@@ -107,9 +113,10 @@ impl Sender {
     }
 
     async fn send_packet(&mut self, opcode: Opcode, body: &[u8]) -> std::io::Result<()> {
-        // Let's try flush what's left of the buffer first, if we have anything.
-        // On Windows, Discord requires us to do an atomic write to the pipe. If we were interrupted writing the last buffer, this will flush that message first and guarantee we only write one at a time.
-        // On Unix, this just doesn't really matter.
+        // On Windows, Discord wants one atomic write per pipe
+        // message; flush any leftover bytes before composing the
+        // next one so a previous interrupted write completes
+        // first.
         self.w.write_all_buf(&mut self.buf).await?;
 
         self.buf.put_u32_le(opcode as u32);
@@ -175,7 +182,7 @@ async fn connect(client_id: u64) -> std::io::Result<(Receiver, Sender)> {
 
     let (opcode, raw) = receiver.receive_packet().await?;
     if opcode == Opcode::Close as u32 {
-        let error = serde_json::from_slice::<Error>(&raw)?;
+        let error = serde_json::from_slice::<ErrorBody>(&raw)?;
         return Err(std::io::Error::new(
             std::io::ErrorKind::ConnectionAborted,
             format!("{}: {}", error.code, error.message),
@@ -229,7 +236,7 @@ impl Client {
                             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
                         match opcode {
                             Opcode::Close => {
-                                let error = serde_json::from_slice::<Error>(&raw)?;
+                                let error = serde_json::from_slice::<ErrorBody>(&raw)?;
                                 return Err(std::io::Error::new(
                                     std::io::ErrorKind::ConnectionAborted,
                                     format!("{}: {}", error.code, error.message),
@@ -240,7 +247,7 @@ impl Client {
                                 let mut payload = serde_json::from_slice::<Payload>(&raw)?;
 
                                 if payload.cmd == Command::Dispatch {
-                                    // This is an event that we've subscribed to.
+                                    // Event we're subscribed to; route through the events channel.
                                     let Some(event) = payload.evt.take() else {
                                         continue;
                                     };
@@ -324,7 +331,7 @@ impl Client {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::ConnectionAborted,
                 if let Some(data) = payload.data {
-                    let error = serde_json::from_value::<Error>(data)?;
+                    let error = serde_json::from_value::<ErrorBody>(data)?;
                     format!("{}: {}", error.code, error.message)
                 } else {
                     "received error event with no details".to_string()

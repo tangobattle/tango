@@ -1,908 +1,896 @@
-use crate::{audio, config, game, net, rom, stats, video};
-use parking_lot::Mutex;
-use rand::SeedableRng;
-use std::sync::Arc;
+//! Live emulator-session machinery: state struct, per-session
+//! Message + update + view + subscription. Owned by App as
+//! `session: session::State` and routed via `Message::Session(_)`.
+//!
+//! The Play / Replays tabs are responsible for STARTING sessions
+//! (they construct an ActiveSession via [`build_playback`] /
+//! [`spawn_singleplayer`] and stuff it into `state.active`); this
+//! module handles everything that happens after.
 
-pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
+use crate::audio;
+use crate::config;
+use crate::i18n::t;
+use crate::widgets;
+use lucide_icons::Icon;
+use crate::patch;
+use crate::pvp_session;
+use crate::replay_session;
+use crate::save_view;
+use crate::scrubber;
+use crate::selection;
+use crate::singleplayer_session;
+use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION};
+use iced::widget::space::horizontal as horizontal_space;
+use iced::widget::{column, container, row, text};
+use iced::{Alignment, Element, Fill, Length};
+use unic_langid::LanguageIdentifier;
 
-pub struct GameInfo {
-    pub game: &'static (dyn game::Game + Send + Sync),
-    pub patch: Option<(String, semver::Version)>,
+/// At most one of these can be active at a time: replay playback, or
+/// single-player. The two variants share enough surface (vbuf,
+/// close-request) that the view + tick loop wrap them uniformly.
+pub enum ActiveSession {
+    Replay(replay_session::ReplaySession),
+    SinglePlayer(singleplayer_session::SinglePlayerSession),
+    PvP(pvp_session::PvpSession),
 }
 
-pub struct Setup {
-    pub game_lang: unic_langid::LanguageIdentifier,
-    pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
-    pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
-}
-
-pub struct Session {
-    start_time: std::time::SystemTime,
-    game_info: GameInfo,
-    vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
-    _audio_binding: audio::Binding,
-    thread: mgba::thread::Thread,
-    joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    mode: Mode,
-    completion_token: tango_pvp::hooks::CompletionToken,
-    pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Set by [`Session::request_close`]. The GUI's session-management loop
-    /// drops the session when this becomes true. Replay sessions ignore the
-    /// completion_token for auto-close (so the user can scrub past the end)
-    /// and rely on this flag instead.
-    close_requested: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    opponent_setup: Option<Setup>,
-    own_setup: Option<Setup>,
-}
-
-pub struct PvP {
-    pub match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<tango_pvp::battle::Match>>>>,
-    cancellation_token: tokio_util::sync::CancellationToken,
-    latency_counter: std::sync::Arc<tokio::sync::Mutex<crate::stats::LatencyCounter>>,
-    _peer_conn: datachannel_wrapper::PeerConnection,
-}
-
-impl PvP {
-    pub async fn latency(&self) -> std::time::Duration {
-        self.latency_counter.lock().await.median()
-    }
-}
-
-pub struct SinglePlayer {}
-
-pub struct Replayer {
-    /// Held so a seek can rebuild the stepper from
-    /// [`replay::Replay::rounds`] starting at any round index.
-    replay: Arc<tango_pvp::replay::Replay>,
-    /// Stepper state shared with the per-game replay traps. Used by the
-    /// Session API to read out absolute_tick / total_replay_ticks, and
-    /// swapped wholesale by [`Session::replay_seek_to`] on snapshot load.
-    stepper_state: tango_pvp::stepper::State,
-    /// Playback-side shadow handle. The stepper already owns this via its
-    /// replay-mode shared shadow, but seeks also need to restore the shadow
-    /// from the captured snapshot so its mgba core + Round state stay in
-    /// sync with the stepper.
-    shadow: Arc<parking_lot::Mutex<tango_pvp::shadow::Shadow>>,
-    /// mgba state + stepper checkpoints captured during playback (round
-    /// starts and periodic mid-round) and during sync seeks. Both seek
-    /// directions pick the snapshot closest to target to minimize how
-    /// many frames we have to re-run.
-    snapshots: tango_pvp::replay::playback::SnapshotStore,
-    /// Furthest absolute_tick the background prefetch worker has reached.
-    /// The seek-bar UI clamps user drags to this value so the user can
-    /// only seek into prefetched (= snapshotted) territory.
-    prefetch_progress: Arc<std::sync::atomic::AtomicU32>,
-    /// Holds the prefetch worker thread alive. Drop signals cancel + joins.
-    _prefetcher: Prefetcher,
-}
-
-/// Background worker that runs a second mgba core forward as fast as the
-/// host CPU allows, capturing snapshots into the shared store. The body
-/// lives in `tango_pvp::replay::playback::run_prefetch`; this wrapper just
-/// owns the `std::thread` and the cancel flag.
-struct Prefetcher {
-    cancel: Arc<std::sync::atomic::AtomicBool>,
-    join_handle: Option<std::thread::JoinHandle<()>>,
-}
-
-impl Prefetcher {
-    fn spawn(
-        rom: Arc<Vec<u8>>,
-        remote_rom: Arc<Vec<u8>>,
-        replay: Arc<tango_pvp::replay::Replay>,
-        game: &'static (dyn game::Game + Send + Sync),
-        remote_game: &'static (dyn game::Game + Send + Sync),
-        snapshots: tango_pvp::replay::playback::SnapshotStore,
-        progress: Arc<std::sync::atomic::AtomicU32>,
-    ) -> Self {
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let cancel_for_thread = cancel.clone();
-        let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
-        let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
-        let join_handle = std::thread::spawn(move || {
-            if let Err(e) = tango_pvp::replay::playback::run_prefetch(
-                rom.as_ref(),
-                remote_rom.as_ref(),
-                &replay,
-                hooks,
-                remote_hooks,
-                snapshots,
-                cancel_for_thread,
-                progress,
-            ) {
-                log::error!("replay prefetch worker exited with error: {:?}", e);
-            }
-        });
-        Prefetcher {
-            cancel,
-            join_handle: Some(join_handle),
+impl ActiveSession {
+    pub fn snapshot_vbuf(&self) -> Vec<u8> {
+        match self {
+            Self::Replay(s) => s.snapshot_vbuf(),
+            Self::SinglePlayer(s) => s.snapshot_vbuf(),
+            Self::PvP(s) => s.snapshot_vbuf(),
         }
     }
-}
 
-impl Drop for Prefetcher {
-    fn drop(&mut self) {
-        self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(h) = self.join_handle.take() {
-            let _ = h.join();
+    /// Monotonic per-session frame counter. The UI tick compares
+    /// against the last value it pushed to GPU and skips the
+    /// rebuild when unchanged — without this the high-refresh
+    /// display would re-upload the same texture multiple times
+    /// per emulator frame, racing with the present and showing as
+    /// tearing.
+    pub fn frame_id(&self) -> u64 {
+        match self {
+            Self::Replay(s) => s.frame_id(),
+            Self::SinglePlayer(s) => s.frame_id(),
+            Self::PvP(s) => s.frame_id(),
         }
-    }
-}
-
-pub enum Mode {
-    SinglePlayer(SinglePlayer),
-    PvP(PvP),
-    Replayer(Replayer),
-}
-
-struct BuildReplayerArgs {
-    audio_binder: audio::LateBinder,
-    game: &'static (dyn game::Game + Send + Sync),
-    patch: Option<(String, semver::Version)>,
-    rom: Arc<Vec<u8>>,
-    /// The opponent's game+rom. Used to construct the Shadow side that
-    /// re-derives each tick's remote packet from the recorded remote
-    /// joyflag. Cross-game replays make these legitimately different from
-    /// `game` / `rom`.
-    remote_game: &'static (dyn game::Game + Send + Sync),
-    remote_rom: Arc<Vec<u8>>,
-    emu_tps_counter: Arc<Mutex<stats::Counter>>,
-    replay: Arc<tango_pvp::replay::Replay>,
-}
-
-impl Session {
-    pub fn new_pvp(
-        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-        audio_binder: audio::LateBinder,
-        link_code: String,
-        netplay_compatibility: String,
-        local_settings: net::protocol::Settings,
-        local_game: &'static (dyn game::Game + Send + Sync),
-        local_patch: Option<(String, semver::Version)>,
-        local_patch_overrides: &rom::Overrides,
-        local_rom: &[u8],
-        local_save: Box<dyn tango_dataview::save::Save + Send + Sync + 'static>,
-        remote_settings: net::protocol::Settings,
-        remote_game: &'static (dyn game::Game + Send + Sync),
-        remote_patch_overrides: &rom::Overrides,
-        remote_rom: &[u8],
-        remote_save: Box<dyn tango_dataview::save::Save + Send + Sync + 'static>,
-        emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        sender: net::Sender,
-        receiver: net::Receiver,
-        peer_conn: datachannel_wrapper::PeerConnection,
-        is_offerer: bool,
-        replays_path: std::path::PathBuf,
-        match_type: (u8, u8),
-        rng_seed: [u8; 16],
-    ) -> Result<Self, anyhow::Error> {
-        let mut core = mgba::core::Core::new_gba("tango")?;
-        core.enable_video_buffer();
-
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(local_save.as_sram_dump()))?;
-
-        let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
-
-        let local_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(local_game.gamedb_entry()).unwrap();
-        local_hooks.patch(core.as_mut());
-
-        let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
-        let mut traps = local_hooks.common_traps();
-
-        let completion_token = tango_pvp::hooks::CompletionToken::new();
-
-        traps.extend(local_hooks.primary_traps(joyflags.clone(), match_.clone(), completion_token.clone()));
-        core.set_traps(
-            traps
-                .into_iter()
-                .map(|(addr, f)| {
-                    let handle = tokio::runtime::Handle::current();
-                    (
-                        addr,
-                        Box::new(move |core: mgba::core::CoreMutRef<'_>| {
-                            let _guard = handle.enter();
-                            f(core)
-                        }) as Box<dyn Fn(mgba::core::CoreMutRef<'_>)>,
-                    )
-                })
-                .collect(),
-        );
-
-        let reveal_setup = remote_settings.reveal_setup;
-
-        let thread = mgba::thread::Thread::new(core);
-
-        let sender = std::sync::Arc::new(tokio::sync::Mutex::new(sender));
-        let latency_counter = std::sync::Arc::new(tokio::sync::Mutex::new(crate::stats::LatencyCounter::new(5)));
-
-        let cancellation_token = tokio_util::sync::CancellationToken::new();
-        let match_ = match_.clone();
-        *match_.try_lock().unwrap() = Some({
-            let config = config.read();
-            let replays_path = config.replays_path();
-            let link_code = link_code.clone();
-            let netplay_compatibility = netplay_compatibility.clone();
-            let local_settings = local_settings.clone();
-            let remote_settings = remote_settings.clone();
-
-            let mut rng = rand_pcg::Mcg128Xsl64::from_seed(rng_seed);
-            let local_player_index = tango_pvp::battle::Match::pick_local_player_index(&mut rng, is_offerer);
-
-            let local_wram = local_save.as_raw_wram().into_owned();
-            let remote_wram = remote_save.as_raw_wram().into_owned();
-
-            const TIME_DESCRIPTION: &[time::format_description::FormatItem<'_>] = time::macros::format_description!(
-                "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
-            );
-            let replay_filename = replays_path.join(format!(
-                "{}.tangoreplay",
-                format!(
-                    "{}-{}-{}-vs-{}-p{}",
-                    time::OffsetDateTime::from(std::time::SystemTime::now())
-                        .format(TIME_DESCRIPTION)
-                        .expect("format time"),
-                    link_code,
-                    netplay_compatibility,
-                    remote_settings.nickname,
-                    local_player_index + 1
-                )
-                .chars()
-                .filter(|c| "/\\?%*:|\"<>. ".chars().all(|c2| c2 != *c))
-                .collect::<String>()
-            ));
-
-            let replay_writer = {
-                log::info!("open replay: {}", replay_filename.display());
-
-                let local_game_settings = local_settings.game_info.as_ref().unwrap();
-                let remote_game_settings = remote_settings.game_info.as_ref().unwrap();
-
-                let replay_file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(&replay_filename)?;
-                Some(tango_pvp::replay::Writer::new(
-                    replay_file,
-                    tango_pvp::replay::Metadata {
-                        ts: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u64,
-                        link_code: link_code.clone(),
-                        local_side: Some(tango_pvp::replay::metadata::Side {
-                            nickname: local_settings.nickname.clone(),
-                            game_info: Some(tango_pvp::replay::metadata::GameInfo {
-                                rom_family: local_game_settings.family_and_variant.0.to_string(),
-                                rom_variant: local_game_settings.family_and_variant.1 as u32,
-                                patch: local_game_settings.patch.as_ref().map(|patch| {
-                                    tango_pvp::replay::metadata::game_info::Patch {
-                                        name: patch.name.clone(),
-                                        version: patch.version.to_string(),
-                                    }
-                                }),
-                            }),
-                            reveal_setup: local_settings.reveal_setup,
-                        }),
-                        remote_side: Some(tango_pvp::replay::metadata::Side {
-                            nickname: remote_settings.nickname.clone(),
-                            game_info: Some(tango_pvp::replay::metadata::GameInfo {
-                                rom_family: remote_game_settings.family_and_variant.0.to_string(),
-                                rom_variant: remote_game_settings.family_and_variant.1 as u32,
-                                patch: remote_game_settings.patch.as_ref().map(|patch| {
-                                    tango_pvp::replay::metadata::game_info::Patch {
-                                        name: patch.name.clone(),
-                                        version: patch.version.to_string(),
-                                    }
-                                }),
-                            }),
-                            reveal_setup: remote_settings.reveal_setup,
-                        }),
-                        match_type: match_type.0 as u32,
-                        match_subtype: match_type.1 as u32,
-                    },
-                    is_offerer,
-                    local_player_index,
-                    rng_seed,
-                    &local_wram,
-                    &remote_wram,
-                )?)
-            };
-
-            let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
-            let identity = tango_pvp::battle::MatchIdentity {
-                match_type,
-                is_offerer,
-                local_player_index,
-                input_delay: config.input_delay,
-            };
-            let shadow = tango_pvp::shadow::Shadow::new(
-                remote_rom,
-                remote_save.as_ref(),
-                remote_hooks,
-                match_type,
-                is_offerer,
-                local_player_index,
-                rng.clone(),
-            )?;
-            let inner_match = tango_pvp::battle::Match::new(
-                local_rom.to_vec(),
-                local_hooks,
-                thread.handle(),
-                Box::new(crate::net::PvpSender::new(sender.clone())),
-                cancellation_token.clone(),
-                rng,
-                shadow,
-                identity,
-                tango_pvp::battle::ReplayConfig { writer: replay_writer },
-            );
-
-            {
-                let match_ = match_.clone();
-                let inner_match = inner_match.clone();
-                let receiver = Box::new(crate::net::PvpReceiver::new(
-                    receiver,
-                    sender.clone(),
-                    latency_counter.clone(),
-                ));
-                tokio::task::spawn(async move {
-                    tokio::select! {
-                        r = inner_match.run(receiver) => {
-                            log::info!("match thread ending: {:?}", r);
-                        }
-                        _ = inner_match.cancelled() => {
-                        }
-                    }
-                    log::info!("match thread ended");
-                    if let Err(e) = inner_match.finish_replay() {
-                        log::error!("finish replay failed: {}", e);
-                    }
-                    *match_.lock().await = None;
-                });
-            }
-
-            inner_match
-        });
-
-        thread.start()?;
-        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
-
-        let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        ))))?;
-
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-                as usize
-        ]));
-        thread.set_frame_callback({
-            let completion_token = completion_token.clone();
-            let joyflags = joyflags.clone();
-            let vbuf = vbuf.clone();
-            let emu_tps_counter = emu_tps_counter.clone();
-            move |mut core, video_buffer, mut thread_handle| {
-                let mut vbuf = vbuf.lock();
-                vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut vbuf);
-                core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
-                emu_tps_counter.lock().mark();
-
-                if completion_token.is_complete() {
-                    thread_handle.pause();
-                }
-            }
-        });
-
-        Ok(Session {
-            start_time: std::time::SystemTime::now(),
-            game_info: GameInfo {
-                game: local_game,
-                patch: local_patch,
-            },
-            vbuf,
-            _audio_binding: audio_binding,
-            thread,
-            joyflags,
-            mode: Mode::PvP(PvP {
-                match_,
-                cancellation_token,
-                _peer_conn: peer_conn,
-                latency_counter,
-            }),
-            completion_token,
-            pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            close_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            own_setup: {
-                let assets = local_game.load_rom_assets(local_rom, &local_save.as_raw_wram(), local_patch_overrides);
-                Some(Setup {
-                    game_lang: local_patch_overrides
-                        .language
-                        .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(local_game.gamedb_entry().region())),
-                    save: local_save,
-                    assets,
-                })
-            },
-            opponent_setup: if reveal_setup {
-                let assets =
-                    remote_game.load_rom_assets(remote_rom, &remote_save.as_raw_wram(), remote_patch_overrides);
-                Some(Setup {
-                    game_lang: remote_patch_overrides
-                        .language
-                        .clone()
-                        .unwrap_or_else(|| crate::game::region_to_language(remote_game.gamedb_entry().region())),
-                    save: remote_save,
-                    assets,
-                })
-            } else {
-                None
-            },
-        })
-    }
-
-    pub fn new_singleplayer(
-        audio_binder: audio::LateBinder,
-        game: &'static (dyn game::Game + Send + Sync),
-        patch: Option<(String, semver::Version)>,
-        rom: &[u8],
-        save_file: std::fs::File,
-        emu_tps_counter: Arc<Mutex<stats::Counter>>,
-    ) -> Result<Self, anyhow::Error> {
-        let mut core = mgba::core::Core::new_gba("tango")?;
-        core.enable_video_buffer();
-
-        core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
-
-        let save_vf = mgba::vfile::VFile::from_file(save_file);
-
-        core.as_mut().load_save(save_vf)?;
-
-        let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
-
-        let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
-        hooks.patch(core.as_mut());
-
-        let thread = mgba::thread::Thread::new(core);
-
-        thread.start()?;
-        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
-
-        let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        ))))?;
-
-        let pause_on_next_frame = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-                as usize
-        ]));
-        thread.set_frame_callback({
-            let joyflags = joyflags.clone();
-            let vbuf = vbuf.clone();
-            let emu_tps_counter = emu_tps_counter.clone();
-            let pause_on_next_frame = pause_on_next_frame.clone();
-            move |mut core, video_buffer, mut thread_handle| {
-                let mut vbuf = vbuf.lock();
-                vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut vbuf);
-                core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
-                emu_tps_counter.lock().mark();
-
-                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst) {
-                    thread_handle.pause();
-                }
-            }
-        });
-        Ok(Session {
-            start_time: std::time::SystemTime::now(),
-            game_info: GameInfo { game, patch },
-            vbuf,
-            _audio_binding: audio_binding,
-            thread,
-            joyflags,
-            mode: Mode::SinglePlayer(SinglePlayer {}),
-            pause_on_next_frame,
-            completion_token: tango_pvp::hooks::CompletionToken::new(),
-            close_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            own_setup: None,
-            opponent_setup: None,
-        })
-    }
-
-    pub fn new_replayer(
-        audio_binder: audio::LateBinder,
-        game: &'static (dyn game::Game + Send + Sync),
-        patch: Option<(String, semver::Version)>,
-        rom: Arc<Vec<u8>>,
-        remote_game: &'static (dyn game::Game + Send + Sync),
-        remote_rom: Arc<Vec<u8>>,
-        emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        replay: Arc<tango_pvp::replay::Replay>,
-    ) -> Result<Self, anyhow::Error> {
-        Self::build_replayer_from(BuildReplayerArgs {
-            audio_binder,
-            game,
-            patch,
-            rom,
-            remote_game,
-            remote_rom,
-            emu_tps_counter,
-            replay,
-        })
-    }
-
-    fn build_replayer_from(args: BuildReplayerArgs) -> Result<Self, anyhow::Error> {
-        let BuildReplayerArgs {
-            audio_binder,
-            game,
-            patch,
-            rom,
-            remote_game,
-            remote_rom,
-            emu_tps_counter,
-            replay,
-        } = args;
-
-        let mut core = mgba::core::Core::new_gba("tango")?;
-        core.enable_video_buffer();
-
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
-
-        let hooks = tango_pvp::hooks::hooks_for_gamedb_entry(game.gamedb_entry()).unwrap();
-        hooks.patch(core.as_mut());
-
-        let completion_token = tango_pvp::hooks::CompletionToken::new();
-
-        let replay_is_complete = replay.is_complete;
-        if replay.rounds.is_empty() {
-            return Err(anyhow::anyhow!("replay has no rounds"));
-        }
-
-        let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
-        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-
-        // Shadow re-derives the per-tick remote packets from the recorded
-        // remote joyflag — it has to run the OPPONENT's ROM, which may
-        // legitimately differ from `rom` (cross-game replays are common).
-        let remote_hooks = tango_pvp::hooks::hooks_for_gamedb_entry(remote_game.gamedb_entry()).unwrap();
-        let shadow = tango_pvp::shadow::Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
-        let shadow = Arc::new(parking_lot::Mutex::new(shadow));
-
-        let stepper_state = tango_pvp::stepper::State::new(
-            match_type,
-            replay.local_player_index,
-            replay.rounds.clone(),
-            0,
-            replay.rng_seed,
-            replay.is_offerer,
-            total_replay_ticks,
-            shadow.clone(),
-            Box::new({
-                let completion_token = completion_token.clone();
-                move || {
-                    completion_token.complete();
-                }
-            }),
-        );
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.stepper_traps(stepper_state.clone()));
-        core.set_traps(traps);
-
-        let thread = mgba::thread::Thread::new(core);
-
-        let snapshots = tango_pvp::replay::playback::SnapshotStore::new();
-        let prefetch_progress = Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let prefetcher = Prefetcher::spawn(
-            rom.clone(),
-            remote_rom.clone(),
-            replay.clone(),
-            game,
-            remote_game,
-            snapshots.clone(),
-            prefetch_progress.clone(),
-        );
-
-        thread.start()?;
-        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
-
-        let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        ))))?;
-
-        let pause_on_next_frame = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-                as usize
-        ]));
-        thread.set_frame_callback({
-            let vbuf = vbuf.clone();
-            let emu_tps_counter = emu_tps_counter.clone();
-            let completion_token = completion_token.clone();
-            let stepper_state = stepper_state.clone();
-            let pause_on_next_frame = pause_on_next_frame.clone();
-            let snapshots = snapshots.clone();
-            let shadow = shadow.clone();
-            move |mut core, video_buffer, mut thread_handle| {
-                let mut vbuf = vbuf.lock();
-                vbuf.copy_from_slice(video_buffer);
-                video::fix_vbuf_alpha(&mut vbuf);
-                emu_tps_counter.lock().mark();
-
-                // Surface stepper errors so they don't sit silently in the
-                // InnerState. Without this, set_anyhow_error from per-game
-                // traps (packet-tick mismatch, etc.) is invisible — the trap
-                // just returns early and the game silently hangs.
-                if let Some(err) = stepper_state.lock_inner().take_error() {
-                    log::error!("replay stepper error: {:?}", err);
-                }
-
-                // Capture round-start + periodic mid-round snapshots so
-                // seeking can jump rather than re-run frames. Snapshots are
-                // replay-deterministic; revisiting the same tick later
-                // reuses the existing one.
-                let (total_left, is_round_ended) = {
-                    let inner = stepper_state.lock_inner();
-                    (inner.total_input_pairs_left(), inner.is_round_ended())
-                };
-                if let Some(cp) = stepper_state.capture_replay_checkpoint() {
-                    snapshots.capture_if_needed(cp, &mut core, &shadow);
-                }
-
-                // For clean (complete) replays, also require the stepper to
-                // have flipped is_round_ended — that fires when the per-game
-                // stepper signals the post-round battle-end routine has
-                // finished, so the trailing fade-out animation plays out
-                // instead of being cut off the moment inputs ran out.
-                // total_left == 0 alone reaches zero a few frames earlier
-                // (right after the last send/receive pops the final input),
-                // before the game has run its end-of-round sequence.
-                // Incomplete replays don't reach is_round_ended (the round
-                // was cut mid-flight), so they fall back to bare input
-                // exhaustion. CompletionToken::complete is idempotent;
-                // re-firing on every subsequent frame is fine, and this
-                // also covers re-completion after the user scrubs back past
-                // the end, since the on_round_ended callback is one-shot.
-                if total_left == 0 && (is_round_ended || !replay_is_complete) {
-                    completion_token.complete();
-                }
-
-                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst)
-                    || completion_token.is_complete()
-                {
-                    thread_handle.pause();
-                }
-            }
-        });
-
-        Ok(Session {
-            start_time: std::time::SystemTime::now(),
-            game_info: GameInfo { game, patch },
-            vbuf,
-            _audio_binding: audio_binding,
-            thread,
-            joyflags: Arc::new(std::sync::atomic::AtomicU32::new(0)),
-            mode: Mode::Replayer(Replayer {
-                replay,
-                stepper_state,
-                shadow,
-                snapshots,
-                prefetch_progress,
-                _prefetcher: prefetcher,
-            }),
-            completion_token,
-            pause_on_next_frame,
-            close_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            own_setup: None,
-            opponent_setup: None,
-        })
-    }
-
-    pub fn completed(&self) -> bool {
-        self.completion_token.is_complete()
     }
 
     pub fn request_close(&self) {
-        self.close_requested.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-
-    pub fn close_requested(&self) -> bool {
-        self.close_requested.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    pub fn mode(&self) -> &Mode {
-        &self.mode
-    }
-
-    /// Total ticks across all rounds of the replay this Session is playing.
-    /// Returns None for non-replay sessions.
-    pub fn replay_total_ticks(&self) -> Option<u32> {
-        let Mode::Replayer(r) = &self.mode else { return None };
-        Some(r.stepper_state.lock_inner().total_replay_ticks())
-    }
-
-    /// Current playback position (monotonic across rounds). None for
-    /// non-replay sessions.
-    pub fn replay_current_tick(&self) -> Option<u32> {
-        let Mode::Replayer(r) = &self.mode else { return None };
-        Some(r.stepper_state.lock_inner().absolute_tick())
-    }
-
-    /// Furthest absolute_tick the background prefetch worker has reached.
-    /// The seek-bar UI uses this to clamp user drags and render a buffered
-    /// fill. None for non-replay sessions.
-    pub fn replay_prefetch_progress(&self) -> Option<u32> {
-        let Mode::Replayer(r) = &self.mode else { return None };
-        Some(r.prefetch_progress.load(std::sync::atomic::Ordering::Relaxed))
-    }
-
-    /// Absolute ticks at which rounds 2..N begin (i.e., the boundaries
-    /// between rounds, exclusive of 0 and total). Used by the seek-bar UI
-    /// to draw round markers. None for non-replay sessions.
-    pub fn replay_round_boundaries(&self) -> Option<Vec<u32>> {
-        let Mode::Replayer(r) = &self.mode else { return None };
-        let mut acc: u32 = 0;
-        let boundaries = r
-            .replay
-            .rounds
-            .iter()
-            .take(r.replay.rounds.len().saturating_sub(1))
-            .map(|round| {
-                acc += round.len() as u32;
-                acc
-            })
-            .collect();
-        Some(boundaries)
-    }
-
-    /// Seek the live replay to `target` synchronously. Both directions go
-    /// through the snapshot list to find the closest jumping-off point: for
-    /// a backward seek the largest snapshot ≤ target, for a forward seek
-    /// the largest snapshot in `(current, target]` (or `current` itself if
-    /// no snapshot is closer to target than current). Then runs frames
-    /// on the mgba thread until `absolute_tick >= target`, capturing
-    /// intermediate snapshots along the way so subsequent scrubs in the
-    /// region land instantly.
-    ///
-    /// The whole call is synchronous via `run_on_core`, so by the time
-    /// it returns the playback head is at the target — no async catch-up.
-    /// Returns `Ok(false)` if the session isn't a replay or the target is
-    /// already at the current tick. Returns an error only if no snapshot
-    /// exists at or before a backward target (boot window before the first
-    /// round-start snapshot — caller can ignore).
-    pub fn replay_seek_to(&self, target: u32) -> anyhow::Result<bool> {
-        let Mode::Replayer(r) = &self.mode else {
-            return Ok(false);
-        };
-        let current = r.stepper_state.lock_inner().absolute_tick();
-        if target == current {
-            return Ok(false);
-        }
-
-        let start_snap = if target < current {
-            r.snapshots.best_at_or_before(target)
-        } else {
-            r.snapshots.best_in_range(current, target)
-        };
-
-        if target < current && start_snap.is_none() {
-            anyhow::bail!("no snapshot at or before tick {}", target);
-        }
-
-        // Once the user moves the playhead, completion is no longer "now" —
-        // clear so the frame_callback's pause-on-complete check stops firing
-        // until the next time playback actually reaches the end.
-        self.completion_token.reset();
-
-        let stepper_state = r.stepper_state.clone();
-        let replay = r.replay.clone();
-        let snapshots = r.snapshots.clone();
-        let shadow = r.shadow.clone();
-
-        self.thread.handle().run_on_core(move |core| {
-            if let Err(e) = tango_pvp::replay::playback::seek_on_core(
-                core,
-                target,
-                &stepper_state,
-                &shadow,
-                &replay,
-                &snapshots,
-                start_snap.as_ref(),
-            ) {
-                log::error!("seek failed: {:?}", e);
-            }
-        });
-
-        Ok(true)
-    }
-
-    pub fn set_paused(&self, pause: bool) {
-        let handle = self.thread.handle();
-        if pause {
-            handle.pause();
-        } else {
-            handle.unpause();
+        match self {
+            Self::Replay(s) => s.request_close(),
+            Self::SinglePlayer(s) => s.request_close(),
+            Self::PvP(s) => s.request_close(),
         }
     }
 
-    pub fn is_paused(&self) -> bool {
-        let handle = self.thread.handle();
-        handle.is_paused()
-    }
-
-    pub fn frame_step(&self) {
-        self.pause_on_next_frame
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        let handle = self.thread.handle();
-        handle.unpause();
-    }
-
-    pub fn set_fps_target(&self, fps: f32) {
-        let handle = self.thread.handle();
-        let audio_guard = handle.lock_audio();
-        audio_guard.sync_mut().set_fps_target(fps);
-    }
-
-    pub fn set_master_volume(&self, volume: i32) {
-        let handle = self.thread.handle();
-        let mut audio_guard = handle.lock_audio();
-        audio_guard.core_mut().gba_mut().set_master_volume(volume);
-    }
-
-    pub fn has_crashed(&self) -> Option<mgba::thread::Handle> {
-        let handle = self.thread.handle();
-        if handle.has_crashed() {
-            Some(handle)
-        } else {
-            None
+    /// True once the session has ended on its own — currently used
+    /// by PvP so a peer-disconnect / comm error tears the session
+    /// view down automatically instead of leaving the user staring
+    /// at a frozen frame.
+    pub fn is_ended(&self) -> bool {
+        match self {
+            Self::Replay(_) | Self::SinglePlayer(_) => false,
+            Self::PvP(s) => s.is_ended(),
         }
     }
 
-    pub fn lock_vbuf(&self) -> parking_lot::MutexGuard<'_, Vec<u8>> {
-        self.vbuf.lock()
-    }
-
-    pub fn thread_handle(&self) -> mgba::thread::Handle {
-        self.thread.handle()
-    }
-
-    pub fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags.store(joyflags, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn game_info(&self) -> &GameInfo {
-        &self.game_info
-    }
-
-    pub fn start_time(&self) -> std::time::SystemTime {
-        self.start_time
-    }
-
-    pub fn opponent_setup(&self) -> &Option<Setup> {
-        &self.opponent_setup
-    }
-
-    pub fn own_setup(&self) -> &Option<Setup> {
-        &self.own_setup
+    pub fn as_replay(&self) -> Option<&replay_session::ReplaySession> {
+        match self {
+            Self::Replay(s) => Some(s),
+            _ => None,
+        }
     }
 }
 
-impl Drop for Session {
-    fn drop(&mut self) {
-        if let Mode::PvP(pvp) = &mut self.mode {
-            pvp.cancellation_token.cancel();
+/// Per-session UI state. App holds `session: State`; the Play and
+/// Replays tabs swap an `ActiveSession` into `active` to start a
+/// session, then [`State::update`] handles the rest until [`Close`]
+/// clears it.
+#[derive(Default)]
+pub struct State {
+    pub active: Option<ActiveSession>,
+    pub frame: Option<iced::widget::image::Handle>,
+    /// Bumped each tick to give the iced `image::Handle::Rgba` an
+    /// always-fresh id (without that, iced caches the texture and the
+    /// emulator picture freezes).
+    pub frame_counter: u64,
+    /// Frame id of the source emulator frame the current `frame`
+    /// Handle was built from. Set in the Tick handler and used to
+    /// skip texture rebuilds when mgba hasn't produced a new
+    /// frame yet (host vsync > emu fps).
+    pub displayed_frame_id: u64,
+    /// PvP-only: shows the opponent's save view in a side panel
+    /// when they enabled reveal-setup. Defaults to visible when
+    /// the panel is available; user can hide it via the toggle
+    /// button in the header.
+    pub show_opponent_panel: bool,
+    /// Combined keyboard + gamepad held state. Updated from
+    /// the input event stream; the user's Mapping resolves it
+    /// into mgba joyflags each event.
+    pub input_held: crate::input::HeldState,
+    /// Last value of `mapping.speed_up_held(...)` so we can
+    /// detect the falling/rising edge and only call set_speed
+    /// when it actually flips.
+    pub speed_up_engaged: bool,
+    /// In-session Settings overlay. Toggled by the Settings
+    /// icon in the status bar (`Message::OpenSettings`) and the
+    /// "back to session" button on the overlay itself
+    /// (`Message::CloseSettings`). The emulator keeps running
+    /// underneath; we just swap what `App::view` renders.
+    pub show_settings: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// True iff a session is running. Drives main.rs's view routing.
+    pub fn is_active(&self) -> bool {
+        self.active.is_some()
+    }
+}
+
+/// Messages the session pane emits + handles. All variants are
+/// inert when `state.active` is `None`.
+#[derive(Debug, Clone)]
+pub enum Message {
+    /// 60 Hz tick from the subscription. Pulls a fresh framebuffer
+    /// out of the emulator and updates `state.frame`.
+    Tick,
+    /// Close the session and return to the previous tab.
+    Close,
+    /// Raw input event from the keyboard or a gamepad. The
+    /// handler updates the held-state set, resolves the user's
+    /// Mapping into joyflags, and pushes them to the active
+    /// session. Speed-up uses the same mechanism (edge-
+    /// detected).
+    Input(InputEvent),
+    /// Toggle play/pause on a replay session. No-op for single-player.
+    TogglePlay,
+    /// Drag the scrub bar — fires on every value change. Replay-only.
+    Seek(u32),
+    /// Set the playback speed factor (1.0 = realtime). Replay-only.
+    SetSpeed(f32),
+    /// Show/hide the opponent's reveal-setup side panel. PvP-only.
+    ToggleOpponentPanel,
+    /// User interacted with the opponent's save-view (tab swap,
+    /// folder-group toggle, hover, …). PvP-only.
+    OpponentSaveViewAction(save_view::Action),
+    /// Show the in-session Settings overlay. The emulator keeps
+    /// running; only the visible body swaps. Replaces the
+    /// legacy in-game pause menu.
+    OpenSettings,
+    /// Hide the in-session Settings overlay (the "back to
+    /// session" button on the overlay's header).
+    CloseSettings,
+}
+
+/// Atomic input event we feed to the mapping resolver. Carries
+/// the raw key/button/axis info so the session layer can drive
+/// both joyflags and the speed-up edge detector.
+#[derive(Debug, Clone)]
+pub enum InputEvent {
+    Key {
+        key: iced::keyboard::Key,
+        pressed: bool,
+    },
+    Button {
+        button: crate::input::GamepadButton,
+        pressed: bool,
+    },
+    Axis {
+        axis: crate::input::GamepadAxis,
+        value: f32,
+    },
+    /// Controller dropped — clear all gamepad state so
+    /// disconnected buttons don't read as still-held.
+    GamepadDisconnected,
+}
+
+impl State {
+    /// Apply a session message to the state. Returns the iced Task
+    /// that should be scheduled (always Task::none today — kept for
+    /// API parity with the other tabs).
+    pub fn update(
+        &mut self,
+        msg: Message,
+        mapping: &crate::input::Mapping,
+        video_filter: &str,
+    ) -> iced::Task<Message> {
+        match msg {
+            Message::Tick => {
+                if let Some(session) = self.active.as_ref() {
+                    // Match background task signaled it's done
+                    // (clean finish / peer disconnect / comm
+                    // error). Self-close so the user isn't stuck
+                    // on a frozen final frame.
+                    if session.is_ended() {
+                        return iced::Task::done(Message::Close);
+                    }
+                    // Skip the rebuild + GPU re-upload when the
+                    // emulator hasn't advanced. On a 144 Hz host
+                    // running a 60 fps game that's >50% of ticks.
+                    let fid = session.frame_id();
+                    if fid == self.displayed_frame_id && self.frame.is_some() {
+                        return iced::Task::none();
+                    }
+                    let pixels = session.snapshot_vbuf();
+                    let src_w = replay_session::SCREEN_WIDTH as usize;
+                    let src_h = replay_session::SCREEN_HEIGHT as usize;
+                    // Run the upscale filter selected in
+                    // settings, if any. Bad / empty name falls
+                    // back to NullFilter (pass-through).
+                    let filter = crate::video::filter_by_name(video_filter)
+                        .unwrap_or_else(|| Box::new(crate::video::NullFilter));
+                    let [out_w, out_h] = filter.output_size([src_w, src_h]);
+                    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
+                        (src_w as u32, src_h as u32, pixels)
+                    } else {
+                        let mut dst = vec![0u8; out_w * out_h * 4];
+                        filter.apply(&pixels, &mut dst, [src_w, src_h]);
+                        (out_w as u32, out_h as u32, dst)
+                    };
+                    // hqx operates on 24-bit RGB and masks the
+                    // alpha byte to 0 in every output pixel
+                    // (see `MASK_RGB = 0x00FFFFFF` in the hqx
+                    // crate). The result reads as fully
+                    // transparent in iced and shows as black /
+                    // strobing depending on what's underneath.
+                    // Pure-2x MMPX preserves alpha, but it's
+                    // cheap to re-stamp unconditionally.
+                    for chunk in buf.chunks_mut(4) {
+                        chunk[3] = 0xff;
+                    }
+                    self.frame = Some(iced::widget::image::Handle::from_rgba(w, h, buf));
+                    self.frame_counter = self.frame_counter.wrapping_add(1);
+                    self.displayed_frame_id = fid;
+                }
+            }
+            Message::Close => {
+                if let Some(s) = self.active.as_ref() {
+                    s.request_close();
+                }
+                self.active = None;
+                self.frame = None;
+            }
+            Message::Input(ev) => {
+                match ev {
+                    InputEvent::Key { key, pressed } => self.input_held.set_key(&key, pressed),
+                    InputEvent::Button { button, pressed } => {
+                        self.input_held.set_button(button, pressed)
+                    }
+                    InputEvent::Axis { axis, value } => self.input_held.set_axis(axis, value),
+                    InputEvent::GamepadDisconnected => self.input_held.clear_gamepad(),
+                }
+                let joyflags = mapping.to_mgba_keys(&self.input_held);
+                match self.active.as_ref() {
+                    Some(ActiveSession::SinglePlayer(s)) => s.set_joyflags(joyflags),
+                    Some(ActiveSession::PvP(s)) => s.set_joyflags(joyflags),
+                    _ => {}
+                }
+                // Speed-up: only fire set_speed on the rising or
+                // falling edge so we don't spam mgba's audio
+                // sync target with no-op writes.
+                let now_engaged = mapping.speed_up_held(&self.input_held);
+                if now_engaged != self.speed_up_engaged {
+                    self.speed_up_engaged = now_engaged;
+                    let factor = if now_engaged { 4.0 } else { 1.0 };
+                    match self.active.as_ref() {
+                        Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
+                        Some(ActiveSession::Replay(s)) => s.set_speed(factor),
+                        // PvP runs at fixed EXPECTED_FPS.
+                        Some(ActiveSession::PvP(_)) | None => {}
+                    }
+                }
+            }
+            Message::TogglePlay => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    // Play at end-of-replay: rewind to start and
+                    // play through again. Mirrors the behaviour you
+                    // get on any media player — "play" on a finished
+                    // track restarts it.
+                    let paused = s.is_paused();
+                    if paused && s.current_tick() >= s.total_ticks() {
+                        s.seek_to(0);
+                    }
+                    s.set_paused(!paused);
+                }
+            }
+            Message::Seek(target) => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.seek_to(target);
+                }
+            }
+            Message::SetSpeed(factor) => match self.active.as_ref() {
+                Some(ActiveSession::Replay(s)) => s.set_speed(factor),
+                Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
+                Some(ActiveSession::PvP(_)) => {
+                    // PvP runs at fixed EXPECTED_FPS so both sides
+                    // stay in sync — no speed control.
+                }
+                None => {}
+            },
+            Message::ToggleOpponentPanel => {
+                self.show_opponent_panel = !self.show_opponent_panel;
+            }
+            Message::OpponentSaveViewAction(action) => {
+                if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
+                    s.opponent_save_view.apply(&action);
+                }
+            }
+            Message::OpenSettings => {
+                self.show_settings = true;
+            }
+            Message::CloseSettings => {
+                self.show_settings = false;
+            }
+        }
+        iced::Task::none()
+    }
+}
+
+/// Per-frame redraw tick (only while a session is active) + keyboard
+/// subscription (only for single-player sessions, where joyflag input
+/// is meaningful). Tick uses `window::frames()` so it fires once per
+/// actual render frame — paired with `Settings::vsync = false`, the
+/// render loop is free-running at the GPU's full rate instead of
+/// being gated by a fixed timer or by vsync. The per-session
+/// frame-id check inside the Tick handler still skips the GPU
+/// upload when the emulator hasn't advanced, so the cost is just an
+/// atomic load per render.
+pub fn subscription(state: &State) -> iced::Subscription<Message> {
+    let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
+    if state.is_active() {
+        subs.push(iced::window::frames().map(|_| Message::Tick));
+    }
+    if matches!(
+        state.active,
+        Some(ActiveSession::SinglePlayer(_)) | Some(ActiveSession::PvP(_))
+    ) {
+        subs.push(iced::event::listen_with(map_keyboard_event));
+        subs.push(gamepad_subscription());
+    }
+    iced::Subscription::batch(subs)
+}
+
+/// Polls gilrs in the background and forwards events to the
+/// session pipeline. Subscription ID is shared across renders so
+/// iced doesn't tear it down + recreate it every frame. Uses a
+/// short blocking-with-timeout poll so we don't peg a CPU core.
+fn gamepad_subscription() -> iced::Subscription<Message> {
+    // Stateless — the `fn` pointer alone is the subscription's
+    // identity. Iced 0.14 requires the builder to be a plain
+    // function (not a closure), so we hoist the body out.
+    iced::Subscription::run(gamepad_stream)
+}
+
+fn gamepad_stream() -> impl futures::Stream<Item = Message> {
+    iced::stream::channel(64, |mut tx: futures::channel::mpsc::Sender<Message>| async move {
+        use futures::SinkExt;
+        let mut gilrs = match gilrs::Gilrs::new() {
+            Ok(g) => g,
+            Err(e) => {
+                log::warn!("gilrs init failed: {e:?}");
+                return;
+            }
+        };
+        // gilrs is sync; bounce its event polling through a
+        // short async sleep so iced's reactor stays unblocked.
+        // Polling every 4 ms is plenty for input fidelity
+        // (250 Hz) and well under one GBA frame.
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(4)).await;
+            while let Some(event) = gilrs.next_event() {
+                let msg = match event.event {
+                    gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                        .map(|btn| InputEvent::Button { button: btn, pressed: true }),
+                    gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                        .map(|btn| InputEvent::Button { button: btn, pressed: false }),
+                    gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
+                        .map(|axis| InputEvent::Axis { axis, value: v }),
+                    gilrs::EventType::Disconnected => Some(InputEvent::GamepadDisconnected),
+                    _ => None,
+                };
+                if let Some(ev) = msg {
+                    if tx.send(Message::Input(ev)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// Render the active session — framebuffer, header, and (for replays
+/// only) the transport row with play/pause + scrubber + prefetch %.
+/// Pass the App's `session: State` borrow.
+pub fn view<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    integer_scaling: bool,
+) -> Element<'a, Message> {
+    let Some(session) = state.active.as_ref() else {
+        return iced::widget::Space::new().width(Fill).height(Fill).into();
+    };
+    let frame_handle = state.frame.as_ref();
+    use iced::widget::{image, Space};
+
+    let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
+        // Source texture dimensions — used by integer-scale to
+        // compute the largest integer multiple that fits.
+        // `Handle::Rgba` carries them; other variants shouldn't
+        // appear here but fall back to the native GBA size.
+        let (img_w, img_h) = match handle {
+            iced::widget::image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
+            _ => (
+                replay_session::SCREEN_WIDTH as f32,
+                replay_session::SCREEN_HEIGHT as f32,
+            ),
+        };
+        if integer_scaling {
+            // Wrap in `responsive` to grab the available size,
+            // pick the largest integer scale that fits, and
+            // render the image at exact `texel * scale` pixels.
+            // The image is Fixed-size, so the inner container
+            // (Fill within the responsive's slot) handles the
+            // centering with `align_x/y`. The outer container
+            // alignment alone wouldn't work because the
+            // responsive widget itself fills its parent.
+            let handle = handle.clone();
+            iced::widget::responsive(move |size| {
+                let scale_w = (size.width / img_w).floor().max(1.0);
+                let scale_h = (size.height / img_h).floor().max(1.0);
+                let scale = scale_w.min(scale_h);
+                let img = image(handle.clone())
+                    .width(Length::Fixed(img_w * scale))
+                    .height(Length::Fixed(img_h * scale))
+                    .filter_method(image::FilterMethod::Nearest)
+                    .content_fit(iced::ContentFit::Fill);
+                iced::widget::container(img)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .into()
+            })
+            .into()
+        } else {
+            image(handle.clone())
+                .width(Fill)
+                .height(Fill)
+                .filter_method(image::FilterMethod::Nearest)
+                .content_fit(iced::ContentFit::Contain)
+                .into()
+        }
+    } else {
+        Space::new().width(Fill).height(Fill).into()
+    };
+
+    // PvP-only: if the opponent revealed their setup, expose a
+    // toggle for the side panel so the user can collapse it
+    // mid-match without losing it. Folded into the controls strip
+    // below alongside the close button.
+    let opponent_toggle: Option<Element<'a, Message>> = match session {
+        ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
+            let (icon, label_key) = if state.show_opponent_panel {
+                (Icon::ArrowRightFromLine, "session-hide-opponent")
+            } else {
+                (Icon::ArrowLeftFromLine, "session-show-opponent")
+            };
+            Some(widgets::icon_button(
+                icon,
+                t(lang, label_key),
+                Message::ToggleOpponentPanel,
+                STANDARD_PADDING,
+            ))
+        }
+        _ => None,
+    };
+    let close_btn = widgets::icon_button(
+        Icon::X,
+        t(lang, "playback-close"),
+        Message::Close,
+        STANDARD_PADDING,
+    );
+
+    let mut layout = column![]
+        .spacing(0)
+        .width(Fill)
+        .height(Fill);
+
+    // Body: framebuffer, optionally split with the opponent's
+    // save view on the right when reveal-setup is active +
+    // panel toggled on.
+    let body: Element<'a, Message> = match session {
+        ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
+            let opponent = s.opponent_loaded.as_ref().unwrap();
+            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true)
+                .map(Message::OpponentSaveViewAction);
+            iced::widget::row![
+                container(frame).center(Fill).padding(8),
+                iced::widget::rule::vertical(1),
+                container(panel)
+                    .width(iced::Length::Fixed(380.0))
+                    .height(Fill),
+            ]
+            .height(Fill)
+            .into()
+        }
+        _ => container(frame).center(Fill).padding(8).into(),
+    };
+    layout = layout.push(body);
+
+    // Controls strip. Replay sessions get the full transport
+    // (play/pause + scrubber + speed); single-player + PvP get a
+    // thin strip with just the opponent-panel toggle (PvP only)
+    // and the close button. Either way the close lives here so
+    // there's no separate header eating vertical space.
+    let mut controls = row![].spacing(8).align_y(Alignment::Center).padding(8);
+    if let Some(r) = session.as_replay() {
+        let total = r.total_ticks().max(1);
+        let cur = r.current_tick().min(total);
+        let prefetched = r.prefetch_progress().min(total);
+        let (play_pause_icon, play_pause_key) = if r.is_paused() {
+            (Icon::Play, "playback-play")
+        } else {
+            (Icon::Pause, "playback-pause")
+        };
+        let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
+            .round_boundaries(r.round_boundaries())
+            .view();
+
+        // Speed selector — values that don't drift audio noticeably
+        // (mgba audio sync starts dropping samples above ~4x).
+        let speed_opts = vec![
+            SpeedOption(0.5),
+            SpeedOption(1.0),
+            SpeedOption(2.0),
+            SpeedOption(4.0),
+        ];
+        let current_speed = SpeedOption(r.speed());
+        let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
+            Message::SetSpeed(o.0)
+        })
+        .padding(STANDARD_PADDING);
+
+        controls = controls
+            .push(widgets::icon_button(
+                play_pause_icon,
+                t(lang, play_pause_key),
+                Message::TogglePlay,
+                STANDARD_PADDING,
+            ))
+            .push(text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(scrub)
+            .push(text(format_tick(total)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(speed_picker);
+    } else {
+        // No transport widgets for SP/PvP — push a spacer so the
+        // close button (and opponent toggle) hug the right edge.
+        controls = controls.push(horizontal_space());
+    }
+    // PvP-only status readout: P1/P2, TPS, rollback ticks, ping.
+    // Mirrors the legacy bottom-bar metrics in
+    // `tango/src/gui/session_view.rs`. Monospaced so values don't
+    // wiggle as they tick up. PvP also DOESN'T expose a manual
+    // close button — leaving a match is the in-game match-end
+    // hook's job (auto-close); the session view auto-tears down
+    // when `completion_token.is_complete()`.
+    let is_pvp = matches!(session, ActiveSession::PvP(_));
+    if let ActiveSession::PvP(pvp) = session {
+        let stats = pvp.round_stats();
+        let ping_ms = pvp.latency_blocking().as_millis();
+        let tps = pvp.tps();
+        let mut metrics = row![].spacing(10).align_y(Alignment::Center);
+        if let Some(s) = stats {
+            metrics = metrics.push(
+                text(format!("P{}", s.local_player_index + 1))
+                    .size(TEXT_CAPTION)
+                    .font(iced::Font::MONOSPACE)
+                    .style(save_view::muted_text_style),
+            );
+        }
+        metrics = metrics.push(
+            text(format!("tps {:5.1}", tps))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(save_view::muted_text_style),
+        );
+        if let Some(s) = stats {
+            metrics = metrics.push(
+                text(format!("rollback {:+}", s.rollback_ticks()))
+                    .size(TEXT_CAPTION)
+                    .font(iced::Font::MONOSPACE)
+                    .style(save_view::muted_text_style),
+            );
+        }
+        metrics = metrics.push(
+            text(format!("ping {:>3} ms", ping_ms))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(save_view::muted_text_style),
+        );
+        controls = controls.push(metrics);
+    }
+    // Settings shortcut — available in any non-replay session
+    // (both PvP and single-player). Replaces the legacy in-game
+    // pause menu; the App handler intercepts `OpenSettings`,
+    // switches tabs, and tears the session down (the session
+    // view replaces the main body while active, so we can't
+    // overlay settings in place).
+    let is_sp = matches!(session, ActiveSession::SinglePlayer(_));
+    if is_pvp || is_sp {
+        controls = controls.push(crate::widgets::icon_button(
+            lucide_icons::Icon::Settings,
+            t(lang, "tab-settings"),
+            Message::OpenSettings,
+            STANDARD_PADDING,
+        ));
+    }
+    if let Some(toggle) = opponent_toggle {
+        controls = controls.push(toggle);
+    }
+    if !is_pvp {
+        controls = controls.push(close_btn);
+    } else {
+        // Silences the unused-binding warning when we skip the
+        // close button on PvP.
+        let _ = close_btn;
+    }
+    layout = layout.push(container(controls).width(Fill));
+
+    layout.into()
+}
+
+/// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional
+/// patch) from the scanners, and spin up a playback session bound to
+/// the shared audio binder. Ready to drop straight into the app's
+/// `session` slot.
+pub fn build_playback(
+    scanners: &Scanners,
+    config: &config::Config,
+    audio_binder: &audio::LateBinder,
+    path: &std::path::Path,
+) -> anyhow::Result<replay_session::ReplaySession> {
+    let f = std::fs::File::open(path)?;
+    let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
+    let patches_path = config.patches_path();
+    let resolve_rom = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
+        &'static (dyn game::Game + Send + Sync),
+        std::sync::Arc<Vec<u8>>,
+    )> {
+        let gi = side
+            .and_then(|s| s.game_info.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
+        let variant = u8::try_from(gi.rom_variant)
+            .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
+        let entry = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
+            .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
+        let g = game::from_gamedb_entry(entry).ok_or_else(|| {
+            anyhow::anyhow!("no impl for {}/{}", gi.rom_family, gi.rom_variant)
+        })?;
+        let rom = scanners
+            .roms
+            .read()
+            .get(&entry)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
+        let rom = if let Some(patch_info) = gi.patch.as_ref() {
+            let v = semver::Version::parse(&patch_info.version)?;
+            patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+        } else {
+            rom
+        };
+        Ok((g, std::sync::Arc::new(rom)))
+    };
+
+    let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
+    let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
+    replay_session::ReplaySession::new(
+        local_game,
+        local_rom,
+        remote_game,
+        remote_rom,
+        replay,
+        audio_binder,
+    )
+}
+
+/// Build the live PvP session from the netplay handoff data
+/// plus the local selection + scanners. Async because
+/// PvpSession::new awaits the lobby loop's receiver handoff,
+/// and because remote-side rom resolution might apply a patch.
+pub async fn spawn_pvp(
+    scanners: Scanners,
+    config: config::Config,
+    audio_binder: audio::LateBinder,
+    local_game: crate::rom::GameRef,
+    local_patch: Option<(String, semver::Version)>,
+    pre_match: crate::netplay::PreMatchData,
+) -> anyhow::Result<pvp_session::PvpSession> {
+    let local_game_impl = game::from_gamedb_entry(local_game)
+        .ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
+    let local_rom_raw = scanners
+        .roms
+        .read()
+        .get(&local_game)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("local rom not scanned"))?;
+    let local_rom_bytes = if let Some((name, version)) = local_patch.as_ref() {
+        patch::apply_patch_from_disk(&local_rom_raw, local_game, &config.patches_path(), name, version)?
+    } else {
+        local_rom_raw
+    };
+
+    // Remote-side game + rom. Falls back to the local game if
+    // the remote's GameInfo is missing, but a Compatible verdict
+    // would have caught that.
+    let remote_gi = pre_match
+        .remote_settings
+        .game_info
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
+    let remote_game = tango_gamedb::find_by_family_and_variant(
+        &remote_gi.family_and_variant.0,
+        remote_gi.family_and_variant.1,
+    )
+    .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
+    let remote_game_impl = game::from_gamedb_entry(remote_game)
+        .ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;
+    let remote_rom_raw = scanners
+        .roms
+        .read()
+        .get(&remote_game)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("remote rom not scanned"))?;
+    let remote_rom_bytes = if let Some(p) = remote_gi.patch.as_ref() {
+        patch::apply_patch_from_disk(
+            &remote_rom_raw,
+            remote_game,
+            &config.patches_path(),
+            &p.name,
+            &p.version,
+        )?
+    } else {
+        remote_rom_raw
+    };
+
+    // Build the opponent's Loaded only if they enabled reveal-
+    // setup — otherwise we don't have visibility into their save.
+    // Loaded::build parses chip/navi/navicust assets from the
+    // rom + wram, so the session pane can render them with the
+    // same widgets we use for the local side.
+    let opponent_loaded = if pre_match.remote_settings.reveal_setup {
+        let remote_save = remote_game
+            .parse_save(&pre_match.remote_save_data)
+            .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
+        let patch_meta = remote_gi.patch.as_ref().and_then(|p| {
+            let patches = scanners.patches.read();
+            let pinfo = patches.get(&p.name)?;
+            let v = pinfo.versions.get(&p.version).cloned()?;
+            Some((p.name.clone(), p.version.clone(), v))
+        });
+        Some(crate::selection::Loaded::build(
+            remote_game,
+            remote_rom_bytes.clone(),
+            std::path::PathBuf::new(),
+            remote_save,
+            &config.patches_path(),
+            patch_meta,
+        ))
+    } else {
+        None
+    };
+
+    pvp_session::PvpSession::new(
+        local_game_impl,
+        std::sync::Arc::new(local_rom_bytes),
+        remote_game_impl,
+        std::sync::Arc::new(remote_rom_bytes),
+        pre_match,
+        &config.replays_path(),
+        &audio_binder,
+        opponent_loaded,
+    )
+    .await
+}
+
+/// Boot the supplied selection in single-player mode. Caller must
+/// already have a complete (game + rom + save) Loaded — there's no
+/// fallback for missing pieces, so the Play button is responsible for
+/// gating.
+pub fn spawn_singleplayer(
+    scanners: &Scanners,
+    config: &config::Config,
+    audio_binder: &audio::LateBinder,
+    loaded: &selection::Loaded,
+) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
+    let game = game::from_gamedb_entry(loaded.game).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no game impl for {:?}",
+            loaded.game.family_and_variant()
+        )
+    })?;
+    // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
+    // grab them back from the scanner and re-apply the patch if any so
+    // the emulator sees the same image it would in the legacy app.
+    let raw = scanners
+        .roms
+        .read()
+        .get(&loaded.game)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
+    let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
+        patch::apply_patch_from_disk(
+            &raw,
+            loaded.game,
+            &config.patches_path(),
+            &p.name,
+            &p.version,
+        )?
+    } else {
+        raw
+    };
+    singleplayer_session::SinglePlayerSession::new(
+        game,
+        std::sync::Arc::new(rom_bytes),
+        &loaded.save_path,
+        audio_binder,
+    )
+}
+
+/// Forwards every iced keyboard event into the session pipeline
+/// as an `InputEvent::Key`. The mapping resolution happens at
+/// `Message::Input` handling time — this fn just packages the
+/// raw event up so the resolver has access to the user's full
+/// Mapping table.
+fn map_keyboard_event(
+    event: iced::Event,
+    _status: iced::event::Status,
+    _window: iced::window::Id,
+) -> Option<Message> {
+    use iced::keyboard::Event as Kb;
+    match event {
+        iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
+            Some(Message::Input(InputEvent::Key { key, pressed: true }))
+        }
+        iced::Event::Keyboard(Kb::KeyReleased { key, .. }) => {
+            Some(Message::Input(InputEvent::Key { key, pressed: false }))
+        }
+        _ => None,
+    }
+}
+
+/// pick_list option newtype for the playback speed selector. f32
+/// alone can't go in a pick_list because it doesn't impl Eq/Hash.
+#[derive(Clone, Copy)]
+pub struct SpeedOption(pub f32);
+
+impl PartialEq for SpeedOption {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 - other.0).abs() < 1e-3
+    }
+}
+impl Eq for SpeedOption {}
+
+impl std::fmt::Display for SpeedOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if (self.0 - self.0.trunc()).abs() < 1e-3 {
+            write!(f, "{}x", self.0 as i32)
+        } else {
+            write!(f, "{:.1}x", self.0)
         }
     }
+}
+
+/// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub
+/// bar's wallclock labels.
+pub fn format_tick(tick: u32) -> String {
+    let total_s = tick / 60;
+    let m = total_s / 60;
+    let s = total_s % 60;
+    format!("{m}:{s:02}")
 }

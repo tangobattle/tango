@@ -1,87 +1,71 @@
-use crate::{game, scanner};
+use crate::{rom::GameRef, scanner};
 
-#[derive(Clone)]
 pub struct ScannedSave {
     pub path: std::path::PathBuf,
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
 }
 
-pub fn scan_saves(
-    path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>> {
-    let mut paths = std::collections::HashMap::new();
+impl Clone for ScannedSave {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            save: self.save.clone_box(),
+        }
+    }
+}
+
+pub type Scanner = scanner::Scanner<std::collections::HashMap<GameRef, Vec<ScannedSave>>>;
+
+pub fn scan_saves(path: &std::path::Path) -> std::collections::HashMap<GameRef, Vec<ScannedSave>> {
+    let mut by_game: std::collections::HashMap<GameRef, Vec<ScannedSave>> = std::collections::HashMap::new();
+
+    if std::fs::metadata(path).is_err() {
+        return by_game;
+    }
 
     for entry in walkdir::WalkDir::new(path) {
         let entry = match entry {
-            Ok(entry) => entry,
+            Ok(e) => e,
             Err(e) => {
-                log::error!("failed to read entry: {:?}", e);
+                log::warn!("save scan: {e:?}");
                 continue;
             }
         };
-
         if !entry.file_type().is_file() {
             continue;
         }
-
-        let path = entry.path();
-        let buf = match std::fs::read(path) {
-            Ok(buf) => buf,
+        let p = entry.path();
+        let buf = match std::fs::read(p) {
+            Ok(b) => b,
             Err(e) => {
-                log::warn!("{}: {}", path.display(), e);
+                log::warn!("{}: {e}", p.display());
                 continue;
             }
         };
 
-        let mut ok = false;
-        let mut errors = vec![];
-        for game in tango_gamedb::GAMES
-            .iter()
-            .copied()
-            .flat_map(crate::game::game_from_gamedb_entry)
-        {
-            match game.gamedb_entry().parse_save(&buf) {
+        let mut matched = false;
+        for game in tango_gamedb::GAMES.iter().copied() {
+            match game.parse_save(&buf) {
                 Ok(save) => {
-                    log::info!("{}: {:?}", path.display(), game.gamedb_entry().family_and_variant());
-                    let saves = paths.entry(game).or_insert_with(|| vec![]);
-                    saves.push(ScannedSave {
-                        path: path.to_path_buf(),
+                    log::info!("save scan: {}: {:?}", p.display(), game.family_and_variant());
+                    by_game.entry(game).or_default().push(ScannedSave {
+                        path: p.to_path_buf(),
                         save,
                     });
-                    ok = true;
+                    matched = true;
                 }
-                Err(e) => {
-                    errors.push((game, e));
-                }
+                Err(_) => {}
             }
         }
 
-        if !ok {
-            log::warn!(
-                "{}:\n{}",
-                path.display(),
-                errors
-                    .iter()
-                    .map(|(k, v)| format!("{:?}: {}", k.gamedb_entry().family_and_variant(), v))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
+        if !matched {
+            log::debug!("save scan: {}: no matching game", p.display());
         }
     }
 
-    for (_, saves) in paths.iter_mut() {
-        saves.sort_by_key(|s| {
-            let components = s
-                .path
-                .components()
-                .map(|c| c.as_os_str().to_os_string())
-                .collect::<Vec<_>>();
-            (-(components.len() as isize), components)
-        });
+    for (_, saves) in by_game.iter_mut() {
+        saves.sort_by_key(|s| s.path.clone());
     }
 
-    paths
+    by_game
 }
-
-pub type Scanner =
-    scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>>>;

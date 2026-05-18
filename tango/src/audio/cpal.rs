@@ -1,20 +1,23 @@
+//! cpal-backed audio output. Picks the default output device, opens a
+//! stream at (or near) 48 kHz stereo, and pumps whatever `Stream` you
+//! hand it. The legacy app supported SDL2 as a fallback; we don't (yet).
+//!
+//! Ported from `tango/src/audio/cpal.rs`.
+
 use crate::audio;
 use cpal::{traits::DeviceTrait, Sample};
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
+    // Closest to 2-channel 48 kHz wins.
     supported_configs.sort_by_key(|x| {
-        // Find the config that's closest to 2 channel 48000 Hz as we can.
         (x.max_sample_rate().0.abs_diff(48000), x.channels().abs_diff(2))
     });
-
-    let supported_config = if let Some(supported_config_range) = supported_configs.into_iter().next() {
-        supported_config_range.with_max_sample_rate()
-    } else {
-        anyhow::bail!("no supported stream config found");
-    };
-
-    Ok(supported_config)
+    let cfg = supported_configs
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no supported audio output config"))?;
+    Ok(cfg.with_max_sample_rate())
 }
 
 fn make_data_callback<T>(
@@ -50,78 +53,42 @@ fn open_stream(
     config: &cpal::StreamConfig,
     sample_format: cpal::SampleFormat,
     stream: impl audio::Stream + Send + 'static,
-) -> Result<cpal::Stream, anyhow::Error> {
-    let error_callback = |err| log::error!("audio stream error: {}", err);
+) -> anyhow::Result<cpal::Stream> {
+    let error_callback = |err| log::error!("audio stream error: {err}");
     let channels = config.channels;
 
+    macro_rules! build {
+        ($t:ty) => {
+            device.build_output_stream(
+                config,
+                make_data_callback::<$t>(stream, channels),
+                error_callback,
+                None,
+            )
+        };
+    }
+
     Ok(match sample_format {
-        cpal::SampleFormat::U8 => {
-            device.build_output_stream(config, make_data_callback::<u8>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::U16 => device.build_output_stream(
-            config,
-            make_data_callback::<u16>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::U32 => device.build_output_stream(
-            config,
-            make_data_callback::<u32>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::U64 => device.build_output_stream(
-            config,
-            make_data_callback::<u64>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::I8 => {
-            device.build_output_stream(config, make_data_callback::<i8>(stream, channels), error_callback, None)
-        }
-        cpal::SampleFormat::I16 => device.build_output_stream(
-            config,
-            make_data_callback::<i16>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::I32 => device.build_output_stream(
-            config,
-            make_data_callback::<i32>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::I64 => device.build_output_stream(
-            config,
-            make_data_callback::<i64>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::F32 => device.build_output_stream(
-            config,
-            make_data_callback::<f32>(stream, channels),
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::F64 => device.build_output_stream(
-            config,
-            make_data_callback::<f64>(stream, channels),
-            error_callback,
-            None,
-        ),
-        _ => {
-            return Err(anyhow::format_err!("unsupported sample format: {}", sample_format));
-        }
+        cpal::SampleFormat::U8 => build!(u8),
+        cpal::SampleFormat::U16 => build!(u16),
+        cpal::SampleFormat::U32 => build!(u32),
+        cpal::SampleFormat::U64 => build!(u64),
+        cpal::SampleFormat::I8 => build!(i8),
+        cpal::SampleFormat::I16 => build!(i16),
+        cpal::SampleFormat::I32 => build!(i32),
+        cpal::SampleFormat::I64 => build!(i64),
+        cpal::SampleFormat::F32 => build!(f32),
+        cpal::SampleFormat::F64 => build!(f64),
+        _ => anyhow::bail!("unsupported cpal sample format: {sample_format}"),
     }?)
 }
 
+/// Mono / surround systems still get 2-channel i16 from the resampler;
+/// fix up the layout in-place to match `channels`.
 fn realign_samples(buf: &mut [i16], channels: u16) {
     if channels == 2 {
-        // On stereophonic audio, there is no realignment required.
         return;
     }
-
-    // Monophonic downmix.
     if channels == 1 {
         for i in 0..(buf.len() / 2) {
             let l = buf[i * 2] as i32;
@@ -130,8 +97,9 @@ fn realign_samples(buf: &mut [i16], channels: u16) {
         }
         return;
     }
-
-    // On layouts with >2 channels, we need to align the samples onto the first two channels.
+    // Surround: scatter L/R into the first two channels of each frame
+    // and zero the rest. Walking back-to-front so the source samples
+    // aren't clobbered before they're read.
     for i in (1..(buf.len() / channels as usize)).rev() {
         let src = i * 2;
         let dest = i * channels as usize;
@@ -149,28 +117,23 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn new(stream: impl audio::Stream + Send + 'static) -> Result<Self, anyhow::Error> {
+    pub fn new(stream: impl audio::Stream + Send + 'static) -> anyhow::Result<Self> {
         use cpal::traits::{HostTrait, StreamTrait};
-
-        let audio_device = cpal::default_host()
+        let device = cpal::default_host()
             .default_output_device()
-            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-        log::info!(
-            "cpal supported audio output configs: {:?}",
-            audio_device.supported_output_configs()?.collect::<Vec<_>>()
-        );
-        let audio_supported_config = get_supported_config(&audio_device)?;
+            .ok_or_else(|| anyhow::anyhow!("no default audio output device"))?;
+        let supported = get_supported_config(&device)?;
+        let mut config = supported.config();
+        config.buffer_size =
+            cpal::BufferSize::Fixed(audio::SAMPLES as u32 * config.channels as u32);
+        log::info!("cpal: selected audio config {config:?}");
 
-        let mut config = audio_supported_config.config();
-        config.buffer_size = cpal::BufferSize::Fixed(audio::SAMPLES as u32 * config.channels as u32);
-        log::info!("selected audio config: {:?}", config);
-
-        let stream = open_stream(&audio_device, &config, audio_supported_config.sample_format(), stream)?;
-        stream.play()?;
+        let s = open_stream(&device, &config, supported.sample_format(), stream)?;
+        s.play()?;
 
         Ok(Self {
-            _audio_device: audio_device,
-            _stream: stream,
+            _audio_device: device,
+            _stream: s,
             sample_rate: config.sample_rate,
         })
     }

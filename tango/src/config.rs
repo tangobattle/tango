@@ -1,290 +1,224 @@
-use std::io::{Read, Write};
+//! On-disk user config. Slim version of `tango/src/config.rs` — keeps
+//! Owned by the App; pulled from / written to ProjectDirs.
 
-use fluent_templates::Loader;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::io::Write;
 
-use crate::{i18n, input, version};
+const DATA_DIR_NAME: &str = "Tango";
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
-pub enum GraphicsBackend {
-    #[cfg(feature = "glutin")]
-    Glutin,
-    #[cfg(feature = "wgpu")]
-    Wgpu,
+const QUALIFIER: &str = "net";
+const ORGANIZATION: &str = "n1gp";
+const APPLICATION: &str = "tango";
+
+pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
+
+fn default_matchmaking_endpoint() -> String {
+    DEFAULT_MATCHMAKING_ENDPOINT.to_string()
 }
 
-impl Default for GraphicsBackend {
-    #[allow(unreachable_code)]
-    fn default() -> Self {
-        #[cfg(feature = "glutin")]
-        return Self::Glutin;
-        #[cfg(feature = "wgpu")]
-        return Self::Wgpu;
-    }
+fn default_patch_repo() -> String {
+    DEFAULT_PATCH_REPO.to_string()
 }
 
-fn ok_or_default<'a, T, D>(deserializer: D) -> Result<T, D::Error>
-where
-    T: serde::Deserialize<'a> + Default,
-    D: serde::Deserializer<'a>,
-{
-    Ok(match serde::Deserialize::deserialize(deserializer) {
-        Ok(v) => T::deserialize::<serde_json::Value>(v).unwrap_or_default(),
-        Err(_) => T::default(),
-    })
+fn default_true() -> bool {
+    true
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
-pub enum AudioBackend {
-    #[cfg(feature = "sdl2-audio")]
-    Sdl2,
-    #[cfg(feature = "cpal")]
-    Cpal,
+fn default_language() -> unic_langid::LanguageIdentifier {
+    crate::i18n::FALLBACK_LANG
 }
 
-impl Default for AudioBackend {
-    #[allow(unreachable_code)]
-    fn default() -> Self {
-        #[cfg(feature = "sdl2-audio")]
-        return Self::Sdl2;
-        #[cfg(feature = "cpal")]
-        return Self::Cpal;
-    }
+fn ser_language<S: serde::Serializer>(
+    lang: &unic_langid::LanguageIdentifier,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&lang.to_string())
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default, Clone, PartialEq, Eq)]
-pub enum Theme {
-    #[default]
-    System,
+fn de_language<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<unic_langid::LanguageIdentifier, D::Error> {
+    let s = String::deserialize(d)?;
+    s.parse().map_err(serde::de::Error::custom)
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum ThemeMode {
     Light,
+    #[default]
     Dark,
 }
 
-fn serialize_language_identifier<S>(v: &unic_langid::LanguageIdentifier, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&v.to_string())
+impl std::fmt::Display for ThemeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ThemeMode::Light => "Light",
+            ThemeMode::Dark => "Dark",
+        })
+    }
 }
 
-fn deserialize_language_identifier<'de, D>(deserializer: D) -> Result<unic_langid::LanguageIdentifier, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let buf = String::deserialize(deserializer)?;
-    buf.parse().map_err(serde::de::Error::custom)
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
     pub nickname: Option<String>,
-    pub theme: Theme,
-    pub show_debug: bool,
-    #[serde(
-        serialize_with = "serialize_language_identifier",
-        deserialize_with = "deserialize_language_identifier"
-    )]
+    #[serde(serialize_with = "ser_language", deserialize_with = "de_language")]
     pub language: unic_langid::LanguageIdentifier,
-    pub video_filter: String,
-    pub max_scale: u32,
-    pub input_mapping: input::Mapping,
+    pub streamer_mode: bool,
+    pub theme: ThemeMode,
+    pub data_path: std::path::PathBuf,
     pub matchmaking_endpoint: String,
     pub patch_repo: String,
+    /// When `true`, the patch autoupdater (`patch::Autoupdater`)
+    /// runs in the background and refreshes the local patch
+    /// directory every 15 minutes. Defaults to true; off
+    /// disables the background loop but leaves the Update button
+    /// in the Patches tab working.
+    #[serde(default = "default_true")]
     pub enable_patch_autoupdate: bool,
-    pub input_delay: u32,
-    pub default_match_type: u8,
-    pub data_path: std::path::PathBuf,
-    pub full_screen: bool,
-    pub streamer_mode: bool,
-    pub show_own_setup: bool,
-    #[serde(deserialize_with = "ok_or_default")]
-    pub graphics_backend: GraphicsBackend,
-    #[serde(deserialize_with = "ok_or_default")]
-    pub audio_backend: AudioBackend,
-    pub volume: i32,
-    pub ui_scale_percent: u32,
-    pub allow_prerelease_upgrades: bool,
-    pub enable_updater: bool,
+    /// Upscaler applied to each emulator frame before it's
+    /// uploaded to the GPU. Empty / "null" = nearest-neighbor
+    /// (default). Other values: "hq2x", "hq3x", "hq4x", "mmpx".
+    /// See `video::filter_by_name`.
+    #[serde(default)]
+    pub video_filter: String,
+    /// When true, the emulator frame is rendered at the largest
+    /// integer multiple of its texture size that fits the
+    /// window (instead of the default `ContentFit::Contain`,
+    /// which fractionally scales). Keeps every source pixel
+    /// at uniform host-pixel size — no bilinear shimmer at
+    /// non-integer scales.
+    #[serde(default)]
     pub integer_scaling: bool,
-    pub show_status_bar: Option<bool>,
-    pub window_size: winit::dpi::LogicalSize<u32>,
-    pub last_version: semver::Version,
+    /// When true, the self-updater (`updater::Updater`) runs in
+    /// the background and downloads any newer GitHub release.
+    /// Toggle takes effect immediately via Settings; downloaded
+    /// updates are applied on the next launch (or via the
+    /// "Update Now" button in About).
+    #[serde(default = "default_true")]
+    pub enable_updater: bool,
+    /// When true, the updater treats prereleases (semver pre
+    /// segment, or GitHub-marked) as upgrade candidates.
+    /// Sampled once at start; toggling requires a restart.
+    #[serde(default)]
+    pub allow_prerelease_upgrades: bool,
+
     pub last_game: Option<(String, u8)>,
+    pub last_save: Option<std::path::PathBuf>,
     pub last_patch: Option<String>,
     pub last_patch_version: Option<semver::Version>,
-    pub last_save: Option<std::path::PathBuf>,
-    pub last_export_folder: Option<std::path::PathBuf>,
-    pub use_relay: Option<bool>,
-    pub speed_change_percent: u32,
-    pub starred_patches: std::collections::HashSet<String>,
+
+    /// User-editable input bindings (keyboard + gamepad). See
+    /// [`crate::input::Mapping::default`] for the out-of-the-box
+    /// layout. Each mgba key can have multiple bindings.
+    #[serde(default)]
+    pub input_mapping: crate::input::Mapping,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        let version = version::current();
-
+        // Fall back to ./tango-data if the user dirs lookup fails so the
+        // app still runs in degraded form rather than panicking.
+        let data_path = directories_next::UserDirs::new()
+            .and_then(|u| u.document_dir().map(|d| d.join(DATA_DIR_NAME)))
+            .unwrap_or_else(|| std::path::PathBuf::from("./tango-data"));
         Self {
             nickname: None,
-            theme: Theme::System,
-            show_debug: Default::default(),
-            language: i18n::FALLBACK_LANG.clone(),
-            video_filter: "".to_string(),
-            max_scale: 0,
-            input_mapping: Default::default(),
-            matchmaking_endpoint: "".to_string(),
-            patch_repo: "".to_string(),
-            enable_patch_autoupdate: true,
-            input_delay: 2,
-            default_match_type: 1,
-            data_path: "".into(),
-            full_screen: false,
+            language: default_language(),
             streamer_mode: false,
-            show_own_setup: false,
-            graphics_backend: Default::default(),
-            audio_backend: Default::default(),
-            volume: 0x100,
-            ui_scale_percent: 100,
-            allow_prerelease_upgrades: !version.pre.is_empty(),
-            enable_updater: true,
+            theme: ThemeMode::default(),
+            data_path,
+            matchmaking_endpoint: default_matchmaking_endpoint(),
+            patch_repo: default_patch_repo(),
+            enable_patch_autoupdate: true,
+            video_filter: String::new(),
             integer_scaling: false,
-            show_status_bar: None,
-            window_size: winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3),
-            last_version: version,
+            enable_updater: true,
+            allow_prerelease_upgrades: false,
             last_game: None,
+            last_save: None,
             last_patch: None,
             last_patch_version: None,
-            last_save: None,
-            last_export_folder: Default::default(),
-            use_relay: None,
-            speed_change_percent: 300,
-            starred_patches: Default::default(),
+            input_mapping: crate::input::Mapping::default(),
         }
     }
 }
 
-fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
-    directories_next::ProjectDirs::from("net.n1gp", "", "Tango")
-}
-
-fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
-    Ok(get_project_dirs()
-        .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
-        .config_dir()
-        .join("config.json"))
-}
-
-pub fn get_updater_path() -> Result<std::path::PathBuf, anyhow::Error> {
-    Ok(get_project_dirs()
-        .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
-        .cache_dir()
-        .join("updater"))
-}
-
-const DATA_DIR_NAME: &str = "Tango";
-
 impl Config {
-    pub fn system_defaults() -> Result<Self, anyhow::Error> {
-        let user_dirs =
-            directories_next::UserDirs::new().ok_or_else(|| anyhow::anyhow!("could not get user directories"))?;
-
-        let tango_data_dir = user_dirs
-            .document_dir()
-            .ok_or_else(|| anyhow::anyhow!("could not get tango data directory"))?
-            .join(DATA_DIR_NAME);
-
-        let sys_language: unic_langid::LanguageIdentifier = sys_locale::get_locale()
-            .unwrap_or(i18n::FALLBACK_LANG.to_string())
-            .parse()?;
-        let language = fluent_langneg::negotiate_languages(
-            &[sys_language],
-            i18n::LOCALES.locales().cloned().collect::<Vec<_>>().as_slice(),
-            Some(&i18n::FALLBACK_LANG),
-            fluent_langneg::NegotiationStrategy::Lookup,
-        )
-        .first()
-        .cloned()
-        .unwrap()
-        .clone();
-
-        Ok(Self {
-            language,
-            data_path: tango_data_dir,
-            ..Default::default()
-        })
-    }
-
-    pub fn create() -> Result<Self, anyhow::Error> {
-        let config_path = get_config_path()?;
-        let config = Self::system_defaults()?;
-        std::fs::create_dir_all(config_path.parent().unwrap())?;
-        std::fs::write(&config_path, serde_json::to_string(&config)?)?;
-        Ok(config)
-    }
-
-    pub fn load_or_create() -> Result<Self, anyhow::Error> {
-        let config_path = get_config_path()?;
-        let config = match std::fs::File::open(config_path) {
-            Ok(mut file) => {
-                let mut contents = String::new();
-                file.read_to_string(&mut contents)?;
-                match serde_json::from_str(&contents) {
-                    Ok(config) => config,
-                    Err(err) => {
-                        log::error!("error loading config, creating new config: {}", err);
-                        Self::create()?
-                    }
-                }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Self::create()?,
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-        Ok(config)
-    }
-
-    pub fn save(&self) -> Result<(), anyhow::Error> {
-        let contents = serde_json::to_string(self)?;
-        let mut file = std::fs::File::create(get_config_path()?)?;
-        file.write_all(contents.as_bytes())?;
-        Ok(())
-    }
-
-    pub fn saves_path(&self) -> std::path::PathBuf {
-        self.data_path.join("saves")
-    }
-
     pub fn roms_path(&self) -> std::path::PathBuf {
         self.data_path.join("roms")
     }
-
-    pub fn replays_path(&self) -> std::path::PathBuf {
-        self.data_path.join("replays")
+    pub fn saves_path(&self) -> std::path::PathBuf {
+        self.data_path.join("saves")
     }
-
     pub fn patches_path(&self) -> std::path::PathBuf {
         self.data_path.join("patches")
     }
-
+    pub fn replays_path(&self) -> std::path::PathBuf {
+        self.data_path.join("replays")
+    }
     pub fn logs_path(&self) -> std::path::PathBuf {
         self.data_path.join("logs")
     }
 
-    pub fn crashstates_path(&self) -> std::path::PathBuf {
-        self.data_path.join("crashstates")
+    pub fn load_or_create() -> Self {
+        match config_path() {
+            Some(p) => match std::fs::read_to_string(&p) {
+                Ok(s) => match serde_json::from_str::<Self>(&s) {
+                    Ok(mut c) => {
+                        c.migrate();
+                        return c;
+                    }
+                    Err(e) => log::warn!("config parse failed, using defaults: {e}"),
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => log::warn!("config read failed, using defaults: {e}"),
+            },
+            None => log::warn!("could not resolve config dir, using defaults"),
+        }
+        let c = Self::default();
+        let _ = c.save();
+        c
     }
 
-    pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
-        std::fs::create_dir_all(self.saves_path())?;
-        std::fs::create_dir_all(self.replays_path())?;
-        std::fs::create_dir_all(self.patches_path())?;
-        std::fs::create_dir_all(self.roms_path())?;
-        std::fs::create_dir_all(self.logs_path())?;
-        std::fs::create_dir_all(self.crashstates_path())?;
+    /// One-shot config migrations applied on load. Keeps stale
+    /// values from breaking the app after a default change.
+    fn migrate(&mut self) {
+        // Old default pointed at the github repo page, which serves
+        // HTML — the patch updater needs the static-file host. If
+        // the user is still on the legacy default, silently move
+        // them to the new one.
+        const STALE_PATCH_REPOS: &[&str] = &[
+            "https://github.com/tangobattle/patches",
+            "https://github.com/tangobattle/patches/",
+        ];
+        if STALE_PATCH_REPOS.iter().any(|u| self.patch_repo.eq(*u)) {
+            log::info!(
+                "migrating stale patch_repo {:?} -> {:?}",
+                self.patch_repo, DEFAULT_PATCH_REPO,
+            );
+            self.patch_repo = DEFAULT_PATCH_REPO.to_string();
+            let _ = self.save();
+        }
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        let Some(p) = config_path() else {
+            return Err(std::io::Error::other("no config dir"));
+        };
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let s = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
+        let mut f = std::fs::File::create(&p)?;
+        f.write_all(s.as_bytes())?;
         Ok(())
     }
 }
 
-pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
-pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
+fn config_path() -> Option<std::path::PathBuf> {
+    directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
+        .map(|d| d.config_dir().join("config.json"))
+}

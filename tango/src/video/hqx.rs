@@ -1,3 +1,6 @@
+//! HQ2X / HQ3X / HQ4X bridges into the workspace's `hqx` crate.
+//! Ported verbatim from `tango/src/video/hqx.rs`.
+
 pub struct HQ2XFilter;
 impl super::Filter for HQ2XFilter {
     fn output_size(&self, [w, h]: [usize; 2]) -> [usize; 2] {
