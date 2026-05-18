@@ -98,6 +98,7 @@ save-copy-image = Copy as image
 # Navi pane
 navi-id = Navi ID
 navi-style-unset = (no style)
+navicust-title = NaviCust
 navicust-grid-size = Grid
 navicust-parts = Installed parts
 navicust-empty = (none installed)
@@ -138,6 +139,7 @@ replays-export-save-as = Save as…
 playback-close = Close
 playback-play = Play
 playback-pause = Pause
+playback-speed = Speed
 replays-select-prompt = Select a replay.
 replays-opponent = Opponent
 replays-match-type = Match type
