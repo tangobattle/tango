@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use crate::widgets;
-use crate::{config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION};
+use crate::{config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_BODY, TEXT_CAPTION};
 use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
@@ -256,22 +256,17 @@ pub fn view<'a>(
         SettingsTab::General => settings_general(lang, config),
         SettingsTab::Graphics => settings_graphics(lang, config),
         SettingsTab::Input => settings_input(lang, config, state),
-        SettingsTab::Netplay => settings_netplay(lang, config),
+        SettingsTab::Netplay => settings_network(lang, config),
         SettingsTab::About => settings_about(lang, config, &state.about, updater_status),
         // The status arg is consumed by About's call here; iced
         // discards the unused-on-other-tabs branches at runtime
         // so no double-clone is needed.
     };
 
-    // About owns its own scrollable + inner padding; the outer
-    // 20 px would push the scrollbar away from the window edge,
-    // which looks off. Other tabs aren't scrollable so they
-    // still want the outer breathing room.
-    let body_wrap = if active == SettingsTab::About {
-        container(body).width(Fill).height(Fill)
-    } else {
-        container(body).width(Fill).height(Fill).padding(20)
-    };
+    // Scrollable wraps the body once at the dispatch layer —
+    // each settings_* pane returns a plain column with its own
+    // inner padding so the scrollbar hugs the right edge.
+    let body_wrap = scrollable(body).width(Fill).height(Fill);
 
     row![sidebar, vertical_rule(1), body_wrap]
         .width(Fill)
@@ -352,6 +347,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         ),
     ]
     .spacing(14)
+    .padding(20)
     .into()
 }
 
@@ -393,10 +389,11 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
+    .padding(20)
     .into()
 }
 
-fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
+fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         labeled::<Message>(
             t(lang, "settings-matchmaking-endpoint"),
@@ -426,6 +423,7 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
+    .padding(20)
     .into()
 }
 
@@ -434,9 +432,9 @@ fn settings_input<'a>(
     config: &'a config::Config,
     state: &'a State,
 ) -> Element<'a, Message> {
-    let mut col = column![].spacing(8);
+    let mut col = column![].spacing(2);
     let slots = config.input_mapping.slots();
-    for (k, bindings) in slots.iter() {
+    for (idx, (k, bindings)) in slots.iter().enumerate() {
         let k = *k;
         let label = t(lang, k.label_key());
         let bindings: &Vec<input::PhysicalInput> = bindings;
@@ -445,7 +443,11 @@ fn settings_input<'a>(
         // of the usual Add button.
         let action: Element<'a, Message> = if state.capture_target == Some(k) {
             row![
-                text(t(lang, "settings-input-press-key")).style(save_view::muted_text_style),
+                text(t(lang, "settings-input-press-key"))
+                    .size(TEXT_BODY)
+                    .style(|theme: &iced::Theme| iced::widget::text::Style {
+                        color: Some(theme.palette().primary),
+                    }),
                 widgets::icon_button(
                     Icon::X,
                     t(lang, "save-action-cancel"),
@@ -457,6 +459,8 @@ fn settings_input<'a>(
             .align_y(iced::Alignment::Center)
             .into()
         } else {
+            // Icon-only + tooltip — "Add binding" text on every
+            // row was visual noise; the + glyph is universal.
             widgets::icon_button(
                 Icon::Plus,
                 t(lang, "settings-input-add"),
@@ -468,24 +472,48 @@ fn settings_input<'a>(
         for (i, b) in bindings.iter().enumerate() {
             chips = chips.push(binding_chip(b, k, i));
         }
-        let row = row![
-            container(text(label)).width(Length::Fixed(120.0)),
+        let row_inner = row![
+            container(text(label).size(TEXT_BODY)).width(Length::Fixed(140.0)),
             chips,
             horizontal_space(),
             action,
         ]
-        .spacing(8)
+        .spacing(10)
         .align_y(iced::Alignment::Center);
-        col = col.push(row);
+        // Zebra-stripe the rows so the eye can scan them as a
+        // table without a chunky border on every row. Same
+        // helper save_view uses for its chip table.
+        col = col.push(
+            container(row_inner)
+                .padding([8, 12])
+                .width(Fill)
+                .style(widgets::zebra_row(idx)),
+        );
     }
-    let reset = widgets::icon_button(
+    // Reset sits in a row padded identically to the table rows
+    // so its right edge aligns with the per-row Add buttons.
+    let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
         t(lang, "settings-input-reset"),
         Message::BindingsReset,
         STANDARD_PADDING,
+        widgets::neutral,
     );
-    col = col.push(Space::new().height(8)).push(row![horizontal_space(), reset]);
-    scrollable(col.padding(4)).into()
+    col = col
+        .push(Space::new().height(12))
+        .push(container(row![horizontal_space(), reset]).padding([0, 12]).width(Fill));
+    // Table is flush left/right against the scrollable's
+    // visible edges — rows carry their own internal padding so
+    // the zebra stripes extend full width without any outer
+    // column padding. Vertical padding still applies so the
+    // first/last row don't slam the scanline above/below.
+    col.padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 20.0,
+        left: 0.0,
+    })
+    .into()
 }
 
 fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: usize) -> Element<'a, Message> {
@@ -494,24 +522,35 @@ fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: 
         input::DescribeKind::Keyboard => Icon::Keyboard,
         input::DescribeKind::Gamepad => Icon::Gamepad,
     };
+    // Primary-tinted rounded pill matching the rest of the
+    // app's chip + badge chrome. × button is subdued (neutral
+    // chrome) so it doesn't shout against the small label.
     container(
         row![
-            // Lucide source-kind glyph (keyboard / gamepad) sized
-            // to match the caption text alongside it.
-            kind_glyph.widget().size(TEXT_CAPTION),
-            text(label).size(TEXT_CAPTION),
-            // Lucide × for the remove-binding button. Sized to
-            // the chip's caption text so the row stays tight.
+            kind_glyph.widget().size(TEXT_BODY),
+            text(label).size(TEXT_BODY),
             button(Icon::X.widget().size(TEXT_CAPTION))
-                .padding([2, 6])
-                .style(widgets::danger_button)
+                .padding([2, 4])
+                .style(widgets::neutral)
                 .on_press(Message::BindingRemove(key, idx)),
         ]
-        .spacing(4)
+        .spacing(6)
         .align_y(iced::Alignment::Center),
     )
-    .padding([2, 6])
-    .style(iced::widget::container::bordered_box)
+    .padding([3, 8])
+    .style(|theme: &iced::Theme| {
+        let primary = theme.palette().primary;
+        iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color { a: 0.12, ..primary })),
+            text_color: Some(theme.palette().text),
+            border: iced::Border {
+                radius: 999.0.into(),
+                width: 1.0,
+                color: iced::Color { a: 0.45, ..primary },
+            },
+            ..Default::default()
+        }
+    })
     .into()
 }
 
@@ -567,13 +606,14 @@ fn settings_about<'a>(
     let settings = markdown::Settings::with_text_size(crate::TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
-    scrollable(
-        column![emblem, body, updater_section(lang, updater_status)]
-            .spacing(12)
-            .padding([0, 12]),
-    )
-    .height(Fill)
-    .into()
+    column![emblem, body, updater_section(lang, updater_status)]
+        .spacing(12)
+        // Symmetric inner padding so the emblem doesn't rub
+        // the nav scanline at the top, the updater section
+        // breathes at the page end, and link text doesn't slam
+        // the left edge.
+        .padding(20)
+        .into()
 }
 
 /// Bottom-of-About updater status panel. Current version

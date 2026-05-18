@@ -290,7 +290,11 @@ fn tab_button_inner<'a, M: Clone + 'a>(
         .spacing(8)
         .align_y(Alignment::Center);
     if let Some(label) = label {
-        let mut lbl = text(label);
+        // No wrapping — when a tab strip gets squeezed (e.g.
+        // narrow window) we want labels to clip / overflow
+        // rather than break into a second line that doubles the
+        // tab's height.
+        let mut lbl = text(label).wrapping(iced::widget::text::Wrapping::None);
         if large {
             lbl = lbl.size(crate::TEXT_HEADING);
         }
