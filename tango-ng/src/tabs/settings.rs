@@ -244,7 +244,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state:
         SettingsTab::Graphics => settings_graphics(lang, config),
         SettingsTab::Input => settings_input(lang, config, state),
         SettingsTab::Netplay => settings_netplay(lang, config),
-        SettingsTab::About => settings_about(lang, &state.about),
+        SettingsTab::About => settings_about(lang, config, &state.about),
     };
 
     // About owns its own scrollable + inner padding; the outer
@@ -311,8 +311,10 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         labeled::<Message>(
             t(lang, "settings-data-path"),
             row![
-                text(config.data_path.display().to_string()).size(TEXT_CAPTION),
-                horizontal_space(),
+                // Path in a Fill container so a long Windows
+                // path (e.g. nested under Documents) wraps
+                // instead of squashing the Open Folder button.
+                container(text(config.data_path.display().to_string()).size(TEXT_CAPTION)).width(Fill),
                 widgets::icon_button(
                     Icon::Folder,
                     t(lang, "save-open-folder"),
@@ -321,7 +323,9 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 ),
             ]
             .spacing(8)
-            .align_y(Alignment::Center),
+            // Top-align so the Open Folder button stays put when
+            // a long data path wraps to a second line.
+            .align_y(Alignment::Start),
         ),
     ]
     .spacing(14)
@@ -545,7 +549,11 @@ impl AboutMarkdown {
     }
 }
 
-fn settings_about<'a>(lang: &'a LanguageIdentifier, about: &'a AboutMarkdown) -> Element<'a, Message> {
+fn settings_about<'a>(
+    lang: &'a LanguageIdentifier,
+    config: &'a config::Config,
+    about: &'a AboutMarkdown,
+) -> Element<'a, Message> {
     use iced::widget::image::{Handle, Image};
     use iced::widget::markdown;
     use std::sync::LazyLock;
@@ -561,19 +569,14 @@ fn settings_about<'a>(lang: &'a LanguageIdentifier, about: &'a AboutMarkdown) ->
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Center);
 
-    // `Style::from_palette` derives link color from the palette
-    // primary. Inject our TANGO_GREEN so markdown links match
-    // the rest of the app's accent (default-DARK link color is
-    // a generic blue, which clashes here). Other palette slots
-    // are inherited from DARK and aren't used by the markdown
-    // renderer for non-code text.
-    let settings = markdown::Settings::with_text_size(
-        13,
-        markdown::Style::from_palette(iced::theme::Palette {
-            primary: crate::TANGO_GREEN,
-            ..iced::theme::Palette::DARK
-        }),
-    );
+    // Pull the live Theme from the same `crate::theme_for` the
+    // App's theme callback uses — keeps link color in sync with
+    // the rest of the app instead of pinning to DARK + TANGO_GREEN
+    // by hand. `Settings::from(&Theme)` defaults to text-size 16,
+    // so wrap to also pin our 13 px body size.
+    let theme = crate::theme_for(config);
+    let style = markdown::Style::from(&theme);
+    let settings = markdown::Settings::with_text_size(13, style);
     let body: Element<'a, Message> =
         markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 

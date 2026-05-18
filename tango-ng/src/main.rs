@@ -304,7 +304,15 @@ fn run_app() -> iced::Result {
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
-        .window_size((1000.0, 640.0))
+        .window(iced::window::Settings {
+            // Initial size; min_size keeps the user from
+            // shrinking the window so small the tab strip /
+            // sidebars start visually collapsing on top of one
+            // another.
+            size: iced::Size::new(1000.0, 640.0),
+            min_size: Some(iced::Size::new(800.0, 600.0)),
+            ..iced::window::Settings::default()
+        })
         .font(FONT_NOTO_SANS)
         .font(FONT_NOTO_SANS_JP)
         .font(FONT_NOTO_SANS_SC)
@@ -1523,7 +1531,7 @@ impl App {
                 .replays
                 .view(lang, &self.scanners, &self.config)
                 .map(Message::Replays),
-            Tab::Patches => self.patches.view(lang, &self.scanners).map(Message::Patches),
+            Tab::Patches => self.patches.view(lang, &self.scanners, &self.config).map(Message::Patches),
             Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings).map(Message::Settings),
         };
 
@@ -1535,25 +1543,36 @@ impl App {
     }
 
     fn theme(&self) -> Theme {
-        // Custom palettes derived from the built-in Light/Dark, with the
-        // accent (primary) swapped to the BN-green that the main egui
-        // app uses for selection / accents.
-        match self.config.theme {
-            config::ThemeMode::Light => Theme::custom(
-                "Tango Light".to_string(),
-                iced::theme::Palette {
-                    primary: TANGO_GREEN,
-                    ..iced::theme::Palette::LIGHT
-                },
-            ),
-            config::ThemeMode::Dark => Theme::custom(
-                "Tango Dark".to_string(),
-                iced::theme::Palette {
-                    primary: TANGO_GREEN,
-                    ..iced::theme::Palette::DARK
-                },
-            ),
-        }
+        // Single source of truth — anything else that needs the
+        // active palette (markdown link colors etc.) calls this
+        // free fn too so we never drift.
+        theme_for(&self.config)
+    }
+}
+
+/// Builds the live `iced::Theme` for the given config. Used by
+/// iced via `App::theme` and by any view function that needs to
+/// derive theme-aware styles (e.g. markdown `Settings`, where
+/// the builder doesn't get the live Theme passed in).
+pub fn theme_for(config: &config::Config) -> Theme {
+    // Custom palettes derived from the built-in Light/Dark, with
+    // the accent (primary) swapped to the BN-green the main
+    // egui app uses for selection / accents.
+    match config.theme {
+        config::ThemeMode::Light => Theme::custom(
+            "Tango Light".to_string(),
+            iced::theme::Palette {
+                primary: TANGO_GREEN,
+                ..iced::theme::Palette::LIGHT
+            },
+        ),
+        config::ThemeMode::Dark => Theme::custom(
+            "Tango Dark".to_string(),
+            iced::theme::Palette {
+                primary: TANGO_GREEN,
+                ..iced::theme::Palette::DARK
+            },
+        ),
     }
 }
 

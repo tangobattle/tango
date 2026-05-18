@@ -119,7 +119,12 @@ impl PatchesState {
             .unwrap_or_default();
     }
 
-    pub fn view<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
+    pub fn view<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        config: &'a crate::config::Config,
+    ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
         let update_msg = if self.updating { None } else { Some(Message::Update) };
@@ -222,11 +227,15 @@ impl PatchesState {
                 .map(|v| v.netplay_compatibility.clone())
                 .unwrap_or_default();
 
+            // Title in a Fill container so a long patch name takes
+            // the leftover space and wraps naturally instead of
+            // squashing the version picker / folder button on
+            // the right. Default `Wrapping::Word` keeps it
+            // readable across multiple lines if it has to.
             let header = row![
-                text(patch.title.clone()).size(TEXT_TITLE),
-                horizontal_space(),
+                container(text(patch.title.clone()).size(TEXT_TITLE)).width(Fill),
                 pick_list(versions, selected_version, Message::VersionSelected)
-                    
+
                     .padding(STANDARD_PADDING),
                 widgets::icon_button(
                     Icon::Folder,
@@ -236,7 +245,10 @@ impl PatchesState {
                 ),
             ]
             .spacing(8)
-            .align_y(Alignment::Center);
+            // Top-align so the action buttons stay anchored when
+            // a long title wraps to multiple lines (Center would
+            // re-center them as the title grows).
+            .align_y(Alignment::Start);
 
             // Single key:value row helper — muted label, plain value,
             // so the readable density matches the rest of the UI's
@@ -269,15 +281,15 @@ impl PatchesState {
             }
 
             // Markdown README, parsed and cached in self.readme_items.
+            // Pull the live Theme from `crate::theme_for(config)`
+            // so link color tracks the active palette — same
+            // source the App-level `theme()` callback uses.
             let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
                 text(t(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
             } else {
-                let theme = iced::Theme::Dark;
                 iced::widget::markdown::view(
                     &self.readme_items,
-                    iced::widget::markdown::Settings::with_style(iced::widget::markdown::Style::from_palette(
-                        theme.palette(),
-                    )),
+                    iced::widget::markdown::Settings::from(&crate::theme_for(config)),
                 )
                 .map(Message::ReadmeLinkClicked)
             };

@@ -791,8 +791,10 @@ fn replay_detail<'a>(
     let header = container(
         column![
             row![
-                text(title).size(18),
-                horizontal_space(),
+                // Title in a Fill container so a long link code
+                // wraps naturally without squashing the action
+                // buttons on the right.
+                container(text(title).size(18)).width(Fill),
                 // Watch is the main action of the detail view —
                 // promote to primary so it's visually obvious.
                 widgets::icon_button_styled(
@@ -830,7 +832,9 @@ fn replay_detail<'a>(
                 ),
             ]
             .spacing(6)
-            .align_y(Alignment::Center),
+            // Top-align so the action buttons stay anchored when
+            // a long title wraps to a second line.
+            .align_y(Alignment::Start),
             export_panel(
                 lang,
                 state.is_panel_open(&r.path),
