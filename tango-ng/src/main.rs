@@ -25,6 +25,7 @@ mod session;
 mod singleplayer_session;
 mod stats;
 mod tabs;
+mod updater;
 mod video;
 mod widgets;
 
@@ -295,7 +296,10 @@ fn run_app() -> iced::Result {
     // area being moved (the GBA screen) is mostly static so this
     // is barely visible in practice.
     let settings = iced::Settings {
-        default_text_size: iced::Pixels(13.0),
+        // Same constant the typographic scale + every markdown
+        // Settings::with_text_size call uses, so the body text
+        // size is in one place.
+        default_text_size: iced::Pixels(TEXT_BODY),
         vsync: false,
         ..iced::Settings::default()
     };
@@ -398,6 +402,12 @@ struct App {
     /// Background loop that pulls the patch repo every 15 min
     /// and refreshes the patches scanner in place.
     patch_autoupdater: patch::Autoupdater,
+    /// Self-updater. Polls GitHub every 30 min, streams the
+    /// platform installer into the cache dir, and on the
+    /// `finish_update` call (or next launch) hands off to the
+    /// installer. UI lives in Settings → About; toggle is in
+    /// Settings → Network.
+    updater: updater::Updater,
 }
 
 impl App {
@@ -484,6 +494,19 @@ impl App {
             patch_autoupdater.start();
         }
 
+        // Self-updater. Cache dir must exist before the
+        // download stream tries to write into it.
+        let updater_cache = updater::updater_cache_dir(&config);
+        let _ = std::fs::create_dir_all(&updater_cache);
+        let mut updater = updater::Updater::new(&updater_cache, config.allow_prerelease_upgrades);
+        // Apply any installer left over from a previous
+        // session BEFORE the UI comes up — if it succeeds,
+        // do_update exits the process here.
+        updater.finish_update();
+        if config.enable_updater {
+            updater.set_enabled(true);
+        }
+
         // CLI `Join <code>` (or Discord deep-link routed through
         // the same channel) lands here — prefill the link code
         // and start on the Play tab so the user can hit Fight.
@@ -510,7 +533,8 @@ impl App {
             netplay: netplay::State::new(),
             discord: discord::Client::new(),
             session_started_at: None,
-            patch_autoupdater: patch_autoupdater,
+            patch_autoupdater,
+            updater,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -1401,6 +1425,13 @@ impl App {
     }
 
     fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {
+        // UpdateNow is a side effect (kicks the installer +
+        // exits the process) not a config change; intercept
+        // before delegating to settings::State::update.
+        if matches!(msg, tabs::settings::Message::UpdateNow) {
+            self.updater.finish_update();
+            return iced::Task::none();
+        }
         use tabs::settings::ConfigChange as C;
         let Some(change) = self.settings.update(msg) else {
             return iced::Task::none();
@@ -1421,6 +1452,16 @@ impl App {
             }
             C::VideoFilter(s) => self.config.video_filter = s,
             C::IntegerScaling(b) => self.config.integer_scaling = b,
+            C::EnableUpdater(b) => {
+                self.config.enable_updater = b;
+                self.updater.set_enabled(b);
+            }
+            C::AllowPrereleaseUpgrades(b) => {
+                // Sampled by Updater at start; takes effect on
+                // next launch. Config change still gets
+                // persisted so it survives the restart.
+                self.config.allow_prerelease_upgrades = b;
+            }
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);
@@ -1504,7 +1545,13 @@ impl App {
                         .align_y(iced::Alignment::Center),
                 )
                 .width(Fill);
-                let body = tabs::settings::view(lang, &self.config, &self.settings).map(Message::Settings);
+                let body = tabs::settings::view(
+                    lang,
+                    &self.config,
+                    &self.settings,
+                    self.updater.status_blocking(),
+                )
+                .map(Message::Settings);
                 return iced::widget::column![header, iced::widget::rule::horizontal(1), body]
                     .spacing(0)
                     .width(Fill)
@@ -1532,7 +1579,13 @@ impl App {
                 .view(lang, &self.scanners, &self.config)
                 .map(Message::Replays),
             Tab::Patches => self.patches.view(lang, &self.scanners, &self.config).map(Message::Patches),
-            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings).map(Message::Settings),
+            Tab::Settings => tabs::settings::view(
+                lang,
+                &self.config,
+                &self.settings,
+                self.updater.status_blocking(),
+            )
+            .map(Message::Settings),
         };
 
         column![top_bar(lang, self.tab), horizontal_rule(1), body]

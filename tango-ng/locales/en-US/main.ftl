@@ -199,8 +199,17 @@ settings-theme = Theme
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-patch-repo = Patches repository
 settings-enable-patch-autoupdate = Automatically update patches in the background
+settings-enable-updater = Automatically check for app updates
+settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-video-filter = Video filter
 settings-integer-scaling = Integer scaling
+updater-current-version = Current version
+updater-latest-version = Latest version
+updater-loading = checking…
+updater-up-to-date = up to date
+updater-downloading = Downloading
+updater-ready-to-update = Update downloaded and ready to install.
+updater-update-now = Update now
 
 # Welcome screen
 welcome-title = Welcome to Tango!

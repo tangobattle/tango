@@ -48,6 +48,12 @@ pub enum Message {
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
     ToggleIntegerScaling(bool),
+    ToggleEnableUpdater(bool),
+    ToggleAllowPrereleaseUpgrades(bool),
+    /// User clicked "Update Now" on the About panel. App's
+    /// settings handler calls `updater.finish_update()` which
+    /// hands off to the installer + exits the process.
+    UpdateNow,
     /// User clicked "Open folder" next to the data path
     /// readout in General settings. Pure side effect — opens
     /// the OS file manager at the carried path
@@ -88,6 +94,8 @@ pub enum ConfigChange {
     PatchAutoupdate(bool),
     VideoFilter(String),
     IntegerScaling(bool),
+    EnableUpdater(bool),
+    AllowPrereleaseUpgrades(bool),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
     RemoveInputBinding(input::MappedKey, usize),
@@ -112,6 +120,12 @@ impl State {
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleIntegerScaling(b) => Some(ConfigChange::IntegerScaling(b)),
+            Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
+            Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
+            // App handles UpdateNow as a top-level effect — it
+            // calls `updater.finish_update()` which exits the
+            // process on success. Nothing to fold into config.
+            Message::UpdateNow => None,
             Message::OpenDataFolder(p) => {
                 let _ = std::fs::create_dir_all(&p);
                 if let Err(e) = open::that(&p) {
@@ -208,7 +222,12 @@ fn pad_capture_stream() -> impl futures::Stream<Item = Message> {
     })
 }
 
-pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state: &'a State) -> Element<'a, Message> {
+pub fn view<'a>(
+    lang: &'a LanguageIdentifier,
+    config: &'a config::Config,
+    state: &'a State,
+    updater_status: crate::updater::Status,
+) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
     let side_btn = |key: &'static str, tab: SettingsTab| {
@@ -244,7 +263,10 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state:
         SettingsTab::Graphics => settings_graphics(lang, config),
         SettingsTab::Input => settings_input(lang, config, state),
         SettingsTab::Netplay => settings_netplay(lang, config),
-        SettingsTab::About => settings_about(lang, config, &state.about),
+        SettingsTab::About => settings_about(lang, config, &state.about, updater_status),
+        // The status arg is consumed by About's call here; iced
+        // discards the unused-on-other-tabs branches at runtime
+        // so no double-clone is needed.
     };
 
     // About owns its own scrollable + inner padding; the outer
@@ -388,6 +410,12 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         iced::widget::checkbox(config.enable_patch_autoupdate)
             .label(t(lang, "settings-enable-patch-autoupdate"))
             .on_toggle(Message::TogglePatchAutoupdate),
+        iced::widget::checkbox(config.enable_updater)
+            .label(t(lang, "settings-enable-updater"))
+            .on_toggle(Message::ToggleEnableUpdater),
+        iced::widget::checkbox(config.allow_prerelease_upgrades)
+            .label(t(lang, "settings-allow-prerelease-upgrades"))
+            .on_toggle(Message::ToggleAllowPrereleaseUpgrades),
     ]
     .spacing(14)
     .into()
@@ -553,6 +581,7 @@ fn settings_about<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
     about: &'a AboutMarkdown,
+    updater_status: crate::updater::Status,
 ) -> Element<'a, Message> {
     use iced::widget::image::{Handle, Image};
     use iced::widget::markdown;
@@ -573,14 +602,94 @@ fn settings_about<'a>(
     // App's theme callback uses — keeps link color in sync with
     // the rest of the app instead of pinning to DARK + TANGO_GREEN
     // by hand. `Settings::from(&Theme)` defaults to text-size 16,
-    // so wrap to also pin our 13 px body size.
+    // so wrap to also pin the app's body text size.
     let theme = crate::theme_for(config);
     let style = markdown::Style::from(&theme);
-    let settings = markdown::Settings::with_text_size(13, style);
+    let settings = markdown::Settings::with_text_size(crate::TEXT_BODY, style);
     let body: Element<'a, Message> =
         markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
-    scrollable(column![emblem, body].spacing(12).padding([0, 12]))
-        .height(Fill)
-        .into()
+    scrollable(
+        column![emblem, body, updater_section(lang, updater_status)]
+            .spacing(12)
+            .padding([0, 12]),
+    )
+    .height(Fill)
+    .into()
+}
+
+/// Bottom-of-About updater status panel. Current version
+/// vs. latest, a one-line status, and an Update Now button
+/// when a download is ready. Hidden release notes/download
+/// progress until they're actually relevant.
+fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Status) -> Element<'a, Message> {
+    use crate::updater::Status as S;
+
+    let current = env!("CARGO_PKG_VERSION");
+    let is_ready = matches!(status, S::ReadyToUpdate { .. });
+
+    let latest_label: String = match &status {
+        S::UpToDate { release: None } => t(lang, "updater-loading"),
+        S::UpToDate {
+            release: Some(Some(r)),
+        } => format!("v{} ({})", r.version, t(lang, "updater-up-to-date")),
+        S::UpToDate { release: Some(None) } => t(lang, "updater-up-to-date"),
+        S::UpdateAvailable { release: r }
+        | S::Downloading { release: r, .. }
+        | S::ReadyToUpdate { release: r } => format!("v{}", r.version),
+    };
+
+    let status_line: Option<Element<'a, Message>> = match &status {
+        S::Downloading { current, total, .. } => {
+            let pct = if *total > 0 {
+                (*current as f32 / *total as f32 * 100.0).round() as u32
+            } else {
+                0
+            };
+            Some(
+                text(format!("{}: {pct}%", t(lang, "updater-downloading")))
+                    .size(TEXT_CAPTION)
+                    .style(save_view::muted_text_style)
+                    .into(),
+            )
+        }
+        S::ReadyToUpdate { .. } => Some(
+            text(t(lang, "updater-ready-to-update"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style)
+                .into(),
+        ),
+        _ => None,
+    };
+
+    let action: Option<Element<'a, Message>> = is_ready.then(|| {
+        widgets::labeled_icon_button(
+            Icon::Download,
+            t(lang, "updater-update-now"),
+            Message::UpdateNow,
+            STANDARD_PADDING,
+            iced::widget::button::primary,
+        )
+    });
+
+    let mut col = column![
+        iced::widget::rule::horizontal(1),
+        row![
+            text(format!("{}: v{current}", t(lang, "updater-current-version")))
+                .size(TEXT_CAPTION),
+            horizontal_space(),
+            text(format!("{}: {}", t(lang, "updater-latest-version"), latest_label))
+                .size(TEXT_CAPTION),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(8);
+    if let Some(s) = status_line {
+        col = col.push(s);
+    }
+    if let Some(a) = action {
+        col = col.push(row![horizontal_space(), a].spacing(8));
+    }
+    col.into()
 }

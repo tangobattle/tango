@@ -196,8 +196,17 @@ settings-theme = テーマ
 settings-matchmaking-endpoint = マッチメイキングエンドポイント
 settings-patch-repo = パッチリポジトリ
 settings-enable-patch-autoupdate = パッチを自動更新する
+settings-enable-updater = アプリの更新を自動チェック
+settings-allow-prerelease-upgrades = プレリリースも対象にする
 settings-video-filter = ビデオフィルター
 settings-integer-scaling = ピクセル等倍スケーリング
+updater-current-version = 現在のバージョン
+updater-latest-version = 最新バージョン
+updater-loading = 確認中…
+updater-up-to-date = 最新です
+updater-downloading = ダウンロード中
+updater-ready-to-update = 更新の準備が完了しました。
+updater-update-now = 今すぐ更新
 
 # Welcome screen
 welcome-title = Tango へようこそ！

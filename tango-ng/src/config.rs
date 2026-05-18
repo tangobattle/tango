@@ -93,6 +93,18 @@ pub struct Config {
     /// non-integer scales.
     #[serde(default)]
     pub integer_scaling: bool,
+    /// When true, the self-updater (`updater::Updater`) runs in
+    /// the background and downloads any newer GitHub release.
+    /// Toggle takes effect immediately via Settings; downloaded
+    /// updates are applied on the next launch (or via the
+    /// "Update Now" button in About).
+    #[serde(default = "default_true")]
+    pub enable_updater: bool,
+    /// When true, the updater treats prereleases (semver pre
+    /// segment, or GitHub-marked) as upgrade candidates.
+    /// Sampled once at start; toggling requires a restart.
+    #[serde(default)]
+    pub allow_prerelease_upgrades: bool,
 
     pub last_game: Option<(String, u8)>,
     pub last_save: Option<std::path::PathBuf>,
@@ -124,6 +136,8 @@ impl Default for Config {
             enable_patch_autoupdate: true,
             video_filter: String::new(),
             integer_scaling: false,
+            enable_updater: true,
+            allow_prerelease_upgrades: false,
             last_game: None,
             last_save: None,
             last_patch: None,

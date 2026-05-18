@@ -282,14 +282,19 @@ impl PatchesState {
 
             // Markdown README, parsed and cached in self.readme_items.
             // Pull the live Theme from `crate::theme_for(config)`
-            // so link color tracks the active palette — same
-            // source the App-level `theme()` callback uses.
+            // so link color tracks the active palette, and pin
+            // the body text to the app's TEXT_BODY size (default
+            // Settings::from would otherwise use 16 px and make
+            // the README visually heavier than the rest of the
+            // pane).
             let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
                 text(t(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
             } else {
+                let theme = crate::theme_for(config);
+                let style = iced::widget::markdown::Style::from(&theme);
                 iced::widget::markdown::view(
                     &self.readme_items,
-                    iced::widget::markdown::Settings::from(&crate::theme_for(config)),
+                    iced::widget::markdown::Settings::with_text_size(crate::TEXT_BODY, style),
                 )
                 .map(Message::ReadmeLinkClicked)
             };
