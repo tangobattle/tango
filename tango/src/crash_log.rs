@@ -72,7 +72,9 @@ pub fn install() -> crash_handler::CrashHandler {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn describe(cc: &crash_handler::CrashContext) -> String {
-    format!("signal {} (tid {})", cc.siginfo.si_signo, cc.tid)
+    // crash-handler stuffs `signalfd_siginfo` here, not the POSIX
+    // `siginfo_t`, so the field is `ssi_signo`.
+    format!("signal {} (tid {})", cc.siginfo.ssi_signo, cc.tid)
 }
 
 #[cfg(target_os = "macos")]
