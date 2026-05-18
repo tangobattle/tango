@@ -476,11 +476,17 @@ impl PlayState {
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
-        col = col
-            .push(self.selector_strip(lang, scanners))
-            .push(body)
-            .push(widgets::hud_scanline())
-            .push(self.bottom_strip(lang, netplay_phase, loaded));
+        col = col.push(self.selector_strip(lang, scanners)).push(body);
+        // In Lobby phase, the lobby_view IS the bottom band — it
+        // already carries its own scanline separator and a
+        // Disconnect button next to the Ready toggle. Outside
+        // Lobby, the normal bottom_strip handles play / fight /
+        // link code + connecting status.
+        if !matches!(netplay_phase, crate::netplay::Phase::Lobby { .. }) {
+            col = col
+                .push(widgets::hud_scanline())
+                .push(self.bottom_strip(lang, netplay_phase, loaded));
+        }
         col.into()
     }
 
@@ -1435,10 +1441,23 @@ fn lobby_view<'a>(
         btn.into()
     };
 
-    // Header row: latency / verdict on the left, big ready button
-    // on the right. Single line so the Ready button is unmissable
-    // and visually anchored.
+    // Leave-lobby (Disconnect) button. Sits at the top-left of
+    // the header — the conventional "back / quit" corner —
+    // so it doesn't have to fight with the Ready CTA on the
+    // right for the user's attention.
+    let cancel_button: Element<'a, Message> = widgets::labeled_icon_button(
+        Icon::X,
+        t(lang, "play-cancel"),
+        Message::NetplayDisconnect,
+        STANDARD_PADDING,
+        widgets::danger_button,
+    );
+
+    // Header row: leave on the left, latency / verdict in the
+    // middle, big Ready button on the right. Single line so the
+    // Ready button is unmissable and visually anchored.
     let header_row = row![
+        cancel_button,
         column![header_line, verdict_line].spacing(2),
         horizontal_space(),
         ready_button,
