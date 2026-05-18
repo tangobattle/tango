@@ -579,11 +579,29 @@ impl State {
             }
             Message::Cancelled => iced::Task::none(),
             Message::PeerDisconnected => {
-                // Clean remote-side close (data channel went None
-                // without a Failed-worthy error). Quietly return
-                // to Idle.
-                self.cancel_and_renew();
-                self.phase = Phase::Idle;
+                // Remote side cancelled / closed the data channel.
+                // Park netplay in Failed (with a peer-cancelled
+                // marker the UI surfaces) instead of silently
+                // dropping back to Idle, so the user sees what
+                // happened and clears it explicitly. We tear
+                // down the live connection here but deliberately
+                // do NOT wipe `self.lobby` — the opponent's
+                // card stays populated with their last-known
+                // nickname / game so the "they left" banner has
+                // a face attached to it.
+                self.cancel.cancel();
+                self.cancel = CancellationToken::new();
+                self.session_id = self.session_id.wrapping_add(1);
+                *self.pending_receiver.lock() = None;
+                *self.post_lobby_receiver.lock() = None;
+                self.conn = None;
+                self.local_commit = None;
+                self.remote_commitment = None;
+                self.remote_chunks.clear();
+                self.local_chunks_sent = false;
+                self.phase = Phase::Failed {
+                    error: "peer-disconnected".to_string(),
+                };
                 iced::Task::none()
             }
             Message::Disconnect => {

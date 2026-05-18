@@ -538,7 +538,7 @@ pub fn view<'a>(
     let body: Element<'a, Message> = match session {
         ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
             let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true)
+            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None)
                 .map(Message::OpponentSaveViewAction);
             iced::widget::row![
                 container(frame).center(Fill).padding(8).style(black_bg),
@@ -624,11 +624,23 @@ pub fn view<'a>(
             style.border.radius = 999.0.into();
             style
         };
+        // Pin explicit width = height = 44 so the button is
+        // truly square (iced's default text line-height made
+        // padding alone hand-elliptical at 18 px icon size).
+        // The icon sits centered inside via a fixed-size
+        // container so the inner content also matches.
         let play_pause_btn = iced::widget::tooltip(
-            iced::widget::button(play_pause_icon.widget().size(18.0))
-                .padding(12)
-                .style(play_pause_style)
-                .on_press(Message::TogglePlay),
+            iced::widget::button(
+                iced::widget::container(play_pause_icon.widget().size(18.0))
+                    .width(iced::Length::Fixed(20.0))
+                    .height(iced::Length::Fixed(20.0))
+                    .center(Fill),
+            )
+            .padding(0)
+            .width(iced::Length::Fixed(44.0))
+            .height(iced::Length::Fixed(44.0))
+            .style(play_pause_style)
+            .on_press(Message::TogglePlay),
             iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
                 .padding(6)
                 .style(|theme: &iced::Theme| {

@@ -107,7 +107,7 @@ impl State {
         match action {
             Action::SelectTab(t) => self.active_tab = Some(*t),
             Action::ToggleFolderGrouped(g) => self.folder_grouped = *g,
-            Action::CopyTab(_) | Action::CopyTabImage(_) => {}
+            Action::CopyTab(_) | Action::CopyTabImage(_) | Action::PlayClicked => {}
         }
     }
 }
@@ -123,16 +123,31 @@ pub enum Action {
     ToggleFolderGrouped(bool),
     CopyTab(Tab),
     CopyTabImage(Tab),
+    /// Embedder-defined "start single-player here" action.
+    /// Emitted by the Play button rendered in the save_view tab
+    /// strip when [`view`] is called with `play_button = Some(_)`.
+    /// The play tab routes this to `Effect::StartSinglePlayer`;
+    /// other embedders (replay, opponent panel) pass `None` and
+    /// the button isn't rendered.
+    PlayClicked,
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
 /// per-tab extras (folder group toggle, copy buttons), and the body.
 /// Embedders just call this and `.map(Message::SaveViewAction)`.
+///
+/// `play_button`:
+///   * `None`        — no Play button in the tab strip.
+///   * `Some(true)`  — Play button rendered and enabled.
+///   * `Some(false)` — Play button rendered but disabled (e.g.
+///     while a netplay lobby is active and singleplayer would
+///     conflict with the open session).
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a Loaded,
     state: &'a State,
     streamer_mode: bool,
+    play_button: Option<bool>,
 ) -> Element<'a, Action> {
     use crate::widgets;
     use iced::{Alignment, Fill};
@@ -156,9 +171,28 @@ pub fn view<'a>(
         ));
     }
     tab_row = tab_row.push(horizontal_space());
+    // Tab strip's outer spacing is tight (2 px between tabs) but
+    // extras / Play sit visually grouped on the right and want a
+    // looser internal rhythm matching the copy-button row's own
+    // spacing. Compose them into one tail row.
+    let mut tail = row![].spacing(6).align_y(Alignment::Center);
     if let Some(extras) = tab_extras(lang, active, state) {
-        tab_row = tab_row.push(extras);
+        tail = tail.push(extras);
     }
+    if let Some(enabled) = play_button {
+        use lucide_icons::Icon;
+        let label = row![Icon::Play.widget(), text(t(lang, "play-play"))]
+            .spacing(6)
+            .align_y(Alignment::Center);
+        let mut btn = iced::widget::button(label).padding([4, 10]);
+        if enabled {
+            btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
+        } else {
+            btn = btn.style(widgets::neutral);
+        }
+        tail = tail.push(btn);
+    }
+    tab_row = tab_row.push(tail);
 
     let opts = RenderOpts {
         folder_grouped: state.folder_grouped,

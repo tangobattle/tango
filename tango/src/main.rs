@@ -800,7 +800,7 @@ impl App {
                 self.tab = t;
                 iced::Task::none()
             }
-            // PlayPressed branches to the netplay path when the user
+            // FightPressed branches to the netplay path when the user
             // typed a link code. We special-case it here because
             // update_play returns Task<play::Message>, not
             Message::Play(m) => {
@@ -1597,7 +1597,7 @@ impl App {
                 .map(Message::Play),
             Tab::Replays => self
                 .replays
-                .view(lang, &self.scanners, &self.config)
+                .view(lang, &self.scanners, &self.config, &self.netplay.phase)
                 .map(Message::Replays),
             Tab::Patches => self.patches.view(lang, &self.scanners, &self.config).map(Message::Patches),
             Tab::Settings => tabs::settings::view(

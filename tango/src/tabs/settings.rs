@@ -228,18 +228,14 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
+    // Pill style matches the global top nav + save_view sub-nav
+    // so every tab affordance in the app reads as the same
+    // widget family.
     let side_btn = |key: &'static str, tab: SettingsTab| {
-        // Settings sidebar uses the bright primary fill for the
-        // selected tab — the row contains a single line of text
-        // (no muted subtitle) so the brighter accent doesn't have
-        // a contrast clash to worry about, and it's what the
-        // user wants the tab affordance to look like.
-        let style: fn(&iced::Theme, button::Status) -> button::Style =
-            if tab == active { button::primary } else { button::text };
         button(text(t(lang, key)))
             .padding(STANDARD_PADDING)
             .width(Fill)
-            .style(style)
+            .style(widgets::pill_tab_style(tab == active))
             .on_press(Message::TabSelected(tab))
     };
     let sidebar = container(

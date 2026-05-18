@@ -446,7 +446,13 @@ impl ReplaysState {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         config: &'a config::Config,
+        netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
+        // Replay playback spawns an emulator session that would
+        // conflict with an active netplay session. Disable the
+        // Watch button anywhere the netplay phase isn't Idle —
+        // user has to disconnect / dismiss the lobby first.
+        let netplay_active = !matches!(netplay_phase, crate::netplay::Phase::Idle);
         let replays_path = config.replays_path();
         let replays = scanners.replays.read();
 
@@ -666,7 +672,7 @@ impl ReplaysState {
         // Right panel.
         let right: Element<'_, Message> = if let Some(sel_path) = self.selected.as_ref() {
             if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
-                replay_detail(lang, r, &replays_path, self)
+                replay_detail(lang, r, &replays_path, self, netplay_active)
             } else {
                 container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
@@ -693,6 +699,7 @@ fn replay_detail<'a>(
     r: &replays::ScannedReplay,
     replays_path: &std::path::Path,
     state: &'a ReplaysState,
+    netplay_active: bool,
 ) -> Element<'a, Message> {
     let md = &r.metadata;
     let ts_str = std::time::UNIX_EPOCH
@@ -771,7 +778,7 @@ fn replay_detail<'a>(
         // body insets, and the extra 8 px container padding made
         // the embedded view feel awkwardly hemmed-in against the
         // replay-detail card it sits inside.
-        container(save_view::view(lang, loaded, &state.save_view, false).map(Message::SaveViewAction))
+        container(save_view::view(lang, loaded, &state.save_view, false, None).map(Message::SaveViewAction))
             .height(Fill)
             .into()
     } else {
@@ -799,12 +806,23 @@ fn replay_detail<'a>(
                 container(text(title).size(18)).width(Fill),
                 // Watch is the main action of the detail view —
                 // promote to primary so it's visually obvious.
+                // Disabled while netplay is in any non-Idle
+                // phase: starting a playback session would race
+                // with the live emulator.
                 widgets::icon_button_styled(
                     Icon::Play,
                     t(lang, "replays-watch"),
-                    Some(Message::Watch(r.path.clone())),
+                    if netplay_active {
+                        None
+                    } else {
+                        Some(Message::Watch(r.path.clone()))
+                    },
                     STANDARD_PADDING,
-                    widgets::primary_button,
+                    if netplay_active {
+                        widgets::neutral
+                    } else {
+                        widgets::primary_button
+                    },
                 ),
                 {
                     // Per-replay toggle. Disabled outright while a

@@ -24,7 +24,7 @@ pub enum Message {
     /// Fill the link-code input with a fresh random
     /// adjective-word-noun handle from `randomcode::generate`.
     LinkCodeRandom,
-    PlayPressed,
+    FightPressed,
     NetplayDisconnect,
     /// Lobby UI: user picked a different match type. App routes
     /// this through netplay::Message::SetMatchType so the resend
@@ -64,6 +64,12 @@ pub enum Message {
     /// User clicked × on the inline error banner; clears
     /// `PlayState::last_error`.
     DismissError,
+    /// Soft-disable sentinel for widgets that don't accept a
+    /// `None` handler in iced 0.14 (pick_list, slider). The
+    /// lobby reroutes match-type / input-delay changes here in
+    /// Phase::Failed so the controls render inert without
+    /// touching layout. The update handler drops it.
+    Noop,
 }
 
 // ---------- Game / Save pick_list options ----------
@@ -285,6 +291,7 @@ impl PlayState {
                         save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
                     }
                     save_view::Action::CopyTabImage(tab) => save_view::tab_as_image(tab, loaded).map(Effect::CopyImage),
+                    save_view::Action::PlayClicked => Some(Effect::StartSinglePlayer),
                     _ => None,
                 }
             }
@@ -299,24 +306,22 @@ impl PlayState {
                 // without an extra select+copy round-trip.
                 Some(Effect::CopyText(self.link_code.clone()))
             }
-            Message::PlayPressed => {
-                // Pre-condition is now enforced at the view layer
-                // (the Play button is disabled when not actionable),
-                // so reaching this handler means we're good to go.
+            Message::FightPressed => {
+                // Bottom bar is netplay-only — Fight CTA is gated
+                // at the view layer to require a non-empty link
+                // code, so reaching this handler with an empty
+                // input is a stale message + safe to ignore.
                 let trimmed = self.link_code.trim();
                 if trimmed.is_empty() {
-                    if loaded.is_none() {
-                        return None;
-                    }
-                    Some(Effect::StartSinglePlayer)
-                } else {
-                    Some(Effect::NetplayConnect(trimmed.to_string()))
+                    return None;
                 }
+                Some(Effect::NetplayConnect(trimmed.to_string()))
             }
             Message::DismissError => {
                 self.last_error = None;
                 None
             }
+            Message::Noop => None,
             Message::NetplayDisconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::NetplaySetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
             Message::NetplaySetInputDelay(d) => Some(Effect::Netplay(crate::netplay::Message::SetInputDelay(d))),
@@ -500,6 +505,7 @@ impl PlayState {
             crate::netplay::Phase::Connecting { .. }
                 | crate::netplay::Phase::Negotiating { .. }
                 | crate::netplay::Phase::Lobby { .. }
+                | crate::netplay::Phase::Failed { .. }
         );
         // Synthesize the local side's Settings from the play
         // tab's current selection so the "You" slot fills in
@@ -511,7 +517,7 @@ impl PlayState {
         let local_fallback = self.make_local_settings(config, netplay_lobby, scanners);
         let body: Element<'a, Message> = if show_lobby {
             column![
-                container(self.body(lang, scanners, loaded, streamer_mode, config))
+                container(self.body(lang, scanners, loaded, streamer_mode, config, netplay_phase))
                     .width(Fill)
                     .height(Fill),
                 widgets::hud_scanline(),
@@ -530,7 +536,7 @@ impl PlayState {
             .height(Fill)
             .into()
         } else {
-            self.body(lang, scanners, loaded, streamer_mode, config)
+            self.body(lang, scanners, loaded, streamer_mode, config, netplay_phase)
         };
 
         let mut col = column![].width(Fill).height(Fill);
@@ -547,12 +553,12 @@ impl PlayState {
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby) the lobby_view IS the bottom band
         // — it carries its own scanline separator and Cancel
-        // button. Otherwise the normal bottom_strip handles
-        // Play / Fight / link code + idle / failed status.
+        // button. Otherwise the normal bottom_strip handles the
+        // link code + Fight CTA.
         if !show_lobby {
             col = col
                 .push(widgets::hud_scanline())
-                .push(self.bottom_strip(lang, netplay_phase, loaded));
+                .push(self.bottom_strip(lang));
         }
         col.into()
     }
@@ -566,6 +572,7 @@ impl PlayState {
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
         config: &'a config::Config,
+        netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         // No ROMs at all: explain where to put them.
         if scanners.roms.read().is_empty() {
@@ -588,7 +595,7 @@ impl PlayState {
                 );
             }
         }
-        self.save_view(lang, loaded, streamer_mode)
+        self.save_view(lang, loaded, streamer_mode, netplay_phase)
     }
 
     fn selector_strip<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
@@ -870,174 +877,96 @@ impl PlayState {
         lang: &'a LanguageIdentifier,
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
+        netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         let Some(loaded) = loaded else {
             return container(text(t(lang, "play-no-selection")).size(TEXT_BODY))
                 .center(Fill)
                 .into();
         };
-        save_view::view(lang, loaded, &self.save_view, streamer_mode).map(Message::SaveViewAction)
+        // Play button is the singleplayer entry point now —
+        // disabled whenever the lobby is on-screen (in-flight or
+        // sitting on a Failed banner the user hasn't dismissed)
+        // so it can't fight with that lobby for the same
+        // save/emulator slot.
+        let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
+        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button).map(Message::SaveViewAction)
     }
 
-    fn bottom_strip<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        netplay: &'a crate::netplay::Phase,
-        loaded: Option<&'a selection::Loaded>,
-    ) -> Element<'a, Message> {
-        use crate::netplay::Phase;
-        // The Play tab is only visible when no session is running
-        // (App::view dispatches to session::view otherwise), so the
-        // only "in-progress" state we need to surface here is netplay.
-        // Cancel = disconnect, all phases other than Idle / Failed.
-        let netplay_in_flight = !matches!(netplay, Phase::Idle | Phase::Failed { .. });
-        let link_code_empty = self.link_code.trim().is_empty();
-        // Single-player path requires a loaded save. Netplay path
-        // doesn't (the lobby will ask for a save when the user
-        // hits Ready). Gating it here means clicking the disabled
-        // button is impossible, so the old "click → flash error"
-        // race goes away.
-        let needs_save = link_code_empty && loaded.is_none();
-        // One size for everything sitting on this strip — text,
-        // icons, input value, status — so the row reads as a
-        // single HUD band rather than a pile of mismatched
-        // controls. Vertical padding chosen to give every element
-        // the same overall height; CTA gets more horizontal pad
-        // because it carries an icon + label.
+    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
+        // PlayState::view only reaches here in Idle / Failed
+        // phases — the lobby_view replaces the bottom band for
+        // every in-flight netplay phase, so this strip is pure
+        // "enter a link code and fight". Singleplayer lives at
+        // the top of the save_view now.
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
-        let cta_label = |icon: Icon, label: String| {
-            row![
-                icon.widget().size(BOTTOM_SIZE),
-                text(label).size(BOTTOM_SIZE),
+        let link_code_empty = self.link_code.trim().is_empty();
+        let fight_button: Element<'a, Message> = {
+            // Same chrome as the lobby's Ready button — both are
+            // "commit to a match" CTAs. ready_button_style for
+            // ReadyPalette::Idle falls back to neutral when the
+            // button is disabled, so the empty-link-code case
+            // renders as a plain greyed-out pill without a
+            // separate branch here.
+            let label = row![
+                Icon::Swords.widget().size(BOTTOM_SIZE),
+                text(t(lang, "play-fight")).size(BOTTOM_SIZE),
             ]
             .spacing(8)
-            .align_y(Alignment::Center)
-        };
-        let play_button: Element<'a, Message> = if netplay_in_flight {
-            iced::widget::button(cta_label(Icon::X, t(lang, "play-cancel")))
+            .align_y(Alignment::Center);
+            let mut btn = iced::widget::button(label)
                 .padding(BOTTOM_CTA_PAD)
-                .style(widgets::danger_button)
-                .on_press(Message::NetplayDisconnect)
-                .into()
-        } else if link_code_empty {
-            // Single-player path. Disabled when no save loaded.
-            let mut btn = iced::widget::button(cta_label(Icon::Play, t(lang, "play-play"))).padding(BOTTOM_CTA_PAD);
-            if needs_save {
-                btn = btn.style(widgets::neutral);
-            } else {
-                btn = btn.style(widgets::primary_button).on_press(Message::PlayPressed);
+                .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
+            if !link_code_empty {
+                btn = btn.on_press(Message::FightPressed);
             }
             btn.into()
-        } else {
-            // Non-empty link code → netplay-bound. Surface this
-            // explicitly via "Fight" + a swords glyph so the user
-            // can tell at a glance they're about to start a
-            // match, not a singleplayer session.
-            iced::widget::button(cta_label(Icon::Swords, t(lang, "play-fight")))
-                .padding(BOTTOM_CTA_PAD)
-                .style(widgets::primary_button)
-                .on_press(Message::PlayPressed)
-                .into()
         };
-
-        // Netplay phase status line. Pre-condition errors no longer
-        // live here — they ride alongside the (now-disabled) Play
-        // button as the inline "needs save" hint below.
-        // Link code lives in the input box above; no need to also
-        // echo it in the status line.
-        let status: Element<'_, _> = match netplay {
-            Phase::Connecting {
-                waiting_for_opponent, ..
-            } => {
-                let label = if *waiting_for_opponent {
-                    t(lang, "play-status-waiting-opponent")
-                } else {
-                    t(lang, "play-status-connecting")
-                };
-                text(label).size(BOTTOM_SIZE).style(text::primary).into()
-            }
-            Phase::Negotiating { .. } => text(t(lang, "play-status-negotiating"))
-                .size(BOTTOM_SIZE)
-                .style(text::primary)
-                .into(),
-            // Lobby = neutral / muted. The lobby ITSELF is the
-            // accent surface (Ready button, big side cards).
-            Phase::Lobby { .. } => text(t(lang, "play-status-lobby"))
-                .size(BOTTOM_SIZE)
-                .style(save_view::muted_text_style)
-                .into(),
-            Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
-                .size(BOTTOM_SIZE)
-                .style(save_view::danger_text_style)
-                .into(),
-            Phase::Idle if needs_save => text(t(lang, "play-no-selection"))
-                .size(BOTTOM_SIZE)
-                .style(save_view::muted_text_style)
-                .into(),
-            Phase::Idle => text(t(lang, "play-status-idle")).size(BOTTOM_SIZE).into(),
-        };
-
-        // Link-code field:
-        //   * Lobby — hide entirely (the code is in the status
-        //     line, no point editing it).
-        //   * Connecting / Negotiating — show but read-only
-        //     (omitting on_input disables the field in iced).
-        //   * Idle / Failed — fully editable. The dice button
-        //     fills it with a fresh random handle.
-        let link_field = |interactive: bool| {
-            let mut ti = text_input(&t(lang, "play-link-code"), &self.link_code)
-                .size(BOTTOM_SIZE)
+        // Link-code input fills all the slack between the dice
+        // button on its right and the row's left edge.
+        let link_input: Element<'a, Message> = text_input(&t(lang, "play-link-code"), &self.link_code)
+            .on_input(Message::LinkCodeChanged)
+            .on_submit(Message::FightPressed)
+            .size(BOTTOM_SIZE)
+            .padding(BOTTOM_PAD)
+            .width(Length::Fill)
+            .style(widgets::chunky_text_input)
+            .into();
+        let dice_button: Element<'a, Message> = iced::widget::tooltip(
+            iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
                 .padding(BOTTOM_PAD)
-                .width(Length::Fixed(260.0))
-                .style(widgets::chunky_text_input);
-            if interactive {
-                ti = ti.on_input(Message::LinkCodeChanged).on_submit(Message::PlayPressed);
-            }
-            ti
-        };
-        let dice_button = || -> Element<'a, Message> {
-            iced::widget::tooltip(
-                iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
-                    .padding(BOTTOM_PAD)
-                    .style(widgets::neutral)
-                    .on_press(Message::LinkCodeRandom),
-                container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))
-                    .padding(6)
-                    .style(|theme: &iced::Theme| {
-                        let p = theme.extended_palette();
-                        iced::widget::container::Style {
-                            background: Some(iced::Background::Color(p.background.strong.color)),
-                            text_color: Some(p.background.strong.text),
-                            border: iced::Border {
-                                radius: 4.0.into(),
-                                ..Default::default()
-                            },
+                .style(widgets::neutral)
+                .on_press(Message::LinkCodeRandom),
+            container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
                             ..Default::default()
-                        }
-                    }),
-                iced::widget::tooltip::Position::Top,
-            )
-            .gap(4)
-            .into()
-        };
-        let (link_input, shuffle_button): (Option<Element<'a, Message>>, Option<Element<'a, Message>>) = match netplay {
-            Phase::Lobby { .. } => (None, None),
-            Phase::Connecting { .. } | Phase::Negotiating { .. } => (Some(link_field(false).into()), None),
-            _ => (Some(link_field(true).into()), Some(dice_button())),
-        };
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into();
 
-        let mut row = row![].spacing(10).align_y(Alignment::Center).padding([10, 16]);
-        if let Some(input) = link_input {
-            row = row.push(input);
-        }
-        if let Some(shuffle) = shuffle_button {
-            row = row.push(shuffle);
-        }
-        row = row.push(play_button).push(horizontal_space()).push(status);
-
-        container(row).width(Fill).style(widgets::hud_bar).into()
+        container(
+            row![link_input, dice_button, fight_button]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .padding([10, 16]),
+        )
+        .width(Fill)
+        .style(widgets::hud_bar)
+        .into()
     }
 }
 
@@ -1325,12 +1254,20 @@ fn lobby_view<'a>(
             .iter()
             .find(|o| o.mode == lobby.match_type.0 && o.subtype == lobby.match_type.1)
             .cloned();
+        // In Phase::Failed the dropdown's on_change reroutes
+        // to Noop so picks are inert without touching layout.
+        let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
+        let on_change: fn((u8, u8)) -> Message = if failed {
+            |_| Message::Noop
+        } else {
+            Message::NetplaySetMatchType
+        };
         if options.is_empty() {
             text(t(lang, "lobby-no-match-types"))
                 .style(save_view::muted_text_style)
                 .into()
         } else {
-            pick_list(options, selected, |o| Message::NetplaySetMatchType((o.mode, o.subtype)))
+            pick_list(options, selected, move |o| on_change((o.mode, o.subtype)))
                 .padding(STANDARD_PADDING)
                 .style(crate::widgets::chunky_pick_list)
                 .into()
@@ -1345,20 +1282,33 @@ fn lobby_view<'a>(
         .into()
     };
 
+    let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
+
     // Input delay slider — legacy app caps at 10 frames. Each
     // increment is one full GBA frame (~16.7 ms one-way) of
-    // smoothing for jittery connections.
-    let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, Message::NetplaySetInputDelay)
-        .width(Length::Fixed(160.0));
+    // smoothing for jittery connections. Reroute through Noop
+    // when Failed so dragging it doesn't do anything.
+    let slider_on_change: fn(u8) -> Message = if failed {
+        |_| Message::Noop
+    } else {
+        Message::NetplaySetInputDelay
+    };
+    let id_slider =
+        iced::widget::slider(2..=10u8, lobby.input_delay, slider_on_change).width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
-    // gives us a latency reading.
-    let suggest_msg = lobby.latency.map(|rtt| {
-        let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-        let d = (one_way_frames + 1 - 2).clamp(2, 10) as u8;
-        Message::NetplaySetInputDelay(d)
-    });
+    // gives us a latency reading — and unconditionally disabled
+    // in Failed phase.
+    let suggest_msg = if failed {
+        None
+    } else {
+        lobby.latency.map(|rtt| {
+            let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
+            let d = (one_way_frames + 1 - 2).clamp(2, 10) as u8;
+            Message::NetplaySetInputDelay(d)
+        })
+    };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,
         t(lang, "lobby-input-delay-suggest"),
@@ -1432,14 +1382,19 @@ fn lobby_view<'a>(
         .into(),
     );
 
+    let reveal_toggle = if failed {
+        None
+    } else {
+        Some(Message::NetplaySetRevealSetup as fn(bool) -> Message)
+    };
     let reveal_row = setting_row(
         text(t(lang, "lobby-reveal-mine"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
         row![
-            iced::widget::checkbox(lobby.reveal_setup, )
-                .on_toggle(Message::NetplaySetRevealSetup)
+            iced::widget::checkbox(lobby.reveal_setup)
+                .on_toggle_maybe(reveal_toggle)
                 .size(TEXT_HEADING)
                 .style(widgets::chunky_checkbox),
             text(reveal_label).size(TEXT_CAPTION).style(reveal_style),
@@ -1456,9 +1411,33 @@ fn lobby_view<'a>(
     // connection progress so the user has something to read
     // through the handshake. Once we're in Lobby with both
     // sides' settings on hand, it switches to the compat
-    // verdict and gates the Ready button.
+    // verdict and gates the Ready button. Failed = sticky
+    // banner with the cause, dismissed by the Cancel button in
+    // the header.
     use crate::netplay::Phase;
     let (verdict_line, compat_ok): (Element<'a, Message>, bool) = match phase {
+        Phase::Failed { error } => {
+            // Route the netplay error tag through Fluent so each
+            // failure mode can carry its own translated copy.
+            // Anything we don't have a dedicated key for falls
+            // back to the generic "Connection failed: <raw>".
+            let key = match error.as_str() {
+                "peer-disconnected" => "play-status-peer-disconnected",
+                _ => "play-status-failed",
+            };
+            let label = if key == "play-status-failed" {
+                format!("{}: {error}", t(lang, "play-status-failed"))
+            } else {
+                t(lang, key)
+            };
+            (
+                text(label)
+                    .size(TEXT_BODY)
+                    .style(save_view::danger_text_style)
+                    .into(),
+                false,
+            )
+        }
         Phase::Connecting {
             waiting_for_opponent: false,
             ..
@@ -1558,6 +1537,14 @@ fn lobby_view<'a>(
                 ReadyPalette::Idle,
             )
         };
+    // Failed lobby: the only action is to dismiss via Cancel.
+    // Force the Ready button off regardless of how the
+    // pre-failure state looked.
+    let ready_msg = if matches!(phase, Phase::Failed { .. }) {
+        None
+    } else {
+        ready_msg
+    };
     let ready_button: Element<'a, Message> = {
         let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
             .spacing(8)
@@ -1738,6 +1725,14 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
             crate::widgets::neutral(theme, status)
         }
         ReadyPalette::Idle => {
+            // Disabled state defers to the standard neutral
+            // button so it reads as a plainly-greyed-out button
+            // — the dim-primary-fill version this used to
+            // render looked like a corrupted variant of the
+            // lit-up state rather than a disabled affordance.
+            if matches!(status, button::Status::Disabled) {
+                return crate::widgets::neutral(theme, status);
+            }
             // Inline expansion of the battle-button kernel with
             // every dial cranked: bigger glow, brighter top stop,
             // 2 px border so the button reads as a console
@@ -1759,10 +1754,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
                     2.0,
                     14.0,
                 ),
-                button::Status::Disabled => {
-                    let dim = mix(primary, iced::Color::BLACK, 0.55);
-                    (dim, mix(dim, iced::Color::BLACK, 0.15), 0.0, 0.0, 0.0)
-                }
+                button::Status::Disabled => unreachable!("handled above"),
                 button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
             };
             button::Style {

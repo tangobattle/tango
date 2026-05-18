@@ -296,72 +296,71 @@ fn tab_button_inner<'a, M: Clone + 'a>(
         }
         content = content.push(lbl);
     }
-    // Active tab = solid primary pill with white text + a real
-    // glow shadow underneath, so it reads as a lit-up console
-    // button rather than a subtle underline. Inactive tabs are
-    // transparent and brighten on hover with a faint primary
-    // wash.
     let padding = if large { [8.0, 18.0] } else { [6.0, 14.0] };
-    button(content)
-        .padding(padding)
-        .style(move |theme: &Theme, status: button::Status| {
-            let p = theme.extended_palette();
-            let primary = theme.palette().primary;
-            let (bg, text_color, glow_alpha, blur) = if active {
-                let lighter = mix(primary, iced::Color::WHITE, 0.22);
-                let darker = mix(primary, iced::Color::BLACK, 0.18);
-                let grad = iced::Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(0.0)
-                        .add_stop(0.0, lighter)
-                        .add_stop(1.0, darker),
-                ));
-                let (g, b) = if matches!(status, button::Status::Hovered) {
-                    (0.85, 22.0)
-                } else {
-                    (0.65, 18.0)
-                };
-                (Some(grad), iced::Color::WHITE, g, b)
+    button(content).padding(padding).style(pill_tab_style(active)).on_press(msg).into()
+}
+
+/// Shared "pill tab" button style — used by the global top nav,
+/// save_view's sub-tab strip, and the settings sidebar so every
+/// tab affordance in the app reads as the same widget family.
+///
+/// Active tabs render as a solid primary-gradient pill with
+/// white text and a glow shadow underneath; inactive tabs are
+/// transparent at rest and brighten on hover with a faint
+/// primary wash. The caller controls the layout (icon + label,
+/// label-only, full-width vertical, etc.) — this fn only owns
+/// the visual style.
+pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme: &Theme, status: button::Status| {
+        let p = theme.extended_palette();
+        let primary = theme.palette().primary;
+        let (bg, text_color, glow_alpha, blur) = if active {
+            let lighter = mix(primary, iced::Color::WHITE, 0.22);
+            let darker = mix(primary, iced::Color::BLACK, 0.18);
+            let grad = iced::Background::Gradient(iced::Gradient::Linear(
+                iced::gradient::Linear::new(0.0)
+                    .add_stop(0.0, lighter)
+                    .add_stop(1.0, darker),
+            ));
+            let (g, b) = if matches!(status, button::Status::Hovered) {
+                (0.85, 22.0)
             } else {
-                let hover = matches!(status, button::Status::Hovered);
-                let bg = if hover {
-                    Some(iced::Background::Color(iced::Color {
-                        a: 0.18,
-                        ..primary
-                    }))
-                } else {
-                    None
-                };
-                let text_color = if hover {
-                    mix(theme.palette().text, primary, 0.45)
-                } else {
-                    // Slightly muted so the active tab pops harder
-                    // against its siblings.
-                    mix(theme.palette().text, p.background.base.color, 0.18)
-                };
-                let glow = if hover { 0.25 } else { 0.0 };
-                (bg, text_color, glow, 10.0)
+                (0.65, 18.0)
             };
-            button::Style {
-                background: bg,
-                text_color,
-                border: iced::Border {
-                    radius: 999.0.into(),
-                    width: 0.0,
-                    color: iced::Color::TRANSPARENT,
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color {
-                        a: glow_alpha,
-                        ..primary
-                    },
-                    offset: iced::Vector::new(0.0, 3.0),
-                    blur_radius: blur,
-                },
-                snap: false,
-            }
-        })
-        .on_press(msg)
-        .into()
+            (Some(grad), iced::Color::WHITE, g, b)
+        } else {
+            let hover = matches!(status, button::Status::Hovered);
+            let bg = if hover {
+                Some(iced::Background::Color(iced::Color { a: 0.18, ..primary }))
+            } else {
+                None
+            };
+            let text_color = if hover {
+                mix(theme.palette().text, primary, 0.45)
+            } else {
+                // Slightly muted so the active tab pops harder
+                // against its siblings.
+                mix(theme.palette().text, p.background.base.color, 0.18)
+            };
+            let glow = if hover { 0.25 } else { 0.0 };
+            (bg, text_color, glow, 10.0)
+        };
+        button::Style {
+            background: bg,
+            text_color,
+            border: iced::Border {
+                radius: 999.0.into(),
+                width: 0.0,
+                color: iced::Color::TRANSPARENT,
+            },
+            shadow: iced::Shadow {
+                color: iced::Color { a: glow_alpha, ..primary },
+                offset: iced::Vector::new(0.0, 3.0),
+                blur_radius: blur,
+            },
+            snap: false,
+        }
+    }
 }
 
 fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
