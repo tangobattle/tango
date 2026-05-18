@@ -226,6 +226,8 @@ input-key-speed-up = 早送り
 settings-theme = テーマ
 settings-matchmaking-endpoint = マッチメイキングエンドポイント
 settings-patch-repo = パッチリポジトリ
+settings-enable-patch-autoupdate = パッチを自動更新する
+settings-video-filter = ビデオフィルター
 settings-version = バージョン
 settings-about-blurb = tango-ng — Tango UI の iced 試作版。機能はまだ揃っていません。
 

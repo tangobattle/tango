@@ -23,6 +23,10 @@ fn default_patch_repo() -> String {
     DEFAULT_PATCH_REPO.to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_language() -> unic_langid::LanguageIdentifier {
     crate::i18n::FALLBACK_LANG
 }
@@ -68,6 +72,19 @@ pub struct Config {
     pub data_path: std::path::PathBuf,
     pub matchmaking_endpoint: String,
     pub patch_repo: String,
+    /// When `true`, the patch autoupdater (`patch::Autoupdater`)
+    /// runs in the background and refreshes the local patch
+    /// directory every 15 minutes. Defaults to true; off
+    /// disables the background loop but leaves the Update button
+    /// in the Patches tab working.
+    #[serde(default = "default_true")]
+    pub enable_patch_autoupdate: bool,
+    /// Upscaler applied to each emulator frame before it's
+    /// uploaded to the GPU. Empty / "null" = nearest-neighbor
+    /// (default). Other values: "hq2x", "hq3x", "hq4x", "mmpx".
+    /// See `video::filter_by_name`.
+    #[serde(default)]
+    pub video_filter: String,
 
     pub last_game: Option<(String, u8)>,
     pub last_save: Option<std::path::PathBuf>,
@@ -96,6 +113,8 @@ impl Default for Config {
             data_path,
             matchmaking_endpoint: default_matchmaking_endpoint(),
             patch_repo: default_patch_repo(),
+            enable_patch_autoupdate: true,
+            video_filter: String::new(),
             last_game: None,
             last_save: None,
             last_patch: None,

@@ -44,6 +44,8 @@ pub enum Message {
     ToggleStreamerMode(bool),
     MatchmakingEndpointChanged(String),
     PatchRepoChanged(String),
+    TogglePatchAutoupdate(bool),
+    VideoFilterChanged(String),
     ThemeChanged(config::ThemeMode),
     /// User clicked "Add binding" for `k`. The next key/button
     /// event captured by the settings subscription is appended.
@@ -76,6 +78,8 @@ pub enum ConfigChange {
     StreamerMode(bool),
     MatchmakingEndpoint(String),
     PatchRepo(String),
+    PatchAutoupdate(bool),
+    VideoFilter(String),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
     RemoveInputBinding(input::MappedKey, usize),
@@ -97,6 +101,8 @@ impl State {
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
+            Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
+            Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
             Message::BindingCaptureStart(k) => {
                 self.capture_target = Some(k);
@@ -279,6 +285,25 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .on_toggle(Message::ToggleStreamerMode)
             ,
         labeled::<Message>(
+            t(lang, "settings-video-filter"),
+            {
+                // Picklist values are tuples (config key, display).
+                // iced's pick_list wants `Display`-able items, so
+                // wrap in `VideoFilterChoice`.
+                let options: Vec<VideoFilterChoice> = crate::video::FILTERS
+                    .iter()
+                    .map(|(k, d)| VideoFilterChoice { key: (*k).into(), display: (*d).into() })
+                    .collect();
+                let selected = options
+                    .iter()
+                    .find(|c| c.key == config.video_filter)
+                    .cloned();
+                pick_list(options, selected, |c: VideoFilterChoice| Message::VideoFilterChanged(c.key))
+                    .padding(STANDARD_PADDING)
+                    .width(Fill)
+            },
+        ),
+        labeled::<Message>(
             t(lang, "settings-data-path"),
             text(config.data_path.display().to_string()).size(TEXT_CAPTION),
         ),
@@ -287,22 +312,39 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
     .into()
 }
 
+/// Pick-list adapter for the video filter choice. `key` is the
+/// `config.video_filter` value (`""`, `"hq2x"`, …) and `display`
+/// is the human-readable label the dropdown shows.
+#[derive(Clone, PartialEq, Eq)]
+struct VideoFilterChoice {
+    key: String,
+    display: String,
+}
+impl std::fmt::Display for VideoFilterChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.display)
+    }
+}
+
 fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         labeled::<Message>(
             t(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
-                
+
                 .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
             t(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
-                
+
                 .padding(STANDARD_PADDING),
         ),
+        iced::widget::checkbox(config.enable_patch_autoupdate)
+            .label(t(lang, "settings-enable-patch-autoupdate"))
+            .on_toggle(Message::TogglePatchAutoupdate),
     ]
     .spacing(14)
     .into()

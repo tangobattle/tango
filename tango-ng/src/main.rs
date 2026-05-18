@@ -25,6 +25,7 @@ mod session;
 mod singleplayer_session;
 mod stats;
 mod tabs;
+mod video;
 mod widgets;
 
 use session::ActiveSession;
@@ -73,7 +74,23 @@ use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
 use unic_langid::LanguageIdentifier;
 
-pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[unic_langid::langid!("en-US"), unic_langid::langid!("ja-JP")];
+pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
+    // Same lineup legacy ships. Strings the non-en locales
+    // don't translate (tango-ng-specific keys like crash-*,
+    // tab-*, replays-incomplete, etc.) fall back to en-US via
+    // the fluent_templates static_loader's fallback_language.
+    unic_langid::langid!("en-US"),
+    unic_langid::langid!("ja-JP"),
+    unic_langid::langid!("zh-CN"),
+    unic_langid::langid!("zh-TW"),
+    unic_langid::langid!("de-DE"),
+    unic_langid::langid!("es-419"),
+    unic_langid::langid!("fr-FR"),
+    unic_langid::langid!("nl-NL"),
+    unic_langid::langid!("pt-BR"),
+    unic_langid::langid!("ru-RU"),
+    unic_langid::langid!("vi-VN"),
+];
 
 // Button sizing constants — three tiers that everything else maps onto.
 // `NAV` for the top-level nav strip; `PRIMARY` for the single big
@@ -132,6 +149,23 @@ const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../../tango/fonts/NotoEmoji-Regul
 /// happen to be running.
 const TANGO_NG_CHILD_ENV_VAR: &str = "TANGO_NG_CHILD";
 
+/// CLI shape — matches legacy `tango/src/main.rs::Args` so
+/// Discord deep-links and the `tango Join <code>` command-line
+/// invocation behave the same way.
+#[derive(clap::Parser, Debug, Clone)]
+struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+enum Command {
+    /// Jump straight to the Play tab with the given netplay link
+    /// code pre-filled. Used by `tango://join/<code>` style URI
+    /// handlers + Discord "Join Game" intents.
+    Join { link_code: String },
+}
+
 pub fn main() {
     if std::env::var(TANGO_NG_CHILD_ENV_VAR).as_deref() == Ok("1") {
         // Child process — the actual UI. Stderr is captured by
@@ -143,6 +177,11 @@ pub fn main() {
         }
         return;
     }
+    // Parse CLI in the supervisor so `--help` / bad args fail
+    // fast without spawning a child. The parsed value is
+    // re-derived in the child via `std::env::args` so we don't
+    // have to serialize it through the supervisor boundary.
+    let _args = <Args as clap::Parser>::parse();
     // Parent / supervisor — set up the log file, spawn the
     // child, and surface an rfd dialog on non-zero child exit.
     match supervisor_main() {
@@ -218,8 +257,23 @@ fn supervisor_main() -> anyhow::Result<i32> {
     Ok(status.code().unwrap_or(0))
 }
 
+/// Initial link code parsed from CLI args, stashed in a global
+/// so `App::new` (which iced calls with no arguments) can pick
+/// it up. Set once at startup; cleared after the first read so
+/// re-runs don't replay the same code.
+static INIT_LINK_CODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
 fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // Re-parse the CLI in the child (the supervisor doesn't pass
+    // it through). Bad args here would have failed in the
+    // supervisor already, so unwrap is fine.
+    let args = <Args as clap::Parser>::parse();
+    let init_link_code = args.command.and_then(|c| match c {
+        Command::Join { link_code } => Some(link_code),
+    });
+    let _ = INIT_LINK_CODE.set(init_link_code);
     // Route mgba's global default logger through `c_log` too — without
     // this, the prefetcher's bare Core falls through to mgba's printf
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
@@ -335,7 +389,7 @@ struct App {
     session_started_at: Option<std::time::SystemTime>,
     /// Background loop that pulls the patch repo every 15 min
     /// and refreshes the patches scanner in place.
-    _patch_autoupdater: patch::Autoupdater,
+    patch_autoupdater: patch::Autoupdater,
 }
 
 impl App {
@@ -418,11 +472,23 @@ impl App {
             config.patch_repo.clone(),
             scanners.patches.clone(),
         );
-        patch_autoupdater.start();
+        if config.enable_patch_autoupdate {
+            patch_autoupdater.start();
+        }
+
+        // CLI `Join <code>` (or Discord deep-link routed through
+        // the same channel) lands here — prefill the link code
+        // and start on the Play tab so the user can hit Fight.
+        let init_link_code = INIT_LINK_CODE.get().and_then(|c| c.clone());
+        let mut starting_tab = Tab::default();
+        if let Some(code) = &init_link_code {
+            play.link_code = code.clone();
+            starting_tab = Tab::Play;
+        }
 
         let mut app = Self {
             config,
-            tab: Tab::default(),
+            tab: starting_tab,
             welcome,
             settings: tabs::settings::State::default(),
             scanners,
@@ -436,7 +502,7 @@ impl App {
             netplay: netplay::State::new(),
             discord: discord::Client::new(),
             session_started_at: None,
-            _patch_autoupdater: patch_autoupdater,
+            patch_autoupdater: patch_autoupdater,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -733,6 +799,14 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
+            Message::Session(session::Message::OpenSettings) => {
+                // PvP status-bar Settings icon. Switch tabs first
+                // (so we land on Settings after the close), then
+                // recurse via Close so all the normal teardown
+                // (replay rescan, etc.) runs.
+                self.tab = Tab::Settings;
+                return self.update(Message::Session(session::Message::Close));
+            }
             Message::Session(m) => {
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
@@ -749,7 +823,10 @@ impl App {
                 // tab without a manual rescan.
                 let pvp_closing =
                     matches!(m, session::Message::Close) && matches!(self.session.active, Some(ActiveSession::PvP(_)));
-                let task = self.session.update(m, &self.config.input_mapping).map(Message::Session);
+                let task = self
+                    .session
+                    .update(m, &self.config.input_mapping, &self.config.video_filter)
+                    .map(Message::Session);
                 if sp_closing {
                     let saves_path = self.config.saves_path();
                     self.scanners.saves.rescan(|| Some(save::scan_saves(&saves_path)));
@@ -1334,6 +1411,15 @@ impl App {
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::PatchRepo(s) => self.config.patch_repo = s,
+            C::PatchAutoupdate(b) => {
+                self.config.enable_patch_autoupdate = b;
+                if b {
+                    self.patch_autoupdater.start();
+                } else {
+                    self.patch_autoupdater.stop();
+                }
+            }
+            C::VideoFilter(s) => self.config.video_filter = s,
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);

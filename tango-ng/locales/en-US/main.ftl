@@ -229,6 +229,8 @@ input-key-speed-up = Fast-forward
 settings-theme = Theme
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-patch-repo = Patches repository
+settings-enable-patch-autoupdate = Automatically update patches in the background
+settings-video-filter = Video filter
 settings-version = Version
 settings-about-blurb = tango-ng — an iced prototype of the Tango UI. Not feature-complete.
 

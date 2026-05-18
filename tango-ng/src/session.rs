@@ -153,6 +153,11 @@ pub enum Message {
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …). PvP-only.
     OpponentSaveViewAction(save_view::Action),
+    /// PvP-only: status-bar Settings icon. The App intercepts
+    /// this, switches to the Settings tab, and tears the match
+    /// down (since the session-view replaces the main body when
+    /// active). Replaces the legacy in-game pause menu.
+    OpenSettings,
 }
 
 /// Atomic input event we feed to the mapping resolver. Carries
@@ -185,6 +190,7 @@ impl State {
         &mut self,
         msg: Message,
         mapping: &crate::input::Mapping,
+        video_filter: &str,
     ) -> iced::Task<Message> {
         match msg {
             Message::Tick => {
@@ -204,11 +210,22 @@ impl State {
                         return iced::Task::none();
                     }
                     let pixels = session.snapshot_vbuf();
-                    self.frame = Some(iced::widget::image::Handle::from_rgba(
-                        replay_session::SCREEN_WIDTH,
-                        replay_session::SCREEN_HEIGHT,
-                        pixels,
-                    ));
+                    let src_w = replay_session::SCREEN_WIDTH as usize;
+                    let src_h = replay_session::SCREEN_HEIGHT as usize;
+                    // Run the upscale filter selected in
+                    // settings, if any. Bad / empty name falls
+                    // back to NullFilter (pass-through).
+                    let filter = crate::video::filter_by_name(video_filter)
+                        .unwrap_or_else(|| Box::new(crate::video::NullFilter));
+                    let [out_w, out_h] = filter.output_size([src_w, src_h]);
+                    let (w, h, buf) = if [out_w, out_h] == [src_w, src_h] {
+                        (src_w as u32, src_h as u32, pixels)
+                    } else {
+                        let mut dst = vec![0u8; out_w * out_h * 4];
+                        filter.apply(&pixels, &mut dst, [src_w, src_h]);
+                        (out_w as u32, out_h as u32, dst)
+                    };
+                    self.frame = Some(iced::widget::image::Handle::from_rgba(w, h, buf));
                     self.frame_counter = self.frame_counter.wrapping_add(1);
                     self.displayed_frame_id = fid;
                 }
@@ -284,6 +301,12 @@ impl State {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
                     s.opponent_save_view.apply(&action);
                 }
+            }
+            Message::OpenSettings => {
+                // App intercepts this variant before delegating
+                // here; if we hit it the session is still active
+                // and the dispatcher just hasn't drained yet. No
+                // local state to touch.
             }
         }
         iced::Task::none()
@@ -530,6 +553,16 @@ pub fn view<'a>(
                 .font(iced::Font::MONOSPACE)
                 .style(save_view::muted_text_style),
         );
+        // Replaces the legacy in-game pause menu — opens the
+        // Settings tab. App tears the match down when it sees
+        // this message (the session view replaces the main body
+        // while active, so we can't show settings in place).
+        metrics = metrics.push(crate::widgets::icon_button(
+            lucide_icons::Icon::Settings,
+            t(lang, "tab-settings"),
+            Message::OpenSettings,
+            STANDARD_PADDING,
+        ));
         controls = controls.push(metrics);
     }
     if let Some(toggle) = opponent_toggle {
