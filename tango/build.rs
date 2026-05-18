@@ -5,8 +5,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if target_os == "windows" {
         // Embed the Windows resource (icon + VERSIONINFO) into
-        // the exe. Skip silently if the .rc isn't there so
-        // non-release / source-only builds don't need it.
+        // the exe. `resource.rc` + `icon.ico` are produced by
+        // the mako generator at release time and aren't
+        // checked in, so missing-file = "skip silently" for
+        // local source builds.
         match std::fs::metadata("resource.rc") {
             Ok(_) => {
                 embed_resource::compile("resource.rc");
