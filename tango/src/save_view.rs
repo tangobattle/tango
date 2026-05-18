@@ -1,6 +1,6 @@
+use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
 use crate::i18n::t;
 use crate::selection::Loaded;
-use crate::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
 use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip

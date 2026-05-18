@@ -1,9 +1,8 @@
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use crate::i18n::{t, t_args};
 use crate::widgets;
+use crate::{config, replays, save_view};
 use lucide_icons::Icon;
-use crate::{
-    config, replays, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING,
-};
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};

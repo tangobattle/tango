@@ -32,17 +32,7 @@ mod widgets;
 mod app;
 mod theme;
 
-// Public surface re-exported so the rest of the codebase keeps
-// reaching for `crate::FOO` regardless of which submodule
-// actually owns the item. Splitting these by concern keeps the
-// definitions near the code that uses them; the re-exports just
-// preserve the historical API.
-pub use app::{
-    App, Message, Scanners, Tab, BAR_CONTROL_HEIGHT, NAV_PADDING, NAV_TEXT_SIZE, PRIMARY_PADDING, STANDARD_PADDING,
-    TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE,
-};
-pub use i18n::SUPPORTED_LANGS;
-pub use theme::{theme_for, TANGO_GREEN};
+use app::App;
 
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the
@@ -263,7 +253,7 @@ fn run_app() -> iced::Result {
         // Same constant the typographic scale + every markdown
         // Settings::with_text_size call uses, so the body text
         // size is in one place.
-        default_text_size: iced::Pixels(TEXT_BODY),
+        default_text_size: iced::Pixels(app::TEXT_BODY),
         vsync: false,
         ..iced::Settings::default()
     };

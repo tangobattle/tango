@@ -180,7 +180,7 @@ impl Loaded {
     /// the local rom + patch from the scanners cache; returns Err
     /// if anything's missing.
     pub fn for_replay_local(
-        scanners: &crate::Scanners,
+        scanners: &crate::app::Scanners,
         config: &crate::config::Config,
         replay: &tango_pvp::replay::Replay,
     ) -> anyhow::Result<Self> {

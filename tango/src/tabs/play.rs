@@ -1,9 +1,9 @@
+use crate::app::{
+    Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE,
+};
 use crate::i18n::{t, t_args};
 use crate::widgets;
-use crate::{
-    config, game, rom, save_view, selection, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY,
-    TEXT_HEADING, TEXT_TITLE,
-};
+use crate::{config, game, rom, save_view, selection};
 use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
@@ -918,7 +918,7 @@ impl PlayState {
             .align_y(Alignment::Center);
             let mut btn = iced::widget::button(label)
                 .padding(BOTTOM_CTA_PAD)
-                .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+                .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
             if !link_code_empty {
                 btn = btn.on_press(Message::FightPressed);
@@ -939,13 +939,13 @@ impl PlayState {
                 .width(Length::Fill)
                 .style(widgets::chunky_text_input),
         )
-        .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+        .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
         .width(Length::Fill)
         .into();
         let dice_button: Element<'a, Message> = iced::widget::tooltip(
             iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
                 .padding(BOTTOM_PAD)
-                .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+                .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(Message::LinkCodeRandom),
             container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))

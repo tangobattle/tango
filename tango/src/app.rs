@@ -14,9 +14,10 @@
 //! between based on `self.tab`.
 
 use crate::session::ActiveSession;
+use crate::theme::theme_for;
 use crate::{
     audio, config, discord, game, i18n, input, net, netplay, patch, pvp_session, replays, rom, save, selection,
-    session, tabs, theme_for, updater, widgets, INIT_LINK_CODE,
+    session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
 use iced::widget::space::horizontal as horizontal_space;
@@ -27,14 +28,11 @@ use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
 use unic_langid::LanguageIdentifier;
 
-// Button sizing constants — three tiers that everything else maps onto.
-// `NAV` for the top-level nav strip; `PRIMARY` for the single big
-// call-to-action (Play). Standard body text comes from iced's
-// `default_text_size` (set in `run_app`), so there's no standalone
-// STANDARD_TEXT_SIZE constant — widgets that don't pass an
-// explicit size inherit the app default.
-pub const NAV_TEXT_SIZE: f32 = 14.0;
-pub const NAV_PADDING: [f32; 2] = [8.0, 16.0];
+// Button sizing constants. `PRIMARY` is the big call-to-action
+// (Play); `STANDARD` is everything else. Standard body text comes
+// from iced's `default_text_size` (set in `run_app`), so there's
+// no standalone STANDARD_TEXT_SIZE constant — widgets that don't
+// pass an explicit size inherit the app default.
 pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 

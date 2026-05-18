@@ -1,7 +1,8 @@
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
+use crate::{game, save_view};
 use lucide_icons::Icon;
-use crate::{game, save_view, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
@@ -281,7 +282,7 @@ impl PatchesState {
             }
 
             // Markdown README, parsed and cached in self.readme_items.
-            // Pull the live Theme from `crate::theme_for(config)`
+            // Pull the live Theme from `crate::theme::theme_for(config)`
             // so link color tracks the active palette, and pin
             // the body text to the app's TEXT_BODY size (default
             // Settings::from would otherwise use 16 px and make
@@ -290,11 +291,11 @@ impl PatchesState {
             let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
                 text(t(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
             } else {
-                let theme = crate::theme_for(config);
+                let theme = crate::theme::theme_for(config);
                 let style = iced::widget::markdown::Style::from(&theme);
                 iced::widget::markdown::view(
                     &self.readme_items,
-                    iced::widget::markdown::Settings::with_text_size(crate::TEXT_BODY, style),
+                    iced::widget::markdown::Settings::with_text_size(TEXT_BODY, style),
                 )
                 .map(Message::ReadmeLinkClicked)
             };

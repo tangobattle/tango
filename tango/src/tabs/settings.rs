@@ -1,6 +1,7 @@
-use crate::i18n::t;
+use crate::app::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
+use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::widgets;
-use crate::{config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_BODY, TEXT_CAPTION};
+use crate::{config, input, save_view};
 use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
@@ -596,14 +597,14 @@ fn settings_about<'a>(
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Center);
 
-    // Pull the live Theme from the same `crate::theme_for` the
+    // Pull the live Theme from the same `crate::theme::theme_for` the
     // App's theme callback uses — keeps link color in sync with
     // the rest of the app instead of pinning to DARK + TANGO_GREEN
     // by hand. `Settings::from(&Theme)` defaults to text-size 16,
     // so wrap to also pin the app's body text size.
-    let theme = crate::theme_for(config);
+    let theme = crate::theme::theme_for(config);
     let style = markdown::Style::from(&theme);
-    let settings = markdown::Settings::with_text_size(crate::TEXT_BODY, style);
+    let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
     column![emblem, body, updater_section(lang, updater_status)]

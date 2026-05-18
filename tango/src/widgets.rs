@@ -6,6 +6,7 @@
 //! come straight from the `lucide-icons` crate — call sites pass
 //! `Icon::Foo` directly.
 
+use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::{button, container, row, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
@@ -219,7 +220,7 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     }
     tooltip(
         btn,
-        container(text(label).size(crate::TEXT_CAPTION))
+        container(text(label).size(TEXT_CAPTION))
             .padding(6)
             .style(tooltip_chrome),
         tooltip::Position::Bottom,
@@ -269,7 +270,7 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     let stacked = tab_button_inner(icon, None, msg, active, true);
     tooltip(
         stacked,
-        container(text(tooltip_label).size(crate::TEXT_CAPTION))
+        container(text(tooltip_label).size(TEXT_CAPTION))
             .padding(6)
             .style(tooltip_chrome),
         tooltip::Position::Bottom,
@@ -285,7 +286,7 @@ fn tab_button_inner<'a, M: Clone + 'a>(
     active: bool,
     large: bool,
 ) -> Element<'a, M> {
-    let icon_size = if large { crate::TEXT_HEADING } else { crate::TEXT_BODY };
+    let icon_size = if large { TEXT_HEADING } else { TEXT_BODY };
     let mut content = row![icon.widget().size(icon_size)]
         .spacing(8)
         .align_y(Alignment::Center);
@@ -296,7 +297,7 @@ fn tab_button_inner<'a, M: Clone + 'a>(
         // tab's height.
         let mut lbl = text(label).wrapping(iced::widget::text::Wrapping::None);
         if large {
-            lbl = lbl.size(crate::TEXT_HEADING);
+            lbl = lbl.size(TEXT_HEADING);
         }
         content = content.push(lbl);
     }

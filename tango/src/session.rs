@@ -19,7 +19,8 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::{game, Scanners, TEXT_CAPTION};
+use crate::app::{Scanners, TEXT_CAPTION};
+use crate::game;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, text};
 use iced::{Alignment, Element, Fill, Length};
@@ -481,7 +482,7 @@ pub fn view<'a>(
         iced::widget::tooltip(
             iced::widget::button(icon.widget().size(CTRL_ICON))
                 .padding(CTRL_PAD)
-                .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+                .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(msg),
             iced::widget::container(text(label).size(TEXT_CAPTION))
@@ -590,7 +591,7 @@ pub fn view<'a>(
                     .text_size(15.0)
                     .style(crate::widgets::chunky_pick_list),
             )
-            .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT)),
+            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT)),
             iced::widget::container(text(t(lang, "playback-speed")).size(TEXT_CAPTION))
                 .padding(6)
                 .style(|theme: &iced::Theme| {
@@ -640,8 +641,8 @@ pub fn view<'a>(
                     .center(Fill),
             )
             .padding(0)
-            .width(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
-            .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+            .width(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
             .style(play_pause_style)
             .on_press(Message::TogglePlay),
             iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
