@@ -114,6 +114,12 @@ pub struct State {
     /// detect the falling/rising edge and only call set_speed
     /// when it actually flips.
     pub speed_up_engaged: bool,
+    /// In-session Settings overlay. Toggled by the Settings
+    /// icon in the status bar (`Message::OpenSettings`) and the
+    /// "back to session" button on the overlay itself
+    /// (`Message::CloseSettings`). The emulator keeps running
+    /// underneath; we just swap what `App::view` renders.
+    pub show_settings: bool,
 }
 
 impl State {
@@ -153,11 +159,13 @@ pub enum Message {
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …). PvP-only.
     OpponentSaveViewAction(save_view::Action),
-    /// PvP-only: status-bar Settings icon. The App intercepts
-    /// this, switches to the Settings tab, and tears the match
-    /// down (since the session-view replaces the main body when
-    /// active). Replaces the legacy in-game pause menu.
+    /// Show the in-session Settings overlay. The emulator keeps
+    /// running; only the visible body swaps. Replaces the
+    /// legacy in-game pause menu.
     OpenSettings,
+    /// Hide the in-session Settings overlay (the "back to
+    /// session" button on the overlay's header).
+    CloseSettings,
 }
 
 /// Atomic input event we feed to the mapping resolver. Carries
@@ -303,10 +311,10 @@ impl State {
                 }
             }
             Message::OpenSettings => {
-                // App intercepts this variant before delegating
-                // here; if we hit it the session is still active
-                // and the dispatcher just hasn't drained yet. No
-                // local state to touch.
+                self.show_settings = true;
+            }
+            Message::CloseSettings => {
+                self.show_settings = false;
             }
         }
         iced::Task::none()
@@ -553,17 +561,22 @@ pub fn view<'a>(
                 .font(iced::Font::MONOSPACE)
                 .style(save_view::muted_text_style),
         );
-        // Replaces the legacy in-game pause menu — opens the
-        // Settings tab. App tears the match down when it sees
-        // this message (the session view replaces the main body
-        // while active, so we can't show settings in place).
-        metrics = metrics.push(crate::widgets::icon_button(
+        controls = controls.push(metrics);
+    }
+    // Settings shortcut — available in any non-replay session
+    // (both PvP and single-player). Replaces the legacy in-game
+    // pause menu; the App handler intercepts `OpenSettings`,
+    // switches tabs, and tears the session down (the session
+    // view replaces the main body while active, so we can't
+    // overlay settings in place).
+    let is_sp = matches!(session, ActiveSession::SinglePlayer(_));
+    if is_pvp || is_sp {
+        controls = controls.push(crate::widgets::icon_button(
             lucide_icons::Icon::Settings,
             t(lang, "tab-settings"),
             Message::OpenSettings,
             STANDARD_PADDING,
         ));
-        controls = controls.push(metrics);
     }
     if let Some(toggle) = opponent_toggle {
         controls = controls.push(toggle);

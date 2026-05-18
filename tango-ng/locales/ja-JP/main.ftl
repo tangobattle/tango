@@ -87,6 +87,7 @@ lobby-reveal-peer-off = 相手は公開していません。
 lobby-reveal-peer-unknown = （相手の応答待ち）
 session-show-opponent = 相手を表示
 session-hide-opponent = 相手を隠す
+session-back-to-session = 対戦に戻る
 play-netplay-todo = ネットプレイは未実装です。リンクコードを空にすると一人用セッションを開始できます。
 
 # Save view sub-tabs

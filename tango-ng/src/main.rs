@@ -799,14 +799,6 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::Session(session::Message::OpenSettings) => {
-                // PvP status-bar Settings icon. Switch tabs first
-                // (so we land on Settings after the close), then
-                // recurse via Close so all the normal teardown
-                // (replay rescan, etc.) runs.
-                self.tab = Tab::Settings;
-                return self.update(Message::Session(session::Message::Close));
-            }
             Message::Session(m) => {
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
@@ -1485,6 +1477,31 @@ impl App {
         }
 
         if self.session.is_active() {
+            // In-session Settings overlay: render the same
+            // settings panel the standalone tab uses, with a
+            // "back to session" header strip. The emulator keeps
+            // running underneath; only the visible body swaps.
+            if self.session.show_settings {
+                let back = widgets::labeled_icon_button(
+                    lucide_icons::Icon::ArrowLeft,
+                    t(lang, "session-back-to-session"),
+                    Message::Session(session::Message::CloseSettings),
+                    STANDARD_PADDING,
+                    widgets::neutral,
+                );
+                let header = iced::widget::container(
+                    iced::widget::row![back, iced::widget::space::horizontal()]
+                        .padding(8)
+                        .align_y(iced::Alignment::Center),
+                )
+                .width(Fill);
+                let body = tabs::settings::view(lang, &self.config, &self.settings).map(Message::Settings);
+                return iced::widget::column![header, iced::widget::rule::horizontal(1), body]
+                    .spacing(0)
+                    .width(Fill)
+                    .height(Fill)
+                    .into();
+            }
             return session::view(lang, &self.session).map(Message::Session);
         }
 

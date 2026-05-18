@@ -87,6 +87,7 @@ lobby-reveal-peer-off = Opponent isn't revealing.
 lobby-reveal-peer-unknown = (waiting on opponent)
 session-show-opponent = Show opponent
 session-hide-opponent = Hide opponent
+session-back-to-session = Back to session
 play-netplay-todo = Netplay isn't wired up yet — clear the link code to start a single-player session.
 
 # Save view sub-tabs

@@ -40,6 +40,13 @@ pub struct PvpSession {
     /// side has time to write `END_OF_REPLAY` before we drop the
     /// data channel.
     peer_ended: Arc<AtomicBool>,
+    /// Peer's WebRTC connection actually closed (clean
+    /// `on_closed` or receiver returned `Err`). Distinct from
+    /// `peer_ended` (which is the in-game handshake) — this is
+    /// the "they're gone, no point waiting" signal that lets
+    /// `is_ended` skip the `PEER_END_GRACE` timeout. Set by the
+    /// network-receive task on its non-cancellation exit.
+    peer_disconnected: Arc<AtomicBool>,
     /// Wall-clock time we first observed local completion. Used
     /// as the fallback deadline for `is_ended` so a crashed peer
     /// can't pin us forever.
@@ -217,6 +224,7 @@ impl PvpSession {
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         let latency_counter = Arc::new(tokio::sync::Mutex::new(crate::net::LatencyCounter::new(5)));
         let peer_ended = Arc::new(AtomicBool::new(false));
+        let peer_disconnected = Arc::new(AtomicBool::new(false));
         let local_eom_sent = Arc::new(AtomicBool::new(false));
         let local_completed_at = Arc::new(parking_lot::Mutex::new(None::<std::time::Instant>));
         let inner_match = tango_pvp::battle::Match::new(
@@ -240,6 +248,7 @@ impl PvpSession {
             let match_handle = match_handle.clone();
             let inner_match = inner_match.clone();
             let completion_token = completion_token.clone();
+            let peer_disconnected = peer_disconnected.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
@@ -249,7 +258,14 @@ impl PvpSession {
             tokio::task::spawn(async move {
                 tokio::select! {
                     r = inner_match.run(receiver) => {
+                        // Network loop exited without our cancel
+                        // firing → peer is gone (clean
+                        // RTCPeerConnection close or transport
+                        // error). Either way no more packets will
+                        // arrive; raise the flag so `is_ended`
+                        // can short-circuit past PEER_END_GRACE.
                         log::info!("pvp match thread ending: {:?}", r);
+                        peer_disconnected.store(true, Ordering::Release);
                     }
                     _ = inner_match.cancelled() => {
                         log::info!("pvp match thread cancelled");
@@ -339,6 +355,7 @@ impl PvpSession {
             close_requested: Arc::new(AtomicBool::new(false)),
             completion_token,
             peer_ended,
+            peer_disconnected,
             local_completed_at,
             tps_counter,
             _audio_binding: audio_binding,
@@ -392,6 +409,13 @@ impl PvpSession {
             return false;
         }
         if self.peer_ended.load(Ordering::Acquire) {
+            return true;
+        }
+        // Peer's data channel closed (RTCPeerConnection drop or
+        // SCTP-level disconnect). No EndOfMatch is ever coming
+        // so skip straight to teardown without burning the
+        // grace window.
+        if self.peer_disconnected.load(Ordering::Acquire) {
             return true;
         }
         match *self.local_completed_at.lock() {

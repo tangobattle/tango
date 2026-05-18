@@ -229,14 +229,20 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config, state:
         SettingsTab::About => settings_about(lang, &state.about),
     };
 
-    row![
-        sidebar,
-        vertical_rule(1),
-        container(body).width(Fill).height(Fill).padding(20),
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
+    // About owns its own scrollable + inner padding; the outer
+    // 20 px would push the scrollbar away from the window edge,
+    // which looks off. Other tabs aren't scrollable so they
+    // still want the outer breathing room.
+    let body_wrap = if active == SettingsTab::About {
+        container(body).width(Fill).height(Fill)
+    } else {
+        container(body).width(Fill).height(Fill).padding(20)
+    };
+
+    row![sidebar, vertical_rule(1), body_wrap]
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 /// Generic over Message so the welcome screen can use it too with its
