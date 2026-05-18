@@ -625,6 +625,42 @@ impl App {
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
     /// Build the current Settings packet + dispatch SendLocalSettings
+    /// Default match-type policy:
+    ///   - Game JUST changed (or first selection in this lobby):
+    ///     pick Triple (mode=1) if the game supports it, else
+    ///     Single. This is the "default to triple" the user wants
+    ///     — keyed off `default_mt_for_game` so it only fires once
+    ///     per (lobby, game) pair.
+    ///   - Same game, current value invalid for it: same fallback
+    ///     (paranoia).
+    ///   - Same game, valid value: leave alone — sticky user pick.
+    ///
+    /// Called any time the current game or lobby state could have
+    /// changed in a way that affects the right default: on Connect
+    /// (cancel_and_renew wiped the lobby), on selection change,
+    /// and defensively inside `resend_settings_if_lobby`.
+    fn apply_default_match_type(&mut self) {
+        let Some(game) = self.play.local_game else { return };
+        let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types()).unwrap_or(&[]);
+        let game_key = {
+            let (fam, var) = game.family_and_variant();
+            (fam.to_string(), var)
+        };
+        let game_changed = self.netplay.lobby.default_mt_for_game.as_ref() != Some(&game_key);
+        let (mode, sub) = self.netplay.lobby.match_type;
+        let current_valid =
+            (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
+        if game_changed || !current_valid {
+            let new_mt = if mt_table.get(1).copied().unwrap_or(0) > 0 {
+                (1, 0) // Triple
+            } else {
+                (0, 0) // Single
+            };
+            self.netplay.lobby.match_type = new_mt;
+            self.netplay.lobby.default_mt_for_game = Some(game_key);
+        }
+    }
+
     /// — only meaningful while netplay is in Lobby phase; outside
     /// that this returns `Task::none()`. Wrapped in a helper because
     /// it has three callers: lobby entry, selection change, and
@@ -633,35 +669,7 @@ impl App {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
-        // Default match-type policy:
-        //   - Game JUST changed (or first selection in this lobby):
-        //     pick Triple (mode=1) if the game supports it, else
-        //     Single. This is the "default to triple" the user wants
-        //     — keyed off `default_mt_for_game` so it only fires once
-        //     per (lobby, game) pair.
-        //   - Same game, current value invalid for it: same fallback
-        //     (paranoia).
-        //   - Same game, valid value: leave alone — sticky user pick.
-        if let Some(game) = self.play.local_game {
-            let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types()).unwrap_or(&[]);
-            let game_key = {
-                let (fam, var) = game.family_and_variant();
-                (fam.to_string(), var)
-            };
-            let game_changed = self.netplay.lobby.default_mt_for_game.as_ref() != Some(&game_key);
-            let (mode, sub) = self.netplay.lobby.match_type;
-            let current_valid =
-                (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
-            if game_changed || !current_valid {
-                let new_mt = if mt_table.get(1).copied().unwrap_or(0) > 0 {
-                    (1, 0) // Triple
-                } else {
-                    (0, 0) // Single
-                };
-                self.netplay.lobby.match_type = new_mt;
-                self.netplay.lobby.default_mt_for_game = Some(game_key);
-            }
-        }
+        self.apply_default_match_type();
         let settings = self.make_local_settings();
         self.netplay
             .update(netplay::Message::SendLocalSettings(Box::new(settings)))
@@ -1001,6 +1009,11 @@ impl App {
             E::SelectionChanged => {
                 self.refresh_loaded();
                 self.persist_selection();
+                // Game might have just changed — if so, the lobby
+                // picker should show this game's default match
+                // type (Triple where supported) instead of the
+                // last game's pick.
+                self.apply_default_match_type();
                 iced::Task::none()
             }
             E::Rescan => {
@@ -1037,11 +1050,37 @@ impl App {
             }
             E::NetplayConnect(link_code) => {
                 let endpoint = self.config.matchmaking_endpoint.clone();
-                self.netplay
+                let task = self
+                    .netplay
                     .update(netplay::Message::Connect { link_code, endpoint })
-                    .map(Message::Netplay)
+                    .map(Message::Netplay);
+                // Connect wipes lobby state — re-apply the
+                // default-MT policy now so the picker shows the
+                // right value from the moment the waiting screen
+                // appears, instead of flickering to Triple later
+                // when the first Lobby-phase resend runs.
+                self.apply_default_match_type();
+                task
             }
-            E::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
+            E::Netplay(m) => {
+                // An explicit user pick of match type pre-Lobby
+                // would otherwise be clobbered the first time
+                // `resend_settings_if_lobby` runs in Lobby —
+                // that helper's "default to Triple" policy
+                // fires whenever `default_mt_for_game` doesn't
+                // match the current game, which is the case
+                // when the user picked their match type before
+                // any default was applied. Stamp the slot here
+                // so the policy treats the pick as already
+                // having defaulted for this game.
+                if let netplay::Message::SetMatchType(_) = &m {
+                    if let Some(g) = self.play.local_game {
+                        let (fam, var) = g.family_and_variant();
+                        self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
+                    }
+                }
+                self.netplay.update(m).map(Message::Netplay)
+            }
             E::NetplayReadyWithSave => {
                 // View-time gating disables the Ready button when
                 // no save is loaded, so this is just defense in

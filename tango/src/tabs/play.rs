@@ -1278,18 +1278,26 @@ fn lobby_view<'a>(
             _ => None,
         }
     };
-    let header_line = if let Some(d) = lobby.latency {
-        text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
-            .size(TEXT_BODY)
-            .style(save_view::muted_text_style)
+    // Streamer mode is the only path that reaches the "no
+    // latency, no link code" state (the link code is always
+    // available otherwise); skip the header line entirely
+    // there rather than reserving a slot for it.
+    let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency {
+        Some(
+            text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
+                .size(TEXT_BODY)
+                .style(save_view::muted_text_style)
+                .into(),
+        )
     } else if let Some(code) = link_code {
-        text(t_args(lang, "lobby-link-code", &[("code", code.to_string().into())]))
-            .size(TEXT_BODY)
-            .style(save_view::muted_text_style)
+        Some(
+            text(t_args(lang, "lobby-link-code", &[("code", code.to_string().into())]))
+                .size(TEXT_BODY)
+                .style(save_view::muted_text_style)
+                .into(),
+        )
     } else {
-        text(t(lang, "lobby-handshake"))
-            .size(TEXT_BODY)
-            .style(save_view::muted_text_style)
+        None
     };
 
     // Match-type pick_list — options pulled from the current
@@ -1578,9 +1586,14 @@ fn lobby_view<'a>(
     // Header row: leave on the left, latency / verdict in the
     // middle, big Ready button on the right. Single line so the
     // Ready button is unmissable and visually anchored.
+    let mut header_text_col = column![].spacing(2);
+    if let Some(hl) = header_line {
+        header_text_col = header_text_col.push(hl);
+    }
+    header_text_col = header_text_col.push(verdict_line);
     let header_row = row![
         cancel_button,
-        column![header_line, verdict_line].spacing(2),
+        header_text_col,
         horizontal_space(),
         ready_button,
     ]
