@@ -231,7 +231,10 @@ impl ReplaysState {
                     replay.clone(),
                     ExportJob { completed: 0, total: 0, result: None },
                 );
-                self.export_panel_open = false;
+                // Leave the panel open — its body switches to a
+                // progress bar (and then to the Open / Reset
+                // actions when done) so the user stays anchored
+                // to the same surface across the whole render.
                 Some(Effect::StartExport {
                     replay,
                     output,
@@ -666,25 +669,17 @@ fn replay_detail<'a>(
                     STANDARD_PADDING,
                     iced::widget::button::primary,
                 ),
-                widgets::icon_button_maybe::<Message>(
+                widgets::icon_button(
                     Icon::Clapperboard,
                     t(lang, "replays-export"),
-                    // Toggle the inline options panel. Disabled
-                    // only when THIS replay already has an in-
-                    // flight render — other replays' jobs run
-                    // concurrently and the per-replay status line
-                    // below shows progress.
-                    if state
-                        .export_jobs
-                        .get(&r.path)
-                        .map(|j| j.result.is_none())
-                        .unwrap_or(false)
-                    {
-                        None
-                    } else if state.export_panel_open {
-                        Some(Message::ExportPanelClose)
+                    // Plain toggle. The panel now stays open
+                    // across the whole render lifecycle (form →
+                    // progress bar → Open / Reset), so the only
+                    // job here is showing or hiding the surface.
+                    if state.export_panel_open {
+                        Message::ExportPanelClose
                     } else {
-                        Some(Message::ExportPanelOpen(r.path.clone()))
+                        Message::ExportPanelOpen(r.path.clone())
                     },
                     STANDARD_PADDING,
                 ),
@@ -702,9 +697,9 @@ fn replay_detail<'a>(
                 state.export_panel_open,
                 &state.export_settings,
                 &state.selected_rounds,
+                state.export_jobs.get(&r.path),
                 &r.path,
             ),
-            export_status_line(lang, &state.export_jobs, &r.path),
             text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
@@ -763,84 +758,100 @@ impl std::fmt::Display for GameFilterOption {
     }
 }
 
-/// One-line status line under the export button for the currently-
-/// detailed replay. Looks up `detail_path` in the per-replay job
-/// map; renders nothing if there's no job for it (other replays'
-/// jobs are surfaced via the sidebar spinner). In-flight shows
-/// percentage; finished shows success + Open / failure + Dismiss.
-fn export_status_line<'a>(
-    lang: &'a LanguageIdentifier,
-    jobs: &'a ExportJobs,
-    detail_path: &std::path::Path,
-) -> Element<'a, Message> {
-    let Some(job) = jobs.get(detail_path) else {
-        return Space::new().height(0).into();
-    };
-    match &job.result {
-        None => {
-            let label = if job.total > 0 {
-                let pct = (job.completed as f32 / job.total as f32 * 100.0).round() as u32;
-                format!("{}: {pct}%", t(lang, "replays-export-progress"))
-            } else {
-                t(lang, "replays-export-progress")
-            };
-            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style).into()
-        }
-        Some(Ok(path)) => row![
-            text(format!("{}: {}", t(lang, "replays-export-success"), path.display())).size(TEXT_CAPTION),
-            horizontal_space(),
-            widgets::icon_button(
-                Icon::Play,
-                t(lang, "replays-export-open"),
-                Message::OpenFile(path.clone()),
-                STANDARD_PADDING,
-            ),
-            widgets::icon_button(
-                Icon::X,
-                t(lang, "save-action-cancel"),
-                Message::ExportDismiss(detail_path.to_path_buf()),
-                STANDARD_PADDING,
-            ),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into(),
-        Some(Err(e)) => row![
-            text(format!("{}: {e}", t(lang, "replays-export-error")))
-                .size(TEXT_CAPTION)
-                .style(iced::widget::text::danger),
-            horizontal_space(),
-            widgets::icon_button(
-                Icon::X,
-                t(lang, "save-action-cancel"),
-                Message::ExportDismiss(detail_path.to_path_buf()),
-                STANDARD_PADDING,
-            ),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into(),
-    }
-}
-
-/// Inline export-options panel. Hidden by default — only appears
-/// after the user clicks Export to open it. Contains the
-/// scale / lossless / mute / round-mask controls plus the Save
-/// As… (commits) and Cancel buttons. While closed: zero-height
-/// element so the detail layout collapses around it.
+/// Inline export panel. Three-state body — the chrome (border +
+/// padding) stays put across all of them so the user remains
+/// anchored to the same surface during a render:
+///
+///   * No job: the form (scale / lossless / mute / round mask +
+///     Save As…).
+///   * In-flight job: progress bar + percentage.
+///   * Finished job: success/error line + Open Replay + Reset
+///     (Reset clears the job → form returns).
+///
+/// While `open` is false the panel collapses to a zero-height
+/// element so the detail layout reflows around it.
 fn export_panel<'a>(
     lang: &'a LanguageIdentifier,
     open: bool,
     settings: &'a ExportSettings,
     selected_rounds: &'a [bool],
+    job: Option<&'a ExportJob>,
     replay_path: &std::path::Path,
 ) -> Element<'a, Message> {
     if !open {
         return Space::new().height(0).into();
     }
-    // Settings are always editable here — the panel itself only
-    // shows when no export is running, so there's no in-flight
-    // race to worry about.
+    // In-flight + finished states wrap a tighter body — render
+    // them first so the rest of the fn deals only with the form.
+    if let Some(job) = job {
+        let body: Element<'a, Message> = match &job.result {
+            None => {
+                let pct = if job.total > 0 {
+                    (job.completed as f32 / job.total as f32).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let pct_label = format!("{}%", (pct * 100.0).round() as u32);
+                column![
+                    text(t(lang, "replays-export-progress"))
+                        .size(TEXT_CAPTION)
+                        .style(save_view::muted_text_style),
+                    iced::widget::progress_bar(0.0..=1.0, pct).length(Length::Fixed(8.0)),
+                    text(pct_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                ]
+                .spacing(4)
+                .into()
+            }
+            Some(Ok(path)) => {
+                let path_for_open = path.clone();
+                column![
+                    text(format!("{}:", t(lang, "replays-export-success")))
+                        .size(TEXT_CAPTION)
+                        .style(save_view::success_text_style),
+                    text(path.display().to_string()).size(TEXT_CAPTION),
+                    row![
+                        widgets::labeled_icon_button(
+                            Icon::Play,
+                            t(lang, "replays-export-open"),
+                            Message::OpenFile(path_for_open),
+                            STANDARD_PADDING,
+                            iced::widget::button::primary,
+                        ),
+                        widgets::labeled_icon_button(
+                            Icon::RefreshCw,
+                            t(lang, "replays-export-reset"),
+                            Message::ExportDismiss(replay_path.to_path_buf()),
+                            STANDARD_PADDING,
+                            widgets::neutral,
+                        ),
+                    ]
+                    .spacing(8),
+                ]
+                .spacing(6)
+                .into()
+            }
+            Some(Err(e)) => column![
+                text(format!("{}: {e}", t(lang, "replays-export-error")))
+                    .size(TEXT_CAPTION)
+                    .style(save_view::danger_text_style),
+                widgets::labeled_icon_button(
+                    Icon::RefreshCw,
+                    t(lang, "replays-export-reset"),
+                    Message::ExportDismiss(replay_path.to_path_buf()),
+                    STANDARD_PADDING,
+                    widgets::neutral,
+                ),
+            ]
+            .spacing(6)
+            .into(),
+        };
+        return container(column![body].padding(12))
+            .width(Fill)
+            .style(iced::widget::container::bordered_box)
+            .into();
+    }
+    // Form path — `in_flight` stays false because the panel only
+    // reaches this branch when there's no job at all.
     let in_flight = false;
     let scale_label = text(format!(
         "{}: {}",

@@ -142,6 +142,7 @@ replays-export-progress = 録画中…
 replays-export-success = 録画しました
 replays-export-error = 録画に失敗しました
 replays-export-open = 動画を開く
+replays-export-reset = リセット
 replays-export-scale = 拡大率
 replays-export-scale-na-lossless = （ロスレス時は無視）
 replays-export-lossless = ロスレス

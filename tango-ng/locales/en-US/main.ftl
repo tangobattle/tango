@@ -142,6 +142,7 @@ replays-export-progress = Rendering…
 replays-export-success = Rendered
 replays-export-error = Render failed
 replays-export-open = Open render
+replays-export-reset = Reset
 replays-export-scale = Scale
 replays-export-scale-na-lossless = (lossless — scale ignored)
 replays-export-lossless = Lossless
