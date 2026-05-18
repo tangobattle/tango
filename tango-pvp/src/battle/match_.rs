@@ -192,9 +192,7 @@ impl Match {
         if !round.can_add_remote_input() {
             anyhow::bail!("remote overflowed our input buffer");
         }
-        round.add_remote_input(crate::input::PartialInput {
-            joyflags: input.joyflags as u16,
-        });
+        round.add_remote_input(input.clone());
         Ok(true)
     }
 
@@ -237,7 +235,12 @@ impl Match {
             let mut sender = self.sender.lock().await;
             for _ in 0..self.identity.input_delay {
                 iq.add_local_input(crate::input::PartialInput { joyflags: 0 });
-                sender.send(&crate::net::Input { joyflags: 0 }).await?;
+                sender
+                    .send(&crate::net::Input {
+                        joyflags: 0,
+                        frame_advantage: 0,
+                    })
+                    .await?;
             }
         }
 

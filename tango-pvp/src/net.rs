@@ -1,6 +1,11 @@
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Input {
     pub joyflags: u16,
+    /// Sender's `current_tick - last_remote_received_tick` at send time.
+    /// The receiver subtracts this from its own advantage and halves to
+    /// get a network-delay-cancelled skew estimate that drives the time-
+    /// sync throttle (see `Round::update_fps_target`).
+    pub frame_advantage: i16,
 }
 
 #[async_trait::async_trait]

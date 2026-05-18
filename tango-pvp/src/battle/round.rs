@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use parking_lot::Mutex as PlMutex;
@@ -8,6 +9,17 @@ use crate::input::{Input, Pair, PairQueue, PartialInput};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
+/// How many recent skew samples to average for the time-sync throttle.
+/// 60 ≈ 1 second at the nominal frame rate — enough to wash out single-
+/// frame jitter without smearing real CPU divergence.
+const SKEW_WINDOW: usize = 60;
+
+/// Cap on the slowdown we'll apply. Hit only under catastrophic skew
+/// (peer CPU collapse, multi-second hitch). The ramp is linear at 1 fps
+/// per frame of average skew, so this caps at 30 frames of sustained
+/// one-sided drift.
+const MAX_SLOWDOWN: f32 = 30.0;
+
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
 /// helpers that wire remote-side prediction into FF runs.
@@ -15,16 +27,22 @@ pub struct Round {
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     local_player_index: u8,
     current_tick: u32,
-    /// Signed tick lag: how far ahead remote is of us. Positive when we're
-    /// behind (need to speed up), negative when we're leading (slow down).
-    /// Updated each frame from the most recent committed remote input's tick.
-    tick_lag: i32,
+    /// Count of remote inputs received over the network this round. Equal
+    /// to "highest remote tick + 1" since inputs arrive in order. Used as
+    /// the receive-side half of the GGPO-style time-sync metric.
+    last_remote_received_tick: u32,
+    /// The remote's `current_tick - last_remote_received_tick` at their
+    /// send time, copied from the most recently received network input.
+    /// Stale by ~τ (one-way delay) but in steady state advantage is
+    /// constant so staleness doesn't matter.
+    last_remote_frame_advantage: i16,
+    /// Sliding window of recent skew samples ((my_adv - their_adv) / 2).
+    /// Mean over this window drives the fps_target adjustment.
+    skew_samples: VecDeque<f32>,
     iq: PairQueue<PartialInput, PartialInput>,
-    /// Joyflags + packet of the last committed remote input. Tick is tracked
-    /// separately in `last_committed_remote_tick` because Inputs no longer
-    /// carry a tick field.
+    /// Joyflags + packet of the last committed remote input. Used as the
+    /// seed for `hooks.predict_rx` when extending past the committed range.
     last_committed_remote_input: Input,
-    last_committed_remote_tick: u32,
     committed_state: Option<CommittedState>,
     stepper: crate::stepper::Fastforwarder,
     replay_writer: Arc<PlMutex<Option<crate::replay::Writer>>>,
@@ -53,10 +71,11 @@ impl Round {
             hooks,
             local_player_index: match_.local_player_index(),
             current_tick: 0,
-            tick_lag: 0,
+            last_remote_received_tick: 0,
+            last_remote_frame_advantage: 0,
+            skew_samples: VecDeque::with_capacity(SKEW_WINDOW),
             iq,
             last_committed_remote_input,
-            last_committed_remote_tick: 0,
             committed_state: None,
             stepper,
             replay_writer: match_.replay_writer_handle(),
@@ -114,14 +133,27 @@ impl Round {
             anyhow::bail!("local input buffer overflow!");
         }
 
+        let frame_advantage = self.local_frame_advantage();
         self.sender
             .lock()
             .await
-            .send(&crate::net::Input { joyflags })
+            .send(&crate::net::Input {
+                joyflags,
+                frame_advantage,
+            })
             .await?;
 
         self.add_local_input(PartialInput { joyflags });
         Ok(())
+    }
+
+    /// "How far ahead of the latest remote input I am." Sent in each
+    /// outgoing packet so the peer can compute relative real-time skew.
+    /// Saturating cast: clamps to i16 range, which fits any realistic
+    /// frame advantage.
+    fn local_frame_advantage(&self) -> i16 {
+        let diff = self.current_tick as i32 - self.last_remote_received_tick as i32;
+        diff.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
     fn prepare_input_pairs(
@@ -209,18 +241,38 @@ impl Round {
                 }
             }
             self.last_committed_remote_input = ip.remote.clone();
-            self.last_committed_remote_tick = tick;
         }
     }
 
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
-        // Positive when remote is ahead of us (we should speed up); negative
-        // when we're ahead (we should slow down).
-        self.tick_lag = self.last_committed_remote_tick as i32 - self.current_tick as i32;
+        // GGPO-style time sync. local_advantage and last_remote_frame_advantage
+        // both carry the symmetric network-delay term τ; their difference
+        // isolates the asymmetric real-time clock skew between the two
+        // peers. Halved because the difference accumulates skew on both
+        // legs of the round trip.
+        let local_advantage = self.local_frame_advantage() as i32;
+        let remote_advantage = self.last_remote_frame_advantage as i32;
+        let skew = (local_advantage - remote_advantage) as f32 / 2.0;
+
+        if self.skew_samples.len() == SKEW_WINDOW {
+            self.skew_samples.pop_front();
+        }
+        self.skew_samples.push_back(skew);
+
+        let avg = self.skew_samples.iter().sum::<f32>() / self.skew_samples.len() as f32;
+
+        // Asymmetric throttle: only the leading side corrects. If we're
+        // behind (avg < 0) the peer will see avg > 0 from their side and
+        // slow themselves, naturally converging to the slower client's
+        // sustainable rate. Trying to speed up here just races against
+        // them and causes oscillation.
+        let adjustment = -avg.max(0.0).min(MAX_SLOWDOWN);
+
+        let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_SLOWDOWN, EXPECTED_FPS);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target((EXPECTED_FPS + self.tps_adjustment()).clamp(EXPECTED_FPS / 4.0, EXPECTED_FPS * 4.0));
+            .set_fps_target(fps_target);
     }
 
     fn finalize_round(
@@ -277,22 +329,19 @@ impl Round {
         self.iq.add_local_input(input);
     }
 
-    pub fn add_remote_input(&mut self, input: PartialInput) {
+    pub fn add_remote_input(&mut self, input: crate::net::Input) {
         log::debug!("remote input: {:?}", input);
-        self.iq.add_remote_input(input);
+        self.iq.add_remote_input(PartialInput {
+            joyflags: input.joyflags,
+        });
+        self.last_remote_received_tick = self.last_remote_received_tick.wrapping_add(1);
+        self.last_remote_frame_advantage = input.frame_advantage;
     }
 
     pub(super) fn can_add_remote_input(&self) -> bool {
         self.iq.can_add_remote_input()
     }
 
-    pub fn tps_adjustment(&self) -> f32 {
-        // tanh shaping bounds the adjustment to ±EXPECTED_FPS/2, so fps_target stays
-        // in roughly [EXPECTED_FPS/2, EXPECTED_FPS*1.5] no matter how far we diverge.
-        // Without a bound, large |tick_lag| pushes fps_target past zero and breaks throttling.
-        let max = EXPECTED_FPS * 0.5;
-        max * (self.tick_lag as f32 / 8.0).tanh()
-    }
 }
 
 impl Drop for Round {
