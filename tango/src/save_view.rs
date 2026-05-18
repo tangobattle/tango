@@ -541,7 +541,9 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     }
 
     let _ = grouped;
-    scrollable(body.padding(12)).height(Fill).width(Fill).into()
+    // Rows extend flush to the scrollable's edges — vertical
+    // padding only so the first/last row don't slam the scanline.
+    scrollable(body.padding([12, 0])).height(Fill).width(Fill).into()
 }
 
 // `code = None` skips the code badge (Auto Battle Data slots
@@ -749,34 +751,31 @@ fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> c
 /// the whole row), but it's set to the theme's page background colour
 /// so it visually disappears against the surrounding pane chrome —
 /// gives the list a denser look without the shaded-card noise.
+fn chip_row_bg(theme: &iced::Theme, zebra: bool) -> iced::Color {
+    let bg = theme.palette().background;
+    if !zebra {
+        return bg;
+    }
+    let text = theme.palette().text;
+    iced::Color {
+        r: bg.r * 0.95 + text.r * 0.05,
+        g: bg.g * 0.95 + text.g * 0.05,
+        b: bg.b * 0.95 + text.b * 0.05,
+        a: 1.0,
+    }
+}
+
 fn card_wrap<M: 'static>(
     inner: Element<'static, M>,
     accent: Option<iced::Color>,
     row_idx: usize,
 ) -> Element<'static, M> {
-    let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
     let zebra = row_idx % 2 == 1;
     let card_body = container(inner)
         .width(Fill)
-        .style(move |theme: &iced::Theme| {
-            let bg = theme.palette().background;
-            let text = theme.palette().text;
-            let body_bg = if zebra {
-                // Faint text-tinted wash — readable as "every other
-                // row" without screaming "spreadsheet".
-                iced::Color {
-                    r: bg.r * 0.95 + text.r * 0.05,
-                    g: bg.g * 0.95 + text.g * 0.05,
-                    b: bg.b * 0.95 + text.b * 0.05,
-                    a: 1.0,
-                }
-            } else {
-                bg
-            };
-            container::Style {
-                background: Some(iced::Background::Color(body_bg)),
-                ..container::Style::default()
-            }
+        .style(move |theme: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(chip_row_bg(theme, zebra))),
+            ..container::Style::default()
         });
 
     container(card_body)
@@ -787,12 +786,17 @@ fn card_wrap<M: 'static>(
             bottom: 0.0,
             left: 6.0,
         })
-        .style(move |_| container::Style {
-            background: Some(iced::Background::Color(accent_color)),
-            // Square corners — the rounded stripe was reading as
-            // a "tab" or "pill" rather than a flush accent edge.
-            border: iced::Border::default(),
-            ..Default::default()
+        .style(move |theme: &iced::Theme| {
+            // No-accent chips fall back to the row's body color
+            // (zebra-aware) so the 6 px left strip blends into
+            // the rest of the row instead of cutting through the
+            // stripe with the pane bg color.
+            let bg = accent.unwrap_or_else(|| chip_row_bg(theme, zebra));
+            container::Style {
+                background: Some(iced::Background::Color(bg)),
+                border: iced::Border::default(),
+                ..Default::default()
+            }
         })
         .clip(true)
         .into()
@@ -1301,7 +1305,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
         }
     }
 
-    container(scrollable(list.padding(12)))
+    container(scrollable(list.padding([12, 0])))
         .width(Fill)
         .height(Fill)
         .into()
@@ -1322,7 +1326,12 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
     // pass `code=None` and a default-zeroed badge struct. Hover
     // preview comes for free from chip_row.
     let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
-        let mut col = column![text(title).size(TEXT_BODY).style(muted_text_style)].spacing(1);
+        // Section title gets horizontal padding so it doesn't
+        // sit flush against the pane edge — chip rows below are
+        // intentionally flush so the accent stripe touches the
+        // edge, but the bare title text wants breathing room.
+        let title_el = container(text(title).size(TEXT_BODY).style(muted_text_style)).padding([0, 12]);
+        let mut col = column![title_el, Space::new().height(4)].spacing(1);
         let empty_badges = GroupedChip::default();
         for (idx, id) in slots.iter().enumerate() {
             col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb, idx));
@@ -1344,7 +1353,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
     .spacing(4)
     .padding(0);
 
-    container(scrollable(list.padding(12))).width(Fill).height(Fill).into()
+    container(scrollable(list.padding([12, 0]))).width(Fill).height(Fill).into()
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
