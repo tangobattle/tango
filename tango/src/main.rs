@@ -262,6 +262,16 @@ fn supervisor_main() -> anyhow::Result<i32> {
 /// re-runs don't replay the same code.
 static INIT_LINK_CODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
+/// Decode `icon.png` into an iced `window::Icon`. Returns
+/// `None` on any failure (image-crate decode error, dimension
+/// mismatch, etc.) — the OS just falls back to its default
+/// icon, no need to escalate.
+fn load_window_icon() -> Option<iced::window::Icon> {
+    let img = image::load_from_memory(include_bytes!("icon.png")).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    iced::window::icon::from_rgba(img.into_raw(), w, h).ok()
+}
+
 fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -313,6 +323,11 @@ fn run_app() -> iced::Result {
             // another.
             size: iced::Size::new(1000.0, 640.0),
             min_size: Some(iced::Size::new(800.0, 600.0)),
+            // OS-level window icon (title bar + taskbar). Same
+            // PNG we render in the nav strip; iced wants raw
+            // RGBA so decode once at startup. Best-effort —
+            // a corrupt asset just leaves the OS default icon.
+            icon: load_window_icon(),
             ..iced::window::Settings::default()
         })
         .font(FONT_NOTO_SANS)
@@ -1628,11 +1643,37 @@ pub fn theme_for(config: &config::Config) -> Theme {
 }
 
 fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
+    use iced::widget::image::{Handle, Image};
     use lucide_icons::Icon;
+    use std::sync::LazyLock;
+
+    // Small Tango logo at the left edge of the nav strip.
+    // Uses `icon.png` (the standalone logo mark) — the emblem
+    // image is the long About-page banner, not what we want
+    // next to a button-sized tab strip. Parsed once via
+    // LazyLock so the image bytes aren't re-decoded every
+    // render.
+    static LOGO: LazyLock<Handle> = LazyLock::new(|| {
+        let raw: &'static [u8] = include_bytes!("icon.png");
+        Handle::from_bytes(raw)
+    });
+
     let tab =
         |icon, label, target: Tab| widgets::tab_button(icon, label, Message::TabSelected(target), target == active);
     container(
         row![
+            iced::widget::container(
+                Image::new(LOGO.clone())
+                    .width(iced::Length::Fixed(20.0))
+                    .height(iced::Length::Fixed(20.0))
+                    .content_fit(iced::ContentFit::Contain),
+            )
+            // Logo image sized down + padded so its visual
+            // footprint matches the adjacent tab buttons (icon
+            // glyph + label sit ~20 px tall after their own
+            // padding). Without this the 28 px square logo
+            // dominated the strip.
+            .padding([4, 8]),
             tab(Icon::Gamepad, t(lang, "tab-play"), Tab::Play),
             tab(Icon::Film, t(lang, "tab-replays"), Tab::Replays),
             tab(Icon::Puzzle, t(lang, "tab-patches"), Tab::Patches),
