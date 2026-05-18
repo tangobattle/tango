@@ -22,7 +22,7 @@ use crate::singleplayer_session;
 use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, text};
-use iced::{Alignment, Element, Fill};
+use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -410,6 +410,7 @@ fn gamepad_stream() -> impl futures::Stream<Item = Message> {
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     state: &'a State,
+    integer_scaling: bool,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
@@ -418,12 +419,48 @@ pub fn view<'a>(
     use iced::widget::{image, Space};
 
     let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
-        image(handle.clone())
+        // Source texture dimensions — used by integer-scale to
+        // compute the largest integer multiple that fits.
+        // `Handle::Rgba` carries them; other variants shouldn't
+        // appear here but fall back to the native GBA size.
+        let (img_w, img_h) = match handle {
+            iced::widget::image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
+            _ => (
+                replay_session::SCREEN_WIDTH as f32,
+                replay_session::SCREEN_HEIGHT as f32,
+            ),
+        };
+        if integer_scaling {
+            // Wrap in `responsive` to grab the available size,
+            // pick the largest integer scale that fits, and
+            // render the image at exact `texel * scale` pixels.
+            // `Fill` content_fit so iced doesn't second-guess us
+            // and add letterboxing inside the Fixed slot.
+            let handle = handle.clone();
+            iced::widget::container(iced::widget::responsive(move |size| {
+                let scale_w = (size.width / img_w).floor().max(1.0);
+                let scale_h = (size.height / img_h).floor().max(1.0);
+                let scale = scale_w.min(scale_h);
+                image(handle.clone())
+                    .width(Length::Fixed(img_w * scale))
+                    .height(Length::Fixed(img_h * scale))
+                    .filter_method(image::FilterMethod::Nearest)
+                    .content_fit(iced::ContentFit::Fill)
+                    .into()
+            }))
             .width(Fill)
             .height(Fill)
-            .filter_method(image::FilterMethod::Nearest)
-            .content_fit(iced::ContentFit::Contain)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
             .into()
+        } else {
+            image(handle.clone())
+                .width(Fill)
+                .height(Fill)
+                .filter_method(image::FilterMethod::Nearest)
+                .content_fit(iced::ContentFit::Contain)
+                .into()
+        }
     } else {
         Space::new().width(Fill).height(Fill).into()
     };

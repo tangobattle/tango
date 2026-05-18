@@ -85,6 +85,14 @@ pub struct Config {
     /// See `video::filter_by_name`.
     #[serde(default)]
     pub video_filter: String,
+    /// When true, the emulator frame is rendered at the largest
+    /// integer multiple of its texture size that fits the
+    /// window (instead of the default `ContentFit::Contain`,
+    /// which fractionally scales). Keeps every source pixel
+    /// at uniform host-pixel size — no bilinear shimmer at
+    /// non-integer scales.
+    #[serde(default)]
+    pub integer_scaling: bool,
 
     pub last_game: Option<(String, u8)>,
     pub last_save: Option<std::path::PathBuf>,
@@ -115,6 +123,7 @@ impl Default for Config {
             patch_repo: default_patch_repo(),
             enable_patch_autoupdate: true,
             video_filter: String::new(),
+            integer_scaling: false,
             last_game: None,
             last_save: None,
             last_patch: None,

@@ -1412,6 +1412,7 @@ impl App {
                 }
             }
             C::VideoFilter(s) => self.config.video_filter = s,
+            C::IntegerScaling(b) => self.config.integer_scaling = b,
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);
@@ -1502,7 +1503,7 @@ impl App {
                     .height(Fill)
                     .into();
             }
-            return session::view(lang, &self.session).map(Message::Session);
+            return session::view(lang, &self.session, self.config.integer_scaling).map(Message::Session);
         }
 
         let body: Element<'_, Message> = match self.tab {

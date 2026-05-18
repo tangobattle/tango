@@ -571,7 +571,6 @@ fn chip_row<M: 'static>(
     } else {
         text(name_text).size(TEXT_BODY).into()
     };
-    let code_str = code.unwrap_or_default();
 
     // REG / TAG indicators sit inline with the title so the
     // row stays single-line and the card height stops growing
@@ -590,10 +589,17 @@ fn chip_row<M: 'static>(
     // Right-side stats: fixed-width right-aligned columns so the
     // numbers line up vertically across rows. Both inherit the theme's
     // text color — no hard-coded white/yellow that breaks on light.
-    let code_text: Element<'static, M> = container(text(code_str).size(TEXT_BODY).font(iced::Font::MONOSPACE))
-        .width(Length::Fixed(22.0))
-        .align_x(iced::alignment::Horizontal::Right)
-        .into();
+    // `code.filter().map(...)` consumes the String into the
+    // Text widget so the resulting Element is `'static` (a
+    // `&String` borrow would tie the Element to this stack
+    // frame). The filter drops empty codes so we don't render a
+    // blank fixed-width slot.
+    let code_text: Option<Element<'static, M>> = code.filter(|s| !s.is_empty()).map(|code| {
+        container(text(code).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+            .width(Length::Fixed(22.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
+    });
     let power_text: Element<'static, M> =
         container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
             .width(Length::Fixed(50.0))
@@ -630,8 +636,11 @@ fn chip_row<M: 'static>(
     r = r
         .push(icon)
         .push(container(row![title, indicator_row].spacing(8).align_y(Alignment::Center)).width(Length::Fill))
-        .push(element_icon)
-        .push(code_text)
+        .push(element_icon);
+    if let Some(code_text) = code_text {
+        r = r.push(code_text);
+    }
+    r = r
         .push(power_text)
         .push(mb_text);
 

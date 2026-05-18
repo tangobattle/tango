@@ -493,13 +493,11 @@ impl ReplaysState {
             row![
                 text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
-                    
                     .padding(STANDARD_PADDING),
                 text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
                 iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
-                    
                     .width(Length::Fixed(180.0)),
                 horizontal_space(),
                 widgets::icon_button(
@@ -621,6 +619,9 @@ impl ReplaysState {
                 }
             });
             let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
+            // Two static caption lines, optionally a third with
+            // duration / rounds / incomplete (only when stats
+            // have loaded for this row).
             let mut text_col = column![
                 text(ts_str).size(TEXT_BODY),
                 text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
@@ -634,9 +635,6 @@ impl ReplaysState {
             .spacing(2)
             .width(Fill);
             if let Some(line) = stats_line {
-                // Duration + rounds + (optional) incomplete
-                // marker. Incomplete uses the theme's danger
-                // color so it reads as a warning at a glance.
                 text_col = text_col.push(
                     text(line)
                         .size(TEXT_CAPTION)
@@ -784,7 +782,13 @@ fn replay_detail<'a>(
         .into()
     };
 
-    container(
+    // Replay-detail layout: a padded header column at the top
+    // (title row, export panel, metadata, side cards, match-type
+    // line, divider) and the save-view preview directly under
+    // it WITHOUT any extra wrapper padding. save_view brings
+    // its own tab strip + body insets, so wrapping it in more
+    // padding here makes the embedded view feel cramped.
+    let header = container(
         column![
             row![
                 text(title).size(18),
@@ -863,14 +867,16 @@ fn replay_detail<'a>(
             .size(TEXT_CAPTION),
             Space::new().height(8),
             horizontal_rule(1),
-            preview,
         ]
         .spacing(6)
         .padding(16),
     )
-    .width(Fill)
-    .height(Fill)
-    .into()
+    .width(Fill);
+
+    container(column![header, preview].spacing(0))
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
