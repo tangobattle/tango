@@ -582,27 +582,51 @@ pub fn view<'a>(
             SpeedOption(4.0),
         ];
         let current_speed = SpeedOption(r.speed());
-        let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
-            Message::SetSpeed(o.0)
-        })
-        .padding(CTRL_PAD)
-        .text_size(15.0)
-        .style(crate::widgets::chunky_pick_list);
+        let speed_picker = iced::widget::tooltip(
+            iced::widget::pick_list(speed_opts, Some(current_speed), |o| Message::SetSpeed(o.0))
+                .padding(CTRL_PAD)
+                .text_size(15.0)
+                .style(crate::widgets::chunky_pick_list),
+            iced::widget::container(text(t(lang, "playback-speed")).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4);
 
         // Play/Pause is the transport's centerpiece — promote to
         // the primary-button style when paused (the affordance
         // the user is most likely looking for at rest) and keep
         // it neutral while playing. Either way it sits a notch
-        // bigger than the other strip controls.
-        let play_pause_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+        // bigger than the other strip controls and is rendered
+        // as a perfect circle (square padding + huge radius) so
+        // it reads as a console transport button instead of a
+        // generic pill.
+        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
             if paused {
                 widgets::primary_button
             } else {
                 widgets::neutral
             };
+        let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let mut style = base_style(theme, status);
+            style.border.radius = 999.0.into();
+            style
+        };
         let play_pause_btn = iced::widget::tooltip(
             iced::widget::button(play_pause_icon.widget().size(18.0))
-                .padding([10, 18])
+                .padding(12)
                 .style(play_pause_style)
                 .on_press(Message::TogglePlay),
             iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
