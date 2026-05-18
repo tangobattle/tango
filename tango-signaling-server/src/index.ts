@@ -4,7 +4,7 @@ const Packet = tango.signaling.Packet;
 const AbortReason = Packet.Abort.Reason;
 
 const X_SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At";
-const EXPECTED_PROTOCOL_VERSION = 0x3b;
+// const EXPECTED_PROTOCOL_VERSION = 0x3b;
 const SESSION_TTL_SECONDS = 60 * 60;
 
 interface Attachment {
@@ -75,25 +75,25 @@ export default {
       return new Response("not found", { status: 404 });
     }
 
-    const protocolVersionHeader = request.headers.get(
-      "X-Tango-Protocol-Version",
-    );
-    if (protocolVersionHeader !== null) {
-      const protocolVersion = parseInt(protocolVersionHeader, 16);
-      if ((protocolVersion & 0xff) !== EXPECTED_PROTOCOL_VERSION) {
-        return new Response(
-          Packet.encode({
-            abort: {
-              reason:
-                (protocolVersion & 0xff) < EXPECTED_PROTOCOL_VERSION
-                  ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
-                  : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
-            },
-          }).finish(),
-          { status: 400 },
-        );
-      }
-    }
+    // const protocolVersionHeader = request.headers.get(
+    //   "X-Tango-Protocol-Version",
+    // );
+    // if (protocolVersionHeader !== null) {
+    //   const protocolVersion = parseInt(protocolVersionHeader, 16);
+    //   if ((protocolVersion & 0xff) !== EXPECTED_PROTOCOL_VERSION) {
+    //     return new Response(
+    //       Packet.encode({
+    //         abort: {
+    //           reason:
+    //             (protocolVersion & 0xff) < EXPECTED_PROTOCOL_VERSION
+    //               ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
+    //               : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
+    //         },
+    //       }).finish(),
+    //       { status: 400 },
+    //     );
+    //   }
+    // }
 
     const sessionId = url.searchParams.get("session_id");
     if (!sessionId) {
@@ -199,21 +199,21 @@ export class MatchmakingSession implements DurableObject {
     ws: WebSocket,
     start: tango.signaling.Packet.IStart,
   ): Promise<void> {
-    if (start.protocolVersion !== EXPECTED_PROTOCOL_VERSION) {
-      ws.send(
-        Packet.encode({
-          abort: {
-            reason:
-              start.protocolVersion == null ||
-              start.protocolVersion < EXPECTED_PROTOCOL_VERSION
-                ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
-                : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
-          },
-        }).finish(),
-      );
-      ws.close(1000);
-      return;
-    }
+    // if (start.protocolVersion !== EXPECTED_PROTOCOL_VERSION) {
+    //   ws.send(
+    //     Packet.encode({
+    //       abort: {
+    //         reason:
+    //           start.protocolVersion == null ||
+    //           start.protocolVersion < EXPECTED_PROTOCOL_VERSION
+    //             ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
+    //             : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
+    //       },
+    //     }).finish(),
+    //   );
+    //   ws.close(1000);
+    //   return;
+    // }
 
     const offerSdp = await this.state.storage.get<string>("offerSdp");
     if (offerSdp === undefined) {
