@@ -82,6 +82,13 @@ parking_lot = "0.12"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1"
+# Cross-platform native crash catcher: POSIX signal handlers on
+# Linux, a Mach exception server on macOS (needed for
+# EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored
+# handler on Windows. We install this in the child UI process so
+# segfaults coming from mgba / datachannel C code land in the
+# same log file as Rust panics.
+crash-handler = "0.6"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
 # Software upscale filters for the emulator framebuffer. Match

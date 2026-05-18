@@ -30,6 +30,7 @@ mod video;
 mod widgets;
 
 mod app;
+mod crash_log;
 mod theme;
 
 use app::App;
@@ -180,6 +181,14 @@ fn load_window_icon() -> Option<iced::window::Icon> {
 
 fn run_app() -> iced::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // Catch native crashes (segfaults, SEH violations, Mach
+    // EXC_BAD_ACCESS) from mgba / datachannel / wgpu C code and
+    // dump a backtrace to stderr — which the supervisor pipes
+    // into the log file. Also installs a panic hook that does
+    // the same for Rust panics. Leak the handle so it stays
+    // installed for the lifetime of the process.
+    std::mem::forget(crash_log::install());
 
     // Re-parse the CLI in the child (the supervisor doesn't pass
     // it through). Bad args here would have failed in the
