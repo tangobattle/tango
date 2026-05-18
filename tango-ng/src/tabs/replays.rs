@@ -1,4 +1,4 @@
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::widgets;
 use lucide_icons::Icon;
 use crate::{
@@ -62,18 +62,23 @@ pub enum Message {
     ToggleExportRound(usize, bool),
     /// Open / close the inline export-options panel. Distinct
     /// from `Export(_)` (which actually triggers the export).
+    /// Both carry a path because panel open-state is per-replay —
+    /// the same panel can be open on replay A while closed on B.
     ExportPanelOpen(std::path::PathBuf),
-    ExportPanelClose,
+    ExportPanelClose(std::path::PathBuf),
+    /// Lazy-load result from `replays::compute_stats`. The App
+    /// kicks one worker per missing path post-scan; each result
+    /// arrives as one of these messages and lands in
+    /// [`ReplaysState::stats`].
+    StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
     Rescan,
     SaveViewAction(save_view::Action),
 }
 
-/// Per-replay export state. Lives in a HashMap keyed by replay
-/// path so multiple renders can run concurrently — the sidebar
-/// spinner + detail panel both look up by path. `result` flips to
-/// `Some` when the export task finishes; until the user dismisses
-/// it, the job stays in the map so the detail panel can show the
-/// success/failure line.
+/// Export status for a single replay. `result` flips to `Some`
+/// when the export task finishes; until the user dismisses it,
+/// the job stays in its `PerReplay` slot so the detail panel can
+/// show the success/failure line.
 #[derive(Debug, Clone)]
 pub struct ExportJob {
     pub completed: usize,
@@ -81,7 +86,26 @@ pub struct ExportJob {
     pub result: Option<Result<std::path::PathBuf, String>>,
 }
 
-pub type ExportJobs = std::collections::HashMap<std::path::PathBuf, ExportJob>;
+/// Every piece of UI state that's specific to one replay path,
+/// bundled into one record so the parent state holds a single
+/// `HashMap<PathBuf, PerReplay>` instead of three sibling
+/// collections. The view function reads one entry; messages
+/// mutate one entry. iced has no widget-local state for user
+/// data, so this is the per-replay "instance" — owned by the
+/// parent, looked up by path.
+#[derive(Debug, Default, Clone)]
+pub struct PerReplay {
+    /// Inline export panel visibility. The view forces it open
+    /// while a render is in flight (see [`ReplaysState::is_panel_open`]),
+    /// so a closed bool here only takes effect after the render
+    /// settles.
+    pub panel_open: bool,
+    /// Active or finished export job for this replay.
+    pub job: Option<ExportJob>,
+    /// Per-round include mask. Rebuilt from the decoded replay
+    /// in [`ReplaysState::refresh_loaded`].
+    pub rounds: Vec<bool>,
+}
 
 /// User-tunable settings the export form passes to
 /// `tango_pvp::replay::export::export(...)`. Defaults match the
@@ -125,18 +149,21 @@ pub struct ReplaysState {
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
     pub save_view: save_view::State,
-    pub export_jobs: ExportJobs,
+    /// Per-replay UI state, keyed by replay path. Entries appear
+    /// on first interaction (Selected, ExportPanelOpen, or
+    /// ExportStart) and are pruned on navigation if they hold
+    /// no in-flight render.
+    pub per: std::collections::HashMap<std::path::PathBuf, PerReplay>,
+    /// Export form defaults — these are *global* user preferences
+    /// (scale, lossless, mute), not per-replay choices, so they
+    /// live outside `per`.
     pub export_settings: ExportSettings,
-    /// Per-round include/exclude mask for the currently-selected
-    /// replay's export. Repopulated whenever `loaded_cache_path`
-    /// is refreshed. Empty until a replay decodes successfully.
-    pub selected_rounds: Vec<bool>,
-    /// Inline export-options panel visibility. Toggled on by the
-    /// Export button + off by Cancel; the panel itself contains
-    /// the actual Save As… button that kicks off the export. Auto-
-    /// closes once an export starts (the in-flight status replaces
-    /// it visually).
-    pub export_panel_open: bool,
+    /// Lazy-loaded duration/round/completion stats keyed by replay
+    /// path. Populated by the App's background worker after a
+    /// scan; sidebar reads it to render the second caption line.
+    /// Missing entries just hide that line until the worker fills
+    /// them in.
+    pub stats: std::collections::HashMap<std::path::PathBuf, crate::replays::ReplayStats>,
 }
 
 /// Side-effects the tab can't perform itself (because they touch
@@ -200,6 +227,7 @@ impl ReplaysState {
             Message::Selected(p) => {
                 self.selected = Some(p);
                 self.refresh_loaded(scanners, config);
+                self.sweep_idle_entries();
                 None
             }
             Message::OpenFolder(p) => Some(Effect::OpenPath(p)),
@@ -219,11 +247,12 @@ impl ReplaysState {
             Message::Export(replay_path) => Some(Effect::OpenExportSaveDialog(replay_path)),
             Message::ExportStart { replay, output } => {
                 // Snapshot the form + round mask exactly as the
-                // user has it right now. Disabling the form
-                // widgets while in-flight is the lock — no need
-                // to re-read state when progress messages arrive.
+                // user has it right now. With the panel forced
+                // open mid-render, the form widgets are out of
+                // reach until the render finishes anyway.
                 let settings = self.export_settings;
-                let mut rounds = self.selected_rounds.clone();
+                let entry = self.per.entry(replay.clone()).or_default();
+                let mut rounds = entry.rounds.clone();
                 if rounds.is_empty() {
                     // Single-round replays don't show the rounds
                     // selector at all, so this guards the "user
@@ -231,14 +260,12 @@ impl ReplaysState {
                     // computed" race.
                     rounds = vec![true];
                 }
-                self.export_jobs.insert(
-                    replay.clone(),
-                    ExportJob { completed: 0, total: 0, result: None },
-                );
-                // Leave the panel open — its body switches to a
-                // progress bar (and then to the Open / Reset
-                // actions when done) so the user stays anchored
-                // to the same surface across the whole render.
+                entry.job = Some(ExportJob { completed: 0, total: 0, result: None });
+                // Pin the panel open so it stays visible if the
+                // user navigates elsewhere mid-render. The Done
+                // state will collapse naturally on the next
+                // navigation sweep.
+                entry.panel_open = true;
                 Some(Effect::StartExport {
                     replay,
                     output,
@@ -251,7 +278,7 @@ impl ReplaysState {
                 completed,
                 total,
             } => {
-                if let Some(job) = self.export_jobs.get_mut(&replay) {
+                if let Some(job) = self.per.get_mut(&replay).and_then(|e| e.job.as_mut()) {
                     if job.result.is_none() {
                         job.completed = completed;
                         job.total = total;
@@ -260,14 +287,22 @@ impl ReplaysState {
                 None
             }
             Message::ExportFinished { replay, result } => {
-                self.export_jobs
-                    .entry(replay)
-                    .or_insert_with(|| ExportJob { completed: 0, total: 0, result: None })
+                let entry = self.per.entry(replay).or_default();
+                entry
+                    .job
+                    .get_or_insert(ExportJob { completed: 0, total: 0, result: None })
                     .result = Some(result);
                 None
             }
             Message::ExportDismiss(p) => {
-                self.export_jobs.remove(&p);
+                if let Some(entry) = self.per.get_mut(&p) {
+                    entry.job = None;
+                    // Dismiss also closes the panel — the user
+                    // explicitly clicked Reset, so the form
+                    // shouldn't pop back open until they re-open
+                    // it via the Render toggle.
+                    entry.panel_open = false;
+                }
                 None
             }
             Message::OpenFile(p) => Some(Effect::OpenPath(p)),
@@ -284,21 +319,25 @@ impl ReplaysState {
                 None
             }
             Message::ToggleExportRound(idx, picked) => {
-                if let Some(slot) = self.selected_rounds.get_mut(idx) {
-                    *slot = picked;
+                if let Some(entry) = self.selected.as_ref().and_then(|p| self.per.get_mut(p)) {
+                    if let Some(slot) = entry.rounds.get_mut(idx) {
+                        *slot = picked;
+                    }
                 }
                 None
             }
             Message::ExportPanelOpen(p) => {
-                self.export_panel_open = true;
-                // Stale Done status from a previous export of this
-                // same replay clutters the panel; reset for a fresh
-                // start. Other replays' jobs stay untouched.
-                self.export_jobs.remove(&p);
+                self.per.entry(p).or_default().panel_open = true;
                 None
             }
-            Message::ExportPanelClose => {
-                self.export_panel_open = false;
+            Message::ExportPanelClose(p) => {
+                if let Some(entry) = self.per.get_mut(&p) {
+                    entry.panel_open = false;
+                }
+                None
+            }
+            Message::StatsLoaded(path, s) => {
+                self.stats.insert(path, s);
                 None
             }
         }
@@ -308,7 +347,57 @@ impl ReplaysState {
         self.selected = None;
         self.loaded = None;
         self.loaded_cache_path = None;
-        self.selected_rounds.clear();
+        self.sweep_idle_entries();
+    }
+
+    /// Drop per-replay entries that hold no in-flight render — i.e.
+    /// just stale form / Done-state UI. Called on navigation so
+    /// panels collapse when the user moves on, while in-progress
+    /// renders keep their state pinned. The currently-selected
+    /// replay is also exempt so navigating to a fresh replay
+    /// doesn't immediately blow away the entry we just created
+    /// for it (rounds defaults, panel-open intent, etc.).
+    fn sweep_idle_entries(&mut self) {
+        let keep = self.selected.clone();
+        self.per.retain(|p, e| {
+            Some(p) == keep.as_ref() || e.job.as_ref().is_some_and(|j| j.result.is_none())
+        });
+    }
+
+    /// True iff the panel for `path` should render — either the
+    /// user explicitly opened it or there's an in-flight render
+    /// keeping it pinned. View pulls this rather than reading the
+    /// flag directly so the "in-flight = always open" invariant
+    /// lives in one place.
+    pub fn is_panel_open(&self, path: &std::path::Path) -> bool {
+        self.per.get(path).is_some_and(|e| {
+            e.panel_open || e.job.as_ref().is_some_and(|j| j.result.is_none())
+        })
+    }
+
+    /// True iff `path` has a render currently in progress. The
+    /// Render-toggle button uses this to disable itself so the
+    /// user can't even try to close the panel mid-render.
+    pub fn is_rendering(&self, path: &std::path::Path) -> bool {
+        self.per
+            .get(path)
+            .and_then(|e| e.job.as_ref())
+            .is_some_and(|j| j.result.is_none())
+    }
+
+    /// Job lookup for the sidebar's per-row render badge.
+    pub fn job(&self, path: &std::path::Path) -> Option<&ExportJob> {
+        self.per.get(path).and_then(|e| e.job.as_ref())
+    }
+
+    /// Round mask for the currently-selected replay, or `&[]` if
+    /// nothing's loaded yet. Always returns the live slice — the
+    /// caller can pass it straight to the export form view.
+    pub fn rounds_for(&self, path: &std::path::Path) -> &[bool] {
+        self.per
+            .get(path)
+            .map(|e| e.rounds.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Decode the currently-selected replay just enough to build
@@ -319,7 +408,6 @@ impl ReplaysState {
         let Some(path) = self.selected.clone() else {
             self.loaded = None;
             self.loaded_cache_path = None;
-            self.selected_rounds.clear();
             return;
         };
         if self.loaded_cache_path.as_ref() == Some(&path) {
@@ -335,16 +423,20 @@ impl ReplaysState {
         match res {
             Ok((loaded, rounds)) => {
                 self.loaded = Some(loaded);
-                self.loaded_cache_path = Some(path);
+                self.loaded_cache_path = Some(path.clone());
                 // Default to all-rounds-checked on every fresh
                 // selection; export form reads this snapshot.
-                self.selected_rounds = vec![true; rounds];
+                self.per.entry(path).or_default().rounds = vec![true; rounds];
             }
             Err(e) => {
                 log::warn!("replay save preview failed: {e}");
                 self.loaded = None;
                 self.loaded_cache_path = None;
-                self.selected_rounds.clear();
+                if let Some(p) = self.selected.as_ref() {
+                    if let Some(entry) = self.per.get_mut(p) {
+                        entry.rounds.clear();
+                    }
+                }
             }
         }
     }
@@ -486,7 +578,7 @@ impl ReplaysState {
             // export job is still running. Multiple renders can
             // run at once now, so this is the only way to see
             // background progress without selecting each replay.
-            let job_state = self.export_jobs.get(&r.path);
+            let job_state = self.job(&r.path);
             let rendering = matches!(job_state, Some(j) if j.result.is_none());
             let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
             let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
@@ -511,33 +603,60 @@ impl ReplaysState {
             } else {
                 Space::new().width(Length::Fixed(0.0)).into()
             };
+            // Duration / rounds / completion come from the lazy
+            // stats cache. While the worker hasn't gotten to this
+            // path yet, the row just renders without that line.
+            let stats = self.stats.get(&r.path);
+            let stats_line = stats.map(|s| {
+                let duration_str = format_duration(s.tick_count);
+                let rounds_str = t_args(
+                    lang,
+                    "replays-rounds-short",
+                    &[("count", (s.round_count as i64).into())],
+                );
+                if s.is_complete {
+                    format!("{duration_str} · {rounds_str}")
+                } else {
+                    format!("{duration_str} · {rounds_str} · {}", t(lang, "replays-incomplete"))
+                }
+            });
+            let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
+            let mut text_col = column![
+                text(ts_str).size(TEXT_BODY),
+                text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
+                    .size(TEXT_CAPTION)
+                    .style(move |theme: &iced::Theme| if selected {
+                        iced::widget::text::Style { color: None }
+                    } else {
+                        save_view::muted_text_style(theme)
+                    }),
+            ]
+            .spacing(2)
+            .width(Fill);
+            if let Some(line) = stats_line {
+                // Duration + rounds + (optional) incomplete
+                // marker. Incomplete uses the theme's danger
+                // color so it reads as a warning at a glance.
+                text_col = text_col.push(
+                    text(line)
+                        .size(TEXT_CAPTION)
+                        .style(move |theme: &iced::Theme| {
+                            if !is_complete {
+                                save_view::danger_text_style(theme)
+                            } else if selected {
+                                iced::widget::text::Style { color: None }
+                            } else {
+                                save_view::muted_text_style(theme)
+                            }
+                        }),
+                );
+            }
             list = list.push(
-                button(
-                    row![
-                        column![
-                            text(ts_str).size(TEXT_BODY),
-                            // Selected → inherit the button's foreground
-                            // (iced picks one readable on the primary-
-                            // weak background). Unselected → muted gray.
-                            text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
-                                .size(TEXT_CAPTION)
-                                .style(move |theme: &iced::Theme| if selected {
-                                    iced::widget::text::Style { color: None }
-                                } else {
-                                    save_view::muted_text_style(theme)
-                                }),
-                        ]
-                        .spacing(2)
-                        .width(Fill),
-                        badge,
-                    ]
-                    .spacing(0)
-                    .align_y(Alignment::Center),
-                )
-                .padding([6, 10])
-                .width(Fill)
-                .style(widgets::list_item(selected))
-                .on_press(Message::Selected(r.path.clone())),
+                button(row![text_col, badge].spacing(0).align_y(Alignment::Center))
+                    .padding([6, 10])
+                    .width(Fill)
+                    .style(widgets::list_item(selected))
+                    .on_press(Message::Selected(r.path.clone())),
             );
         }
         let left = container(scrollable(list).height(Fill))
@@ -679,20 +798,26 @@ fn replay_detail<'a>(
                     STANDARD_PADDING,
                     iced::widget::button::primary,
                 ),
-                widgets::icon_button(
-                    Icon::Clapperboard,
-                    t(lang, "replays-export"),
-                    // Plain toggle. The panel now stays open
-                    // across the whole render lifecycle (form →
-                    // progress bar → Open / Reset), so the only
-                    // job here is showing or hiding the surface.
-                    if state.export_panel_open {
-                        Message::ExportPanelClose
+                {
+                    // Per-replay toggle. Disabled outright while a
+                    // render for this replay is in flight, so the
+                    // user can't even attempt to close the panel
+                    // mid-render (which would otherwise be a
+                    // no-op, but a dead button is more honest).
+                    let msg = if state.is_rendering(&r.path) {
+                        None
+                    } else if state.is_panel_open(&r.path) {
+                        Some(Message::ExportPanelClose(r.path.clone()))
                     } else {
-                        Message::ExportPanelOpen(r.path.clone())
-                    },
-                    STANDARD_PADDING,
-                ),
+                        Some(Message::ExportPanelOpen(r.path.clone()))
+                    };
+                    widgets::icon_button_maybe(
+                        Icon::Clapperboard,
+                        t(lang, "replays-export"),
+                        msg,
+                        STANDARD_PADDING,
+                    )
+                },
                 widgets::icon_button(
                     Icon::Folder,
                     t(lang, "patches-open-folder"),
@@ -704,10 +829,10 @@ fn replay_detail<'a>(
             .align_y(Alignment::Center),
             export_panel(
                 lang,
-                state.export_panel_open,
+                state.is_panel_open(&r.path),
                 &state.export_settings,
-                &state.selected_rounds,
-                state.export_jobs.get(&r.path),
+                state.rounds_for(&r.path),
+                state.job(&r.path),
                 &r.path,
             ),
             text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
@@ -808,7 +933,12 @@ fn export_panel<'a>(
                     text(t(lang, "replays-export-progress"))
                         .size(TEXT_CAPTION)
                         .style(save_view::muted_text_style),
-                    iced::widget::progress_bar(0.0..=1.0, pct).length(Length::Fixed(8.0)),
+                    // Long + thin. `length()` is the primary axis
+                    // (width in horizontal) and defaults to Fill;
+                    // `girth()` is the secondary axis (height) and
+                    // defaults to 30 px, which is the chunky look
+                    // we don't want.
+                    iced::widget::progress_bar(0.0..=1.0, pct).girth(Length::Fixed(4.0)),
                     text(pct_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
                 ]
                 .spacing(4)
@@ -862,8 +992,9 @@ fn export_panel<'a>(
             .style(iced::widget::container::bordered_box)
             .into();
     }
-    // Form path — `in_flight` stays false because the panel only
-    // reaches this branch when there's no job at all.
+    // Form path — there's no job for THIS replay (the `if let
+    // Some(job)` branch above returned). Multiple concurrent
+    // renders are allowed, so the form is always live here.
     let in_flight = false;
     let scale_label = text(format!(
         "{}: {}",
@@ -935,12 +1066,10 @@ fn export_panel<'a>(
         col = col.push(rounds_row);
     }
     // Action row: Save As… commits + Cancel closes the panel.
-    // Save As… is disabled if every round is unchecked.
+    // Save As… is disabled when nothing is selected for export.
     let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
-    // Labeled "Save As…" button — text + icon together so it reads
-    // as a real call-to-action rather than a bare check-mark glyph.
-    // Disabled (no on_press) when nothing is selected for export.
-    let save_as_btn: Element<'a, Message> = if any_round {
+    let can_start = any_round && !in_flight;
+    let save_as_btn: Element<'a, Message> = if can_start {
         widgets::labeled_icon_button(
             Icon::Upload,
             t(lang, "replays-export-save-as"),
@@ -949,8 +1078,6 @@ fn export_panel<'a>(
             iced::widget::button::primary,
         )
     } else {
-        // No labeled_icon_button_maybe helper, so build the disabled
-        // variant inline.
         iced::widget::button(
             iced::widget::row![
                 Icon::Upload.widget(),
@@ -972,4 +1099,19 @@ fn export_panel<'a>(
         .width(Fill)
         .style(iced::widget::container::bordered_box)
         .into()
+}
+
+/// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60
+/// ticks = 1 second at GBA native rate; replay export uses the
+/// same constant.
+fn format_duration(ticks: u32) -> String {
+    let secs = ticks / 60;
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }

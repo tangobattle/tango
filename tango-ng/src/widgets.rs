@@ -127,10 +127,41 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
 }
 
 /// Flat compact tab — icon + label, transparent until hovered,
-/// underlined with a 2 px colored bar when active.
+/// underlined with a 2 px colored bar when active. When `label`
+/// is `None` the button renders icon-only and the label string
+/// is exposed via a hover tooltip instead — useful for
+/// low-emphasis tabs (Settings) where the icon alone is enough.
 pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
+    tab_button_inner(icon, Some(label), msg, active)
+}
+
+/// Same as [`tab_button`] but icon-only. The `tooltip_label`
+/// stays as the hover tooltip + screen-reader hook.
+pub fn icon_tab_button<'a, M: Clone + 'a>(
+    icon: Icon,
+    tooltip_label: String,
+    msg: M,
+    active: bool,
+) -> Element<'a, M> {
+    let stacked = tab_button_inner(icon, None, msg, active);
+    tooltip(
+        stacked,
+        container(text(tooltip_label).size(crate::TEXT_CAPTION))
+            .padding(6)
+            .style(tooltip_chrome),
+        tooltip::Position::Bottom,
+    )
+    .gap(4)
+    .into()
+}
+
+fn tab_button_inner<'a, M: Clone + 'a>(icon: Icon, label: Option<String>, msg: M, active: bool) -> Element<'a, M> {
     use iced::widget::{stack, Space};
-    let btn = button(row![icon.widget(), text(label)].spacing(6).align_y(Alignment::Center))
+    let mut content = row![icon.widget()].spacing(6).align_y(Alignment::Center);
+    if let Some(label) = label {
+        content = content.push(text(label));
+    }
+    let btn = button(content)
         .padding([4, 10])
         .style(move |theme: &Theme, status: button::Status| {
             let p = theme.extended_palette();

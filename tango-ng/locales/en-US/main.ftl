@@ -159,6 +159,11 @@ replays-preview-placeholder = Save preview / folder / chips would render here.
 replays-round = Round
 replays-opponent = Opponent
 replays-match-type = Match type
+replays-rounds-short = { $count ->
+    [one] 1 round
+   *[other] { $count } rounds
+}
+replays-incomplete = incomplete
 play-you = You
 
 # Patches

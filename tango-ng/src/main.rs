@@ -313,7 +313,56 @@ impl App {
             netplay: netplay::State::new(),
         };
         app.refresh_loaded();
-        (app, iced::Task::none())
+        let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
+        (app, stats_task)
+    }
+
+    /// Drops cached replay stats for paths that no longer exist in
+    /// the latest scan, then kicks the worker for any newly-scanned
+    /// paths that don't have stats yet. Returns tab-scoped Task —
+    /// caller wraps with `.map(Message::Replays)` if at App level.
+    fn refresh_replay_stats(&mut self) -> iced::Task<tabs::replays::Message> {
+        let live: std::collections::HashSet<std::path::PathBuf> = self
+            .scanners
+            .replays
+            .read()
+            .iter()
+            .map(|r| r.path.clone())
+            .collect();
+        self.replays.stats.retain(|p, _| live.contains(p));
+        self.kick_replay_stats_loader()
+    }
+
+    /// Spawn a streaming task that decodes each not-yet-cached
+    /// replay on a blocking worker, one at a time, posting each
+    /// result back as a `StatsLoaded` message. Returns Task::none
+    /// when there's no work to do.
+    fn kick_replay_stats_loader(&self) -> iced::Task<tabs::replays::Message> {
+        let paths: Vec<std::path::PathBuf> = self
+            .scanners
+            .replays
+            .read()
+            .iter()
+            .filter(|r| !self.replays.stats.contains_key(&r.path))
+            .map(|r| r.path.clone())
+            .collect();
+        if paths.is_empty() {
+            return iced::Task::none();
+        }
+        use futures::StreamExt;
+        let stream = futures::stream::iter(paths)
+            .then(|path| async move {
+                let p = path.clone();
+                let stats = tokio::task::spawn_blocking(move || replays::compute_stats(&p).ok())
+                    .await
+                    .ok()
+                    .flatten();
+                (path, stats)
+            })
+            .filter_map(|(path, stats)| async move {
+                stats.map(|s| tabs::replays::Message::StatsLoaded(path, s))
+            });
+        iced::Task::stream(stream)
     }
 
     /// Persist `self.config` to disk. Failures are logged but otherwise
@@ -581,8 +630,14 @@ impl App {
                     self.scanners
                         .replays
                         .rescan(|| Some(replays::scan_replays(&replays_path)));
+                    // The freshly-finished match just landed on
+                    // disk — kick the stats worker so its sidebar
+                    // row gets duration / round / complete info
+                    // without waiting for app restart.
+                    iced::Task::batch([task, self.refresh_replay_stats().map(Message::Replays)])
+                } else {
+                    task
                 }
-                task
             }
             Message::Netplay(netplay::Message::MatchHandoffReady) => {
                 // Drain the lobby-side state into a PreMatchData
@@ -855,7 +910,9 @@ impl App {
             E::Rescan => {
                 self.scanners.rescan(&self.config);
                 self.refresh_loaded();
-                iced::Task::none()
+                // User triggered a full rescan — re-validate the
+                // stats cache and warm it for any new replays.
+                self.refresh_replay_stats()
             }
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
@@ -956,27 +1013,21 @@ impl App {
         let prep = match prep {
             Ok(p) => p,
             Err(e) => {
-                self.replays.export_jobs.insert(
-                    replay_path,
-                    tabs::replays::ExportJob {
-                        completed: 0,
-                        total: 0,
-                        result: Some(Err(format!("{e}"))),
-                    },
-                );
+                self.replays.per.entry(replay_path).or_default().job = Some(tabs::replays::ExportJob {
+                    completed: 0,
+                    total: 0,
+                    result: Some(Err(format!("{e}"))),
+                });
                 return iced::Task::none();
             }
         };
 
         if !rounds_mask.iter().any(|b| *b) {
-            self.replays.export_jobs.insert(
-                replay_path,
-                tabs::replays::ExportJob {
-                    completed: 0,
-                    total: 0,
-                    result: Some(Err("no rounds selected for export".to_string())),
-                },
-            );
+            self.replays.per.entry(replay_path).or_default().job = Some(tabs::replays::ExportJob {
+                completed: 0,
+                total: 0,
+                result: Some(Err("no rounds selected for export".to_string())),
+            });
             return iced::Task::none();
         }
 
@@ -1212,7 +1263,16 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             tab(Icon::Film, t(lang, "tab-replays"), Tab::Replays),
             tab(Icon::Puzzle, t(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
-            tab(Icon::Settings, t(lang, "tab-settings"), Tab::Settings),
+            // Settings = low-emphasis utility tab. The gear glyph
+            // is already an interface convention, so the "Settings"
+            // text would be redundant; expose it as a hover
+            // tooltip instead.
+            widgets::icon_tab_button(
+                Icon::Settings,
+                t(lang, "tab-settings"),
+                Message::TabSelected(Tab::Settings),
+                Tab::Settings == active,
+            ),
         ]
         .spacing(2)
         .align_y(Alignment::End)

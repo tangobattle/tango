@@ -18,6 +18,12 @@ use std::sync::Arc;
 
 pub use tango_pvp::battle::EXPECTED_FPS;
 
+/// Upper bound on how long `is_ended` waits for the peer's
+/// `EndOfMatch` packet after local completion. Wide enough to
+/// cover slow networks + the typical match-end animation, tight
+/// enough that a crashed peer doesn't pin the UI for long.
+const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
 pub struct PvpSession {
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
@@ -29,6 +35,15 @@ pub struct PvpSession {
     /// `Session::completed()` check (see `tango/src/gui.rs`'s
     /// `should_close` block).
     completion_token: tango_pvp::hooks::CompletionToken,
+    /// Peer sent us `Packet::EndOfMatch` — their `match_end_ret`
+    /// hook fired too. `is_ended` waits on this so the lagging
+    /// side has time to write `END_OF_REPLAY` before we drop the
+    /// data channel.
+    peer_ended: Arc<AtomicBool>,
+    /// Wall-clock time we first observed local completion. Used
+    /// as the fallback deadline for `is_ended` so a crashed peer
+    /// can't pin us forever.
+    local_completed_at: Arc<parking_lot::Mutex<Option<std::time::Instant>>>,
     /// Sliding-window timestamp counter marked once per emulator
     /// frame_callback — yields the true emulator TPS regardless
     /// of how often the UI polls. Equivalent to legacy
@@ -201,6 +216,9 @@ impl PvpSession {
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         let latency_counter = Arc::new(tokio::sync::Mutex::new(crate::net::LatencyCounter::new(5)));
+        let peer_ended = Arc::new(AtomicBool::new(false));
+        let local_eom_sent = Arc::new(AtomicBool::new(false));
+        let local_completed_at = Arc::new(parking_lot::Mutex::new(None::<std::time::Instant>));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,
@@ -226,6 +244,7 @@ impl PvpSession {
                 receiver,
                 pre_match.sender.clone(),
                 latency_counter.clone(),
+                peer_ended.clone(),
             ));
             tokio::task::spawn(async move {
                 tokio::select! {
@@ -280,6 +299,10 @@ impl PvpSession {
             let completion_token = completion_token.clone();
             let frame_id = frame_id.clone();
             let tps_counter = tps_counter.clone();
+            let local_eom_sent = local_eom_sent.clone();
+            let local_completed_at = local_completed_at.clone();
+            let sender_for_eom = pre_match.sender.clone();
+            let rt_handle = tokio::runtime::Handle::current();
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
@@ -288,7 +311,24 @@ impl PvpSession {
                 frame_id.fetch_add(1, Ordering::Release);
                 tps_counter.lock().mark();
                 if completion_token.is_complete() {
+                    // Pause the emulator (no more inputs to feed),
+                    // but keep the data channel alive so the peer
+                    // can finish its own match-end animation —
+                    // see `is_ended` for the handshake.
                     thread_handle.pause();
+                    // First time crossing the completion edge:
+                    // stamp the wall-clock deadline and fire the
+                    // EndOfMatch packet. `swap` makes this a
+                    // single-shot per session.
+                    if !local_eom_sent.swap(true, Ordering::AcqRel) {
+                        *local_completed_at.lock() = Some(std::time::Instant::now());
+                        let sender = sender_for_eom.clone();
+                        rt_handle.spawn(async move {
+                            if let Err(e) = sender.lock().await.send_end_of_match().await {
+                                log::warn!("pvp: send EndOfMatch failed: {e}");
+                            }
+                        });
+                    }
                 }
             }
         });
@@ -298,6 +338,8 @@ impl PvpSession {
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
             completion_token,
+            peer_ended,
+            local_completed_at,
             tps_counter,
             _audio_binding: audio_binding,
             _thread: thread,
@@ -333,13 +375,33 @@ impl PvpSession {
         self.cancellation_token.cancel();
     }
 
-    /// True once the per-game in-match hook has signaled match
-    /// completion (someone won / quit out / the game reached its
-    /// end screen). Mirrors `tango::session::Session::completed`
-    /// — the session-view tick polls this and auto-closes so the
-    /// user lands back in the main UI when the match is over.
+    /// True once it's safe to tear the session down. Requires
+    /// local completion (per-game `match_end_ret` hook fired)
+    /// PLUS one of:
+    ///   * the peer also sent us `EndOfMatch`, or
+    ///   * `PEER_END_GRACE` has elapsed since local completion
+    ///     (peer crashed / disconnected — give up waiting).
+    /// The handshake keeps the data channel alive long enough
+    /// for the lagging side to also reach its hook and write
+    /// `END_OF_REPLAY` before we drop `_peer_conn`. Without it,
+    /// whichever side finishes first kills the connection out
+    /// from under the other and the other side's replay ends up
+    /// truncated.
     pub fn is_ended(&self) -> bool {
-        self.completion_token.is_complete()
+        if !self.completion_token.is_complete() {
+            return false;
+        }
+        if self.peer_ended.load(Ordering::Acquire) {
+            return true;
+        }
+        match *self.local_completed_at.lock() {
+            Some(t) => t.elapsed() >= PEER_END_GRACE,
+            // Completion-token can flip before the frame_callback
+            // observes it and stamps the deadline. Hold off
+            // teardown for one extra tick rather than firing the
+            // grace timer from t=0.
+            None => false,
+        }
     }
 
     /// Median ping over the last few seconds — drives the in-

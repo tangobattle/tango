@@ -51,6 +51,11 @@ pub enum Packet {
 
     // In match.
     Input(tango_pvp::net::Input),
+    /// Sent once by each side when its local `match_end_ret`
+    /// hook fires. The peer waits for this before tearing down
+    /// the connection so the lagging side can finish writing its
+    /// replay. See `PvpSession::is_ended` for the wait logic.
+    EndOfMatch(EndOfMatch),
 }
 
 impl Packet {
@@ -115,6 +120,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct EndOfMatch {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {

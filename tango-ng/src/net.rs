@@ -103,6 +103,11 @@ impl Sender {
         self.send_packet(&protocol::Packet::StartMatch(protocol::StartMatch {}))
             .await
     }
+
+    pub async fn send_end_of_match(&mut self) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::EndOfMatch(protocol::EndOfMatch {}))
+            .await
+    }
 }
 
 pub struct Receiver {
@@ -189,6 +194,11 @@ pub struct PvpReceiver {
     sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
     latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
     ping_timer: tokio::time::Interval,
+    /// Flipped to `true` the first time we see an `EndOfMatch`
+    /// packet from the peer. `PvpSession::is_ended` reads this
+    /// to know the peer has also reached its match_end_ret hook
+    /// and the connection is safe to tear down.
+    peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl PvpReceiver {
@@ -196,12 +206,14 @@ impl PvpReceiver {
         receiver: Receiver,
         sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
         latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
+        peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         Self {
             receiver,
             sender,
             latency_counter,
             ping_timer: tokio::time::interval(PING_INTERVAL),
+            peer_ended,
         }
     }
 }
@@ -232,6 +244,13 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                         }
                         protocol::Packet::Input(input) => {
                             return Ok(input);
+                        }
+                        protocol::Packet::EndOfMatch(_) => {
+                            // Peer reached its match_end_ret hook.
+                            // No input to yield; keep looping so
+                            // any tail-end Input packets the peer
+                            // already queued can still arrive.
+                            self.peer_ended.store(true, std::sync::atomic::Ordering::Release);
                         }
                         p => {
                             return Err(std::io::Error::new(
