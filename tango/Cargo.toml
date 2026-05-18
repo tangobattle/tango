@@ -88,6 +88,12 @@ anyhow = "1"
 # handler on Windows. We install this in the child UI process so
 # segfaults coming from mgba / datachannel C code land in the
 # same log file as Rust panics.
+#
+# Note: crash-handler's Windows code path imports `_invoke_watson`
+# from the MSVC CRT, which mingw-w64's libmsvcrt.a does not
+# export. We define our own stub in `crash_log.rs` under
+# `cfg(all(windows, target_env = "gnu"))` to satisfy the
+# cross-compile link.
 crash-handler = "0.6"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }

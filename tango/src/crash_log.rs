@@ -95,3 +95,18 @@ fn describe(cc: &crash_handler::CrashContext) -> String {
         cc.exception_code as u32, cc.thread_id,
     )
 }
+
+// crash-handler's Windows invalid-parameter / pure-virtual fallback
+// path calls MSVC's `_invoke_watson`, an undocumented CRT helper
+// that triggers Watson reporting. mingw-w64's libmsvcrt.a doesn't
+// export it, so the cross-compile to `x86_64-pc-windows-gnu`
+// fails with `undefined reference to '_invoke_watson'`. Provide a
+// stub that aborts — Watson reporting was already going to kill us,
+// abort just skips the dialog. The SEH / vectored handler path
+// (what actually catches mgba / datachannel segfaults) doesn't
+// touch this.
+#[cfg(all(windows, target_env = "gnu"))]
+#[no_mangle]
+pub extern "C" fn _invoke_watson() -> ! {
+    std::process::abort()
+}
