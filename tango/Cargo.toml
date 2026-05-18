@@ -4,10 +4,17 @@ version = "5.0.0-alpha.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 publish = false
+build = "build.rs"
 
 [[bin]]
 name = "tango"
 path = "src/main.rs"
+
+[build-dependencies]
+# Windows-only: compiles resource.rc (taskbar icon + VERSIONINFO)
+# into the exe. No-op on other targets via the cfg check in
+# build.rs.
+embed-resource = "1"
 
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
