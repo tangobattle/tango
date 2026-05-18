@@ -523,6 +523,7 @@ impl PlayState {
                     scanners,
                     loaded.is_some(),
                     local_fallback,
+                    streamer_mode,
                 ))
                 .width(Fill),
             ]
@@ -1137,6 +1138,7 @@ fn lobby_view<'a>(
     scanners: &'a Scanners,
     has_save: bool,
     local_fallback: crate::net::protocol::Settings,
+    streamer_mode: bool,
 ) -> Element<'a, Message> {
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
@@ -1263,12 +1265,18 @@ fn lobby_view<'a>(
     // Pre-handshake we don't have a ping yet, but we always
     // know the link code — show that instead of the generic
     // "Exchanging settings…" placeholder so the user sees the
-    // identifier they're matched on.
-    let link_code: Option<&str> = match phase {
-        crate::netplay::Phase::Connecting { link_code, .. }
-        | crate::netplay::Phase::Negotiating { link_code }
-        | crate::netplay::Phase::Lobby { link_code } => Some(link_code.as_str()),
-        _ => None,
+    // identifier they're matched on. Streamer privacy mode
+    // suppresses the link code so a viewer of the stream can't
+    // scrape it off the screen and crash the lobby.
+    let link_code: Option<&str> = if streamer_mode {
+        None
+    } else {
+        match phase {
+            crate::netplay::Phase::Connecting { link_code, .. }
+            | crate::netplay::Phase::Negotiating { link_code }
+            | crate::netplay::Phase::Lobby { link_code } => Some(link_code.as_str()),
+            _ => None,
+        }
     };
     let header_line = if let Some(d) = lobby.latency {
         text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
@@ -1602,7 +1610,10 @@ fn lobby_view<'a>(
                 side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
             ]
             .spacing(14)
-            .align_y(Alignment::Center),
+            // Top-align so the YOU slot doesn't bounce upward when
+            // the opponent's settings land and their card grows
+            // from a 2-line placeholder to a 3-line filled card.
+            .align_y(Alignment::Start),
             horizontal_rule(1),
             controls,
         ]
