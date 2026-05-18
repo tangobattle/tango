@@ -1,13 +1,14 @@
-// On Linux x86_64 (SysV ABI), `va_list` is the array type `[__va_list_tag; 1]`,
-// but C decays it to `__va_list_tag*` when used as a function parameter — and
-// bindgen reflects that decay in function-pointer signatures (e.g. the
-// `mLogger.log` field). Using the raw `va_list` typedef here both fails to
-// match that signature and would pass the wrong thing to `vsnprintf` by ABI.
-// On Windows / 32-bit targets `va_list` is already a pointer, so the typedef
-// works as-is.
-#[cfg(any(target_os = "linux", target_os = "android"))]
+// SysV AMD64 (x86_64 Linux/macOS/BSD) defines `va_list` as the array type
+// `[__va_list_tag; 1]`, but C decays array parameters to pointers, and
+// bindgen reflects that in function-pointer signatures (e.g. the
+// `mLogger.log` field, which ends up `*mut __va_list_tag`). Using the raw
+// `va_list` typedef both fails to match that signature and would pass the
+// wrong thing to `vsnprintf` by ABI. Everywhere else — Windows, arm64
+// macOS (Apple's ABI uses `char*`), 32-bit Unix — `va_list` is already a
+// pointer typedef, so the alias is the right thing as-is.
+#[cfg(all(unix, target_arch = "x86_64"))]
 type VaListArg = *mut mgba_sys::__va_list_tag;
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(all(unix, target_arch = "x86_64")))]
 type VaListArg = mgba_sys::va_list;
 
 extern "C" {
