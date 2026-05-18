@@ -300,7 +300,8 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-nickname"),
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
-                .padding(STANDARD_PADDING),
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(t(lang, "settings-language"), {
             // Build the picker options as `LanguageChoice`
@@ -317,6 +318,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             })
             .padding(STANDARD_PADDING)
             .width(Fill)
+            .style(widgets::chunky_pick_list)
         },),
         labeled::<Message>(
             t(lang, "settings-theme"),
@@ -326,11 +328,13 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Message::ThemeChanged,
             )
             .padding(STANDARD_PADDING)
-            .width(Fill),
+            .width(Fill)
+            .style(widgets::chunky_pick_list),
         ),
         iced::widget::checkbox(config.streamer_mode)
             .label(t(lang, "settings-streamer-mode"))
-            .on_toggle(Message::ToggleStreamerMode),
+            .on_toggle(Message::ToggleStreamerMode)
+            .style(widgets::chunky_checkbox),
         labeled::<Message>(
             t(lang, "settings-data-path"),
             row![
@@ -385,10 +389,12 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             })
             .padding(STANDARD_PADDING)
             .width(Fill)
+            .style(widgets::chunky_pick_list)
         },),
         iced::widget::checkbox(config.integer_scaling)
             .label(t(lang, "settings-integer-scaling"))
-            .on_toggle(Message::ToggleIntegerScaling),
+            .on_toggle(Message::ToggleIntegerScaling)
+            .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
     .into()
@@ -400,23 +406,28 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
-                .padding(STANDARD_PADDING),
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(
             t(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
-                .padding(STANDARD_PADDING),
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_text_input),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
             .label(t(lang, "settings-enable-patch-autoupdate"))
-            .on_toggle(Message::TogglePatchAutoupdate),
+            .on_toggle(Message::TogglePatchAutoupdate)
+            .style(widgets::chunky_checkbox),
         iced::widget::checkbox(config.enable_updater)
             .label(t(lang, "settings-enable-updater"))
-            .on_toggle(Message::ToggleEnableUpdater),
+            .on_toggle(Message::ToggleEnableUpdater)
+            .style(widgets::chunky_checkbox),
         iced::widget::checkbox(config.allow_prerelease_upgrades)
             .label(t(lang, "settings-allow-prerelease-upgrades"))
-            .on_toggle(Message::ToggleAllowPrereleaseUpgrades),
+            .on_toggle(Message::ToggleAllowPrereleaseUpgrades)
+            .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
     .into()
@@ -497,7 +508,7 @@ fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: 
             // the chip's caption text so the row stays tight.
             button(Icon::X.widget().size(TEXT_CAPTION))
                 .padding([2, 6])
-                .style(button::danger)
+                .style(widgets::danger_button)
                 .on_press(Message::BindingRemove(key, idx)),
         ]
         .spacing(4)
@@ -617,7 +628,7 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
             t(lang, "updater-update-now"),
             Message::UpdateNow,
             STANDARD_PADDING,
-            iced::widget::button::primary,
+            widgets::primary_button,
         )
     });
 

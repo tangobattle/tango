@@ -166,8 +166,8 @@ impl PatchesState {
 
         let top = container(top_row.padding(8)).width(Fill);
 
-        let mut list = column![].spacing(1).padding(8);
-        for (name, patch) in patches.iter() {
+        let mut list = column![].spacing(2).padding(8);
+        for (idx, (name, patch)) in patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
             list = list.push(
                 button(
@@ -189,7 +189,7 @@ impl PatchesState {
                 )
                 .padding([6, 10])
                 .width(Fill)
-                .style(widgets::list_item(selected))
+                .style(widgets::list_item(selected, idx))
                 .on_press(Message::Selected(name.clone())),
             );
         }
@@ -235,8 +235,8 @@ impl PatchesState {
             let header = row![
                 container(text(patch.title.clone()).size(TEXT_TITLE)).width(Fill),
                 pick_list(versions, selected_version, Message::VersionSelected)
-
-                    .padding(STANDARD_PADDING),
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::chunky_pick_list),
                 widgets::icon_button(
                     Icon::Folder,
                     t(lang, "patches-open-folder"),

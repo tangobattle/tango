@@ -1,7 +1,6 @@
 use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
-use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
@@ -200,7 +199,8 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
                     .label(t(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
                     .size(TEXT_BODY)
-                    .text_size(12),
+                    .text_size(12)
+                    .style(crate::widgets::chunky_checkbox),
                 copy_btn(Tab::Folder),
             ]
             .spacing(10)
@@ -494,18 +494,20 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     // Tight stack — rows already have their own padding + accent
     // stripe; extra column spacing here adds dead gaps that read
     // as "spreadsheet" rather than "chip list".
-    let mut body = column![].spacing(1).padding(8);
+    let mut body = column![].spacing(1).padding(0);
+    let mut visible_idx = 0usize;
     for (chip, g) in &items {
         if !grouped && chip.is_none() {
             continue;
         }
         let chip_id = chip.as_ref().map(|c| c.id);
         let code = chip.as_ref().map(|c| c.code.to_string());
-        body = body.push(chip_row(loaded, chip_id, code, g, grouped, chips_have_mb));
+        body = body.push(chip_row(loaded, chip_id, code, g, grouped, chips_have_mb, visible_idx));
+        visible_idx += 1;
     }
 
     let _ = grouped;
-    scrollable(body).height(Fill).width(Fill).into()
+    scrollable(body.padding(12)).height(Fill).width(Fill).into()
 }
 
 // `code = None` skips the code badge (Auto Battle Data slots
@@ -519,6 +521,7 @@ fn chip_row<M: 'static>(
     g: &GroupedChip,
     show_count_cell: bool,
     chips_have_mb: bool,
+    row_idx: usize,
 ) -> Element<'static, M> {
     let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
@@ -526,32 +529,34 @@ fn chip_row<M: 'static>(
     let accent = class_accent(chip_class, dark);
     let is_empty_slot = chip_id.is_none();
 
-    // Chip icon — keep the in-game sprite at native scale (16→28),
-    // big enough to recognize without dominating the row.
+    // Chip icon — in-game sprite at 28 px so it reads as a chip
+    // graphic rather than a row decoration.
     let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
-            .width(Length::Fixed(22.0))
-            .height(Length::Fixed(22.0))
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
             .filter_method(iced_image::FilterMethod::Nearest)
             .content_fit(ContentFit::Contain)
             .into(),
-        None => Space::new().width(Length::Fixed(22.0)).into(),
+        None => Space::new().width(Length::Fixed(28.0)).into(),
     };
 
-    // Element icon, sits next to the name. Reserve width so columns
-    // still align loosely without needing a header.
+    // Element icon. Same 14→28 (2× native) scaling as the chip
+    // icon so both sprites read at the same size and stay on an
+    // integer multiple of their source — anything else makes
+    // cosmic-text's resampler eat the pixel grid.
     let element_id = info.as_ref().map(|i| i.element());
     let element_icon: Element<'static, M> = element_id
         .and_then(|id| loaded.element_icons.get(&id).cloned())
         .map(|h| {
             Image::new(h)
-                .width(Length::Fixed(16.0))
-                .height(Length::Fixed(16.0))
+                .width(Length::Fixed(28.0))
+                .height(Length::Fixed(28.0))
                 .filter_method(iced_image::FilterMethod::Nearest)
                 .content_fit(ContentFit::Contain)
                 .into()
         })
-        .unwrap_or_else(|| Space::new().width(Length::Fixed(16.0)).into());
+        .unwrap_or_else(|| Space::new().width(Length::Fixed(28.0)).into());
 
     let name_text = info
         .as_ref()
@@ -644,7 +649,7 @@ fn chip_row<M: 'static>(
         .push(power_text)
         .push(mb_text);
 
-    let card = card_wrap(r.padding([3, 12]).into(), accent);
+    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx);
     // Hover tooltip with chip image preview + description.
     // Always rendered when the chip has either; the folder list
     // and Auto Battle Data both want this affordance, so it
@@ -689,13 +694,34 @@ fn chip_row<M: 'static>(
 /// the whole row), but it's set to the theme's page background colour
 /// so it visually disappears against the surrounding pane chrome —
 /// gives the list a denser look without the shaded-card noise.
-fn card_wrap<M: 'static>(inner: Element<'static, M>, accent: Option<iced::Color>) -> Element<'static, M> {
+fn card_wrap<M: 'static>(
+    inner: Element<'static, M>,
+    accent: Option<iced::Color>,
+    row_idx: usize,
+) -> Element<'static, M> {
     let accent_color = accent.unwrap_or(iced::Color::TRANSPARENT);
+    let zebra = row_idx % 2 == 1;
     let card_body = container(inner)
         .width(Fill)
-        .style(|theme: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(theme.palette().background)),
-            ..container::Style::default()
+        .style(move |theme: &iced::Theme| {
+            let bg = theme.palette().background;
+            let text = theme.palette().text;
+            let body_bg = if zebra {
+                // Faint text-tinted wash — readable as "every other
+                // row" without screaming "spreadsheet".
+                iced::Color {
+                    r: bg.r * 0.95 + text.r * 0.05,
+                    g: bg.g * 0.95 + text.g * 0.05,
+                    b: bg.b * 0.95 + text.b * 0.05,
+                    a: 1.0,
+                }
+            } else {
+                bg
+            };
+            container::Style {
+                background: Some(iced::Background::Color(body_bg)),
+                ..container::Style::default()
+            }
         });
 
     container(card_body)
@@ -704,7 +730,7 @@ fn card_wrap<M: 'static>(inner: Element<'static, M>, accent: Option<iced::Color>
             top: 0.0,
             right: 0.0,
             bottom: 0.0,
-            left: 4.0,
+            left: 6.0,
         })
         .style(move |_| container::Style {
             background: Some(iced::Background::Color(accent_color)),
@@ -745,7 +771,11 @@ fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static
 }
 
 fn colored_badge<M: 'static>(label: String, bg: iced::Color, text_color: iced::Color) -> Element<'static, M> {
-    colored_badge_sized(label, bg, text_color, 11.0, [2.0, 6.0])
+    // Same dimensions as the NaviCust parts badges so the
+    // patch-card effect chips and the NCP parts read as
+    // family — chunkier than a chrome chip but smaller than a
+    // CTA button.
+    colored_badge_sized(label, bg, text_color, TEXT_BODY, [3.0, 8.0])
 }
 
 /// Variant that lets callers (NCP parts list) pick a larger text size
@@ -762,7 +792,7 @@ fn colored_badge_sized<M: 'static>(
         .style(move |_theme: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(bg)),
             border: iced::Border {
-                radius: 3.0.into(),
+                radius: 6.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -1025,7 +1055,30 @@ fn render_navicust<M: 'static>(
             let stacked = stack![image, overlay_col]
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh));
-            container(stacked).center_x(Fill).into()
+            // Drop a soft shadow under the rendered grid so it
+            // reads as a screen sitting on the body, not a sticker
+            // pasted onto it. Square corners — iced's container
+            // clip(true) only clips to a rectangle, so a rounded
+            // border here would draw an outline the image
+            // doesn't actually fit inside.
+            let shadowed = container(stacked)
+                .width(Length::Fixed(dw))
+                .height(Length::Fixed(dh))
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    container::Style {
+                        shadow: iced::Shadow {
+                            color: iced::Color {
+                                a: if p.is_dark { 0.65 } else { 0.25 },
+                                ..iced::Color::BLACK
+                            },
+                            offset: iced::Vector::new(0.0, 8.0),
+                            blur_radius: 24.0,
+                        },
+                        ..Default::default()
+                    }
+                });
+            container(shadowed).center_x(Fill).padding(12).into()
         }
         None => text(format!("{}: {} × {}", t(lang, "navicust-grid-size"), cols, rows_n))
             .size(TEXT_CAPTION)
@@ -1054,7 +1107,7 @@ fn render_navicust<M: 'static>(
         ));
         let bg = if is_solid { solid_color } else { plus_color };
         let _ = i; // index no longer needed now that the list-highlight is gone
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 6.0]);
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0]);
         let badge_el: Element<'static, M> = if let Some(desc) = description {
             tooltip(
                 badge_el,
@@ -1079,9 +1132,7 @@ fn render_navicust<M: 'static>(
     }
     let parts_list = row![solid_col, plus_col].spacing(12);
 
-    // Grid pinned to the left at its natural size; parts list takes the
-    // remaining width to the right. The parts label sits above the
-    // list so it doesn't push the grid down.
+    // Parts label sits above the list so it doesn't push the grid down.
     let parts_block = column![
         text(format!("{}:", t(lang, "navicust-parts")))
             .size(TEXT_BODY)
@@ -1090,12 +1141,9 @@ fn render_navicust<M: 'static>(
         parts_list,
     ];
 
-    let layout = row![
-        container(grid_el),
-        container(parts_block).width(Length::Fill).padding([0, 0]),
-    ]
-    .spacing(20)
-    .align_y(Alignment::Start);
+    let layout = row![container(grid_el), container(parts_block).width(Length::Fill),]
+        .spacing(20)
+        .align_y(Alignment::Start);
 
     let mut col = column![].spacing(8).padding(16);
     if let Some(name) = style_name {
@@ -1103,7 +1151,7 @@ fn render_navicust<M: 'static>(
     }
     col = col.push(layout);
 
-    let _ = (cols, rows_n);
+    let _ = (cols, rows_n, installed_solid, installed_plus);
     container(scrollable(col)).width(Fill).height(Fill).into()
 }
 
@@ -1115,11 +1163,9 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
     };
     let assets = loaded.assets.as_ref();
 
-    let mut list = column![].spacing(2).padding(16);
+    let mut list = column![].spacing(3).padding(0);
     match view {
         tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
-            list = list.push(text(format!("{}: {}", t(lang, "patch-cards-count"), v.count())).size(TEXT_BODY));
-            list = list.push(horizontal_rule(1));
             for i in 0..v.count() {
                 let Some(card) = v.patch_card(i) else { continue };
                 let info = assets.patch_card56(card.id);
@@ -1156,12 +1202,10 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 ]
                 .spacing(8)
                 .align_y(Alignment::Start);
-                list = list.push(container(row).padding([4, 0]));
+                list = list.push(container(row).padding([6, 10]).style(crate::widgets::zebra_row(i)));
             }
         }
         tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
-            list = list.push(text(t(lang, "patch-cards-4-title")).size(TEXT_BODY));
-            list = list.push(horizontal_rule(1));
             for i in 0..6 {
                 let card = v.patch_card(i);
                 let info = card.as_ref().and_then(|c| assets.patch_card4(c.id));
@@ -1197,12 +1241,15 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 ]
                 .spacing(8)
                 .align_y(Alignment::Start);
-                list = list.push(container(row).padding([4, 0]));
+                list = list.push(container(row).padding([6, 10]).style(crate::widgets::zebra_row(i)));
             }
         }
     }
 
-    container(scrollable(list)).width(Fill).height(Fill).into()
+    container(scrollable(list.padding(12)))
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 // ---------- Auto Battle Data ----------
@@ -1222,10 +1269,10 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
     let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
         let mut col = column![text(title).size(TEXT_BODY).style(muted_text_style)].spacing(1);
         let empty_badges = GroupedChip::default();
-        for id in slots {
-            col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb));
+        for (idx, id) in slots.iter().enumerate() {
+            col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb, idx));
         }
-        col.push(Space::new().height(14)).into()
+        col.push(Space::new().height(12)).into()
     };
 
     let list = column![
@@ -1240,9 +1287,9 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         section(t(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
     ]
     .spacing(4)
-    .padding(8);
+    .padding(0);
 
-    container(scrollable(list)).width(Fill).height(Fill).into()
+    container(scrollable(list.padding(12))).width(Fill).height(Fill).into()
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {

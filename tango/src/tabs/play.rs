@@ -1,7 +1,7 @@
 use crate::i18n::t;
 use crate::widgets;
 use crate::{
-    config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION,
+    config, game, rom, save_view, selection, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY,
     TEXT_HEADING, TEXT_TITLE,
 };
 use iced::widget::rule::horizontal as horizontal_rule;
@@ -448,13 +448,10 @@ impl PlayState {
                 container(self.body(lang, scanners, loaded, streamer_mode, config))
                     .width(Fill)
                     .height(Fill),
-                horizontal_rule(1),
-                // Fixed-height lobby pane so the whole strip
-                // (settings + controls + verdict + ready row)
-                // is always fully visible and never squeezes
-                // the save view to zero. Tuned by eyeball to
-                // fit current contents — if you add more rows
-                // here, bump this.
+                widgets::hud_scanline(),
+                // Lobby pane sizes itself to its content — no
+                // more fixed-height eyeball tuning when rows are
+                // added or removed.
                 container(lobby_view(
                     lang,
                     netplay_lobby,
@@ -462,8 +459,7 @@ impl PlayState {
                     scanners,
                     loaded.is_some(),
                 ))
-                .width(Fill)
-                .height(Length::Fixed(220.0)),
+                .width(Fill),
             ]
             .height(Fill)
             .into(),
@@ -483,7 +479,7 @@ impl PlayState {
         col = col
             .push(self.selector_strip(lang, scanners))
             .push(body)
-            .push(horizontal_rule(1))
+            .push(widgets::hud_scanline())
             .push(self.bottom_strip(lang, netplay_phase, loaded));
         col.into()
     }
@@ -559,7 +555,8 @@ impl PlayState {
         let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
             .placeholder(t(lang, "play-no-game"))
             .padding(STANDARD_PADDING)
-            .width(Length::FillPortion(3));
+            .width(Length::FillPortion(3))
+            .style(widgets::chunky_pick_list);
 
         let save_options: Vec<SaveOption> = self
             .local_game
@@ -575,7 +572,8 @@ impl PlayState {
         let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
             .placeholder(t(lang, "play-no-save"))
             .padding(STANDARD_PADDING)
-            .width(Length::Fill);
+            .width(Length::Fill)
+            .style(widgets::chunky_pick_list);
 
         let no_patch_label = t(lang, "play-no-patch");
         let patches = scanners.patches.read();
@@ -600,7 +598,8 @@ impl PlayState {
             Message::LocalPatchSelected,
         )
         .padding(STANDARD_PADDING)
-        .width(Length::FillPortion(2));
+        .width(Length::FillPortion(2))
+        .style(widgets::chunky_pick_list);
 
         let version_options: Vec<semver::Version> = self
             .local_patch
@@ -625,7 +624,8 @@ impl PlayState {
         )
         .placeholder(t(lang, "play-version-placeholder"))
         .padding(STANDARD_PADDING)
-        .width(Length::Fixed(100.0));
+        .width(Length::Fixed(100.0))
+        .style(widgets::chunky_pick_list);
 
         let refresh = widgets::icon_button(Icon::RefreshCw, t(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
 
@@ -642,6 +642,7 @@ impl PlayState {
                 text_input(&t(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
                     .on_submit(Message::SaveRenameConfirm)
+                    .style(widgets::chunky_text_input)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fill),
                 widgets::icon_button_styled(
@@ -649,7 +650,7 @@ impl PlayState {
                     t(lang, "save-rename-confirm"),
                     Some(Message::SaveRenameConfirm),
                     STANDARD_PADDING,
-                    button::primary,
+                    widgets::primary_button,
                 ),
                 widgets::icon_button(
                     Icon::X,
@@ -670,7 +671,7 @@ impl PlayState {
                     t(lang, "save-delete-confirm"),
                     Message::SaveDeleteConfirm,
                     STANDARD_PADDING,
-                    button::danger,
+                    widgets::danger_button,
                 ),
                 widgets::icon_button(
                     Icon::X,
@@ -707,7 +708,7 @@ impl PlayState {
                         t(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
                         STANDARD_PADDING,
-                        button::primary,
+                        widgets::primary_button,
                     )
                 } else {
                     iced::widget::button(
@@ -723,12 +724,14 @@ impl PlayState {
                     pick_list(options, selected, |o| { Message::SaveNewTemplateSelected(o.raw) })
                         .placeholder(t(lang, "save-template-pick"))
                         .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(180.0)),
+                        .width(Length::Fixed(180.0))
+                        .style(widgets::chunky_pick_list),
                     text_input(&t(lang, "save-name-placeholder"), draft)
                         .on_input(Message::SaveNewDraftChanged)
                         .on_submit(Message::SaveNewConfirm)
                         .padding(STANDARD_PADDING)
-                        .width(Length::Fill),
+                        .width(Length::Fill)
+                        .style(widgets::chunky_text_input),
                     confirm_btn,
                     widgets::icon_button(
                         Icon::X,
@@ -761,7 +764,7 @@ impl PlayState {
                 label,
                 if on { Some(msg) } else { None },
                 STANDARD_PADDING,
-                iced::widget::button::danger,
+                widgets::danger_button,
             )
         };
         // "New save" is enabled only when the active patch+version ships
@@ -822,24 +825,36 @@ impl PlayState {
         // button is impossible, so the old "click → flash error"
         // race goes away.
         let needs_save = link_code_empty && loaded.is_none();
+        // One size for everything sitting on this strip — text,
+        // icons, input value, status — so the row reads as a
+        // single HUD band rather than a pile of mismatched
+        // controls. Vertical padding chosen to give every element
+        // the same overall height; CTA gets more horizontal pad
+        // because it carries an icon + label.
+        const BOTTOM_SIZE: f32 = 15.0;
+        const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
+        const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
+        let cta_label = |icon: Icon, label: String| {
+            row![
+                icon.widget().size(BOTTOM_SIZE),
+                text(label).size(BOTTOM_SIZE),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+        };
         let play_button: Element<'a, Message> = if netplay_in_flight {
-            widgets::labeled_icon_button(
-                Icon::X,
-                t(lang, "play-cancel"),
-                Message::NetplayDisconnect,
-                PRIMARY_PADDING,
-                button::danger,
-            )
+            iced::widget::button(cta_label(Icon::X, t(lang, "play-cancel")))
+                .padding(BOTTOM_CTA_PAD)
+                .style(widgets::danger_button)
+                .on_press(Message::NetplayDisconnect)
+                .into()
         } else if link_code_empty {
             // Single-player path. Disabled when no save loaded.
-            let label_widget = iced::widget::row![Icon::Play.widget(), text(t(lang, "play-play"))]
-                .spacing(8)
-                .align_y(Alignment::Center);
-            let mut btn = iced::widget::button(label_widget).padding(PRIMARY_PADDING);
+            let mut btn = iced::widget::button(cta_label(Icon::Play, t(lang, "play-play"))).padding(BOTTOM_CTA_PAD);
             if needs_save {
                 btn = btn.style(widgets::neutral);
             } else {
-                btn = btn.style(button::primary).on_press(Message::PlayPressed);
+                btn = btn.style(widgets::primary_button).on_press(Message::PlayPressed);
             }
             btn.into()
         } else {
@@ -847,13 +862,11 @@ impl PlayState {
             // explicitly via "Fight" + a swords glyph so the user
             // can tell at a glance they're about to start a
             // match, not a singleplayer session.
-            widgets::labeled_icon_button(
-                Icon::Swords,
-                t(lang, "play-fight"),
-                Message::PlayPressed,
-                PRIMARY_PADDING,
-                button::primary,
-            )
+            iced::widget::button(cta_label(Icon::Swords, t(lang, "play-fight")))
+                .padding(BOTTOM_CTA_PAD)
+                .style(widgets::primary_button)
+                .on_press(Message::PlayPressed)
+                .into()
         };
 
         // Netplay phase status line. Pre-condition errors no longer
@@ -870,27 +883,27 @@ impl PlayState {
                 } else {
                     t(lang, "play-status-connecting")
                 };
-                text(label).size(TEXT_BODY).style(text::primary).into()
+                text(label).size(BOTTOM_SIZE).style(text::primary).into()
             }
             Phase::Negotiating { .. } => text(t(lang, "play-status-negotiating"))
-                .size(TEXT_BODY)
+                .size(BOTTOM_SIZE)
                 .style(text::primary)
                 .into(),
             // Lobby = neutral / muted. The lobby ITSELF is the
             // accent surface (Ready button, big side cards).
             Phase::Lobby { .. } => text(t(lang, "play-status-lobby"))
-                .size(TEXT_BODY)
+                .size(BOTTOM_SIZE)
                 .style(save_view::muted_text_style)
                 .into(),
             Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
-                .size(TEXT_BODY)
+                .size(BOTTOM_SIZE)
                 .style(save_view::danger_text_style)
                 .into(),
             Phase::Idle if needs_save => text(t(lang, "play-no-selection"))
-                .size(TEXT_BODY)
+                .size(BOTTOM_SIZE)
                 .style(save_view::muted_text_style)
                 .into(),
-            Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_BODY).into(),
+            Phase::Idle => text(t(lang, "play-status-idle")).size(BOTTOM_SIZE).into(),
         };
 
         // Link-code field:
@@ -900,36 +913,49 @@ impl PlayState {
         //     (omitting on_input disables the field in iced).
         //   * Idle / Failed — fully editable. The dice button
         //     fills it with a fresh random handle.
+        let link_field = |interactive: bool| {
+            let mut ti = text_input(&t(lang, "play-link-code"), &self.link_code)
+                .size(BOTTOM_SIZE)
+                .padding(BOTTOM_PAD)
+                .width(Length::Fixed(260.0))
+                .style(widgets::chunky_text_input);
+            if interactive {
+                ti = ti.on_input(Message::LinkCodeChanged).on_submit(Message::PlayPressed);
+            }
+            ti
+        };
+        let dice_button = || -> Element<'a, Message> {
+            iced::widget::tooltip(
+                iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
+                    .padding(BOTTOM_PAD)
+                    .style(widgets::neutral)
+                    .on_press(Message::LinkCodeRandom),
+                container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))
+                    .padding(6)
+                    .style(|theme: &iced::Theme| {
+                        let p = theme.extended_palette();
+                        iced::widget::container::Style {
+                            background: Some(iced::Background::Color(p.background.strong.color)),
+                            text_color: Some(p.background.strong.text),
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }
+                    }),
+                iced::widget::tooltip::Position::Top,
+            )
+            .gap(4)
+            .into()
+        };
         let (link_input, shuffle_button): (Option<Element<'a, Message>>, Option<Element<'a, Message>>) = match netplay {
             Phase::Lobby { .. } => (None, None),
-            Phase::Connecting { .. } | Phase::Negotiating { .. } => (
-                Some(
-                    text_input(&t(lang, "play-link-code"), &self.link_code)
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(260.0))
-                        .into(),
-                ),
-                None,
-            ),
-            _ => (
-                Some(
-                    text_input(&t(lang, "play-link-code"), &self.link_code)
-                        .on_input(Message::LinkCodeChanged)
-                        .on_submit(Message::PlayPressed)
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(260.0))
-                        .into(),
-                ),
-                Some(widgets::icon_button(
-                    Icon::Dice5,
-                    t(lang, "play-link-code-random"),
-                    Message::LinkCodeRandom,
-                    STANDARD_PADDING,
-                )),
-            ),
+            Phase::Connecting { .. } | Phase::Negotiating { .. } => (Some(link_field(false).into()), None),
+            _ => (Some(link_field(true).into()), Some(dice_button())),
         };
 
-        let mut row = row![].spacing(8).align_y(Alignment::Center).padding(8);
+        let mut row = row![].spacing(10).align_y(Alignment::Center).padding([10, 16]);
         if let Some(input) = link_input {
             row = row.push(input);
         }
@@ -938,7 +964,7 @@ impl PlayState {
         }
         row = row.push(play_button).push(horizontal_space()).push(status);
 
-        container(row).width(Fill).into()
+        container(row).width(Fill).style(widgets::hud_bar).into()
     }
 }
 
@@ -1043,24 +1069,41 @@ fn lobby_view<'a>(
     // `ready` paints a green dot when that side has committed.
     let side =
         |label: String, settings: Option<&crate::net::protocol::Settings>, ready: bool| -> Element<'static, Message> {
+            // 14 px dot with a soft primary-tinted glow when the
+            // side is committed — reads as a "ready light" on a
+            // console panel rather than a flat status pip.
             let dot_color = |ready: bool| -> Element<'static, Message> {
-                let bg = if ready {
-                    iced::Color::from_rgb8(0x4c, 0xaf, 0x50)
-                } else {
-                    iced::Color::from_rgb8(0x66, 0x66, 0x66)
-                };
                 container(
                     iced::widget::Space::new()
-                        .width(Length::Fixed(10.0))
-                        .height(Length::Fixed(10.0)),
+                        .width(Length::Fixed(14.0))
+                        .height(Length::Fixed(14.0)),
                 )
-                .style(move |_theme: &iced::Theme| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(bg)),
-                    border: iced::Border {
-                        radius: 5.0.into(),
+                .style(move |theme: &iced::Theme| {
+                    let bg = if ready {
+                        theme.palette().primary
+                    } else {
+                        iced::Color::from_rgb8(0x66, 0x66, 0x66)
+                    };
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        border: iced::Border {
+                            radius: 7.0.into(),
+                            ..Default::default()
+                        },
+                        shadow: if ready {
+                            iced::Shadow {
+                                color: iced::Color {
+                                    a: 0.7,
+                                    ..theme.palette().primary
+                                },
+                                offset: iced::Vector::new(0.0, 0.0),
+                                blur_radius: 10.0,
+                            }
+                        } else {
+                            iced::Shadow::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
+                    }
                 })
                 .into()
             };
@@ -1071,15 +1114,15 @@ fn lobby_view<'a>(
                         column![
                             text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
                             text(t(lang, "lobby-waiting"))
-                                .size(TEXT_BODY)
+                                .size(TEXT_TITLE)
                                 .style(save_view::muted_text_style),
                         ]
                         .spacing(2),
                     ]
-                    .spacing(8)
+                    .spacing(10)
                     .align_y(Alignment::Center),
                 )
-                .padding(8)
+                .padding(6)
                 .width(Length::Fill)
                 .into();
             };
@@ -1115,31 +1158,41 @@ fn lobby_view<'a>(
                 );
                 subline.push_str(&format!(" · {mt}"));
             }
+            // Nickname is the marquee — title-sized, primary
+            // tinted when this side is ready so the card lights
+            // up visibly as commitment lands.
+            let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
+                |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().primary),
+                }
+            } else {
+                |_theme: &iced::Theme| iced::widget::text::Style { color: None }
+            };
             container(
                 row![
                     dot_color(ready),
                     column![
                         text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                        text(nickname).size(TEXT_HEADING),
+                        text(nickname).size(TEXT_TITLE).style(nickname_style),
                         text(subline).size(TEXT_CAPTION).style(save_view::muted_text_style),
                     ]
                     .spacing(2),
                 ]
-                .spacing(8)
+                .spacing(10)
                 .align_y(Alignment::Center),
             )
-            .padding(8)
+            .padding(6)
             .width(Length::Fill)
             .into()
         };
 
     let header_line = if let Some(d) = lobby.latency {
         text(format!("{}: {} ms", t(lang, "lobby-latency"), d.as_millis()))
-            .size(TEXT_CAPTION)
+            .size(TEXT_BODY)
             .style(save_view::muted_text_style)
     } else {
         text(t(lang, "lobby-handshake"))
-            .size(TEXT_CAPTION)
+            .size(TEXT_BODY)
             .style(save_view::muted_text_style)
     };
 
@@ -1175,6 +1228,7 @@ fn lobby_view<'a>(
         } else {
             pick_list(options, selected, |o| Message::NetplaySetMatchType((o.mode, o.subtype)))
                 .padding(STANDARD_PADDING)
+                .style(crate::widgets::chunky_pick_list)
                 .into()
         }
     } else {
@@ -1183,13 +1237,15 @@ fn lobby_view<'a>(
             Message::NetplaySetMatchType((o.mode, o.subtype))
         })
         .padding(STANDARD_PADDING)
+        .style(crate::widgets::chunky_pick_list)
         .into()
     };
 
     // Input delay slider — legacy app caps at 10 frames. Each
     // increment is one full GBA frame (~16.7 ms one-way) of
     // smoothing for jittery connections.
-    let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, Message::NetplaySetInputDelay);
+    let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, Message::NetplaySetInputDelay)
+        .width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
@@ -1226,45 +1282,70 @@ fn lobby_view<'a>(
             (t(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
         };
 
-    let reveal_column = column![
-        iced::widget::checkbox(lobby.reveal_setup)
-            .label(t(lang, "lobby-reveal-mine"))
-            .on_toggle(Message::NetplaySetRevealSetup)
-            .size(TEXT_HEADING),
-        text(reveal_label).size(TEXT_CAPTION).style(reveal_style),
-    ]
-    .spacing(2);
-
-    // Match-type lives on the LEFT and the pick-list grows to
-    // fit its current label (Single / Triple / etc); pushing it
-    // around the input-delay + reveal-setup controls every time
-    // the user changes match type was distracting. Anchor those
-    // two to the right via a `horizontal_space()` spacer so they
-    // stay put regardless of how wide the match-type widget gets.
-    let controls = row![
+    // Settings table — one stacked row per setting, each shaped
+    // `[fixed-width muted label] [control fills the rest]`. The
+    // identical row shape is what makes the block read as a
+    // single coherent settings group; visual weight differences
+    // between picker / slider / checkbox stop mattering because
+    // every control hangs off the same label column.
+    let label_style: fn(&iced::Theme) -> iced::widget::text::Style = save_view::muted_text_style;
+    let setting_row = |label_el: Element<'a, Message>, control: Element<'a, Message>| -> Element<'a, Message> {
         row![
-            text(format!("{}:", t(lang, "replays-match-type")))
-                .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
-            mt_picker,
+            container(label_el).width(Length::Fixed(140.0)),
+            container(control).width(Length::Fill),
         ]
-        .spacing(6)
-        .align_y(Alignment::Center),
-        horizontal_space(),
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .into()
+    };
+
+    let match_row = setting_row(
+        text(t(lang, "replays-match-type"))
+            .size(TEXT_BODY)
+            .style(label_style)
+            .into(),
+        mt_picker,
+    );
+
+    let delay_row = setting_row(
+        text(t(lang, "lobby-input-delay"))
+            .size(TEXT_BODY)
+            .style(label_style)
+            .into(),
         row![
-            text(format!("{}: {}", t(lang, "lobby-input-delay"), lobby.input_delay))
-                .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
             id_slider,
+            // Live value rendered as a fixed-width monospaced
+            // numeral so the slider's position has a readable
+            // numeric counterpart that doesn't jiggle layout.
+            text(format!("{}", lobby.input_delay))
+                .size(TEXT_BODY)
+                .font(iced::Font::MONOSPACE)
+                .width(Length::Fixed(18.0)),
             id_suggest,
         ]
-        .spacing(6)
+        .spacing(10)
         .align_y(Alignment::Center)
-        .width(Length::Fixed(260.0)),
-        reveal_column,
-    ]
-    .spacing(20)
-    .align_y(Alignment::Center);
+        .into(),
+    );
+
+    let reveal_row = setting_row(
+        text(t(lang, "lobby-reveal-mine"))
+            .size(TEXT_BODY)
+            .style(label_style)
+            .into(),
+        row![
+            iced::widget::checkbox(lobby.reveal_setup, )
+                .on_toggle(Message::NetplaySetRevealSetup)
+                .size(TEXT_HEADING)
+                .style(widgets::chunky_checkbox),
+            text(reveal_label).size(TEXT_CAPTION).style(reveal_style),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .into(),
+    );
+
+    let controls = column![match_row, delay_row, reveal_row].spacing(8);
 
     // Compatibility verdict line. Computed every render (cheap —
     // no IO, just lookups against the patches scanner). Drives the
@@ -1288,11 +1369,11 @@ fn lobby_view<'a>(
             } else {
                 save_view::danger_text_style
             };
-            (text(label).size(TEXT_CAPTION).style(style).into(), ok)
+            (text(label).size(TEXT_BODY).style(style).into(), ok)
         }
         _ => (
             text(t(lang, "lobby-handshake"))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
             false,
@@ -1302,7 +1383,10 @@ fn lobby_view<'a>(
     // Big single toggle: Ready → Unready → Starting…, switching
     // label + icon + color on click. Same button, same position;
     // clicking it always does the obvious next thing (ready up,
-    // unready, or wait for match-start).
+    // unready, or wait for match-start). A touch chunkier than
+    // the regular CTAs in the strip, but not so big that it
+    // blows the lobby layout — the glow shadow does the work of
+    // "look at me" instead.
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
     let (ready_icon, ready_label, ready_msg, ready_palette): (Icon, String, Option<Message>, ReadyPalette) =
@@ -1362,23 +1446,33 @@ fn lobby_view<'a>(
     .spacing(12)
     .align_y(Alignment::Center);
 
+    // Central "VS" mark between the two player slots. Pure text,
+    // primary-tinted, no chrome — chrome made it look like a
+    // button you could click on. The size + color does the job
+    // of pulling focus on its own.
+    let vs_chip: Element<'a, Message> = text("VS")
+        .size(TEXT_DISPLAY)
+        .style(|theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(theme.palette().primary),
+        })
+        .into();
     container(
         column![
             header_row,
             iced::widget::row![
                 side(t(lang, "play-you"), lobby.local.as_ref(), lobby.local_ready),
-                iced::widget::rule::vertical(1),
+                vs_chip,
                 side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
             ]
-            .spacing(12),
+            .spacing(14)
+            .align_y(Alignment::Center),
             horizontal_rule(1),
             controls,
         ]
-        .spacing(10)
+        .spacing(12)
         .padding(12),
     )
     .width(Fill)
-    .height(Fill)
     .into()
 }
 
@@ -1447,70 +1541,101 @@ enum ReadyPalette {
     Starting,
 }
 
-/// Custom style for the lobby's Ready toggle. Hand-rolled instead
-/// of reusing `button::primary` / `button::success` / `button::secondary`
-/// so each state lands on the right contrast tier and stays
-/// readable on Dark (iced's `success.base` is a near-invisible
-/// teal there). Consistent 6 px radius + thin border across the
-/// active variants.
+/// Custom style for the lobby's Ready toggle. Three discrete
+/// moods — each one its own visual register so a glance at the
+/// button tells the whole story of "where are we in the
+/// handshake".
+///
+/// * Idle      — primary_button on steroids: brighter gradient,
+///               huge primary glow, chunky 2 px border. This is
+///               the moment the user is supposed to slam the
+///               button, so it has to feel hot.
+/// * Committed — neutral beveled plate. We've ack'd locally and
+///               are waiting on the peer; the only useful action
+///               is to take it back, which is not a celebration.
+/// * Starting  — flat muted badge. Both sides committed; the
+///               button is now purely a status indicator with no
+///               click target.
 fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
     let p = theme.extended_palette();
-    // Starting is a pure indicator — no hover, no on_press. Iced
-    // routes it through Status::Disabled because the caller passed
-    // `on_press = None`, which we render as a muted badge.
-    if matches!(palette, ReadyPalette::Starting) {
-        return button::Style {
+    let primary = theme.palette().primary;
+    match palette {
+        ReadyPalette::Starting => button::Style {
             background: Some(iced::Background::Color(p.background.weak.color)),
             text_color: crate::save_view::muted_color(theme),
             border: iced::Border {
-                radius: 6.0.into(),
+                radius: 10.0.into(),
                 width: 1.0,
                 color: p.background.strong.color,
             },
             ..Default::default()
-        };
+        },
+        ReadyPalette::Committed => {
+            // Defer to the shared beveled neutral so the
+            // un-ready toggle looks like a sibling of the other
+            // chunky neutral buttons in the lobby strip.
+            crate::widgets::neutral(theme, status)
+        }
+        ReadyPalette::Idle => {
+            // Inline expansion of the battle-button kernel with
+            // every dial cranked: bigger glow, brighter top stop,
+            // 2 px border so the button reads as a console
+            // affordance rather than a CSS rectangle.
+            let lighter = mix(primary, iced::Color::WHITE, 0.30);
+            let darker = mix(primary, iced::Color::BLACK, 0.25);
+            let (top, bottom, glow_alpha, offset_y, blur) = match status {
+                button::Status::Hovered => (
+                    mix(lighter, iced::Color::WHITE, 0.18),
+                    mix(primary, iced::Color::WHITE, 0.05),
+                    0.95,
+                    8.0,
+                    28.0,
+                ),
+                button::Status::Pressed => (
+                    darker,
+                    mix(darker, iced::Color::BLACK, 0.12),
+                    0.35,
+                    2.0,
+                    14.0,
+                ),
+                button::Status::Disabled => {
+                    let dim = mix(primary, iced::Color::BLACK, 0.55);
+                    (dim, mix(dim, iced::Color::BLACK, 0.15), 0.0, 0.0, 0.0)
+                }
+                button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
+            };
+            button::Style {
+                background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+                    iced::gradient::Linear::new(0.0)
+                        .add_stop(0.0, top)
+                        .add_stop(1.0, bottom),
+                ))),
+                text_color: iced::Color::WHITE,
+                border: iced::Border {
+                    radius: 10.0.into(),
+                    width: 2.0,
+                    color: mix(primary, iced::Color::WHITE, 0.45),
+                },
+                shadow: iced::Shadow {
+                    color: iced::Color {
+                        a: glow_alpha,
+                        ..primary
+                    },
+                    offset: iced::Vector::new(0.0, offset_y),
+                    blur_radius: blur,
+                },
+                snap: false,
+            }
+        }
     }
-    let (base_color, hover_color, text_color, border_color) = match palette {
-        ReadyPalette::Idle => (
-            p.primary.base.color,
-            p.primary.strong.color,
-            p.primary.base.text,
-            p.primary.strong.color,
-        ),
-        ReadyPalette::Committed => (
-            p.background.weak.color,
-            p.background.strong.color,
-            theme.palette().text,
-            p.background.strong.color,
-        ),
-        ReadyPalette::Starting => unreachable!(),
-    };
-    let base = button::Style {
-        background: Some(iced::Background::Color(base_color)),
-        text_color,
-        border: iced::Border {
-            radius: 6.0.into(),
-            width: 1.0,
-            color: border_color,
-        },
-        ..Default::default()
-    };
-    match status {
-        button::Status::Active | button::Status::Pressed => base,
-        button::Status::Hovered => button::Style {
-            background: Some(iced::Background::Color(hover_color)),
-            ..base
-        },
-        button::Status::Disabled => button::Style {
-            background: Some(iced::Background::Color(p.background.weak.color)),
-            text_color: crate::save_view::muted_color(theme),
-            border: iced::Border {
-                radius: 6.0.into(),
-                width: 1.0,
-                color: p.background.strong.color,
-            },
-            ..Default::default()
-        },
+}
+
+fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
+    iced::Color {
+        r: a.r * (1.0 - t) + b.r * t,
+        g: a.g * (1.0 - t) + b.g * t,
+        b: a.b * (1.0 - t) + b.b * t,
+        a: 1.0,
     }
 }
 
@@ -1577,9 +1702,16 @@ fn empty_state_card(
     body_lines: Vec<String>,
     open_folder: Option<(String, std::path::PathBuf)>,
 ) -> Element<'static, Message> {
-    let mut col = column![text(title).size(TEXT_TITLE)]
-        .spacing(8)
-        .align_x(Alignment::Center);
+    let mut col = column![
+        // Lucide "info" glyph sized up so the card has a clear
+        // visual anchor — without it the empty state was just a
+        // floating title + paragraph, which read as a flash of
+        // text rather than a deliberate placeholder.
+        Icon::Info.widget().size(28.0),
+        text(title).size(TEXT_TITLE),
+    ]
+    .spacing(10)
+    .align_x(Alignment::Center);
     for line in body_lines {
         col = col.push(text(line).size(TEXT_CAPTION).style(save_view::muted_text_style));
     }
@@ -1592,7 +1724,10 @@ fn empty_state_card(
             widgets::neutral,
         ));
     }
-    container(col.padding(20).max_width(520)).center(Fill).into()
+    container(container(col.padding(28).max_width(520)).style(widgets::panel))
+        .padding(24)
+        .center(Fill)
+        .into()
 }
 
 // ---------- File-level save helpers ----------

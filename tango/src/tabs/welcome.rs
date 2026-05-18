@@ -71,7 +71,8 @@ pub fn view<'a>(
     let lang_picker = pick_list(lang_options, lang_selected, |c: crate::i18n::LanguageChoice| {
         Message::LanguageSelected(c.id)
     })
-    .padding(STANDARD_PADDING);
+    .padding(STANDARD_PADDING)
+    .style(widgets::chunky_pick_list);
 
     let step_marker = |done: bool| -> Icon {
         if done {
@@ -132,7 +133,7 @@ pub fn view<'a>(
     let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
     let mut continue_btn = button(text(t(lang, "welcome-continue"))).padding(PRIMARY_PADDING);
     if can_continue {
-        continue_btn = continue_btn.style(button::primary).on_press(Message::Continue);
+        continue_btn = continue_btn.style(widgets::primary_button).on_press(Message::Continue);
     } else {
         continue_btn = continue_btn.style(widgets::neutral);
     }
@@ -152,9 +153,9 @@ pub fn view<'a>(
             text_input("", &state.nickname_draft)
                 .on_input(Message::NicknameChanged)
                 .on_submit(Message::Continue)
-                
                 .padding(STANDARD_PADDING)
-                .width(Length::Fixed(280.0)),
+                .width(Length::Fixed(280.0))
+                .style(widgets::chunky_text_input),
         ),
     ]
     .spacing(6);

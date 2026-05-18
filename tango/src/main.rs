@@ -66,7 +66,6 @@ struct ExportPrep {
 }
 
 use i18n::{t, FALLBACK_LANG};
-use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row};
 use iced::{Alignment, Element, Fill, Theme};
@@ -1601,11 +1600,18 @@ impl App {
             .map(Message::Settings),
         };
 
-        column![top_bar(lang, self.tab), horizontal_rule(1), body]
-            .spacing(0)
+        // Body container picks up the palette background and adds
+        // a faint inner tint so the HUD bar visibly sits on top of
+        // a "screen surface" rather than a flat sheet of pixels.
+        let body_surface = container(body)
             .width(Fill)
             .height(Fill)
-            .into()
+            .style(widgets::body_surface);
+        column![top_bar(lang, self.tab), widgets::hud_scanline(), body_surface,]
+        .spacing(0)
+        .width(Fill)
+        .height(Fill)
+        .into()
     }
 
     fn theme(&self) -> Theme {
@@ -1621,22 +1627,70 @@ impl App {
 /// derive theme-aware styles (e.g. markdown `Settings`, where
 /// the builder doesn't get the live Theme passed in).
 pub fn theme_for(config: &config::Config) -> Theme {
-    // Custom palettes derived from the built-in Light/Dark, with
-    // the accent (primary) swapped to the BN-green the main
-    // egui app uses for selection / accents.
+    // Tango palettes — these aren't tweaks of iced's stock Light /
+    // Dark anymore. The dark variant is a deep navy "cyberworld"
+    // base (think MMBN's PET screens / the legacy egui theme's
+    // accent) so panels read as game chrome rather than a generic
+    // desktop app. Light is a warm cream + slate set tuned to feel
+    // like the same UI under daylight, not a separate identity.
     match config.theme {
         config::ThemeMode::Light => Theme::custom(
             "Tango Light".to_string(),
             iced::theme::Palette {
+                background: iced::Color::from_rgb(
+                    0xf3 as f32 / 255.0,
+                    0xee as f32 / 255.0,
+                    0xdc as f32 / 255.0,
+                ),
+                text: iced::Color::from_rgb(
+                    0x14 as f32 / 255.0,
+                    0x22 as f32 / 255.0,
+                    0x34 as f32 / 255.0,
+                ),
                 primary: TANGO_GREEN,
-                ..iced::theme::Palette::LIGHT
+                success: TANGO_GREEN,
+                warning: iced::Color::from_rgb(
+                    0xb7 as f32 / 255.0,
+                    0x7e as f32 / 255.0,
+                    0x33 as f32 / 255.0,
+                ),
+                danger: iced::Color::from_rgb(
+                    0xd1 as f32 / 255.0,
+                    0x3a as f32 / 255.0,
+                    0x3a as f32 / 255.0,
+                ),
             },
         ),
         config::ThemeMode::Dark => Theme::custom(
             "Tango Dark".to_string(),
             iced::theme::Palette {
+                // Deep navy black — darker than stock iced Dark
+                // (0x2b2d31) so the neon green primary actually
+                // glows against it instead of competing.
+                background: iced::Color::from_rgb(
+                    0x0b as f32 / 255.0,
+                    0x12 as f32 / 255.0,
+                    0x1c as f32 / 255.0,
+                ),
+                // Cyan-tinted off-white. The slight blue shift
+                // keeps body copy from looking gray on the navy bg.
+                text: iced::Color::from_rgb(
+                    0xe4 as f32 / 255.0,
+                    0xf3 as f32 / 255.0,
+                    0xfb as f32 / 255.0,
+                ),
                 primary: TANGO_GREEN,
-                ..iced::theme::Palette::DARK
+                success: TANGO_GREEN,
+                warning: iced::Color::from_rgb(
+                    0xff as f32 / 255.0,
+                    0xb5 as f32 / 255.0,
+                    0x47 as f32 / 255.0,
+                ),
+                danger: iced::Color::from_rgb(
+                    0xff as f32 / 255.0,
+                    0x52 as f32 / 255.0,
+                    0x52 as f32 / 255.0,
+                ),
             },
         ),
     }
@@ -1658,22 +1712,18 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
         Handle::from_bytes(raw)
     });
 
-    let tab =
-        |icon, label, target: Tab| widgets::tab_button(icon, label, Message::TabSelected(target), target == active);
+    let tab = |icon, label, target: Tab| {
+        widgets::nav_tab_button(icon, label, Message::TabSelected(target), target == active)
+    };
     container(
         row![
             iced::widget::container(
                 Image::new(LOGO.clone())
-                    .width(iced::Length::Fixed(20.0))
-                    .height(iced::Length::Fixed(20.0))
+                    .width(iced::Length::Fixed(28.0))
+                    .height(iced::Length::Fixed(28.0))
                     .content_fit(iced::ContentFit::Contain),
             )
-            // Logo image sized down + padded so its visual
-            // footprint matches the adjacent tab buttons (icon
-            // glyph + label sit ~20 px tall after their own
-            // padding). Without this the 28 px square logo
-            // dominated the strip.
-            .padding([4, 8]),
+            .padding([2, 8]),
             tab(Icon::Gamepad, t(lang, "tab-play"), Tab::Play),
             tab(Icon::Film, t(lang, "tab-replays"), Tab::Replays),
             tab(Icon::Puzzle, t(lang, "tab-patches"), Tab::Patches),
@@ -1682,17 +1732,18 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             // is already an interface convention, so the "Settings"
             // text would be redundant; expose it as a hover
             // tooltip instead.
-            widgets::icon_tab_button(
+            widgets::nav_icon_tab_button(
                 Icon::Settings,
                 t(lang, "tab-settings"),
                 Message::TabSelected(Tab::Settings),
                 Tab::Settings == active,
             ),
         ]
-        .spacing(2)
-        .align_y(Alignment::End)
-        .padding([4, 6]),
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding([10, 16]),
     )
     .width(Fill)
+    .style(widgets::hud_bar)
     .into()
 }

@@ -19,7 +19,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::{game, Scanners, STANDARD_PADDING, TEXT_CAPTION};
+use crate::{game, Scanners, TEXT_CAPTION};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, text};
 use iced::{Alignment, Element, Fill, Length};
@@ -469,6 +469,40 @@ pub fn view<'a>(
         Space::new().width(Fill).height(Fill).into()
     };
 
+    // Controls-strip sizing: one icon size + padding so the
+    // play/pause, settings, close, opponent-toggle buttons all
+    // sit at the same height as the scrubber + speed picker.
+    // Matches the play-tab bottom bar so the chrome reads as
+    // family across screens.
+    const CTRL_ICON: f32 = 16.0;
+    const CTRL_PAD: [f32; 2] = [10.0, 14.0];
+
+    let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
+        iced::widget::tooltip(
+            iced::widget::button(icon.widget().size(CTRL_ICON))
+                .padding(CTRL_PAD)
+                .style(widgets::neutral)
+                .on_press(msg),
+            iced::widget::container(text(label).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    };
+
     // PvP-only: if the opponent revealed their setup, expose a
     // toggle for the side panel so the user can collapse it
     // mid-match without losing it. Folded into the controls strip
@@ -480,21 +514,11 @@ pub fn view<'a>(
             } else {
                 (Icon::ArrowLeftFromLine, "session-show-opponent")
             };
-            Some(widgets::icon_button(
-                icon,
-                t(lang, label_key),
-                Message::ToggleOpponentPanel,
-                STANDARD_PADDING,
-            ))
+            Some(ctrl_icon_btn(icon, t(lang, label_key), Message::ToggleOpponentPanel))
         }
         _ => None,
     };
-    let close_btn = widgets::icon_button(
-        Icon::X,
-        t(lang, "playback-close"),
-        Message::Close,
-        STANDARD_PADDING,
-    );
+    let close_btn = ctrl_icon_btn(Icon::X, t(lang, "playback-close"), Message::Close);
 
     let mut layout = column![]
         .spacing(0)
@@ -504,13 +528,20 @@ pub fn view<'a>(
     // Body: framebuffer, optionally split with the opponent's
     // save view on the right when reveal-setup is active +
     // panel toggled on.
+    // Emulator framebuffer sits on pure black so the upscaled
+    // GBA viewport reads as a screen against bezel, not an
+    // image floating over the app's navy body.
+    let black_bg = |_theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::BLACK)),
+        ..Default::default()
+    };
     let body: Element<'a, Message> = match session {
         ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
             let opponent = s.opponent_loaded.as_ref().unwrap();
             let panel = save_view::view(lang, opponent, &s.opponent_save_view, true)
                 .map(Message::OpponentSaveViewAction);
             iced::widget::row![
-                container(frame).center(Fill).padding(8),
+                container(frame).center(Fill).padding(8).style(black_bg),
                 iced::widget::rule::vertical(1),
                 container(panel)
                     .width(iced::Length::Fixed(380.0))
@@ -519,7 +550,7 @@ pub fn view<'a>(
             .height(Fill)
             .into()
         }
-        _ => container(frame).center(Fill).padding(8).into(),
+        _ => container(frame).center(Fill).padding(8).style(black_bg).into(),
     };
     layout = layout.push(body);
 
@@ -528,15 +559,15 @@ pub fn view<'a>(
     // thin strip with just the opponent-panel toggle (PvP only)
     // and the close button. Either way the close lives here so
     // there's no separate header eating vertical space.
-    let mut controls = row![].spacing(8).align_y(Alignment::Center).padding(8);
+    let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 16]);
     if let Some(r) = session.as_replay() {
         let total = r.total_ticks().max(1);
         let cur = r.current_tick().min(total);
         let prefetched = r.prefetch_progress().min(total);
-        let (play_pause_icon, play_pause_key) = if r.is_paused() {
-            (Icon::Play, "playback-play")
+        let (play_pause_icon, play_pause_key, paused) = if r.is_paused() {
+            (Icon::Play, "playback-play", true)
         } else {
-            (Icon::Pause, "playback-pause")
+            (Icon::Pause, "playback-pause", false)
         };
         let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
             .round_boundaries(r.round_boundaries())
@@ -554,18 +585,66 @@ pub fn view<'a>(
         let speed_picker = iced::widget::pick_list(speed_opts, Some(current_speed), |o| {
             Message::SetSpeed(o.0)
         })
-        .padding(STANDARD_PADDING);
+        .padding(CTRL_PAD)
+        .text_size(15.0)
+        .style(crate::widgets::chunky_pick_list);
 
+        // Play/Pause is the transport's centerpiece — promote to
+        // the primary-button style when paused (the affordance
+        // the user is most likely looking for at rest) and keep
+        // it neutral while playing. Either way it sits a notch
+        // bigger than the other strip controls.
+        let play_pause_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+            if paused {
+                widgets::primary_button
+            } else {
+                widgets::neutral
+            };
+        let play_pause_btn = iced::widget::tooltip(
+            iced::widget::button(play_pause_icon.widget().size(18.0))
+                .padding([10, 18])
+                .style(play_pause_style)
+                .on_press(Message::TogglePlay),
+            iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4);
+
+        // Tick readouts: monospaced + bumped one tier above caption
+        // so they read as digital-clock numerals rather than
+        // metadata, primary-tinted so the eye picks them up as
+        // playback state.
+        let tick_style = |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(theme.palette().primary),
+        };
         controls = controls
-            .push(widgets::icon_button(
-                play_pause_icon,
-                t(lang, play_pause_key),
-                Message::TogglePlay,
-                STANDARD_PADDING,
-            ))
-            .push(text(format_tick(cur)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(play_pause_btn)
+            .push(
+                text(format_tick(cur))
+                    .size(14)
+                    .font(iced::Font::MONOSPACE)
+                    .style(tick_style),
+            )
             .push(scrub)
-            .push(text(format_tick(total)).size(TEXT_CAPTION).style(save_view::muted_text_style))
+            .push(
+                text(format_tick(total))
+                    .size(14)
+                    .font(iced::Font::MONOSPACE)
+                    .style(save_view::muted_text_style),
+            )
             .push(speed_picker);
     } else {
         // No transport widgets for SP/PvP — push a spacer so the
@@ -623,11 +702,10 @@ pub fn view<'a>(
     // overlay settings in place).
     let is_sp = matches!(session, ActiveSession::SinglePlayer(_));
     if is_pvp || is_sp {
-        controls = controls.push(crate::widgets::icon_button(
+        controls = controls.push(ctrl_icon_btn(
             lucide_icons::Icon::Settings,
             t(lang, "tab-settings"),
             Message::OpenSettings,
-            STANDARD_PADDING,
         ));
     }
     if let Some(toggle) = opponent_toggle {
@@ -640,7 +718,9 @@ pub fn view<'a>(
         // close button on PvP.
         let _ = close_btn;
     }
-    layout = layout.push(container(controls).width(Fill));
+    layout = layout
+        .push(widgets::hud_scanline())
+        .push(container(controls).width(Fill).style(widgets::hud_bar));
 
     layout.into()
 }

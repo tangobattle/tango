@@ -493,12 +493,14 @@ impl ReplaysState {
             row![
                 text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
-                    .padding(STANDARD_PADDING),
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::chunky_pick_list),
                 text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
                 iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(180.0)),
+                    .width(Length::Fixed(180.0))
+                    .style(widgets::chunky_text_input),
                 horizontal_space(),
                 widgets::icon_button(
                     Icon::RefreshCw,
@@ -544,8 +546,8 @@ impl ReplaysState {
             })
             .collect();
 
-        let mut list = column![].spacing(1).padding(8);
-        for r in &filtered {
+        let mut list = column![].spacing(2).padding(8);
+        for (idx, r) in filtered.iter().enumerate() {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
             let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
@@ -653,7 +655,7 @@ impl ReplaysState {
                 button(row![text_col, badge].spacing(0).align_y(Alignment::Center))
                     .padding([6, 10])
                     .width(Fill)
-                    .style(widgets::list_item(selected))
+                    .style(widgets::list_item(selected, idx))
                     .on_press(Message::Selected(r.path.clone())),
             );
         }
@@ -802,7 +804,7 @@ fn replay_detail<'a>(
                     t(lang, "replays-watch"),
                     Some(Message::Watch(r.path.clone())),
                     STANDARD_PADDING,
-                    iced::widget::button::primary,
+                    widgets::primary_button,
                 ),
                 {
                     // Per-replay toggle. Disabled outright while a
@@ -967,7 +969,7 @@ fn export_panel<'a>(
                             t(lang, "replays-export-open"),
                             Message::OpenFile(path_for_open),
                             STANDARD_PADDING,
-                            iced::widget::button::primary,
+                            widgets::primary_button,
                         ),
                         widgets::labeled_icon_button(
                             Icon::RefreshCw,
@@ -1035,7 +1037,7 @@ fn export_panel<'a>(
     };
     let lossless_chk = iced::widget::checkbox(settings.lossless)
         .label(t(lang, "replays-export-lossless"))
-        ;
+        .style(widgets::chunky_checkbox);
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
     } else {
@@ -1043,7 +1045,7 @@ fn export_panel<'a>(
     };
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
         .label(t(lang, "replays-export-disable-bgm"))
-        ;
+        .style(widgets::chunky_checkbox);
     let bgm_chk: Element<'a, Message> = if in_flight {
         bgm_chk.into()
     } else {
@@ -1065,7 +1067,7 @@ fn export_panel<'a>(
         for (i, picked) in selected_rounds.iter().enumerate() {
             let cb = iced::widget::checkbox(*picked)
                 .label(format!("{}", i + 1))
-                ;
+                .style(widgets::chunky_checkbox);
             let cb: Element<'a, Message> = if in_flight {
                 cb.into()
             } else {
@@ -1085,7 +1087,7 @@ fn export_panel<'a>(
             t(lang, "replays-export-save-as"),
             Message::Export(replay_path.to_path_buf()),
             STANDARD_PADDING,
-            iced::widget::button::primary,
+            widgets::primary_button,
         )
     } else {
         iced::widget::button(
