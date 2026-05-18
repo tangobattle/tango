@@ -53,11 +53,6 @@ impl KeyId {
         Some(KeyId(s))
     }
 
-    /// Does an incoming iced key match this stored binding?
-    pub fn matches(&self, key: &iced::keyboard::Key) -> bool {
-        key_to_string(key).map(|s| s == self.0).unwrap_or(false)
-    }
-
     /// Human-readable label for the settings UI.
     pub fn label(&self) -> &str {
         &self.0
@@ -360,21 +355,6 @@ impl MappedKey {
         }
     }
 
-    pub fn all() -> &'static [MappedKey] {
-        &[
-            MappedKey::Up,
-            MappedKey::Down,
-            MappedKey::Left,
-            MappedKey::Right,
-            MappedKey::A,
-            MappedKey::B,
-            MappedKey::L,
-            MappedKey::R,
-            MappedKey::Start,
-            MappedKey::Select,
-            MappedKey::SpeedUp,
-        ]
-    }
 }
 
 /// Live held-input state combined from keyboard + every connected
@@ -390,10 +370,6 @@ pub struct HeldState {
 }
 
 impl HeldState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn set_key(&mut self, key: &iced::keyboard::Key, pressed: bool) {
         let Some(s) = key_to_string(key) else {
             return;

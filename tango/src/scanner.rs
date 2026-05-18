@@ -32,10 +32,6 @@ where
         parking_lot::RwLockReadGuard::map(self.inner.read_recursive(), |g| &g.items)
     }
 
-    pub fn is_scanning(&self) -> bool {
-        self.inner.read().scanning
-    }
-
     pub fn rescan(&self, scan: impl Fn() -> Option<T>) {
         {
             let mut inner = self.inner.write();

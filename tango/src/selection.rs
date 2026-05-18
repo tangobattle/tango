@@ -56,29 +56,6 @@ pub struct NavicustRender {
     pub cell_part_idx: Vec<Option<usize>>,
 }
 
-impl NavicustRender {
-    /// Translate a point in displayed (scaled) widget coords back to a
-    /// part index using the given on-screen image dimensions.
-    pub fn part_at(&self, point: iced::Point, display_w: f32, display_h: f32) -> Option<usize> {
-        if display_w <= 0.0 || display_h <= 0.0 {
-            return None;
-        }
-        let scale_x = self.source_w as f32 / display_w;
-        let scale_y = self.source_h as f32 / display_h;
-        let sx = point.x * scale_x - self.body_origin_x;
-        let sy = point.y * scale_y - self.body_origin_y;
-        if sx < 0.0 || sy < 0.0 {
-            return None;
-        }
-        let col = (sx / self.cell_size) as usize;
-        let row = (sy / self.cell_size) as usize;
-        if col >= self.cols || row >= self.rows {
-            return None;
-        }
-        self.cell_part_idx.get(row * self.cols + col).copied().flatten()
-    }
-}
-
 impl Loaded {
     pub fn build(
         game: GameRef,

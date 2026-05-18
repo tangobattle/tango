@@ -3,13 +3,6 @@ use crate::scanner;
 pub struct ScannedReplay {
     pub path: std::path::PathBuf,
     pub metadata: tango_pvp::replay::Metadata,
-    /// Heavy stats — tick count, round count, completion flag.
-    /// Filled in lazily by a background worker. Completion can't
-    /// be cheaply peeked from the last byte either: a truncated
-    /// recording whose tail happens to be `0x00` (legal as the
-    /// low byte of joyflags inside a 2-byte tag) would look
-    /// complete, so we always walk the input stream to be sure.
-    pub stats: Option<ReplayStats>,
 }
 
 /// Output of [`compute_stats`]. Cheap to copy.
@@ -65,7 +58,6 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
         out.push(ScannedReplay {
             path: p.to_path_buf(),
             metadata,
-            stats: None,
         });
     }
     out.sort_by_key(|r| {
