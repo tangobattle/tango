@@ -632,7 +632,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
-                        self.play.flash_status = Some(tabs::play::FlashMessage::Raw(format!("{e}")));
+                        self.play.last_error = Some(format!("{e}"));
                         // netplay state is already back to Idle.
                     }
                 }
@@ -690,7 +690,7 @@ impl App {
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
-                        self.play.flash_status = Some(tabs::play::FlashMessage::Raw(format!("{e}")));
+                        self.play.last_error = Some(format!("{e}"));
                     }
                 }
                 iced::Task::none()
@@ -703,8 +703,10 @@ impl App {
             }
             E::Netplay(m) => self.netplay.update(m).map(Message::Netplay),
             E::NetplayReadyWithSave => {
+                // View-time gating disables the Ready button when
+                // no save is loaded, so this is just defense in
+                // depth — fall through silently if reached.
                 let Some(loaded) = self.loaded.as_ref() else {
-                    self.play.flash_status = Some(tabs::play::FlashMessage::I18n("play-no-selection"));
                     return iced::Task::none();
                 };
                 let save_sram = loaded.save.as_sram_dump();

@@ -59,6 +59,9 @@ pub enum Message {
     SaveNewDraftChanged(String),
     SaveNewTemplateSelected(String),
     SaveNewConfirm,
+    /// User clicked × on the inline error banner; clears
+    /// `PlayState::last_error`.
+    DismissError,
 }
 
 // ---------- Game / Save pick_list options ----------
@@ -134,30 +137,13 @@ pub struct PlayState {
     /// Inline state for the save-management actions (rename / delete).
     pub save_action: SaveAction,
     pub link_code: String,
-    /// Transient one-shot status message shown beneath the link-code
-    /// input; reset by the next user action. Resolved at view-time
-    /// (not assignment-time) so a language switch immediately re-
-    /// localizes the visible text.
-    pub flash_status: Option<FlashMessage>,
-}
-
-/// Lazy status message — resolves to the current locale at view
-/// time. `I18n` carries an i18n key for static messages; `Raw`
-/// carries a free-form already-rendered string (errors, etc.) that
-/// can't be auto-translated.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FlashMessage {
-    I18n(&'static str),
-    Raw(String),
-}
-
-impl FlashMessage {
-    pub fn resolve(&self, lang: &LanguageIdentifier) -> String {
-        match self {
-            FlashMessage::I18n(key) => t(lang, key),
-            FlashMessage::Raw(s) => s.clone(),
-        }
-    }
+    /// Last after-the-fact action failure (singleplayer launch
+    /// errored, PvP session build failed, …) — rendered as a
+    /// dismissable banner at the top of the play tab. Pre-condition
+    /// errors ("you need a save first") are NOT funneled here;
+    /// they're handled by view-time button gating + inline hints,
+    /// because graying out the action surface explains itself.
+    pub last_error: Option<String>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -186,7 +172,7 @@ impl Default for PlayState {
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             link_code: String::new(),
-            flash_status: None,
+            last_error: None,
         }
     }
 }
@@ -299,30 +285,32 @@ impl PlayState {
             }
             Message::LinkCodeChanged(s) => {
                 self.link_code = s;
-                self.flash_status = None;
                 None
             }
             Message::LinkCodeRandom => {
                 self.link_code = crate::randomcode::generate(&config.language);
-                self.flash_status = None;
                 // Drop the freshly-generated code straight onto the
                 // clipboard so the user can paste it into chat
                 // without an extra select+copy round-trip.
                 Some(Effect::CopyText(self.link_code.clone()))
             }
             Message::PlayPressed => {
-                self.flash_status = None;
+                // Pre-condition is now enforced at the view layer
+                // (the Play button is disabled when not actionable),
+                // so reaching this handler means we're good to go.
                 let trimmed = self.link_code.trim();
                 if trimmed.is_empty() {
                     if loaded.is_none() {
-                        let _ = config; // language now resolved at view-time
-                        self.flash_status = Some(FlashMessage::I18n("play-no-selection"));
                         return None;
                     }
                     Some(Effect::StartSinglePlayer)
                 } else {
                     Some(Effect::NetplayConnect(trimmed.to_string()))
                 }
+            }
+            Message::DismissError => {
+                self.last_error = None;
+                None
             }
             Message::NetplayDisconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::NetplaySetMatchType(mt) => {
@@ -464,24 +452,37 @@ impl PlayState {
                 // the save view to zero. Tuned by eyeball to
                 // fit current contents — if you add more rows
                 // here, bump this.
-                container(lobby_view(lang, netplay_lobby, self.local_game, scanners))
-                    .width(Fill)
-                    .height(Length::Fixed(220.0)),
+                container(lobby_view(
+                    lang,
+                    netplay_lobby,
+                    self.local_game,
+                    scanners,
+                    loaded.is_some(),
+                ))
+                .width(Fill)
+                .height(Length::Fixed(220.0)),
             ]
             .height(Fill)
             .into(),
             _ => self.body(lang, scanners, loaded, streamer_mode, config),
         };
 
-        column![
-            self.selector_strip(lang, scanners),
-            body,
-            horizontal_rule(1),
-            self.bottom_strip(lang, netplay_phase),
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into()
+        let mut col = column![].width(Fill).height(Fill);
+        // After-the-fact failure banner (e.g. PvP build failed,
+        // singleplayer launch errored). Pre-condition errors
+        // ("no save selected") are NOT shown here — the
+        // affordances that would trigger them are disabled, which
+        // self-explains. Only real after-the-fact failures merit
+        // this much chrome.
+        if let Some(err) = &self.last_error {
+            col = col.push(error_banner(lang, err));
+        }
+        col = col
+            .push(self.selector_strip(lang, scanners))
+            .push(body)
+            .push(horizontal_rule(1))
+            .push(self.bottom_strip(lang, netplay_phase, loaded));
+        col.into()
     }
 
     /// Picks between the save view, an empty-state hint, or a "pick a
@@ -843,6 +844,7 @@ impl PlayState {
         &'a self,
         lang: &'a LanguageIdentifier,
         netplay: &'a crate::netplay::Phase,
+        loaded: Option<&'a selection::Loaded>,
     ) -> Element<'a, Message> {
         use crate::netplay::Phase;
         // The Play tab is only visible when no session is running
@@ -850,6 +852,13 @@ impl PlayState {
         // only "in-progress" state we need to surface here is netplay.
         // Cancel = disconnect, all phases other than Idle / Failed.
         let netplay_in_flight = !matches!(netplay, Phase::Idle | Phase::Failed { .. });
+        let link_code_empty = self.link_code.trim().is_empty();
+        // Single-player path requires a loaded save. Netplay path
+        // doesn't (the lobby will ask for a save when the user
+        // hits Ready). Gating it here means clicking the disabled
+        // button is impossible, so the old "click → flash error"
+        // race goes away.
+        let needs_save = link_code_empty && loaded.is_none();
         let play_button: Element<'a, Message> = if netplay_in_flight {
             widgets::labeled_icon_button(
                 Icon::X,
@@ -858,14 +867,18 @@ impl PlayState {
                 PRIMARY_PADDING,
                 button::danger,
             )
-        } else if self.link_code.trim().is_empty() {
-            widgets::labeled_icon_button(
-                Icon::Play,
-                t(lang, "play-play"),
-                Message::PlayPressed,
-                PRIMARY_PADDING,
-                button::primary,
-            )
+        } else if link_code_empty {
+            // Single-player path. Disabled when no save loaded.
+            let label_widget = iced::widget::row![Icon::Play.widget(), text(t(lang, "play-play"))]
+                .spacing(8)
+                .align_y(Alignment::Center);
+            let mut btn = iced::widget::button(label_widget).padding(PRIMARY_PADDING);
+            if needs_save {
+                btn = btn.style(widgets::neutral);
+            } else {
+                btn = btn.style(button::primary).on_press(Message::PlayPressed);
+            }
+            btn.into()
         } else {
             // Non-empty link code → netplay-bound. Surface this
             // explicitly via "Fight" + a swords glyph so the user
@@ -880,48 +893,44 @@ impl PlayState {
             )
         };
 
-        // flash_status (single-player launch error etc.) takes priority
-        // over the netplay phase label.
-        let status: Element<'_, _> = if let Some(flash) = self.flash_status.as_ref() {
-            // Resolve via the current locale every render — language
-            // switches re-translate without needing a fresh fire.
-            text(flash.resolve(lang))
+        // Netplay phase status line. Pre-condition errors no longer
+        // live here — they ride alongside the (now-disabled) Play
+        // button as the inline "needs save" hint below.
+        let status: Element<'_, _> = match netplay {
+            Phase::Connecting { link_code } => text(format!(
+                "{} {link_code}",
+                t(lang, "play-status-connecting")
+            ))
+            .size(TEXT_BODY)
+            .style(text::primary)
+            .into(),
+            Phase::Negotiating { link_code } => text(format!(
+                "{} {link_code}",
+                t(lang, "play-status-negotiating")
+            ))
+            .size(TEXT_BODY)
+            .style(text::primary)
+            .into(),
+            // Lobby = neutral / muted. The lobby ITSELF is the
+            // accent surface (Ready button, big side cards); the
+            // status line just identifies the link code we're
+            // attached to.
+            Phase::Lobby { link_code } => text(format!(
+                "{} {link_code}",
+                t(lang, "play-status-lobby")
+            ))
+            .size(TEXT_BODY)
+            .style(save_view::muted_text_style)
+            .into(),
+            Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
                 .size(TEXT_CAPTION)
                 .style(save_view::danger_text_style)
-                .into()
-        } else {
-            match netplay {
-                Phase::Connecting { link_code } => text(format!(
-                    "{} {link_code}",
-                    t(lang, "play-status-connecting")
-                ))
-                .size(TEXT_BODY)
-                .style(text::primary)
                 .into(),
-                Phase::Negotiating { link_code } => text(format!(
-                    "{} {link_code}",
-                    t(lang, "play-status-negotiating")
-                ))
-                .size(TEXT_BODY)
-                .style(text::primary)
-                .into(),
-                // Lobby = neutral / muted. The lobby ITSELF is the
-                // accent surface (Ready button, big side cards); the
-                // status line just identifies the link code we're
-                // attached to.
-                Phase::Lobby { link_code } => text(format!(
-                    "{} {link_code}",
-                    t(lang, "play-status-lobby")
-                ))
-                .size(TEXT_BODY)
+            Phase::Idle if needs_save => text(t(lang, "play-no-selection"))
+                .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style)
                 .into(),
-                Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
-                    .size(TEXT_CAPTION)
-                    .style(save_view::danger_text_style)
-                    .into(),
-                Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_CAPTION).into(),
-            }
+            Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_CAPTION).into(),
         };
 
         // Link-code field:
@@ -1071,6 +1080,7 @@ fn lobby_view<'a>(
     lobby: &'a crate::netplay::LobbyState,
     local_game: Option<rom::GameRef>,
     scanners: &'a Scanners,
+    has_save: bool,
 ) -> Element<'a, Message> {
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
@@ -1334,10 +1344,15 @@ fn lobby_view<'a>(
         // Gray / neutral so it doesn't masquerade as a primary CTA.
         (Icon::X, "lobby-unready", Some(Message::NetplayUnready), ReadyPalette::Committed)
     } else {
+        // Compat OK + a save loaded → click sends Commit. Either
+        // missing → button disabled (the user can see WHY: the
+        // verdict text covers compat, and the side card / save
+        // selector covers "no save").
+        let can_ready = compat_ok && has_save;
         (
             Icon::Check,
             "lobby-ready",
-            if compat_ok { Some(Message::NetplayReady) } else { None },
+            if can_ready { Some(Message::NetplayReady) } else { None },
             ReadyPalette::Idle,
         )
     };
@@ -1531,6 +1546,46 @@ impl std::fmt::Display for MatchTypeOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
+}
+
+/// Inline banner used for after-the-fact action failures
+/// (singleplayer launch errored, PvP session build failed, …).
+/// Pre-condition errors are NOT funneled here — those gate the
+/// triggering action instead. Carries a dismiss × the user can
+/// click once they've read the message.
+fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, Message> {
+    container(
+        row![
+            Icon::AlertTriangle.widget(),
+            text(err.to_string())
+                .size(TEXT_CAPTION)
+                .style(save_view::danger_text_style),
+            iced::widget::space::horizontal(),
+            widgets::icon_button(
+                Icon::X,
+                t(lang, "save-action-cancel"),
+                Message::DismissError,
+                [4.0, 8.0],
+            ),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(8),
+    )
+    .width(Fill)
+    .style(|theme: &iced::Theme| {
+        let p = theme.extended_palette();
+        iced::widget::container::Style {
+            background: Some(iced::Background::Color(p.background.weak.color)),
+            border: iced::Border {
+                width: 1.0,
+                color: p.danger.strong.color,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 /// Centered card used for the no-roms / no-saves hints. Title is
