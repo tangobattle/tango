@@ -1,4 +1,4 @@
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::widgets;
 use crate::{
     config, game, rom, save_view, selection, Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY,
@@ -427,6 +427,51 @@ impl PlayState {
 }
 
 impl PlayState {
+    /// Single source of truth for the local side's
+    /// `protocol::Settings`. App calls this when actually sending
+    /// settings on the wire; lobby_view calls it as the "You"
+    /// slot fallback during Connecting/Negotiating (before
+    /// `lobby.local` has been populated by the netplay loop).
+    pub fn make_local_settings(
+        &self,
+        config: &config::Config,
+        lobby: &crate::netplay::LobbyState,
+        scanners: &Scanners,
+    ) -> crate::net::protocol::Settings {
+        use crate::net::protocol::{GameInfo, PatchInfo, Settings};
+        let roms = scanners.roms.read();
+        let patches = scanners.patches.read();
+        Settings {
+            nickname: config.nickname.clone().unwrap_or_default(),
+            match_type: lobby.match_type,
+            game_info: self.local_game.map(|game| {
+                let (family, variant) = game.family_and_variant();
+                GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: match (&self.local_patch, &self.local_patch_version) {
+                        (Some(name), Some(version)) => Some(PatchInfo {
+                            name: name.clone(),
+                            version: version.clone(),
+                        }),
+                        _ => None,
+                    },
+                }
+            }),
+            available_games: roms
+                .keys()
+                .map(|g| {
+                    let (family, variant) = g.family_and_variant();
+                    (family.to_string(), variant)
+                })
+                .collect(),
+            available_patches: patches
+                .iter()
+                .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
+                .collect(),
+            reveal_setup: lobby.reveal_setup,
+        }
+    }
+
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
@@ -442,28 +487,49 @@ impl PlayState {
         // the match, lobby controls + opponent info underneath.
         // Outside Lobby, the body is just the save view (or the
         // empty-state hints).
-        let body: Element<'a, Message> = match netplay_phase {
-            crate::netplay::Phase::Lobby { .. } => column![
-                // Save view soaks up the remaining vertical space.
+        // Lobby_view stands in for the bottom bar from the moment
+        // a netplay attempt is in flight — Connecting, Negotiating,
+        // Lobby — so the user sees the versus screen + match
+        // settings + Cancel button immediately on submitting a
+        // link code, instead of staring at the singleplayer
+        // bottom bar through the handshake. The verdict line and
+        // opponent slot degrade gracefully when peer info isn't
+        // there yet.
+        let show_lobby = matches!(
+            netplay_phase,
+            crate::netplay::Phase::Connecting { .. }
+                | crate::netplay::Phase::Negotiating { .. }
+                | crate::netplay::Phase::Lobby { .. }
+        );
+        // Synthesize the local side's Settings from the play
+        // tab's current selection so the "You" slot fills in
+        // immediately — pre-Lobby phases haven't populated
+        // `lobby.local` yet, but everything it needs is already
+        // on hand locally. Same builder the netplay loop uses to
+        // ship settings on the wire, so the visible info during
+        // the handshake exactly matches what gets sent.
+        let local_fallback = self.make_local_settings(config, netplay_lobby, scanners);
+        let body: Element<'a, Message> = if show_lobby {
+            column![
                 container(self.body(lang, scanners, loaded, streamer_mode, config))
                     .width(Fill)
                     .height(Fill),
                 widgets::hud_scanline(),
-                // Lobby pane sizes itself to its content — no
-                // more fixed-height eyeball tuning when rows are
-                // added or removed.
                 container(lobby_view(
                     lang,
                     netplay_lobby,
+                    netplay_phase,
                     self.local_game,
                     scanners,
                     loaded.is_some(),
+                    local_fallback,
                 ))
                 .width(Fill),
             ]
             .height(Fill)
-            .into(),
-            _ => self.body(lang, scanners, loaded, streamer_mode, config),
+            .into()
+        } else {
+            self.body(lang, scanners, loaded, streamer_mode, config)
         };
 
         let mut col = column![].width(Fill).height(Fill);
@@ -477,12 +543,12 @@ impl PlayState {
             col = col.push(error_banner(lang, err));
         }
         col = col.push(self.selector_strip(lang, scanners)).push(body);
-        // In Lobby phase, the lobby_view IS the bottom band — it
-        // already carries its own scanline separator and a
-        // Disconnect button next to the Ready toggle. Outside
-        // Lobby, the normal bottom_strip handles play / fight /
-        // link code + connecting status.
-        if !matches!(netplay_phase, crate::netplay::Phase::Lobby { .. }) {
+        // While a netplay attempt is in flight (Connecting /
+        // Negotiating / Lobby) the lobby_view IS the bottom band
+        // — it carries its own scanline separator and Cancel
+        // button. Otherwise the normal bottom_strip handles
+        // Play / Fight / link code + idle / failed status.
+        if !show_lobby {
             col = col
                 .push(widgets::hud_scanline())
                 .push(self.bottom_strip(lang, netplay_phase, loaded));
@@ -1066,9 +1132,11 @@ pub fn create_new_save(
 fn lobby_view<'a>(
     lang: &'a LanguageIdentifier,
     lobby: &'a crate::netplay::LobbyState,
+    phase: &'a crate::netplay::Phase,
     local_game: Option<rom::GameRef>,
     scanners: &'a Scanners,
     has_save: bool,
+    local_fallback: crate::net::protocol::Settings,
 ) -> Element<'a, Message> {
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
@@ -1192,8 +1260,22 @@ fn lobby_view<'a>(
             .into()
         };
 
+    // Pre-handshake we don't have a ping yet, but we always
+    // know the link code — show that instead of the generic
+    // "Exchanging settings…" placeholder so the user sees the
+    // identifier they're matched on.
+    let link_code: Option<&str> = match phase {
+        crate::netplay::Phase::Connecting { link_code, .. }
+        | crate::netplay::Phase::Negotiating { link_code }
+        | crate::netplay::Phase::Lobby { link_code } => Some(link_code.as_str()),
+        _ => None,
+    };
     let header_line = if let Some(d) = lobby.latency {
-        text(format!("{}: {} ms", t(lang, "lobby-latency"), d.as_millis()))
+        text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
+            .size(TEXT_BODY)
+            .style(save_view::muted_text_style)
+    } else if let Some(code) = link_code {
+        text(t_args(lang, "lobby-link-code", &[("code", code.to_string().into())]))
             .size(TEXT_BODY)
             .style(save_view::muted_text_style)
     } else {
@@ -1353,37 +1435,69 @@ fn lobby_view<'a>(
 
     let controls = column![match_row, delay_row, reveal_row].spacing(8);
 
-    // Compatibility verdict line. Computed every render (cheap —
-    // no IO, just lookups against the patches scanner). Drives the
-    // colour + the user-facing reason text. Only Compatible
-    // unlocks the Ready button below.
-    let (verdict_line, compat_ok): (Element<'a, Message>, bool) = match (lobby.local.as_ref(), lobby.remote.as_ref()) {
-        (Some(l), Some(r)) => {
-            use crate::netplay::compat::Verdict;
-            let patches = scanners.patches.read();
-            let verdict = crate::netplay::compat::check(l, r, &*patches);
-            let label = match verdict {
-                Verdict::Compatible => t(lang, "lobby-compat-ok"),
-                Verdict::MissingGame => t(lang, "lobby-compat-missing-game"),
-                Verdict::MissingRomOrPatch => t(lang, "lobby-compat-missing-rom"),
-                Verdict::DifferentVersions => t(lang, "lobby-compat-version-mismatch"),
-                Verdict::DifferentMatchTypes => t(lang, "lobby-compat-match-mismatch"),
-            };
-            let ok = matches!(verdict, Verdict::Compatible);
-            let style: fn(&iced::Theme) -> iced::widget::text::Style = if ok {
-                save_view::success_text_style
-            } else {
-                save_view::danger_text_style
-            };
-            (text(label).size(TEXT_BODY).style(style).into(), ok)
-        }
-        _ => (
-            text(t(lang, "lobby-handshake"))
+    // Status / verdict line. While the netplay attempt is still
+    // pre-Lobby (Connecting / Negotiating), this shows the
+    // connection progress so the user has something to read
+    // through the handshake. Once we're in Lobby with both
+    // sides' settings on hand, it switches to the compat
+    // verdict and gates the Ready button.
+    use crate::netplay::Phase;
+    let (verdict_line, compat_ok): (Element<'a, Message>, bool) = match phase {
+        Phase::Connecting {
+            waiting_for_opponent: false,
+            ..
+        } => (
+            text(t(lang, "play-status-connecting"))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
             false,
         ),
+        Phase::Connecting {
+            waiting_for_opponent: true,
+            ..
+        } => (
+            text(t(lang, "play-status-waiting-opponent"))
+                .size(TEXT_BODY)
+                .style(save_view::muted_text_style)
+                .into(),
+            false,
+        ),
+        Phase::Negotiating { .. } => (
+            text(t(lang, "play-status-negotiating"))
+                .size(TEXT_BODY)
+                .style(save_view::muted_text_style)
+                .into(),
+            false,
+        ),
+        _ => match (lobby.local.as_ref(), lobby.remote.as_ref()) {
+            (Some(l), Some(r)) => {
+                use crate::netplay::compat::Verdict;
+                let patches = scanners.patches.read();
+                let verdict = crate::netplay::compat::check(l, r, &*patches);
+                let label = match verdict {
+                    Verdict::Compatible => t(lang, "lobby-compat-ok"),
+                    Verdict::MissingGame => t(lang, "lobby-compat-missing-game"),
+                    Verdict::MissingRomOrPatch => t(lang, "lobby-compat-missing-rom"),
+                    Verdict::DifferentVersions => t(lang, "lobby-compat-version-mismatch"),
+                    Verdict::DifferentMatchTypes => t(lang, "lobby-compat-match-mismatch"),
+                };
+                let ok = matches!(verdict, Verdict::Compatible);
+                let style: fn(&iced::Theme) -> iced::widget::text::Style = if ok {
+                    save_view::success_text_style
+                } else {
+                    save_view::danger_text_style
+                };
+                (text(label).size(TEXT_BODY).style(style).into(), ok)
+            }
+            _ => (
+                text(t(lang, "lobby-handshake"))
+                    .size(TEXT_BODY)
+                    .style(save_view::muted_text_style)
+                    .into(),
+                false,
+            ),
+        },
     };
 
     // Big single toggle: Ready → Unready → Starting…, switching
@@ -1479,7 +1593,11 @@ fn lobby_view<'a>(
         column![
             header_row,
             iced::widget::row![
-                side(t(lang, "play-you"), lobby.local.as_ref(), lobby.local_ready),
+                side(
+                    t(lang, "play-you"),
+                    Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
+                    lobby.local_ready,
+                ),
                 vs_chip,
                 side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
             ]

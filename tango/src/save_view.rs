@@ -678,11 +678,32 @@ fn chip_row<M: 'static>(
     }
     tooltip(
         card,
-        container(tip).padding(8).style(tooltip_style),
+        container(tip).padding(8).style(chip_tooltip_style(accent)),
         tooltip::Position::FollowCursor,
     )
     .gap(8)
     .into()
+}
+
+/// Tooltip chrome for chip hovers — same shape as
+/// [`tooltip_style`] but takes the chip's class accent so
+/// mega / giga / dark chips get a background that matches the
+/// row's left-edge stripe. Standard chips (accent = None) fall
+/// back to the default near-black tooltip.
+fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> container::Style {
+    move |_theme: &iced::Theme| {
+        let bg = accent.unwrap_or_else(|| iced::Color::from_rgba8(0, 0, 0, 0.85));
+        container::Style {
+            background: Some(iced::Background::Color(bg)),
+            text_color: Some(iced::Color::WHITE),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: iced::Color::from_rgba8(255, 255, 255, 0.2),
+            },
+            ..Default::default()
+        }
+    }
 }
 
 /// Wraps the inner row content with a 4 px colored stripe on the left

@@ -675,38 +675,8 @@ impl App {
     /// so the peer can see what we have locally. Mirrors
     /// `tango/src/gui/play_pane.rs::make_local_settings`.
     fn make_local_settings(&self) -> net::protocol::Settings {
-        use net::protocol::{GameInfo, PatchInfo, Settings};
-        let roms = self.scanners.roms.read();
-        let patches = self.scanners.patches.read();
-        Settings {
-            nickname: self.config.nickname.clone().unwrap_or_default(),
-            match_type: self.netplay.lobby.match_type,
-            game_info: self.play.local_game.map(|game| {
-                let (family, variant) = game.family_and_variant();
-                GameInfo {
-                    family_and_variant: (family.to_string(), variant),
-                    patch: match (&self.play.local_patch, &self.play.local_patch_version) {
-                        (Some(name), Some(version)) => Some(PatchInfo {
-                            name: name.clone(),
-                            version: version.clone(),
-                        }),
-                        _ => None,
-                    },
-                }
-            }),
-            available_games: roms
-                .keys()
-                .map(|g| {
-                    let (family, variant) = g.family_and_variant();
-                    (family.to_string(), variant)
-                })
-                .collect(),
-            available_patches: patches
-                .iter()
-                .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
-                .collect(),
-            reveal_setup: self.netplay.lobby.reveal_setup,
-        }
+        self.play
+            .make_local_settings(&self.config, &self.netplay.lobby, &self.scanners)
     }
 
     fn loaded_key(&self) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
