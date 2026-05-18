@@ -60,9 +60,18 @@ pub fn view<'a>(
 
     // Language selector — lets the user switch before nickname so the
     // rest of the welcome flow shows in the language they picked.
-    let lang_picker = pick_list(SUPPORTED_LANGS.to_vec(), Some(lang.clone()), Message::LanguageSelected)
-        
-        .padding(STANDARD_PADDING);
+    // Same `LanguageChoice` wrapper the settings picker uses so the
+    // dropdown shows each language's endonym (e.g. "日本語") rather
+    // than its locale code.
+    let lang_options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
+        .iter()
+        .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
+        .collect();
+    let lang_selected = lang_options.iter().find(|c| &c.id == lang).cloned();
+    let lang_picker = pick_list(lang_options, lang_selected, |c: crate::i18n::LanguageChoice| {
+        Message::LanguageSelected(c.id)
+    })
+    .padding(STANDARD_PADDING);
 
     let step_marker = |done: bool| -> Icon {
         if done {

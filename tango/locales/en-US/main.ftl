@@ -1,4 +1,7 @@
 # Window
+# Endonym for this locale; shown in the language picker.
+LANGUAGE = English
+
 window-title = Tango
 
 # Crash handler dialogs (parent process)

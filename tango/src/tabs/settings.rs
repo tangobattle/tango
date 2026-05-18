@@ -307,14 +307,22 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         ),
         labeled::<Message>(
             t(lang, "settings-language"),
-            pick_list(
-                SUPPORTED_LANGS.to_vec(),
-                Some(config.language.clone()),
-                Message::LanguageSelected,
-            )
-            
-            .padding(STANDARD_PADDING)
-            .width(Fill),
+            {
+                // Build the picker options as `LanguageChoice`
+                // wrappers — they Display the endonym from each
+                // locale's `LANGUAGE` Fluent key instead of the
+                // bare locale code.
+                let options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
+                    .iter()
+                    .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
+                    .collect();
+                let selected = options.iter().find(|c| c.id == config.language).cloned();
+                pick_list(options, selected, |c: crate::i18n::LanguageChoice| {
+                    Message::LanguageSelected(c.id)
+                })
+                .padding(STANDARD_PADDING)
+                .width(Fill)
+            },
         ),
         labeled::<Message>(
             t(lang, "settings-theme"),

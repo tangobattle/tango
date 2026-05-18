@@ -50,3 +50,31 @@ pub fn t_args(
 ) -> String {
     t_args_opt(lang, key, args).unwrap_or_else(|| format!("⟦{key}⟧"))
 }
+
+/// Picker option for the language dropdown. Holds the
+/// `LanguageIdentifier` (what gets serialized into config) plus
+/// the endonym from each locale's `LANGUAGE` Fluent key. The
+/// `Display` impl renders the endonym so the picker shows
+/// "日本語" instead of "ja-JP".
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct LanguageChoice {
+    pub id: unic_langid::LanguageIdentifier,
+    pub label: String,
+}
+
+impl LanguageChoice {
+    /// Build a [`LanguageChoice`] for `id` by reading the
+    /// `LANGUAGE` key from `id`'s own locale (so users see their
+    /// language's name in its own script). Falls back to the
+    /// locale code if the key is missing.
+    pub fn new(id: unic_langid::LanguageIdentifier) -> Self {
+        let label = t_opt(&id, "LANGUAGE").unwrap_or_else(|| id.to_string());
+        Self { id, label }
+    }
+}
+
+impl std::fmt::Display for LanguageChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
