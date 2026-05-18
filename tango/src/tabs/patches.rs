@@ -157,7 +157,8 @@ impl PatchesState {
         let search_input = text_input(&t(lang, "patches-search-placeholder"), &self.search)
             .on_input(Message::SearchChanged)
             .padding(STANDARD_PADDING)
-            .width(Length::Fixed(260.0));
+            .width(Length::Fixed(260.0))
+            .style(widgets::chunky_text_input);
         let mut top_row = row![search_input].spacing(8).align_y(Alignment::Center);
 
         if self.updating {
@@ -325,8 +326,10 @@ impl PatchesState {
             // the right. Default `Wrapping::Word` keeps it
             // readable across multiple lines if it has to.
             let header = row![
-                container(text(patch.title.clone()).size(TEXT_TITLE)).width(Fill),
                 favorite_toggle,
+                container(text(patch.title.clone()).size(TEXT_TITLE))
+                    .padding([4, 0])
+                    .width(Fill),
                 pick_list(versions, selected_version, Message::VersionSelected)
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),
