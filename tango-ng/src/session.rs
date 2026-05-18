@@ -434,24 +434,28 @@ pub fn view<'a>(
             // Wrap in `responsive` to grab the available size,
             // pick the largest integer scale that fits, and
             // render the image at exact `texel * scale` pixels.
-            // `Fill` content_fit so iced doesn't second-guess us
-            // and add letterboxing inside the Fixed slot.
+            // The image is Fixed-size, so the inner container
+            // (Fill within the responsive's slot) handles the
+            // centering with `align_x/y`. The outer container
+            // alignment alone wouldn't work because the
+            // responsive widget itself fills its parent.
             let handle = handle.clone();
-            iced::widget::container(iced::widget::responsive(move |size| {
+            iced::widget::responsive(move |size| {
                 let scale_w = (size.width / img_w).floor().max(1.0);
                 let scale_h = (size.height / img_h).floor().max(1.0);
                 let scale = scale_w.min(scale_h);
-                image(handle.clone())
+                let img = image(handle.clone())
                     .width(Length::Fixed(img_w * scale))
                     .height(Length::Fixed(img_h * scale))
                     .filter_method(image::FilterMethod::Nearest)
-                    .content_fit(iced::ContentFit::Fill)
+                    .content_fit(iced::ContentFit::Fill);
+                iced::widget::container(img)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center)
                     .into()
-            }))
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Center)
-            .align_y(iced::alignment::Vertical::Center)
+            })
             .into()
         } else {
             image(handle.clone())
