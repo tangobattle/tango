@@ -1,9 +1,21 @@
+// On Linux x86_64 (SysV ABI), `va_list` is the array type `[__va_list_tag; 1]`,
+// but C decays it to `__va_list_tag*` when used as a function parameter — and
+// bindgen reflects that decay in function-pointer signatures (e.g. the
+// `mLogger.log` field). Using the raw `va_list` typedef here both fails to
+// match that signature and would pass the wrong thing to `vsnprintf` by ABI.
+// On Windows / 32-bit targets `va_list` is already a pointer, so the typedef
+// works as-is.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+type VaListArg = *mut mgba_sys::__va_list_tag;
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+type VaListArg = mgba_sys::va_list;
+
 extern "C" {
     fn vsnprintf(
         s: *mut std::os::raw::c_char,
         n: usize,
         format: *const std::os::raw::c_char,
-        ap: mgba_sys::va_list,
+        ap: VaListArg,
     ) -> std::os::raw::c_int;
 }
 
@@ -12,7 +24,7 @@ unsafe extern "C" fn c_log(
     category: ::std::os::raw::c_int,
     level: mgba_sys::mLogLevel,
     fmt: *const std::os::raw::c_char,
-    args: mgba_sys::va_list,
+    args: VaListArg,
 ) {
     let level = match level {
         mgba_sys::mLogLevel_mLOG_STUB => log::Level::Trace,
