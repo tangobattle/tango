@@ -109,7 +109,11 @@ pub struct ReplaysState {
     /// `None` = "All games". Cleared when the corresponding pair
     /// no longer appears in the scanned replays (e.g. user
     /// deleted them).
-    pub game_filter: Option<(String, u8)>,
+    /// Filter replays by ROM family (e.g. "bn6"). `None` = "All
+    /// games". Intentionally NOT keyed on variant — "BN6" should
+    /// pull both Gregar and Falzar replays since the family is
+    /// the matchmaking unit.
+    pub game_filter: Option<String>,
     /// Substring (case-insensitive) match against the remote
     /// side's nickname. Empty = no filter.
     pub opponent_filter: String,
@@ -362,22 +366,28 @@ impl ReplaysState {
         let mut game_options = vec![GameFilterOption::all(all_games.clone())];
         {
             use itertools::Itertools;
-            let mut seen: Vec<(String, u8)> = replays
+            // Dedupe by family only — the filter ignores variant,
+            // so listing "BN6" once covers both Gregar and Falzar.
+            let mut seen: Vec<String> = replays
                 .iter()
                 .filter_map(|r| {
                     let gi = r.metadata.local_side.as_ref()?.game_info.as_ref()?;
-                    let v = u8::try_from(gi.rom_variant).ok()?;
-                    Some((gi.rom_family.clone(), v))
+                    Some(gi.rom_family.clone())
                 })
                 .unique()
                 .collect();
             seen.sort();
-            for (family, variant) in seen {
-                let display = tango_gamedb::find_by_family_and_variant(&family, variant)
+            for family in seen {
+                // Use any known variant of the family for the
+                // short-name lookup; the result ("BN6") is
+                // variant-independent. Fall back to the raw
+                // family string for unrecognized families.
+                let display = tango_gamedb::find_by_family_and_variant(&family, 0)
+                    .or_else(|| tango_gamedb::find_by_family_and_variant(&family, 1))
                     .map(|g| crate::game::short_name(lang, g))
-                    .unwrap_or_else(|| format!("{family} v{variant}"));
+                    .unwrap_or_else(|| family.clone());
                 game_options.push(GameFilterOption {
-                    pair: Some((family, variant)),
+                    pair: Some(family),
                     display,
                 });
             }
@@ -422,12 +432,12 @@ impl ReplaysState {
             .iter()
             .filter(|r| {
                 let g_ok = game_filter
-                    .map(|(family, variant)| {
+                    .map(|family| {
                         r.metadata
                             .local_side
                             .as_ref()
                             .and_then(|s| s.game_info.as_ref())
-                            .map(|gi| gi.rom_family == *family && u8::try_from(gi.rom_variant).ok() == Some(*variant))
+                            .map(|gi| gi.rom_family == *family)
                             .unwrap_or(false)
                     })
                     .unwrap_or(true);
@@ -740,8 +750,10 @@ fn replay_detail<'a>(
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GameFilterOption {
-    /// `None` = "all games" sentinel; otherwise (family, variant).
-    pub pair: Option<(String, u8)>,
+    /// `None` = "all games" sentinel; otherwise the ROM family
+    /// (e.g. "bn6"). Variant is intentionally not part of the
+    /// key — the filter groups Gregar + Falzar together.
+    pub pair: Option<String>,
     pub display: String,
 }
 impl GameFilterOption {
