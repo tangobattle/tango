@@ -918,6 +918,7 @@ impl PlayState {
             .align_y(Alignment::Center);
             let mut btn = iced::widget::button(label)
                 .padding(BOTTOM_CTA_PAD)
+                .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
             if !link_code_empty {
                 btn = btn.on_press(Message::FightPressed);
@@ -926,17 +927,25 @@ impl PlayState {
         };
         // Link-code input fills all the slack between the dice
         // button on its right and the row's left edge.
-        let link_input: Element<'a, Message> = text_input(&t(lang, "play-link-code"), &self.link_code)
-            .on_input(Message::LinkCodeChanged)
-            .on_submit(Message::FightPressed)
-            .size(BOTTOM_SIZE)
-            .padding(BOTTOM_PAD)
-            .width(Length::Fill)
-            .style(widgets::chunky_text_input)
-            .into();
+        // text_input doesn't expose a `.height()` method, so we
+        // wrap it in a fixed-height container to match the
+        // surrounding controls.
+        let link_input: Element<'a, Message> = container(
+            text_input(&t(lang, "play-link-code"), &self.link_code)
+                .on_input(Message::LinkCodeChanged)
+                .on_submit(Message::FightPressed)
+                .size(BOTTOM_SIZE)
+                .padding(BOTTOM_PAD)
+                .width(Length::Fill)
+                .style(widgets::chunky_text_input),
+        )
+        .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+        .width(Length::Fill)
+        .into();
         let dice_button: Element<'a, Message> = iced::widget::tooltip(
             iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
                 .padding(BOTTOM_PAD)
+                .height(Length::Fixed(crate::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(Message::LinkCodeRandom),
             container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))

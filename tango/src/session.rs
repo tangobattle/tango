@@ -481,6 +481,7 @@ pub fn view<'a>(
         iced::widget::tooltip(
             iced::widget::button(icon.widget().size(CTRL_ICON))
                 .padding(CTRL_PAD)
+                .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(msg),
             iced::widget::container(text(label).size(TEXT_CAPTION))
@@ -583,10 +584,13 @@ pub fn view<'a>(
         ];
         let current_speed = SpeedOption(r.speed());
         let speed_picker = iced::widget::tooltip(
-            iced::widget::pick_list(speed_opts, Some(current_speed), |o| Message::SetSpeed(o.0))
-                .padding(CTRL_PAD)
-                .text_size(15.0)
-                .style(crate::widgets::chunky_pick_list),
+            iced::widget::container(
+                iced::widget::pick_list(speed_opts, Some(current_speed), |o| Message::SetSpeed(o.0))
+                    .padding(CTRL_PAD)
+                    .text_size(15.0)
+                    .style(crate::widgets::chunky_pick_list),
+            )
+            .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT)),
             iced::widget::container(text(t(lang, "playback-speed")).size(TEXT_CAPTION))
                 .padding(6)
                 .style(|theme: &iced::Theme| {
@@ -624,11 +628,10 @@ pub fn view<'a>(
             style.border.radius = 999.0.into();
             style
         };
-        // Pin explicit width = height = 44 so the button is
-        // truly square (iced's default text line-height made
-        // padding alone hand-elliptical at 18 px icon size).
-        // The icon sits centered inside via a fixed-size
-        // container so the inner content also matches.
+        // Square button sized to the shared bar-control height
+        // so the media bar lines up exactly with the play-tab
+        // link bar (both pin their interactive children to the
+        // same constant).
         let play_pause_btn = iced::widget::tooltip(
             iced::widget::button(
                 iced::widget::container(play_pause_icon.widget().size(18.0))
@@ -637,8 +640,8 @@ pub fn view<'a>(
                     .center(Fill),
             )
             .padding(0)
-            .width(iced::Length::Fixed(44.0))
-            .height(iced::Length::Fixed(44.0))
+            .width(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
+            .height(iced::Length::Fixed(crate::BAR_CONTROL_HEIGHT))
             .style(play_pause_style)
             .on_press(Message::TogglePlay),
             iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
