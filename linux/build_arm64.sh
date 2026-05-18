@@ -14,7 +14,7 @@ chmod a+x appimagetool-aarch64.AppImage
 
 # Build Linux binaries.
 target_arch="aarch64"
-cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --no-default-features --features=sdl2-audio,wgpu,cpal --release
+cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --release
 
 # Assemble AppImage stuff.
 mkdir -p "tango_linux_workdir/${target_arch}/bin"

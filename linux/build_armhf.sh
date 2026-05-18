@@ -14,7 +14,7 @@ chmod a+x appimagetool-armhf.AppImage
 
 # Build Linux binaries.
 target_arch="armv7"
-cargo build --bin tango --target="${target_arch}-unknown-linux-gnueabihf" --no-default-features --features=sdl2-audio,wgpu,cpal --release
+cargo build --bin tango --target="${target_arch}-unknown-linux-gnueabihf" --release
 
 # Assemble AppImage stuff.
 mkdir -p "tango_linux_workdir/${target_arch}/bin"

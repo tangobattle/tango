@@ -137,6 +137,7 @@ fn main() {
         .header("wrapper.h")
         .clang_args(&["-Imgba/include", "-D__STDC_NO_THREADS__=1"])
         .clang_args(flags.unwrap())
+        .blocklist_item("__mingw_ldbl_type_t")
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))
         .generate()
