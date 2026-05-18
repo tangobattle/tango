@@ -862,10 +862,16 @@ impl PlayState {
         // Link code lives in the input box above; no need to also
         // echo it in the status line.
         let status: Element<'_, _> = match netplay {
-            Phase::Connecting { .. } => text(t(lang, "play-status-connecting"))
-                .size(TEXT_BODY)
-                .style(text::primary)
-                .into(),
+            Phase::Connecting {
+                waiting_for_opponent, ..
+            } => {
+                let label = if *waiting_for_opponent {
+                    t(lang, "play-status-waiting-opponent")
+                } else {
+                    t(lang, "play-status-connecting")
+                };
+                text(label).size(TEXT_BODY).style(text::primary).into()
+            }
             Phase::Negotiating { .. } => text(t(lang, "play-status-negotiating"))
                 .size(TEXT_BODY)
                 .style(text::primary)

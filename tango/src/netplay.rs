@@ -32,8 +32,14 @@ pub const PROTOCOL_VERSION: u32 = 0x3b;
 pub enum Phase {
     /// No connection attempt in flight.
     Idle,
-    /// Signaling websocket open; waiting for the WebRTC handshake.
-    Connecting { link_code: String },
+    /// Signaling task in flight. `waiting_for_opponent` flips true
+    /// once the matchmaking server's Hello arrives; up to that
+    /// point we're still negotiating with the server, after we're
+    /// blocked on the peer joining + the WebRTC handshake.
+    Connecting {
+        link_code: String,
+        waiting_for_opponent: bool,
+    },
     /// Data channel up; exchanging Hello packets / verifying both
     /// peers speak the same `protocol::VERSION`.
     Negotiating { link_code: String },
@@ -210,6 +216,10 @@ pub enum Message {
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
     Disconnect,
+    /// Internal: matchmaking-server hello arrived (ICE config in
+    /// hand, awaiting peer). Flips Connecting.waiting_for_opponent
+    /// true and kicks off the WebRTC await task.
+    SignalingHelloReceived(Slot<SignalingHello>),
     /// Internal: the signaling + WebRTC handshake resolved. We then
     /// kick off the protocol negotiate task before lifecycle moves
     /// out of Connecting.
@@ -289,6 +299,20 @@ pub struct ConnectionPayload {
     pub peer_conn: datachannel_wrapper::PeerConnection,
 }
 
+/// Intermediate hand-off between `run_signaling_connect` (server
+/// hello arrived) and `run_await_peer` (WebRTC handshake done).
+/// Wraps `tango_signaling::Connecting` so the Connecting future
+/// can ferry through iced's Slot<T> dispatch.
+pub struct SignalingHello {
+    pub connecting: tango_signaling::Connecting,
+}
+
+impl std::fmt::Debug for SignalingHello {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SignalingHello { .. }")
+    }
+}
+
 impl std::fmt::Debug for ConnectionPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("ConnectionPayload { .. }")
@@ -340,13 +364,33 @@ impl State {
                 self.cancel_and_renew();
                 self.phase = Phase::Connecting {
                     link_code: link_code.clone(),
+                    waiting_for_opponent: false,
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(run_connect(endpoint, link_code, cancel), map_connect_result)
+                iced::Task::perform(
+                    run_signaling_connect(endpoint, link_code, cancel),
+                    map_signaling_hello_result,
+                )
+            }
+            Message::SignalingHelloReceived(slot_rx) => {
+                let link_code = match &self.phase {
+                    Phase::Connecting { link_code, .. } => link_code.clone(),
+                    // Cancelled / superseded — late delivery, ignore.
+                    _ => return iced::Task::none(),
+                };
+                let Some(hello) = slot_rx.lock().take() else {
+                    return iced::Task::none();
+                };
+                self.phase = Phase::Connecting {
+                    link_code,
+                    waiting_for_opponent: true,
+                };
+                let cancel = self.cancel.clone();
+                iced::Task::perform(run_await_peer(hello, cancel), map_connect_result)
             }
             Message::SignalingDone(slot_rx) => {
                 let link_code = match &self.phase {
-                    Phase::Connecting { link_code } => link_code.clone(),
+                    Phase::Connecting { link_code, .. } => link_code.clone(),
                     // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
@@ -935,6 +979,13 @@ fn map_async_err(e: AsyncError) -> Message {
     }
 }
 
+fn map_signaling_hello_result(result: Result<SignalingHello, AsyncError>) -> Message {
+    match result {
+        Ok(hello) => Message::SignalingHelloReceived(slot(hello)),
+        Err(e) => map_async_err(e),
+    }
+}
+
 fn map_connect_result(result: Result<ConnectionPayload, AsyncError>) -> Message {
     match result {
         Ok(payload) => Message::SignalingDone(slot(payload)),
@@ -949,14 +1000,17 @@ fn map_negotiate_result(result: Result<NegotiationOutput, AsyncError>) -> Messag
     }
 }
 
-/// Run the two-stage signaling handshake (`connect()` websocket +
-/// the WebRTC ICE exchange) until the data channel is open. Aborts
-/// cleanly if the cancellation token fires.
-async fn run_connect(
+/// Stage 1 of the signaling handshake: WebSocket connect +
+/// receive the server's Hello (ICE config). Returns the
+/// `Connecting` handle to drive stage 2 on. The split lets the
+/// UI distinguish "connecting to matchmaking server" from
+/// "waiting for opponent" — stage 2's `await` is the slow one,
+/// blocked on the peer actually joining.
+async fn run_signaling_connect(
     endpoint: String,
     link_code: String,
     cancel: CancellationToken,
-) -> Result<ConnectionPayload, AsyncError> {
+) -> Result<SignalingHello, AsyncError> {
     let work = async {
         let connecting = tango_signaling::connect(
             &endpoint,
@@ -968,7 +1022,24 @@ async fn run_connect(
         )
         .await
         .map_err(|e| AsyncError::Failed(format!("signaling: {e}")))?;
-        let (dc, peer_conn) = connecting
+        Ok::<_, AsyncError>(SignalingHello { connecting })
+    };
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(AsyncError::Cancelled),
+        out = work => out,
+    }
+}
+
+/// Stage 2: drive the `Connecting` future to completion — peer
+/// joins + WebRTC ICE handshake opens the data channel.
+async fn run_await_peer(
+    hello: SignalingHello,
+    cancel: CancellationToken,
+) -> Result<ConnectionPayload, AsyncError> {
+    let work = async {
+        let (dc, peer_conn) = hello
+            .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
         Ok::<_, AsyncError>(ConnectionPayload { dc, peer_conn })

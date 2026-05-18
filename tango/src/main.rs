@@ -1013,7 +1013,7 @@ impl App {
 
         match &self.netplay.phase {
             netplay::Phase::Lobby { link_code } => discord::make_in_lobby_activity(link_code, lang, game_info),
-            netplay::Phase::Connecting { link_code } | netplay::Phase::Negotiating { link_code } => {
+            netplay::Phase::Connecting { link_code, .. } | netplay::Phase::Negotiating { link_code } => {
                 discord::make_looking_activity(link_code, lang, game_info)
             }
             netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
