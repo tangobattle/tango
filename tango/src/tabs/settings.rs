@@ -1,13 +1,11 @@
 use crate::i18n::t;
 use crate::widgets;
-use lucide_icons::Icon;
-use crate::{
-    config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION,
-};
+use crate::{config, input, save_view, STANDARD_PADDING, SUPPORTED_LANGS, TEXT_CAPTION};
 use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,28 +300,24 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-nickname"),
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
-                
                 .padding(STANDARD_PADDING),
         ),
-        labeled::<Message>(
-            t(lang, "settings-language"),
-            {
-                // Build the picker options as `LanguageChoice`
-                // wrappers — they Display the endonym from each
-                // locale's `LANGUAGE` Fluent key instead of the
-                // bare locale code.
-                let options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
-                    .iter()
-                    .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
-                    .collect();
-                let selected = options.iter().find(|c| c.id == config.language).cloned();
-                pick_list(options, selected, |c: crate::i18n::LanguageChoice| {
-                    Message::LanguageSelected(c.id)
-                })
-                .padding(STANDARD_PADDING)
-                .width(Fill)
-            },
-        ),
+        labeled::<Message>(t(lang, "settings-language"), {
+            // Build the picker options as `LanguageChoice`
+            // wrappers — they Display the endonym from each
+            // locale's `LANGUAGE` Fluent key instead of the
+            // bare locale code.
+            let options: Vec<crate::i18n::LanguageChoice> = SUPPORTED_LANGS
+                .iter()
+                .map(|id| crate::i18n::LanguageChoice::new(id.clone()))
+                .collect();
+            let selected = options.iter().find(|c| c.id == config.language).cloned();
+            pick_list(options, selected, |c: crate::i18n::LanguageChoice| {
+                Message::LanguageSelected(c.id)
+            })
+            .padding(STANDARD_PADDING)
+            .width(Fill)
+        },),
         labeled::<Message>(
             t(lang, "settings-theme"),
             pick_list(
@@ -331,13 +325,12 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Some(config.theme),
                 Message::ThemeChanged,
             )
-            
             .padding(STANDARD_PADDING)
             .width(Fill),
         ),
-        iced::widget::checkbox(config.streamer_mode).label(t(lang, "settings-streamer-mode"))
-            .on_toggle(Message::ToggleStreamerMode)
-            ,
+        iced::widget::checkbox(config.streamer_mode)
+            .label(t(lang, "settings-streamer-mode"))
+            .on_toggle(Message::ToggleStreamerMode),
         labeled::<Message>(
             t(lang, "settings-data-path"),
             row![
@@ -378,19 +371,21 @@ impl std::fmt::Display for VideoFilterChoice {
 
 fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
-        labeled::<Message>(
-            t(lang, "settings-video-filter"),
-            {
-                let options: Vec<VideoFilterChoice> = crate::video::FILTERS
-                    .iter()
-                    .map(|(k, d)| VideoFilterChoice { key: (*k).into(), display: (*d).into() })
-                    .collect();
-                let selected = options.iter().find(|c| c.key == config.video_filter).cloned();
-                pick_list(options, selected, |c: VideoFilterChoice| Message::VideoFilterChanged(c.key))
-                    .padding(STANDARD_PADDING)
-                    .width(Fill)
-            },
-        ),
+        labeled::<Message>(t(lang, "settings-video-filter"), {
+            let options: Vec<VideoFilterChoice> = crate::video::FILTERS
+                .iter()
+                .map(|(k, d)| VideoFilterChoice {
+                    key: (*k).into(),
+                    display: (*d).into(),
+                })
+                .collect();
+            let selected = options.iter().find(|c| c.key == config.video_filter).cloned();
+            pick_list(options, selected, |c: VideoFilterChoice| {
+                Message::VideoFilterChanged(c.key)
+            })
+            .padding(STANDARD_PADDING)
+            .width(Fill)
+        },),
         iced::widget::checkbox(config.integer_scaling)
             .label(t(lang, "settings-integer-scaling"))
             .on_toggle(Message::ToggleIntegerScaling),
@@ -405,14 +400,12 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             t(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
-
                 .padding(STANDARD_PADDING),
         ),
         labeled::<Message>(
             t(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
-
                 .padding(STANDARD_PADDING),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
@@ -445,9 +438,7 @@ fn settings_input<'a>(
         // of the usual Add button.
         let action: Element<'a, Message> = if state.capture_target == Some(k) {
             row![
-                text(t(lang, "settings-input-press-key"))
-                    
-                    .style(save_view::muted_text_style),
+                text(t(lang, "settings-input-press-key")).style(save_view::muted_text_style),
                 widgets::icon_button(
                     Icon::X,
                     t(lang, "save-action-cancel"),
@@ -486,9 +477,7 @@ fn settings_input<'a>(
         Message::BindingsReset,
         STANDARD_PADDING,
     );
-    col = col
-        .push(Space::new().height(8))
-        .push(row![horizontal_space(), reset]);
+    col = col.push(Space::new().height(8)).push(row![horizontal_space(), reset]);
     scrollable(col.padding(4)).into()
 }
 
@@ -519,53 +508,6 @@ fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: 
     .into()
 }
 
-/// English-only Markdown blob for the about screen. Hand-rolled
-/// link/bullet plumbing collapsed away in favor of letting iced's
-/// markdown widget handle headings, lists, emphasis, and inline
-/// links. The version number is the only dynamic bit; we splice
-/// it in once at parse time via `LazyLock`.
-const ABOUT_MARKDOWN_TEMPLATE: &str = r#"
-# Tango {VERSION}
-
-[Tango](https://tango.n1gp.net) would not be a reality without the work of the many people who have helped make this possible.
-
-## Development
-
-- Emulation: [endrift](https://twitter.com/endrift) (mGBA)
-- Reverse engineering: [pnw_ssbmars](https://twitter.com/pnw_ssbmars) (BN3), [XKirby](https://github.com/XKirby) (BN3), [luckytyphlosion](https://github.com/luckytyphlosion) (BN6), [LanHikari22](https://github.com/LanHikari22) (BN6), [GreigaMaster](https://twitter.com/GreigaMaster) (BN), [Prof. 9](https://twitter.com/Prof9) (BN), [National Security Agency](https://www.nsa.gov) (Ghidra), [aldelaro5](https://twitter.com/aldelaro5) (Ghidra)
-- 100% saves: [ore4545](https://github.com/ore4545)
-- Porting: [ubergeek77](https://github.com/ubergeek77) (Linux), [Akatsuki](https://github.com/Akatsuki) (macOS)
-- Game support: [weenie](https://github.com/bigfarts) (BN1-6), [GreigaMaster](https://twitter.com/GreigaMaster) (EXE4.5)
-- Odds and ends: [zachristmas](https://github.com/zachristmas), [Akatsuki](https://github.com/Akatsuki), [sailormoon](https://github.com/sailormoon), [Shiz](https://twitter.com/dev_console), [Karate_Bugman](https://twitter.com/Karate_Bugman)
-- [Countless open source projects](https://tango.n1gp.net/licenses)
-
-## Translation
-
-- Japanese: [weenie](https://github.com/bigfarts), [Nonstopmop](https://twitter.com/seventhfonist42), [dhenva](https://twitch.tv/dhenva)
-- Mandarin (mainland China): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
-- Mandarin (Taiwan): [weenie](https://github.com/bigfarts), [Hikari Calyx](https://twitter.com/Hikari_Calyx)
-- Spanish (Latin America): [Karate_Bugman](https://twitter.com/Karate_Bugman)
-- Portuguese (Brazil): [Darkgaia](https://ayo.so/darkgaiagames), [mushiguchi](https://twitter.com/mushiguchi)
-- French (France): [Sheriel Phoenix](https://twitter.com/Sheriel_Phoenix), [Justplay](https://twitter.com/justplayfly)
-- German (Germany): [KenDeep](https://twitch.tv/kendeep_fgc), [ChinaTV](https://twitter.com/ChinaTV9)
-- Vietnamese: [ExeDesmond](https://twitter.com/exedesmond), [ShironaNep](https://www.youtube.com/user/minhduc1411vip)
-- Russian (Russia): Passbyword, [Sest0E1emento5](https://www.youtube.com/channel/UCwpjuY9bYqNzsUG1QP50PLQ)
-- Dutch (Netherlands): [Virillion](https://twitter.com/Virillion)
-
-## Art
-
-- Logo: [saladdammit](https://twitter.com/saladdammit)
-
-## Special thanks
-
-- Playtesting: [N1GP](https://n1gp.net)
-- #1 fan: [playerzero](https://twitter.com/Playerzero_exe)
-
-And, of course, a huge thank you to [CAPCOM](https://www.capcom.com) for making Mega Man Battle Network!
-
-Tango is licensed under the terms of the [GNU Affero General Public License v3](https://tldrlegal.com/license/gnu-affero-general-public-license-v3-%28agpl-3.0%29). That means you're free to modify the [source code](https://github.com/tangobattle), as long as you contribute your changes back!
-"#;
-
 /// Holder for the parsed-once markdown Content. Tab state field
 /// because `markdown::Content` is `!Sync` (interior mutability
 /// for incremental parsing) and the parsed Items must outlive
@@ -578,9 +520,11 @@ pub struct AboutMarkdown(std::cell::OnceCell<iced::widget::markdown::Content>);
 impl AboutMarkdown {
     fn content(&self) -> &iced::widget::markdown::Content {
         self.0.get_or_init(|| {
-            iced::widget::markdown::Content::parse(
-                &ABOUT_MARKDOWN_TEMPLATE.replace("{VERSION}", env!("CARGO_PKG_VERSION")),
-            )
+            iced::widget::markdown::Content::parse(&format!(
+                "# Tango {}\n{}",
+                env!("CARGO_PKG_VERSION"),
+                include_str!("../../../CREDITS.md")
+            ))
         })
     }
 }
@@ -614,8 +558,7 @@ fn settings_about<'a>(
     let theme = crate::theme_for(config);
     let style = markdown::Style::from(&theme);
     let settings = markdown::Settings::with_text_size(crate::TEXT_BODY, style);
-    let body: Element<'a, Message> =
-        markdown::view(about.content().items(), settings).map(Message::OpenUrl);
+    let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
     scrollable(
         column![emblem, body, updater_section(lang, updater_status)]
@@ -638,13 +581,11 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
 
     let latest_label: String = match &status {
         S::UpToDate { release: None } => t(lang, "updater-loading"),
-        S::UpToDate {
-            release: Some(Some(r)),
-        } => format!("v{} ({})", r.version, t(lang, "updater-up-to-date")),
+        S::UpToDate { release: Some(Some(r)) } => format!("v{} ({})", r.version, t(lang, "updater-up-to-date")),
         S::UpToDate { release: Some(None) } => t(lang, "updater-up-to-date"),
-        S::UpdateAvailable { release: r }
-        | S::Downloading { release: r, .. }
-        | S::ReadyToUpdate { release: r } => format!("v{}", r.version),
+        S::UpdateAvailable { release: r } | S::Downloading { release: r, .. } | S::ReadyToUpdate { release: r } => {
+            format!("v{}", r.version)
+        }
     };
 
     let status_line: Option<Element<'a, Message>> = match &status {
@@ -683,11 +624,9 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let mut col = column![
         iced::widget::rule::horizontal(1),
         row![
-            text(format!("{}: v{current}", t(lang, "updater-current-version")))
-                .size(TEXT_CAPTION),
+            text(format!("{}: v{current}", t(lang, "updater-current-version"))).size(TEXT_CAPTION),
             horizontal_space(),
-            text(format!("{}: {}", t(lang, "updater-latest-version"), latest_label))
-                .size(TEXT_CAPTION),
+            text(format!("{}: {}", t(lang, "updater-latest-version"), latest_label)).size(TEXT_CAPTION),
         ]
         .spacing(8)
         .align_y(Alignment::Center),

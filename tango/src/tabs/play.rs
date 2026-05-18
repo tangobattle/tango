@@ -1,6 +1,5 @@
 use crate::i18n::t;
 use crate::widgets;
-use lucide_icons::Icon;
 use crate::{
     config, game, rom, save_view, selection, Scanners, PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION,
     TEXT_HEADING, TEXT_TITLE,
@@ -9,6 +8,7 @@ use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -30,7 +30,9 @@ pub enum Message {
     /// this through netplay::Message::SetMatchType so the resend
     /// machinery picks it up.
     NetplaySetMatchType((u8, u8)),
-    /// Lobby UI: user dragged the input-delay slider.
+    /// Lobby UI: user dragged the input-delay slider, OR pressed
+    /// the "suggest" button (which dispatches a value computed
+    /// from `lobby.latency`).
     NetplaySetInputDelay(u8),
     /// Lobby UI: user toggled the reveal-setup checkbox.
     NetplaySetRevealSetup(bool),
@@ -150,7 +152,9 @@ pub struct PlayState {
 pub enum SaveAction {
     #[default]
     None,
-    Renaming { draft: String },
+    Renaming {
+        draft: String,
+    },
     ConfirmDelete,
     /// Creating a new save. `template` is the template name (empty
     /// string is the default unnamed template); `draft` is the user's
@@ -159,7 +163,10 @@ pub enum SaveAction {
     /// (auto-selected when only one template is available). The
     /// Confirm button is disabled in the None state — there's no
     /// "default" template to fall back on.
-    NewSave { draft: String, template: Option<String> },
+    NewSave {
+        draft: String,
+        template: Option<String>,
+    },
 }
 
 impl Default for PlayState {
@@ -277,9 +284,7 @@ impl PlayState {
                     save_view::Action::CopyTab(tab) => {
                         save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
                     }
-                    save_view::Action::CopyTabImage(tab) => {
-                        save_view::tab_as_image(tab, loaded).map(Effect::CopyImage)
-                    }
+                    save_view::Action::CopyTabImage(tab) => save_view::tab_as_image(tab, loaded).map(Effect::CopyImage),
                     _ => None,
                 }
             }
@@ -313,15 +318,9 @@ impl PlayState {
                 None
             }
             Message::NetplayDisconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
-            Message::NetplaySetMatchType(mt) => {
-                Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt)))
-            }
-            Message::NetplaySetInputDelay(d) => {
-                Some(Effect::Netplay(crate::netplay::Message::SetInputDelay(d)))
-            }
-            Message::NetplaySetRevealSetup(v) => {
-                Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v)))
-            }
+            Message::NetplaySetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
+            Message::NetplaySetInputDelay(d) => Some(Effect::Netplay(crate::netplay::Message::SetInputDelay(d))),
+            Message::NetplaySetRevealSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v))),
             Message::NetplayReady => Some(Effect::NetplayReadyWithSave),
             Message::NetplayUnready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
             Message::Rescan => Some(Effect::Rescan),
@@ -407,7 +406,11 @@ impl PlayState {
                 None
             }
             Message::SaveNewConfirm => {
-                let SaveAction::NewSave { draft, template: Some(template) } = &self.save_action else {
+                let SaveAction::NewSave {
+                    draft,
+                    template: Some(template),
+                } = &self.save_action
+                else {
                     return None;
                 };
                 let name = draft.trim().to_string();
@@ -500,29 +503,18 @@ impl PlayState {
             let roms_path = config.roms_path();
             return empty_state_card(
                 t(lang, "empty-no-roms-title"),
-                vec![
-                    t(lang, "empty-no-roms-body"),
-                    roms_path.display().to_string(),
-                ],
+                vec![t(lang, "empty-no-roms-body"), roms_path.display().to_string()],
                 Some((t(lang, "save-open-folder"), roms_path)),
             );
         }
         // Game selected but no save files for it.
         if let Some(game) = self.local_game {
-            let has_saves = scanners
-                .saves
-                .read()
-                .get(&game)
-                .map(|v| !v.is_empty())
-                .unwrap_or(false);
+            let has_saves = scanners.saves.read().get(&game).map(|v| !v.is_empty()).unwrap_or(false);
             if !has_saves && self.local_save.is_none() {
                 let saves_path = config.saves_path();
                 return empty_state_card(
                     t(lang, "empty-no-saves-title"),
-                    vec![
-                        t(lang, "empty-no-saves-body"),
-                        saves_path.display().to_string(),
-                    ],
+                    vec![t(lang, "empty-no-saves-body"), saves_path.display().to_string()],
                     Some((t(lang, "save-open-folder"), saves_path)),
                 );
             }
@@ -530,11 +522,7 @@ impl PlayState {
         self.save_view(lang, loaded, streamer_mode)
     }
 
-    fn selector_strip<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-    ) -> Element<'a, Message> {
+    fn selector_strip<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
 
@@ -570,7 +558,6 @@ impl PlayState {
 
         let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
             .placeholder(t(lang, "play-no-game"))
-            
             .padding(STANDARD_PADDING)
             .width(Length::FillPortion(3));
 
@@ -587,7 +574,6 @@ impl PlayState {
 
         let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
             .placeholder(t(lang, "play-no-save"))
-            
             .padding(STANDARD_PADDING)
             .width(Length::Fill);
 
@@ -613,7 +599,6 @@ impl PlayState {
             Some(self.local_patch.clone().unwrap_or(no_patch_label)),
             Message::LocalPatchSelected,
         )
-        
         .padding(STANDARD_PADDING)
         .width(Length::FillPortion(2));
 
@@ -626,9 +611,7 @@ impl PlayState {
                 let mut vs: Vec<semver::Version> = p
                     .versions
                     .iter()
-                    .filter(|(_, v)| {
-                        game.map(|g| v.supported_games.contains(&g)).unwrap_or(true)
-                    })
+                    .filter(|(_, v)| game.map(|g| v.supported_games.contains(&g)).unwrap_or(true))
                     .map(|(k, _)| k.clone())
                     .collect();
                 vs.sort_by(|a, b| b.cmp(a));
@@ -641,16 +624,10 @@ impl PlayState {
             Message::LocalPatchVersionSelected,
         )
         .placeholder(t(lang, "play-version-placeholder"))
-        
         .padding(STANDARD_PADDING)
         .width(Length::Fixed(100.0));
 
-        let refresh = widgets::icon_button(
-            Icon::RefreshCw,
-            t(lang, "rescan"),
-            Message::Rescan,
-            STANDARD_PADDING,
-        );
+        let refresh = widgets::icon_button(Icon::RefreshCw, t(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
 
         let game_row = row![game, patch, version, refresh]
             .spacing(8)
@@ -659,16 +636,12 @@ impl PlayState {
         let save_row: Element<'_, Message> = match &self.save_action {
             SaveAction::None => {
                 let actions = self.save_action_buttons(lang, scanners);
-                row![save, actions]
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .into()
+                row![save, actions].spacing(8).align_y(Alignment::Center).into()
             }
             SaveAction::Renaming { draft } => row![
                 text_input(&t(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
                     .on_submit(Message::SaveRenameConfirm)
-                    
                     .padding(STANDARD_PADDING)
                     .width(Length::Fill),
                 widgets::icon_button_styled(
@@ -690,7 +663,6 @@ impl PlayState {
             .into(),
             SaveAction::ConfirmDelete => row![
                 text(t(lang, "save-delete-prompt"))
-                    
                     .style(save_view::muted_text_style)
                     .width(Length::Fill),
                 widgets::labeled_icon_button(
@@ -716,10 +688,7 @@ impl PlayState {
                 // name plus a locale-aware display label so the
                 // user sees "MegaMan.EXE" / "Saito" etc instead of
                 // the bare filename suffix.
-                let family = self
-                    .local_game
-                    .map(|g| g.family_and_variant().0)
-                    .unwrap_or_default();
+                let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or_default();
                 let mut options: Vec<SaveTemplateOption> = templates_for_selection(self, scanners)
                     .map(|t| {
                         t.keys()
@@ -751,12 +720,10 @@ impl PlayState {
                     .into()
                 };
                 row![
-                    pick_list(options, selected, |o| {
-                        Message::SaveNewTemplateSelected(o.raw)
-                    })
-                    .placeholder(t(lang, "save-template-pick"))
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(180.0)),
+                    pick_list(options, selected, |o| { Message::SaveNewTemplateSelected(o.raw) })
+                        .placeholder(t(lang, "save-template-pick"))
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fixed(180.0)),
                     text_input(&t(lang, "save-name-placeholder"), draft)
                         .on_input(Message::SaveNewDraftChanged)
                         .on_submit(Message::SaveNewConfirm)
@@ -776,28 +743,15 @@ impl PlayState {
             }
         };
 
-        container(
-            column![game_row, save_row]
-                .spacing(6)
-                .padding(8),
-        )
-        .width(Fill)
-        .into()
+        container(column![game_row, save_row].spacing(6).padding(8))
+            .width(Fill)
+            .into()
     }
 
-    fn save_action_buttons<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-    ) -> Element<'a, Message> {
+    fn save_action_buttons<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
         let enabled = self.local_save.is_some();
         let mk = |icon: Icon, label: String, msg: Message, on: bool| {
-            widgets::icon_button_maybe(
-                icon,
-                label,
-                if on { Some(msg) } else { None },
-                STANDARD_PADDING,
-            )
+            widgets::icon_button_maybe(icon, label, if on { Some(msg) } else { None }, STANDARD_PADDING)
         };
         // Destructive variant for Delete — flags it red so it
         // doesn't look like just another toolbar action.
@@ -815,8 +769,18 @@ impl PlayState {
         let can_new = templates_for_selection(self, scanners).is_some();
         row![
             mk(Icon::Plus, t(lang, "save-new"), Message::SaveNewStart, can_new),
-            mk(Icon::Folder, t(lang, "save-open-folder"), Message::SaveOpenFolder, enabled),
-            mk(Icon::CopyPlus, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(
+                Icon::Folder,
+                t(lang, "save-open-folder"),
+                Message::SaveOpenFolder,
+                enabled
+            ),
+            mk(
+                Icon::CopyPlus,
+                t(lang, "save-duplicate"),
+                Message::SaveDuplicate,
+                enabled
+            ),
             mk(Icon::Pencil, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
             mk_danger(Icon::Trash, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
@@ -836,8 +800,7 @@ impl PlayState {
                 .center(Fill)
                 .into();
         };
-        save_view::view(lang, loaded, &self.save_view, streamer_mode)
-            .map(Message::SaveViewAction)
+        save_view::view(lang, loaded, &self.save_view, streamer_mode).map(Message::SaveViewAction)
     }
 
     fn bottom_strip<'a>(
@@ -896,41 +859,32 @@ impl PlayState {
         // Netplay phase status line. Pre-condition errors no longer
         // live here — they ride alongside the (now-disabled) Play
         // button as the inline "needs save" hint below.
+        // Link code lives in the input box above; no need to also
+        // echo it in the status line.
         let status: Element<'_, _> = match netplay {
-            Phase::Connecting { link_code } => text(format!(
-                "{} {link_code}",
-                t(lang, "play-status-connecting")
-            ))
-            .size(TEXT_BODY)
-            .style(text::primary)
-            .into(),
-            Phase::Negotiating { link_code } => text(format!(
-                "{} {link_code}",
-                t(lang, "play-status-negotiating")
-            ))
-            .size(TEXT_BODY)
-            .style(text::primary)
-            .into(),
+            Phase::Connecting { .. } => text(t(lang, "play-status-connecting"))
+                .size(TEXT_BODY)
+                .style(text::primary)
+                .into(),
+            Phase::Negotiating { .. } => text(t(lang, "play-status-negotiating"))
+                .size(TEXT_BODY)
+                .style(text::primary)
+                .into(),
             // Lobby = neutral / muted. The lobby ITSELF is the
-            // accent surface (Ready button, big side cards); the
-            // status line just identifies the link code we're
-            // attached to.
-            Phase::Lobby { link_code } => text(format!(
-                "{} {link_code}",
-                t(lang, "play-status-lobby")
-            ))
-            .size(TEXT_BODY)
-            .style(save_view::muted_text_style)
-            .into(),
+            // accent surface (Ready button, big side cards).
+            Phase::Lobby { .. } => text(t(lang, "play-status-lobby"))
+                .size(TEXT_BODY)
+                .style(save_view::muted_text_style)
+                .into(),
             Phase::Failed { error } => text(format!("{}: {error}", t(lang, "play-status-failed")))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .style(save_view::danger_text_style)
                 .into(),
             Phase::Idle if needs_save => text(t(lang, "play-no-selection"))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
-            Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_CAPTION).into(),
+            Phase::Idle => text(t(lang, "play-status-idle")).size(TEXT_BODY).into(),
         };
 
         // Link-code field:
@@ -940,37 +894,34 @@ impl PlayState {
         //     (omitting on_input disables the field in iced).
         //   * Idle / Failed — fully editable. The dice button
         //     fills it with a fresh random handle.
-        let (link_input, shuffle_button): (Option<Element<'a, Message>>, Option<Element<'a, Message>>) =
-            match netplay {
-                Phase::Lobby { .. } => (None, None),
-                Phase::Connecting { .. } | Phase::Negotiating { .. } => (
-                    Some(
-                        text_input(&t(lang, "play-link-code"), &self.link_code)
-                            
-                            .padding(STANDARD_PADDING)
-                            .width(Length::Fixed(260.0))
-                            .into(),
-                    ),
-                    None,
+        let (link_input, shuffle_button): (Option<Element<'a, Message>>, Option<Element<'a, Message>>) = match netplay {
+            Phase::Lobby { .. } => (None, None),
+            Phase::Connecting { .. } | Phase::Negotiating { .. } => (
+                Some(
+                    text_input(&t(lang, "play-link-code"), &self.link_code)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fixed(260.0))
+                        .into(),
                 ),
-                _ => (
-                    Some(
-                        text_input(&t(lang, "play-link-code"), &self.link_code)
-                            .on_input(Message::LinkCodeChanged)
-                            .on_submit(Message::PlayPressed)
-                            
-                            .padding(STANDARD_PADDING)
-                            .width(Length::Fixed(260.0))
-                            .into(),
-                    ),
-                    Some(widgets::icon_button(
-                        Icon::Dice5,
-                        t(lang, "play-link-code-random"),
-                        Message::LinkCodeRandom,
-                        STANDARD_PADDING,
-                    )),
+                None,
+            ),
+            _ => (
+                Some(
+                    text_input(&t(lang, "play-link-code"), &self.link_code)
+                        .on_input(Message::LinkCodeChanged)
+                        .on_submit(Message::PlayPressed)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fixed(260.0))
+                        .into(),
                 ),
-            };
+                Some(widgets::icon_button(
+                    Icon::Dice5,
+                    t(lang, "play-link-code-random"),
+                    Message::LinkCodeRandom,
+                    STANDARD_PADDING,
+                )),
+            ),
+        };
 
         let mut row = row![].spacing(8).align_y(Alignment::Center).padding(8);
         if let Some(input) = link_input {
@@ -1022,8 +973,7 @@ fn templates_for_selection<'a>(
     // "heat-guts" template, it overrides the built-in of the same name.
     if let Some(game_impl) = game::from_gamedb_entry(game) {
         for (name, save) in game_impl.save_templates() {
-            out.entry((*name).to_string())
-                .or_insert_with(|| save.clone_box());
+            out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
         }
     }
     if out.is_empty() {
@@ -1085,28 +1035,87 @@ fn lobby_view<'a>(
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
     // `ready` paints a green dot when that side has committed.
-    let side = |label: String, settings: Option<&crate::net::protocol::Settings>, ready: bool| -> Element<'static, Message> {
-        let dot_color = |ready: bool| -> Element<'static, Message> {
-            let bg = if ready {
-                iced::Color::from_rgb8(0x4c, 0xaf, 0x50)
-            } else {
-                iced::Color::from_rgb8(0x66, 0x66, 0x66)
-            };
-            container(iced::widget::Space::new().width(Length::Fixed(10.0)).height(Length::Fixed(10.0)))
+    let side =
+        |label: String, settings: Option<&crate::net::protocol::Settings>, ready: bool| -> Element<'static, Message> {
+            let dot_color = |ready: bool| -> Element<'static, Message> {
+                let bg = if ready {
+                    iced::Color::from_rgb8(0x4c, 0xaf, 0x50)
+                } else {
+                    iced::Color::from_rgb8(0x66, 0x66, 0x66)
+                };
+                container(
+                    iced::widget::Space::new()
+                        .width(Length::Fixed(10.0))
+                        .height(Length::Fixed(10.0)),
+                )
                 .style(move |_theme: &iced::Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(bg)),
-                    border: iced::Border { radius: 5.0.into(), ..Default::default() },
+                    border: iced::Border {
+                        radius: 5.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 })
                 .into()
-        };
-        let Some(settings) = settings else {
-            return container(
+            };
+            let Some(settings) = settings else {
+                return container(
+                    row![
+                        dot_color(false),
+                        column![
+                            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                            text(t(lang, "lobby-waiting"))
+                                .size(TEXT_BODY)
+                                .style(save_view::muted_text_style),
+                        ]
+                        .spacing(2),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                )
+                .padding(8)
+                .width(Length::Fill)
+                .into();
+            };
+            let nickname = settings.nickname.clone();
+            let game_label = settings
+                .game_info
+                .as_ref()
+                .map(|gi| {
+                    let family = gi.family_and_variant.0.as_str();
+                    crate::i18n::t_opt(lang, &format!("game-{family}"))
+                        .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
+                })
+                .unwrap_or_else(|| t(lang, "lobby-no-game"));
+            let patch = settings
+                .game_info
+                .as_ref()
+                .and_then(|gi| gi.patch.as_ref())
+                .map(|p| format!(" · {} v{}", p.name, p.version));
+            // Game line: "<game name> · <patch> · <match-type>" packed
+            // onto a single caption row so the card stays 2 lines tall.
+            // Match-type is meaningless without a game (no Game::match_types
+            // table to look the name up against), so omit it then.
+            let mut subline = game_label;
+            if let Some(p) = patch {
+                subline.push_str(&p);
+            }
+            if let Some(gi) = settings.game_info.as_ref() {
+                let mt = crate::game::match_type_name(
+                    lang,
+                    gi.family_and_variant.0.as_str(),
+                    settings.match_type.0,
+                    settings.match_type.1,
+                );
+                subline.push_str(&format!(" · {mt}"));
+            }
+            container(
                 row![
-                    dot_color(false),
+                    dot_color(ready),
                     column![
                         text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                        text(t(lang, "lobby-waiting")).size(TEXT_BODY).style(save_view::muted_text_style),
+                        text(nickname).size(TEXT_HEADING),
+                        text(subline).size(TEXT_CAPTION).style(save_view::muted_text_style),
                     ]
                     .spacing(2),
                 ]
@@ -1115,62 +1124,13 @@ fn lobby_view<'a>(
             )
             .padding(8)
             .width(Length::Fill)
-            .into();
+            .into()
         };
-        let nickname = settings.nickname.clone();
-        let game_label = settings
-            .game_info
-            .as_ref()
-            .map(|gi| {
-                let family = gi.family_and_variant.0.as_str();
-                crate::i18n::t_opt(lang, &format!("game-{family}"))
-                    .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
-            })
-            .unwrap_or_else(|| t(lang, "lobby-no-game"));
-        let patch = settings
-            .game_info
-            .as_ref()
-            .and_then(|gi| gi.patch.as_ref())
-            .map(|p| format!(" · {} v{}", p.name, p.version));
-        // Game line: "<game name> · <patch> · <match-type>" packed
-        // onto a single caption row so the card stays 2 lines tall.
-        let mt = crate::game::match_type_name(
-            lang,
-            settings.game_info.as_ref().map(|gi| gi.family_and_variant.0.as_str()).unwrap_or(""),
-            settings.match_type.0,
-            settings.match_type.1,
-        );
-        let mut subline = game_label;
-        if let Some(p) = patch {
-            subline.push_str(&p);
-        }
-        subline.push_str(&format!(" · {mt}"));
-        container(
-            row![
-                dot_color(ready),
-                column![
-                    text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                    text(nickname).size(TEXT_HEADING),
-                    text(subline).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                ]
-                .spacing(2),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .padding(8)
-        .width(Length::Fill)
-        .into()
-    };
 
     let header_line = if let Some(d) = lobby.latency {
-        text(format!(
-            "{}: {} ms",
-            t(lang, "lobby-latency"),
-            d.as_millis()
-        ))
-        .size(TEXT_CAPTION)
-        .style(save_view::muted_text_style)
+        text(format!("{}: {} ms", t(lang, "lobby-latency"), d.as_millis()))
+            .size(TEXT_CAPTION)
+            .style(save_view::muted_text_style)
     } else {
         text(t(lang, "lobby-handshake"))
             .size(TEXT_CAPTION)
@@ -1180,8 +1140,11 @@ fn lobby_view<'a>(
     // Match-type pick_list — options pulled from the current
     // local game's Game::match_types() table (mode + subtype
     // counts), labeled with the per-game Fluent strings via
-    // game::match_type_name. Disabled when no local game is
-    // selected (no way to know what modes exist).
+    // game::match_type_name. Renders an empty disabled pick_list
+    // when no game is selected (Game::match_types() can't be
+    // queried until we know the game) — gives the row a stable
+    // shape so the surrounding layout doesn't jump once the user
+    // picks a game.
     let mt_picker: Element<'a, Message> = if let Some(g) = local_game {
         let game_impl = crate::game::from_gamedb_entry(g);
         let mt_table = game_impl.map(|gi| gi.match_types()).unwrap_or(&[]);
@@ -1191,12 +1154,7 @@ fn lobby_view<'a>(
                 options.push(MatchTypeOption {
                     mode: mode as u8,
                     subtype: sub as u8,
-                    label: crate::game::match_type_name(
-                        lang,
-                        g.family_and_variant().0,
-                        mode as u8,
-                        sub as u8,
-                    ),
+                    label: crate::game::match_type_name(lang, g.family_and_variant().0, mode as u8, sub as u8),
                 });
             }
         }
@@ -1206,28 +1164,41 @@ fn lobby_view<'a>(
             .cloned();
         if options.is_empty() {
             text(t(lang, "lobby-no-match-types"))
-                
                 .style(save_view::muted_text_style)
                 .into()
         } else {
-            pick_list(options, selected, |o| {
-                Message::NetplaySetMatchType((o.mode, o.subtype))
-            })
-            
-            .padding(STANDARD_PADDING)
-            .into()
+            pick_list(options, selected, |o| Message::NetplaySetMatchType((o.mode, o.subtype)))
+                .padding(STANDARD_PADDING)
+                .into()
         }
     } else {
-        text(t(lang, "lobby-pick-game-first"))
-            
-            .style(save_view::muted_text_style)
-            .into()
+        let empty: Vec<MatchTypeOption> = Vec::new();
+        pick_list(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
+            Message::NetplaySetMatchType((o.mode, o.subtype))
+        })
+        .padding(STANDARD_PADDING)
+        .into()
     };
 
     // Input delay slider — legacy app caps at 10 frames. Each
     // increment is one full GBA frame (~16.7 ms one-way) of
     // smoothing for jittery connections.
     let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, Message::NetplaySetInputDelay);
+
+    // "Suggest" button: legacy formula = one-way frames + 1 - 2,
+    // clamped to the slider range. Disabled until the first Pong
+    // gives us a latency reading.
+    let suggest_msg = lobby.latency.map(|rtt| {
+        let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
+        let d = (one_way_frames + 1 - 2).clamp(2, 10) as u8;
+        Message::NetplaySetInputDelay(d)
+    });
+    let id_suggest = widgets::icon_button_maybe(
+        Icon::Wand,
+        t(lang, "lobby-input-delay-suggest"),
+        suggest_msg,
+        STANDARD_PADDING,
+    );
 
     // Reveal-setup checkbox. Mirrors the legacy app's
     // `play-details-reveal-setup` checkbox — each side picks
@@ -1253,8 +1224,7 @@ fn lobby_view<'a>(
         iced::widget::checkbox(lobby.reveal_setup)
             .label(t(lang, "lobby-reveal-mine"))
             .on_toggle(Message::NetplaySetRevealSetup)
-            .size(TEXT_HEADING)
-            ,
+            .size(TEXT_HEADING),
         text(reveal_label).size(TEXT_CAPTION).style(reveal_style),
     ]
     .spacing(2);
@@ -1280,10 +1250,11 @@ fn lobby_view<'a>(
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
             id_slider,
+            id_suggest,
         ]
         .spacing(6)
         .align_y(Alignment::Center)
-        .width(Length::Fixed(220.0)),
+        .width(Length::Fixed(260.0)),
         reveal_column,
     ]
     .spacing(20)
@@ -1293,42 +1264,34 @@ fn lobby_view<'a>(
     // no IO, just lookups against the patches scanner). Drives the
     // colour + the user-facing reason text. Only Compatible
     // unlocks the Ready button below.
-    let (verdict_line, compat_ok): (Element<'a, Message>, bool) =
-        match (lobby.local.as_ref(), lobby.remote.as_ref()) {
-            (Some(l), Some(r)) => {
-                let patches = scanners.patches.read();
-                let verdict = crate::netplay::compat::check(l, r, &*patches);
-                let (key, style): (&'static str, fn(&iced::Theme) -> iced::widget::text::Style) =
-                    match verdict {
-                        crate::netplay::compat::Verdict::Compatible => {
-                            ("lobby-compat-ok", save_view::success_text_style)
-                        }
-                        crate::netplay::compat::Verdict::MissingGame => {
-                            ("lobby-compat-missing-game", save_view::muted_text_style)
-                        }
-                        crate::netplay::compat::Verdict::MissingRomOrPatch => {
-                            ("lobby-compat-missing-rom", save_view::danger_text_style)
-                        }
-                        crate::netplay::compat::Verdict::DifferentVersions => {
-                            ("lobby-compat-version-mismatch", save_view::danger_text_style)
-                        }
-                        crate::netplay::compat::Verdict::DifferentMatchTypes => {
-                            ("lobby-compat-match-mismatch", save_view::danger_text_style)
-                        }
-                    };
-                (
-                    text(t(lang, key)).size(TEXT_CAPTION).style(style).into(),
-                    matches!(verdict, crate::netplay::compat::Verdict::Compatible),
-                )
-            }
-            _ => (
-                text(t(lang, "lobby-handshake"))
-                    .size(TEXT_CAPTION)
-                    .style(save_view::muted_text_style)
-                    .into(),
-                false,
-            ),
-        };
+    let (verdict_line, compat_ok): (Element<'a, Message>, bool) = match (lobby.local.as_ref(), lobby.remote.as_ref()) {
+        (Some(l), Some(r)) => {
+            use crate::netplay::compat::Verdict;
+            let patches = scanners.patches.read();
+            let verdict = crate::netplay::compat::check(l, r, &*patches);
+            let label = match verdict {
+                Verdict::Compatible => t(lang, "lobby-compat-ok"),
+                Verdict::MissingGame => t(lang, "lobby-compat-missing-game"),
+                Verdict::MissingRomOrPatch => t(lang, "lobby-compat-missing-rom"),
+                Verdict::DifferentVersions => t(lang, "lobby-compat-version-mismatch"),
+                Verdict::DifferentMatchTypes => t(lang, "lobby-compat-match-mismatch"),
+            };
+            let ok = matches!(verdict, Verdict::Compatible);
+            let style: fn(&iced::Theme) -> iced::widget::text::Style = if ok {
+                save_view::success_text_style
+            } else {
+                save_view::danger_text_style
+            };
+            (text(label).size(TEXT_CAPTION).style(style).into(), ok)
+        }
+        _ => (
+            text(t(lang, "lobby-handshake"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style)
+                .into(),
+            false,
+        ),
+    };
 
     // Big single toggle: Ready → Unready → Starting…, switching
     // label + icon + color on click. Same button, same position;
@@ -1336,40 +1299,43 @@ fn lobby_view<'a>(
     // unready, or wait for match-start).
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
-    let (ready_icon, ready_label_key, ready_msg, ready_palette): (
-        Icon,
-        &'static str,
-        Option<Message>,
-        ReadyPalette,
-    ) = if lobby.match_ready {
-        // Both committed — match is spinning up. Button is purely
-        // a status indicator; no click target until the session
-        // actually opens.
-        (Icon::Play, "lobby-match-starting", None, ReadyPalette::Starting)
-    } else if lobby.local_ready {
-        // Locally committed, waiting on peer. Action = unready.
-        // Gray / neutral so it doesn't masquerade as a primary CTA.
-        (Icon::X, "lobby-unready", Some(Message::NetplayUnready), ReadyPalette::Committed)
-    } else {
-        // Compat OK + a save loaded → click sends Commit. Either
-        // missing → button disabled (the user can see WHY: the
-        // verdict text covers compat, and the side card / save
-        // selector covers "no save").
-        let can_ready = compat_ok && has_save;
-        (
-            Icon::Check,
-            "lobby-ready",
-            if can_ready { Some(Message::NetplayReady) } else { None },
-            ReadyPalette::Idle,
-        )
-    };
+    let (ready_icon, ready_label, ready_msg, ready_palette): (Icon, String, Option<Message>, ReadyPalette) =
+        if lobby.match_ready {
+            // Both committed — match is spinning up. Button is purely
+            // a status indicator; no click target until the session
+            // actually opens.
+            (
+                Icon::Play,
+                t(lang, "lobby-match-starting"),
+                None,
+                ReadyPalette::Starting,
+            )
+        } else if lobby.local_ready {
+            // Locally committed, waiting on peer. Action = unready.
+            // Gray / neutral so it doesn't masquerade as a primary CTA.
+            (
+                Icon::X,
+                t(lang, "lobby-unready"),
+                Some(Message::NetplayUnready),
+                ReadyPalette::Committed,
+            )
+        } else {
+            // Compat OK + a save loaded → click sends Commit. Either
+            // missing → button disabled (the user can see WHY: the
+            // verdict text covers compat, and the side card / save
+            // selector covers "no save").
+            let can_ready = compat_ok && has_save;
+            (
+                Icon::Check,
+                t(lang, "lobby-ready"),
+                if can_ready { Some(Message::NetplayReady) } else { None },
+                ReadyPalette::Idle,
+            )
+        };
     let ready_button: Element<'a, Message> = {
-        let label_widget = row![
-            ready_icon.widget().size(READY_TEXT),
-            text(t(lang, ready_label_key)).size(READY_TEXT),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
+        let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
+            .spacing(8)
+            .align_y(Alignment::Center);
         let mut btn = iced::widget::button(label_widget)
             .padding(READY_PAD)
             .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, ready_palette));
@@ -1427,14 +1393,13 @@ impl SaveTemplateOption {
         // patches ship as `<rom>_<rev>.sav`. Patches' .save-megaman
         // attr usually carries the right label for that.
         let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-        let display = crate::i18n::t_opt(lang, &format!("game-{family}.save-{key_suffix}"))
-            .unwrap_or_else(|| {
-                if raw.is_empty() {
-                    crate::i18n::t(lang, "save-template-default")
-                } else {
-                    raw.to_string()
-                }
-            });
+        let display = crate::i18n::t_opt(lang, &format!("game-{family}.save-{key_suffix}")).unwrap_or_else(|| {
+            if raw.is_empty() {
+                crate::i18n::t(lang, "save-template-default")
+            } else {
+                raw.to_string()
+            }
+        });
         Self {
             raw: raw.to_string(),
             display,
@@ -1606,7 +1571,9 @@ fn empty_state_card(
     body_lines: Vec<String>,
     open_folder: Option<(String, std::path::PathBuf)>,
 ) -> Element<'static, Message> {
-    let mut col = column![text(title).size(TEXT_TITLE)].spacing(8).align_x(Alignment::Center);
+    let mut col = column![text(title).size(TEXT_TITLE)]
+        .spacing(8)
+        .align_x(Alignment::Center);
     for line in body_lines {
         col = col.push(text(line).size(TEXT_CAPTION).style(save_view::muted_text_style));
     }
@@ -1619,9 +1586,7 @@ fn empty_state_card(
             widgets::neutral,
         ));
     }
-    container(col.padding(20).max_width(520))
-        .center(Fill)
-        .into()
+    container(col.padding(20).max_width(520)).center(Fill).into()
 }
 
 // ---------- File-level save helpers ----------
@@ -1629,9 +1594,7 @@ fn empty_state_card(
 /// Copy `src` to a sibling file with " (copy)" inserted before the
 /// extension (with " (copy 2)", " (copy 3)", ... on collisions).
 pub fn duplicate_save(src: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
-    let parent = src
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
     let stem = src
         .file_stem()
         .ok_or_else(|| anyhow::anyhow!("save has no file stem"))?
@@ -1668,9 +1631,7 @@ pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std:
     if new_stem.contains('/') || new_stem.contains('\\') || new_stem.contains("..") {
         anyhow::bail!("invalid save name");
     }
-    let parent = src
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
     let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
     let new_name = if let Some(ext) = ext {
         format!("{new_stem}.{ext}")

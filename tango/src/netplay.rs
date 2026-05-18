@@ -24,7 +24,7 @@ pub mod compat;
 /// Bumped in lockstep with the signaling server's allowlist; keep
 /// this in sync or the server rejects the handshake with
 /// `AbortReason::ProtocolVersionTooOld` / `TooNew`.
-pub const PROTOCOL_VERSION: u32 = 0x3a;
+pub const PROTOCOL_VERSION: u32 = 0x3b;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -221,6 +221,11 @@ pub enum Message {
     /// lobby loop) failed. Includes the user-readable error
     /// message.
     Failed(String),
+    /// Internal: the running async task short-circuited because the
+    /// cancellation token fired (user clicked Disconnect, or a
+    /// fresh Connect superseded us). No-op — phase has already
+    /// been moved to Idle by whoever cancelled.
+    Cancelled,
     /// Internal: lobby loop noticed the peer disconnected (data
     /// channel closed cleanly without a Failed-worthy error).
     /// We end the session quietly back at Idle.
@@ -337,10 +342,7 @@ impl State {
                     link_code: link_code.clone(),
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(
-                    run_connect(endpoint, link_code, cancel),
-                    map_connect_result,
-                )
+                iced::Task::perform(run_connect(endpoint, link_code, cancel), map_connect_result)
             }
             Message::SignalingDone(slot_rx) => {
                 let link_code = match &self.phase {
@@ -411,9 +413,7 @@ impl State {
                 // metadata refreshes don't kick the user out of
                 // the ready state.
                 let invalidate = match self.lobby.local.as_ref() {
-                    Some(prev) if settings_materially_differ(prev, &settings) => {
-                        self.invalidate_local_commit()
-                    }
+                    Some(prev) if settings_materially_differ(prev, &settings) => self.invalidate_local_commit(),
                     _ => iced::Task::none(),
                 };
                 self.lobby.local = Some(*settings.clone());
@@ -533,6 +533,7 @@ impl State {
                 self.phase = Phase::Failed { error: e };
                 iced::Task::none()
             }
+            Message::Cancelled => iced::Task::none(),
             Message::PeerDisconnected => {
                 // Clean remote-side close (data channel went None
                 // without a Failed-worthy error). Quietly return
@@ -636,10 +637,7 @@ impl State {
     /// called from both Commit and RemoteCommit handlers, fires
     /// the task exactly once per commit pairing.
     fn maybe_kick_chunk_exchange(&mut self) -> iced::Task<Message> {
-        if self.local_chunks_sent
-            || self.local_commit.is_none()
-            || self.remote_commitment.is_none()
-        {
+        if self.local_chunks_sent || self.local_commit.is_none() || self.remote_commitment.is_none() {
             return iced::Task::none();
         }
         let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
@@ -659,10 +657,10 @@ impl State {
                     let sender = sender.clone();
                     let result: std::io::Result<()> = tokio::select! {
                         biased;
-                        _ = cancel.cancelled() => return Err("cancelled".to_string()),
+                        _ = cancel.cancelled() => return Err(AsyncError::Cancelled),
                         r = async move { sender.lock().await.send_chunk(buf).await } => r,
                     };
-                    result.map_err(|e| format!("send_chunk: {e}"))?;
+                    result.map_err(|e| AsyncError::Failed(format!("send_chunk: {e}")))?;
                 }
                 // Empty sentinel = end-of-stream.
                 sender
@@ -670,12 +668,12 @@ impl State {
                     .await
                     .send_chunk(Vec::new())
                     .await
-                    .map_err(|e| format!("send_chunk-end: {e}"))?;
-                Ok::<(), String>(())
+                    .map_err(|e| AsyncError::Failed(format!("send_chunk-end: {e}")))?;
+                Ok::<(), AsyncError>(())
             },
             |r| match r {
                 Ok(()) => Message::WireOpDone,
-                Err(e) => Message::Failed(e),
+                Err(e) => map_async_err(e),
             },
         )
     }
@@ -686,9 +684,7 @@ impl State {
     /// `match_ready`, then fires StartMatch.
     fn try_finish_handshake(&mut self) -> iced::Task<Message> {
         let Some(remote_commitment) = self.remote_commitment else {
-            return iced::Task::done(Message::Failed(
-                "peer sent end-of-chunks before Commit".to_string(),
-            ));
+            return iced::Task::done(Message::Failed("peer sent end-of-chunks before Commit".to_string()));
         };
         if self.local_commit.is_none() {
             // Their stream is here but we haven't committed yet —
@@ -707,13 +703,12 @@ impl State {
         // don't use it for anything until round 6 (PvP session
         // handoff), but verifying that it parses now means we
         // catch wire-format breakage before the user hits Play.
-        let peer_state_bytes =
-            match zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)) {
-                Ok(b) => b,
-                Err(e) => {
-                    return iced::Task::done(Message::Failed(format!("zstd decode: {e}")));
-                }
-            };
+        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)) {
+            Ok(b) => b,
+            Err(e) => {
+                return iced::Task::done(Message::Failed(format!("zstd decode: {e}")));
+            }
+        };
         if let Err(e) = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes) {
             return iced::Task::done(Message::Failed(format!("decode peer state: {e}")));
         }
@@ -768,10 +763,8 @@ impl State {
         // Decompress + decode peer's NegotiatedState — we already
         // verified its hash in try_finish_handshake; this is just
         // to recover the nonce + save_data.
-        let peer_state_bytes =
-            zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)).ok()?;
-        let peer_state =
-            crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
+        let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)).ok()?;
+        let peer_state = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
         let link_code = match &self.phase {
             Phase::Lobby { link_code } => link_code.clone(),
             _ => return None,
@@ -841,10 +834,7 @@ pub struct PreMatchData {
 /// SendLocalSettings handler drop stale commits without forcing
 /// the user back to the Ready button every time their roms
 /// scanner repopulates.
-fn settings_materially_differ(
-    a: &crate::net::protocol::Settings,
-    b: &crate::net::protocol::Settings,
-) -> bool {
+fn settings_materially_differ(a: &crate::net::protocol::Settings, b: &crate::net::protocol::Settings) -> bool {
     a.game_info != b.game_info || a.match_type != b.match_type
 }
 
@@ -930,17 +920,32 @@ fn slot<T>(payload: T) -> Slot<T> {
     Arc::new(parking_lot::Mutex::new(Some(payload)))
 }
 
-fn map_connect_result(result: Result<ConnectionPayload, String>) -> Message {
-    match result {
-        Ok(payload) => Message::SignalingDone(slot(payload)),
-        Err(e) => Message::Failed(e),
+/// Distinct error variants for the async tasks so the message
+/// handler can tell a user-initiated Disconnect (Cancelled, no
+/// UI noise) from a real error (Failed, surface to the user).
+enum AsyncError {
+    Cancelled,
+    Failed(String),
+}
+
+fn map_async_err(e: AsyncError) -> Message {
+    match e {
+        AsyncError::Cancelled => Message::Cancelled,
+        AsyncError::Failed(s) => Message::Failed(s),
     }
 }
 
-fn map_negotiate_result(result: Result<NegotiationOutput, String>) -> Message {
+fn map_connect_result(result: Result<ConnectionPayload, AsyncError>) -> Message {
+    match result {
+        Ok(payload) => Message::SignalingDone(slot(payload)),
+        Err(e) => map_async_err(e),
+    }
+}
+
+fn map_negotiate_result(result: Result<NegotiationOutput, AsyncError>) -> Message {
     match result {
         Ok(out) => Message::NegotiationDone(slot(out)),
-        Err(e) => Message::Failed(e),
+        Err(e) => map_async_err(e),
     }
 }
 
@@ -951,7 +956,7 @@ async fn run_connect(
     endpoint: String,
     link_code: String,
     cancel: CancellationToken,
-) -> Result<ConnectionPayload, String> {
+) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
         let connecting = tango_signaling::connect(
             &endpoint,
@@ -962,23 +967,22 @@ async fn run_connect(
             PROTOCOL_VERSION,
         )
         .await
-        .map_err(|e| format!("signaling: {e}"))?;
-        let (dc, peer_conn) = connecting.await.map_err(|e| format!("webrtc: {e}"))?;
-        Ok::<_, String>(ConnectionPayload { dc, peer_conn })
+        .map_err(|e| AsyncError::Failed(format!("signaling: {e}")))?;
+        let (dc, peer_conn) = connecting
+            .await
+            .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
+        Ok::<_, AsyncError>(ConnectionPayload { dc, peer_conn })
     };
     tokio::select! {
         biased;
-        _ = cancel.cancelled() => Err("cancelled".to_string()),
+        _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         out = work => out,
     }
 }
 
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
-async fn run_negotiate(
-    payload: ConnectionPayload,
-    cancel: CancellationToken,
-) -> Result<NegotiationOutput, String> {
+async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let ConnectionPayload { dc, peer_conn } = payload;
     let (dc_tx, dc_rx) = dc.split();
     let mut sender = crate::net::Sender::new(dc_tx);
@@ -986,9 +990,9 @@ async fn run_negotiate(
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;
-        _ = cancel.cancelled() => Err("cancelled".to_string()),
+        _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         result = work => {
-            result.map_err(|e| format!("negotiate: {e}"))?;
+            result.map_err(|e| AsyncError::Failed(format!("negotiate: {e}")))?;
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
