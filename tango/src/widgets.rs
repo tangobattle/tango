@@ -204,6 +204,39 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// Borderless / transparent button style for "indicator-shaped"
+/// toggles like the favorite-star in the patches header. No
+/// background, no border at rest. Caller is expected to color the
+/// inner icon themselves to convey state (e.g. primary when on,
+/// muted when off). Hover and pressed states just nudge the
+/// background alpha so the user gets click feedback without the
+/// button looking like a CTA.
+pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
+    let text_color = theme.palette().text;
+    let bg = match status {
+        button::Status::Hovered => iced::Background::Color(iced::Color {
+            a: 0.08,
+            ..text_color
+        }),
+        button::Status::Pressed => iced::Background::Color(iced::Color {
+            a: 0.15,
+            ..text_color
+        }),
+        _ => iced::Background::Color(iced::Color::TRANSPARENT),
+    };
+    button::Style {
+        background: Some(bg),
+        text_color,
+        border: iced::Border {
+            color: iced::Color::TRANSPARENT,
+            width: 0.0,
+            radius: 4.0.into(),
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
 /// Lower-level helper for callers that need to pick the button
 /// style explicitly — `button::primary` for the one emphasized
 /// action in a row, `button::danger` for destructive ones, etc.
@@ -368,7 +401,7 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
     }
 }
 
-fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
+pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     iced::widget::container::Style {
         background: Some(iced::Background::Color(p.background.strong.color)),

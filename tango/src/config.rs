@@ -105,9 +105,34 @@ pub struct Config {
     pub allow_prerelease_upgrades: bool,
 
     pub last_game: Option<(String, u8)>,
-    pub last_save: Option<std::path::PathBuf>,
     pub last_patch: Option<String>,
     pub last_patch_version: Option<semver::Version>,
+    /// Per-game-per-patch memory of the most recent save selection.
+    /// Key: `"family/variant/patch_name/patch_version"` (empty
+    /// `patch_name`/`patch_version` segments mean "raw ROM, no patch").
+    /// Value: forward-slash-separated path **relative to `data_path`**
+    /// (e.g. `"saves/bn6/MyMan.sav"`). Storing relative + slash-joined
+    /// keeps the config portable across machines and OSes. Consulted
+    /// whenever the active game or patch changes so the previously-used
+    /// save for that combination is restored.
+    #[serde(default)]
+    pub last_save_per_game_per_patch: std::collections::BTreeMap<String, String>,
+    /// Names of patches the user has favorited — they sort to the top
+    /// of pickers and get a star glyph next to their label.
+    #[serde(default)]
+    pub favorite_patches: std::collections::BTreeSet<String>,
+    /// Last unmaximized window size (logical pixels). Used as the
+    /// `iced::window::Settings::size` at startup so the window comes
+    /// back at the size the user left it. Updated on every Resized
+    /// event *only* when the window isn't currently maximized — so
+    /// maximizing + closing doesn't overwrite the restore size with
+    /// the screen dimensions.
+    #[serde(default)]
+    pub last_window_size: Option<(f32, f32)>,
+    /// Whether the window was maximized at last shutdown. Used to set
+    /// `iced::window::Settings::maximized` at startup.
+    #[serde(default)]
+    pub last_window_maximized: bool,
 
     /// User-editable input bindings (keyboard + gamepad). See
     /// [`crate::input::Mapping::default`] for the out-of-the-box
@@ -137,9 +162,12 @@ impl Default for Config {
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,
-            last_save: None,
             last_patch: None,
             last_patch_version: None,
+            last_save_per_game_per_patch: std::collections::BTreeMap::new(),
+            favorite_patches: std::collections::BTreeSet::new(),
+            last_window_size: None,
+            last_window_maximized: false,
             input_mapping: crate::input::Mapping::default(),
         }
     }
@@ -160,6 +188,34 @@ impl Config {
     }
     pub fn logs_path(&self) -> std::path::PathBuf {
         self.data_path.join("logs")
+    }
+
+    /// Convert an absolute path under `data_path` to the
+    /// forward-slash-separated relative string used as a value in
+    /// `last_save_per_game_per_patch`. Returns `None` if the path is
+    /// outside `data_path` (shouldn't normally happen since saves
+    /// live under `saves_path()`).
+    pub fn data_relative_string(&self, path: &std::path::Path) -> Option<String> {
+        let rel = path.strip_prefix(&self.data_path).ok()?;
+        Some(
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/"),
+        )
+    }
+
+    /// Inverse of `data_relative_string`. Joins a forward-slash
+    /// relative path onto `data_path` and returns an absolute
+    /// `PathBuf` using the local OS separator.
+    pub fn data_relative_to_absolute(&self, rel: &str) -> std::path::PathBuf {
+        let mut p = self.data_path.clone();
+        for seg in rel.split('/') {
+            if !seg.is_empty() {
+                p.push(seg);
+            }
+        }
+        p
     }
 
     pub fn load_or_create() -> Self {
@@ -216,6 +272,22 @@ impl Config {
         f.write_all(s.as_bytes())?;
         Ok(())
     }
+}
+
+/// Build the lookup key used by `Config::last_save_per_game_per_patch`.
+/// Empty patch name + version mean "no patch" so a save chosen for the
+/// raw ROM doesn't collide with a save chosen under a patch.
+pub fn save_memory_key(
+    game: crate::rom::GameRef,
+    patch_name: Option<&str>,
+    patch_version: Option<&semver::Version>,
+) -> String {
+    let (family, variant) = game.family_and_variant();
+    format!(
+        "{family}/{variant}/{}/{}",
+        patch_name.unwrap_or(""),
+        patch_version.map(|v| v.to_string()).unwrap_or_default(),
+    )
 }
 
 fn config_path() -> Option<std::path::PathBuf> {

@@ -5,9 +5,14 @@ use crate::{game, save_view};
 use lucide_icons::Icon;
 use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
+
+/// Gold tone used for filled favorite stars. Hardcoded (not from
+/// the theme palette) so it reads as "this is a favorite" on both
+/// light and dark themes, regardless of the configured accent.
+const FAVORITE_GOLD: iced::Color = iced::Color::from_rgb(1.0, 0.78, 0.0);
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -18,6 +23,12 @@ pub enum Message {
     Rescan,
     Update,
     UpdateFinished(Result<(), String>),
+    /// Star / unstar a patch. The patches list sorts favorites to
+    /// the top, and the Play tab's patch dropdown shows a ★ glyph
+    /// next to favorite names.
+    ToggleFavorite(String),
+    /// Patches list filter input changed.
+    SearchChanged(String),
 }
 
 #[derive(Default)]
@@ -28,6 +39,9 @@ pub struct PatchesState {
     pub readme_cache_key: Option<(String, semver::Version)>,
     pub updating: bool,
     pub last_update_error: Option<String>,
+    /// Case-insensitive substring filter applied to the sidebar
+    /// list (matches against patch name and title).
+    pub search: String,
 }
 
 /// Side-effects bubble-up. See [`crate::tabs::replays::Effect`]
@@ -48,6 +62,8 @@ pub enum Effect {
     /// Patch update finished cleanly — App should re-scan +
     /// refresh loaded.
     UpdateRescan,
+    /// Toggle the named patch's favorite status in `Config`.
+    ToggleFavorite(String),
 }
 
 impl PatchesState {
@@ -99,6 +115,11 @@ impl PatchesState {
                     }
                 }
             }
+            Message::ToggleFavorite(name) => Some(Effect::ToggleFavorite(name)),
+            Message::SearchChanged(s) => {
+                self.search = s;
+                None
+            }
         }
     }
 
@@ -130,11 +151,14 @@ impl PatchesState {
 
         let update_msg = if self.updating { None } else { Some(Message::Update) };
 
-        let mut top_row = row![text(format!("{}: {}", t(lang, "patches-installed"), patches.len()))
-            .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),]
-        .spacing(8)
-        .align_y(Alignment::Center);
+        // Search input replaces the "Installed: N" label. The
+        // count was informational only; a filter is more useful
+        // once the patch list grows past a handful of entries.
+        let search_input = text_input(&t(lang, "patches-search-placeholder"), &self.search)
+            .on_input(Message::SearchChanged)
+            .padding(STANDARD_PADDING)
+            .width(Length::Fixed(260.0));
+        let mut top_row = row![search_input].spacing(8).align_y(Alignment::Center);
 
         if self.updating {
             top_row = top_row.push(
@@ -167,31 +191,62 @@ impl PatchesState {
 
         let top = container(top_row.padding(8)).width(Fill);
 
+        // Apply the search filter case-insensitively against both
+        // the patch name (e.g. `bn6-foo`) and human title.
+        let query = self.search.trim().to_lowercase();
+        let mut ordered_patches: Vec<(&String, &std::sync::Arc<crate::patch::Patch>)> = patches
+            .iter()
+            .filter(|(n, p)| {
+                query.is_empty()
+                    || n.to_lowercase().contains(&query)
+                    || p.title.to_lowercase().contains(&query)
+            })
+            .collect();
+        // Favorites first, alphabetical within each group.
+        ordered_patches.sort_by(|(a, _), (b, _)| {
+            let fa = config.favorite_patches.contains(*a);
+            let fb = config.favorite_patches.contains(*b);
+            fb.cmp(&fa).then_with(|| a.cmp(b))
+        });
+
         let mut list = column![].spacing(2).padding(8);
-        for (idx, (name, patch)) in patches.iter().enumerate() {
+        for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
+            let is_fav = config.favorite_patches.contains(*name);
+            // Title row: title text with a leading filled gold
+            // star for favorites. Indicator only — the toggle
+            // lives in the detail header.
+            let title_row: Element<'_, Message> = if is_fav {
+                row![
+                    text("\u{2605}").size(TEXT_BODY).style(|_: &iced::Theme| iced::widget::text::Style {
+                        color: Some(FAVORITE_GOLD),
+                    }),
+                    text(patch.title.clone()).size(TEXT_BODY),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .into()
+            } else {
+                text(patch.title.clone()).size(TEXT_BODY).into()
+            };
             list = list.push(
                 button(
                     column![
-                        text(patch.title.clone()).size(TEXT_BODY),
-                        // Selected: inherit the button's
-                        // foreground (iced picks one readable on
-                        // the primary-weak background). Unselected:
-                        // standard muted gray.
-                        text(name.clone())
+                        title_row,
+                        text((*name).clone())
                             .size(TEXT_CAPTION)
                             .style(move |theme: &iced::Theme| if selected {
                                 iced::widget::text::Style { color: None }
                             } else {
                                 save_view::muted_text_style(theme)
-                            },),
+                            }),
                     ]
                     .spacing(2),
                 )
                 .padding([6, 10])
                 .width(Fill)
                 .style(widgets::list_item(selected, idx))
-                .on_press(Message::Selected(name.clone())),
+                .on_press(Message::Selected((*name).clone())),
             );
         }
         let left = container(scrollable(list).height(Fill))
@@ -228,6 +283,42 @@ impl PatchesState {
                 .map(|v| v.netplay_compatibility.clone())
                 .unwrap_or_default();
 
+            // Favorite toggle lives in the detail header, styled
+            // as a flat icon-only affordance so it reads as a
+            // toggle indicator rather than a CTA. State is carried
+            // entirely by the glyph + color: filled gold "★" when
+            // favorite, hollow muted "☆" when not.
+            let is_fav = config.favorite_patches.contains(self.selected.as_ref().unwrap());
+            let favorite_toggle = {
+                let label = if is_fav {
+                    t(lang, "patches-unfavorite")
+                } else {
+                    t(lang, "patches-favorite")
+                };
+                let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
+                let star = text(glyph).size(TEXT_TITLE).style(move |theme: &iced::Theme| {
+                    iced::widget::text::Style {
+                        color: Some(if is_fav {
+                            FAVORITE_GOLD
+                        } else {
+                            theme.extended_palette().background.weak.text
+                        }),
+                    }
+                });
+                let btn = button(star)
+                    .padding([4, 6])
+                    .style(widgets::flat)
+                    .on_press(Message::ToggleFavorite(self.selected.clone().unwrap()));
+                iced::widget::tooltip(
+                    btn,
+                    container(text(label).size(TEXT_CAPTION))
+                        .padding(6)
+                        .style(widgets::tooltip_chrome),
+                    iced::widget::tooltip::Position::Bottom,
+                )
+                .gap(4)
+            };
+
             // Title in a Fill container so a long patch name takes
             // the leftover space and wraps naturally instead of
             // squashing the version picker / folder button on
@@ -235,6 +326,7 @@ impl PatchesState {
             // readable across multiple lines if it has to.
             let header = row![
                 container(text(patch.title.clone()).size(TEXT_TITLE)).width(Fill),
+                favorite_toggle,
                 pick_list(versions, selected_version, Message::VersionSelected)
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),

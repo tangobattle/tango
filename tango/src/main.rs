@@ -266,18 +266,26 @@ fn run_app() -> iced::Result {
         vsync: false,
         ..iced::Settings::default()
     };
+    // Load config once here just for window geometry. App::new
+    // reloads it for the rest of its state (cheap — JSON parse).
+    // This double-load keeps the window-size restore self-contained
+    // in main without threading a Config handle into App::new.
+    let geom_cfg = config::Config::load_or_create();
+    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1000.0, 640.0));
+
     iced::application(App::new, App::update, App::view)
         .settings(settings)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
         .window(iced::window::Settings {
-            // Initial size; min_size keeps the user from
-            // shrinking the window so small the tab strip /
-            // sidebars start visually collapsing on top of one
-            // another.
-            size: iced::Size::new(1000.0, 640.0),
+            // min_size keeps the user from shrinking the window so
+            // small the tab strip / sidebars start visually
+            // collapsing on top of one another. Initial size +
+            // maximized state come from the last shutdown.
+            size: iced::Size::new(start_w, start_h),
             min_size: Some(iced::Size::new(800.0, 600.0)),
+            maximized: geom_cfg.last_window_maximized,
             // OS-level window icon (title bar + taskbar). Same
             // PNG we render in the nav strip; iced wants raw
             // RGBA so decode once at startup. Best-effort —

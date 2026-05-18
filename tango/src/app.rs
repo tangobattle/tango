@@ -192,17 +192,6 @@ impl App {
             if let Some(game) = tango_gamedb::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
                     play.local_game = Some(game);
-                    if let Some(p) = config.last_save.as_ref() {
-                        if scanners
-                            .saves
-                            .read()
-                            .get(&game)
-                            .map(|v| v.iter().any(|s| s.path == *p))
-                            .unwrap_or(false)
-                        {
-                            play.local_save = Some(p.clone());
-                        }
-                    }
                     if let Some(n) = config.last_patch.as_ref() {
                         if let Some(p) = scanners.patches.read().get(n) {
                             let v = config.last_patch_version.as_ref().and_then(|v| {
@@ -221,6 +210,25 @@ impl App {
                                 play.local_patch = Some(n.clone());
                                 play.local_patch_version = v;
                             }
+                        }
+                    }
+                    // Save restore happens after patch+version so the per-
+                    // (game, patch, version) memory key resolves correctly.
+                    let key = config::save_memory_key(
+                        game,
+                        play.local_patch.as_deref(),
+                        play.local_patch_version.as_ref(),
+                    );
+                    if let Some(rel) = config.last_save_per_game_per_patch.get(&key) {
+                        let abs = config.data_relative_to_absolute(rel);
+                        if scanners
+                            .saves
+                            .read()
+                            .get(&game)
+                            .map(|v| v.iter().any(|s| s.path == abs))
+                            .unwrap_or(false)
+                        {
+                            play.local_save = Some(abs);
                         }
                     }
                 }
@@ -357,16 +365,28 @@ impl App {
         }
     }
 
-    /// Record the current selection back to config.last_*; called after
-    /// any selection change so the next launch restores it.
+    /// Record the current selection back to config; called after any
+    /// selection change so the next launch restores it. Save paths are
+    /// stored relative to `data_path` under a per-(game, patch,
+    /// version) key, so switching back to any prior combination
+    /// restores its save.
     fn persist_selection(&mut self) {
         self.config.last_game = self
             .play
             .local_game
             .map(|g| (g.family_and_variant().0.to_string(), g.family_and_variant().1));
-        self.config.last_save = self.play.local_save.clone();
         self.config.last_patch = self.play.local_patch.clone();
         self.config.last_patch_version = self.play.local_patch_version.clone();
+        if let (Some(g), Some(p)) = (self.play.local_game, self.play.local_save.as_ref()) {
+            if let Some(rel) = self.config.data_relative_string(p) {
+                let key = config::save_memory_key(
+                    g,
+                    self.play.local_patch.as_deref(),
+                    self.play.local_patch_version.as_ref(),
+                );
+                self.config.last_save_per_game_per_patch.insert(key, rel);
+            }
+        }
         self.persist_config();
     }
 
@@ -471,7 +491,14 @@ impl App {
             return;
         };
         let Some(scanned) = saves.get(&game).and_then(|v| v.iter().find(|s| s.path == save_path)) else {
+            // Save was deleted out from under us (e.g. user deleted
+            // it then hit Rescan). Drop the stale selection so the
+            // picker stops showing a missing entry.
             self.loaded = None;
+            drop(saves);
+            drop(roms);
+            drop(patches);
+            self.play.local_save = None;
             return;
         };
         let save = scanned.save.clone_box();
@@ -535,6 +562,14 @@ pub enum Message {
     /// Discord-initiated join secret into the play link-code
     /// field.
     DiscordTick,
+    /// Raw window event (resize, move, etc.). Filtered in the
+    /// handler — only Resized currently triggers anything.
+    Window(iced::window::Id, iced::window::Event),
+    /// Result of an `iced::window::get_maximized` task spawned
+    /// after a Resized event. Carries the resize-time size so the
+    /// handler can decide whether to persist it (only if the
+    /// window isn't maximized).
+    WindowMaximizedQueried { size: iced::Size, maximized: bool },
 }
 
 impl App {
@@ -564,6 +599,26 @@ impl App {
             Message::Patches(m) => self.update_patches(m).map(Message::Patches),
             Message::DiscordTick => {
                 self.handle_discord_tick();
+                iced::Task::none()
+            }
+            Message::Window(id, ev) => {
+                if let iced::window::Event::Resized(size) = ev {
+                    // The Resized size could be either a user-driven
+                    // resize or the result of maximize/unmaximize.
+                    // We need is_maximized to decide whether to keep
+                    // it as the restore size, so query it and finish
+                    // the bookkeeping in WindowMaximizedQueried.
+                    return iced::window::is_maximized(id)
+                        .map(move |maximized| Message::WindowMaximizedQueried { size, maximized });
+                }
+                iced::Task::none()
+            }
+            Message::WindowMaximizedQueried { size, maximized } => {
+                if !maximized {
+                    self.config.last_window_size = Some((size.width, size.height));
+                }
+                self.config.last_window_maximized = maximized;
+                self.persist_config();
                 iced::Task::none()
             }
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
@@ -678,6 +733,8 @@ impl App {
             // equality before re-sending) and gives us the join-
             // secret pickup loop too.
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::DiscordTick),
+            // Window events drive the geometry-persistence loop.
+            iced::window::events().map(|(id, ev)| Message::Window(id, ev)),
         ])
     }
 
@@ -950,6 +1007,13 @@ impl App {
                 async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
                 tabs::patches::Message::UpdateFinished,
             ),
+            E::ToggleFavorite(name) => {
+                if !self.config.favorite_patches.remove(&name) {
+                    self.config.favorite_patches.insert(name);
+                }
+                self.persist_config();
+                iced::Task::none()
+            }
         }
     }
 

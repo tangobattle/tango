@@ -17,7 +17,7 @@ use unic_langid::LanguageIdentifier;
 pub enum Message {
     LocalGameSelected(GameOption),
     LocalSaveSelected(SaveOption),
-    LocalPatchSelected(String),
+    LocalPatchSelected(PatchOption),
     LocalPatchVersionSelected(semver::Version),
     SaveViewAction(save_view::Action),
     LinkCodeChanged(String),
@@ -118,16 +118,48 @@ impl std::fmt::Debug for GameOption {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SaveOption {
     pub path: std::path::PathBuf,
+    /// Pre-computed display label: the save's path relative to the
+    /// saves dir, forward-slash separated (so nested folders show up
+    /// in the picker). Built when the option list is constructed
+    /// because `Display::fmt` doesn't get the saves root as input.
+    pub display: String,
+}
+
+impl SaveOption {
+    pub fn new(saves_path: &std::path::Path, path: std::path::PathBuf) -> Self {
+        let display = path
+            .strip_prefix(saves_path)
+            .ok()
+            .map(|rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| path.display().to_string());
+        Self { path, display }
+    }
 }
 
 impl std::fmt::Display for SaveOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = self
-            .path
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.path.display().to_string());
-        f.write_str(&name)
+        f.write_str(&self.display)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct PatchOption {
+    /// Real patch name. Empty string is the "no patch" sentinel.
+    pub name: String,
+    /// Display string. Favorites are prefixed with "★ " so they're
+    /// visually distinct in the dropdown.
+    pub display: String,
+}
+
+impl std::fmt::Display for PatchOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.display)
     }
 }
 
@@ -251,13 +283,9 @@ impl PlayState {
                     return None;
                 }
                 self.local_game = Some(g.game);
-                self.local_save = scanners
-                    .saves
-                    .read()
-                    .get(&g.game)
-                    .and_then(|v| v.first().map(|s| s.path.clone()));
                 self.local_patch = None;
                 self.local_patch_version = None;
+                self.local_save = resolve_remembered_save(config, scanners, g.game, None, None);
                 Some(Effect::SelectionChanged)
             }
             Message::LocalSaveSelected(s) => {
@@ -265,22 +293,40 @@ impl PlayState {
                 Some(Effect::SelectionChanged)
             }
             Message::LocalPatchSelected(p) => {
-                if p == t(&config.language, "play-no-patch") {
+                if p.name.is_empty() {
                     self.local_patch = None;
                     self.local_patch_version = None;
                 } else {
                     let v = scanners
                         .patches
                         .read()
-                        .get(&p)
+                        .get(&p.name)
                         .and_then(|patch| patch.versions.keys().max().cloned());
-                    self.local_patch = Some(p);
+                    self.local_patch = Some(p.name);
                     self.local_patch_version = v;
+                }
+                if let Some(g) = self.local_game {
+                    self.local_save = resolve_remembered_save(
+                        config,
+                        scanners,
+                        g,
+                        self.local_patch.as_deref(),
+                        self.local_patch_version.as_ref(),
+                    );
                 }
                 Some(Effect::SelectionChanged)
             }
             Message::LocalPatchVersionSelected(v) => {
                 self.local_patch_version = Some(v);
+                if let Some(g) = self.local_game {
+                    self.local_save = resolve_remembered_save(
+                        config,
+                        scanners,
+                        g,
+                        self.local_patch.as_deref(),
+                        self.local_patch_version.as_ref(),
+                    );
+                }
                 Some(Effect::SelectionChanged)
             }
             Message::SaveViewAction(action) => {
@@ -549,7 +595,7 @@ impl PlayState {
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
-        col = col.push(self.selector_strip(lang, scanners)).push(body);
+        col = col.push(self.selector_strip(lang, scanners, config)).push(body);
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby) the lobby_view IS the bottom band
         // — it carries its own scanline separator and Cancel
@@ -598,7 +644,12 @@ impl PlayState {
         self.save_view(lang, loaded, streamer_mode, netplay_phase)
     }
 
-    fn selector_strip<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
+    fn selector_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        config: &'a config::Config,
+    ) -> Element<'a, Message> {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
 
@@ -638,11 +689,47 @@ impl PlayState {
             .width(Length::FillPortion(3))
             .style(widgets::chunky_pick_list);
 
-        let save_options: Vec<SaveOption> = self
+        let saves_path = config.saves_path();
+        let mut save_options: Vec<SaveOption> = self
             .local_game
             .and_then(|g| saves.get(&g))
-            .map(|saves| saves.iter().map(|s| SaveOption { path: s.path.clone() }).collect())
+            .map(|saves| {
+                saves
+                    .iter()
+                    .map(|s| SaveOption::new(&saves_path, s.path.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
+        // Folder-first recursive sort: at the first differing path
+        // component, whichever side still has components after it
+        // (i.e. is "inside a folder at this level") wins. Files at
+        // a given level sort below any subfolders at that level.
+        save_options.sort_by(|a, b| {
+            let av: Vec<&std::ffi::OsStr> = a
+                .path
+                .strip_prefix(&saves_path)
+                .unwrap_or(&a.path)
+                .iter()
+                .collect();
+            let bv: Vec<&std::ffi::OsStr> = b
+                .path
+                .strip_prefix(&saves_path)
+                .unwrap_or(&b.path)
+                .iter()
+                .collect();
+            for i in 0..av.len().min(bv.len()) {
+                if av[i] != bv[i] {
+                    let a_is_dir = i + 1 < av.len();
+                    let b_is_dir = i + 1 < bv.len();
+                    return match (a_is_dir, b_is_dir) {
+                        (true, false) => std::cmp::Ordering::Less,
+                        (false, true) => std::cmp::Ordering::Greater,
+                        _ => av[i].cmp(bv[i]),
+                    };
+                }
+            }
+            av.len().cmp(&bv.len())
+        });
 
         let selected_save = self
             .local_save
@@ -668,18 +755,34 @@ impl PlayState {
             })
             .map(|(n, _)| n.clone())
             .collect();
-        compatible_names.sort();
-        let patch_options: Vec<String> = std::iter::once(no_patch_label.clone())
-            .chain(compatible_names.into_iter())
+        // Favorites first, alphabetical within each group.
+        compatible_names.sort_by(|a, b| {
+            let fa = config.favorite_patches.contains(a);
+            let fb = config.favorite_patches.contains(b);
+            fb.cmp(&fa).then_with(|| a.cmp(b))
+        });
+        let no_patch_option = PatchOption {
+            name: String::new(),
+            display: no_patch_label.clone(),
+        };
+        let patch_options: Vec<PatchOption> = std::iter::once(no_patch_option.clone())
+            .chain(compatible_names.into_iter().map(|n| {
+                let display = if config.favorite_patches.contains(&n) {
+                    format!("\u{2605} {n}")
+                } else {
+                    n.clone()
+                };
+                PatchOption { name: n, display }
+            }))
             .collect();
-        let patch = pick_list(
-            patch_options,
-            Some(self.local_patch.clone().unwrap_or(no_patch_label)),
-            Message::LocalPatchSelected,
-        )
-        .padding(STANDARD_PADDING)
-        .width(Length::FillPortion(2))
-        .style(widgets::chunky_pick_list);
+        let selected_patch = match self.local_patch.as_ref() {
+            Some(n) => patch_options.iter().find(|o| &o.name == n).cloned(),
+            None => Some(no_patch_option),
+        };
+        let patch = pick_list(patch_options, selected_patch, Message::LocalPatchSelected)
+            .padding(STANDARD_PADDING)
+            .width(Length::FillPortion(2))
+            .style(widgets::chunky_pick_list);
 
         let version_options: Vec<semver::Version> = self
             .local_patch
@@ -981,6 +1084,32 @@ impl PlayState {
 
 /// Lookup the patch save templates for the current game+patch+version
 /// selection. Returns `None` if any of (game / patch / version /
+/// Pick the save to land on after a game/patch/version change.
+/// Prefers the per-(game, patch, version) remembered save from config
+/// if it's still in the scan; otherwise falls back to the first save
+/// listed for the game.
+fn resolve_remembered_save(
+    config: &config::Config,
+    scanners: &Scanners,
+    game: rom::GameRef,
+    patch_name: Option<&str>,
+    patch_version: Option<&semver::Version>,
+) -> Option<std::path::PathBuf> {
+    let saves_map = scanners.saves.read();
+    let saves_for_game = saves_map.get(&game);
+    let key = config::save_memory_key(game, patch_name, patch_version);
+    let remembered = config
+        .last_save_per_game_per_patch
+        .get(&key)
+        .map(|rel| config.data_relative_to_absolute(rel))
+        .filter(|p| {
+            saves_for_game
+                .map(|v| v.iter().any(|s| s.path == *p))
+                .unwrap_or(false)
+        });
+    remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
+}
+
 /// template-for-game) are missing. The returned map is the templates
 /// keyed by template name (empty string = default).
 pub fn templates_for_selection_public(
