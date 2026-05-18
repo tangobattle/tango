@@ -3,6 +3,24 @@ use fluent_templates::Loader;
 
 pub const FALLBACK_LANG: unic_langid::LanguageIdentifier = unic_langid::langid!("en-US");
 
+/// Locales the app exposes in the language picker. Strings the
+/// non-en locales don't translate (tango-specific keys like
+/// crash-*, tab-*, replays-incomplete, etc.) fall back to en-US
+/// via the fluent_templates static_loader's fallback_language.
+pub const SUPPORTED_LANGS: &[unic_langid::LanguageIdentifier] = &[
+    unic_langid::langid!("en-US"),
+    unic_langid::langid!("ja-JP"),
+    unic_langid::langid!("zh-CN"),
+    unic_langid::langid!("zh-TW"),
+    unic_langid::langid!("de-DE"),
+    unic_langid::langid!("es-419"),
+    unic_langid::langid!("fr-FR"),
+    unic_langid::langid!("nl-NL"),
+    unic_langid::langid!("pt-BR"),
+    unic_langid::langid!("ru-RU"),
+    unic_langid::langid!("vi-VN"),
+];
+
 fluent_templates::static_loader! {
     pub static LOCALES = {
         locales: "./locales",

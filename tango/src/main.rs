@@ -32,69 +32,17 @@ mod widgets;
 mod app;
 mod theme;
 
-pub use app::{App, Message, Scanners, Tab};
-pub use theme::theme_for;
-
-use unic_langid::LanguageIdentifier;
-
-pub const SUPPORTED_LANGS: &[LanguageIdentifier] = &[
-    // Same lineup legacy ships. Strings the non-en locales
-    // don't translate (tango-specific keys like crash-*,
-    // tab-*, replays-incomplete, etc.) fall back to en-US via
-    // the fluent_templates static_loader's fallback_language.
-    unic_langid::langid!("en-US"),
-    unic_langid::langid!("ja-JP"),
-    unic_langid::langid!("zh-CN"),
-    unic_langid::langid!("zh-TW"),
-    unic_langid::langid!("de-DE"),
-    unic_langid::langid!("es-419"),
-    unic_langid::langid!("fr-FR"),
-    unic_langid::langid!("nl-NL"),
-    unic_langid::langid!("pt-BR"),
-    unic_langid::langid!("ru-RU"),
-    unic_langid::langid!("vi-VN"),
-];
-
-// Button sizing constants — three tiers that everything else maps onto.
-// `NAV` for the top-level nav strip; `PRIMARY` for the single big
-// call-to-action (Play). Standard body text comes from iced's
-// `default_text_size` (set in main()), so there's no standalone
-// STANDARD_TEXT_SIZE constant — widgets that don't pass an
-// explicit size inherit the app default.
-pub const NAV_TEXT_SIZE: f32 = 14.0;
-pub const NAV_PADDING: [f32; 2] = [8.0, 16.0];
-pub const PRIMARY_PADDING: [f32; 2] = [6.0, 14.0];
-pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
-
-/// Pinned inner-control height for the play-tab link-code bar
-/// and the session media-controls bar — every button / picker
-/// in both strips is sized to this so the bars come out the
-/// same height naturally (no outer container pinning needed).
-pub const BAR_CONTROL_HEIGHT: f32 = 40.0;
-
-// Typographic scale. Everything that renders text picks from this
-// list; one-off sizes outside it tend to look like UI bugs
-// (random 12px next to 11px next to 13px). If you need a new
-// size, add it here and update the audit.
-//
-//   DISPLAY — splash titles ("Welcome to Tango").
-//   TITLE   — section headers ("tab-settings", empty-state cards).
-//   HEADING — sub-section labels (nickname on side cards).
-//   BODY    — default body copy. Same value as the iced default.
-//   CAPTION — muted hints, status lines, metadata labels.
-pub const TEXT_DISPLAY: f32 = 22.0;
-pub const TEXT_TITLE: f32 = 18.0;
-pub const TEXT_HEADING: f32 = 15.0;
-pub const TEXT_BODY: f32 = 13.0;
-pub const TEXT_CAPTION: f32 = 11.0;
-
-/// The accent color used across the app — selection highlights,
-/// primary CTA buttons, the active tab underline, markdown link
-/// color in the About panel, etc. Same green the legacy egui
-/// app uses, kept in one const so we never accidentally drift to
-/// a different shade.
-pub const TANGO_GREEN: iced::Color =
-    iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
+// Public surface re-exported so the rest of the codebase keeps
+// reaching for `crate::FOO` regardless of which submodule
+// actually owns the item. Splitting these by concern keeps the
+// definitions near the code that uses them; the re-exports just
+// preserve the historical API.
+pub use app::{
+    App, Message, Scanners, Tab, BAR_CONTROL_HEIGHT, NAV_PADDING, NAV_TEXT_SIZE, PRIMARY_PADDING, STANDARD_PADDING,
+    TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE,
+};
+pub use i18n::SUPPORTED_LANGS;
+pub use theme::{theme_for, TANGO_GREEN};
 
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the

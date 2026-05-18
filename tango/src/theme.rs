@@ -6,8 +6,17 @@
 //! before iced has handed it the live `Theme` (e.g. markdown
 //! link color in the About panel).
 
-use crate::{config, TANGO_GREEN};
+use crate::config;
 use iced::Theme;
+
+/// The accent color used across the app — selection highlights,
+/// primary CTA buttons, the active tab underline, markdown link
+/// color in the About panel, etc. Same green the legacy egui
+/// app uses, kept in one const so we never accidentally drift to
+/// a different shade.
+pub const TANGO_GREEN: iced::Color =
+    iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
+
 pub fn theme_for(config: &config::Config) -> Theme {
     // Tango palettes — these aren't tweaks of iced's stock Light /
     // Dark anymore. The dark variant is a deep navy "cyberworld"
