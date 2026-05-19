@@ -139,9 +139,7 @@ game-exe5 = Rockman EXE 5
     .variant-0 = Rockman EXE 5: Team of Blues
     .variant-1 = Rockman EXE 5: Team of Colonel
     .match-type-0-0 = Single
-    .match-type-0-1 = Single (all stages)
     .match-type-1-0 = Triple
-    .match-type-1-1 = Triple (all stages)
     .save-dark = Dark
     .save-light = Light
 
@@ -150,9 +148,7 @@ game-bn5 = Mega Man Battle Network 5
     .variant-0 = Mega Man Battle Network 5: Team Protoman
     .variant-1 = Mega Man Battle Network 5: Team Colonel
     .match-type-0-0 = Single
-    .match-type-0-1 = Single (all stages)
     .match-type-1-0 = Triple
-    .match-type-1-1 = Triple (all stages)
     .save-dark = Dark
     .save-light = Light
 
