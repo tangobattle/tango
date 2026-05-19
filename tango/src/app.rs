@@ -984,6 +984,7 @@ impl App {
                 }
                 iced::Task::none()
             }
+            E::SaveViewTask(t) => t.map(Message::Play),
         }
     }
 
@@ -1099,6 +1100,7 @@ impl App {
                 settings,
                 rounds,
             } => self.spawn_replay_export(replay, output, settings, rounds),
+            E::SaveViewTask(t) => t,
         }
     }
 

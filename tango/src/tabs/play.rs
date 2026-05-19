@@ -259,6 +259,11 @@ pub enum Effect {
     /// Create a fresh save in the saves dir from a bundled
     /// template.
     SaveNew { name: String, template: String },
+    /// Task returned from save_view::State::apply. Generic pipe
+    /// so save_view-internal side effects (e.g. the scroll-to-top
+    /// snap on tab change) flow through without per-feature
+    /// Effect variants.
+    SaveViewTask(iced::Task<Message>),
 }
 
 impl PlayState {
@@ -327,15 +332,16 @@ impl PlayState {
                 Some(Effect::SelectionChanged)
             }
             Message::SaveViewAction(action) => {
-                self.save_view.apply(&action);
-                let loaded = loaded?;
+                let sv_task = self.save_view.apply(&action);
                 match action {
-                    save_view::Action::CopyTab(tab) => {
-                        save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
+                    save_view::Action::CopyTab(tab) => loaded
+                        .and_then(|l| save_view::tab_as_text(&config.language, tab, l))
+                        .map(Effect::CopyText),
+                    save_view::Action::CopyTabImage(tab) => {
+                        loaded.and_then(|l| save_view::tab_as_image(tab, l)).map(Effect::CopyImage)
                     }
-                    save_view::Action::CopyTabImage(tab) => save_view::tab_as_image(tab, loaded).map(Effect::CopyImage),
                     save_view::Action::PlayClicked => Some(Effect::StartSinglePlayer),
-                    _ => None,
+                    _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
             Message::LinkCodeChanged(s) => {

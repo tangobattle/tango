@@ -202,6 +202,11 @@ pub enum Effect {
         settings: ExportSettings,
         rounds: Vec<bool>,
     },
+    /// Task returned from save_view::State::apply. Generic Task
+    /// pipe so save_view-internal side effects (currently just
+    /// the scroll-to-top snap on tab changes) flow through here
+    /// without per-feature Effect variants.
+    SaveViewTask(iced::Task<Message>),
 }
 
 impl ReplaysState {
@@ -238,14 +243,25 @@ impl ReplaysState {
             Message::Watch(p) => Some(Effect::Watch(p)),
             Message::Rescan => Some(Effect::Rescan),
             Message::SaveViewAction(action) => {
-                self.save_view.apply(&action);
-                let loaded = self.loaded.as_ref()?;
+                let sv_task = self.save_view.apply(&action);
+                // Clipboard variants need the App's clipboard
+                // collaborator — bubble them up as Effects.
+                // Anything else gets folded into save_view-internal
+                // state and surfaces as a generic SaveViewTask
+                // (currently used for the scroll-to-top snap on a
+                // tab change).
                 match action {
-                    save_view::Action::CopyTab(tab) => {
-                        save_view::tab_as_text(&config.language, tab, loaded).map(Effect::CopyText)
-                    }
-                    save_view::Action::CopyTabImage(tab) => save_view::tab_as_image(tab, loaded).map(Effect::CopyImage),
-                    _ => None,
+                    save_view::Action::CopyTab(tab) => self
+                        .loaded
+                        .as_ref()
+                        .and_then(|l| save_view::tab_as_text(&config.language, tab, l))
+                        .map(Effect::CopyText),
+                    save_view::Action::CopyTabImage(tab) => self
+                        .loaded
+                        .as_ref()
+                        .and_then(|l| save_view::tab_as_image(tab, l))
+                        .map(Effect::CopyImage),
+                    _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
             Message::Export(replay_path) => Some(Effect::OpenExportSaveDialog(replay_path)),
@@ -498,15 +514,13 @@ impl ReplaysState {
             .unwrap_or_else(|| game_options[0].clone());
         let top = container(
             row![
-                text(format!("{}:", t(lang, "replays-filter-game"))).size(TEXT_CAPTION),
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),
-                text(format!("{}:", t(lang, "replays-filter-opponent"))).size(TEXT_CAPTION),
                 iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(180.0))
+                    .width(Length::Fixed(220.0))
                     .style(widgets::chunky_text_input),
                 horizontal_space(),
                 widgets::icon_button(

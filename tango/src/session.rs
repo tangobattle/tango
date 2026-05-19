@@ -319,7 +319,8 @@ impl State {
             }
             Message::OpponentSaveViewAction(action) => {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
-                    s.opponent_save_view.apply(&action);
+                    let sv_task = s.opponent_save_view.apply(&action);
+                    return sv_task.map(Message::OpponentSaveViewAction);
                 }
             }
             Message::OpenSettings => {

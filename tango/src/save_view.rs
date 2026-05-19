@@ -21,6 +21,7 @@ pub enum Tab {
     AutoBattleData,
 }
 
+
 #[derive(Default, Clone, Copy)]
 pub struct RenderOpts {
     pub folder_grouped: bool,
@@ -86,10 +87,20 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
 /// Persistent UI state for [`view`]. The active tab + folder
 /// grouping live here so callers don't have to mirror the fields
 /// themselves; apply incoming [`Action`]s via [`State::apply`].
-#[derive(Default, Clone)]
+/// The `body_scroll_id` is per-instance unique so multiple
+/// save_views on screen at once (e.g. play tab + in-session
+/// opponent panel) have distinct scrollable identities.
+#[derive(Clone)]
 pub struct State {
     pub active_tab: Option<Tab>,
     pub folder_grouped: bool,
+    body_scroll_id: iced::widget::Id,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl State {
@@ -97,17 +108,30 @@ impl State {
         Self {
             active_tab: None,
             folder_grouped: true,
+            body_scroll_id: iced::widget::Id::unique(),
         }
     }
 
     /// Apply an `Action` to the state. `CopyTab` is left for the
     /// caller to handle (clipboard side-effects can't happen inside
-    /// `apply`); everything else is folded in.
-    pub fn apply(&mut self, action: &Action) {
+    /// `apply`); everything else is folded in. Returns a Task the
+    /// caller should run — used for save-view-internal side
+    /// effects (notably the scroll-to-top snap on a tab change)
+    /// so hosts don't have to know about them.
+    pub fn apply(&mut self, action: &Action) -> iced::Task<Action> {
         match action {
-            Action::SelectTab(t) => self.active_tab = Some(*t),
-            Action::ToggleFolderGrouped(g) => self.folder_grouped = *g,
-            Action::CopyTab(_) | Action::CopyTabImage(_) | Action::PlayClicked => {}
+            Action::SelectTab(t) => {
+                self.active_tab = Some(*t);
+                iced::widget::operation::snap_to(
+                    self.body_scroll_id.clone(),
+                    iced::widget::scrollable::RelativeOffset::START,
+                )
+            }
+            Action::ToggleFolderGrouped(g) => {
+                self.folder_grouped = *g;
+                iced::Task::none()
+            }
+            Action::CopyTab(_) | Action::CopyTabImage(_) | Action::PlayClicked => iced::Task::none(),
         }
     }
 }
@@ -202,15 +226,15 @@ pub fn view<'a>(
     let tab_pane = container(tab_row.padding([4, 8]))
         .width(Fill)
         .style(widgets::pane);
-    // Body pane has no internal padding — render_* picks whatever
-    // padding fits its content (tables run flush to the pane edge,
-    // text/forms pad themselves with PANE_PADDING). Height shrinks
-    // to its content so the save_view panes don't stretch to fill
-    // their host column; if a host wants the body to grab the rest
-    // of the page (e.g. the play tab), it wraps the save_view in
-    // its own Fill-height container.
-    let body_pane = container(body).width(Fill).style(widgets::pane);
-    column![tab_pane, body_pane]
+    // Body: each render_* returns one-or-more pane-styled
+    // containers stacked into an Element. We wrap that whole
+    // group in a Shrink-height scrollable so when its panes don't
+    // fill the available space the column hugs them, and when
+    // they do the user can scroll past the visible window. The
+    // per-instance id is what [`State::apply`] snaps to the top
+    // on tab changes.
+    let body_scrollable = scrollable(body).id(state.body_scroll_id.clone()).width(Fill);
+    column![tab_pane, body_scrollable]
         .spacing(widgets::PANE_GAP)
         .width(Fill)
         .into()
@@ -452,8 +476,9 @@ pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
 
 fn render_cover<M: 'static>(lang: &LanguageIdentifier) -> Element<'static, M> {
     container(text(t(lang, "save-cover-description")).size(TEXT_BODY))
-        .center(Fill)
+        .width(Fill)
         .padding(crate::widgets::PANE_PADDING)
+        .style(crate::widgets::pane)
         .into()
 }
 
@@ -553,9 +578,10 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     }
 
     let _ = grouped;
-    // Rows extend flush to the scrollable's edges — vertical
-    // padding only so the first/last row don't slam the scanline.
-    scrollable(body).width(Fill).into()
+    // Rows are flush to the pane edges; the outer scrollable in
+    // `view` handles vertical overflow once total content exceeds
+    // the available height.
+    container(body).width(Fill).style(crate::widgets::pane).into()
 }
 
 // `code = None` skips the code badge (Auto Battle Data slots
@@ -984,10 +1010,6 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                         .into()
                 })
                 .unwrap_or_else(|| Space::new().height(Length::Fixed(64.0)).into());
-            // Top-aligned column — `.center(Fill)` collapsed to zero
-            // inside the replays scrollable (Fill inside infinite-
-            // height scroll content evaluates to Shrink), and the
-            // user saw an empty pane.
             container(
                 column![
                     emblem,
@@ -997,11 +1019,12 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                         .style(muted_text_style),
                 ]
                 .spacing(8)
-                .padding(crate::widgets::PANE_PADDING)
                 .align_x(Alignment::Center),
             )
             .width(Fill)
             .align_x(Alignment::Center)
+            .padding(crate::widgets::PANE_PADDING)
+            .style(crate::widgets::pane)
             .into()
         }
         tango_dataview::save::NaviView::Navicust(v) => render_navicust(lang, loaded, v.as_ref()),
@@ -1190,7 +1213,11 @@ fn render_navicust<M: 'static>(
     col = col.push(layout);
 
     let _ = (cols, rows_n, installed_solid, installed_plus);
-    scrollable(col).width(Fill).into()
+    container(col)
+        .width(Fill)
+        .padding(crate::widgets::PANE_PADDING)
+        .style(crate::widgets::pane)
+        .into()
 }
 
 // ---------- Patch cards ----------
@@ -1284,7 +1311,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
         }
     }
 
-    scrollable(list).width(Fill).into()
+    container(list).width(Fill).style(crate::widgets::pane).into()
 }
 
 // ---------- Auto Battle Data ----------
@@ -1300,25 +1327,20 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
 
     // ABD slots have no chip code and no REG/TAG indicators, so
     // pass `code=None` and a default-zeroed badge struct. Hover
-    // preview comes for free from chip_row.
+    // preview comes for free from chip_row. Each section becomes
+    // its own pane so the outer scrollable in `view` shows them
+    // as distinct demarcated regions.
     let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
-        // Section title gets horizontal padding so it doesn't
-        // sit flush against the pane edge — chip rows below are
-        // intentionally flush so the accent stripe touches the
-        // edge, but the bare title text wants breathing room.
-        let title_el = container(text(title).size(TEXT_BODY).style(muted_text_style)).padding([8, 12]);
+        let title_el = container(text(title).size(TEXT_HEADING)).padding([8, 12]);
         let mut col = column![title_el, Space::new().height(4)].spacing(1);
         let empty_badges = GroupedChip::default();
         for (idx, id) in slots.iter().enumerate() {
             col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb, idx));
         }
-        col.into()
+        container(col).width(Fill).style(crate::widgets::pane).into()
     };
 
-    // Inter-section gap lives in the column's spacing, not a
-    // trailing Space inside `section`, so the last section
-    // doesn't leave dead air at the bottom of the pane.
-    let list = column![
+    column![
         section(
             t(lang, "auto-battle-data-secondary-standard-chips"),
             mat.secondary_standard_chips(),
@@ -1329,15 +1351,15 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         section(t(lang, "auto-battle-data-combos"), mat.combos()),
         section(t(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
     ]
-    .spacing(12)
-    .padding(0);
-
-    scrollable(list).width(Fill).into()
+    .spacing(crate::widgets::PANE_GAP)
+    .width(Fill)
+    .into()
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     container(text(msg).size(TEXT_BODY))
-        .center(Fill)
+        .width(Fill)
         .padding(crate::widgets::PANE_PADDING)
+        .style(crate::widgets::pane)
         .into()
 }
