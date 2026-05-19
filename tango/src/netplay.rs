@@ -9,11 +9,18 @@
 //! Message handler verifies `phase` before applying so late results
 //! from a cancelled task no-op cleanly.
 //!
-//! The lobby background loop (post-negotiate) lives in an iced
-//! `Subscription::run_with_id`-keyed by `session_id`, so a fresh
-//! Connect tears the previous subscription down by changing the id.
-//! The loop pings every second + reads packets — anything other
-//! than Ping/Pong/Settings ends the session with `Failed`.
+//! The lobby background loop (post-negotiate) is spawned as a
+//! detached `tokio::spawn` task in the `NegotiationDone` handler.
+//! It owns the data-channel `Receiver` and emits its observations
+//! through an unbounded futures channel; the iced subscription is
+//! just a thin Stream pull from the receiving half, re-keyed on
+//! `session_id` so a fresh Connect tears the bridge down. Keeping
+//! the loop OUT of the subscription's future closure means an
+//! incidental subscription drop (phase change → re-render) can no
+//! longer abort the loop mid-`.await` and lose the data-channel
+//! receiver. The detached task exits only when the cancellation
+//! token fires, and on exit it deposits the receiver into the
+//! per-session post slot for the PvP handoff to take.
 
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -89,13 +96,18 @@ pub struct State {
     /// every Connect so the prior lobby subscription is torn down
     /// even if the user reconnects within the same Phase::Lobby.
     session_id: u64,
-    /// Receiver handed off to the lobby subscription on first poll.
-    /// Stored as a once-take Arc<Mutex<Option<_>>> so the closure
-    /// can take it without needing &mut access to the State.
-    pending_receiver: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
-    /// Receiver handed back from the lobby subscription on exit.
+    /// Receiving half of the bridge between the detached lobby
+    /// task and the iced subscription. Spawn-time `NegotiationDone`
+    /// installs a fresh `(tx, rx)` pair; the subscription takes
+    /// `rx` out on first poll. Stored as a once-take slot so the
+    /// subscription's `fn(&D)` builder can consume without `&mut`.
+    lobby_event_rx_slot: Arc<parking_lot::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
+    /// Receiver handed back from the lobby loop on cancel-exit.
     /// PvP handoff (`take_pre_match`) drains this into the
-    /// PvpReceiver adapter; otherwise it just sits None.
+    /// PvpReceiver adapter; otherwise it just sits None. Reset to
+    /// a fresh `Arc` on every session boundary so a dying loop
+    /// from a previous session can't deposit a stale receiver
+    /// into the next one.
     post_lobby_receiver: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
@@ -170,7 +182,7 @@ impl Default for State {
             conn: None,
             cancel: CancellationToken::new(),
             session_id: 0,
-            pending_receiver: Arc::new(parking_lot::Mutex::new(None)),
+            lobby_event_rx_slot: Arc::new(parking_lot::Mutex::new(None)),
             post_lobby_receiver: Arc::new(parking_lot::Mutex::new(None)),
             lobby: LobbyState::default(),
             local_commit: None,
@@ -341,13 +353,18 @@ impl State {
 
     /// Reset the cancellation token + bump session_id. Called from
     /// every transition that starts or stops async work so the
-    /// background tasks notice and the subscription rekeys.
+    /// background tasks notice and the subscription rekeys. We
+    /// replace the per-session Arcs (event-rx slot and post slot)
+    /// rather than clearing them, so a dying lobby task from the
+    /// previous session can't deposit its receiver into the next
+    /// session's slot — it scribbles into the orphaned Arc and
+    /// the receiver gets dropped along with the Arc.
     fn cancel_and_renew(&mut self) {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
-        *self.pending_receiver.lock() = None;
-        *self.post_lobby_receiver.lock() = None;
+        self.lobby_event_rx_slot = Arc::new(parking_lot::Mutex::new(None));
+        self.post_lobby_receiver = Arc::new(parking_lot::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
         self.local_commit = None;
@@ -417,14 +434,30 @@ impl State {
                     .local_description()
                     .map(|d| d.sdp_type == datachannel_wrapper::SdpType::Offer)
                     .unwrap_or(false);
+                let sender = out.sender.clone();
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
                     peer_conn: out.peer_conn,
                     is_offerer,
                 });
-                // Park the receiver for the lobby subscription to
-                // pick up on its first poll.
-                *self.pending_receiver.lock() = Some(out.receiver);
+                // Spawn the lobby loop as a detached tokio task.
+                // It owns the data-channel receiver and bridges
+                // its observations through `event_tx` to the iced
+                // subscription. Decoupling the loop from the iced
+                // subscription's future means an incidental
+                // subscription drop (e.g. take_pre_match flipping
+                // phase → Idle before the loop has noticed the
+                // cancel) can no longer abort the loop mid-await
+                // and lose the receiver.
+                let (event_tx, event_rx) = futures::channel::mpsc::unbounded();
+                *self.lobby_event_rx_slot.lock() = Some(event_rx);
+                let cancel = self.cancel.clone();
+                let post = self.post_lobby_receiver.clone();
+                let receiver = out.receiver;
+                tokio::spawn(async move {
+                    let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
+                    *post.lock() = Some(receiver);
+                });
                 self.phase = Phase::Lobby { link_code };
                 iced::Task::none()
             }
@@ -592,8 +625,8 @@ impl State {
                 self.cancel.cancel();
                 self.cancel = CancellationToken::new();
                 self.session_id = self.session_id.wrapping_add(1);
-                *self.pending_receiver.lock() = None;
-                *self.post_lobby_receiver.lock() = None;
+                self.lobby_event_rx_slot = Arc::new(parking_lot::Mutex::new(None));
+                self.post_lobby_receiver = Arc::new(parking_lot::Mutex::new(None));
                 self.conn = None;
                 self.local_commit = None;
                 self.remote_commitment = None;
@@ -913,24 +946,21 @@ fn make_commitment(buf: &[u8]) -> [u8; 16] {
     out
 }
 
-/// Subscription that runs the lobby background loop while we're in
-/// Phase::Lobby. Re-keyed on `session_id` so a fresh Connect tears
-/// the previous loop down, and short-circuits to empty when we're
-/// not in the lobby phase.
+/// Subscription that forwards messages from the detached lobby
+/// task to the iced event loop. Re-keyed on `session_id` so a
+/// fresh Connect tears the previous bridge down; short-circuits
+/// to empty when we're not in the lobby phase. The actual loop
+/// runs on a `tokio::spawn` task owned by [`NegotiationDone`],
+/// so dropping this subscription cannot abort the loop or strand
+/// the data-channel receiver.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     if !matches!(state.phase, Phase::Lobby { .. }) {
         return iced::Subscription::none();
     }
-    let Some(handles) = state.conn.as_ref() else {
-        return iced::Subscription::none();
-    };
     iced::Subscription::run_with(
         LobbyTag {
             session_id: state.session_id,
-            pending: state.pending_receiver.clone(),
-            sender: handles.sender.clone(),
-            cancel: state.cancel.clone(),
-            post: state.post_lobby_receiver.clone(),
+            event_rx_slot: state.lobby_event_rx_slot.clone(),
         },
         build_lobby_stream,
     )
@@ -939,13 +969,10 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
 /// Identity + payload for the lobby subscription. iced 0.14
 /// hashes this to decide whether to keep the existing stream or
 /// tear it down + restart: only `session_id` is mixed into the
-/// hash, so the Arcs can change freely without re-keying.
+/// hash, so the Arc can change freely without re-keying.
 struct LobbyTag {
     session_id: u64,
-    pending: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
-    sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    cancel: CancellationToken,
-    post: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    event_rx_slot: Arc<parking_lot::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
 }
 
 impl std::hash::Hash for LobbyTag {
@@ -960,22 +987,20 @@ impl std::hash::Hash for LobbyTag {
 /// Body of the lobby subscription. Pulled out as a free `fn`
 /// because iced 0.14's `run_with` takes a function pointer, not
 /// a closure, so the only state available is what comes in
-/// through the [`LobbyTag`] argument.
+/// through the [`LobbyTag`] argument. Just a passthrough that
+/// drains the per-session event channel — owns no transport
+/// state, so dropping it is harmless.
 fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
-    let pending = tag.pending.clone();
-    let sender = tag.sender.clone();
-    let cancel = tag.cancel.clone();
-    let post = tag.post.clone();
-    iced::stream::channel(16, move |tx| async move {
-        let Some(receiver) = pending.lock().take() else {
-            return;
-        };
-        // Loop returns the receiver back so the PvP-handoff
-        // path can wrap it in a PvpReceiver. Stored in the
-        // shared slot the State exposes via PreMatchData.
-        let receiver = run_lobby_loop(receiver, sender, tx, cancel).await;
-        *post.lock() = Some(receiver);
-    })
+    use futures::StreamExt;
+    let rx = tag.event_rx_slot.lock().take();
+    match rx {
+        Some(rx) => rx.left_stream(),
+        // Re-key polled an already-consumed slot. Empty stream
+        // until a new session repopulates lobby_event_rx_slot
+        // (which only happens behind a fresh session_id, i.e.
+        // a re-keyed Subscription anyway).
+        None => futures::stream::empty().right_stream(),
+    }
 }
 
 fn slot<T>(payload: T) -> Slot<T> {
@@ -1093,17 +1118,22 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
 
 /// Lobby background loop: pings every second, reads incoming
 /// packets, responds to Ping with Pong, measures Pong RTT. Any
-/// other packet kind for now is logged and ignored (Settings /
-/// Commit / Chunk wiring lands in the next round). Exits cleanly
-/// when the cancel token fires; emits `PeerDisconnected` on a
-/// clean channel close, `Failed` on a transport error.
+/// other packet kind for now is logged and ignored. Exits
+/// cleanly when the cancel token fires; emits `PeerDisconnected`
+/// on a clean channel close, `Failed` on a transport error.
+///
+/// `tx` is an unbounded sender so sends are non-blocking — that's
+/// important, because the only awaits in this loop are inside
+/// `select!` arm heads (`cancel.cancelled()`, `ping_timer.tick()`,
+/// `receiver.receive()`). If sends could block, a stuck consumer
+/// would prevent the cancel arm from being re-polled and the
+/// task could hang past `cancel.cancel()`.
 async fn run_lobby_loop(
     mut receiver: crate::net::Receiver,
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    mut tx: futures::channel::mpsc::Sender<Message>,
+    tx: futures::channel::mpsc::UnboundedSender<Message>,
     cancel: CancellationToken,
 ) -> crate::net::Receiver {
-    use futures::SinkExt;
     let mut ping_timer = tokio::time::interval(crate::net::PING_INTERVAL);
     // First interval tick fires immediately by default; skip so
     // we don't ping before the peer is ready.
@@ -1118,7 +1148,7 @@ async fn run_lobby_loop(
                 last_ping_sent = Some(ts);
                 if let Err(e) = sender.lock().await.send_ping(ts).await {
                     log::warn!("lobby: send_ping failed: {e}");
-                    let _ = tx.send(Message::Failed(format!("ping: {e}"))).await;
+                    let _ = tx.unbounded_send(Message::Failed(format!("ping: {e}")));
                     return receiver;
                 }
             }
@@ -1127,30 +1157,30 @@ async fn run_lobby_loop(
                     Ok(crate::net::protocol::Packet::Ping(p)) => {
                         if let Err(e) = sender.lock().await.send_pong(p.ts).await {
                             log::warn!("lobby: send_pong failed: {e}");
-                            let _ = tx.send(Message::Failed(format!("pong: {e}"))).await;
+                            let _ = tx.unbounded_send(Message::Failed(format!("pong: {e}")));
                             return receiver;
                         }
                     }
                     Ok(crate::net::protocol::Packet::Pong(p)) => {
                         if let Ok(dt) = std::time::SystemTime::now().duration_since(p.ts) {
-                            let _ = tx.send(Message::PingMeasured(dt)).await;
+                            let _ = tx.unbounded_send(Message::PingMeasured(dt));
                         }
                         let _ = last_ping_sent.take();
                     }
                     Ok(crate::net::protocol::Packet::Settings(s)) => {
-                        let _ = tx.send(Message::RemoteSettings(Box::new(s))).await;
+                        let _ = tx.unbounded_send(Message::RemoteSettings(Box::new(s)));
                     }
                     Ok(crate::net::protocol::Packet::Commit(c)) => {
-                        let _ = tx.send(Message::RemoteCommit(c.commitment)).await;
+                        let _ = tx.unbounded_send(Message::RemoteCommit(c.commitment));
                     }
                     Ok(crate::net::protocol::Packet::Uncommit(_)) => {
-                        let _ = tx.send(Message::RemoteUncommit).await;
+                        let _ = tx.unbounded_send(Message::RemoteUncommit);
                     }
                     Ok(crate::net::protocol::Packet::Chunk(c)) => {
-                        let _ = tx.send(Message::RemoteChunk(c.chunk)).await;
+                        let _ = tx.unbounded_send(Message::RemoteChunk(c.chunk));
                     }
                     Ok(crate::net::protocol::Packet::StartMatch(_)) => {
-                        let _ = tx.send(Message::RemoteStartMatch).await;
+                        let _ = tx.unbounded_send(Message::RemoteStartMatch);
                     }
                     Ok(other) => {
                         // Hello (already handled in negotiate) and
@@ -1161,12 +1191,12 @@ async fn run_lobby_loop(
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                         log::info!("lobby: peer disconnected (channel closed)");
-                        let _ = tx.send(Message::PeerDisconnected).await;
+                        let _ = tx.unbounded_send(Message::PeerDisconnected);
                         return receiver;
                     }
                     Err(e) => {
                         log::warn!("lobby: receive failed: {e}");
-                        let _ = tx.send(Message::Failed(format!("recv: {e}"))).await;
+                        let _ = tx.unbounded_send(Message::Failed(format!("recv: {e}")));
                         return receiver;
                     }
                 }
