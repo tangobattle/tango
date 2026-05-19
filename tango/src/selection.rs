@@ -181,7 +181,7 @@ impl Loaded {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
 
-        let save = game.save_from_wram(&replay.local_wram)?;
+        let save = game.parse_save(&replay.local_sram)?;
 
         // Optional patch info — pull the Arc<Version> from the patch
         // scanner so we get the same rom_overrides (charset etc.) as

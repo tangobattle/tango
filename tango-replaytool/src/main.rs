@@ -22,8 +22,8 @@ pub enum Command {
     /// Dump replay metadata.
     Metadata,
 
-    /// Dump replay WRAM.
-    Wram,
+    /// Dump replay local-side SRAM.
+    Sram,
 
     /// Dump replay in text format.
     Text,
@@ -82,7 +82,7 @@ pub async fn main() -> Result<(), anyhow::Error> {
     match args.command {
         Command::Copy { output_path } => cmd_copy(replay, output_path).await,
         Command::Metadata => cmd_metadata(replay).await,
-        Command::Wram => cmd_wram(replay).await,
+        Command::Sram => cmd_sram(replay).await,
         Command::Text => cmd_text(replay).await,
         Command::Export {
             ffmpeg,
@@ -120,8 +120,8 @@ async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::Pat
         replay.is_offerer,
         replay.local_player_index,
         replay.rng_seed,
-        &replay.local_wram,
-        &replay.remote_wram,
+        &replay.local_sram,
+        &replay.remote_sram,
     )?;
     for round in &replay.rounds {
         writer.start_round()?;
@@ -153,9 +153,9 @@ async fn cmd_metadata(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::E
     Ok(())
 }
 
-async fn cmd_wram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
+async fn cmd_sram(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     let mut stdout = std::io::stdout().lock();
-    stdout.write_all(&replay.local_wram)?;
+    stdout.write_all(&replay.local_sram)?;
     Ok(())
 }
 

@@ -11,7 +11,7 @@ pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
 
 pub const HEADER: &[u8] = b"TOOT";
-pub const VERSION: u8 = 0x1A;
+pub const VERSION: u8 = 0x1B;
 
 /// Per-input record encoding. GBA joyflags use 10 bits, so each side packs
 /// into 2 high bits in the tag's payload nibble plus 1 low byte that
@@ -53,12 +53,13 @@ pub struct Replay {
     pub is_offerer: bool,
     pub local_player_index: u8,
     pub rng_seed: [u8; 16],
-    /// Each side's save data in WRAM-format (i.e. the layout
-    /// [`tango_dataview::save::Save::as_raw_wram`] produces). Use the
-    /// [`Replay::local_sram_dump`] / [`Replay::remote_sram_dump`] helpers
-    /// when you need an SRAM image suitable for `mgba::core::Core::load_save`.
-    pub local_wram: Vec<u8>,
-    pub remote_wram: Vec<u8>,
+    /// Each side's SRAM dump as
+    /// [`tango_dataview::save::Save::as_sram_dump`] produces it — ready
+    /// to hand to `mgba::core::Core::load_save` without further
+    /// conversion. Replays prior to schema version 0x1B stored raw
+    /// WRAM here and reassembled SRAM on read.
+    pub local_sram: Vec<u8>,
+    pub remote_sram: Vec<u8>,
     pub rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>>,
 }
 
@@ -88,7 +89,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Er
     decode_metadata(version, &raw)
 }
 
-// The local and remote save WRAMs are stored as two zstd frames
+// The local and remote SRAM dumps are stored as two zstd frames
 // concatenated directly in the stream — no length prefixes.
 // `single_frame` + BufRead's exact-consumption semantics leave the reader
 // positioned right after the frame's end marker, so the next zstd frame
@@ -113,7 +114,7 @@ impl Replay {
         std::mem::swap(&mut self.metadata.local_side, &mut self.metadata.remote_side);
         self.local_player_index = 1 - self.local_player_index;
         self.is_offerer = !self.is_offerer;
-        std::mem::swap(&mut self.local_wram, &mut self.remote_wram);
+        std::mem::swap(&mut self.local_sram, &mut self.remote_sram);
         for round in self.rounds.iter_mut() {
             for ip in round.iter_mut() {
                 std::mem::swap(&mut ip.local, &mut ip.remote);
@@ -126,17 +127,17 @@ impl Replay {
         self.rounds.iter().map(|r| r.len()).sum()
     }
 
-    /// Decode the local-side WRAM into an SRAM image that
-    /// `mgba::core::Core::load_save` accepts. Looks up the per-game
-    /// `Save::from_wram` via [`tango_gamedb::Game::save_from_wram`] using
-    /// the family/variant from the replay metadata.
-    pub fn local_sram_dump(&self) -> anyhow::Result<Vec<u8>> {
-        sram_dump_from_side(self.metadata.local_side.as_ref(), &self.local_wram, "local")
+    /// Owned clone of the local-side SRAM dump (stored as-is on disk
+    /// in schema 0x1B+). Wraps the field so callers don't have to
+    /// reach into the struct for the common case of feeding it to
+    /// `mgba::core::Core::load_save`.
+    pub fn local_sram_dump(&self) -> Vec<u8> {
+        self.local_sram.clone()
     }
 
     /// Same as [`Replay::local_sram_dump`] for the remote side.
-    pub fn remote_sram_dump(&self) -> anyhow::Result<Vec<u8>> {
-        sram_dump_from_side(self.metadata.remote_side.as_ref(), &self.remote_wram, "remote")
+    pub fn remote_sram_dump(&self) -> Vec<u8> {
+        self.remote_sram.clone()
     }
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
@@ -149,8 +150,8 @@ impl Replay {
         let mut rng_seed = [0u8; 16];
         r.read_exact(&mut rng_seed)?;
 
-        let local_wram = read_zstd_frame(&mut r)?;
-        let remote_wram = read_zstd_frame(&mut r)?;
+        let local_sram = read_zstd_frame(&mut r)?;
+        let remote_sram = read_zstd_frame(&mut r)?;
 
         // Streaming round decode: see the tag-byte layout doc near
         // `OP_PREV` for the per-record encoding. `0x00` ends the stream
@@ -221,20 +222,11 @@ impl Replay {
             is_offerer,
             local_player_index,
             rng_seed,
-            local_wram,
-            remote_wram,
+            local_sram,
+            remote_sram,
             rounds,
         })
     }
-}
-
-fn sram_dump_from_side(side: Option<&metadata::Side>, wram: &[u8], label: &str) -> anyhow::Result<Vec<u8>> {
-    let info = side
-        .and_then(|s| s.game_info.as_ref())
-        .ok_or_else(|| anyhow::anyhow!("replay metadata missing {} game info", label))?;
-    let game = tango_gamedb::find_by_family_and_variant(&info.rom_family, info.rom_variant as u8)
-        .ok_or_else(|| anyhow::anyhow!("unknown {} game: {}/{}", label, info.rom_family, info.rom_variant))?;
-    Ok(game.save_from_wram(wram)?.as_sram_dump())
 }
 
 impl Writer {
@@ -244,8 +236,8 @@ impl Writer {
         is_offerer: bool,
         local_player_index: u8,
         rng_seed: [u8; 16],
-        local_wram: &[u8],
-        remote_wram: &[u8],
+        local_sram: &[u8],
+        remote_sram: &[u8],
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
@@ -257,8 +249,8 @@ impl Writer {
         writer.write_u8(if is_offerer { 1 } else { 0 })?;
         writer.write_u8(local_player_index)?;
         writer.write_all(&rng_seed)?;
-        write_zstd_frame(&mut *writer, local_wram)?;
-        write_zstd_frame(&mut *writer, remote_wram)?;
+        write_zstd_frame(&mut *writer, local_sram)?;
+        write_zstd_frame(&mut *writer, remote_sram)?;
         writer.flush()?;
         Ok(Writer {
             writer,

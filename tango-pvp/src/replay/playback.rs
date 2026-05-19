@@ -126,7 +126,7 @@ pub fn run_prefetch(
     core.as_mut()
         .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
-        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
     // mgba::thread::Thread::start does this implicitly for the playback
     // core; a raw Core driven by run_frame needs it explicitly.
     core.as_mut().reset();

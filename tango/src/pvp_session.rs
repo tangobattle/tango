@@ -573,8 +573,8 @@ fn build_replay_writer(
         .create(true)
         .truncate(true)
         .open(&replay_filename)?;
-    let local_wram = local_save.as_raw_wram().into_owned();
-    let remote_wram = remote_save.as_raw_wram().into_owned();
+    let local_sram = local_save.as_sram_dump();
+    let remote_sram = remote_save.as_sram_dump();
     Ok(tango_pvp::replay::Writer::new(
         file,
         tango_pvp::replay::Metadata {
@@ -619,7 +619,7 @@ fn build_replay_writer(
         is_offerer,
         local_player_index,
         rng_seed,
-        &local_wram,
-        &remote_wram,
+        &local_sram,
+        &remote_sram,
     )?)
 }

@@ -9,7 +9,7 @@ pub async fn eval(
     let vf = mgba::vfile::VFile::from_vec(rom.to_vec());
     core.as_mut().load_rom(vf)?;
     core.as_mut()
-        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
+        .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
     core.as_mut().reset();
 
     if replay.rounds.is_empty() {

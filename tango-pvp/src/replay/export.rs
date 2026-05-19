@@ -281,7 +281,7 @@ pub async fn export(
     for (replay_idx, replay) in replays.iter().enumerate() {
         let (mut core, state) = make_core_and_state(
             local_rom,
-            &replay.local_sram_dump()?,
+            &replay.local_sram_dump(),
             local_hooks,
             remote_rom,
             remote_hooks,
@@ -433,7 +433,7 @@ pub async fn export_twosided(
         // ROM + the recording peer's view of their opponent's SRAM.
         let (mut local_core, local_state) = make_core_and_state(
             local_rom,
-            &local_replay.local_sram_dump()?,
+            &local_replay.local_sram_dump(),
             local_hooks,
             remote_rom,
             remote_hooks,
@@ -442,7 +442,7 @@ pub async fn export_twosided(
         )?;
         let (mut remote_core, remote_state) = make_core_and_state(
             remote_rom,
-            &remote_replay.local_sram_dump()?,
+            &remote_replay.local_sram_dump(),
             remote_hooks,
             local_rom,
             local_hooks,

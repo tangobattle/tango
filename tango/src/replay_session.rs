@@ -53,7 +53,7 @@ impl ReplaySession {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()?))?;
+            .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
 
         let hooks = game.hooks();
         hooks.patch(core.as_mut());

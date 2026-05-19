@@ -75,7 +75,7 @@ impl Shadow {
         );
         Self::new_from_sram(
             rom,
-            &replay.remote_sram_dump()?,
+            &replay.remote_sram_dump(),
             hooks,
             match_type,
             replay.is_offerer,
