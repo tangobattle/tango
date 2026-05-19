@@ -1331,7 +1331,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
     // its own pane so the outer scrollable in `view` shows them
     // as distinct demarcated regions.
     let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
-        let title_el = container(text(title).size(TEXT_HEADING)).padding([8, 12]);
+        let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
         let mut col = column![title_el, Space::new().height(4)].spacing(1);
         let empty_badges = GroupedChip::default();
         for (idx, id) in slots.iter().enumerate() {
