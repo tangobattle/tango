@@ -4,24 +4,12 @@ import { tango } from "./proto/signaling";
 const Packet = tango.signaling.Packet;
 const AbortReason = Packet.Abort.Reason;
 
-const X_SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At";
 // const EXPECTED_PROTOCOL_VERSION = 0x3b;
-const SESSION_TTL_SECONDS = 60 * 60;
-const REGISTRY_SINGLETON_NAME = "global";
+const HUB_SINGLETON_NAME = "global";
 
 interface Attachment {
-  isOfferer?: boolean;
-}
-
-interface RegistryEntry {
-  doIdString: string;
-  expiresAt: number;
-}
-
-function getRegistryStub(env: Env) {
-  return env.SESSION_REGISTRY.get(
-    env.SESSION_REGISTRY.idFromName(REGISTRY_SINGLETON_NAME),
-  );
+  sessionId: string;
+  offerSdp?: string;
 }
 
 async function getICEServers(
@@ -88,26 +76,6 @@ export default {
       return new Response("not found", { status: 404 });
     }
 
-    // const protocolVersionHeader = request.headers.get(
-    //   "X-Tango-Protocol-Version",
-    // );
-    // if (protocolVersionHeader !== null) {
-    //   const protocolVersion = parseInt(protocolVersionHeader, 16);
-    //   if ((protocolVersion & 0xff) !== EXPECTED_PROTOCOL_VERSION) {
-    //     return new Response(
-    //       Packet.encode({
-    //         abort: {
-    //           reason:
-    //             (protocolVersion & 0xff) < EXPECTED_PROTOCOL_VERSION
-    //               ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
-    //               : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
-    //         },
-    //       }).finish(),
-    //       { status: 400 },
-    //     );
-    //   }
-    // }
-
     const sessionId = url.searchParams.get("session_id");
     if (!sessionId) {
       return new Response(
@@ -127,47 +95,41 @@ export default {
       );
     }
 
-    const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
-
-    const doIdString = await getRegistryStub(env).acquireOrCreate(
-      sessionId,
-      expiresAt,
+    const stub = env.MATCHMAKING.get(
+      env.MATCHMAKING.idFromName(HUB_SINGLETON_NAME),
     );
-    const doId = env.MATCHMAKING.idFromString(doIdString);
-    const stub = env.MATCHMAKING.get(doId);
-    const doRequest = new Request(request, {
-      headers: new Headers(request.headers),
-    });
-    doRequest.headers.set(X_SESSION_EXPIRES_AT_HEADER, expiresAt.toString());
-    return stub.fetch(doRequest);
+    return stub.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
 
-export class MatchmakingSession {
-  state: DurableObjectState;
-  env: Env;
+function wsTag(sessionId: string): string {
+  return `s:${sessionId}`;
+}
 
-  constructor(state: DurableObjectState, env: Env) {
-    this.state = state;
-    this.env = env;
+function findOfferer(
+  ctx: DurableObjectState,
+  sessionId: string,
+): { ws: WebSocket; attachment: Attachment } | null {
+  for (const ws of ctx.getWebSockets(wsTag(sessionId))) {
+    const attachment = ws.deserializeAttachment() as Attachment | null;
+    if (attachment?.offerSdp != null) {
+      return { ws, attachment };
+    }
   }
+  return null;
+}
 
+export class MatchmakingHub extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get("session_id");
     if (sessionId == null) {
       throw new Error("missing session_id in url");
     }
-    await this.state.storage.put("sessionId", sessionId);
-
-    const xSessionExpiresAt = request.headers.get(X_SESSION_EXPIRES_AT_HEADER);
-    if (xSessionExpiresAt == null) {
-      throw new Error("missing X-Session-Expires-At header");
-    }
-    await this.state.storage.put("expiresAt", parseInt(xSessionExpiresAt, 10));
 
     const [client, server] = Object.values(new WebSocketPair());
-    this.state.acceptWebSocket(server);
+    this.ctx.acceptWebSocket(server, [wsTag(sessionId)]);
+    server.serializeAttachment({ sessionId } satisfies Attachment);
 
     const iceServers = await getICEServers(this.env);
     server.send(Packet.encode({ hello: { iceServers } }).finish());
@@ -192,170 +154,62 @@ export class MatchmakingSession {
       return;
     }
 
-    switch (packet.which) {
-      case "start":
-        await this.handleStart(ws, packet.start!);
-        break;
-      case "answer":
-        await this.handleAnswer(ws, packet.answer!);
-        break;
-    }
-  }
-
-  async handleStart(
-    ws: WebSocket,
-    start: tango.signaling.Packet.IStart,
-  ): Promise<void> {
-    // if (start.protocolVersion !== EXPECTED_PROTOCOL_VERSION) {
-    //   ws.send(
-    //     Packet.encode({
-    //       abort: {
-    //         reason:
-    //           start.protocolVersion == null ||
-    //           start.protocolVersion < EXPECTED_PROTOCOL_VERSION
-    //             ? AbortReason.REASON_PROTOCOL_VERSION_TOO_OLD
-    //             : AbortReason.REASON_PROTOCOL_VERSION_TOO_NEW,
-    //       },
-    //     }).finish(),
-    //   );
-    //   ws.close(1000);
-    //   return;
-    // }
-
-    const offerSdp = await this.state.storage.get<string>("offerSdp");
-    if (offerSdp === undefined) {
-      await this.state.storage.put("offerSdp", start.offerSdp ?? "");
-      ws.serializeAttachment({ isOfferer: true } satisfies Attachment);
-      const expiresAt = await this.state.storage.get<number>("expiresAt");
-      await this.state.storage.setAlarm(
-        expiresAt ?? Date.now() + SESSION_TTL_SECONDS * 1000,
-      );
+    const attachment = ws.deserializeAttachment() as Attachment | null;
+    if (!attachment) {
+      ws.close(1011, "missing session attachment");
       return;
     }
 
-    const sessionId = await this.state.storage.get<string>("sessionId");
-    if (sessionId) {
-      try {
-        await getRegistryStub(this.env).release(sessionId);
-      } catch {}
+    switch (packet.which) {
+      case "start":
+        this.handleStart(ws, attachment, packet.start!);
+        break;
+      case "answer":
+        this.handleAnswer(ws, attachment, packet.answer!);
+        break;
+      case "ping":
+        ws.send(Packet.encode({ ping: {} }).finish());
+        break;
+    }
+  }
+
+  handleStart(
+    ws: WebSocket,
+    attachment: Attachment,
+    start: tango.signaling.Packet.IStart,
+  ): void {
+    const offerer = findOfferer(this.ctx, attachment.sessionId);
+    if (offerer == null) {
+      ws.serializeAttachment({
+        ...attachment,
+        offerSdp: start.offerSdp ?? "",
+      } satisfies Attachment);
+      return;
     }
 
     ws.send(
-      Packet.encode({
-        offer: { sdp: offerSdp },
-      }).finish(),
+      Packet.encode({ offer: { sdp: offerer.attachment.offerSdp! } }).finish(),
     );
   }
 
-  async handleAnswer(
+  handleAnswer(
     ws: WebSocket,
+    attachment: Attachment,
     answer: tango.signaling.Packet.IAnswer,
-  ): Promise<void> {
-    const offererWs = this.state.getWebSockets().find((s) => {
-      const attachment = s.deserializeAttachment() as Attachment | null;
-      return attachment?.isOfferer;
-    });
-    if (!offererWs) {
+  ): void {
+    const offerer = findOfferer(this.ctx, attachment.sessionId);
+    if (offerer == null) {
       ws.close(1008, "unexpected answer");
       return;
     }
 
     try {
-      offererWs.send(
-        Packet.encode({
-          answer: { sdp: answer.sdp },
-        }).finish(),
+      offerer.ws.send(
+        Packet.encode({ answer: { sdp: answer.sdp } }).finish(),
       );
-      offererWs.close(1000);
+      offerer.ws.close(1000);
     } catch {}
 
-    const sessionId = await this.state.storage.get<string>("sessionId");
-    if (sessionId) {
-      try {
-        await getRegistryStub(this.env).release(sessionId);
-      } catch {}
-    }
-
     ws.close(1000);
-    await this.state.storage.deleteAlarm();
-    await this.state.storage.deleteAll();
-  }
-
-  async webSocketClose(ws: WebSocket): Promise<void> {
-    await this.cleanupWs(ws);
-  }
-
-  async webSocketError(ws: WebSocket): Promise<void> {
-    await this.cleanupWs(ws);
-  }
-
-  async alarm(): Promise<void> {
-    for (const ws of this.state.getWebSockets()) {
-      try {
-        ws.close(1000);
-      } catch {}
-    }
-    const sessionId = await this.state.storage.get<string>("sessionId");
-    if (sessionId) {
-      try {
-        await getRegistryStub(this.env).release(sessionId);
-      } catch {}
-    }
-    await this.state.storage.deleteAll();
-  }
-
-  async cleanupWs(ws: WebSocket): Promise<void> {
-    const attachment = ws.deserializeAttachment() as Attachment | null;
-    if (!attachment?.isOfferer) {
-      return;
-    }
-    const sessionId = await this.state.storage.get<string>("sessionId");
-    if (sessionId) {
-      try {
-        await getRegistryStub(this.env).release(sessionId);
-      } catch {}
-    }
-    await this.state.storage.deleteAlarm();
-    await this.state.storage.deleteAll();
-  }
-}
-
-export class SessionRegistry extends DurableObject<Env> {
-  async acquireOrCreate(sessionId: string, expiresAt: number): Promise<string> {
-    const key = `s:${sessionId}`;
-    const now = Date.now();
-    const existing = await this.ctx.storage.get<RegistryEntry>(key);
-    if (existing && existing.expiresAt > now) {
-      return existing.doIdString;
-    }
-    const doIdString = this.env.MATCHMAKING.newUniqueId().toString();
-    await this.ctx.storage.put<RegistryEntry>(key, { doIdString, expiresAt });
-    const currentAlarm = await this.ctx.storage.getAlarm();
-    if (currentAlarm == null || currentAlarm > expiresAt) {
-      await this.ctx.storage.setAlarm(expiresAt);
-    }
-    return doIdString;
-  }
-
-  async release(sessionId: string): Promise<void> {
-    await this.ctx.storage.delete(`s:${sessionId}`);
-  }
-
-  async alarm(): Promise<void> {
-    const entries = await this.ctx.storage.list<RegistryEntry>({
-      prefix: "s:",
-    });
-    const now = Date.now();
-    let nextExpiry: number | null = null;
-    for (const [key, entry] of entries) {
-      if (entry.expiresAt <= now) {
-        await this.ctx.storage.delete(key);
-      } else if (nextExpiry == null || entry.expiresAt < nextExpiry) {
-        nextExpiry = entry.expiresAt;
-      }
-    }
-    if (nextExpiry != null) {
-      await this.ctx.storage.setAlarm(nextExpiry);
-    }
   }
 }

@@ -4,16 +4,12 @@ compatibility_date = "2026-05-11"
 
 [[durable_objects.bindings]]
 name = "MATCHMAKING"
-class_name = "MatchmakingSession"
-
-[[durable_objects.bindings]]
-name = "SESSION_REGISTRY"
-class_name = "SessionRegistry"
+class_name = "MatchmakingHub"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["MatchmakingSession"]
+new_sqlite_classes = ["MatchmakingHub"]
 
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["SessionRegistry"]
+[route]
+pattern = "matchmaking.tango.n1gp.net"
+zone_name = "n1gp.net"
