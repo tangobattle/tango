@@ -407,12 +407,14 @@ impl PatchesState {
             // README is flush with the pane edges (no outer
             // padding) so the scrollbar hugs the pane; the markdown
             // body has its own PANE_PADDING inset so the prose
-            // doesn't slam the pane wall.
+            // doesn't slam the pane wall. Pane height shrinks to
+            // content but capped by the parent column's remaining
+            // space — long readmes scroll inside, short ones don't
+            // pad to the full page height.
             let readme_pane = container(scrollable(
                 container(readme_body).padding(widgets::PANE_PADDING),
             ))
             .width(Fill)
-            .height(Fill)
             .style(widgets::pane);
             column![meta_pane, readme_pane]
                 .spacing(widgets::PANE_GAP)

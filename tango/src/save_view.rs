@@ -204,15 +204,15 @@ pub fn view<'a>(
         .style(widgets::pane);
     // Body pane has no internal padding — render_* picks whatever
     // padding fits its content (tables run flush to the pane edge,
-    // text/forms pad themselves with PANE_PADDING).
-    let body_pane = container(body)
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    // text/forms pad themselves with PANE_PADDING). Height shrinks
+    // to its content so the save_view panes don't stretch to fill
+    // their host column; if a host wants the body to grab the rest
+    // of the page (e.g. the play tab), it wraps the save_view in
+    // its own Fill-height container.
+    let body_pane = container(body).width(Fill).style(widgets::pane);
     column![tab_pane, body_pane]
         .spacing(widgets::PANE_GAP)
         .width(Fill)
-        .height(Fill)
         .into()
 }
 
@@ -555,7 +555,7 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     let _ = grouped;
     // Rows extend flush to the scrollable's edges — vertical
     // padding only so the first/last row don't slam the scanline.
-    scrollable(body).height(Fill).width(Fill).into()
+    scrollable(body).width(Fill).into()
 }
 
 // `code = None` skips the code badge (Auto Battle Data slots
@@ -1190,7 +1190,7 @@ fn render_navicust<M: 'static>(
     col = col.push(layout);
 
     let _ = (cols, rows_n, installed_solid, installed_plus);
-    container(scrollable(col)).width(Fill).height(Fill).into()
+    scrollable(col).width(Fill).into()
 }
 
 // ---------- Patch cards ----------
@@ -1284,7 +1284,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
         }
     }
 
-    container(scrollable(list)).width(Fill).height(Fill).into()
+    scrollable(list).width(Fill).into()
 }
 
 // ---------- Auto Battle Data ----------
@@ -1329,7 +1329,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
     .spacing(4)
     .padding(0);
 
-    container(scrollable(list)).width(Fill).height(Fill).into()
+    scrollable(list).width(Fill).into()
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
