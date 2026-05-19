@@ -97,7 +97,11 @@ impl Match {
     pub fn pick_local_player_index(rng: &mut rand_pcg::Mcg128Xsl64, is_offerer: bool) -> u8 {
         use rand::Rng;
         let did_polite_win = rng.gen::<bool>();
-        if did_polite_win == is_offerer { 0 } else { 1 }
+        if did_polite_win == is_offerer {
+            0
+        } else {
+            1
+        }
     }
 
     /// Closes the replay file, if one is open.
@@ -200,9 +204,8 @@ impl Match {
             // `changed().await` only fires on a genuinely later state.
             progress.borrow_and_update();
 
-            match self.try_attach_remote_input(&input, peer_round).await? {
-                AttachOutcome::Done => return Ok(()),
-                AttachOutcome::Wait => {}
+            if self.try_attach_remote_input(&input, peer_round).await? {
+                return Ok(());
             }
 
             if progress.changed().await.is_err() {
@@ -219,40 +222,36 @@ impl Match {
     /// - peer is in our current round (`peer_round == local`) and round
     ///   state is ready: attach.
     /// - otherwise: hold, wait for round progress.
-    async fn try_attach_remote_input(
-        &self,
-        input: &crate::net::Input,
-        peer_round: u32,
-    ) -> anyhow::Result<AttachOutcome> {
+    async fn try_attach_remote_input(&self, input: &crate::net::Input, peer_round: u32) -> anyhow::Result<bool> {
         let local_round = self.local_round_idx.load(Ordering::Acquire);
         if peer_round < local_round {
             // Tail-of-previous-round input that arrived after we already
             // ended round-N locally. The round it belonged to is gone;
             // discard rather than poisoning round-N+1's queue.
-            return Ok(AttachOutcome::Done);
+            return Ok(true);
         }
         if peer_round > local_round {
             // Peer raced ahead into a future round; hold until our local
             // end_round catches up.
-            return Ok(AttachOutcome::Wait);
+            return Ok(false);
         }
 
         let mut round_state = self.round_state.lock().await;
         let Some(round) = round_state.as_mut() else {
             // Either before the first round has started or between rounds —
             // wait for the next round to spin up before delivering the input.
-            return Ok(AttachOutcome::Wait);
+            return Ok(false);
         };
         if !round.has_committed_state() {
             // Round started but hasn't reached its first commit.
-            return Ok(AttachOutcome::Wait);
+            return Ok(false);
         }
 
         if !round.can_add_remote_input() {
             anyhow::bail!("remote overflowed our input buffer");
         }
         round.add_remote_input(input.clone());
-        Ok(AttachOutcome::Done)
+        Ok(true)
     }
 
     pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, Option<Round>> {
@@ -276,7 +275,10 @@ impl Match {
     /// so the network receive loop wakes up to (re-)evaluate.
     pub async fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
-        log::info!("starting round: local_player_index = {}", self.identity.local_player_index);
+        log::info!(
+            "starting round: local_player_index = {}",
+            self.identity.local_player_index
+        );
 
         // Mark a new round in the replay file. The body is a stream of
         // marker-prefixed records, so no count is needed up front.
@@ -308,13 +310,4 @@ impl Match {
         log::info!("round has started");
         Ok(())
     }
-}
-
-/// Outcome of one `try_attach_remote_input` poll. `Done` covers both
-/// "queued" and "stale, dropped" — either way the deliver loop is done
-/// with this input. `Wait` means the input is held pending round
-/// progress.
-enum AttachOutcome {
-    Done,
-    Wait,
 }
