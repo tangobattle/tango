@@ -47,7 +47,15 @@ impl Shadow {
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
-        Self::new_from_sram(rom, &save.as_sram_dump(), hooks, match_type, is_offerer, local_player_index, rng)
+        Self::new_from_sram(
+            rom,
+            &save.to_sram_dump(),
+            hooks,
+            match_type,
+            is_offerer,
+            local_player_index,
+            rng,
+        )
     }
 
     /// Build a shadow for replay-style reconstruction (playback, export,
@@ -69,10 +77,7 @@ impl Shadow {
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
         let _ = rand::Rng::gen::<bool>(&mut rng);
-        let match_type = (
-            replay.metadata.match_type as u8,
-            replay.metadata.match_subtype as u8,
-        );
+        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
         Self::new_from_sram(
             rom,
             &replay.remote_sram_dump(),

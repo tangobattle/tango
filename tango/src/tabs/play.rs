@@ -1,6 +1,4 @@
-use crate::app::{
-    Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE,
-};
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE};
 use crate::i18n::{t, t_args};
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
@@ -602,9 +600,7 @@ impl PlayState {
         // button. Otherwise the normal bottom_strip handles the
         // link code + Fight CTA.
         if !show_lobby {
-            col = col
-                .push(widgets::hud_scanline())
-                .push(self.bottom_strip(lang));
+            col = col.push(widgets::hud_scanline()).push(self.bottom_strip(lang));
         }
         col.into()
     }
@@ -705,18 +701,8 @@ impl PlayState {
         // (i.e. is "inside a folder at this level") wins. Files at
         // a given level sort below any subfolders at that level.
         save_options.sort_by(|a, b| {
-            let av: Vec<&std::ffi::OsStr> = a
-                .path
-                .strip_prefix(&saves_path)
-                .unwrap_or(&a.path)
-                .iter()
-                .collect();
-            let bv: Vec<&std::ffi::OsStr> = b
-                .path
-                .strip_prefix(&saves_path)
-                .unwrap_or(&b.path)
-                .iter()
-                .collect();
+            let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
+            let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
             for i in 0..av.len().min(bv.len()) {
                 if av[i] != bv[i] {
                     let a_is_dir = i + 1 < av.len();
@@ -1102,11 +1088,7 @@ fn resolve_remembered_save(
         .last_save_per_game_per_patch
         .get(&key)
         .map(|rel| config.data_relative_to_absolute(rel))
-        .filter(|p| {
-            saves_for_game
-                .map(|v| v.iter().any(|s| s.path == *p))
-                .unwrap_or(false)
-        });
+        .filter(|p| saves_for_game.map(|v| v.iter().any(|s| s.path == *p)).unwrap_or(false));
     remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
 }
 
@@ -1158,7 +1140,7 @@ fn templates_for_selection<'a>(
 /// Write a template's SRAM to `saves_dir/<name>.sav`. The filename is
 /// taken verbatim from `name` (trimmed); on collisions returns Err.
 ///
-/// `rebuild_checksum()` is required before `as_sram_dump()` — without
+/// `rebuild_checksum()` is required before `to_sram_dump()` — without
 /// it the SRAM checksum is stale (computed at template-construction
 /// time, before this game-specific clone) and both the GBA game and
 /// Tango's `parse_save` reject the resulting file. The legacy app
@@ -1187,7 +1169,7 @@ pub fn create_new_save(
     std::fs::create_dir_all(saves_dir)?;
     let mut save = template.clone_box();
     save.rebuild_checksum();
-    let sram = save.as_sram_dump();
+    let sram = save.to_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
 }
@@ -1236,21 +1218,21 @@ fn lobby_view<'a>(
                         iced::widget::container::Style {
                             background: Some(iced::Background::Color(bg)),
                             border: iced::Border {
-                            radius: 7.0.into(),
-                            ..Default::default()
-                        },
-                        shadow: if ready {
-                            iced::Shadow {
-                                color: iced::Color {
-                                    a: 0.7,
-                                    ..theme.palette().primary
-                                },
-                                offset: iced::Vector::new(0.0, 0.0),
-                                blur_radius: 10.0,
-                            }
-                        } else {
-                            iced::Shadow::default()
-                        },
+                                radius: 7.0.into(),
+                                ..Default::default()
+                            },
+                            shadow: if ready {
+                                iced::Shadow {
+                                    color: iced::Color {
+                                        a: 0.7,
+                                        ..theme.palette().primary
+                                    },
+                                    offset: iced::Vector::new(0.0, 0.0),
+                                    blur_radius: 10.0,
+                                }
+                            } else {
+                                iced::Shadow::default()
+                            },
                             ..Default::default()
                         }
                     }),
@@ -1444,8 +1426,7 @@ fn lobby_view<'a>(
     } else {
         Message::NetplaySetInputDelay
     };
-    let id_slider =
-        iced::widget::slider(2..=10u8, lobby.input_delay, slider_on_change).width(Length::Fixed(160.0));
+    let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, slider_on_change).width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
@@ -1582,10 +1563,7 @@ fn lobby_view<'a>(
                 t(lang, key)
             };
             (
-                text(label)
-                    .size(TEXT_BODY)
-                    .style(save_view::danger_text_style)
-                    .into(),
+                text(label).size(TEXT_BODY).style(save_view::danger_text_style).into(),
                 false,
             )
         }
@@ -1729,32 +1707,23 @@ fn lobby_view<'a>(
         header_text_col = header_text_col.push(hl);
     }
     header_text_col = header_text_col.push(verdict_line);
-    let header_row = row![
-        leave_button,
-        header_text_col,
-        horizontal_space(),
-        ready_button,
-    ]
-    .spacing(12)
-    .align_y(Alignment::Center);
+    let header_row = row![leave_button, header_text_col, horizontal_space(), ready_button,]
+        .spacing(12)
+        .align_y(Alignment::Center);
 
     // Central "VS" mark between the two player slots. Muted text,
     // shifted down with a fixed top padding so it lines up with
     // the nickname row of the side cards — the row itself stays
     // top-aligned (see below) so the cards don't shift around as
     // the opponent's placeholder fills in.
-    let vs_chip: Element<'a, Message> = container(
-        text("VS")
-            .size(TEXT_DISPLAY)
-            .style(save_view::muted_text_style),
-    )
-    .padding(iced::Padding {
-        top: 17.0,
-        right: 0.0,
-        bottom: 0.0,
-        left: 0.0,
-    })
-    .into();
+    let vs_chip: Element<'a, Message> = container(text("VS").size(TEXT_DISPLAY).style(save_view::muted_text_style))
+        .padding(iced::Padding {
+            top: 17.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .into();
     container(
         column![
             header_row,
@@ -1905,13 +1874,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
                     8.0,
                     28.0,
                 ),
-                button::Status::Pressed => (
-                    darker,
-                    mix(darker, iced::Color::BLACK, 0.12),
-                    0.35,
-                    2.0,
-                    14.0,
-                ),
+                button::Status::Pressed => (darker, mix(darker, iced::Color::BLACK, 0.12), 0.35, 2.0, 14.0),
                 button::Status::Disabled => unreachable!("handled above"),
                 button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
             };

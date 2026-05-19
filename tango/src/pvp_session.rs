@@ -134,7 +134,7 @@ impl PvpSession {
         // mutations are stat/zenny stuff which the user shouldn't
         // be carrying over from netplay anyway).
         core.as_mut()
-            .load_save(mgba::vfile::VFile::from_vec(local_save.as_sram_dump()))?;
+            .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
 
         let joyflags = Arc::new(AtomicU32::new(0));
         let local_hooks = local_game.hooks();
@@ -152,11 +152,7 @@ impl PvpSession {
         // (start_round / record_first_commit / end_round all
         // need an async runtime to do their work).
         let mut traps = local_hooks.common_traps();
-        traps.extend(local_hooks.primary_traps(
-            joyflags.clone(),
-            match_handle.clone(),
-            completion_token.clone(),
-        ));
+        traps.extend(local_hooks.primary_traps(joyflags.clone(), match_handle.clone(), completion_token.clone()));
         let rt_handle = tokio::runtime::Handle::current();
         core.set_traps(
             traps
@@ -181,8 +177,7 @@ impl PvpSession {
         // Shadow side so both sides have the same prefix.
         use rand::SeedableRng;
         let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
-        let local_player_index =
-            tango_pvp::battle::Match::pick_local_player_index(&mut rng, pre_match.is_offerer);
+        let local_player_index = tango_pvp::battle::Match::pick_local_player_index(&mut rng, pre_match.is_offerer);
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
@@ -305,7 +300,8 @@ impl PvpSession {
         let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+                as usize
         ]));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
@@ -561,10 +557,7 @@ fn build_replay_writer(
         remote_settings.nickname,
         local_player_index + 1
     );
-    let safe_name: String = raw_name
-        .chars()
-        .filter(|c| !"/\\?%*:|\"<>. ".contains(*c))
-        .collect();
+    let safe_name: String = raw_name.chars().filter(|c| !"/\\?%*:|\"<>. ".contains(*c)).collect();
     let replay_filename = replays_path.join(format!("{safe_name}.tangoreplay"));
     log::info!("pvp: opening replay file {}", replay_filename.display());
 
@@ -573,8 +566,8 @@ fn build_replay_writer(
         .create(true)
         .truncate(true)
         .open(&replay_filename)?;
-    let local_sram = local_save.as_sram_dump();
-    let remote_sram = remote_save.as_sram_dump();
+    let local_sram = local_save.to_sram_dump();
+    let remote_sram = remote_save.to_sram_dump();
     Ok(tango_pvp::replay::Writer::new(
         file,
         tango_pvp::replay::Metadata {

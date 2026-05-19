@@ -214,11 +214,8 @@ impl App {
                     }
                     // Save restore happens after patch+version so the per-
                     // (game, patch, version) memory key resolves correctly.
-                    let key = config::save_memory_key(
-                        game,
-                        play.local_patch.as_deref(),
-                        play.local_patch_version.as_ref(),
-                    );
+                    let key =
+                        config::save_memory_key(game, play.local_patch.as_deref(), play.local_patch_version.as_ref());
                     if let Some(rel) = config.last_save_per_game_per_patch.get(&key) {
                         let abs = config.data_relative_to_absolute(rel);
                         if scanners
@@ -314,13 +311,8 @@ impl App {
     /// paths that don't have stats yet. Returns tab-scoped Task —
     /// caller wraps with `.map(Message::Replays)` if at App level.
     fn refresh_replay_stats(&mut self) -> iced::Task<tabs::replays::Message> {
-        let live: std::collections::HashSet<std::path::PathBuf> = self
-            .scanners
-            .replays
-            .read()
-            .iter()
-            .map(|r| r.path.clone())
-            .collect();
+        let live: std::collections::HashSet<std::path::PathBuf> =
+            self.scanners.replays.read().iter().map(|r| r.path.clone()).collect();
         self.replays.stats.retain(|p, _| live.contains(p));
         self.kick_replay_stats_loader()
     }
@@ -351,9 +343,7 @@ impl App {
                     .flatten();
                 (path, stats)
             })
-            .filter_map(|(path, stats)| async move {
-                stats.map(|s| tabs::replays::Message::StatsLoaded(path, s))
-            });
+            .filter_map(|(path, stats)| async move { stats.map(|s| tabs::replays::Message::StatsLoaded(path, s)) });
         iced::Task::stream(stream)
     }
 
@@ -569,7 +559,10 @@ pub enum Message {
     /// after a Resized event. Carries the resize-time size so the
     /// handler can decide whether to persist it (only if the
     /// window isn't maximized).
-    WindowMaximizedQueried { size: iced::Size, maximized: bool },
+    WindowMaximizedQueried {
+        size: iced::Size,
+        maximized: bool,
+    },
 }
 
 impl App {
@@ -701,18 +694,14 @@ impl App {
                 // unchanged dispatches a no-op.
                 let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 let task = self.netplay.update(m).map(Message::Netplay);
-                let became_lobby =
-                    !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
+                let became_lobby = !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 // Opponent just completed the handshake — flash the
                 // taskbar / bounce the dock so the lobby host
                 // notices even if Tango isn't focused. No-op if the
                 // window is already focused (per iced docs).
                 let attention = if became_lobby {
                     iced::window::latest().and_then(|id| {
-                        iced::window::request_user_attention(
-                            id,
-                            Some(iced::window::UserAttention::Critical),
-                        )
+                        iced::window::request_user_attention(id, Some(iced::window::UserAttention::Critical))
                     })
                 } else {
                     iced::Task::none()
@@ -910,7 +899,7 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                let save_sram = loaded.save.as_sram_dump();
+                let save_sram = loaded.save.to_sram_dump();
                 self.netplay
                     .update(netplay::Message::Commit { save_sram })
                     .map(Message::Netplay)
@@ -1410,13 +1399,8 @@ impl App {
                         .align_y(iced::Alignment::Center),
                 )
                 .width(Fill);
-                let body = tabs::settings::view(
-                    lang,
-                    &self.config,
-                    &self.settings,
-                    self.updater.status_blocking(),
-                )
-                .map(Message::Settings);
+                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
+                    .map(Message::Settings);
                 return iced::widget::column![header, iced::widget::rule::horizontal(1), body]
                     .spacing(0)
                     .width(Fill)
@@ -1443,28 +1427,23 @@ impl App {
                 .replays
                 .view(lang, &self.scanners, &self.config, &self.netplay.phase)
                 .map(Message::Replays),
-            Tab::Patches => self.patches.view(lang, &self.scanners, &self.config).map(Message::Patches),
-            Tab::Settings => tabs::settings::view(
-                lang,
-                &self.config,
-                &self.settings,
-                self.updater.status_blocking(),
-            )
-            .map(Message::Settings),
+            Tab::Patches => self
+                .patches
+                .view(lang, &self.scanners, &self.config)
+                .map(Message::Patches),
+            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
+                .map(Message::Settings),
         };
 
         // Body container picks up the palette background and adds
         // a faint inner tint so the HUD bar visibly sits on top of
         // a "screen surface" rather than a flat sheet of pixels.
-        let body_surface = container(body)
+        let body_surface = container(body).width(Fill).height(Fill).style(widgets::body_surface);
+        column![top_bar(lang, self.tab), widgets::hud_scanline(), body_surface,]
+            .spacing(0)
             .width(Fill)
             .height(Fill)
-            .style(widgets::body_surface);
-        column![top_bar(lang, self.tab), widgets::hud_scanline(), body_surface,]
-        .spacing(0)
-        .width(Fill)
-        .height(Fill)
-        .into()
+            .into()
     }
 
     pub fn theme(&self) -> Theme {
@@ -1491,9 +1470,8 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
         Handle::from_bytes(raw)
     });
 
-    let tab = |icon, label, target: Tab| {
-        widgets::nav_tab_button(icon, label, Message::TabSelected(target), target == active)
-    };
+    let tab =
+        |icon, label, target: Tab| widgets::nav_tab_button(icon, label, Message::TabSelected(target), target == active);
     container(
         row![
             iced::widget::container(

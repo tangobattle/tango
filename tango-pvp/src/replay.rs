@@ -54,7 +54,7 @@ pub struct Replay {
     pub local_player_index: u8,
     pub rng_seed: [u8; 16],
     /// Each side's SRAM dump as
-    /// [`tango_dataview::save::Save::as_sram_dump`] produces it — ready
+    /// [`tango_dataview::save::Save::to_sram_dump`] produces it — ready
     /// to hand to `mgba::core::Core::load_save` without further
     /// conversion. Replays prior to schema version 0x1B stored raw
     /// WRAM here and reassembled SRAM on read.
@@ -186,14 +186,22 @@ impl Replay {
             let p2_default = tag & P2_DEFAULT != 0;
 
             let p1 = if p1_default {
-                if op_prev { prev.0 } else { 0 }
+                if op_prev {
+                    prev.0
+                } else {
+                    0
+                }
             } else {
                 let high = (tag & 0b11) as u16;
                 let Ok(low) = r.read_u8() else { break };
                 (high << 8) | low as u16
             };
             let p2 = if p2_default {
-                if op_prev { prev.1 } else { 0 }
+                if op_prev {
+                    prev.1
+                } else {
+                    0
+                }
             } else {
                 let high = ((tag >> 2) & 0b11) as u16;
                 let Ok(low) = r.read_u8() else { break };

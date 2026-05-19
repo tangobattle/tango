@@ -42,7 +42,7 @@ pub struct Version {
     pub supported_games: HashSet<GameRef>,
     /// Per-game save templates the patch ships. Keyed by template name
     /// (empty string = the default template); values are owned Save
-    /// trait objects ready to be serialized via `as_sram_dump`.
+    /// trait objects ready to be serialized via `to_sram_dump`.
     pub save_templates:
         std::collections::HashMap<GameRef, BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>>,
 }
@@ -68,20 +68,17 @@ pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
     std::fs::create_dir_all(&root)?;
 
     let client = reqwest::Client::new();
-    let entries = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        async {
-            Ok::<_, anyhow::Error>(
-                client
-                    .get(format!("{}/index.json", url))
-                    .header("User-Agent", "tango")
-                    .send()
-                    .await?
-                    .json::<tango_filesync::Entries>()
-                    .await?,
-            )
-        },
-    )
+    let entries = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        Ok::<_, anyhow::Error>(
+            client
+                .get(format!("{}/index.json", url))
+                .header("User-Agent", "tango")
+                .send()
+                .await?
+                .json::<tango_filesync::Entries>()
+                .await?,
+        )
+    })
     .await??;
 
     tango_filesync::sync(
@@ -102,9 +99,7 @@ pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
                             .get(format!(
                                 "{}/{}",
                                 url,
-                                path.components()
-                                    .map(|v| v.as_os_str().to_string_lossy())
-                                    .join("/")
+                                path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
                             ))
                             .header("User-Agent", "tango")
                             .send(),
@@ -112,11 +107,8 @@ pub async fn update(url: String, root: PathBuf) -> anyhow::Result<()> {
                     .await?
                     .map_err(std::io::Error::other)?
                     .bytes_stream();
-                    while let Some(chunk) = tokio::time::timeout(
-                        std::time::Duration::from_secs(30),
-                        stream.next(),
-                    )
-                    .await?
+                    while let Some(chunk) =
+                        tokio::time::timeout(std::time::Duration::from_secs(30), stream.next()).await?
                     {
                         let chunk = chunk.map_err(std::io::Error::other)?;
                         output_file.write_all(&chunk).await?;
@@ -255,8 +247,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
     };
 
     let patch_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})\.bps$").unwrap();
-    let save_template_filename_re =
-        regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?))\.sav$").unwrap();
+    let save_template_filename_re = regex::Regex::new(r"^(\S{4})_(\d{2})(?:|_(.+?))\.sav$").unwrap();
 
     for entry in read_dir {
         let entry = match entry {
@@ -266,7 +257,9 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                 continue;
             }
         };
-        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else { continue };
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else {
+            continue;
+        };
         if entry.file_type().ok().map(|ft| !ft.is_dir()).unwrap_or(false) {
             continue;
         }
@@ -327,25 +320,34 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
             > = std::collections::HashMap::new();
             for f in vread {
                 let Ok(f) = f else { continue };
-                let Some(filename) = f.file_name().into_string().ok() else { continue };
+                let Some(filename) = f.file_name().into_string().ok() else {
+                    continue;
+                };
 
                 if let Some(captures) = patch_filename_re.captures(&filename) {
                     let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
                         Ok(b) => b,
                         Err(_) => continue,
                     };
-                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
-                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
+                    let Ok(revision) = captures[2].parse::<u8>() else {
+                        continue;
+                    };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else {
+                        continue;
+                    };
                     supported_games.insert(game);
                 } else if let Some(captures) = save_template_filename_re.captures(&filename) {
                     let rom_code: [u8; 4] = match captures[1].as_bytes().try_into() {
                         Ok(b) => b,
                         Err(_) => continue,
                     };
-                    let Ok(revision) = captures[2].parse::<u8>() else { continue };
-                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else { continue };
-                    let template_name =
-                        captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
+                    let Ok(revision) = captures[2].parse::<u8>() else {
+                        continue;
+                    };
+                    let Some(game) = tango_gamedb::find_by_rom_info(&rom_code, revision) else {
+                        continue;
+                    };
+                    let template_name = captures.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
                     let raw = match std::fs::read(f.path()) {
                         Ok(r) => r,
                         Err(e) => {
@@ -355,10 +357,7 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                     };
                     match game.parse_save(&raw) {
                         Ok(save) => {
-                            save_templates
-                                .entry(game)
-                                .or_default()
-                                .insert(template_name, save);
+                            save_templates.entry(game).or_default().insert(template_name, save);
                         }
                         Err(e) => log::warn!("{}: not a valid template save: {e}", f.path().display()),
                     }
@@ -384,11 +383,9 @@ pub fn scan(path: &std::path::Path) -> std::io::Result<PatchMap> {
                 Ok(addrs) => addrs
                     .iter()
                     .filter_map(|addr| match addr {
-                        mailparse::MailAddr::Single(info) => Some(
-                            info.display_name
-                                .clone()
-                                .unwrap_or_else(|| info.addr.clone()),
-                        ),
+                        mailparse::MailAddr::Single(info) => {
+                            Some(info.display_name.clone().unwrap_or_else(|| info.addr.clone()))
+                        }
                         _ => None,
                     })
                     .collect::<Vec<_>>()

@@ -25,7 +25,7 @@ pub trait Save
 where
     Self: SaveClone,
 {
-    fn as_sram_dump(&self) -> Vec<u8>;
+    fn to_sram_dump(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]>;
 
     fn rebuild_checksum(&mut self);
