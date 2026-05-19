@@ -4,7 +4,7 @@ use crate::widgets;
 use crate::{game, save_view};
 use lucide_icons::Icon;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -399,7 +399,7 @@ impl PatchesState {
             };
 
             let meta_pane = container(
-                column![header, Space::new().height(12), details,].spacing(4),
+                column![header, details,].spacing(6),
             )
             .width(Fill)
             .padding(widgets::PANE_PADDING)
