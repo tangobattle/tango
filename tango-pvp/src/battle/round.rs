@@ -8,27 +8,27 @@ use crate::input::{Input, Pair, PairQueue, PartialInput};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// "Knee" of the power-law response curve, in frames of raw advantage
-/// delta. At |skew| = SKEW_SOFT_KNEE the adjustment is exactly 1 fps;
-/// below it the curve falls off sharply (acting as an implicit deadband
-/// that swallows sub-frame jitter), above it it grows super-linearly so
-/// big rifts close fast.
-///
-/// Matches legacy tango v4.x's `dtick`-based tuning. Kept on the raw
-/// `(local_adv - remote_adv)` rather than the previous halved form so the
-/// constant carries the same meaning as the v4 formula.
-const SKEW_SOFT_KNEE: f32 = 15.0;
-
-/// Power-law exponent. >1 means small skew → tiny adjustment (noise
-/// rejection) and large skew → very steep adjustment (catastrophic-rift
-/// recovery). 7/3 is the v4 value.
-const SKEW_EXPONENT: f32 = 7.0 / 3.0;
-
 /// Cap on the slowdown we'll apply (in fps). Only the leading peer
 /// corrects — the trailing peer relies on the leader slowing down to
 /// converge, which avoids both sides racing each other in opposite
 /// directions when their skew estimates disagree about who's ahead.
 const MAX_ADJUSTMENT: f32 = 30.0;
+
+/// Watchdog trip point: raw skew (frames) above which the
+/// sustained-imbalance counter starts climbing. Below this, the counter
+/// resets every frame, so brief bursty-loss spikes can't accumulate.
+/// Kept low because `local_adv_A + local_adv_B` is fixed by
+/// `60·RTT - 2·input_delay` — the throttle can only shift advantage
+/// between peers, so the symmetric equilibrium can be a small number
+/// on low-RTT links.
+const WATCHDOG_THRESHOLD: f32 = 2.0;
+
+/// Frames of *continuously* above-threshold skew before the watchdog
+/// engages. 60 ≈ 1 second — long enough to outlive typical retransmit
+/// bunching under bursty loss (so a loss period alone can't trip it),
+/// short enough that genuine persistent imbalance gets corrected
+/// before the user notices it sitting on the status bar.
+const WATCHDOG_TRIGGER_FRAMES: u32 = 60;
 
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
@@ -46,6 +46,13 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
+    /// Frames the raw skew has been continuously above
+    /// `WATCHDOG_THRESHOLD`. Resets to 0 the first frame it dips back
+    /// under, so transient loss-burst spikes can't accumulate. When it
+    /// crosses `WATCHDOG_TRIGGER_FRAMES` the throttle engages a linear
+    /// slowdown proportional to skew, closing persistent imbalances
+    /// that the burst-rejection deadband on its own would never reach.
+    sustained_skew_frames: u32,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -80,6 +87,7 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
+            sustained_skew_frames: 0,
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -258,24 +266,32 @@ impl Round {
     }
 
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
-        // GGPO-style time sync. local_advantage and last_remote_frame_advantage
-        // both carry the symmetric network-delay term τ; their difference
-        // isolates the asymmetric real-time clock skew between the two
-        // peers — kept un-halved so SKEW_SOFT_KNEE / SKEW_EXPONENT use the
-        // same units the legacy v4 throttle was tuned against.
+        // Watchdog-only time sync, asymmetric (only the leading peer
+        // slows; trailer relies on leader pulling back to converge).
+        // local_advantage and last_remote_frame_advantage both carry
+        // the symmetric network-delay term τ; their difference isolates
+        // real-time clock skew. We drive raw skew directly because
+        // `local_adv_A + local_adv_B` is a network-fixed invariant
+        // (60·RTT - 2·input_delay) and the only reachable symmetric
+        // state is local_adv_A = local_adv_B = sum/2 → raw_skew = 0.
+        //
+        // The sustained-counter does both jobs the legacy power-law
+        // tried to do at once — burst rejection (loss spikes don't last
+        // 2s) and persistent-skew correction (anything that *does* last
+        // gets a linear close to zero). Linear-in-skew when engaged
+        // means d(skew)/dt = -2·skew, i.e. exponential close with
+        // τ ≈ 0.5s; capped at MAX_ADJUSTMENT for catastrophic rifts.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32;
 
-        // Power-law on instantaneous skew, asymmetric: only the leading
-        // peer slows down. The exponent gives an implicit deadband
-        // (sub-knee skew → near-zero adjustment) so EWMA smoothing isn't
-        // needed to reject jitter, and the super-linear tail means a big
-        // rift gets crushed in a few frames instead of dragged out by a
-        // low-pass filter.
-        let adjustment = if skew > 0.0 {
-            let mag = (skew / SKEW_SOFT_KNEE).powf(SKEW_EXPONENT).min(MAX_ADJUSTMENT);
-            -mag
+        if skew > WATCHDOG_THRESHOLD {
+            self.sustained_skew_frames = self.sustained_skew_frames.saturating_add(1);
+        } else {
+            self.sustained_skew_frames = 0;
+        }
+        let adjustment = if self.sustained_skew_frames > WATCHDOG_TRIGGER_FRAMES {
+            -skew.min(MAX_ADJUSTMENT)
         } else {
             0.0
         };
