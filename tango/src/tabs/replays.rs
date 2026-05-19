@@ -796,6 +796,32 @@ fn replay_detail<'a>(
                 // wraps naturally without squashing the action
                 // buttons on the right.
                 container(text(title).size(18)).width(Fill),
+                {
+                    // Per-replay toggle. Disabled outright while a
+                    // render for this replay is in flight, so the
+                    // user can't even attempt to close the panel
+                    // mid-render (which would otherwise be a
+                    // no-op, but a dead button is more honest).
+                    let msg = if state.is_rendering(&r.path) {
+                        None
+                    } else if state.is_panel_open(&r.path) {
+                        Some(Message::ExportPanelClose(r.path.clone()))
+                    } else {
+                        Some(Message::ExportPanelOpen(r.path.clone()))
+                    };
+                    widgets::icon_button_maybe(
+                        Icon::Clapperboard,
+                        t(lang, "replays-export"),
+                        msg,
+                        STANDARD_PADDING,
+                    )
+                },
+                widgets::icon_button(
+                    Icon::Folder,
+                    t(lang, "patches-open-folder"),
+                    Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
+                    STANDARD_PADDING,
+                ),
                 // Watch is the main action of the detail view —
                 // promote to primary so it's visually obvious.
                 // Disabled while netplay is in any non-Idle
@@ -827,32 +853,6 @@ fn replay_detail<'a>(
                         },
                     )
                 },
-                {
-                    // Per-replay toggle. Disabled outright while a
-                    // render for this replay is in flight, so the
-                    // user can't even attempt to close the panel
-                    // mid-render (which would otherwise be a
-                    // no-op, but a dead button is more honest).
-                    let msg = if state.is_rendering(&r.path) {
-                        None
-                    } else if state.is_panel_open(&r.path) {
-                        Some(Message::ExportPanelClose(r.path.clone()))
-                    } else {
-                        Some(Message::ExportPanelOpen(r.path.clone()))
-                    };
-                    widgets::icon_button_maybe(
-                        Icon::Clapperboard,
-                        t(lang, "replays-export"),
-                        msg,
-                        STANDARD_PADDING,
-                    )
-                },
-                widgets::icon_button(
-                    Icon::Folder,
-                    t(lang, "patches-open-folder"),
-                    Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
-                    STANDARD_PADDING,
-                ),
             ]
             .spacing(6)
             // Top-align so the action buttons stay anchored when
