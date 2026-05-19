@@ -7,11 +7,11 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
+use crate::app::{Scanners, TEXT_CAPTION};
 use crate::audio;
 use crate::config;
+use crate::game;
 use crate::i18n::t;
-use crate::widgets;
-use lucide_icons::Icon;
 use crate::patch;
 use crate::pvp_session;
 use crate::replay_session;
@@ -19,11 +19,11 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
-use crate::app::{Scanners, TEXT_CAPTION};
-use crate::game;
+use crate::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, row, stack, text};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -202,12 +202,7 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(
-        &mut self,
-        msg: Message,
-        mapping: &crate::input::Mapping,
-        video_filter: &str,
-    ) -> iced::Task<Message> {
+    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
         match msg {
             Message::Tick => {
                 if let Some(session) = self.active.as_ref() {
@@ -268,9 +263,7 @@ impl State {
             Message::Input(ev) => {
                 match ev {
                     InputEvent::Key { key, pressed } => self.input_held.set_key(&key, pressed),
-                    InputEvent::Button { button, pressed } => {
-                        self.input_held.set_button(button, pressed)
-                    }
+                    InputEvent::Button { button, pressed } => self.input_held.set_button(button, pressed),
                     InputEvent::Axis { axis, value } => self.input_held.set_axis(axis, value),
                     InputEvent::GamepadDisconnected => self.input_held.clear_gamepad(),
                 }
@@ -401,12 +394,21 @@ fn gamepad_stream() -> impl futures::Stream<Item = Message> {
             tokio::time::sleep(std::time::Duration::from_millis(4)).await;
             while let Some(event) = gilrs.next_event() {
                 let msg = match event.event {
-                    gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
-                        .map(|btn| InputEvent::Button { button: btn, pressed: true }),
-                    gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
-                        .map(|btn| InputEvent::Button { button: btn, pressed: false }),
-                    gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
-                        .map(|axis| InputEvent::Axis { axis, value: v }),
+                    gilrs::EventType::ButtonPressed(b, _) => {
+                        crate::input::GamepadButton::from_gilrs(b).map(|btn| InputEvent::Button {
+                            button: btn,
+                            pressed: true,
+                        })
+                    }
+                    gilrs::EventType::ButtonReleased(b, _) => {
+                        crate::input::GamepadButton::from_gilrs(b).map(|btn| InputEvent::Button {
+                            button: btn,
+                            pressed: false,
+                        })
+                    }
+                    gilrs::EventType::AxisChanged(a, v, _) => {
+                        crate::input::GamepadAxis::from_gilrs(a).map(|axis| InputEvent::Axis { axis, value: v })
+                    }
                     gilrs::EventType::Disconnected => Some(InputEvent::GamepadDisconnected),
                     _ => None,
                 };
@@ -423,11 +425,7 @@ fn gamepad_stream() -> impl futures::Stream<Item = Message> {
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
-pub fn view<'a>(
-    lang: &'a LanguageIdentifier,
-    state: &'a State,
-    integer_scaling: bool,
-) -> Element<'a, Message> {
+pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling: bool) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
@@ -537,10 +535,7 @@ pub fn view<'a>(
     };
     let close_btn = ctrl_icon_btn(Icon::X, t(lang, "playback-close"), Message::Close);
 
-    let mut layout = column![]
-        .spacing(0)
-        .width(Fill)
-        .height(Fill);
+    let mut layout = column![].spacing(0).width(Fill).height(Fill);
 
     // Body: framebuffer, optionally split with the opponent's
     // save view on the right when reveal-setup is active +
@@ -555,14 +550,12 @@ pub fn view<'a>(
     let body: Element<'a, Message> = match session {
         ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
             let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None)
-                .map(Message::OpponentSaveViewAction);
+            let panel =
+                save_view::view(lang, opponent, &s.opponent_save_view, true, None).map(Message::OpponentSaveViewAction);
             iced::widget::row![
                 container(frame).center(Fill).padding(8).style(black_bg),
                 iced::widget::rule::vertical(1),
-                container(panel)
-                    .width(iced::Length::Fixed(380.0))
-                    .height(Fill),
+                container(panel).width(iced::Length::Fixed(380.0)).height(Fill),
             ]
             .height(Fill)
             .into()
@@ -593,11 +586,7 @@ pub fn view<'a>(
         // Cogwheel toggle for the options popover (speed, future
         // per-replay knobs). YouTube-style — keeps the transport at
         // a single row of glyphs while the menu is closed.
-        let options_btn = ctrl_icon_btn(
-            Icon::Settings,
-            t(lang, "playback-options"),
-            Message::ToggleOptionsMenu,
-        );
+        let options_btn = ctrl_icon_btn(Icon::Settings, t(lang, "playback-options"), Message::ToggleOptionsMenu);
 
         // Play/Pause is the transport's centerpiece — promote to
         // the primary-button style when paused (the affordance
@@ -607,12 +596,11 @@ pub fn view<'a>(
         // as a perfect circle (square padding + huge radius) so
         // it reads as a console transport button instead of a
         // generic pill.
-        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-            if paused {
-                widgets::primary_button
-            } else {
-                widgets::neutral
-            };
+        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
+            widgets::primary_button
+        } else {
+            widgets::neutral
+        };
         let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
             let mut style = base_style(theme, status);
             style.border.radius = 999.0.into();
@@ -680,7 +668,7 @@ pub fn view<'a>(
         // close button (and opponent toggle) hug the right edge.
         controls = controls.push(horizontal_space());
     }
-    // PvP-only status readout: P1/P2, TPS, rollback ticks, ping.
+    // PvP-only status readout: P1/P2, TPS, frame advantage, ping.
     // Mirrors the legacy bottom-bar metrics in
     // `tango/src/gui/session_view.rs`. Monospaced so values don't
     // wiggle as they tick up. PvP also DOESN'T expose a manual
@@ -692,6 +680,7 @@ pub fn view<'a>(
         let stats = pvp.round_stats();
         let ping_ms = pvp.latency_blocking().as_millis();
         let tps = pvp.tps();
+        let fps_target = pvp.fps_target();
         let mut metrics = row![].spacing(10).align_y(Alignment::Center);
         if let Some(s) = stats {
             metrics = metrics.push(
@@ -702,17 +691,20 @@ pub fn view<'a>(
             );
         }
         metrics = metrics.push(
-            text(format!("tps {:5.1}", tps))
+            text(format!("tps {:4.1}/{:4.1}", tps, fps_target))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
                 .style(save_view::muted_text_style),
         );
         if let Some(s) = stats {
             metrics = metrics.push(
-                text(format!("rollback {:+}", s.rollback_ticks()))
-                    .size(TEXT_CAPTION)
-                    .font(iced::Font::MONOSPACE)
-                    .style(save_view::muted_text_style),
+                text(format!(
+                    "fa {:+3}:{:+3}",
+                    s.local_frame_advantage, s.remote_frame_advantage
+                ))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(save_view::muted_text_style),
             );
         }
         metrics = metrics.push(
@@ -770,8 +762,8 @@ pub fn view<'a>(
         // elsewhere reads as transport widgets and looks busy when
         // a column of them is stacked — a select-menu row needs to
         // read as a list line item, not a button.
-        let menu_row_style =
-            |selected: bool| move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let menu_row_style = |selected: bool| {
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
                 use iced::widget::button::Status;
                 let p = theme.extended_palette();
                 let text = theme.palette().text;
@@ -792,7 +784,8 @@ pub fn view<'a>(
                     },
                     ..Default::default()
                 }
-            };
+            }
+        };
         let mut speed_col = column![].spacing(1);
         for &v in opts {
             let selected = (v - current).abs() < 1e-3;
@@ -837,9 +830,7 @@ pub fn view<'a>(
             speed_col,
         ]
         .spacing(2);
-        let popover = container(speed_section)
-            .padding(6)
-            .style(widgets::panel);
+        let popover = container(speed_section).padding(6).style(widgets::panel);
         // Anchor to bottom-right and lift above the HUD bar (control
         // height + bar padding + scanline + a small gap).
         let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
@@ -904,14 +895,7 @@ pub fn build_playback(
 
     let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-    replay_session::ReplaySession::new(
-        local_game,
-        local_rom,
-        remote_game,
-        remote_rom,
-        replay,
-        audio_binder,
-    )
+    replay_session::ReplaySession::new(local_game, local_rom, remote_game, remote_rom, replay, audio_binder)
 }
 
 /// Build the live PvP session from the netplay handoff data
@@ -926,8 +910,8 @@ pub async fn spawn_pvp(
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
 ) -> anyhow::Result<pvp_session::PvpSession> {
-    let local_game_impl = game::from_gamedb_entry(local_game)
-        .ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
+    let local_game_impl =
+        game::from_gamedb_entry(local_game).ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
     let local_rom_raw = scanners
         .roms
         .read()
@@ -948,13 +932,11 @@ pub async fn spawn_pvp(
         .game_info
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
-    let remote_game = tango_gamedb::find_by_family_and_variant(
-        &remote_gi.family_and_variant.0,
-        remote_gi.family_and_variant.1,
-    )
-    .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
-    let remote_game_impl = game::from_gamedb_entry(remote_game)
-        .ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;
+    let remote_game =
+        tango_gamedb::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
+            .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
+    let remote_game_impl =
+        game::from_gamedb_entry(remote_game).ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;
     let remote_rom_raw = scanners
         .roms
         .read()
@@ -1023,12 +1005,8 @@ pub fn spawn_singleplayer(
     audio_binder: &audio::LateBinder,
     loaded: &selection::Loaded,
 ) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
-    let game = game::from_gamedb_entry(loaded.game).ok_or_else(|| {
-        anyhow::anyhow!(
-            "no game impl for {:?}",
-            loaded.game.family_and_variant()
-        )
-    })?;
+    let game = game::from_gamedb_entry(loaded.game)
+        .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
     // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
     // grab them back from the scanner and re-apply the patch if any so
     // the emulator sees the same image it would in the legacy app.
@@ -1039,13 +1017,7 @@ pub fn spawn_singleplayer(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
     let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-        patch::apply_patch_from_disk(
-            &raw,
-            loaded.game,
-            &config.patches_path(),
-            &p.name,
-            &p.version,
-        )?
+        patch::apply_patch_from_disk(&raw, loaded.game, &config.patches_path(), &p.name, &p.version)?
     } else {
         raw
     };
@@ -1062,11 +1034,7 @@ pub fn spawn_singleplayer(
 /// `Message::Input` handling time — this fn just packages the
 /// raw event up so the resolver has access to the user's full
 /// Mapping table.
-fn map_keyboard_event(
-    event: iced::Event,
-    _status: iced::event::Status,
-    _window: iced::window::Id,
-) -> Option<Message> {
+fn map_keyboard_event(event: iced::Event, _status: iced::event::Status, _window: iced::window::Id) -> Option<Message> {
     use iced::keyboard::Event as Kb;
     match event {
         iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {

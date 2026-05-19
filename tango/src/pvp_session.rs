@@ -443,8 +443,15 @@ impl PvpSession {
         }
     }
 
+    /// What the throttle is currently asking mgba to run at. Pairs with
+    /// `tps()` — gap between the two tells you whether the throttle is
+    /// the cause of a slow tps or just observing one.
+    pub fn fps_target(&self) -> f32 {
+        self._thread.handle().lock_audio().sync().fps_target()
+    }
+
     /// Snapshot of the current round's metrics for the status bar
-    /// (P1/P2, rollback ticks). `None` between rounds or before
+    /// (P1/P2, frame advantage). `None` between rounds or before
     /// the first round starts.
     pub fn round_stats(&self) -> Option<RoundStats> {
         let match_ = self.match_handle.blocking_lock();
@@ -453,8 +460,8 @@ impl PvpSession {
         let round = round_state.as_ref()?;
         Some(RoundStats {
             local_player_index: round.local_player_index(),
-            local_queue_len: round.local_queue_length(),
-            remote_queue_len: round.remote_queue_length(),
+            local_frame_advantage: round.local_frame_advantage(),
+            remote_frame_advantage: round.last_remote_frame_advantage(),
         })
     }
 }
@@ -464,16 +471,12 @@ impl PvpSession {
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
     pub local_player_index: u8,
-    pub local_queue_len: usize,
-    pub remote_queue_len: usize,
-}
-
-impl RoundStats {
-    /// Signed rollback delta — how many ticks the local side is
-    /// ahead of (positive) or behind (negative) the remote.
-    pub fn rollback_ticks(&self) -> i64 {
-        self.local_queue_len as i64 - self.remote_queue_len as i64
-    }
+    /// Local frame advantage — `current_tick - last_remote_received_tick`.
+    /// Positive when I'm ahead of the latest remote input I've received.
+    pub local_frame_advantage: i16,
+    /// Peer's frame advantage as of their most recent packet (stale by
+    /// ~τ one-way delay).
+    pub remote_frame_advantage: i16,
 }
 
 impl std::fmt::Debug for PvpSession {

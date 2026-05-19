@@ -14,10 +14,19 @@ use super::EXPECTED_FPS;
 /// pitch-shifted audio regime.
 const SKEW_EWMA_ALPHA: f32 = 0.15;
 
-/// Skew magnitude (in frames) below which we hold the FPS target steady.
-/// Without this, sub-frame EWMA jitter would make the FPS target wobble
-/// constantly even when the two clocks are effectively aligned.
-const SKEW_DEADBAND: f32 = 0.5;
+/// Smoothed-skew threshold at which an idle throttle engages. Tuned wide
+/// enough that the τ-delayed skew transient produced when both peers
+/// simultaneously accelerate out of a latched-slow state doesn't trip the
+/// controller back on — without that margin, the asymmetric throttle
+/// bistably locks both peers below 60.
+const SKEW_ENGAGE: f32 = 1.5;
+
+/// Smoothed-skew threshold at which an engaged throttle releases. Below
+/// the engage threshold so a single noise sample that crosses RELEASE in
+/// one direction doesn't bounce back through ENGAGE in the other — the
+/// 1.2-frame hysteresis swallows speedup transients while still releasing
+/// promptly once the rift has actually closed.
+const SKEW_RELEASE: f32 = 0.3;
 
 /// Slope of the response curve in the small-skew (linear) region. The
 /// curve is `MAX_SLOWDOWN * tanh(x * SKEW_GAIN / MAX_SLOWDOWN)`, so for
@@ -56,6 +65,11 @@ pub struct Round {
     /// fps_target adjustment. Lazily seeded with the first sample so the
     /// filter doesn't ramp out of 0 for the first 1/α frames.
     skew_ewma: Option<f32>,
+    /// Schmitt-trigger state for the throttle: true once the EWMA crossed
+    /// SKEW_ENGAGE, cleared once it drops below SKEW_RELEASE. The
+    /// hysteresis keeps a brief speedup-induced skew bump from re-engaging
+    /// the throttle before both peers have had a chance to reach 60.
+    throttling: bool,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -91,6 +105,7 @@ impl Round {
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
             skew_ewma: None,
+            throttling: false,
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -168,9 +183,16 @@ impl Round {
     /// outgoing packet so the peer can compute relative real-time skew.
     /// Saturating cast: clamps to i16 range, which fits any realistic
     /// frame advantage.
-    fn local_frame_advantage(&self) -> i16 {
+    pub fn local_frame_advantage(&self) -> i16 {
         let diff = self.current_tick as i32 - self.last_remote_received_tick as i32;
         diff.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+    }
+
+    /// Peer's frame advantage as of their most recent packet — stale by
+    /// ~τ (one-way delay) but matches what the throttle's skew estimate
+    /// is reacting to.
+    pub fn last_remote_frame_advantage(&self) -> i16 {
+        self.last_remote_frame_advantage
     }
 
     fn prepare_input_pairs(
@@ -289,13 +311,27 @@ impl Round {
         // sustainable rate. Trying to speed up here just races against
         // them and causes oscillation.
         //
-        // Above the deadband we shape the correction with a tanh soft
-        // knee: linear at slope SKEW_GAIN for small skews (identical to
-        // the old behaviour) and asymptotic to MAX_SLOWDOWN for big ones,
-        // so a sudden multi-second peer hitch glides into saturation
-        // instead of stepping into it.
-        let adjustment = if avg > SKEW_DEADBAND {
-            let x = avg - SKEW_DEADBAND;
+        // Schmitt-trigger engagement: we engage once `avg` crosses
+        // SKEW_ENGAGE and don't release until it drops back below
+        // SKEW_RELEASE. Without the hysteresis, two peers latched at the
+        // same slow rate can't escape — releasing one side immediately
+        // re-engages it via the τ-delayed skew bump that simultaneous
+        // speedup produces.
+        if self.throttling {
+            if avg < SKEW_RELEASE {
+                self.throttling = false;
+            }
+        } else if avg > SKEW_ENGAGE {
+            self.throttling = true;
+        }
+
+        // While engaged, shape the correction with a tanh soft knee that
+        // crosses zero at SKEW_RELEASE — adjustment fades smoothly to 0
+        // as we approach the release threshold instead of stepping off it.
+        // Linear at slope SKEW_GAIN for small (avg - RELEASE), asymptotic
+        // to MAX_SLOWDOWN for big ones.
+        let adjustment = if self.throttling {
+            let x = avg - SKEW_RELEASE;
             -MAX_SLOWDOWN * (x * SKEW_GAIN / MAX_SLOWDOWN).tanh()
         } else {
             0.0
@@ -347,14 +383,6 @@ impl Round {
 
     pub fn local_delay(&self) -> u32 {
         self.iq.local_delay()
-    }
-
-    pub fn local_queue_length(&self) -> usize {
-        self.iq.local_queue_length()
-    }
-
-    pub fn remote_queue_length(&self) -> usize {
-        self.iq.remote_queue_length()
     }
 
     pub fn add_local_input(&mut self, input: PartialInput) {
