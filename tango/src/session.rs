@@ -22,7 +22,7 @@ use crate::singleplayer_session;
 use crate::app::{Scanners, TEXT_CAPTION};
 use crate::game;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{column, container, row, text};
+use iced::widget::{column, container, row, stack, text};
 use iced::{Alignment, Element, Fill, Length};
 use unic_langid::LanguageIdentifier;
 
@@ -121,6 +121,11 @@ pub struct State {
     /// (`Message::CloseSettings`). The emulator keeps running
     /// underneath; we just swap what `App::view` renders.
     pub show_settings: bool,
+    /// Replay-only: cogwheel-anchored options popover. Currently
+    /// hosts the playback-speed picker; future per-replay knobs
+    /// (filter overrides, audio toggle, etc.) live here too.
+    /// Closes when a setting is changed or the session is closed.
+    pub show_options_menu: bool,
 }
 
 impl State {
@@ -155,6 +160,8 @@ pub enum Message {
     Seek(u32),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
+    /// Open/close the cogwheel-anchored options popover. Replay-only.
+    ToggleOptionsMenu,
     /// Show/hide the opponent's reveal-setup side panel. PvP-only.
     ToggleOpponentPanel,
     /// User interacted with the opponent's save-view (tab swap,
@@ -256,6 +263,7 @@ impl State {
                 }
                 self.active = None;
                 self.frame = None;
+                self.show_options_menu = false;
             }
             Message::Input(ev) => {
                 match ev {
@@ -305,15 +313,21 @@ impl State {
                     s.seek_to(target);
                 }
             }
-            Message::SetSpeed(factor) => match self.active.as_ref() {
-                Some(ActiveSession::Replay(s)) => s.set_speed(factor),
-                Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
-                Some(ActiveSession::PvP(_)) => {
-                    // PvP runs at fixed EXPECTED_FPS so both sides
-                    // stay in sync — no speed control.
+            Message::SetSpeed(factor) => {
+                self.show_options_menu = false;
+                match self.active.as_ref() {
+                    Some(ActiveSession::Replay(s)) => s.set_speed(factor),
+                    Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
+                    Some(ActiveSession::PvP(_)) => {
+                        // PvP runs at fixed EXPECTED_FPS so both sides
+                        // stay in sync — no speed control.
+                    }
+                    None => {}
                 }
-                None => {}
-            },
+            }
+            Message::ToggleOptionsMenu => {
+                self.show_options_menu = !self.show_options_menu;
+            }
             Message::ToggleOpponentPanel => {
                 self.show_opponent_panel = !self.show_opponent_panel;
             }
@@ -576,40 +590,14 @@ pub fn view<'a>(
             .round_boundaries(r.round_boundaries())
             .view();
 
-        // Speed selector — values that don't drift audio noticeably
-        // (mgba audio sync starts dropping samples above ~4x).
-        let speed_opts = vec![
-            SpeedOption(0.5),
-            SpeedOption(1.0),
-            SpeedOption(2.0),
-            SpeedOption(4.0),
-        ];
-        let current_speed = SpeedOption(r.speed());
-        let speed_picker = iced::widget::tooltip(
-            iced::widget::container(
-                iced::widget::pick_list(speed_opts, Some(current_speed), |o| Message::SetSpeed(o.0))
-                    .padding(CTRL_PAD)
-                    .text_size(15.0)
-                    .style(crate::widgets::chunky_pick_list),
-            )
-            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT)),
-            iced::widget::container(text(t(lang, "playback-speed")).size(TEXT_CAPTION))
-                .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4);
+        // Cogwheel toggle for the options popover (speed, future
+        // per-replay knobs). YouTube-style — keeps the transport at
+        // a single row of glyphs while the menu is closed.
+        let options_btn = ctrl_icon_btn(
+            Icon::Settings,
+            t(lang, "playback-options"),
+            Message::ToggleOptionsMenu,
+        );
 
         // Play/Pause is the transport's centerpiece — promote to
         // the primary-button style when paused (the affordance
@@ -686,7 +674,7 @@ pub fn view<'a>(
                     .font(iced::Font::MONOSPACE)
                     .style(save_view::muted_text_style),
             )
-            .push(speed_picker);
+            .push(options_btn);
     } else {
         // No transport widgets for SP/PvP — push a spacer so the
         // close button (and opponent toggle) hug the right edge.
@@ -763,7 +751,113 @@ pub fn view<'a>(
         .push(widgets::hud_scanline())
         .push(container(controls).width(Fill).style(widgets::hud_bar));
 
-    layout.into()
+    // Options popover. Built as a top Stack layer anchored above
+    // the HUD bar so it floats over the framebuffer without pushing
+    // the controls strip up. Only present while the cogwheel toggle
+    // is engaged on a replay session — the menu owns its own dismiss
+    // (changing a setting closes it; clicking the cogwheel again
+    // toggles it off).
+    //
+    // Sectioned: a small caption labels each settings group so when
+    // we add more replay knobs they slot in alongside Speed instead
+    // of needing their own popover.
+    if state.show_options_menu && session.as_replay().is_some() {
+        let r = session.as_replay().unwrap();
+        let current = r.speed();
+        let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
+        // Flat menu-row style: no border / shadow / chunky bevel at
+        // rest, just a subtle hover wash. The button chrome we use
+        // elsewhere reads as transport widgets and looks busy when
+        // a column of them is stacked — a select-menu row needs to
+        // read as a list line item, not a button.
+        let menu_row_style =
+            |selected: bool| move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                use iced::widget::button::Status;
+                let p = theme.extended_palette();
+                let text = theme.palette().text;
+                let primary = theme.palette().primary;
+                let tint = |a: f32| iced::Background::Color(iced::Color { a, ..primary });
+                let bg = match status {
+                    Status::Hovered => Some(tint(if p.is_dark { 0.18 } else { 0.14 })),
+                    Status::Pressed => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
+                    _ if selected => Some(tint(if p.is_dark { 0.12 } else { 0.10 })),
+                    _ => None,
+                };
+                iced::widget::button::Style {
+                    background: bg,
+                    text_color: if selected { primary } else { text },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            };
+        let mut speed_col = column![].spacing(1);
+        for &v in opts {
+            let selected = (v - current).abs() < 1e-3;
+            let label = if (v - v.trunc()).abs() < 1e-3 {
+                format!("{}×", v as i32)
+            } else {
+                format!("{:.1}×", v)
+            };
+            // Reserve a fixed slot for the check glyph so the labels
+            // stay vertically aligned regardless of which row is
+            // selected.
+            let check: Element<'a, Message> = if selected {
+                Icon::Check.widget().size(14.0).into()
+            } else {
+                iced::widget::Space::new()
+                    .width(iced::Length::Fixed(14.0))
+                    .height(iced::Length::Fixed(14.0))
+                    .into()
+            };
+            let content = row![check, text(label).size(14)]
+                .spacing(8)
+                .align_y(iced::Alignment::Center);
+            let btn = iced::widget::button(content)
+                .padding([6, 10])
+                .width(iced::Length::Fixed(120.0))
+                .style(menu_row_style(selected))
+                .on_press(Message::SetSpeed(v));
+            speed_col = speed_col.push(btn);
+        }
+        let speed_section = column![
+            container(
+                text(t(lang, "playback-speed"))
+                    .size(TEXT_CAPTION)
+                    .style(save_view::muted_text_style),
+            )
+            .padding(iced::Padding {
+                top: 4.0,
+                right: 10.0,
+                bottom: 6.0,
+                left: 10.0,
+            }),
+            speed_col,
+        ]
+        .spacing(2);
+        let popover = container(speed_section)
+            .padding(6)
+            .style(widgets::panel);
+        // Anchor to bottom-right and lift above the HUD bar (control
+        // height + bar padding + scanline + a small gap).
+        let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
+        let overlay = container(popover)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 16.0,
+                bottom: lift,
+                left: 0.0,
+            });
+        stack![layout, overlay].into()
+    } else {
+        layout.into()
+    }
 }
 
 /// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional
@@ -982,28 +1076,6 @@ fn map_keyboard_event(
             Some(Message::Input(InputEvent::Key { key, pressed: false }))
         }
         _ => None,
-    }
-}
-
-/// pick_list option newtype for the playback speed selector. f32
-/// alone can't go in a pick_list because it doesn't impl Eq/Hash.
-#[derive(Clone, Copy)]
-pub struct SpeedOption(pub f32);
-
-impl PartialEq for SpeedOption {
-    fn eq(&self, other: &Self) -> bool {
-        (self.0 - other.0).abs() < 1e-3
-    }
-}
-impl Eq for SpeedOption {}
-
-impl std::fmt::Display for SpeedOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if (self.0 - self.0.trunc()).abs() < 1e-3 {
-            write!(f, "{}x", self.0 as i32)
-        } else {
-            write!(f, "{:.1}x", self.0)
-        }
     }
 }
 

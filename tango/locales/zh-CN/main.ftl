@@ -154,6 +154,7 @@ replays-export-scale-na-lossless = （无损 — 忽略缩放）
 replays-export-rounds = 回合
 replays-export-save-as = 另存为…
 playback-close = 关闭
+playback-options = 选项
 playback-speed = 速度
 playback-play = 播放
 playback-pause = 暂停

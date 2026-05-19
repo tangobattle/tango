@@ -144,6 +144,7 @@ replays-export-twosided = 両面表示
 replays-export-rounds = ラウンド
 replays-export-save-as = 名前を付けて保存…
 playback-close = 閉じる
+playback-options = オプション
 playback-speed = 速度
 playback-play = 再生
 playback-pause = 一時停止

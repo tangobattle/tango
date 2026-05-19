@@ -154,6 +154,7 @@ replays-export-scale-na-lossless = (lossless — tỷ lệ bị bỏ qua)
 replays-export-rounds = Vòng
 replays-export-save-as = Lưu thành…
 playback-close = Đóng
+playback-options = Tùy chọn
 playback-speed = Tốc độ
 playback-play = Phát
 playback-pause = Tạm dừng

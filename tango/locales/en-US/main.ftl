@@ -146,6 +146,7 @@ replays-export-save-as = Save as…
 playback-close = Close
 playback-play = Play
 playback-pause = Pause
+playback-options = Options
 playback-speed = Speed
 replays-select-prompt = Select a replay.
 replays-opponent = Opponent

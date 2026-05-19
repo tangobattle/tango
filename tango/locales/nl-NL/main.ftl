@@ -154,6 +154,7 @@ replays-export-scale-na-lossless = (lossless — schaal genegeerd)
 replays-export-rounds = Rondes
 replays-export-save-as = Opslaan als…
 playback-close = Sluiten
+playback-options = Opties
 playback-speed = Snelheid
 playback-play = Afspelen
 playback-pause = Pauzeren

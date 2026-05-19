@@ -154,6 +154,7 @@ replays-export-scale-na-lossless = (verlustfrei — Skalierung wird ignoriert)
 replays-export-rounds = Runden
 replays-export-save-as = Speichern unter…
 playback-close = Schließen
+playback-options = Optionen
 playback-speed = Geschwindigkeit
 playback-play = Abspielen
 playback-pause = Pause
