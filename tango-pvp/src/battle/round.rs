@@ -8,27 +8,32 @@ use crate::input::{Input, Pair, PairQueue, PartialInput};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// EWMA smoothing factor for the skew estimate. ≈0.06 gives noise rejection
-/// comparable to a 30-frame windowed mean while reacting exponentially to a
-/// step instead of linearly ramping in — peak corrective slowdown arrives
-/// in ~1/α frames after the rift opens, not 1/α frames after it stops
-/// growing.
-const SKEW_EWMA_ALPHA: f32 = 0.06;
+/// EWMA smoothing factor for the skew estimate. ≈0.15 gives peak corrective
+/// slowdown in ~1/α ≈ 7 frames after a rift opens, trading some noise
+/// rejection vs the older 0.06 for a markedly shorter dwell in the
+/// pitch-shifted audio regime.
+const SKEW_EWMA_ALPHA: f32 = 0.15;
 
 /// Skew magnitude (in frames) below which we hold the FPS target steady.
 /// Without this, sub-frame EWMA jitter would make the FPS target wobble
 /// constantly even when the two clocks are effectively aligned.
 const SKEW_DEADBAND: f32 = 0.5;
 
-/// Proportional gain on the smoothed skew above the deadband. >1 closes a
-/// transient rift faster than the equivalent skew represents. Held below 2
-/// so the loop stays well-damped given the ~τ + 1/α round-trip-plus-filter
-/// lag.
-const SKEW_GAIN: f32 = 1.5;
+/// Slope of the response curve in the small-skew (linear) region. The
+/// curve is `MAX_SLOWDOWN * tanh(x * SKEW_GAIN / MAX_SLOWDOWN)`, so for
+/// small x this reduces to `x * SKEW_GAIN` — identical to the old linear
+/// behaviour. Bigger than the documented "<2" limit that paired with
+/// α=0.06, but the faster α shortens the 1/α-frame filter lag enough that
+/// 2.5 stays well-damped — and closes a transient rift in roughly a third
+/// of the frames, keeping the audible slowdown shorter even though each
+/// frame's correction is sharper.
+const SKEW_GAIN: f32 = 2.5;
 
-/// Cap on the slowdown we'll apply. Hit only under catastrophic skew
-/// (peer CPU collapse, multi-second hitch). With SKEW_GAIN=1.5 this caps
-/// at 20 frames of sustained one-sided drift.
+/// Asymptote of the soft-knee response curve. The curve approaches this
+/// slowdown smoothly via tanh instead of slamming into it, so a multi-
+/// second peer hitch doesn't produce an audible discontinuity at the
+/// moment the controller would otherwise hard-cap. Practically reached
+/// only under catastrophic skew (peer CPU collapse).
 const MAX_SLOWDOWN: f32 = 30.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
@@ -284,11 +289,14 @@ impl Round {
         // sustainable rate. Trying to speed up here just races against
         // them and causes oscillation.
         //
-        // Above the deadband we apply a >1 gain so transient rifts close
-        // faster than the per-frame-skew-per-fps rate the original 1.0 gain
-        // produced; below it we hold steady to avoid sub-frame FPS wobble.
+        // Above the deadband we shape the correction with a tanh soft
+        // knee: linear at slope SKEW_GAIN for small skews (identical to
+        // the old behaviour) and asymptotic to MAX_SLOWDOWN for big ones,
+        // so a sudden multi-second peer hitch glides into saturation
+        // instead of stepping into it.
         let adjustment = if avg > SKEW_DEADBAND {
-            -((avg - SKEW_DEADBAND) * SKEW_GAIN).min(MAX_SLOWDOWN)
+            let x = avg - SKEW_DEADBAND;
+            -MAX_SLOWDOWN * (x * SKEW_GAIN / MAX_SLOWDOWN).tanh()
         } else {
             0.0
         };
