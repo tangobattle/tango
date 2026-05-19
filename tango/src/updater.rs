@@ -227,10 +227,9 @@ impl Updater {
                         let mut g = status.lock().await;
                         match &*g {
                             Status::UpToDate { .. } => {
-                                // Never downgrade: if the latest available
-                                // isn't strictly newer than what's running,
-                                // treat ourselves as up to date.
-                                if version <= current_version {
+                                let has_latest = version == current_version
+                                    || (allow_prerelease && version < current_version);
+                                if has_latest {
                                     *g = Status::UpToDate {
                                         release: Some(if version == current_version {
                                             Some(release.clone())
@@ -242,7 +241,9 @@ impl Updater {
                                 }
                             }
                             Status::ReadyToUpdate { release: r } => {
-                                if version <= r.version {
+                                let has_latest = version == r.version
+                                    || (allow_prerelease && version < r.version);
+                                if has_latest {
                                     return Ok(());
                                 }
                             }
