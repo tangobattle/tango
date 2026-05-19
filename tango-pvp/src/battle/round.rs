@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use parking_lot::Mutex as PlMutex;
@@ -9,15 +8,27 @@ use crate::input::{Input, Pair, PairQueue, PartialInput};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// How many recent skew samples to average for the time-sync throttle.
-/// 60 ≈ 1 second at the nominal frame rate — enough to wash out single-
-/// frame jitter without smearing real CPU divergence.
-const SKEW_WINDOW: usize = 60;
+/// EWMA smoothing factor for the skew estimate. ≈0.06 gives noise rejection
+/// comparable to a 30-frame windowed mean while reacting exponentially to a
+/// step instead of linearly ramping in — peak corrective slowdown arrives
+/// in ~1/α frames after the rift opens, not 1/α frames after it stops
+/// growing.
+const SKEW_EWMA_ALPHA: f32 = 0.06;
+
+/// Skew magnitude (in frames) below which we hold the FPS target steady.
+/// Without this, sub-frame EWMA jitter would make the FPS target wobble
+/// constantly even when the two clocks are effectively aligned.
+const SKEW_DEADBAND: f32 = 0.5;
+
+/// Proportional gain on the smoothed skew above the deadband. >1 closes a
+/// transient rift faster than the equivalent skew represents. Held below 2
+/// so the loop stays well-damped given the ~τ + 1/α round-trip-plus-filter
+/// lag.
+const SKEW_GAIN: f32 = 1.5;
 
 /// Cap on the slowdown we'll apply. Hit only under catastrophic skew
-/// (peer CPU collapse, multi-second hitch). The ramp is linear at 1 fps
-/// per frame of average skew, so this caps at 30 frames of sustained
-/// one-sided drift.
+/// (peer CPU collapse, multi-second hitch). With SKEW_GAIN=1.5 this caps
+/// at 20 frames of sustained one-sided drift.
 const MAX_SLOWDOWN: f32 = 30.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
@@ -36,9 +47,10 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// Sliding window of recent skew samples ((my_adv - their_adv) / 2).
-    /// Mean over this window drives the fps_target adjustment.
-    skew_samples: VecDeque<f32>,
+    /// EWMA of recent skew samples ((my_adv - their_adv) / 2). Drives the
+    /// fps_target adjustment. Lazily seeded with the first sample so the
+    /// filter doesn't ramp out of 0 for the first 1/α frames.
+    skew_ewma: Option<f32>,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -73,7 +85,7 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            skew_samples: VecDeque::with_capacity(SKEW_WINDOW),
+            skew_ewma: None,
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -254,19 +266,32 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32 / 2.0;
 
-        if self.skew_samples.len() == SKEW_WINDOW {
-            self.skew_samples.pop_front();
-        }
-        self.skew_samples.push_back(skew);
-
-        let avg = self.skew_samples.iter().sum::<f32>() / self.skew_samples.len() as f32;
+        let avg = match self.skew_ewma {
+            Some(prev) => {
+                let next = SKEW_EWMA_ALPHA * skew + (1.0 - SKEW_EWMA_ALPHA) * prev;
+                self.skew_ewma = Some(next);
+                next
+            }
+            None => {
+                self.skew_ewma = Some(skew);
+                skew
+            }
+        };
 
         // Asymmetric throttle: only the leading side corrects. If we're
         // behind (avg < 0) the peer will see avg > 0 from their side and
         // slow themselves, naturally converging to the slower client's
         // sustainable rate. Trying to speed up here just races against
         // them and causes oscillation.
-        let adjustment = -avg.max(0.0).min(MAX_SLOWDOWN);
+        //
+        // Above the deadband we apply a >1 gain so transient rifts close
+        // faster than the per-frame-skew-per-fps rate the original 1.0 gain
+        // produced; below it we hold steady to avoid sub-frame FPS wobble.
+        let adjustment = if avg > SKEW_DEADBAND {
+            -((avg - SKEW_DEADBAND) * SKEW_GAIN).min(MAX_SLOWDOWN)
+        } else {
+            0.0
+        };
 
         let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_SLOWDOWN, EXPECTED_FPS);
         core.gba_mut()
