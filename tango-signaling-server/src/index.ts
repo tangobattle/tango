@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { tango } from "./proto/signaling";
 
 const Packet = tango.signaling.Packet;
@@ -6,9 +7,21 @@ const AbortReason = Packet.Abort.Reason;
 const X_SESSION_EXPIRES_AT_HEADER = "X-Session-Expires-At";
 // const EXPECTED_PROTOCOL_VERSION = 0x3b;
 const SESSION_TTL_SECONDS = 60 * 60;
+const REGISTRY_SINGLETON_NAME = "global";
 
 interface Attachment {
   isOfferer?: boolean;
+}
+
+interface RegistryEntry {
+  doIdString: string;
+  expiresAt: number;
+}
+
+function getRegistryStub(env: Env) {
+  return env.SESSION_REGISTRY.get(
+    env.SESSION_REGISTRY.idFromName(REGISTRY_SINGLETON_NAME),
+  );
 }
 
 async function getICEServers(
@@ -116,17 +129,11 @@ export default {
 
     const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
 
-    let doId: DurableObjectId;
-    const existing = await env.SESSION_KV.get(sessionId);
-    if (existing) {
-      doId = env.MATCHMAKING.idFromString(existing);
-    } else {
-      doId = env.MATCHMAKING.newUniqueId();
-      await env.SESSION_KV.put(sessionId, doId.toString(), {
-        expiration: Math.floor(expiresAt / 1000),
-      });
-    }
-
+    const doIdString = await getRegistryStub(env).acquireOrCreate(
+      sessionId,
+      expiresAt,
+    );
+    const doId = env.MATCHMAKING.idFromString(doIdString);
     const stub = env.MATCHMAKING.get(doId);
     const doRequest = new Request(request, {
       headers: new Headers(request.headers),
@@ -136,7 +143,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-export class MatchmakingSession implements DurableObject {
+export class MatchmakingSession {
   state: DurableObjectState;
   env: Env;
 
@@ -228,7 +235,9 @@ export class MatchmakingSession implements DurableObject {
 
     const sessionId = await this.state.storage.get<string>("sessionId");
     if (sessionId) {
-      await this.env.SESSION_KV.delete(sessionId);
+      try {
+        await getRegistryStub(this.env).release(sessionId);
+      } catch {}
     }
 
     ws.send(
@@ -260,7 +269,15 @@ export class MatchmakingSession implements DurableObject {
       offererWs.close(1000);
     } catch {}
 
+    const sessionId = await this.state.storage.get<string>("sessionId");
+    if (sessionId) {
+      try {
+        await getRegistryStub(this.env).release(sessionId);
+      } catch {}
+    }
+
     ws.close(1000);
+    await this.state.storage.deleteAlarm();
     await this.state.storage.deleteAll();
   }
 
@@ -280,7 +297,9 @@ export class MatchmakingSession implements DurableObject {
     }
     const sessionId = await this.state.storage.get<string>("sessionId");
     if (sessionId) {
-      await this.env.SESSION_KV.delete(sessionId);
+      try {
+        await getRegistryStub(this.env).release(sessionId);
+      } catch {}
     }
     await this.state.storage.deleteAll();
   }
@@ -292,8 +311,51 @@ export class MatchmakingSession implements DurableObject {
     }
     const sessionId = await this.state.storage.get<string>("sessionId");
     if (sessionId) {
-      await this.env.SESSION_KV.delete(sessionId);
+      try {
+        await getRegistryStub(this.env).release(sessionId);
+      } catch {}
     }
+    await this.state.storage.deleteAlarm();
     await this.state.storage.deleteAll();
+  }
+}
+
+export class SessionRegistry extends DurableObject<Env> {
+  async acquireOrCreate(sessionId: string, expiresAt: number): Promise<string> {
+    const key = `s:${sessionId}`;
+    const now = Date.now();
+    const existing = await this.ctx.storage.get<RegistryEntry>(key);
+    if (existing && existing.expiresAt > now) {
+      return existing.doIdString;
+    }
+    const doIdString = this.env.MATCHMAKING.newUniqueId().toString();
+    await this.ctx.storage.put<RegistryEntry>(key, { doIdString, expiresAt });
+    const currentAlarm = await this.ctx.storage.getAlarm();
+    if (currentAlarm == null || currentAlarm > expiresAt) {
+      await this.ctx.storage.setAlarm(expiresAt);
+    }
+    return doIdString;
+  }
+
+  async release(sessionId: string): Promise<void> {
+    await this.ctx.storage.delete(`s:${sessionId}`);
+  }
+
+  async alarm(): Promise<void> {
+    const entries = await this.ctx.storage.list<RegistryEntry>({
+      prefix: "s:",
+    });
+    const now = Date.now();
+    let nextExpiry: number | null = null;
+    for (const [key, entry] of entries) {
+      if (entry.expiresAt <= now) {
+        await this.ctx.storage.delete(key);
+      } else if (nextExpiry == null || entry.expiresAt < nextExpiry) {
+        nextExpiry = entry.expiresAt;
+      }
+    }
+    if (nextExpiry != null) {
+      await this.ctx.storage.setAlarm(nextExpiry);
+    }
   }
 }

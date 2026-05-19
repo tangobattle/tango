@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "proto": "pbjs -t static-module -w es6 -o src/proto/signaling.js ../tango-signaling/src/proto/signaling.proto && pbts -o src/proto/signaling.d.ts src/proto/signaling.js",
+    "proto": "mkdir -p src/proto && pbjs -t static-module -w es6 -o src/proto/signaling.js ../tango-signaling/src/proto/signaling.proto && pbts -o src/proto/signaling.d.ts src/proto/signaling.js",
     "cf-typegen": "wrangler types",
     "build": "npm run proto && npm run cf-typegen",
     "typecheck": "tsc --noEmit",

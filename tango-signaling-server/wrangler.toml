@@ -2,14 +2,18 @@ name = "tango-signaling-server"
 main = "src/index.ts"
 compatibility_date = "2026-05-11"
 
-[[kv_namespaces]]
-binding = "SESSION_KV"
-id = "802d9ab0923141a4a2329cb0e9b293d5"
-
 [[durable_objects.bindings]]
 name = "MATCHMAKING"
 class_name = "MatchmakingSession"
 
+[[durable_objects.bindings]]
+name = "SESSION_REGISTRY"
+class_name = "SessionRegistry"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MatchmakingSession"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SessionRegistry"]
