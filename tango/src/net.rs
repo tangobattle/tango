@@ -104,6 +104,11 @@ impl Sender {
             .await
     }
 
+    pub async fn send_end_of_round(&mut self) -> std::io::Result<()> {
+        self.send_packet(&protocol::Packet::EndOfRound(protocol::EndOfRound {}))
+            .await
+    }
+
     pub async fn send_end_of_match(&mut self) -> std::io::Result<()> {
         self.send_packet(&protocol::Packet::EndOfMatch(protocol::EndOfMatch {}))
             .await
@@ -182,6 +187,10 @@ impl tango_pvp::net::Sender for PvpSender {
             .send_packet(&protocol::Packet::Input(input.clone()))
             .await
     }
+
+    async fn send_end_of_round(&mut self) -> std::io::Result<()> {
+        self.sender.lock().await.send_end_of_round().await
+    }
 }
 
 /// `tango_pvp::net::Receiver` adapter — pulls Input packets,
@@ -220,7 +229,7 @@ impl PvpReceiver {
 
 #[async_trait::async_trait]
 impl tango_pvp::net::Receiver for PvpReceiver {
-    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Input> {
+    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Event> {
         loop {
             tokio::select! {
                 _ = self.ping_timer.tick() => {
@@ -243,7 +252,10 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             }
                         }
                         protocol::Packet::Input(input) => {
-                            return Ok(input);
+                            return Ok(tango_pvp::net::Event::Input(input));
+                        }
+                        protocol::Packet::EndOfRound(_) => {
+                            return Ok(tango_pvp::net::Event::EndOfRound);
                         }
                         protocol::Packet::EndOfMatch(_) => {
                             // Peer reached its match_end_ret hook.

@@ -51,6 +51,12 @@ pub enum Packet {
 
     // In match.
     Input(tango_pvp::net::Input),
+    /// Sent by each side from its local round-ending trap. The
+    /// receiver bumps its `peer_round_idx`; subsequent Inputs are
+    /// tagged with the new round id so `try_attach_remote_input`
+    /// can drop stale tails from the just-finished round and hold
+    /// inputs from the next round until the local side catches up.
+    EndOfRound(EndOfRound),
     /// Sent once by each side when its local `match_end_ret`
     /// hook fires. The peer waits for this before tearing down
     /// the connection so the lagging side can finish writing its
@@ -120,6 +126,9 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct EndOfRound {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct EndOfMatch {}
