@@ -40,7 +40,7 @@ impl Munger {
         // init_battle_entry, which consumes the just-written settings.
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x04);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x14);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, match_type);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, match_type * 2);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x15, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3f, -1, 0x00);

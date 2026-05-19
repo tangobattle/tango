@@ -11,7 +11,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             Box::new(move |core| {
                 let stepper_state = stepper_state.lock_inner();
                 munger
-                    .start_battle_from_comm_menu(core, stepper_state.match_type().0 * 2 + stepper_state.match_type().1);
+                    .start_battle_from_comm_menu(core, stepper_state.match_type().0);
             })
         }),
         (hooks.offsets.rom.comm_menu_settings_entry, {

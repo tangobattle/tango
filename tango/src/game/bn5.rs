@@ -2,7 +2,7 @@ use super::Game;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
-const MATCH_TYPES: &[usize] = &[2, 2];
+const MATCH_TYPES: &[usize] = &[1, 1];
 
 macro_rules! bn5_save {
     ($file:expr, $region:ident, $variant:ident) => {

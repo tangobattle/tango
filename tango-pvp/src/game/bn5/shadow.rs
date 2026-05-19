@@ -8,7 +8,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
-                munger.start_battle_from_comm_menu(core, shadow_state.match_type().0 * 2 + shadow_state.match_type().1);
+                munger.start_battle_from_comm_menu(core, shadow_state.match_type().0);
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
