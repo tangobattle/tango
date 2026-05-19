@@ -5918,7 +5918,7 @@ dependencies = [
 
 [[package]]
 name = "tango"
-version = "5.0.0-alpha.3"
+version = "5.0.0-beta.0"
 dependencies = [
  "anyhow",
  "arboard",
