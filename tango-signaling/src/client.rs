@@ -210,13 +210,35 @@ pub async fn connect(
 
     Ok(Connecting {
         fut: Box::pin(async move {
+            const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+            const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+            let mut ping_interval = tokio::time::interval_at(
+                tokio::time::Instant::now() + PING_INTERVAL,
+                PING_INTERVAL,
+            );
+            ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
             loop {
-                const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-                let Some(raw) = tokio::time::timeout(TIMEOUT, signaling_stream.try_next())
-                    .await
-                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))??
-                else {
-                    return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into());
+                let raw = tokio::select! {
+                    _ = ping_interval.tick() => {
+                        signaling_stream
+                            .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                crate::proto::signaling::Packet {
+                                    which: Some(crate::proto::signaling::packet::Which::Ping(
+                                        crate::proto::signaling::packet::Ping {},
+                                    )),
+                                }
+                                .encode_to_vec(),
+                            ))
+                            .await?;
+                        continue;
+                    }
+                    result = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
+                        match result.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))?? {
+                            Some(raw) => raw,
+                            None => return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into()),
+                        }
+                    }
                 };
 
                 let packet = match raw {
@@ -235,6 +257,7 @@ pub async fn connect(
                 };
 
                 match &packet.which {
+                    Some(crate::proto::signaling::packet::Which::Ping(_)) => continue,
                     Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
                         return Err(Error::ServerAbort(
                             AbortReason::try_from(abort.reason).unwrap_or_default(),
