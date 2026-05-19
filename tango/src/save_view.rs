@@ -200,7 +200,7 @@ pub fn view<'a>(
     // looser internal rhythm matching the copy-button row's own
     // spacing. Compose them into one tail row.
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
-    if let Some(extras) = tab_extras(lang, active, state) {
+    if let Some(extras) = tab_extras(lang, active, state, loaded) {
         tail = tail.push(extras);
     }
     if let Some(enabled) = play_button {
@@ -242,7 +242,12 @@ pub fn view<'a>(
 
 /// Per-tab extras (folder group-by toggle, copy button) shown on the
 /// right of the tab strip. `None` = tab has no extras.
-fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> Option<Element<'a, Action>> {
+fn tab_extras<'a>(
+    lang: &'a LanguageIdentifier,
+    tab: Tab,
+    state: &'a State,
+    loaded: &'a Loaded,
+) -> Option<Element<'a, Action>> {
     use crate::widgets;
     use lucide_icons::Icon;
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
@@ -278,12 +283,22 @@ fn tab_extras<'a>(lang: &'a LanguageIdentifier, tab: Tab, state: &'a State) -> O
         ),
         Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
         Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
-        Tab::Navi => Some(
-            row![copy_img_btn(Tab::Navi), copy_btn(Tab::Navi)]
-                .spacing(6)
-                .align_y(iced::Alignment::Center)
-                .into(),
-        ),
+        Tab::Navi => {
+            // Copy-as-image only emits anything for Navicust saves
+            // (LinkNavi has no grid to render). Hide the button
+            // outright on non-navicust navis instead of leaving a
+            // dead affordance in the tab strip.
+            let has_navicust = matches!(
+                loaded.save.view_navi(),
+                Some(tango_dataview::save::NaviView::Navicust(_))
+            );
+            let mut tail = row![].spacing(6).align_y(iced::Alignment::Center);
+            if has_navicust {
+                tail = tail.push(copy_img_btn(Tab::Navi));
+            }
+            tail = tail.push(copy_btn(Tab::Navi));
+            Some(tail.into())
+        }
         _ => None,
     }
 }
