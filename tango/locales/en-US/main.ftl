@@ -139,6 +139,7 @@ replays-filter-opponent = Opponent
 replays-filter-all-games = All games
 replays-filter-opponent-placeholder = Any
 replays-watch = Watch
+replays-watch-missing-rom = Watch (ROM for this game isn't scanned)
 replays-export = Render
 replays-export-progress = Rendering…
 replays-export-success = Rendered

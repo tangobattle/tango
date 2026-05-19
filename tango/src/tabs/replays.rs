@@ -674,7 +674,7 @@ impl ReplaysState {
         // Right panel.
         let right: Element<'_, Message> = if let Some(sel_path) = self.selected.as_ref() {
             if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
-                replay_detail(lang, r, &replays_path, self, netplay_active)
+                replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
             } else {
                 container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
@@ -701,8 +701,21 @@ fn replay_detail<'a>(
     r: &replays::ScannedReplay,
     replays_path: &std::path::Path,
     state: &'a ReplaysState,
+    scanners: &'a Scanners,
     netplay_active: bool,
 ) -> Element<'a, Message> {
+    // Playback needs a scanned ROM for the local-side game; without
+    // one the emulator session would error on construction. Resolve
+    // now so the Watch button can disable + explain.
+    let local_rom_present = r
+        .metadata
+        .local_side
+        .as_ref()
+        .and_then(|s| s.game_info.as_ref())
+        .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
+        .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+        .map(|g| scanners.roms.read().contains_key(&g))
+        .unwrap_or(false);
     let md = &r.metadata;
     let ts_str = std::time::UNIX_EPOCH
         .checked_add(std::time::Duration::from_millis(md.ts))
@@ -796,22 +809,33 @@ fn replay_detail<'a>(
                 // promote to primary so it's visually obvious.
                 // Disabled while netplay is in any non-Idle
                 // phase: starting a playback session would race
-                // with the live emulator.
-                widgets::icon_button_styled(
-                    Icon::Play,
-                    t(lang, "replays-watch"),
-                    if netplay_active {
-                        None
+                // with the live emulator. Also disabled when the
+                // local-side ROM isn't scanned (playback can't
+                // build a core without it); tooltip carries the
+                // reason in that case.
+                {
+                    let watch_disabled = netplay_active || !local_rom_present;
+                    let tooltip = if !local_rom_present {
+                        t(lang, "replays-watch-missing-rom")
                     } else {
-                        Some(Message::Watch(r.path.clone()))
-                    },
-                    STANDARD_PADDING,
-                    if netplay_active {
-                        widgets::neutral
-                    } else {
-                        widgets::primary_button
-                    },
-                ),
+                        t(lang, "replays-watch")
+                    };
+                    widgets::icon_button_styled(
+                        Icon::Play,
+                        tooltip,
+                        if watch_disabled {
+                            None
+                        } else {
+                            Some(Message::Watch(r.path.clone()))
+                        },
+                        STANDARD_PADDING,
+                        if watch_disabled {
+                            widgets::neutral
+                        } else {
+                            widgets::primary_button
+                        },
+                    )
+                },
                 {
                     // Per-replay toggle. Disabled outright while a
                     // render for this replay is in flight, so the
