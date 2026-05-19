@@ -1546,8 +1546,6 @@ fn lobby_view<'a>(
         .into(),
     );
 
-    let controls = column![match_row, delay_row, reveal_row].spacing(8);
-
     // Status / verdict line. While the netplay attempt is still
     // pre-Lobby (Connecting / Negotiating), this shows the
     // connection progress so the user has something to read
@@ -1697,10 +1695,23 @@ fn lobby_view<'a>(
         btn.into()
     };
 
-    // Leave-lobby (Disconnect) button. Sits at the top-left of
-    // the header — the conventional "back / quit" corner —
-    // so it doesn't have to fight with the Ready CTA on the
-    // right for the user's attention.
+    // Settings stack on the left, Ready CTA floated to the right
+    // of the pane and bottom-aligned against the stack — mirrors
+    // the matchmaking screen's Fight button anchored to the
+    // bottom-right of the hud bar.
+    let controls = row![
+        column![match_row, delay_row, reveal_row]
+            .spacing(8)
+            .width(Length::Fill),
+        ready_button,
+    ]
+    .spacing(12)
+    .align_y(Alignment::End);
+
+    // Leave-lobby (Disconnect) button. Top-right of the header —
+    // out of the way of the verdict line, and visually paired
+    // with the Ready CTA in the bottom-right of the lobby pane
+    // (same right edge, opposite corner).
     let leave_button: Element<'a, Message> = widgets::labeled_icon_button(
         Icon::LogOut,
         t(lang, "play-cancel"),
@@ -1709,15 +1720,13 @@ fn lobby_view<'a>(
         widgets::danger_button,
     );
 
-    // Header row: leave on the left, latency / verdict in the
-    // middle, big Ready button on the right. Single line so the
-    // Ready button is unmissable and visually anchored.
+    // Header row: verdict on the left, leave button on the right.
     let mut header_text_col = column![].spacing(2);
     if let Some(hl) = header_line {
         header_text_col = header_text_col.push(hl);
     }
     header_text_col = header_text_col.push(verdict_line);
-    let header_row = row![leave_button, header_text_col, horizontal_space(), ready_button,]
+    let header_row = row![header_text_col, horizontal_space(), leave_button]
         .spacing(12)
         .align_y(Alignment::Center);
 
