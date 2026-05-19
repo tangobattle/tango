@@ -177,7 +177,7 @@ impl PatchesState {
         top_row = top_row
             .push(horizontal_space())
             .push(widgets::icon_button_maybe(
-                Icon::Download,
+                Icon::CloudSync,
                 t(lang, "patches-update"),
                 update_msg,
                 STANDARD_PADDING,
