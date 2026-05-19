@@ -57,7 +57,6 @@ play-status-idle = Enter a link code to start netplay, or leave blank for single
 play-status-connecting = Connecting to matchmaking server…
 play-status-waiting-opponent = Waiting for opponent…
 play-status-negotiating = Negotiating…
-play-status-lobby = In lobby
 play-status-failed = Connection failed
 play-status-peer-disconnected = The other player left.
 lobby-waiting = Waiting…
@@ -100,13 +99,9 @@ save-copy-image = Copy as image
 # Navi pane
 navi-id = Navi ID
 navi-style-unset = (no style)
-navicust-title = NaviCust
 navicust-grid-size = Grid
 navicust-parts = Installed parts
 navicust-empty = (none installed)
-# Patch cards pane
-patch-cards-count = Equipped
-patch-cards-4-title = Patch Cards (4)
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = Standard chips (secondary)
 auto-battle-data-standard-chips = Standard chips
@@ -117,12 +112,7 @@ auto-battle-data-program-advance = Program advance
 # Common
 save-empty = This save has no data for this view.
 play-no-selection = Select a game and a save to inspect.
-
-# Patch Cards / Auto Battle Data placeholders (legacy, kept for fallback)
-
 # Replays
-replays-filter-game = Game
-replays-filter-opponent = Opponent
 replays-filter-all-games = All games
 replays-filter-opponent-placeholder = Search opponents…
 replays-watch = Watch
@@ -159,12 +149,10 @@ patches-update = Update
 patches-updating = Updating…
 patches-update-failed = Update failed
 patches-open-folder = Open folder
-patches-installed = Installed
 patches-favorite = Favorite
 patches-unfavorite = Unfavorite
 patches-search-placeholder = Search patches…
 patches-select-prompt = Select a patch.
-patches-readme = README
 patches-readme-placeholder = This patch has no README.
 patches-details-authors = Authors
 patches-details-license = License
