@@ -1312,9 +1312,12 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         for (idx, id) in slots.iter().enumerate() {
             col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb, idx));
         }
-        col.push(Space::new().height(12)).into()
+        col.into()
     };
 
+    // Inter-section gap lives in the column's spacing, not a
+    // trailing Space inside `section`, so the last section
+    // doesn't leave dead air at the bottom of the pane.
     let list = column![
         section(
             t(lang, "auto-battle-data-secondary-standard-chips"),
@@ -1326,7 +1329,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         section(t(lang, "auto-battle-data-combos"), mat.combos()),
         section(t(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
     ]
-    .spacing(4)
+    .spacing(12)
     .padding(0);
 
     scrollable(list).width(Fill).into()
