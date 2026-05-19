@@ -1,4 +1,4 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::i18n::{t, t_args};
 use crate::widgets;
 use crate::{config, replays, save_view};
@@ -485,14 +485,7 @@ impl ReplaysState {
                 .collect();
             seen.sort();
             for family in seen {
-                // Use any known variant of the family for the
-                // short-name lookup; the result ("BN6") is
-                // variant-independent. Fall back to the raw
-                // family string for unrecognized families.
-                let display = tango_gamedb::find_by_family_and_variant(&family, 0)
-                    .or_else(|| tango_gamedb::find_by_family_and_variant(&family, 1))
-                    .map(|g| crate::game::short_name(lang, g))
-                    .unwrap_or_else(|| family.clone());
+                let display = family_display_name(lang, &family, 0);
                 game_options.push(GameFilterOption {
                     pair: Some(family),
                     display,
@@ -722,33 +715,21 @@ fn replay_detail<'a>(
     let row_for_side = |label: String, side: Option<&tango_pvp::replay::metadata::Side>| -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
-        // Family short name ("BN6"), not the long variant string
-        // — the per-side card is tight and the family identifies
-        // the matchup uniquely enough for a replay listing.
-        let game = gi
-            .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-            .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
-            .map(|g| crate::game::short_name(lang, g))
-            .or_else(|| gi.map(|g| g.rom_family.clone()))
+        let game_line = gi
+            .map(|g| {
+                let mut s = family_display_name(lang, &g.rom_family, g.rom_variant);
+                if let Some(p) = g.patch.as_ref() {
+                    s.push_str(&format!(" · {} v{}", p.name, p.version));
+                }
+                s
+            })
             .unwrap_or_default();
-        let patch = gi
-            .and_then(|g| g.patch.as_ref())
-            .map(|p| format!("{} v{}", p.name, p.version));
-        let mut col = column![
+        let col = column![
             text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-            text(nick).size(TEXT_HEADING),
-            text(game).size(TEXT_CAPTION),
+            text(nick).size(TEXT_TITLE),
+            text(game_line).size(TEXT_CAPTION),
         ]
         .spacing(2);
-        if let Some(p) = patch {
-            col = col.push(
-                text(p)
-                    .size(TEXT_CAPTION)
-                    .style(|theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(theme.palette().primary),
-                    }),
-            );
-        }
         container(col).width(Length::Fill).into()
     };
 
@@ -763,8 +744,6 @@ fn replay_detail<'a>(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
-    // Title uses the local side's game short tag (BN6 / EXE5K / ...)
-    // — same shape as the list rows for at-a-glance recognition.
     let game_short = md
         .local_side
         .as_ref()
@@ -881,10 +860,16 @@ fn replay_detail<'a>(
             Space::new().height(8),
             row![
                 row_for_side(t(lang, "play-you"), md.local_side.as_ref()),
-                vertical_rule(1),
+                container(
+                    text("VS")
+                        .size(TEXT_DISPLAY)
+                        .style(save_view::muted_text_style),
+                )
+                .padding([0, 12]),
                 row_for_side(t(lang, "replays-opponent"), md.remote_side.as_ref()),
             ]
             .spacing(12)
+            .align_y(iced::Alignment::Center)
             .height(Length::Shrink),
             Space::new().height(8),
             text({
@@ -1146,6 +1131,14 @@ fn export_panel<'a>(
         .width(Fill)
         .style(iced::widget::container::bordered_box)
         .into()
+}
+
+/// "Mega Man Battle Network 6" — family-only i18n lookup, matching
+/// how the lobby renders the game line. Falls back to "{family}
+/// v{variant}" for unrecognized families.
+fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
+    crate::i18n::t_opt(lang, &format!("game-{family}"))
+        .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60

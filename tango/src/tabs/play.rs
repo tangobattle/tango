@@ -1215,21 +1215,27 @@ fn lobby_view<'a>(
             // 14 px dot with a soft primary-tinted glow when the
             // side is committed — reads as a "ready light" on a
             // console panel rather than a flat status pip.
+            // Padded so the dot lines up with the nickname row of
+            // the column to its right — the inner side row is
+            // top-aligned (Alignment::Start) so the dot doesn't
+            // drift when the card grows from a 2-line placeholder
+            // to a 3-line populated card.
             let dot_color = |ready: bool| -> Element<'static, Message> {
                 container(
-                    iced::widget::Space::new()
-                        .width(Length::Fixed(14.0))
-                        .height(Length::Fixed(14.0)),
-                )
-                .style(move |theme: &iced::Theme| {
-                    let bg = if ready {
-                        theme.palette().primary
-                    } else {
-                        iced::Color::from_rgb8(0x66, 0x66, 0x66)
-                    };
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(bg)),
-                        border: iced::Border {
+                    container(
+                        iced::widget::Space::new()
+                            .width(Length::Fixed(14.0))
+                            .height(Length::Fixed(14.0)),
+                    )
+                    .style(move |theme: &iced::Theme| {
+                        let bg = if ready {
+                            theme.palette().primary
+                        } else {
+                            iced::Color::from_rgb8(0x66, 0x66, 0x66)
+                        };
+                        iced::widget::container::Style {
+                            background: Some(iced::Background::Color(bg)),
+                            border: iced::Border {
                             radius: 7.0.into(),
                             ..Default::default()
                         },
@@ -1245,8 +1251,15 @@ fn lobby_view<'a>(
                         } else {
                             iced::Shadow::default()
                         },
-                        ..Default::default()
-                    }
+                            ..Default::default()
+                        }
+                    }),
+                )
+                .padding(iced::Padding {
+                    top: 20.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 0.0,
                 })
                 .into()
             };
@@ -1263,7 +1276,7 @@ fn lobby_view<'a>(
                         .spacing(2),
                     ]
                     .spacing(10)
-                    .align_y(Alignment::Center),
+                    .align_y(Alignment::Start),
                 )
                 .padding(6)
                 .width(Length::Fill)
@@ -1322,7 +1335,7 @@ fn lobby_view<'a>(
                     .spacing(2),
                 ]
                 .spacing(10)
-                .align_y(Alignment::Center),
+                .align_y(Alignment::Start),
             )
             .padding(6)
             .width(Length::Fill)
@@ -1700,8 +1713,8 @@ fn lobby_view<'a>(
     // the header — the conventional "back / quit" corner —
     // so it doesn't have to fight with the Ready CTA on the
     // right for the user's attention.
-    let cancel_button: Element<'a, Message> = widgets::labeled_icon_button(
-        Icon::X,
+    let leave_button: Element<'a, Message> = widgets::labeled_icon_button(
+        Icon::LogOut,
         t(lang, "play-cancel"),
         Message::NetplayDisconnect,
         STANDARD_PADDING,
@@ -1717,7 +1730,7 @@ fn lobby_view<'a>(
     }
     header_text_col = header_text_col.push(verdict_line);
     let header_row = row![
-        cancel_button,
+        leave_button,
         header_text_col,
         horizontal_space(),
         ready_button,
@@ -1725,16 +1738,23 @@ fn lobby_view<'a>(
     .spacing(12)
     .align_y(Alignment::Center);
 
-    // Central "VS" mark between the two player slots. Pure text,
-    // primary-tinted, no chrome — chrome made it look like a
-    // button you could click on. The size + color does the job
-    // of pulling focus on its own.
-    let vs_chip: Element<'a, Message> = text("VS")
-        .size(TEXT_DISPLAY)
-        .style(|theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(theme.palette().primary),
-        })
-        .into();
+    // Central "VS" mark between the two player slots. Muted text,
+    // shifted down with a fixed top padding so it lines up with
+    // the nickname row of the side cards — the row itself stays
+    // top-aligned (see below) so the cards don't shift around as
+    // the opponent's placeholder fills in.
+    let vs_chip: Element<'a, Message> = container(
+        text("VS")
+            .size(TEXT_DISPLAY)
+            .style(save_view::muted_text_style),
+    )
+    .padding(iced::Padding {
+        top: 17.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: 0.0,
+    })
+    .into();
     container(
         column![
             header_row,
