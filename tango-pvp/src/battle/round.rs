@@ -8,42 +8,27 @@ use crate::input::{Input, Pair, PairQueue, PartialInput};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// EWMA smoothing factor for the skew estimate. ≈0.15 gives peak corrective
-/// slowdown in ~1/α ≈ 7 frames after a rift opens, trading some noise
-/// rejection vs the older 0.06 for a markedly shorter dwell in the
-/// pitch-shifted audio regime.
-const SKEW_EWMA_ALPHA: f32 = 0.15;
+/// "Knee" of the power-law response curve, in frames of raw advantage
+/// delta. At |skew| = SKEW_SOFT_KNEE the adjustment is exactly 1 fps;
+/// below it the curve falls off sharply (acting as an implicit deadband
+/// that swallows sub-frame jitter), above it it grows super-linearly so
+/// big rifts close fast.
+///
+/// Matches legacy tango v4.x's `dtick`-based tuning. Kept on the raw
+/// `(local_adv - remote_adv)` rather than the previous halved form so the
+/// constant carries the same meaning as the v4 formula.
+const SKEW_SOFT_KNEE: f32 = 15.0;
 
-/// Smoothed-skew threshold at which an idle throttle engages. Tuned wide
-/// enough that the τ-delayed skew transient produced when both peers
-/// simultaneously accelerate out of a latched-slow state doesn't trip the
-/// controller back on — without that margin, the asymmetric throttle
-/// bistably locks both peers below 60.
-const SKEW_ENGAGE: f32 = 1.5;
+/// Power-law exponent. >1 means small skew → tiny adjustment (noise
+/// rejection) and large skew → very steep adjustment (catastrophic-rift
+/// recovery). 7/3 is the v4 value.
+const SKEW_EXPONENT: f32 = 7.0 / 3.0;
 
-/// Smoothed-skew threshold at which an engaged throttle releases. Below
-/// the engage threshold so a single noise sample that crosses RELEASE in
-/// one direction doesn't bounce back through ENGAGE in the other — the
-/// 1.2-frame hysteresis swallows speedup transients while still releasing
-/// promptly once the rift has actually closed.
-const SKEW_RELEASE: f32 = 0.3;
-
-/// Slope of the response curve in the small-skew (linear) region. The
-/// curve is `MAX_SLOWDOWN * tanh(x * SKEW_GAIN / MAX_SLOWDOWN)`, so for
-/// small x this reduces to `x * SKEW_GAIN` — identical to the old linear
-/// behaviour. Bigger than the documented "<2" limit that paired with
-/// α=0.06, but the faster α shortens the 1/α-frame filter lag enough that
-/// 2.5 stays well-damped — and closes a transient rift in roughly a third
-/// of the frames, keeping the audible slowdown shorter even though each
-/// frame's correction is sharper.
-const SKEW_GAIN: f32 = 2.5;
-
-/// Asymptote of the soft-knee response curve. The curve approaches this
-/// slowdown smoothly via tanh instead of slamming into it, so a multi-
-/// second peer hitch doesn't produce an audible discontinuity at the
-/// moment the controller would otherwise hard-cap. Practically reached
-/// only under catastrophic skew (peer CPU collapse).
-const MAX_SLOWDOWN: f32 = 30.0;
+/// Cap on the slowdown we'll apply (in fps). Only the leading peer
+/// corrects — the trailing peer relies on the leader slowing down to
+/// converge, which avoids both sides racing each other in opposite
+/// directions when their skew estimates disagree about who's ahead.
+const MAX_ADJUSTMENT: f32 = 30.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
@@ -61,15 +46,6 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// EWMA of recent skew samples ((my_adv - their_adv) / 2). Drives the
-    /// fps_target adjustment. Lazily seeded with the first sample so the
-    /// filter doesn't ramp out of 0 for the first 1/α frames.
-    skew_ewma: Option<f32>,
-    /// Schmitt-trigger state for the throttle: true once the EWMA crossed
-    /// SKEW_ENGAGE, cleared once it drops below SKEW_RELEASE. The
-    /// hysteresis keeps a brief speedup-induced skew bump from re-engaging
-    /// the throttle before both peers have had a chance to reach 60.
-    throttling: bool,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -104,8 +80,6 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            skew_ewma: None,
-            throttling: false,
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -287,57 +261,26 @@ impl Round {
         // GGPO-style time sync. local_advantage and last_remote_frame_advantage
         // both carry the symmetric network-delay term τ; their difference
         // isolates the asymmetric real-time clock skew between the two
-        // peers. Halved because the difference accumulates skew on both
-        // legs of the round trip.
+        // peers — kept un-halved so SKEW_SOFT_KNEE / SKEW_EXPONENT use the
+        // same units the legacy v4 throttle was tuned against.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
-        let skew = (local_advantage - remote_advantage) as f32 / 2.0;
+        let skew = (local_advantage - remote_advantage) as f32;
 
-        let avg = match self.skew_ewma {
-            Some(prev) => {
-                let next = SKEW_EWMA_ALPHA * skew + (1.0 - SKEW_EWMA_ALPHA) * prev;
-                self.skew_ewma = Some(next);
-                next
-            }
-            None => {
-                self.skew_ewma = Some(skew);
-                skew
-            }
-        };
-
-        // Asymmetric throttle: only the leading side corrects. If we're
-        // behind (avg < 0) the peer will see avg > 0 from their side and
-        // slow themselves, naturally converging to the slower client's
-        // sustainable rate. Trying to speed up here just races against
-        // them and causes oscillation.
-        //
-        // Schmitt-trigger engagement: we engage once `avg` crosses
-        // SKEW_ENGAGE and don't release until it drops back below
-        // SKEW_RELEASE. Without the hysteresis, two peers latched at the
-        // same slow rate can't escape — releasing one side immediately
-        // re-engages it via the τ-delayed skew bump that simultaneous
-        // speedup produces.
-        if self.throttling {
-            if avg < SKEW_RELEASE {
-                self.throttling = false;
-            }
-        } else if avg > SKEW_ENGAGE {
-            self.throttling = true;
-        }
-
-        // While engaged, shape the correction with a tanh soft knee that
-        // crosses zero at SKEW_RELEASE — adjustment fades smoothly to 0
-        // as we approach the release threshold instead of stepping off it.
-        // Linear at slope SKEW_GAIN for small (avg - RELEASE), asymptotic
-        // to MAX_SLOWDOWN for big ones.
-        let adjustment = if self.throttling {
-            let x = avg - SKEW_RELEASE;
-            -MAX_SLOWDOWN * (x * SKEW_GAIN / MAX_SLOWDOWN).tanh()
+        // Power-law on instantaneous skew, asymmetric: only the leading
+        // peer slows down. The exponent gives an implicit deadband
+        // (sub-knee skew → near-zero adjustment) so EWMA smoothing isn't
+        // needed to reject jitter, and the super-linear tail means a big
+        // rift gets crushed in a few frames instead of dragged out by a
+        // low-pass filter.
+        let adjustment = if skew > 0.0 {
+            let mag = (skew / SKEW_SOFT_KNEE).powf(SKEW_EXPONENT).min(MAX_ADJUSTMENT);
+            -mag
         } else {
             0.0
         };
 
-        let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_SLOWDOWN, EXPECTED_FPS);
+        let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_ADJUSTMENT, EXPECTED_FPS);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

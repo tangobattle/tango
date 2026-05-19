@@ -691,7 +691,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
             );
         }
         metrics = metrics.push(
-            text(format!("tps {:4.1}/{:4.1}", tps, fps_target))
+            text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
                 .style(save_view::muted_text_style),
