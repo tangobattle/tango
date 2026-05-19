@@ -2,7 +2,6 @@ use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPL
 use crate::i18n::{t, t_args};
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
-use iced::widget::rule::horizontal as horizontal_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -1724,28 +1723,33 @@ fn lobby_view<'a>(
             left: 0.0,
         })
         .into();
-    container(
-        column![
-            header_row,
-            iced::widget::row![
-                side(
-                    t(lang, "play-you"),
-                    Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
-                    lobby.local_ready,
-                ),
-                vs_chip,
-                side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
-            ]
-            .spacing(14)
-            // Top-align so the YOU slot doesn't bounce upward when
-            // the opponent's settings land and their card grows
-            // from a 2-line placeholder to a 3-line filled card.
-            .align_y(Alignment::Start),
-            horizontal_rule(1),
-            controls,
+    let sides_pane = container(
+        iced::widget::row![
+            side(
+                t(lang, "play-you"),
+                Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
+                lobby.local_ready,
+            ),
+            vs_chip,
+            side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
         ]
-        .spacing(12)
-        .padding(12),
+        .spacing(14)
+        // Top-align so the YOU slot doesn't bounce upward when
+        // the opponent's settings land and their card grows
+        // from a 2-line placeholder to a 3-line filled card.
+        .align_y(Alignment::Start),
+    )
+    .padding(widgets::PANE_PADDING)
+    .width(Fill)
+    .style(widgets::pane);
+    let controls_pane = container(controls)
+        .padding(widgets::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane);
+    container(
+        column![header_row, sides_pane, controls_pane]
+            .spacing(widgets::PANE_GAP)
+            .padding(widgets::PANE_GAP),
     )
     .width(Fill)
     .into()

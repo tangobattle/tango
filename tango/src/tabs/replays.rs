@@ -3,7 +3,6 @@ use crate::i18n::{t, t_args};
 use crate::widgets;
 use crate::{config, replays, save_view};
 use lucide_icons::Icon;
-use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -554,7 +553,7 @@ impl ReplaysState {
             })
             .collect();
 
-        let mut list = column![].spacing(2).padding(8);
+        let mut list = column![].spacing(2).padding(widgets::PANE_PADDING);
         for (idx, r) in filtered.iter().enumerate() {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
@@ -669,7 +668,8 @@ impl ReplaysState {
         }
         let left = container(scrollable(list).height(Fill))
             .width(Length::Fixed(360.0))
-            .height(Fill);
+            .height(Fill)
+            .style(widgets::pane);
 
         // Right panel.
         let right: Element<'_, Message> = if let Some(sel_path) = self.selected.as_ref() {
@@ -685,12 +685,14 @@ impl ReplaysState {
                 .center(Fill)
                 .into()
         };
+        let right = container(right).width(Fill).height(Fill).style(widgets::pane);
 
         column![
             top,
-            horizontal_rule(1),
-            row![left, vertical_rule(1), right].height(Fill),
+            row![left, right].spacing(widgets::PANE_GAP).height(Fill),
         ]
+        .spacing(widgets::PANE_GAP)
+        .padding(widgets::PANE_GAP)
         .height(Fill)
         .into()
     }
@@ -879,9 +881,7 @@ fn replay_detail<'a>(
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
-            Space::new().height(8),
-            horizontal_rule(1),
-            Space::new().height(8),
+            Space::new().height(12),
             row![
                 row_for_side(t(lang, "play-you"), md.local_side.as_ref()),
                 container(
@@ -907,11 +907,9 @@ fn replay_detail<'a>(
                 format!("{}: {}", t(lang, "replays-match-type"), label)
             })
             .size(TEXT_CAPTION),
-            Space::new().height(8),
-            horizontal_rule(1),
         ]
         .spacing(6)
-        .padding(16),
+        .padding(widgets::PANE_PADDING),
     )
     .width(Fill);
 

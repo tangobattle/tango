@@ -3,7 +3,6 @@ use crate::i18n::t;
 use crate::widgets;
 use crate::{game, save_view};
 use lucide_icons::Icon;
-use iced::widget::rule::{horizontal as horizontal_rule, vertical as vertical_rule};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -210,7 +209,7 @@ impl PatchesState {
             fb.cmp(&fa).then_with(|| a.cmp(b))
         });
 
-        let mut list = column![].spacing(2).padding(8);
+        let mut list = column![].spacing(2).padding(widgets::PANE_PADDING);
         for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
             let is_fav = config.favorite_patches.contains(*name);
@@ -252,7 +251,8 @@ impl PatchesState {
         }
         let left = container(scrollable(list).height(Fill))
             .width(Length::Fixed(280.0))
-            .height(Fill);
+            .height(Fill)
+            .style(widgets::pane);
 
         let right: Element<_> = if let Some(patch) = self.selected.as_ref().and_then(|n| patches.get(n)) {
             let mut versions: Vec<semver::Version> = patch.versions.keys().cloned().collect();
@@ -398,33 +398,33 @@ impl PatchesState {
             container(
                 column![
                     header,
-                    Space::new().height(8),
-                    horizontal_rule(1),
-                    Space::new().height(8),
+                    Space::new().height(12),
                     details,
                     Space::new().height(12),
                     text(t(lang, "patches-readme")).size(TEXT_HEADING),
-                    horizontal_rule(1),
                     Space::new().height(4),
                     scrollable(container(readme_body).padding(4)).height(Fill),
                 ]
                 .spacing(4)
-                .padding(16),
+                .padding(widgets::PANE_PADDING),
             )
             .width(Fill)
             .height(Fill)
+            .style(widgets::pane)
             .into()
         } else {
             container(text(t(lang, "patches-select-prompt")).size(TEXT_BODY))
                 .center(Fill)
+                .style(widgets::pane)
                 .into()
         };
 
         column![
             top,
-            horizontal_rule(1),
-            row![left, vertical_rule(1), right].height(Fill),
+            row![left, right].spacing(widgets::PANE_GAP).height(Fill),
         ]
+        .spacing(widgets::PANE_GAP)
+        .padding(widgets::PANE_GAP)
         .height(Fill)
         .into()
     }

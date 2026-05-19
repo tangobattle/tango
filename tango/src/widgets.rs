@@ -401,6 +401,39 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
     }
 }
 
+/// Standard internal padding for [`pane`] containers. Use this on
+/// `.padding(...)` so every demarcation pane has the same gap
+/// between its edge and its content.
+pub const PANE_PADDING: f32 = 12.0;
+/// Standard outer gap (column spacing / row spacing / outer padding)
+/// between sibling panes.
+pub const PANE_GAP: f32 = 8.0;
+
+/// Minimal "pane" demarcation — a barely-perceptible tinted plate
+/// with a small radius and no border or shadow. Used where we used
+/// to drop `horizontal_rule` / `vertical_rule` between regions; the
+/// page background shows through the gaps between panes and that's
+/// what separates them, no explicit lines needed. Pair with
+/// `.padding(PANE_PADDING)` at the call site for consistent
+/// breathing room across the app.
+pub fn pane(theme: &Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    let text = theme.palette().text;
+    // A 5% mix toward the foreground is enough contrast against the
+    // page bg to read as a region without competing with content.
+    let plate = mix(bg, text, 0.05);
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(plate)),
+        text_color: Some(p.background.weak.text),
+        border: iced::Border {
+            radius: 4.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     iced::widget::container::Style {

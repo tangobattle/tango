@@ -2,7 +2,6 @@ use crate::app::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
 use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::widgets;
 use crate::{config, input, save_view};
-use iced::widget::rule::vertical as vertical_rule;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -248,10 +247,11 @@ pub fn view<'a>(
             side_btn("settings-section-about", SettingsTab::About),
         ]
         .spacing(4)
-        .padding(12),
+        .padding(widgets::PANE_PADDING),
     )
     .width(Length::Fixed(140.0))
-    .height(Fill);
+    .height(Fill)
+    .style(widgets::pane);
 
     let body: Element<'a, Message> = match active {
         SettingsTab::General => settings_general(lang, config),
@@ -267,9 +267,14 @@ pub fn view<'a>(
     // Scrollable wraps the body once at the dispatch layer —
     // each settings_* pane returns a plain column with its own
     // inner padding so the scrollbar hugs the right edge.
-    let body_wrap = scrollable(body).width(Fill).height(Fill);
+    let body_wrap = container(scrollable(body).width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
 
-    row![sidebar, vertical_rule(1), body_wrap]
+    row![sidebar, body_wrap]
+        .spacing(widgets::PANE_GAP)
+        .padding(widgets::PANE_GAP)
         .width(Fill)
         .height(Fill)
         .into()
@@ -348,7 +353,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         ),
     ]
     .spacing(14)
-    .padding(20)
+    .padding(widgets::PANE_PADDING)
     .into()
 }
 
@@ -390,7 +395,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
-    .padding(20)
+    .padding(widgets::PANE_PADDING)
     .into()
 }
 
@@ -424,7 +429,7 @@ fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
-    .padding(20)
+    .padding(widgets::PANE_PADDING)
     .into()
 }
 
@@ -613,7 +618,7 @@ fn settings_about<'a>(
         // the nav scanline at the top, the updater section
         // breathes at the page end, and link text doesn't slam
         // the left edge.
-        .padding(20)
+        .padding(widgets::PANE_PADDING)
         .into()
 }
 
