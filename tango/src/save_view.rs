@@ -161,7 +161,7 @@ pub fn view<'a>(
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
 
-    let mut tab_row = row![].spacing(2).align_y(Alignment::End);
+    let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
     for tab in &available {
         tab_row = tab_row.push(widgets::tab_button(
             tab_icon(*tab),
