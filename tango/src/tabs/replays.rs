@@ -517,10 +517,11 @@ impl ReplaysState {
                 ),
             ]
             .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(8),
+            .align_y(Alignment::Center),
         )
-        .width(Fill);
+        .padding(widgets::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane);
 
         // Left list — AND of game + opponent filters. Opponent
         // match is case-insensitive substring (mirrors the
@@ -553,7 +554,7 @@ impl ReplaysState {
             })
             .collect();
 
-        let mut list = column![].spacing(2).padding(widgets::PANE_PADDING);
+        let mut list = column![].spacing(2).padding(8);
         for (idx, r) in filtered.iter().enumerate() {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
@@ -671,21 +672,24 @@ impl ReplaysState {
             .height(Fill)
             .style(widgets::pane);
 
-        // Right panel.
+        // Right panel: replay_detail returns a column of panes
+        // when something is selected; the empty-state collapses to
+        // a single centered pane.
         let right: Element<'_, Message> = if let Some(sel_path) = self.selected.as_ref() {
             if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
                 replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
             } else {
                 container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
+                    .style(widgets::pane)
                     .into()
             }
         } else {
             container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
                 .center(Fill)
+                .style(widgets::pane)
                 .into()
         };
-        let right = container(right).width(Fill).height(Fill).style(widgets::pane);
 
         column![
             top,
@@ -769,38 +773,9 @@ fn replay_detail<'a>(
         .unwrap_or_else(|| "?".to_string());
     let title = format!("{game_short} @ {}", md.link_code);
 
-    // Embedded save view for the local side. App fills `state.loaded`
-    // when a replay is selected; until then (or if the parse fails)
-    // we show a stub. No outer scrollable — save_view manages its own
-    // per-tab scrolling (Folder list etc.). Wrapping again in a
-    // scrollable here made Fill-height children inside save_view
-    // think they had infinite vertical room, producing a meter-tall
-    // scrollbar.
-    let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        // No outer padding: save_view brings its own tab strip +
-        // body insets, and the extra 8 px container padding made
-        // the embedded view feel awkwardly hemmed-in against the
-        // replay-detail card it sits inside.
-        container(save_view::view(lang, loaded, &state.save_view, false, None).map(Message::SaveViewAction))
-            .height(Fill)
-            .into()
-    } else {
-        container(
-            text(t(lang, "save-empty"))
-                .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
-        )
-        .padding(8)
-        .into()
-    };
-
-    // Replay-detail layout: a padded header column at the top
-    // (title row, export panel, metadata, side cards, match-type
-    // line, divider) and the save-view preview directly under
-    // it WITHOUT any extra wrapper padding. save_view brings
-    // its own tab strip + body insets, so wrapping it in more
-    // padding here makes the embedded view feel cramped.
-    let header = container(
+    // Title + metadata pane: title row with action buttons, then
+    // export panel, timestamp, file path.
+    let title_pane = container(
         column![
             row![
                 // Title in a Fill container so a long link code
@@ -881,7 +856,17 @@ fn replay_detail<'a>(
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
-            Space::new().height(12),
+        ]
+        .spacing(6),
+    )
+    .width(Fill)
+    .padding(widgets::PANE_PADDING)
+    .style(widgets::pane);
+
+    // Matchup pane: you-vs-opponent side cards and the match-type
+    // line under them.
+    let matchup_pane = container(
+        column![
             row![
                 row_for_side(t(lang, "play-you"), md.local_side.as_ref()),
                 container(
@@ -895,7 +880,6 @@ fn replay_detail<'a>(
             .spacing(12)
             .align_y(iced::Alignment::Center)
             .height(Length::Shrink),
-            Space::new().height(8),
             text({
                 let family = md
                     .local_side
@@ -908,12 +892,32 @@ fn replay_detail<'a>(
             })
             .size(TEXT_CAPTION),
         ]
-        .spacing(6)
-        .padding(widgets::PANE_PADDING),
+        .spacing(8),
     )
-    .width(Fill);
+    .width(Fill)
+    .padding(widgets::PANE_PADDING)
+    .style(widgets::pane);
 
-    container(column![header, preview].spacing(0))
+    // Save view contributes its own pane pair (tab strip + body)
+    // when a save is loaded; otherwise a single placeholder pane
+    // explaining the empty state.
+    let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
+        save_view::view(lang, loaded, &state.save_view, false, None)
+            .map(Message::SaveViewAction)
+    } else {
+        container(
+            text(t(lang, "save-empty"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style),
+        )
+        .padding(widgets::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane)
+        .into()
+    };
+
+    column![title_pane, matchup_pane, preview]
+        .spacing(widgets::PANE_GAP)
         .width(Fill)
         .height(Fill)
         .into()

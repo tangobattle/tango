@@ -231,25 +231,29 @@ pub fn view<'a>(
     // Pill style matches the global top nav + save_view sub-nav
     // so every tab affordance in the app reads as the same
     // widget family.
-    let side_btn = |key: &'static str, tab: SettingsTab| {
-        button(text(t(lang, key)))
-            .padding(STANDARD_PADDING)
-            .width(Fill)
-            .style(widgets::pill_tab_style(tab == active))
-            .on_press(Message::TabSelected(tab))
+    let side_btn = |icon: Icon, key: &'static str, tab: SettingsTab| {
+        button(
+            row![icon.widget(), text(t(lang, key))]
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .padding(STANDARD_PADDING)
+        .width(Fill)
+        .style(widgets::pill_tab_style(tab == active))
+        .on_press(Message::TabSelected(tab))
     };
     let sidebar = container(
         column![
-            side_btn("settings-section-general", SettingsTab::General),
-            side_btn("settings-section-graphics", SettingsTab::Graphics),
-            side_btn("settings-section-input", SettingsTab::Input),
-            side_btn("settings-section-network", SettingsTab::Netplay),
-            side_btn("settings-section-about", SettingsTab::About),
+            side_btn(Icon::SlidersHorizontal, "settings-section-general", SettingsTab::General),
+            side_btn(Icon::Monitor, "settings-section-graphics", SettingsTab::Graphics),
+            side_btn(Icon::Gamepad2, "settings-section-input", SettingsTab::Input),
+            side_btn(Icon::Globe, "settings-section-network", SettingsTab::Netplay),
+            side_btn(Icon::Info, "settings-section-about", SettingsTab::About),
         ]
         .spacing(4)
-        .padding(widgets::PANE_PADDING),
+        .padding(8),
     )
-    .width(Length::Fixed(140.0))
+    .width(Length::Fixed(160.0))
     .height(Fill)
     .style(widgets::pane);
 

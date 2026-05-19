@@ -660,35 +660,27 @@ pub fn danger_button(theme: &Theme, status: button::Status) -> button::Style {
     tinted_button(theme, status, theme.palette().danger)
 }
 
-/// Zebra row style for data tables (patch cards, modcards, ABD
-/// sections). Returns a container::Style closure that paints a
-/// faint text-tinted wash on odd rows and nothing on even rows,
-/// plus a thin rounded corner so the stripe doesn't bleed flush
-/// to the panel edge.
+/// Zebra row style for data tables. Odd rows get a faint text-
+/// tinted wash (alpha 0.05 dark / 0.04 light); even rows are
+/// transparent and show the pane plate. Flat — no rounded corners
+/// — since rows sit flush against the pane edges and rounded
+/// per-row corners look like accidental indents.
 pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Style {
     move |theme: &Theme| {
-        if idx % 2 == 1 {
-            let p = theme.extended_palette();
-            let text = theme.palette().text;
-            let stripe = if p.is_dark {
-                iced::Color { a: 0.06, ..text }
-            } else {
-                iced::Color { a: 0.04, ..text }
-            };
-            iced::widget::container::Style {
-                background: Some(iced::Background::Color(stripe)),
-                text_color: Some(text),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 0.0,
-                    color: iced::Color::TRANSPARENT,
-                },
-                shadow: iced::Shadow::default(),
-                snap: false,
-            }
+        let p = theme.extended_palette();
+        let text = theme.palette().text;
+        let stripe = if idx % 2 == 1 {
+            Some(iced::Background::Color(iced::Color {
+                a: if p.is_dark { 0.05 } else { 0.04 },
+                ..text
+            }))
         } else {
-            let _ = theme;
-            iced::widget::container::Style::default()
+            None
+        };
+        iced::widget::container::Style {
+            background: stripe,
+            text_color: Some(text),
+            ..Default::default()
         }
     }
 }

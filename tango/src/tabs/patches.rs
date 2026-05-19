@@ -1,4 +1,4 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
 use crate::{game, save_view};
@@ -189,7 +189,10 @@ impl PatchesState {
                 STANDARD_PADDING,
             ));
 
-        let top = container(top_row.padding(8)).width(Fill);
+        let top = container(top_row)
+            .padding(widgets::PANE_PADDING)
+            .width(Fill)
+            .style(widgets::pane);
 
         // Apply the search filter case-insensitively against both
         // the patch name (e.g. `bn6-foo`) and human title.
@@ -209,7 +212,7 @@ impl PatchesState {
             fb.cmp(&fa).then_with(|| a.cmp(b))
         });
 
-        let mut list = column![].spacing(2).padding(widgets::PANE_PADDING);
+        let mut list = column![].spacing(2).padding(8);
         for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
             let is_fav = config.favorite_patches.contains(*name);
@@ -395,23 +398,27 @@ impl PatchesState {
                 .map(Message::ReadmeLinkClicked)
             };
 
-            container(
-                column![
-                    header,
-                    Space::new().height(12),
-                    details,
-                    Space::new().height(12),
-                    text(t(lang, "patches-readme")).size(TEXT_HEADING),
-                    Space::new().height(4),
-                    scrollable(container(readme_body).padding(4)).height(Fill),
-                ]
-                .spacing(4)
-                .padding(widgets::PANE_PADDING),
+            let meta_pane = container(
+                column![header, Space::new().height(12), details,].spacing(4),
             )
             .width(Fill)
+            .padding(widgets::PANE_PADDING)
+            .style(widgets::pane);
+            // README is flush with the pane edges (no outer
+            // padding) so the scrollbar hugs the pane; the markdown
+            // body has its own PANE_PADDING inset so the prose
+            // doesn't slam the pane wall.
+            let readme_pane = container(scrollable(
+                container(readme_body).padding(widgets::PANE_PADDING),
+            ))
+            .width(Fill)
             .height(Fill)
-            .style(widgets::pane)
-            .into()
+            .style(widgets::pane);
+            column![meta_pane, readme_pane]
+                .spacing(widgets::PANE_GAP)
+                .width(Fill)
+                .height(Fill)
+                .into()
         } else {
             container(text(t(lang, "patches-select-prompt")).size(TEXT_BODY))
                 .center(Fill)

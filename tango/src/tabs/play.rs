@@ -558,29 +558,18 @@ impl PlayState {
         // ship settings on the wire, so the visible info during
         // the handshake exactly matches what gets sent.
         let local_fallback = self.make_local_settings(config, netplay_lobby, scanners);
-        let body: Element<'a, Message> = if show_lobby {
-            column![
-                container(self.body(lang, scanners, loaded, streamer_mode, config, netplay_phase))
-                    .width(Fill)
-                    .height(Fill),
-                widgets::hud_scanline(),
-                container(lobby_view(
-                    lang,
-                    netplay_lobby,
-                    netplay_phase,
-                    self.local_game,
-                    scanners,
-                    loaded.is_some(),
-                    local_fallback,
-                    streamer_mode,
-                ))
-                .width(Fill),
-            ]
-            .height(Fill)
-            .into()
-        } else {
-            self.body(lang, scanners, loaded, streamer_mode, config, netplay_phase)
-        };
+        let save_body = self.body(lang, scanners, loaded, streamer_mode, config, netplay_phase);
+
+        // Selector strip + save-view body live inside a single
+        // PANE_GAP-padded column so every pane in that area shares
+        // the same inset from the window edges and gap from one
+        // another. The hud_scanline + bottom strip / lobby view
+        // sit OUTSIDE that padding so they remain edge-to-edge
+        // bottom bars.
+        let inner = column![self.selector_strip(lang, scanners, config), save_body,]
+            .spacing(widgets::PANE_GAP)
+            .padding(widgets::PANE_GAP)
+            .height(Fill);
 
         let mut col = column![].width(Fill).height(Fill);
         // After-the-fact failure banner (e.g. PvP build failed,
@@ -592,14 +581,28 @@ impl PlayState {
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
-        col = col.push(self.selector_strip(lang, scanners, config)).push(body);
+        col = col.push(inner).push(widgets::hud_scanline());
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby) the lobby_view IS the bottom band
-        // — it carries its own scanline separator and Cancel
-        // button. Otherwise the normal bottom_strip handles the
-        // link code + Fight CTA.
-        if !show_lobby {
-            col = col.push(widgets::hud_scanline()).push(self.bottom_strip(lang));
+        // — it carries the verdict/cancel/ready chrome. Otherwise
+        // the normal bottom_strip handles the link code + Fight
+        // CTA.
+        if show_lobby {
+            col = col.push(
+                container(lobby_view(
+                    lang,
+                    netplay_lobby,
+                    netplay_phase,
+                    self.local_game,
+                    scanners,
+                    loaded.is_some(),
+                    local_fallback,
+                    streamer_mode,
+                ))
+                .width(Fill),
+            );
+        } else {
+            col = col.push(self.bottom_strip(lang));
         }
         col.into()
     }
@@ -914,8 +917,10 @@ impl PlayState {
             }
         };
 
-        container(column![game_row, save_row].spacing(6).padding(8))
+        container(column![game_row, save_row].spacing(6))
+            .padding(widgets::PANE_PADDING)
             .width(Fill)
+            .style(widgets::pane)
             .into()
     }
 
@@ -1746,8 +1751,12 @@ fn lobby_view<'a>(
         .padding(widgets::PANE_PADDING)
         .width(Fill)
         .style(widgets::pane);
+    let header_pane = container(header_row)
+        .padding(widgets::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane);
     container(
-        column![header_row, sides_pane, controls_pane]
+        column![header_pane, sides_pane, controls_pane]
             .spacing(widgets::PANE_GAP)
             .padding(widgets::PANE_GAP),
     )
