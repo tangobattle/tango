@@ -699,8 +699,25 @@ impl App {
                 // SetMatchType / SetInputDelay. The dedupe inside
                 // netplay::State::update::SendLocalSettings makes
                 // unchanged dispatches a no-op.
+                let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 let task = self.netplay.update(m).map(Message::Netplay);
-                iced::Task::batch([task, self.resend_settings_if_lobby()])
+                let became_lobby =
+                    !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
+                // Opponent just completed the handshake — flash the
+                // taskbar / bounce the dock so the lobby host
+                // notices even if Tango isn't focused. No-op if the
+                // window is already focused (per iced docs).
+                let attention = if became_lobby {
+                    iced::window::latest().and_then(|id| {
+                        iced::window::request_user_attention(
+                            id,
+                            Some(iced::window::UserAttention::Critical),
+                        )
+                    })
+                } else {
+                    iced::Task::none()
+                };
+                iced::Task::batch([task, self.resend_settings_if_lobby(), attention])
             }
             Message::PvpSessionBuilt(slot) => {
                 let Some(result) = slot.lock().take() else {
@@ -1196,18 +1213,33 @@ impl App {
             let cb = |current: usize, total: usize| {
                 let _ = progress_tx.lock().unbounded_send((current, total));
             };
-            let result = tango_pvp::replay::export::export(
-                &local_rom,
-                local_hooks,
-                &remote_rom,
-                remote_hooks,
-                &[replay],
-                &selected_rounds,
-                &output_for_task,
-                &settings,
-                cb,
-            )
-            .await
+            let result = if user_settings.twosided {
+                tango_pvp::replay::export::export_twosided(
+                    &local_rom,
+                    local_hooks,
+                    &remote_rom,
+                    remote_hooks,
+                    &[replay],
+                    &selected_rounds,
+                    &output_for_task,
+                    &settings,
+                    cb,
+                )
+                .await
+            } else {
+                tango_pvp::replay::export::export(
+                    &local_rom,
+                    local_hooks,
+                    &remote_rom,
+                    remote_hooks,
+                    &[replay],
+                    &selected_rounds,
+                    &output_for_task,
+                    &settings,
+                    cb,
+                )
+                .await
+            }
             .map(|()| output_for_task)
             .map_err(|e| format!("{e}"));
             *done_arc_task.lock() = Some(result);

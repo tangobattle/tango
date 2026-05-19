@@ -57,6 +57,7 @@ pub enum Message {
     SetExportScale(u8),
     SetExportLossless(bool),
     SetExportDisableBgm(bool),
+    SetExportTwosided(bool),
     /// Toggle the Nth round in `selected_rounds`.
     ToggleExportRound(usize, bool),
     /// Open / close the inline export-options panel. Distinct
@@ -114,6 +115,10 @@ pub struct ExportSettings {
     pub scale: u8,
     pub lossless: bool,
     pub disable_bgm: bool,
+    /// Render both players' screens side-by-side (480x160 frame)
+    /// instead of just the local POV. Routes the export through
+    /// `tango_pvp::replay::export::export_twosided`.
+    pub twosided: bool,
 }
 
 impl Default for ExportSettings {
@@ -122,6 +127,7 @@ impl Default for ExportSettings {
             scale: 5,
             lossless: false,
             disable_bgm: false,
+            twosided: false,
         }
     }
 }
@@ -315,6 +321,10 @@ impl ReplaysState {
             }
             Message::SetExportDisableBgm(b) => {
                 self.export_settings.disable_bgm = b;
+                None
+            }
+            Message::SetExportTwosided(b) => {
+                self.export_settings.twosided = b;
                 None
             }
             Message::ToggleExportRound(idx, picked) => {
@@ -1068,10 +1078,18 @@ fn export_panel<'a>(
     } else {
         bgm_chk.on_toggle(Message::SetExportDisableBgm).into()
     };
+    let twosided_chk = iced::widget::checkbox(settings.twosided)
+        .label(t(lang, "replays-export-twosided"))
+        .style(widgets::chunky_checkbox);
+    let twosided_chk: Element<'a, Message> = if in_flight {
+        twosided_chk.into()
+    } else {
+        twosided_chk.on_toggle(Message::SetExportTwosided).into()
+    };
     // Round-selection row — only shown for multi-round replays
     // since a single-round replay's "rounds" selector is pointless.
     let mut col = column![
-        row![column![scale_label, scale_slider].spacing(2), lossless_chk, bgm_chk,]
+        row![column![scale_label, scale_slider].spacing(2), lossless_chk, bgm_chk, twosided_chk,]
             .spacing(16)
             .align_y(Alignment::Center)
     ]

@@ -149,6 +149,7 @@ replays-export-scale = Scale
 replays-export-scale-na-lossless = (lossless — scale ignored)
 replays-export-lossless = Lossless
 replays-export-disable-bgm = Mute music
+replays-export-twosided = Two-sided
 replays-export-rounds = Rounds
 replays-export-save-as = Save as…
 playback-close = Close
