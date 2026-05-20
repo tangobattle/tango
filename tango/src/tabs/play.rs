@@ -1370,7 +1370,7 @@ fn lobby_view<'a>(
                     // literal-only macro and hit the Fluent loader directly.
                     use fluent_templates::Loader;
                     crate::i18n::LOCALES
-                        .lookup(lang, &format!("game-{family}"))
+                        .try_lookup(lang, &format!("game-{family}"))
                         .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
                 })
                 .unwrap_or_else(|| t!(lang, "lobby-no-game"));
@@ -1593,7 +1593,7 @@ fn lobby_view<'a>(
     };
 
     let match_row = setting_row(
-        text(t!(lang, "replays-match-type"))
+        text(t!(lang, "lobby-match-type"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1899,7 +1899,7 @@ impl SaveTemplateOption {
         // literal-only macro and hit the Fluent loader directly.
         use fluent_templates::Loader;
         let display = crate::i18n::LOCALES
-            .lookup(lang, &format!("game-{family}.save-{key_suffix}"))
+            .try_lookup(lang, &format!("game-{family}.save-{key_suffix}"))
             .unwrap_or_else(|| {
                 if raw.is_empty() {
                     t!(lang, "save-template-default")

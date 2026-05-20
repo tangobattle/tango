@@ -1183,7 +1183,7 @@ fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) ->
     // macro and hit the Fluent loader directly.
     use fluent_templates::Loader;
     crate::i18n::LOCALES
-        .lookup(lang, &format!("game-{family}"))
+        .try_lookup(lang, &format!("game-{family}"))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 

@@ -29,7 +29,7 @@ pub fn make_game_info(
     // Dynamic lookup keyed by the gamedb family — bypass the
     // literal-only t! macro and hit the Fluent loader directly.
     let mut title = LOCALES
-        .lookup(language, &format!("game-{}", family))
+        .try_lookup(language, &format!("game-{}", family))
         .unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));

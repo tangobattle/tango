@@ -73,6 +73,7 @@ lobby-link-code = リンクコード: { $code }
 lobby-direct-host = ポート { $port } でホスト中
 lobby-direct-connect = { $target } に接続中
 lobby-handshake = 設定交換中…
+lobby-match-type = マッチタイプ
 lobby-input-delay = 入力遅延（フレーム）
 lobby-input-delay-suggest = Pingから推奨
 lobby-no-match-types = （このゲームには対戦モードがありません）

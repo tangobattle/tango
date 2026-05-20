@@ -35,10 +35,12 @@ fluent_templates::static_loader! {
 }
 
 /// Look up `key` in the bundle; returns `None` if the locale (and
-/// the fallback locale) don't define it. Prefer this over [`t`]
-/// when the caller branches on "is the string actually defined".
+/// the fallback locale) don't define it, OR if the template references
+/// a placeholder the caller didn't pass — `try_lookup` (fluent-templates
+/// 0.14) downgrades format errors to `None` instead of panicking the
+/// way `lookup` does.
 pub fn t_opt(lang: &unic_langid::LanguageIdentifier, key: &str) -> Option<String> {
-    LOCALES.lookup(lang, key)
+    LOCALES.try_lookup(lang, key)
 }
 
 pub fn t(lang: &unic_langid::LanguageIdentifier, key: &str) -> String {
@@ -49,15 +51,18 @@ pub fn t(lang: &unic_langid::LanguageIdentifier, key: &str) -> String {
 }
 
 /// Like [`t_opt`], but substitutes Fluent placeholders. Returns
-/// `None` if the locale (and fallback locale) don't define `key`.
+/// `None` if the locale (and fallback locale) don't define `key`
+/// or if formatting fails (e.g. a placeholder we didn't pass).
 pub fn t_args_opt(
     lang: &unic_langid::LanguageIdentifier,
     key: &str,
     args: &[(&'static str, FluentValue<'_>)],
 ) -> Option<String> {
-    let map: std::collections::HashMap<&str, FluentValue<'_>> =
-        args.iter().map(|(k, v)| (*k, v.clone())).collect();
-    LOCALES.lookup_with_args(lang, key, &map)
+    let map: std::collections::HashMap<std::borrow::Cow<'static, str>, FluentValue<'_>> = args
+        .iter()
+        .map(|(k, v)| (std::borrow::Cow::Borrowed(*k), v.clone()))
+        .collect();
+    LOCALES.try_lookup_with_args(lang, key, &map)
 }
 
 /// Like [`t`], but substitutes Fluent placeholders. Pass each

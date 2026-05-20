@@ -116,6 +116,7 @@ lobby-link-code = Код ссылки: { $code }
 lobby-direct-host = Хостинг на порту: { $port }
 lobby-direct-connect = Подключение к: { $target }
 lobby-handshake = Обмен настройками…
+lobby-match-type = Тип матча
 lobby-input-delay = Задержка ввода (кадры)
 lobby-input-delay-suggest = Предложить по пингу
 lobby-no-match-types = (нет типов матча для этой игры)

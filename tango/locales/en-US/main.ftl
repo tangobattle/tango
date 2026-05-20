@@ -73,10 +73,12 @@ lobby-link-code = Link code: { $code }
 lobby-direct-host = Hosting on port: { $port }
 lobby-direct-connect = Connecting to: { $target }
 lobby-handshake = Exchanging settings…
+lobby-match-type = Match type
 lobby-input-delay = Input delay (frames)
 lobby-input-delay-suggest = Suggest based on ping
 lobby-no-match-types = (no match types for this game)
 lobby-pick-game-first = Pick a game first
+
 lobby-compat-ok = Compatible — ready to play.
 lobby-compat-missing-game = One side hasn't picked a game.
 lobby-compat-missing-rom = Game or patch isn't installed on both sides.

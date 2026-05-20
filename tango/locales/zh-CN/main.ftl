@@ -116,6 +116,7 @@ lobby-link-code = 链接代码：{ $code }
 lobby-direct-host = 在端口 { $port } 上托管
 lobby-direct-connect = 连接到：{ $target }
 lobby-handshake = 交换设置中…
+lobby-match-type = 对战类型
 lobby-input-delay = 输入延迟（帧）
 lobby-input-delay-suggest = 根据延迟推荐
 lobby-no-match-types = （此游戏没有对战类型）

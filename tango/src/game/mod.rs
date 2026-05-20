@@ -141,10 +141,12 @@ pub fn region_to_language(region: tango_gamedb::Region) -> unic_langid::Language
 pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     // Truly dynamic key (one per family/variant pair) — bypass the
     // literal-only t!/t_opt! macros and hit the Fluent loader directly.
+    // `try_lookup` returns None on miss or format error (vs `lookup`
+    // which panics on format errors and returns a sentinel on miss).
     let (family, variant) = game.family_and_variant();
     LOCALES
-        .lookup(lang, &format!("game-{family}.variant-{variant}"))
-        .or_else(|| LOCALES.lookup(lang, &format!("game-{family}")))
+        .try_lookup(lang, &format!("game-{family}.variant-{variant}"))
+        .or_else(|| LOCALES.try_lookup(lang, &format!("game-{family}")))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
@@ -154,7 +156,7 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
 pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
     LOCALES
-        .lookup(lang, &format!("game-{family}.short"))
+        .try_lookup(lang, &format!("game-{family}.short"))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
@@ -168,7 +170,7 @@ pub fn match_type_name(
     match_subtype: u8,
 ) -> String {
     LOCALES
-        .lookup(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
+        .try_lookup(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
         .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }
 

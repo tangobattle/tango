@@ -116,6 +116,7 @@ lobby-link-code = Mã kết nối: { $code }
 lobby-direct-host = Đang lưu trữ trên cổng: { $port }
 lobby-direct-connect = Đang kết nối tới: { $target }
 lobby-handshake = Trao đổi cài đặt…
+lobby-match-type = Kiểu trận
 lobby-input-delay = Độ trễ nhập (khung hình)
 lobby-input-delay-suggest = Đề xuất theo ping
 lobby-no-match-types = (không có kiểu trận cho game này)

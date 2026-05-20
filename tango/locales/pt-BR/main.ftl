@@ -116,6 +116,7 @@ lobby-link-code = Código de conexão: { $code }
 lobby-direct-host = Hospedando na porta: { $port }
 lobby-direct-connect = Conectando a: { $target }
 lobby-handshake = Trocando ajustes…
+lobby-match-type = Tipo de partida
 lobby-input-delay = Atraso de entrada (frames)
 lobby-input-delay-suggest = Sugerir com base no ping
 lobby-no-match-types = (sem tipos de partida para este jogo)

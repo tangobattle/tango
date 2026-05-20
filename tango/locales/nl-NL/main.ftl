@@ -116,6 +116,7 @@ lobby-link-code = Link code: { $code }
 lobby-direct-host = Hosten op poort: { $port }
 lobby-direct-connect = Verbinden met: { $target }
 lobby-handshake = Instellingen uitwisselen…
+lobby-match-type = Matchtype
 lobby-input-delay = Inputvertraging (frames)
 lobby-input-delay-suggest = Voorstellen op basis van ping
 lobby-no-match-types = (geen matchtypes voor dit spel)
