@@ -201,6 +201,11 @@ pub enum SaveAction {
     NewSave {
         draft: String,
         template: Option<String>,
+        /// The auto-generated default we last wrote into `draft`. While
+        /// the user hasn't typed over it, switching templates regenerates
+        /// the suggestion; once they edit it, this is `None` and we leave
+        /// their value alone.
+        auto_default: Option<String>,
     },
 }
 
@@ -427,13 +432,6 @@ impl PlayState {
             }
             Message::SaveNewStart => {
                 let saves_dir = config.saves_path();
-                let mut draft = "new save".to_string();
-                for n in 2..100 {
-                    if !saves_dir.join(format!("{draft}.sav")).exists() {
-                        break;
-                    }
-                    draft = format!("new save {n}");
-                }
                 // Auto-select if only one template is offered;
                 // otherwise leave None so the user has to pick
                 // explicitly (Confirm stays disabled until they do).
@@ -444,18 +442,47 @@ impl PlayState {
                         None
                     }
                 });
-                self.save_action = SaveAction::NewSave { draft, template };
+                let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or("");
+                let draft = disambiguate_save_name(
+                    &saves_dir,
+                    &suggest_save_name(&config.language, family, template.as_deref()),
+                );
+                self.save_action = SaveAction::NewSave {
+                    auto_default: Some(draft.clone()),
+                    draft,
+                    template,
+                };
                 None
             }
             Message::SaveNewDraftChanged(s) => {
-                if let SaveAction::NewSave { draft, .. } = &mut self.save_action {
+                if let SaveAction::NewSave {
+                    draft, auto_default, ..
+                } = &mut self.save_action
+                {
+                    if auto_default.as_deref() != Some(s.as_str()) {
+                        *auto_default = None;
+                    }
                     *draft = s;
                 }
                 None
             }
             Message::SaveNewTemplateSelected(name) => {
-                if let SaveAction::NewSave { template, .. } = &mut self.save_action {
+                if let SaveAction::NewSave {
+                    draft,
+                    template,
+                    auto_default,
+                } = &mut self.save_action
+                {
                     *template = Some(name);
+                    if auto_default.as_deref() == Some(draft.as_str()) {
+                        let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or("");
+                        let new_draft = disambiguate_save_name(
+                            &config.saves_path(),
+                            &suggest_save_name(&config.language, family, template.as_deref()),
+                        );
+                        *draft = new_draft.clone();
+                        *auto_default = Some(new_draft);
+                    }
                 }
                 None
             }
@@ -463,6 +490,7 @@ impl PlayState {
                 let SaveAction::NewSave {
                     draft,
                     template: Some(template),
+                    ..
                 } = &self.save_action
                 else {
                     return None;
@@ -860,7 +888,7 @@ impl PlayState {
             .spacing(8)
             .align_y(Alignment::Center)
             .into(),
-            SaveAction::NewSave { draft, template } => {
+            SaveAction::NewSave { draft, template, .. } => {
                 // Real template names from disk — no synthesized
                 // "(default)" entry. Each option carries the raw
                 // name plus a locale-aware display label so the
@@ -1100,6 +1128,53 @@ fn resolve_remembered_save(
         .map(|rel| config.data_relative_to_absolute(rel))
         .filter(|p| saves_for_game.map(|v| v.iter().any(|s| s.path == *p)).unwrap_or(false));
     remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
+}
+
+/// Localized "<game-short> <template-display>" (or just "<game-short>"
+/// when no template is chosen yet), with filesystem-unsafe characters
+/// stripped so it can be dropped straight into the new-save text field.
+fn suggest_save_name(
+    lang: &unic_langid::LanguageIdentifier,
+    family: &str,
+    template: Option<&str>,
+) -> String {
+    let game = crate::i18n::t_opt(lang, &format!("game-{family}.short"))
+        .or_else(|| crate::i18n::t_opt(lang, &format!("game-{family}")))
+        .unwrap_or_else(|| family.to_string());
+    let name = match template {
+        Some(raw) => {
+            let display = SaveTemplateOption::new(lang, family, raw).display;
+            format!("{game} {display}")
+        }
+        None => game,
+    };
+    sanitize_filename(&name)
+}
+
+fn sanitize_filename(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => ' ',
+            c if (c as u32) < 0x20 => ' ',
+            c => c,
+        })
+        .collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Appends ` 2`, ` 3`, ... to `base` until the resulting `<name>.sav`
+/// doesn't already exist in `saves_dir`. Gives up at 99 to avoid an
+/// unbounded scan if the directory is somehow saturated.
+fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
+    let mut draft = base.to_string();
+    for n in 2..100 {
+        if !saves_dir.join(format!("{draft}.sav")).exists() {
+            break;
+        }
+        draft = format!("{base} {n}");
+    }
+    draft
 }
 
 /// template-for-game) are missing. The returned map is the templates
