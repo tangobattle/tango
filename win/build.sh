@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+# Under Git Bash on Windows, /usr/bin/link.exe (an MSYS coreutil, not
+# the MSVC linker) precedes MSVC's link.exe on PATH and rustc ends up
+# invoking the wrong one. Promote MSVC's bin dir (located via cl.exe,
+# which msvc-dev-cmd has put on PATH) to the front.
+if command -v cl.exe >/dev/null 2>&1; then
+    msvc_bin=$(dirname "$(command -v cl.exe)")
+    export PATH="$msvc_bin:$PATH"
+fi
+
 # Cleanup.
 function cleanup {
     rm -rf Tango.iconset tango_win_workdir
