@@ -14,21 +14,17 @@ use super::EXPECTED_FPS;
 /// directions when their skew estimates disagree about who's ahead.
 const MAX_ADJUSTMENT: f32 = 30.0;
 
-/// Watchdog trip point: raw skew (frames) above which the
-/// sustained-imbalance counter starts climbing. Below this, the counter
-/// resets every frame, so brief bursty-loss spikes can't accumulate.
-/// Kept low because `local_adv_A + local_adv_B` is fixed by
-/// `60·RTT - 2·input_delay` — the throttle can only shift advantage
-/// between peers, so the symmetric equilibrium can be a small number
-/// on low-RTT links.
-const WATCHDOG_THRESHOLD: f32 = 2.0;
-
-/// Frames of *continuously* above-threshold skew before the watchdog
-/// engages. 60 ≈ 1 second — long enough to outlive typical retransmit
-/// bunching under bursty loss (so a loss period alone can't trip it),
-/// short enough that genuine persistent imbalance gets corrected
-/// before the user notices it sitting on the status bar.
-const WATCHDOG_TRIGGER_FRAMES: u32 = 60;
+/// Per-frame EMA weight on the live skew sample, applied as
+/// `smoothed = α·sample + (1-α)·smoothed`. Target time constant
+/// τ ≈ 5 s at 60 Hz → α = 1/300. Long enough that a sub-second
+/// bursty-loss spike (a gap of stalled remote packets followed by
+/// a retransmit burst) only nudges the smoothed value by a few
+/// percent of its peak: a 0.5 s spike of raw skew +30 contributes
+/// ~30·(1-exp(-0.5/5)) ≈ +2.9 to the filtered value, so the
+/// throttle barely moves under heavy stochastic loss. Persistent
+/// clock drift still converges with τ ≈ 5 s, which is well below
+/// the user-noticeable accumulation threshold.
+const SKEW_SMOOTH_ALPHA: f32 = 1.0 / 300.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
@@ -46,13 +42,12 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// Frames the raw skew has been continuously above
-    /// `WATCHDOG_THRESHOLD`. Resets to 0 the first frame it dips back
-    /// under, so transient loss-burst spikes can't accumulate. When it
-    /// crosses `WATCHDOG_TRIGGER_FRAMES` the throttle engages a linear
-    /// slowdown proportional to skew, closing persistent imbalances
-    /// that the burst-rejection deadband on its own would never reach.
-    sustained_skew_frames: u32,
+    /// EMA of `local_adv - remote_adv`, updated every fastforward
+    /// fire via [`SKEW_SMOOTH_ALPHA`]. Drives a continuous
+    /// proportional slowdown of the leader (negative skew = trailer,
+    /// no correction), so the fps target never steps and there's no
+    /// engagement transient for the player to feel.
+    smoothed_skew: f32,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -87,7 +82,7 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            sustained_skew_frames: 0,
+            smoothed_skew: 0.0,
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -266,35 +261,34 @@ impl Round {
     }
 
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
-        // Watchdog-only time sync, asymmetric (only the leading peer
-        // slows; trailer relies on leader pulling back to converge).
-        // local_advantage and last_remote_frame_advantage both carry
-        // the symmetric network-delay term τ; their difference isolates
-        // real-time clock skew. We drive raw skew directly because
-        // `local_adv_A + local_adv_B` is a network-fixed invariant
-        // (60·RTT - 2·input_delay) and the only reachable symmetric
-        // state is local_adv_A = local_adv_B = sum/2 → raw_skew = 0.
+        // Continuous EMA-filtered proportional time sync, asymmetric
+        // (only the leading peer slows; trailer relies on the leader
+        // pulling back to converge). `local_adv` and
+        // `last_remote_frame_advantage` both carry the symmetric
+        // network-delay term τ; their difference isolates real-time
+        // clock skew. `local_adv_A + local_adv_B` is a network-fixed
+        // invariant (60·RTT - 2·input_delay), so the only reachable
+        // symmetric state is local_adv_A = local_adv_B = sum/2 →
+        // raw_skew = 0, and the asymmetric correction can't have both
+        // sides slowing simultaneously in equilibrium.
         //
-        // The sustained-counter does both jobs the legacy power-law
-        // tried to do at once — burst rejection (loss spikes don't last
-        // 2s) and persistent-skew correction (anything that *does* last
-        // gets a linear close to zero). Linear-in-skew when engaged
-        // means d(skew)/dt = -2·skew, i.e. exponential close with
-        // τ ≈ 0.5s; capped at MAX_ADJUSTMENT for catastrophic rifts.
+        // The EMA replaces the old watchdog's trigger counter: a
+        // bursty-loss spike that briefly inflates raw skew only nudges
+        // the filtered value by a tiny fraction of its peak, so the
+        // throttle reads through it the same way the deadband did —
+        // but without the binary engagement step that made the
+        // watchdog's transitions visible. Persistent skew converges
+        // exponentially with τ ≈ 5 s; capped at MAX_ADJUSTMENT for
+        // catastrophic rifts.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32;
 
-        if skew > WATCHDOG_THRESHOLD {
-            self.sustained_skew_frames = self.sustained_skew_frames.saturating_add(1);
-        } else {
-            self.sustained_skew_frames = 0;
-        }
-        let adjustment = if self.sustained_skew_frames > WATCHDOG_TRIGGER_FRAMES {
-            -skew.min(MAX_ADJUSTMENT)
-        } else {
-            0.0
-        };
+        self.smoothed_skew = SKEW_SMOOTH_ALPHA * skew + (1.0 - SKEW_SMOOTH_ALPHA) * self.smoothed_skew;
+        // Only slow the leader. Negative smoothed skew = trailer, no
+        // speed-up — the symmetric invariant guarantees the other side
+        // sees positive skew and is the one being throttled.
+        let adjustment = -self.smoothed_skew.max(0.0).min(MAX_ADJUSTMENT);
 
         let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_ADJUSTMENT, EXPECTED_FPS);
         core.gba_mut()
