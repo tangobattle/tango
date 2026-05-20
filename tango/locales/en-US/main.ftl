@@ -64,7 +64,7 @@ play-status-connecting = Connecting to matchmaking server…
 play-status-direct-connecting = Connecting to opponent…
 play-status-waiting-opponent = Waiting for opponent…
 play-status-negotiating = Negotiating…
-play-status-failed = Connection failed
+play-status-failed = Connection failed: { $error }
 play-status-peer-disconnected = The other player left.
 lobby-waiting = Waiting…
 lobby-no-game = (no game selected)
@@ -112,7 +112,7 @@ save-copy-image = Copy as image
 # Navi pane
 navi-id = Navi ID
 navi-style-unset = (no style)
-navicust-grid-size = Grid
+navicust-grid-size = Grid: { $cols } × { $rows }
 navicust-parts = Installed parts
 navicust-empty = (none installed)
 
@@ -136,8 +136,8 @@ replays-watch = Watch
 replays-watch-missing-rom = Watch (ROM for this game isn't scanned)
 replays-export = Render
 replays-export-progress = Rendering…
-replays-export-success = Rendered
-replays-export-error = Render failed
+replays-export-success = Rendered:
+replays-export-error = Render failed: { $error }
 replays-export-open = Open render
 replays-export-reset = Reset
 replays-export-scale = Scale
@@ -145,7 +145,7 @@ replays-export-scale-na-lossless = (lossless — scale ignored)
 replays-export-lossless = Lossless
 replays-export-disable-bgm = Mute music
 replays-export-twosided = Two-sided
-replays-export-rounds = Rounds
+replays-export-rounds = Rounds:
 replays-export-save-as = Save as…
 playback-close = Close
 playback-play = Play
@@ -154,29 +154,31 @@ playback-options = Options
 playback-speed = Speed
 replays-select-prompt = Select a replay.
 replays-opponent = Opponent
-replays-match-type = Match type
+replays-match-type = Match type: { $type }
 replays-rounds-short = { $count ->
     [one] 1 round
    *[other] { $count } rounds
 }
 replays-incomplete = incomplete
+replays-stats-line = { $duration } · { $rounds }
+replays-stats-line-incomplete = { $duration } · { $rounds } · { $incomplete }
 play-you = You
 
 # Patches
 patches-update = Update
 patches-updating = Updating…
-patches-update-failed = Update failed
+patches-update-failed = Update failed: { $error }
 patches-open-folder = Open folder
 patches-favorite = Favorite
 patches-unfavorite = Unfavorite
 patches-search-placeholder = Search patches…
 patches-select-prompt = Select a patch.
 patches-readme-placeholder = This patch has no README.
-patches-details-authors = Authors
-patches-details-license = License
-patches-details-source = Source
-patches-details-games = Supported games
-patches-netplay-compatibility = Netplay compatibility
+patches-details-authors = Authors:
+patches-details-license = License:
+patches-details-source = Source:
+patches-details-games = Supported games:
+patches-netplay-compatibility = Netplay compatibility:
 
 # Settings panel
 settings-section-general = General
@@ -210,11 +212,11 @@ settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-video-filter = Video filter
 settings-integer-scaling = Integer scaling
-updater-current-version = Current version
-updater-latest-version = Latest version
+updater-current-version = Current version: { $version }
+updater-latest-version = Latest version: { $version }
 updater-loading = checking…
-updater-up-to-date = up to date
-updater-downloading = Downloading
+updater-up-to-date = v{ $version } (up to date)
+updater-downloading = Downloading: { $pct }%
 updater-ready-to-update = Update downloaded and ready to install.
 updater-update-now = Update now
 

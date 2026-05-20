@@ -3,13 +3,13 @@ LANGUAGE = Español (Latinoamérica)
 
 crash =
     ¡Oops, Tango ha encontrado un error y se ha estrellado!
-    
+
     Cuando informe de este fallo, incluya el siguiente archivo de registro:
-    
+
     { $path }
 crash-no-log =
     ¡Oops, Tango ha encontrado un error y se ha estrellado!
-    
+
     { $error }
 window-title = Tango
     .running = Tango (en ejecución)
@@ -23,8 +23,8 @@ play-cancel = Cancelar
 replays-export = Exportar
 replays-export-disable-bgm = Deshabilitar música
 replays-export-twosided = Dos lados
-replays-export-success = Tu repetición fue exportada con exito.
-replays-export-error = Se ha producido un error al exportar tu repetición: { $error }
+replays-export-success = Renderizado:
+replays-export-error = Renderizado fallido: { $error }
 replays-export-open = Open
 replays-export-lossless = Sin Perdida 1x
 patches-open-folder = Abrir carpeta
@@ -32,11 +32,11 @@ patches-favorite = Favorito
 patches-unfavorite = Quitar favorito
 patches-search-placeholder = Buscar parches…
 patches-update = Actualizar
-patches-details-authors = Autores
-patches-details-license = Licencia
+patches-details-authors = Autores:
+patches-details-license = Licencia:
     .all-rights-reserved = Todos los derechos reservados
-patches-details-source = Sitio web
-patches-details-games = Juegos compatibles
+patches-details-source = Sitio web:
+patches-details-games = Juegos compatibles:
 settings-theme = Tema
     .light = Claro
     .dark = Oscuro
@@ -107,7 +107,7 @@ play-status-connecting = Conectando al servidor de emparejamiento…
 play-status-direct-connecting = Conectando al rival…
 play-status-waiting-opponent = Esperando al rival…
 play-status-negotiating = Negociando…
-play-status-failed = Conexión fallida
+play-status-failed = Conexión fallida: { $error }
 play-status-peer-disconnected = El otro jugador se fue.
 lobby-waiting = Esperando…
 lobby-no-game = (sin juego seleccionado)
@@ -141,7 +141,7 @@ save-copy = Copiar
 save-copy-image = Copiar como imagen
 navi-id = ID de Navi
 navi-style-unset = (sin estilo)
-navicust-grid-size = Cuadrícula
+navicust-grid-size = Cuadrícula: { $cols } × { $rows }
 navicust-parts = Piezas instaladas
 navicust-empty = (ninguna instalada)
 save-empty = Este guardado no tiene datos para esta vista.
@@ -155,7 +155,7 @@ replays-export-progress = Renderizando…
 replays-export-reset = Restablecer
 replays-export-scale = Escala
 replays-export-scale-na-lossless = (sin pérdida — escala ignorada)
-replays-export-rounds = Rondas
+replays-export-rounds = Rondas:
 replays-export-save-as = Guardar como…
 playback-close = Cerrar
 playback-options = Opciones
@@ -164,17 +164,17 @@ playback-play = Reproducir
 playback-pause = Pausar
 replays-select-prompt = Selecciona una repetición.
 replays-opponent = Rival
-replays-match-type = Tipo de partida
+replays-match-type = Tipo de partida: { $type }
 replays-rounds-short = { $count ->
     [one] 1 ronda
    *[other] { $count } rondas
 }
 replays-incomplete = incompleto
 patches-updating = Actualizando…
-patches-update-failed = Falló la actualización
+patches-update-failed = Falló la actualización: { $error }
 patches-select-prompt = Selecciona un parche.
 patches-readme-placeholder = Este parche no tiene README.
-patches-netplay-compatibility = Compatibilidad de netplay
+patches-netplay-compatibility = Compatibilidad de netplay:
 settings-section-general = General
 settings-section-graphics = Gráficos
 settings-section-network = Red
@@ -196,11 +196,11 @@ input-key-select = Select
 input-key-speed-up = Avance rápido
 settings-enable-updater = Buscar actualizaciones de la app automáticamente
 settings-allow-prerelease-upgrades = Incluir versiones preliminares al buscar actualizaciones
-updater-current-version = Versión actual
-updater-latest-version = Última versión
+updater-current-version = Versión actual: { $version }
+updater-latest-version = Última versión: { $version }
 updater-loading = comprobando…
-updater-up-to-date = al día
-updater-downloading = Descargando
+updater-up-to-date = v{ $version } (al día)
+updater-downloading = Descargando: { $pct }%
 updater-ready-to-update = Actualización descargada y lista para instalar.
 updater-update-now = Actualizar ahora
 welcome-title = ¡Bienvenido a Tango!

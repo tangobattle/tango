@@ -3,13 +3,13 @@ LANGUAGE = Nederlands
 
 crash =
     Oepsie woepsie! Tango is een fout tegengekomen en is gecrasht!
-    
+
     Bij het rapporteren van deze crash, gaarne het volgende logboekbestand toe te voegen:
-    
+
     { $path }
 crash-no-log =
     Oepsie woepsie! Tango is stukkie wukkie!
-    
+
     { $error }
 window-title = Tango
     .running = Tango (actief)
@@ -23,8 +23,8 @@ play-cancel = Annuleren
 replays-export = Exporteren
 replays-export-disable-bgm = Muziek uitschakelen
 replays-export-twosided = Tweezijdig
-replays-export-success = Uw replaybestand is met succes geëxporteerd.
-replays-export-error = Er is een fout opgetreden tijdens het exporteren van uw replay: { $error }
+replays-export-success = Gerenderd:
+replays-export-error = Renderen mislukt: { $error }
 replays-export-open = Open
 replays-export-lossless = Lossless 1x
 patches-open-folder = Map openen
@@ -32,11 +32,11 @@ patches-favorite = Favoriet
 patches-unfavorite = Favoriet verwijderen
 patches-search-placeholder = Patches zoeken…
 patches-update = Bijwerken
-patches-details-authors = Auteurs
-patches-details-license = Licentie
+patches-details-authors = Auteurs:
+patches-details-license = Licentie:
     .all-rights-reserved = Alle rechten voorbehouden
-patches-details-source = Website
-patches-details-games = Ondersteunde spellen
+patches-details-source = Website:
+patches-details-games = Ondersteunde spellen:
 settings-theme = Thema
     .light = Licht
     .dark = Donker
@@ -107,7 +107,7 @@ play-status-connecting = Verbinden met matchmakingserver…
 play-status-direct-connecting = Verbinden met tegenstander…
 play-status-waiting-opponent = Wachten op tegenstander…
 play-status-negotiating = Onderhandelen…
-play-status-failed = Verbinding mislukt
+play-status-failed = Verbinding mislukt: { $error }
 play-status-peer-disconnected = De andere speler is vertrokken.
 lobby-waiting = Wachten…
 lobby-no-game = (geen spel gekozen)
@@ -141,7 +141,7 @@ save-copy = Kopiëren
 save-copy-image = Als afbeelding kopiëren
 navi-id = Navi-ID
 navi-style-unset = (geen stijl)
-navicust-grid-size = Raster
+navicust-grid-size = Raster: { $cols } × { $rows }
 navicust-parts = Geïnstalleerde onderdelen
 navicust-empty = (geen geïnstalleerd)
 save-empty = Deze save heeft geen gegevens voor deze weergave.
@@ -155,7 +155,7 @@ replays-export-progress = Renderen…
 replays-export-reset = Resetten
 replays-export-scale = Schaal
 replays-export-scale-na-lossless = (lossless — schaal genegeerd)
-replays-export-rounds = Rondes
+replays-export-rounds = Rondes:
 replays-export-save-as = Opslaan als…
 playback-close = Sluiten
 playback-options = Opties
@@ -164,17 +164,17 @@ playback-play = Afspelen
 playback-pause = Pauzeren
 replays-select-prompt = Selecteer een herhaling.
 replays-opponent = Tegenstander
-replays-match-type = Matchtype
+replays-match-type = Matchtype: { $type }
 replays-rounds-short = { $count ->
     [one] 1 ronde
    *[other] { $count } rondes
 }
 replays-incomplete = onvolledig
 patches-updating = Bijwerken…
-patches-update-failed = Bijwerken mislukt
+patches-update-failed = Bijwerken mislukt: { $error }
 patches-select-prompt = Selecteer een patch.
 patches-readme-placeholder = Deze patch heeft geen README.
-patches-netplay-compatibility = Netplay-compatibiliteit
+patches-netplay-compatibility = Netplay-compatibiliteit:
 settings-section-general = Algemeen
 settings-section-graphics = Beeld
 settings-section-network = Netwerk
@@ -196,11 +196,11 @@ input-key-select = Select
 input-key-speed-up = Versnellen
 settings-enable-updater = Automatisch op app-updates controleren
 settings-allow-prerelease-upgrades = Prereleases meenemen bij update-controle
-updater-current-version = Huidige versie
-updater-latest-version = Nieuwste versie
+updater-current-version = Huidige versie: { $version }
+updater-latest-version = Nieuwste versie: { $version }
 updater-loading = controleren…
-updater-up-to-date = actueel
-updater-downloading = Downloaden
+updater-up-to-date = v{ $version } (actueel)
+updater-downloading = Downloaden: { $pct }%
 updater-ready-to-update = Update gedownload en klaar om te installeren.
 updater-update-now = Nu bijwerken
 welcome-title = Welkom bij Tango!

@@ -633,9 +633,15 @@ impl ReplaysState {
                 let duration_str = format_duration(s.tick_count);
                 let rounds_str = t!(lang, "replays-rounds-short", count = s.round_count as i64);
                 if s.is_complete {
-                    format!("{duration_str} · {rounds_str}")
+                    t!(lang, "replays-stats-line", duration = duration_str, rounds = rounds_str)
                 } else {
-                    format!("{duration_str} · {rounds_str} · {}", t!(lang, "replays-incomplete"))
+                    t!(
+                        lang,
+                        "replays-stats-line-incomplete",
+                        duration = duration_str,
+                        rounds = rounds_str,
+                        incomplete = t!(lang, "replays-incomplete"),
+                    )
                 }
             });
             let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
@@ -898,7 +904,7 @@ fn replay_detail<'a>(
                     .map(|g| g.rom_family.clone())
                     .unwrap_or_default();
                 let label = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-                format!("{}: {}", t!(lang, "replays-match-type"), label)
+                t!(lang, "replays-match-type", type = label)
             })
             .size(TEXT_CAPTION),
         ]
@@ -1007,7 +1013,7 @@ fn export_panel<'a>(
             Some(Ok(path)) => {
                 let path_for_open = path.clone();
                 column![
-                    text(format!("{}:", t!(lang, "replays-export-success")))
+                    text(t!(lang, "replays-export-success"))
                         .size(TEXT_CAPTION)
                         .style(save_view::success_text_style),
                     text(path.display().to_string()).size(TEXT_CAPTION),
@@ -1033,7 +1039,7 @@ fn export_panel<'a>(
                 .into()
             }
             Some(Err(e)) => column![
-                text(format!("{}: {e}", t!(lang, "replays-export-error")))
+                text(t!(lang, "replays-export-error", error = format!("{e}")))
                     .size(TEXT_CAPTION)
                     .style(save_view::danger_text_style),
                 widgets::labeled_icon_button(
@@ -1116,7 +1122,7 @@ fn export_panel<'a>(
     ]
     .spacing(6);
     if selected_rounds.len() > 1 {
-        let label = text(format!("{}:", t!(lang, "replays-export-rounds")))
+        let label = text(t!(lang, "replays-export-rounds"))
             .size(TEXT_CAPTION)
             .style(save_view::muted_text_style);
         let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);

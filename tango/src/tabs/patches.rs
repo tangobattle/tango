@@ -168,7 +168,7 @@ impl PatchesState {
             );
         } else if let Some(err) = &self.last_update_error {
             top_row = top_row.push(
-                text(format!("{}: {}", t!(lang, "patches-update-failed"), err))
+                text(t!(lang, "patches-update-failed", error = err.clone()))
                     .size(TEXT_CAPTION)
                     .style(text::danger),
             );
@@ -354,9 +354,7 @@ impl PatchesState {
             // caption rows (e.g. save list metadata).
             let detail_row = |label: String, value: String| -> Element<'_, Message> {
                 row![
-                    text(format!("{label}:"))
-                        .size(TEXT_CAPTION)
-                        .style(save_view::muted_text_style),
+                    text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
                     text(value).size(TEXT_CAPTION),
                 ]
                 .spacing(6)

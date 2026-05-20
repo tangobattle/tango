@@ -3,13 +3,13 @@ LANGUAGE = Tiếng Việt
 
 crash =
     Tango đã gặp lỗi và ngừng hoạt động!
-    
+
     Khi báo lỗi, hãy đính kèm file log sau đây:
-    
+
     {$path}
 crash-no-log =
     Tango đã gặp lỗi và ngừng hoạt động!
-    
+
     {$error}
 window-title = Tango
     .running = Tango (đang chạy)
@@ -23,8 +23,8 @@ play-cancel = Hủy
 replays-export = Xuất
 replays-export-disable-bgm = Tắt nhạc nền
 replays-export-twosided = Hai phía
-replays-export-success = Bản ghi của bạn đã được xuất thành công.
-replays-export-error = Quá trình xuất bản ghi đã gặp lỗi: { $error }
+replays-export-success = Đã render:
+replays-export-error = Render thất bại: { $error }
 replays-export-open = Mở
 replays-export-lossless = Lossless 1x
 patches-open-folder = Mở thư mục
@@ -32,11 +32,11 @@ patches-favorite = Yêu thích
 patches-unfavorite = Bỏ yêu thích
 patches-search-placeholder = Tìm bản vá…
 patches-update = Cập nhật bản vá
-patches-details-authors = Tác giả
-patches-details-license = Giấy phép
+patches-details-authors = Tác giả:
+patches-details-license = Giấy phép:
     .all-rights-reserved = Đã đăng kí bản quyền tác giả
-patches-details-source = Website
-patches-details-games = Các game được hỗ trợ
+patches-details-source = Website:
+patches-details-games = Các game được hỗ trợ:
 settings-theme = Giao diện
     .light = Sáng
     .dark = Tối
@@ -107,7 +107,7 @@ play-status-connecting = Đang kết nối tới máy chủ ghép trận…
 play-status-direct-connecting = Đang kết nối tới đối thủ…
 play-status-waiting-opponent = Đang đợi đối thủ…
 play-status-negotiating = Đang thương lượng…
-play-status-failed = Kết nối thất bại
+play-status-failed = Kết nối thất bại: { $error }
 play-status-peer-disconnected = Người chơi kia đã rời đi.
 lobby-waiting = Đang đợi…
 lobby-no-game = (chưa chọn game)
@@ -141,7 +141,7 @@ save-copy = Sao chép
 save-copy-image = Sao chép thành ảnh
 navi-id = Navi ID
 navi-style-unset = (không có style)
-navicust-grid-size = Lưới
+navicust-grid-size = Lưới: { $cols } × { $rows }
 navicust-parts = Bộ phận đã lắp
 navicust-empty = (chưa lắp gì)
 save-empty = Save này không có dữ liệu cho mục này.
@@ -155,7 +155,7 @@ replays-export-progress = Đang render…
 replays-export-reset = Đặt lại
 replays-export-scale = Tỷ lệ
 replays-export-scale-na-lossless = (lossless — tỷ lệ bị bỏ qua)
-replays-export-rounds = Vòng
+replays-export-rounds = Vòng:
 replays-export-save-as = Lưu thành…
 playback-close = Đóng
 playback-options = Tùy chọn
@@ -164,16 +164,16 @@ playback-play = Phát
 playback-pause = Tạm dừng
 replays-select-prompt = Chọn một replay.
 replays-opponent = Đối thủ
-replays-match-type = Kiểu trận
+replays-match-type = Kiểu trận: { $type }
 replays-rounds-short = { $count ->
    *[other] { $count } vòng
 }
 replays-incomplete = chưa hoàn tất
 patches-updating = Đang cập nhật…
-patches-update-failed = Cập nhật thất bại
+patches-update-failed = Cập nhật thất bại: { $error }
 patches-select-prompt = Chọn một bản vá.
 patches-readme-placeholder = Bản vá này không có README.
-patches-netplay-compatibility = Tương thích netplay
+patches-netplay-compatibility = Tương thích netplay:
 settings-section-general = Chung
 settings-section-graphics = Hiển thị
 settings-section-network = Mạng
@@ -195,11 +195,11 @@ input-key-select = Select
 input-key-speed-up = Tua nhanh
 settings-enable-updater = Tự động kiểm tra bản cập nhật ứng dụng
 settings-allow-prerelease-upgrades = Bao gồm bản thử nghiệm khi kiểm tra
-updater-current-version = Phiên bản hiện tại
-updater-latest-version = Phiên bản mới nhất
+updater-current-version = Phiên bản hiện tại: { $version }
+updater-latest-version = Phiên bản mới nhất: { $version }
 updater-loading = đang kiểm tra…
-updater-up-to-date = đã cập nhật
-updater-downloading = Đang tải
+updater-up-to-date = v{ $version } (đã cập nhật)
+updater-downloading = Đang tải: { $pct }%
 updater-ready-to-update = Đã tải xong, sẵn sàng cài.
 updater-update-now = Cập nhật ngay
 welcome-title = Chào mừng đến với Tango!

@@ -1,14 +1,43 @@
 name: release
 
 on:
-  release:
-    types:
-      - created
+  push:
+    tags:
+      - 'v*.*.*'
 
 jobs:
 
+  create-release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      # Resolve the pushed tag back to its annotated message (if any).
+      # Lightweight tags have no message; the release body falls back to
+      # empty in that case, matching what `gh release create` would do.
+      - id: tag-msg
+        run: |
+          git fetch --tags --force
+          msg=$(git for-each-ref --format='%(contents)' refs/tags/${{ github.ref_name }})
+          {
+            echo 'msg<<TANGO_TAG_MSG_EOF'
+            echo "$msg"
+            echo 'TANGO_TAG_MSG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.tag-msg.outputs.msg }}
+
   release-win32-x64:
     runs-on: ubuntu-22.04
+    needs: create-release
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
@@ -65,12 +94,13 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          tag_name: ${{ github.ref_name }}
           files: |
             ./dist/tango-x86_64-windows.exe
 
   release-mac-universal:
     runs-on: macos-14
+    needs: create-release
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
@@ -109,12 +139,13 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          tag_name: ${{ github.ref_name }}
           files: |
             ./dist/tango-macos.dmg
 
   release-linux-x86_64:
     runs-on: ubuntu-22.04 # Ubuntu 22.04 is used for higher glibc compatibility across users
+    needs: create-release
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
@@ -156,5 +187,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          tag_name: ${{ github.ref_name }}
           files: ./dist/tango-x86_64-linux.AppImage

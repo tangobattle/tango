@@ -3,13 +3,13 @@ LANGUAGE = 中文 (繁體)
 
 crash =
     哎呀，Tango 遇到錯誤並崩潰了！
-    
+
     報告此崩潰時，請包含以下日誌文件：
-    
+
     { $path }
 crash-no-log =
     哎呀，Tango 遇到錯誤並崩潰了！
-    
+
     { $error }
 window-title = Tango
     .running = Tango（進行中）
@@ -23,8 +23,8 @@ play-cancel = 取消
 replays-export = 導出
 replays-export-disable-bgm = 禁用BGM
 replays-export-twosided = 雙視角
-replays-export-success = 您的回放已成功導出。
-replays-export-error = 導出回放時出錯誤：{ $error }
+replays-export-success = 已渲染:
+replays-export-error = 渲染失敗: { $error }
 replays-export-open = 打開
 replays-export-lossless = 無損1倍
 patches-open-folder = 打開文件夾
@@ -32,11 +32,11 @@ patches-favorite = 加入最愛
 patches-unfavorite = 從最愛移除
 patches-search-placeholder = 搜尋修補檔…
 patches-update = 更新
-patches-details-authors = 作者
-patches-details-license = 許可證
+patches-details-authors = 作者:
+patches-details-license = 許可證:
     .all-rights-reserved = 所有權保留
-patches-details-source = 網站
-patches-details-games = 支持遊戲
+patches-details-source = 網站:
+patches-details-games = 支持遊戲:
 settings-theme = 色彩主題
     .light = 淺色
     .dark = 深色
@@ -107,7 +107,7 @@ play-status-connecting = 正在連線到配對伺服器…
 play-status-direct-connecting = 正在連線到對手…
 play-status-waiting-opponent = 正在等待對手…
 play-status-negotiating = 協商中…
-play-status-failed = 連線失敗
+play-status-failed = 連線失敗: { $error }
 play-status-peer-disconnected = 對方已離開。
 lobby-waiting = 等待中…
 lobby-no-game = （未選擇遊戲）
@@ -141,7 +141,7 @@ save-copy = 複製
 save-copy-image = 複製為圖片
 navi-id = Navi ID
 navi-style-unset = （無風格）
-navicust-grid-size = 格子
+navicust-grid-size = 格子: { $cols } × { $rows }
 navicust-parts = 已裝部件
 navicust-empty = （未裝）
 save-empty = 此存檔沒有該檢視的資料。
@@ -155,7 +155,7 @@ replays-export-progress = 彙整中…
 replays-export-reset = 重設
 replays-export-scale = 縮放
 replays-export-scale-na-lossless = （無損 — 忽略縮放）
-replays-export-rounds = 回合
+replays-export-rounds = 回合:
 replays-export-save-as = 另存為…
 playback-close = 關閉
 playback-options = 選項
@@ -164,16 +164,16 @@ playback-play = 播放
 playback-pause = 暫停
 replays-select-prompt = 請選擇一個重播。
 replays-opponent = 對手
-replays-match-type = 對戰類型
+replays-match-type = 對戰類型: { $type }
 replays-rounds-short = { $count ->
    *[other] { $count } 回合
 }
 replays-incomplete = 未完成
 patches-updating = 更新中…
-patches-update-failed = 更新失敗
+patches-update-failed = 更新失敗: { $error }
 patches-select-prompt = 請選擇一個修補檔。
 patches-readme-placeholder = 此修補檔沒有 README。
-patches-netplay-compatibility = 連線相容性
+patches-netplay-compatibility = 連線相容性:
 settings-section-general = 一般
 settings-section-graphics = 影像
 settings-section-network = 網路
@@ -195,11 +195,11 @@ input-key-select = Select
 input-key-speed-up = 快轉
 settings-enable-updater = 自動檢查應用更新
 settings-allow-prerelease-upgrades = 檢查更新時包含預發布版本
-updater-current-version = 目前版本
-updater-latest-version = 最新版本
+updater-current-version = 目前版本: { $version }
+updater-latest-version = 最新版本: { $version }
 updater-loading = 檢查中…
-updater-up-to-date = 已是最新
-updater-downloading = 下載中
+updater-up-to-date = v{ $version } (已是最新)
+updater-downloading = 下載中: { $pct }%
 updater-ready-to-update = 更新已下載，可進行安裝。
 updater-update-now = 立即更新
 welcome-title = 歡迎使用 Tango！

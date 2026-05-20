@@ -232,20 +232,24 @@ pub fn view<'a>(
     // so every tab affordance in the app reads as the same
     // widget family.
     let side_btn = |icon: Icon, label: String, tab: SettingsTab| {
-        button(
-            row![icon.widget(), text(label)]
-                .spacing(8)
-                .align_y(Alignment::Center),
-        )
-        .padding(STANDARD_PADDING)
-        .width(Fill)
-        .style(widgets::pill_tab_style(tab == active))
-        .on_press(Message::TabSelected(tab))
+        button(row![icon.widget(), text(label)].spacing(8).align_y(Alignment::Center))
+            .padding(STANDARD_PADDING)
+            .width(Fill)
+            .style(widgets::pill_tab_style(tab == active))
+            .on_press(Message::TabSelected(tab))
     };
     let sidebar = container(
         column![
-            side_btn(Icon::SlidersHorizontal, t!(lang, "settings-section-general"), SettingsTab::General),
-            side_btn(Icon::Monitor, t!(lang, "settings-section-graphics"), SettingsTab::Graphics),
+            side_btn(
+                Icon::SlidersHorizontal,
+                t!(lang, "settings-section-general"),
+                SettingsTab::General
+            ),
+            side_btn(
+                Icon::Monitor,
+                t!(lang, "settings-section-graphics"),
+                SettingsTab::Graphics
+            ),
             side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
             side_btn(Icon::Globe, t!(lang, "settings-section-network"), SettingsTab::Netplay),
             side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
@@ -649,9 +653,8 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let is_ready = matches!(status, S::ReadyToUpdate { .. });
 
     let latest_label: String = match &status {
-        S::UpToDate { release: None } => t!(lang, "updater-loading"),
-        S::UpToDate { release: Some(Some(r)) } => format!("v{} ({})", r.version, t!(lang, "updater-up-to-date")),
-        S::UpToDate { release: Some(None) } => t!(lang, "updater-up-to-date"),
+        S::UpToDate { release: None } | S::UpToDate { release: Some(None) } => t!(lang, "updater-loading"),
+        S::UpToDate { release: Some(Some(r)) } => t!(lang, "updater-up-to-date", version = r.version.to_string()),
         S::UpdateAvailable { release: r } | S::Downloading { release: r, .. } | S::ReadyToUpdate { release: r } => {
             format!("v{}", r.version)
         }
@@ -665,7 +668,7 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
                 0
             };
             Some(
-                text(format!("{}: {pct}%", t!(lang, "updater-downloading")))
+                text(t!(lang, "updater-downloading", pct = pct as i64))
                     .size(TEXT_CAPTION)
                     .style(save_view::muted_text_style)
                     .into(),
@@ -693,9 +696,9 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let mut col = column![
         iced::widget::rule::horizontal(1),
         row![
-            text(format!("{}: v{current}", t!(lang, "updater-current-version"))).size(TEXT_CAPTION),
+            text(t!(lang, "updater-current-version", version = format!("v{current}"))).size(TEXT_CAPTION),
             horizontal_space(),
-            text(format!("{}: {}", t!(lang, "updater-latest-version"), latest_label)).size(TEXT_CAPTION),
+            text(t!(lang, "updater-latest-version", version = latest_label)).size(TEXT_CAPTION),
         ]
         .spacing(8)
         .align_y(Alignment::Center),

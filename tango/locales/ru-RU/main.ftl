@@ -3,13 +3,13 @@ LANGUAGE = Русский
 
 crash =
     Ой, Танго столкнулся с ошибкой и Сломался!
-    
+
     При сообщении о Поломке, пожалуйста, укажите следующий файл журнала:
-    
+
     { $path }
 crash-no-log =
     Упс, Танго столкнулся с ошибкой и Сломался!
-    
+
     { $error }
 window-title = Танго
     .running = Танго(запушен)
@@ -23,8 +23,8 @@ play-cancel = Отмена
 replays-export = Экспортировать
 replays-export-disable-bgm = Отключить музыку
 replays-export-twosided = Двусторонний
-replays-export-success = Ваш повтор был успешно экспортирован.
-replays-export-error = Произошла ошибка при экспорте вашего риплея: { $error }
+replays-export-success = Готово:
+replays-export-error = Сбой рендера: { $error }
 replays-export-open = Open
 replays-export-lossless = Без потерь 1x
 patches-open-folder = Открыть папку
@@ -32,11 +32,11 @@ patches-favorite = В избранное
 patches-unfavorite = Убрать из избранного
 patches-search-placeholder = Поиск патчей…
 patches-update = Обновить
-patches-details-authors = Авторы
-patches-details-license = Лицензия
+patches-details-authors = Авторы:
+patches-details-license = Лицензия:
     .all-rights-reserved = Все права защищены
-patches-details-source = Сайт
-patches-details-games = Поддерживаемые игры
+patches-details-source = Сайт:
+patches-details-games = Поддерживаемые игры:
 settings-theme = Тема оформления
     .light = Светлая
     .dark = Темная
@@ -107,7 +107,7 @@ play-status-connecting = Подключение к серверу подбора
 play-status-direct-connecting = Подключение к сопернику…
 play-status-waiting-opponent = Ожидание соперника…
 play-status-negotiating = Согласование…
-play-status-failed = Сбой подключения
+play-status-failed = Сбой подключения: { $error }
 play-status-peer-disconnected = Другой игрок покинул игру.
 lobby-waiting = Ожидание…
 lobby-no-game = (игра не выбрана)
@@ -141,7 +141,7 @@ save-copy = Копировать
 save-copy-image = Копировать как изображение
 navi-id = ID Navi
 navi-style-unset = (без стиля)
-navicust-grid-size = Сетка
+navicust-grid-size = Сетка: { $cols } × { $rows }
 navicust-parts = Установленные детали
 navicust-empty = (ничего не установлено)
 save-empty = В этом сохранении нет данных для этого вида.
@@ -155,7 +155,7 @@ replays-export-progress = Рендеринг…
 replays-export-reset = Сбросить
 replays-export-scale = Масштаб
 replays-export-scale-na-lossless = (без потерь — масштаб игнорируется)
-replays-export-rounds = Раунды
+replays-export-rounds = Раунды:
 replays-export-save-as = Сохранить как…
 playback-close = Закрыть
 playback-options = Параметры
@@ -164,7 +164,7 @@ playback-play = Воспроизвести
 playback-pause = Пауза
 replays-select-prompt = Выберите повтор.
 replays-opponent = Соперник
-replays-match-type = Тип матча
+replays-match-type = Тип матча: { $type }
 replays-rounds-short = { $count ->
     [one] 1 раунд
     [few] { $count } раунда
@@ -172,10 +172,10 @@ replays-rounds-short = { $count ->
 }
 replays-incomplete = неполный
 patches-updating = Обновление…
-patches-update-failed = Сбой обновления
+patches-update-failed = Сбой обновления: { $error }
 patches-select-prompt = Выберите патч.
 patches-readme-placeholder = У этого патча нет README.
-patches-netplay-compatibility = Совместимость netplay
+patches-netplay-compatibility = Совместимость netplay:
 settings-section-general = Общие
 settings-section-graphics = Графика
 settings-section-network = Сеть
@@ -197,11 +197,11 @@ input-key-select = Select
 input-key-speed-up = Ускорение
 settings-enable-updater = Автоматически проверять обновления
 settings-allow-prerelease-upgrades = Учитывать предварительные версии при проверке
-updater-current-version = Текущая версия
-updater-latest-version = Последняя версия
+updater-current-version = Текущая версия: { $version }
+updater-latest-version = Последняя версия: { $version }
 updater-loading = проверка…
-updater-up-to-date = актуальная
-updater-downloading = Загрузка
+updater-up-to-date = v{ $version } (актуальная)
+updater-downloading = Загрузка: { $pct }%
 updater-ready-to-update = Обновление загружено и готово к установке.
 updater-update-now = Обновить сейчас
 welcome-title = Добро пожаловать в Tango!

@@ -1660,7 +1660,7 @@ fn lobby_view<'a>(
             // back to the generic "Connection failed: <raw>".
             let label = match error.as_str() {
                 "peer-disconnected" => t!(lang, "play-status-peer-disconnected"),
-                _ => format!("{}: {error}", t!(lang, "play-status-failed")),
+                _ => t!(lang, "play-status-failed", error = error.clone()),
             };
             (
                 text(label).size(TEXT_BODY).style(save_view::danger_text_style).into(),

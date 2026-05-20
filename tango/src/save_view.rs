@@ -1068,10 +1068,7 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
             container(
                 column![
                     emblem,
-                    text(name).size(TEXT_DISPLAY),
-                    text(format!("{}: #{navi_id}", t!(lang, "navi-id")))
-                        .size(TEXT_CAPTION)
-                        .style(muted_text_style),
+                    text(name).size(TEXT_DISPLAY)
                 ]
                 .spacing(8)
                 .align_x(Alignment::Center),
@@ -1178,7 +1175,7 @@ fn render_navicust<M: 'static>(
             // whole pane across the tab.
             stacked.into()
         }
-        None => text(format!("{}: {} × {}", t!(lang, "navicust-grid-size"), cols, rows_n))
+        None => text(t!(lang, "navicust-grid-size", cols = cols as i64, rows = rows_n as i64))
             .size(TEXT_CAPTION)
             .into(),
     };
@@ -1232,10 +1229,6 @@ fn render_navicust<M: 'static>(
     // shrink-wrapped width without dragging in any Fill that would
     // stretch the pane across the tab.
     let mut content = column![].spacing(8).align_x(Alignment::Center);
-    if let Some(name) = style_name {
-        content =
-            content.push(text(format!("{}: {}", t!(lang, "navi-style"), name)).size(TEXT_HEADING));
-    }
     content = content.push(grid_el);
     if installed_solid + installed_plus > 0 {
         // No Fill anywhere here — Fill on a child propagates up
