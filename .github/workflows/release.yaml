@@ -34,6 +34,10 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.tag-msg.outputs.msg }}
+          # Semver prereleases carry a `-` after the version number
+          # (e.g. v1.0.0-alpha.0, v5.0.0-beta.3); a plain `v1.2.3`
+          # never contains `-`, so tag-name search is a clean check.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   release-win32-x64:
     runs-on: ubuntu-22.04
