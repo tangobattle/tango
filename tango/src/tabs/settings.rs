@@ -425,13 +425,6 @@ fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(
-            t!(lang, "settings-patch-repo"),
-            text_input("", &config.patch_repo)
-                .on_input(Message::PatchRepoChanged)
-                .padding(STANDARD_PADDING)
-                .style(widgets::chunky_text_input),
-        ),
-        labeled::<Message>(
             t!(lang, "settings-netplay-throttler"),
             pick_list(
                 THROTTLE_OPTIONS,
@@ -440,6 +433,13 @@ fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             )
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list),
+        ),
+        labeled::<Message>(
+            t!(lang, "settings-patch-repo"),
+            text_input("", &config.patch_repo)
+                .on_input(Message::PatchRepoChanged)
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_text_input),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
             .label(t!(lang, "settings-enable-patch-autoupdate"))
@@ -564,7 +564,7 @@ fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: 
     let (kind, label) = input::describe(binding);
     let kind_glyph = match kind {
         input::DescribeKind::Keyboard => Icon::Keyboard,
-        input::DescribeKind::Gamepad => Icon::Gamepad,
+        input::DescribeKind::Gamepad => Icon::Gamepad2,
     };
     // Primary-tinted rounded pill matching the rest of the
     // app's chip + badge chrome. × button is subdued (neutral
