@@ -11,10 +11,10 @@
 
 mod match_;
 mod round;
-pub mod throttle;
+pub mod throttler;
 mod types;
 
-pub use match_::Match;
+pub use match_::{Match, ThrottlerFactory};
 pub use round::Round;
 pub use types::{BattleOutcome, CommittedState, MatchIdentity, ReplayConfig};
 

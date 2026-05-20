@@ -3,7 +3,7 @@ pub struct Input {
     pub joyflags: u16,
     /// Sender's `current_tick - last_remote_received_tick` at send time.
     /// The receiver subtracts this from its own advantage to get the
-    /// raw skew that drives the time-sync throttle (see
+    /// raw skew that drives the time-sync throttler (see
     /// `Round::update_fps_target`).
     pub frame_advantage: i16,
 }

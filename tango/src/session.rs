@@ -991,8 +991,22 @@ pub async fn spawn_pvp(
         &config.replays_path(),
         &audio_binder,
         opponent_loaded,
+        throttler_factory_for(config.netplay_throttler),
     )
     .await
+}
+
+/// Build a throttler factory closure for the given config setting.
+/// Shared between `spawn_pvp` (initial round) and the app's settings
+/// handler (live mid-round swap).
+pub fn throttler_factory_for(throttler: config::NetplayThrottler) -> tango_pvp::battle::ThrottlerFactory {
+    match throttler {
+        config::NetplayThrottler::AsymmetricEma => {
+            Box::new(|| Box::new(tango_pvp::battle::throttler::AsymmetricEma::default()))
+        }
+        config::NetplayThrottler::LinearWatchdog => Box::new(|| Box::new(tango_pvp::battle::throttler::LinearWatchdog::default())),
+        config::NetplayThrottler::Power => Box::new(|| Box::new(tango_pvp::battle::throttler::Power::default())),
+    }
 }
 
 /// Boot the supplied selection in single-player mode. Caller must

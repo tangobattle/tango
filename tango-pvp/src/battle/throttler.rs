@@ -1,4 +1,4 @@
-//! FPS-target throttle strategies. Each takes the current raw skew
+//! FPS-target throttler strategies. Each takes the current raw skew
 //! (`local_advantage - remote_advantage`, in frames) and returns a
 //! non-negative slowdown amount in fps; the caller clamps it against
 //! a global max and applies it as `EXPECTED_FPS - slowdown`. Only the
@@ -10,19 +10,19 @@
 //! parameters and its per-round mutable state, so swapping mid-round
 //! resets cleanly.
 
-/// A per-round throttle.
-pub trait Throttle: Send {
+/// A per-round throttler.
+pub trait Throttler: Send {
     /// Compute the slowdown to apply this frame, in fps below
     /// `EXPECTED_FPS`. Non-negative; 0 means run at full speed. The
     /// caller is responsible for capping against any global maximum.
     fn step(&mut self, skew: f32) -> f32;
 }
 
-/// Continuous proportional throttle smoothed by an asymmetric EMA on
+/// Continuous proportional throttler smoothed by an asymmetric EMA on
 /// skew. `alpha_slowdown` is used when skew is growing (smoothed value
 /// climbs gradually, so sub-second loss bursts don't engage the
-/// throttle); `alpha_speedup` is used when skew is shrinking (smoothed
-/// value drops fast, so the throttle lifts as soon as the imbalance
+/// throttler); `alpha_speedup` is used when skew is shrinking (smoothed
+/// value drops fast, so the throttler lifts as soon as the imbalance
 /// closes). Net: gentle glide into a slowdown, snappy return out of it.
 pub struct AsymmetricEma {
     pub alpha_slowdown: f32,
@@ -36,7 +36,7 @@ impl AsymmetricEma {
         Self {
             // τ ≈ 5 s @ 60 Hz — a 0.5 s spike of raw skew +30
             // contributes ~30·(1-exp(-0.5/5)) ≈ +2.9 to the smoothed
-            // value, so the throttle barely moves under bursty loss.
+            // value, so the throttler barely moves under bursty loss.
             alpha_slowdown: 1.0 / 300.0,
             // τ ≈ 0.5 s @ 60 Hz — once the imbalance closes the
             // local fps returns to 60 within a handful of frames.
@@ -52,7 +52,7 @@ impl Default for AsymmetricEma {
     }
 }
 
-impl Throttle for AsymmetricEma {
+impl Throttler for AsymmetricEma {
     fn step(&mut self, skew: f32) -> f32 {
         let alpha = if skew > self.smoothed {
             self.alpha_slowdown
@@ -64,18 +64,18 @@ impl Throttle for AsymmetricEma {
     }
 }
 
-/// Idle-until-tripped throttle: a sustained-frame counter climbs while
+/// Idle-until-tripped throttler: a sustained-frame counter climbs while
 /// raw skew is above `threshold` and resets to zero otherwise; once it
 /// crosses `trigger_frames`, a linear slowdown proportional to current
 /// skew engages. The deadband + trigger combo rejects bursty packet-
 /// loss spikes (which resolve faster than the trigger).
-pub struct Watchdog {
+pub struct LinearWatchdog {
     pub threshold: f32,
     pub trigger_frames: u32,
     sustained: u32,
 }
 
-impl Watchdog {
+impl LinearWatchdog {
     /// Default tuning: 2-frame deadband, 60-frame trigger (~1 s).
     pub fn new() -> Self {
         Self {
@@ -86,13 +86,13 @@ impl Watchdog {
     }
 }
 
-impl Default for Watchdog {
+impl Default for LinearWatchdog {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Throttle for Watchdog {
+impl Throttler for LinearWatchdog {
     fn step(&mut self, skew: f32) -> f32 {
         if skew > self.threshold {
             self.sustained = self.sustained.saturating_add(1);
@@ -107,7 +107,7 @@ impl Throttle for Watchdog {
     }
 }
 
-/// Asymmetric power-law throttle on instantaneous skew. Matches tango
+/// Asymmetric power-law throttler on instantaneous skew. Matches tango
 /// v4.x's `dtick`-based tuning: at |skew| = `knee` the slowdown is
 /// exactly 1 fps, below it the curve falls off sharply (implicit
 /// deadband), above it it grows super-linearly so big rifts close
@@ -134,7 +134,7 @@ impl Default for Power {
     }
 }
 
-impl Throttle for Power {
+impl Throttler for Power {
     fn step(&mut self, skew: f32) -> f32 {
         if skew <= 0.0 {
             0.0

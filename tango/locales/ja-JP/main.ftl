@@ -206,6 +206,7 @@ settings-patch-repo = パッチリポジトリ
 settings-enable-patch-autoupdate = パッチを自動更新する
 settings-enable-updater = アプリの更新を自動チェック
 settings-allow-prerelease-upgrades = プレリリースも対象にする
+settings-netplay-throttler = 時間同期スロットル
 settings-video-filter = ビデオフィルター
 settings-integer-scaling = ピクセル等倍スケーリング
 updater-current-version = 現在のバージョン: { $version }

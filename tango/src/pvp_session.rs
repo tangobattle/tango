@@ -106,6 +106,7 @@ impl PvpSession {
         replays_path: &Path,
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
+        throttler_factory: tango_pvp::battle::ThrottlerFactory,
     ) -> anyhow::Result<Self> {
         // Wait for the lobby loop to drop the data-channel
         // receiver into the handoff slot (it does this on
@@ -235,6 +236,7 @@ impl PvpSession {
             shadow,
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
+            throttler_factory,
         );
         *match_handle.try_lock().unwrap() = Some(inner_match.clone());
 
@@ -403,6 +405,14 @@ impl PvpSession {
     /// whichever side finishes first kills the connection out
     /// from under the other and the other side's replay ends up
     /// truncated.
+    /// Hand the caller the shared `Match` slot so they can run their
+    /// own async block against it (e.g. live `set_throttler_factory`
+    /// from a settings change) without PvpSession having to mirror
+    /// each setter. Cheap Arc clone; locking is the caller's problem.
+    pub fn match_handle(&self) -> Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>> {
+        self.match_handle.clone()
+    }
+
     pub fn is_ended(&self) -> bool {
         if !self.completion_token.is_complete() {
             return false;
@@ -446,8 +456,8 @@ impl PvpSession {
         }
     }
 
-    /// What the throttle is currently asking mgba to run at. Pairs with
-    /// `tps()` — gap between the two tells you whether the throttle is
+    /// What the throttler is currently asking mgba to run at. Pairs with
+    /// `tps()` — gap between the two tells you whether the throttler is
     /// the cause of a slow tps or just observing one.
     pub fn fps_target(&self) -> f32 {
         self._thread.handle().lock_audio().sync().fps_target()

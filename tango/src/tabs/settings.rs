@@ -48,6 +48,7 @@ pub enum Message {
     ToggleIntegerScaling(bool),
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
+    NetplayThrottlerChanged(config::NetplayThrottler),
     /// User clicked "Update Now" on the About panel. App's
     /// settings handler calls `updater.finish_update()` which
     /// hands off to the installer + exits the process.
@@ -94,6 +95,7 @@ pub enum ConfigChange {
     IntegerScaling(bool),
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
+    NetplayThrottler(config::NetplayThrottler),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
     RemoveInputBinding(input::MappedKey, usize),
@@ -120,6 +122,7 @@ impl State {
             Message::ToggleIntegerScaling(b) => Some(ConfigChange::IntegerScaling(b)),
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
+            Message::NetplayThrottlerChanged(t) => Some(ConfigChange::NetplayThrottler(t)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
             // process on success. Nothing to fold into config.
@@ -408,6 +411,11 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 }
 
 fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
+    const THROTTLE_OPTIONS: &[config::NetplayThrottler] = &[
+        config::NetplayThrottler::AsymmetricEma,
+        config::NetplayThrottler::LinearWatchdog,
+        config::NetplayThrottler::Power,
+    ];
     column![
         labeled::<Message>(
             t!(lang, "settings-matchmaking-endpoint"),
@@ -422,6 +430,16 @@ fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 .on_input(Message::PatchRepoChanged)
                 .padding(STANDARD_PADDING)
                 .style(widgets::chunky_text_input),
+        ),
+        labeled::<Message>(
+            t!(lang, "settings-netplay-throttler"),
+            pick_list(
+                THROTTLE_OPTIONS,
+                Some(config.netplay_throttler),
+                Message::NetplayThrottlerChanged,
+            )
+            .padding(STANDARD_PADDING)
+            .style(widgets::chunky_pick_list),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
             .label(t!(lang, "settings-enable-patch-autoupdate"))

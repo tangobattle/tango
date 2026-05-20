@@ -5,12 +5,12 @@ use tokio::sync::Mutex;
 
 use crate::input::{Input, Pair, PairQueue, PartialInput};
 
-use super::throttle::{AsymmetricEma, Throttle};
+use super::throttler::Throttler;
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// Cap on the slowdown any throttle is allowed to request, in fps.
-/// Lives here (not in the throttle impls) so every strategy clamps
+/// Cap on the slowdown any throttler is allowed to request, in fps.
+/// Lives here (not in the throttler impls) so every strategy clamps
 /// uniformly and a single knob controls the worst-case audio warp.
 const MAX_ADJUSTMENT: f32 = 30.0;
 
@@ -30,9 +30,9 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// Active throttle strategy + its per-round state. Swappable at
-    /// runtime via [`Round::set_throttle`].
-    throttle: Box<dyn Throttle>,
+    /// Active throttler strategy + its per-round state. Swappable at
+    /// runtime via [`Round::set_throttler`].
+    throttler: Box<dyn Throttler>,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -67,7 +67,7 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            throttle: Box::new(AsymmetricEma::default()),
+            throttler: match_.build_throttler(),
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -151,7 +151,7 @@ impl Round {
     }
 
     /// Peer's frame advantage as of their most recent packet — stale by
-    /// ~τ (one-way delay) but matches what the throttle's skew estimate
+    /// ~τ (one-way delay) but matches what the throttler's skew estimate
     /// is reacting to.
     pub fn last_remote_frame_advantage(&self) -> i16 {
         self.last_remote_frame_advantage
@@ -245,11 +245,11 @@ impl Round {
         }
     }
 
-    /// Swap the active throttle strategy. Mid-round-safe; the new
+    /// Swap the active throttler strategy. Mid-round-safe; the new
     /// strategy starts from its default state (no carry-over of the
     /// old one's smoothed skew / sustained counter / etc.).
-    pub fn set_throttle(&mut self, throttle: Box<dyn Throttle>) {
-        self.throttle = throttle;
+    pub fn set_throttler(&mut self, throttler: Box<dyn Throttler>) {
+        self.throttler = throttler;
     }
 
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
@@ -266,7 +266,7 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32;
 
-        let slowdown = self.throttle.step(skew).min(MAX_ADJUSTMENT);
+        let slowdown = self.throttler.step(skew).min(MAX_ADJUSTMENT);
         let fps_target = EXPECTED_FPS - slowdown;
         core.gba_mut()
             .sync_mut()
