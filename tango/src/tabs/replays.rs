@@ -817,7 +817,7 @@ fn replay_detail<'a>(
                     )
                 },
                 widgets::icon_button(
-                    Icon::Folder,
+                    Icon::FolderOpen,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
                     STANDARD_PADDING,

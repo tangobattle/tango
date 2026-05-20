@@ -337,9 +337,9 @@ impl PlayState {
                     save_view::Action::CopyTab(tab) => loaded
                         .and_then(|l| save_view::tab_as_text(&config.language, tab, l))
                         .map(Effect::CopyText),
-                    save_view::Action::CopyTabImage(tab) => {
-                        loaded.and_then(|l| save_view::tab_as_image(tab, l)).map(Effect::CopyImage)
-                    }
+                    save_view::Action::CopyTabImage(tab) => loaded
+                        .and_then(|l| save_view::tab_as_image(tab, l))
+                        .map(Effect::CopyImage),
                     save_view::Action::PlayClicked => Some(Effect::StartSinglePlayer),
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
@@ -950,20 +950,20 @@ impl PlayState {
         // a save template for the selected game.
         let can_new = templates_for_selection(self, scanners).is_some();
         row![
-            mk(Icon::Plus, t(lang, "save-new"), Message::SaveNewStart, can_new),
+            mk(Icon::FilePlus, t(lang, "save-new"), Message::SaveNewStart, can_new),
             mk(
-                Icon::Folder,
+                Icon::FolderOpen,
                 t(lang, "save-open-folder"),
                 Message::SaveOpenFolder,
                 enabled
             ),
+            mk(Icon::Files, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
             mk(
-                Icon::CopyPlus,
-                t(lang, "save-duplicate"),
-                Message::SaveDuplicate,
+                Icon::PencilLine,
+                t(lang, "save-rename"),
+                Message::SaveRenameStart,
                 enabled
             ),
-            mk(Icon::Pencil, t(lang, "save-rename"), Message::SaveRenameStart, enabled),
             mk_danger(Icon::Trash, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
         .spacing(6)
@@ -1700,9 +1700,7 @@ fn lobby_view<'a>(
     // the matchmaking screen's Fight button anchored to the
     // bottom-right of the hud bar.
     let controls = row![
-        column![match_row, delay_row, reveal_row]
-            .spacing(8)
-            .width(Length::Fill),
+        column![match_row, delay_row, reveal_row].spacing(8).width(Length::Fill),
         ready_button,
     ]
     .spacing(12)

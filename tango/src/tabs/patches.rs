@@ -337,7 +337,7 @@ impl PatchesState {
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),
                 widgets::icon_button(
-                    Icon::Folder,
+                    Icon::FolderOpen,
                     t(lang, "patches-open-folder"),
                     Message::OpenFolder(patch.path.clone()),
                     STANDARD_PADDING,
