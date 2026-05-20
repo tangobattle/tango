@@ -153,7 +153,7 @@ impl PatchesState {
         // Search input replaces the "Installed: N" label. The
         // count was informational only; a filter is more useful
         // once the patch list grows past a handful of entries.
-        let search_input = text_input(&t(lang, "patches-search-placeholder"), &self.search)
+        let search_input = text_input(&t!(lang, "patches-search-placeholder"), &self.search)
             .on_input(Message::SearchChanged)
             .padding(STANDARD_PADDING)
             .width(Length::Fixed(260.0))
@@ -162,13 +162,13 @@ impl PatchesState {
 
         if self.updating {
             top_row = top_row.push(
-                text(t(lang, "patches-updating"))
+                text(t!(lang, "patches-updating"))
                     .size(TEXT_CAPTION)
                     .style(save_view::muted_text_style),
             );
         } else if let Some(err) = &self.last_update_error {
             top_row = top_row.push(
-                text(format!("{}: {}", t(lang, "patches-update-failed"), err))
+                text(format!("{}: {}", t!(lang, "patches-update-failed"), err))
                     .size(TEXT_CAPTION)
                     .style(text::danger),
             );
@@ -178,13 +178,13 @@ impl PatchesState {
             .push(horizontal_space())
             .push(widgets::icon_button_maybe(
                 Icon::CloudSync,
-                t(lang, "patches-update"),
+                t!(lang, "patches-update"),
                 update_msg,
                 STANDARD_PADDING,
             ))
             .push(widgets::icon_button(
                 Icon::RefreshCw,
-                t(lang, "rescan"),
+                t!(lang, "rescan"),
                 Message::Rescan,
                 STANDARD_PADDING,
             ));
@@ -295,9 +295,9 @@ impl PatchesState {
             let is_fav = config.favorite_patches.contains(self.selected.as_ref().unwrap());
             let favorite_toggle = {
                 let label = if is_fav {
-                    t(lang, "patches-unfavorite")
+                    t!(lang, "patches-unfavorite")
                 } else {
-                    t(lang, "patches-favorite")
+                    t!(lang, "patches-favorite")
                 };
                 let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
                 let star = text(glyph).size(TEXT_TITLE).style(move |theme: &iced::Theme| {
@@ -338,7 +338,7 @@ impl PatchesState {
                     .style(widgets::chunky_pick_list),
                 widgets::icon_button(
                     Icon::FolderOpen,
-                    t(lang, "patches-open-folder"),
+                    t!(lang, "patches-open-folder"),
                     Message::OpenFolder(patch.path.clone()),
                     STANDARD_PADDING,
                 ),
@@ -352,9 +352,9 @@ impl PatchesState {
             // Single key:value row helper — muted label, plain value,
             // so the readable density matches the rest of the UI's
             // caption rows (e.g. save list metadata).
-            let detail_row = |label_key: &'static str, value: String| -> Element<'_, Message> {
+            let detail_row = |label: String, value: String| -> Element<'_, Message> {
                 row![
-                    text(format!("{}:", t(lang, label_key)))
+                    text(format!("{label}:"))
                         .size(TEXT_CAPTION)
                         .style(save_view::muted_text_style),
                     text(value).size(TEXT_CAPTION),
@@ -366,17 +366,17 @@ impl PatchesState {
 
             let mut details = column![].spacing(3);
             if !patch.authors.is_empty() {
-                details = details.push(detail_row("patches-details-authors", patch.authors.join(", ")));
+                details = details.push(detail_row(t!(lang, "patches-details-authors"), patch.authors.join(", ")));
             }
             if let Some(license) = &patch.license {
-                details = details.push(detail_row("patches-details-license", license.clone()));
+                details = details.push(detail_row(t!(lang, "patches-details-license"), license.clone()));
             }
             if let Some(source) = &patch.source {
-                details = details.push(detail_row("patches-details-source", source.clone()));
+                details = details.push(detail_row(t!(lang, "patches-details-source"), source.clone()));
             }
-            details = details.push(detail_row("patches-details-games", supported_games_str));
+            details = details.push(detail_row(t!(lang, "patches-details-games"), supported_games_str));
             if !netplay_compat.is_empty() {
-                details = details.push(detail_row("patches-netplay-compatibility", netplay_compat));
+                details = details.push(detail_row(t!(lang, "patches-netplay-compatibility"), netplay_compat));
             }
 
             // Markdown README, parsed and cached in self.readme_items.
@@ -387,7 +387,7 @@ impl PatchesState {
             // the README visually heavier than the rest of the
             // pane).
             let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
-                text(t(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
+                text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
             } else {
                 let theme = crate::theme::theme_for(config);
                 let style = iced::widget::markdown::Style::from(&theme);
@@ -422,7 +422,7 @@ impl PatchesState {
                 .height(Fill)
                 .into()
         } else {
-            container(text(t(lang, "patches-select-prompt")).size(TEXT_BODY))
+            container(text(t!(lang, "patches-select-prompt")).size(TEXT_BODY))
                 .center(Fill)
                 .style(widgets::pane)
                 .into()

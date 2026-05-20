@@ -8,7 +8,8 @@ mod rpc;
 
 pub use rpc::activity;
 
-use crate::i18n;
+use crate::i18n::{self, LOCALES};
+use fluent_templates::Loader;
 
 const APP_ID: u64 = 974089681333534750;
 
@@ -25,7 +26,11 @@ pub fn make_game_info(
     // Play tab stores `&dyn tango_gamedb::Game` directly so we
     // read `family_and_variant` straight off the gamedb trait.
     let family = game.family_and_variant().0.to_string();
-    let mut title = i18n::t(language, &format!("game-{}", family));
+    // Dynamic lookup keyed by the gamedb family — bypass the
+    // literal-only t! macro and hit the Fluent loader directly.
+    let mut title = LOCALES
+        .lookup(language, &format!("game-{}", family))
+        .unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }
@@ -51,7 +56,7 @@ pub fn make_looking_activity(
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
-        state: Some(i18n::t(lang, "discord-presence-looking")),
+        state: Some(i18n::t!(lang, "discord-presence-looking")),
         // Only matchmaking codes carry a join secret — direct-TCP
         // sessions aren't joinable via Discord deep-link.
         secrets: ident.discord_join_secret().map(|s| rpc::activity::Secrets {
@@ -85,7 +90,7 @@ pub fn make_single_player_activity(
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
-        state: Some(i18n::t(lang, "discord-presence-in-single-player")),
+        state: Some(i18n::t!(lang, "discord-presence-in-single-player")),
         timestamps: Some(rpc::activity::Timestamps {
             start: start_time
                 .duration_since(std::time::UNIX_EPOCH)
@@ -104,7 +109,7 @@ pub fn make_in_lobby_activity(
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
-        state: Some(i18n::t(lang, "discord-presence-in-lobby")),
+        state: Some(i18n::t!(lang, "discord-presence-in-lobby")),
         party: Some(rpc::activity::Party {
             id: party_id(ident),
             size: Some([2, 2]),
@@ -119,7 +124,7 @@ pub fn make_in_progress_activity(
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
-        state: Some(i18n::t(lang, "discord-presence-in-progress")),
+        state: Some(i18n::t!(lang, "discord-presence-in-progress")),
         party: Some(rpc::activity::Party {
             id: None,
             size: Some([2, 2]),

@@ -1,5 +1,5 @@
 use crate::app::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
-use crate::i18n::{t, t_args, SUPPORTED_LANGS};
+use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::tabs::settings::labeled;
 use crate::{save_view, widgets};
 use lucide_icons::Icon;
@@ -84,11 +84,11 @@ pub fn view<'a>(
     let mut roms_block = column![
         row![
             step_marker(has_roms).widget().size(16.0),
-            text(t(lang, "welcome-step-roms")).size(TEXT_TITLE),
+            text(t!(lang, "welcome-step-roms")).size(TEXT_TITLE),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
-        text(t(lang, "welcome-step-roms-description"))
+        text(t!(lang, "welcome-step-roms-description"))
             .size(TEXT_CAPTION)
             .style(save_view::muted_text_style),
         text(roms_path.display().to_string())
@@ -97,14 +97,14 @@ pub fn view<'a>(
         row![
             widgets::labeled_icon_button(
                 Icon::Folder,
-                t(lang, "welcome-open-folder"),
+                t!(lang, "welcome-open-folder"),
                 Message::OpenRomsFolder,
                 STANDARD_PADDING,
                 widgets::neutral,
             ),
             widgets::labeled_icon_button(
                 Icon::RefreshCw,
-                t(lang, "rescan"),
+                t!(lang, "rescan"),
                 Message::RescanRoms,
                 STANDARD_PADDING,
                 widgets::neutral,
@@ -115,11 +115,7 @@ pub fn view<'a>(
     .spacing(6);
     if has_roms {
         roms_block = roms_block.push(
-            text(t_args(
-                lang,
-                "welcome-step-roms-detected",
-                &[("count", (roms_count as i64).into())],
-            ))
+            text(t!(lang, "welcome-step-roms-detected", count = roms_count as i64))
             .size(TEXT_CAPTION)
             .style(|theme: &iced::Theme| iced::widget::text::Style {
                 color: Some(theme.palette().primary),
@@ -129,7 +125,7 @@ pub fn view<'a>(
 
     // Step 2 — nickname. Gated until at least one ROM is detected.
     let can_continue = has_roms && !state.nickname_draft.trim().is_empty();
-    let mut continue_btn = button(text(t(lang, "welcome-continue"))).padding(PRIMARY_PADDING);
+    let mut continue_btn = button(text(t!(lang, "welcome-continue"))).padding(PRIMARY_PADDING);
     if can_continue {
         continue_btn = continue_btn.style(widgets::primary_button).on_press(Message::Continue);
     } else {
@@ -139,15 +135,15 @@ pub fn view<'a>(
     let mut nickname_block = column![
         row![
             step_marker(!state.nickname_draft.trim().is_empty()).widget().size(16.0),
-            text(t(lang, "welcome-step-nickname")).size(TEXT_TITLE),
+            text(t!(lang, "welcome-step-nickname")).size(TEXT_TITLE),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
-        text(t(lang, "welcome-step-nickname-description"))
+        text(t!(lang, "welcome-step-nickname-description"))
             .size(TEXT_CAPTION)
             .style(save_view::muted_text_style),
         labeled::<Message>(
-            t(lang, "settings-nickname"),
+            t!(lang, "settings-nickname"),
             text_input("", &state.nickname_draft)
                 .on_input(Message::NicknameChanged)
                 .on_submit(Message::Continue)
@@ -159,7 +155,7 @@ pub fn view<'a>(
     .spacing(6);
     if !has_roms {
         nickname_block = nickname_block.push(
-            text(t(lang, "welcome-roms-needed"))
+            text(t!(lang, "welcome-roms-needed"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
         );
@@ -169,12 +165,12 @@ pub fn view<'a>(
     container(
         column![
             row![
-                text(t(lang, "welcome-title")).size(TEXT_DISPLAY),
+                text(t!(lang, "welcome-title")).size(TEXT_DISPLAY),
                 Space::new().width(Fill),
                 lang_picker
             ]
             .align_y(Alignment::Center),
-            text(t(lang, "welcome-subtitle"))
+            text(t!(lang, "welcome-subtitle"))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style),
             Space::new().height(16),

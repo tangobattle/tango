@@ -524,16 +524,16 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
     // below alongside the close button.
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
-            let (icon, label_key) = if state.show_opponent_panel {
-                (Icon::ArrowRightFromLine, "session-hide-opponent")
+            let (icon, label) = if state.show_opponent_panel {
+                (Icon::ArrowRightFromLine, t!(lang, "session-hide-opponent"))
             } else {
-                (Icon::ArrowLeftFromLine, "session-show-opponent")
+                (Icon::ArrowLeftFromLine, t!(lang, "session-show-opponent"))
             };
-            Some(ctrl_icon_btn(icon, t(lang, label_key), Message::ToggleOpponentPanel))
+            Some(ctrl_icon_btn(icon, label, Message::ToggleOpponentPanel))
         }
         _ => None,
     };
-    let close_btn = ctrl_icon_btn(Icon::X, t(lang, "playback-close"), Message::Close);
+    let close_btn = ctrl_icon_btn(Icon::X, t!(lang, "playback-close"), Message::Close);
 
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
 
@@ -574,10 +574,10 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
         let total = r.total_ticks().max(1);
         let cur = r.current_tick().min(total);
         let prefetched = r.prefetch_progress().min(total);
-        let (play_pause_icon, play_pause_key, paused) = if r.is_paused() {
-            (Icon::Play, "playback-play", true)
+        let (play_pause_icon, play_pause_label, paused) = if r.is_paused() {
+            (Icon::Play, t!(lang, "playback-play"), true)
         } else {
-            (Icon::Pause, "playback-pause", false)
+            (Icon::Pause, t!(lang, "playback-pause"), false)
         };
         let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
             .round_boundaries(r.round_boundaries())
@@ -586,7 +586,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
         // Cogwheel toggle for the options popover (speed, future
         // per-replay knobs). YouTube-style — keeps the transport at
         // a single row of glyphs while the menu is closed.
-        let options_btn = ctrl_icon_btn(Icon::Settings, t(lang, "playback-options"), Message::ToggleOptionsMenu);
+        let options_btn = ctrl_icon_btn(Icon::Settings, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
 
         // Play/Pause is the transport's centerpiece — promote to
         // the primary-button style when paused (the affordance
@@ -622,7 +622,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
             .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
             .style(play_pause_style)
             .on_press(Message::TogglePlay),
-            iced::widget::container(text(t(lang, play_pause_key)).size(TEXT_CAPTION))
+            iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
                 .padding(6)
                 .style(|theme: &iced::Theme| {
                     let p = theme.extended_palette();
@@ -725,7 +725,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
     if is_pvp || is_sp {
         controls = controls.push(ctrl_icon_btn(
             lucide_icons::Icon::Settings,
-            t(lang, "tab-settings"),
+            t!(lang, "tab-settings"),
             Message::OpenSettings,
         ));
     }
@@ -817,7 +817,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
         }
         let speed_section = column![
             container(
-                text(t(lang, "playback-speed"))
+                text(t!(lang, "playback-speed"))
                     .size(TEXT_CAPTION)
                     .style(save_view::muted_text_style),
             )

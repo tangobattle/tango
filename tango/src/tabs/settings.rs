@@ -231,9 +231,9 @@ pub fn view<'a>(
     // Pill style matches the global top nav + save_view sub-nav
     // so every tab affordance in the app reads as the same
     // widget family.
-    let side_btn = |icon: Icon, key: &'static str, tab: SettingsTab| {
+    let side_btn = |icon: Icon, label: String, tab: SettingsTab| {
         button(
-            row![icon.widget(), text(t(lang, key))]
+            row![icon.widget(), text(label)]
                 .spacing(8)
                 .align_y(Alignment::Center),
         )
@@ -244,11 +244,11 @@ pub fn view<'a>(
     };
     let sidebar = container(
         column![
-            side_btn(Icon::SlidersHorizontal, "settings-section-general", SettingsTab::General),
-            side_btn(Icon::Monitor, "settings-section-graphics", SettingsTab::Graphics),
-            side_btn(Icon::Gamepad2, "settings-section-input", SettingsTab::Input),
-            side_btn(Icon::Globe, "settings-section-network", SettingsTab::Netplay),
-            side_btn(Icon::Info, "settings-section-about", SettingsTab::About),
+            side_btn(Icon::SlidersHorizontal, t!(lang, "settings-section-general"), SettingsTab::General),
+            side_btn(Icon::Monitor, t!(lang, "settings-section-graphics"), SettingsTab::Graphics),
+            side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
+            side_btn(Icon::Globe, t!(lang, "settings-section-network"), SettingsTab::Netplay),
+            side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
         ]
         .spacing(4)
         .padding(8),
@@ -298,13 +298,13 @@ pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>
 fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         labeled::<Message>(
-            t(lang, "settings-nickname"),
+            t!(lang, "settings-nickname"),
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
                 .padding(STANDARD_PADDING)
                 .style(widgets::chunky_text_input),
         ),
-        labeled::<Message>(t(lang, "settings-language"), {
+        labeled::<Message>(t!(lang, "settings-language"), {
             // Build the picker options as `LanguageChoice`
             // wrappers — they Display the endonym from each
             // locale's `LANGUAGE` Fluent key instead of the
@@ -322,7 +322,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .style(widgets::chunky_pick_list)
         },),
         labeled::<Message>(
-            t(lang, "settings-theme"),
+            t!(lang, "settings-theme"),
             pick_list(
                 vec![config::ThemeMode::Dark, config::ThemeMode::Light],
                 Some(config.theme),
@@ -333,11 +333,11 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .style(widgets::chunky_pick_list),
         ),
         iced::widget::checkbox(config.streamer_mode)
-            .label(t(lang, "settings-streamer-mode"))
+            .label(t!(lang, "settings-streamer-mode"))
             .on_toggle(Message::ToggleStreamerMode)
             .style(widgets::chunky_checkbox),
         labeled::<Message>(
-            t(lang, "settings-data-path"),
+            t!(lang, "settings-data-path"),
             row![
                 // Path in a Fill container so a long Windows
                 // path (e.g. nested under Documents) wraps
@@ -345,7 +345,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 container(text(config.data_path.display().to_string()).size(TEXT_CAPTION)).width(Fill),
                 widgets::icon_button(
                     Icon::Folder,
-                    t(lang, "save-open-folder"),
+                    t!(lang, "save-open-folder"),
                     Message::OpenDataFolder(config.data_path.clone()),
                     STANDARD_PADDING,
                 ),
@@ -377,7 +377,7 @@ impl std::fmt::Display for VideoFilterChoice {
 
 fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
-        labeled::<Message>(t(lang, "settings-video-filter"), {
+        labeled::<Message>(t!(lang, "settings-video-filter"), {
             let options: Vec<VideoFilterChoice> = crate::video::FILTERS
                 .iter()
                 .map(|(k, d)| VideoFilterChoice {
@@ -394,7 +394,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             .style(widgets::chunky_pick_list)
         },),
         iced::widget::checkbox(config.integer_scaling)
-            .label(t(lang, "settings-integer-scaling"))
+            .label(t!(lang, "settings-integer-scaling"))
             .on_toggle(Message::ToggleIntegerScaling)
             .style(widgets::chunky_checkbox),
     ]
@@ -406,29 +406,29 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 fn settings_network<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         labeled::<Message>(
-            t(lang, "settings-matchmaking-endpoint"),
+            t!(lang, "settings-matchmaking-endpoint"),
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
                 .padding(STANDARD_PADDING)
                 .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(
-            t(lang, "settings-patch-repo"),
+            t!(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
                 .padding(STANDARD_PADDING)
                 .style(widgets::chunky_text_input),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
-            .label(t(lang, "settings-enable-patch-autoupdate"))
+            .label(t!(lang, "settings-enable-patch-autoupdate"))
             .on_toggle(Message::TogglePatchAutoupdate)
             .style(widgets::chunky_checkbox),
         iced::widget::checkbox(config.enable_updater)
-            .label(t(lang, "settings-enable-updater"))
+            .label(t!(lang, "settings-enable-updater"))
             .on_toggle(Message::ToggleEnableUpdater)
             .style(widgets::chunky_checkbox),
         iced::widget::checkbox(config.allow_prerelease_upgrades)
-            .label(t(lang, "settings-allow-prerelease-upgrades"))
+            .label(t!(lang, "settings-allow-prerelease-upgrades"))
             .on_toggle(Message::ToggleAllowPrereleaseUpgrades)
             .style(widgets::chunky_checkbox),
     ]
@@ -446,21 +446,33 @@ fn settings_input<'a>(
     let slots = config.input_mapping.slots();
     for (idx, (k, bindings)) in slots.iter().enumerate() {
         let k = *k;
-        let label = t(lang, k.label_key());
+        let label = match k {
+            input::MappedKey::Up => t!(lang, "input-key-up"),
+            input::MappedKey::Down => t!(lang, "input-key-down"),
+            input::MappedKey::Left => t!(lang, "input-key-left"),
+            input::MappedKey::Right => t!(lang, "input-key-right"),
+            input::MappedKey::A => t!(lang, "input-key-a"),
+            input::MappedKey::B => t!(lang, "input-key-b"),
+            input::MappedKey::L => t!(lang, "input-key-l"),
+            input::MappedKey::R => t!(lang, "input-key-r"),
+            input::MappedKey::Start => t!(lang, "input-key-start"),
+            input::MappedKey::Select => t!(lang, "input-key-select"),
+            input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
+        };
         let bindings: &Vec<input::PhysicalInput> = bindings;
         // Capture-mode hint for the currently-targeted slot;
         // matches show "press a key…" + a cancel chip instead
         // of the usual Add button.
         let action: Element<'a, Message> = if state.capture_target == Some(k) {
             row![
-                text(t(lang, "settings-input-press-key"))
+                text(t!(lang, "settings-input-press-key"))
                     .size(TEXT_BODY)
                     .style(|theme: &iced::Theme| iced::widget::text::Style {
                         color: Some(theme.palette().primary),
                     }),
                 widgets::icon_button(
                     Icon::X,
-                    t(lang, "save-action-cancel"),
+                    t!(lang, "save-action-cancel"),
                     Message::BindingCaptureCancel,
                     STANDARD_PADDING,
                 ),
@@ -473,7 +485,7 @@ fn settings_input<'a>(
             // row was visual noise; the + glyph is universal.
             widgets::icon_button(
                 Icon::Plus,
-                t(lang, "settings-input-add"),
+                t!(lang, "settings-input-add"),
                 Message::BindingCaptureStart(k),
                 STANDARD_PADDING,
             )
@@ -504,7 +516,7 @@ fn settings_input<'a>(
     // so its right edge aligns with the per-row Add buttons.
     let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
-        t(lang, "settings-input-reset"),
+        t!(lang, "settings-input-reset"),
         Message::BindingsReset,
         STANDARD_PADDING,
         widgets::neutral,
@@ -637,9 +649,9 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let is_ready = matches!(status, S::ReadyToUpdate { .. });
 
     let latest_label: String = match &status {
-        S::UpToDate { release: None } => t(lang, "updater-loading"),
-        S::UpToDate { release: Some(Some(r)) } => format!("v{} ({})", r.version, t(lang, "updater-up-to-date")),
-        S::UpToDate { release: Some(None) } => t(lang, "updater-up-to-date"),
+        S::UpToDate { release: None } => t!(lang, "updater-loading"),
+        S::UpToDate { release: Some(Some(r)) } => format!("v{} ({})", r.version, t!(lang, "updater-up-to-date")),
+        S::UpToDate { release: Some(None) } => t!(lang, "updater-up-to-date"),
         S::UpdateAvailable { release: r } | S::Downloading { release: r, .. } | S::ReadyToUpdate { release: r } => {
             format!("v{}", r.version)
         }
@@ -653,14 +665,14 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
                 0
             };
             Some(
-                text(format!("{}: {pct}%", t(lang, "updater-downloading")))
+                text(format!("{}: {pct}%", t!(lang, "updater-downloading")))
                     .size(TEXT_CAPTION)
                     .style(save_view::muted_text_style)
                     .into(),
             )
         }
         S::ReadyToUpdate { .. } => Some(
-            text(t(lang, "updater-ready-to-update"))
+            text(t!(lang, "updater-ready-to-update"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style)
                 .into(),
@@ -671,7 +683,7 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let action: Option<Element<'a, Message>> = is_ready.then(|| {
         widgets::labeled_icon_button(
             Icon::Download,
-            t(lang, "updater-update-now"),
+            t!(lang, "updater-update-now"),
             Message::UpdateNow,
             STANDARD_PADDING,
             widgets::primary_button,
@@ -681,9 +693,9 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
     let mut col = column![
         iced::widget::rule::horizontal(1),
         row![
-            text(format!("{}: v{current}", t(lang, "updater-current-version"))).size(TEXT_CAPTION),
+            text(format!("{}: v{current}", t!(lang, "updater-current-version"))).size(TEXT_CAPTION),
             horizontal_space(),
-            text(format!("{}: {}", t(lang, "updater-latest-version"), latest_label)).size(TEXT_CAPTION),
+            text(format!("{}: {}", t!(lang, "updater-latest-version"), latest_label)).size(TEXT_CAPTION),
         ]
         .spacing(8)
         .align_y(Alignment::Center),

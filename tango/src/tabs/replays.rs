@@ -1,5 +1,5 @@
 use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
-use crate::i18n::{t, t_args};
+use crate::i18n::t;
 use crate::widgets;
 use crate::{config, replays, save_view};
 use lucide_icons::Icon;
@@ -484,7 +484,7 @@ impl ReplaysState {
         // derived from the distinct values seen across the
         // scanned replays' local/remote metadata; "All …" is
         // always the first option.
-        let all_games = t(lang, "replays-filter-all-games");
+        let all_games = t!(lang, "replays-filter-all-games");
         let mut game_options = vec![GameFilterOption::all(all_games.clone())];
         {
             use itertools::Itertools;
@@ -517,7 +517,7 @@ impl ReplaysState {
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),
-                iced::widget::text_input(&t(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
+                iced::widget::text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(220.0))
@@ -525,7 +525,7 @@ impl ReplaysState {
                 horizontal_space(),
                 widgets::icon_button(
                     Icon::RefreshCw,
-                    t(lang, "rescan"),
+                    t!(lang, "rescan"),
                     Message::Rescan,
                     STANDARD_PADDING,
                 ),
@@ -631,15 +631,11 @@ impl ReplaysState {
             let stats = self.stats.get(&r.path);
             let stats_line = stats.map(|s| {
                 let duration_str = format_duration(s.tick_count);
-                let rounds_str = t_args(
-                    lang,
-                    "replays-rounds-short",
-                    &[("count", (s.round_count as i64).into())],
-                );
+                let rounds_str = t!(lang, "replays-rounds-short", count = s.round_count as i64);
                 if s.is_complete {
                     format!("{duration_str} · {rounds_str}")
                 } else {
-                    format!("{duration_str} · {rounds_str} · {}", t(lang, "replays-incomplete"))
+                    format!("{duration_str} · {rounds_str} · {}", t!(lang, "replays-incomplete"))
                 }
             });
             let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
@@ -693,13 +689,13 @@ impl ReplaysState {
             if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
                 replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
             } else {
-                container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
+                container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
                     .style(widgets::pane)
                     .into()
             }
         } else {
-            container(text(t(lang, "replays-select-prompt")).size(TEXT_BODY))
+            container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
                 .center(Fill)
                 .style(widgets::pane)
                 .into()
@@ -811,14 +807,14 @@ fn replay_detail<'a>(
                     };
                     widgets::icon_button_maybe(
                         Icon::Clapperboard,
-                        t(lang, "replays-export"),
+                        t!(lang, "replays-export"),
                         msg,
                         STANDARD_PADDING,
                     )
                 },
                 widgets::icon_button(
                     Icon::FolderOpen,
-                    t(lang, "patches-open-folder"),
+                    t!(lang, "patches-open-folder"),
                     Message::OpenFolder(r.path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),),
                     STANDARD_PADDING,
                 ),
@@ -833,9 +829,9 @@ fn replay_detail<'a>(
                 {
                     let watch_disabled = netplay_active || !local_rom_present;
                     let tooltip = if !local_rom_present {
-                        t(lang, "replays-watch-missing-rom")
+                        t!(lang, "replays-watch-missing-rom")
                     } else {
-                        t(lang, "replays-watch")
+                        t!(lang, "replays-watch")
                     };
                     widgets::icon_button_styled(
                         Icon::Play,
@@ -882,14 +878,14 @@ fn replay_detail<'a>(
     let matchup_pane = container(
         column![
             row![
-                row_for_side(t(lang, "play-you"), md.local_side.as_ref()),
+                row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
                 container(
                     text("VS")
                         .size(TEXT_DISPLAY)
                         .style(save_view::muted_text_style),
                 )
                 .padding([0, 12]),
-                row_for_side(t(lang, "replays-opponent"), md.remote_side.as_ref()),
+                row_for_side(t!(lang, "replays-opponent"), md.remote_side.as_ref()),
             ]
             .spacing(12)
             .align_y(iced::Alignment::Center)
@@ -902,7 +898,7 @@ fn replay_detail<'a>(
                     .map(|g| g.rom_family.clone())
                     .unwrap_or_default();
                 let label = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-                format!("{}: {}", t(lang, "replays-match-type"), label)
+                format!("{}: {}", t!(lang, "replays-match-type"), label)
             })
             .size(TEXT_CAPTION),
         ]
@@ -920,7 +916,7 @@ fn replay_detail<'a>(
             .map(Message::SaveViewAction)
     } else {
         container(
-            text(t(lang, "save-empty"))
+            text(t!(lang, "save-empty"))
                 .size(TEXT_CAPTION)
                 .style(save_view::muted_text_style),
         )
@@ -994,7 +990,7 @@ fn export_panel<'a>(
                 };
                 let pct_label = format!("{}%", (pct * 100.0).round() as u32);
                 column![
-                    text(t(lang, "replays-export-progress"))
+                    text(t!(lang, "replays-export-progress"))
                         .size(TEXT_CAPTION)
                         .style(save_view::muted_text_style),
                     // Long + thin. `length()` is the primary axis
@@ -1011,21 +1007,21 @@ fn export_panel<'a>(
             Some(Ok(path)) => {
                 let path_for_open = path.clone();
                 column![
-                    text(format!("{}:", t(lang, "replays-export-success")))
+                    text(format!("{}:", t!(lang, "replays-export-success")))
                         .size(TEXT_CAPTION)
                         .style(save_view::success_text_style),
                     text(path.display().to_string()).size(TEXT_CAPTION),
                     row![
                         widgets::labeled_icon_button(
                             Icon::Play,
-                            t(lang, "replays-export-open"),
+                            t!(lang, "replays-export-open"),
                             Message::OpenFile(path_for_open),
                             STANDARD_PADDING,
                             widgets::primary_button,
                         ),
                         widgets::labeled_icon_button(
                             Icon::RefreshCw,
-                            t(lang, "replays-export-reset"),
+                            t!(lang, "replays-export-reset"),
                             Message::ExportDismiss(replay_path.to_path_buf()),
                             STANDARD_PADDING,
                             widgets::neutral,
@@ -1037,12 +1033,12 @@ fn export_panel<'a>(
                 .into()
             }
             Some(Err(e)) => column![
-                text(format!("{}: {e}", t(lang, "replays-export-error")))
+                text(format!("{}: {e}", t!(lang, "replays-export-error")))
                     .size(TEXT_CAPTION)
                     .style(save_view::danger_text_style),
                 widgets::labeled_icon_button(
                     Icon::RefreshCw,
-                    t(lang, "replays-export-reset"),
+                    t!(lang, "replays-export-reset"),
                     Message::ExportDismiss(replay_path.to_path_buf()),
                     STANDARD_PADDING,
                     widgets::neutral,
@@ -1062,7 +1058,7 @@ fn export_panel<'a>(
     let in_flight = false;
     let scale_label = text(format!(
         "{}: {}",
-        t(lang, "replays-export-scale"),
+        t!(lang, "replays-export-scale"),
         if settings.lossless {
             "".into()
         } else {
@@ -1077,7 +1073,7 @@ fn export_panel<'a>(
     // visually unambiguous. iced 0.14 has no `slider.enabled()`,
     // so we just swap the widget.
     let scale_slider: Element<'a, Message> = if settings.lossless {
-        text(t(lang, "replays-export-scale-na-lossless"))
+        text(t!(lang, "replays-export-scale-na-lossless"))
             .size(TEXT_CAPTION)
             .width(Length::Fixed(140.0))
             .style(save_view::muted_text_style)
@@ -1088,7 +1084,7 @@ fn export_panel<'a>(
             .into()
     };
     let lossless_chk = iced::widget::checkbox(settings.lossless)
-        .label(t(lang, "replays-export-lossless"))
+        .label(t!(lang, "replays-export-lossless"))
         .style(widgets::chunky_checkbox);
     let lossless_chk: Element<'a, Message> = if in_flight {
         lossless_chk.into()
@@ -1096,7 +1092,7 @@ fn export_panel<'a>(
         lossless_chk.on_toggle(Message::SetExportLossless).into()
     };
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
-        .label(t(lang, "replays-export-disable-bgm"))
+        .label(t!(lang, "replays-export-disable-bgm"))
         .style(widgets::chunky_checkbox);
     let bgm_chk: Element<'a, Message> = if in_flight {
         bgm_chk.into()
@@ -1104,7 +1100,7 @@ fn export_panel<'a>(
         bgm_chk.on_toggle(Message::SetExportDisableBgm).into()
     };
     let twosided_chk = iced::widget::checkbox(settings.twosided)
-        .label(t(lang, "replays-export-twosided"))
+        .label(t!(lang, "replays-export-twosided"))
         .style(widgets::chunky_checkbox);
     let twosided_chk: Element<'a, Message> = if in_flight {
         twosided_chk.into()
@@ -1120,7 +1116,7 @@ fn export_panel<'a>(
     ]
     .spacing(6);
     if selected_rounds.len() > 1 {
-        let label = text(format!("{}:", t(lang, "replays-export-rounds")))
+        let label = text(format!("{}:", t!(lang, "replays-export-rounds")))
             .size(TEXT_CAPTION)
             .style(save_view::muted_text_style);
         let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);
@@ -1144,7 +1140,7 @@ fn export_panel<'a>(
     let save_as_btn: Element<'a, Message> = if can_start {
         widgets::labeled_icon_button(
             Icon::Upload,
-            t(lang, "replays-export-save-as"),
+            t!(lang, "replays-export-save-as"),
             Message::Export(replay_path.to_path_buf()),
             STANDARD_PADDING,
             widgets::primary_button,
@@ -1153,7 +1149,7 @@ fn export_panel<'a>(
         iced::widget::button(
             iced::widget::row![
                 Icon::Upload.widget(),
-                text(t(lang, "replays-export-save-as")),
+                text(t!(lang, "replays-export-save-as")),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -1177,7 +1173,11 @@ fn export_panel<'a>(
 /// how the lobby renders the game line. Falls back to "{family}
 /// v{variant}" for unrecognized families.
 fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    crate::i18n::t_opt(lang, &format!("game-{family}"))
+    // Dynamic key (one per gamedb family) — bypass the literal-only
+    // macro and hit the Fluent loader directly.
+    use fluent_templates::Loader;
+    crate::i18n::LOCALES
+        .lookup(lang, &format!("game-{family}"))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
@@ -1203,7 +1203,7 @@ fn format_duration(ticks: u32) -> String {
 /// has something where the link code would be.
 fn link_code_display<'a>(lang: &LanguageIdentifier, code: &'a str) -> std::borrow::Cow<'a, str> {
     if code.is_empty() {
-        std::borrow::Cow::Owned(t(lang, "replays-direct-marker"))
+        std::borrow::Cow::Owned(t!(lang, "replays-direct-marker"))
     } else {
         std::borrow::Cow::Borrowed(code)
     }

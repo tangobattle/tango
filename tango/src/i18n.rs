@@ -1,6 +1,12 @@
 pub use fluent_templates::fluent_bundle::FluentValue;
 use fluent_templates::Loader;
 
+// Macros live at crate root via `#[macro_export]`; re-export them
+// under `crate::i18n::*` too so callers can `use crate::i18n::{t,
+// t_opt};` and pick up the macros alongside the underlying fns.
+#[allow(unused_imports)]
+pub use crate::{t, t_opt};
+
 pub const FALLBACK_LANG: unic_langid::LanguageIdentifier = unic_langid::langid!("en-US");
 
 /// Locales the app exposes in the language picker. Strings the
@@ -69,14 +75,15 @@ pub fn t_args(
     t_args_opt(lang, key, args).unwrap_or_else(|| format!("⟦{key}⟧"))
 }
 
-/// Look up `$key` (a string literal, validated at compile time) in
-/// the bundle and return a `String`. Extra `name = value` pairs are
+/// Look up `$key` (string literal, enforced at compile time) in the
+/// bundle and return a `String`. Extra `name = value` pairs are
 /// passed as fluent placeholders via `FluentValue::from`.
 ///
 /// ```ignore
 /// t!(lang, "save-empty");
 /// t!(lang, "lobby-latency", ms = 42i64);
 /// ```
+#[macro_export]
 macro_rules! t {
     ($lang:expr, $key:literal $(,)?) => {
         $crate::i18n::t($lang, $key)
@@ -89,11 +96,11 @@ macro_rules! t {
         )
     };
 }
-pub(crate) use t;
 
 /// Like [`t!`] but returns `Option<String>` — `None` if the locale
 /// (and fallback locale) don't define `$key`. Use when you need to
 /// branch on "string actually defined".
+#[macro_export]
 macro_rules! t_opt {
     ($lang:expr, $key:literal $(,)?) => {
         $crate::i18n::t_opt($lang, $key)
@@ -106,7 +113,6 @@ macro_rules! t_opt {
         )
     };
 }
-pub(crate) use t_opt;
 
 /// Picker option for the language dropdown. Holds the
 /// `LanguageIdentifier` (what gets serialized into config) plus

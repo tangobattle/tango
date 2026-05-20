@@ -47,16 +47,6 @@ pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     tabs
 }
 
-pub fn tab_key(tab: Tab) -> &'static str {
-    match tab {
-        Tab::Cover => "save-tab-cover",
-        Tab::Navi => "save-tab-navi",
-        Tab::Folder => "save-tab-folder",
-        Tab::PatchCards => "save-tab-patch-cards",
-        Tab::AutoBattleData => "save-tab-auto-battle-data",
-    }
-}
-
 pub fn render<M: 'static>(
     lang: &LanguageIdentifier,
     tab: Tab,
@@ -178,7 +168,7 @@ pub fn view<'a>(
 
     let available = available_tabs(loaded.save.as_ref(), streamer_mode);
     if available.is_empty() {
-        return placeholder(t(lang, "save-empty"));
+        return placeholder(t!(lang, "save-empty"));
     }
     let active = state
         .active_tab
@@ -187,12 +177,14 @@ pub fn view<'a>(
 
     let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
     for tab in &available {
-        tab_row = tab_row.push(widgets::tab_button(
-            tab_icon(*tab),
-            t(lang, tab_key(*tab)),
-            Action::SelectTab(*tab),
-            *tab == active,
-        ));
+        let label = match tab {
+            Tab::Cover => t!(lang, "save-tab-cover"),
+            Tab::Navi => t!(lang, "save-tab-navi"),
+            Tab::Folder => t!(lang, "save-tab-folder"),
+            Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
+            Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
+        };
+        tab_row = tab_row.push(widgets::tab_button(tab_icon(*tab), label, Action::SelectTab(*tab), *tab == active));
     }
     tab_row = tab_row.push(horizontal_space());
     // Tab strip's outer spacing is tight (2 px between tabs) but
@@ -205,7 +197,7 @@ pub fn view<'a>(
     }
     if let Some(enabled) = play_button {
         use lucide_icons::Icon;
-        let label = row![Icon::Play.widget(), text(t(lang, "play-play"))]
+        let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
             .spacing(6)
             .align_y(Alignment::Center);
         let mut btn = iced::widget::button(label).padding([4, 10]);
@@ -253,7 +245,7 @@ fn tab_extras<'a>(
     let copy_btn = |tab: Tab| -> Element<'a, Action> {
         widgets::icon_button(
             Icon::ClipboardCopy,
-            t(lang, "save-copy"),
+            t!(lang, "save-copy"),
             Action::CopyTab(tab),
             [4.0, 10.0],
         )
@@ -261,7 +253,7 @@ fn tab_extras<'a>(
     let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
         widgets::icon_button(
             Icon::ImageDown,
-            t(lang, "save-copy-image"),
+            t!(lang, "save-copy-image"),
             Action::CopyTabImage(tab),
             [4.0, 10.0],
         )
@@ -270,7 +262,7 @@ fn tab_extras<'a>(
         Tab::Folder => Some(
             row![
                 iced::widget::checkbox(state.folder_grouped)
-                    .label(t(lang, "folder-group"))
+                    .label(t!(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
                     .size(TEXT_BODY)
                     .text_size(12)
@@ -490,7 +482,7 @@ pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
 }
 
 fn render_cover<M: 'static>(lang: &LanguageIdentifier) -> Element<'static, M> {
-    container(text(t(lang, "save-cover-description")).size(TEXT_BODY))
+    container(text(t!(lang, "save-cover-description")).size(TEXT_BODY))
         .width(Fill)
         .padding(crate::widgets::PANE_PADDING)
         .style(crate::widgets::pane)
@@ -509,7 +501,7 @@ struct GroupedChip {
 
 fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped: bool) -> Element<'static, M> {
     let Some(chips_view) = loaded.save.view_chips() else {
-        return placeholder(t(lang, "save-empty"));
+        return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
     let folder_idx = chips_view.equipped_folder_index();
@@ -1049,7 +1041,7 @@ fn tooltip_style(_theme: &iced::Theme) -> container::Style {
 
 fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(navi_view) = loaded.save.view_navi() else {
-        return placeholder(t(lang, "save-empty"));
+        return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
 
@@ -1077,7 +1069,7 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                 column![
                     emblem,
                     text(name).size(TEXT_DISPLAY),
-                    text(format!("{}: #{navi_id}", t(lang, "navi-id")))
+                    text(format!("{}: #{navi_id}", t!(lang, "navi-id")))
                         .size(TEXT_CAPTION)
                         .style(muted_text_style),
                 ]
@@ -1106,7 +1098,7 @@ fn render_navicust<M: 'static>(
         assets
             .style(id)
             .and_then(|s| s.name())
-            .unwrap_or_else(|| t(lang, "navi-style-unset"))
+            .unwrap_or_else(|| t!(lang, "navi-style-unset"))
     });
     let [cols, rows_n] = v.size();
 
@@ -1186,7 +1178,7 @@ fn render_navicust<M: 'static>(
             // whole pane across the tab.
             stacked.into()
         }
-        None => text(format!("{}: {} × {}", t(lang, "navicust-grid-size"), cols, rows_n))
+        None => text(format!("{}: {} × {}", t!(lang, "navicust-grid-size"), cols, rows_n))
             .size(TEXT_CAPTION)
             .into(),
     };
@@ -1242,7 +1234,7 @@ fn render_navicust<M: 'static>(
     let mut content = column![].spacing(8).align_x(Alignment::Center);
     if let Some(name) = style_name {
         content =
-            content.push(text(format!("{}: {}", t(lang, "navi-style"), name)).size(TEXT_HEADING));
+            content.push(text(format!("{}: {}", t!(lang, "navi-style"), name)).size(TEXT_HEADING));
     }
     content = content.push(grid_el);
     if installed_solid + installed_plus > 0 {
@@ -1262,7 +1254,7 @@ fn render_navicust<M: 'static>(
 
 fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(view) = loaded.save.view_patch_cards() else {
-        return placeholder(t(lang, "save-empty"));
+        return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
 
@@ -1356,7 +1348,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
 
 fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(view) = loaded.save.view_auto_battle_data() else {
-        return placeholder(t(lang, "save-empty"));
+        return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
     let mat = view.materialized();
@@ -1393,14 +1385,14 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
 
     column![
         section(
-            t(lang, "auto-battle-data-secondary-standard-chips"),
+            t!(lang, "auto-battle-data-secondary-standard-chips"),
             mat.secondary_standard_chips(),
         ),
-        section(t(lang, "auto-battle-data-standard-chips"), mat.standard_chips(),),
-        section(t(lang, "auto-battle-data-mega-chips"), mat.mega_chips()),
-        section(t(lang, "auto-battle-data-giga-chip"), &[mat.giga_chip()]),
-        section(t(lang, "auto-battle-data-combos"), mat.combos()),
-        section(t(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
+        section(t!(lang, "auto-battle-data-standard-chips"), mat.standard_chips(),),
+        section(t!(lang, "auto-battle-data-mega-chips"), mat.mega_chips()),
+        section(t!(lang, "auto-battle-data-giga-chip"), &[mat.giga_chip()]),
+        section(t!(lang, "auto-battle-data-combos"), mat.combos()),
+        section(t!(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
     ]
     .spacing(crate::widgets::PANE_GAP)
     .width(Fill)

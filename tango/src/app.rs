@@ -567,7 +567,7 @@ pub enum Message {
 
 impl App {
     pub fn title(&self) -> String {
-        t(&self.config.language, "window-title")
+        t!(&self.config.language, "window-title")
     }
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
@@ -1393,7 +1393,7 @@ impl App {
             if self.session.show_settings {
                 let back = widgets::labeled_icon_button(
                     lucide_icons::Icon::ArrowLeft,
-                    t(lang, "session-back-to-session"),
+                    t!(lang, "session-back-to-session"),
                     Message::Session(session::Message::CloseSettings),
                     STANDARD_PADDING,
                     widgets::neutral,
@@ -1486,9 +1486,9 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
                     .content_fit(iced::ContentFit::Contain),
             )
             .padding([2, 8]),
-            tab(Icon::Gamepad, t(lang, "tab-play"), Tab::Play),
-            tab(Icon::Film, t(lang, "tab-replays"), Tab::Replays),
-            tab(Icon::Puzzle, t(lang, "tab-patches"), Tab::Patches),
+            tab(Icon::Gamepad, t!(lang, "tab-play"), Tab::Play),
+            tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
+            tab(Icon::Puzzle, t!(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
             // Settings = low-emphasis utility tab. The gear glyph
             // is already an interface convention, so the "Settings"
@@ -1496,7 +1496,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             // tooltip instead.
             widgets::nav_icon_tab_button(
                 Icon::Settings,
-                t(lang, "tab-settings"),
+                t!(lang, "tab-settings"),
                 Message::TabSelected(Tab::Settings),
                 Tab::Settings == active,
             ),

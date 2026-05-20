@@ -125,12 +125,8 @@ fn supervisor_main() -> anyhow::Result<i32> {
         Ok(f) => f,
         Err(e) => {
             rfd::MessageDialog::new()
-                .set_title(i18n::t(&lang, "window-title"))
-                .set_description(i18n::t_args(
-                    &lang,
-                    "crash-no-log",
-                    &[("error", format!("{e:?}").into())],
-                ))
+                .set_title(i18n::t!(&lang, "window-title"))
+                .set_description(t!(&lang, "crash-no-log", error = format!("{e:?}")))
                 .set_level(rfd::MessageLevel::Error)
                 .show();
             return Err(e.into());
@@ -150,12 +146,8 @@ fn supervisor_main() -> anyhow::Result<i32> {
 
     if !status.success() {
         rfd::MessageDialog::new()
-            .set_title(i18n::t(&lang, "window-title"))
-            .set_description(i18n::t_args(
-                &lang,
-                "crash",
-                &[("path", log_path.display().to_string().into())],
-            ))
+            .set_title(i18n::t!(&lang, "window-title"))
+            .set_description(t!(&lang, "crash", path = log_path.display().to_string()))
             .set_level(rfd::MessageLevel::Error)
             .show();
     }

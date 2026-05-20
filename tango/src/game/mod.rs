@@ -7,7 +7,8 @@
 //! per-game `tango_pvp::hooks::Hooks` so PVP / replay code has one
 //! lookup point.
 
-use crate::i18n::t_opt;
+use crate::i18n::LOCALES;
+use fluent_templates::Loader;
 use crate::rom::GameRef;
 use crate::rom_overrides::{OverridenAssets, Overrides};
 use std::any::Any;
@@ -138,9 +139,12 @@ pub fn region_to_language(region: tango_gamedb::Region) -> unic_langid::Language
 /// the legacy Fluent attribute scheme; falls back to the base
 /// `game-<family>` value, then to "<family> v<variant>".
 pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
+    // Truly dynamic key (one per family/variant pair) — bypass the
+    // literal-only t!/t_opt! macros and hit the Fluent loader directly.
     let (family, variant) = game.family_and_variant();
-    t_opt(lang, &format!("game-{family}.variant-{variant}"))
-        .or_else(|| t_opt(lang, &format!("game-{family}")))
+    LOCALES
+        .lookup(lang, &format!("game-{family}.variant-{variant}"))
+        .or_else(|| LOCALES.lookup(lang, &format!("game-{family}")))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
@@ -149,7 +153,9 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
 /// produce something identifying.
 pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
-    t_opt(lang, &format!("game-{family}.short")).unwrap_or_else(|| format!("{family} v{variant}"))
+    LOCALES
+        .lookup(lang, &format!("game-{family}.short"))
+        .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// Localized match-type label for a (mode, subtype) pair (e.g.
@@ -161,7 +167,8 @@ pub fn match_type_name(
     match_type: u8,
     match_subtype: u8,
 ) -> String {
-    t_opt(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
+    LOCALES
+        .lookup(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
         .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }
 

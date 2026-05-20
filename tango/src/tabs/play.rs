@@ -1,5 +1,5 @@
 use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE};
-use crate::i18n::{t, t_args};
+use crate::i18n::t;
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
 use iced::widget::space::horizontal as horizontal_space;
@@ -666,9 +666,9 @@ impl PlayState {
         if scanners.roms.read().is_empty() {
             let roms_path = config.roms_path();
             return empty_state_card(
-                t(lang, "empty-no-roms-title"),
-                vec![t(lang, "empty-no-roms-body"), roms_path.display().to_string()],
-                Some((t(lang, "save-open-folder"), roms_path)),
+                t!(lang, "empty-no-roms-title"),
+                vec![t!(lang, "empty-no-roms-body"), roms_path.display().to_string()],
+                Some((t!(lang, "save-open-folder"), roms_path)),
             );
         }
         // Game selected but no save files for it.
@@ -677,9 +677,9 @@ impl PlayState {
             if !has_saves && self.local_save.is_none() {
                 let saves_path = config.saves_path();
                 return empty_state_card(
-                    t(lang, "empty-no-saves-title"),
-                    vec![t(lang, "empty-no-saves-body"), saves_path.display().to_string()],
-                    Some((t(lang, "save-open-folder"), saves_path)),
+                    t!(lang, "empty-no-saves-title"),
+                    vec![t!(lang, "empty-no-saves-body"), saves_path.display().to_string()],
+                    Some((t!(lang, "save-open-folder"), saves_path)),
                 );
             }
         }
@@ -726,7 +726,7 @@ impl PlayState {
             .and_then(|g| game_options.iter().find(|opt| opt.game == g).cloned());
 
         let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
-            .placeholder(t(lang, "play-no-game"))
+            .placeholder(t!(lang, "play-no-game"))
             .padding(STANDARD_PADDING)
             .width(Length::FillPortion(3))
             .style(widgets::chunky_pick_list);
@@ -769,12 +769,12 @@ impl PlayState {
             .and_then(|p| save_options.iter().find(|s| &s.path == p).cloned());
 
         let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
-            .placeholder(t(lang, "play-no-save"))
+            .placeholder(t!(lang, "play-no-save"))
             .padding(STANDARD_PADDING)
             .width(Length::Fill)
             .style(widgets::chunky_pick_list);
 
-        let no_patch_label = t(lang, "play-no-patch");
+        let no_patch_label = t!(lang, "play-no-patch");
         let patches = scanners.patches.read();
         let mut compatible_names: Vec<String> = patches
             .iter()
@@ -837,12 +837,12 @@ impl PlayState {
             self.local_patch_version.clone(),
             Message::LocalPatchVersionSelected,
         )
-        .placeholder(t(lang, "play-version-placeholder"))
+        .placeholder(t!(lang, "play-version-placeholder"))
         .padding(STANDARD_PADDING)
         .width(Length::Fixed(100.0))
         .style(widgets::chunky_pick_list);
 
-        let refresh = widgets::icon_button(Icon::RefreshCw, t(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
+        let refresh = widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
 
         let game_row = row![game, patch, version, refresh]
             .spacing(8)
@@ -854,7 +854,7 @@ impl PlayState {
                 row![save, actions].spacing(8).align_y(Alignment::Center).into()
             }
             SaveAction::Renaming { draft } => row![
-                text_input(&t(lang, "save-name-placeholder"), draft)
+                text_input(&t!(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
                     .on_submit(Message::SaveRenameConfirm)
                     .style(widgets::chunky_text_input)
@@ -862,14 +862,14 @@ impl PlayState {
                     .width(Length::Fill),
                 widgets::icon_button_styled(
                     Icon::Check,
-                    t(lang, "save-rename-confirm"),
+                    t!(lang, "save-rename-confirm"),
                     Some(Message::SaveRenameConfirm),
                     STANDARD_PADDING,
                     widgets::primary_button,
                 ),
                 widgets::icon_button(
                     Icon::X,
-                    t(lang, "save-action-cancel"),
+                    t!(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
                     STANDARD_PADDING,
                 ),
@@ -878,19 +878,19 @@ impl PlayState {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::ConfirmDelete => row![
-                text(t(lang, "save-delete-prompt"))
+                text(t!(lang, "save-delete-prompt"))
                     .style(save_view::muted_text_style)
                     .width(Length::Fill),
                 widgets::labeled_icon_button(
                     Icon::Trash,
-                    t(lang, "save-delete-confirm"),
+                    t!(lang, "save-delete-confirm"),
                     Message::SaveDeleteConfirm,
                     STANDARD_PADDING,
                     widgets::danger_button,
                 ),
                 widgets::icon_button(
                     Icon::X,
-                    t(lang, "save-action-cancel"),
+                    t!(lang, "save-action-cancel"),
                     Message::SaveActionCancel,
                     STANDARD_PADDING,
                 ),
@@ -919,14 +919,14 @@ impl PlayState {
                 let confirm_btn = if can_confirm {
                     widgets::labeled_icon_button(
                         Icon::Check,
-                        t(lang, "save-new-confirm"),
+                        t!(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
                         STANDARD_PADDING,
                         widgets::primary_button,
                     )
                 } else {
                     iced::widget::button(
-                        row![Icon::Check.widget(), text(t(lang, "save-new-confirm"))]
+                        row![Icon::Check.widget(), text(t!(lang, "save-new-confirm"))]
                             .spacing(8)
                             .align_y(Alignment::Center),
                     )
@@ -936,11 +936,11 @@ impl PlayState {
                 };
                 row![
                     pick_list(options, selected, |o| { Message::SaveNewTemplateSelected(o.raw) })
-                        .placeholder(t(lang, "save-template-pick"))
+                        .placeholder(t!(lang, "save-template-pick"))
                         .padding(STANDARD_PADDING)
                         .width(Length::Fixed(180.0))
                         .style(widgets::chunky_pick_list),
-                    text_input(&t(lang, "save-name-placeholder"), draft)
+                    text_input(&t!(lang, "save-name-placeholder"), draft)
                         .on_input(Message::SaveNewDraftChanged)
                         .on_submit(Message::SaveNewConfirm)
                         .padding(STANDARD_PADDING)
@@ -949,7 +949,7 @@ impl PlayState {
                     confirm_btn,
                     widgets::icon_button(
                         Icon::X,
-                        t(lang, "save-action-cancel"),
+                        t!(lang, "save-action-cancel"),
                         Message::SaveActionCancel,
                         STANDARD_PADDING,
                     ),
@@ -987,21 +987,21 @@ impl PlayState {
         // a save template for the selected game.
         let can_new = templates_for_selection(self, scanners).is_some();
         row![
-            mk(Icon::FilePlus, t(lang, "save-new"), Message::SaveNewStart, can_new),
+            mk(Icon::FilePlus, t!(lang, "save-new"), Message::SaveNewStart, can_new),
             mk(
                 Icon::FolderOpen,
-                t(lang, "save-open-folder"),
+                t!(lang, "save-open-folder"),
                 Message::SaveOpenFolder,
                 enabled
             ),
-            mk(Icon::Files, t(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(Icon::Files, t!(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
             mk(
                 Icon::PencilLine,
-                t(lang, "save-rename"),
+                t!(lang, "save-rename"),
                 Message::SaveRenameStart,
                 enabled
             ),
-            mk_danger(Icon::Trash, t(lang, "save-delete"), Message::SaveDeleteStart, enabled),
+            mk_danger(Icon::Trash, t!(lang, "save-delete"), Message::SaveDeleteStart, enabled),
         ]
         .spacing(6)
         .align_y(Alignment::Center)
@@ -1016,7 +1016,7 @@ impl PlayState {
         netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         let Some(loaded) = loaded else {
-            return container(text(t(lang, "play-no-selection")).size(TEXT_BODY))
+            return container(text(t!(lang, "play-no-selection")).size(TEXT_BODY))
                 .center(Fill)
                 .into();
         };
@@ -1048,7 +1048,7 @@ impl PlayState {
             // separate branch here.
             let label = row![
                 Icon::Swords.widget().size(BOTTOM_SIZE),
-                text(t(lang, "play-fight")).size(BOTTOM_SIZE),
+                text(t!(lang, "play-fight")).size(BOTTOM_SIZE),
             ]
             .spacing(8)
             .align_y(Alignment::Center);
@@ -1067,7 +1067,7 @@ impl PlayState {
         // wrap it in a fixed-height container to match the
         // surrounding controls.
         let link_input: Element<'a, Message> = container(
-            text_input(&t(lang, "play-link-code"), &self.link_code)
+            text_input(&t!(lang, "play-link-code"), &self.link_code)
                 .on_input(Message::LinkCodeChanged)
                 .on_submit(Message::FightPressed)
                 .size(BOTTOM_SIZE)
@@ -1084,7 +1084,7 @@ impl PlayState {
                 .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(Message::LinkCodeRandom),
-            container(text(t(lang, "play-link-code-random")).size(TEXT_CAPTION))
+            container(text(t!(lang, "play-link-code-random")).size(TEXT_CAPTION))
                 .padding(6)
                 .style(|theme: &iced::Theme| {
                     let p = theme.extended_palette();
@@ -1342,7 +1342,7 @@ fn lobby_view<'a>(
                         dot_color(false),
                         column![
                             text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
-                            text(t(lang, "lobby-waiting"))
+                            text(t!(lang, "lobby-waiting"))
                                 .size(TEXT_TITLE)
                                 .style(save_view::muted_text_style),
                         ]
@@ -1361,10 +1361,14 @@ fn lobby_view<'a>(
                 .as_ref()
                 .map(|gi| {
                     let family = gi.family_and_variant.0.as_str();
-                    crate::i18n::t_opt(lang, &format!("game-{family}"))
+                    // Dynamic key (one per gamedb family) — bypass the
+                    // literal-only macro and hit the Fluent loader directly.
+                    use fluent_templates::Loader;
+                    crate::i18n::LOCALES
+                        .lookup(lang, &format!("game-{family}"))
                         .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
                 })
-                .unwrap_or_else(|| t(lang, "lobby-no-game"));
+                .unwrap_or_else(|| t!(lang, "lobby-no-game"));
             let patch = settings
                 .game_info
                 .as_ref()
@@ -1439,7 +1443,7 @@ fn lobby_view<'a>(
     // reserving a slot for it.
     let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency {
         Some(
-            text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
+            text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
@@ -1447,12 +1451,12 @@ fn lobby_view<'a>(
     } else if let Some(ident) = ident {
         use crate::netplay::{DirectRole, LinkIdent};
         let label = match ident {
-            LinkIdent::Matchmaking(code) => t_args(lang, "lobby-link-code", &[("code", code.clone().into())]),
+            LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
             LinkIdent::Direct(DirectRole::Host { port }) => {
-                t_args(lang, "lobby-direct-host", &[("port", port.to_string().into())])
+                t!(lang, "lobby-direct-host", port = port.to_string())
             }
             LinkIdent::Direct(DirectRole::Connect { addr }) => {
-                t_args(lang, "lobby-direct-connect", &[("target", addr.clone().into())])
+                t!(lang, "lobby-direct-connect", target = addr.clone())
             }
         };
         Some(text(label).size(TEXT_BODY).style(save_view::muted_text_style).into())
@@ -1494,7 +1498,7 @@ fn lobby_view<'a>(
             Message::NetplaySetMatchType
         };
         if options.is_empty() {
-            text(t(lang, "lobby-no-match-types"))
+            text(t!(lang, "lobby-no-match-types"))
                 .style(save_view::muted_text_style)
                 .into()
         } else {
@@ -1541,7 +1545,7 @@ fn lobby_view<'a>(
     };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,
-        t(lang, "lobby-input-delay-suggest"),
+        t!(lang, "lobby-input-delay-suggest"),
         suggest_msg,
         STANDARD_PADDING,
     );
@@ -1558,12 +1562,12 @@ fn lobby_view<'a>(
     let (reveal_label, reveal_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
         if let Some(r) = lobby.remote.as_ref() {
             if r.reveal_setup {
-                (t(lang, "lobby-reveal-peer-on"), save_view::success_text_style)
+                (t!(lang, "lobby-reveal-peer-on"), save_view::success_text_style)
             } else {
-                (t(lang, "lobby-reveal-peer-off"), save_view::danger_text_style)
+                (t!(lang, "lobby-reveal-peer-off"), save_view::danger_text_style)
             }
         } else {
-            (t(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
+            (t!(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
         };
 
     // Settings table — one stacked row per setting, each shaped
@@ -1584,7 +1588,7 @@ fn lobby_view<'a>(
     };
 
     let match_row = setting_row(
-        text(t(lang, "replays-match-type"))
+        text(t!(lang, "replays-match-type"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1592,7 +1596,7 @@ fn lobby_view<'a>(
     );
 
     let delay_row = setting_row(
-        text(t(lang, "lobby-input-delay"))
+        text(t!(lang, "lobby-input-delay"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1618,7 +1622,7 @@ fn lobby_view<'a>(
         Some(Message::NetplaySetRevealSetup as fn(bool) -> Message)
     };
     let reveal_row = setting_row(
-        text(t(lang, "lobby-reveal-mine"))
+        text(t!(lang, "lobby-reveal-mine"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1649,14 +1653,9 @@ fn lobby_view<'a>(
             // failure mode can carry its own translated copy.
             // Anything we don't have a dedicated key for falls
             // back to the generic "Connection failed: <raw>".
-            let key = match error.as_str() {
-                "peer-disconnected" => "play-status-peer-disconnected",
-                _ => "play-status-failed",
-            };
-            let label = if key == "play-status-failed" {
-                format!("{}: {error}", t(lang, "play-status-failed"))
-            } else {
-                t(lang, key)
+            let label = match error.as_str() {
+                "peer-disconnected" => t!(lang, "play-status-peer-disconnected"),
+                _ => format!("{}: {error}", t!(lang, "play-status-failed")),
             };
             (
                 text(label).size(TEXT_BODY).style(save_view::danger_text_style).into(),
@@ -1671,17 +1670,14 @@ fn lobby_view<'a>(
             // to matchmaking server…"); direct `/connect` codes
             // dial straight at the peer, so the matchmaking copy
             // is wrong — use the opponent-targeted string instead.
-            let key = match ident {
+            let label = match ident {
                 crate::netplay::LinkIdent::Direct(crate::netplay::DirectRole::Connect { .. }) => {
-                    "play-status-direct-connecting"
+                    t!(lang, "play-status-direct-connecting")
                 }
-                _ => "play-status-connecting",
+                _ => t!(lang, "play-status-connecting"),
             };
             (
-                text(t(lang, key))
-                    .size(TEXT_BODY)
-                    .style(save_view::muted_text_style)
-                    .into(),
+                text(label).size(TEXT_BODY).style(save_view::muted_text_style).into(),
                 false,
             )
         }
@@ -1689,14 +1685,14 @@ fn lobby_view<'a>(
             waiting_for_opponent: true,
             ..
         } => (
-            text(t(lang, "play-status-waiting-opponent"))
+            text(t!(lang, "play-status-waiting-opponent"))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
             false,
         ),
         Phase::Negotiating { .. } => (
-            text(t(lang, "play-status-negotiating"))
+            text(t!(lang, "play-status-negotiating"))
                 .size(TEXT_BODY)
                 .style(save_view::muted_text_style)
                 .into(),
@@ -1708,11 +1704,11 @@ fn lobby_view<'a>(
                 let patches = scanners.patches.read();
                 let verdict = crate::netplay::compat::check(l, r, &*patches);
                 let label = match verdict {
-                    Verdict::Compatible => t(lang, "lobby-compat-ok"),
-                    Verdict::MissingGame => t(lang, "lobby-compat-missing-game"),
-                    Verdict::MissingRomOrPatch => t(lang, "lobby-compat-missing-rom"),
-                    Verdict::DifferentVersions => t(lang, "lobby-compat-version-mismatch"),
-                    Verdict::DifferentMatchTypes => t(lang, "lobby-compat-match-mismatch"),
+                    Verdict::Compatible => t!(lang, "lobby-compat-ok"),
+                    Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
+                    Verdict::MissingRomOrPatch => t!(lang, "lobby-compat-missing-rom"),
+                    Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
+                    Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
                 };
                 let ok = matches!(verdict, Verdict::Compatible);
                 let style: fn(&iced::Theme) -> iced::widget::text::Style = if ok {
@@ -1723,7 +1719,7 @@ fn lobby_view<'a>(
                 (text(label).size(TEXT_BODY).style(style).into(), ok)
             }
             _ => (
-                text(t(lang, "lobby-handshake"))
+                text(t!(lang, "lobby-handshake"))
                     .size(TEXT_BODY)
                     .style(save_view::muted_text_style)
                     .into(),
@@ -1748,7 +1744,7 @@ fn lobby_view<'a>(
             // actually opens.
             (
                 Icon::Play,
-                t(lang, "lobby-match-starting"),
+                t!(lang, "lobby-match-starting"),
                 None,
                 ReadyPalette::Starting,
             )
@@ -1757,7 +1753,7 @@ fn lobby_view<'a>(
             // Gray / neutral so it doesn't masquerade as a primary CTA.
             (
                 Icon::X,
-                t(lang, "lobby-unready"),
+                t!(lang, "lobby-unready"),
                 Some(Message::NetplayUnready),
                 ReadyPalette::Committed,
             )
@@ -1769,7 +1765,7 @@ fn lobby_view<'a>(
             let can_ready = compat_ok && has_save;
             (
                 Icon::Check,
-                t(lang, "lobby-ready"),
+                t!(lang, "lobby-ready"),
                 if can_ready { Some(Message::NetplayReady) } else { None },
                 ReadyPalette::Idle,
             )
@@ -1812,7 +1808,7 @@ fn lobby_view<'a>(
     // (same right edge, opposite corner).
     let leave_button: Element<'a, Message> = widgets::labeled_icon_button(
         Icon::LogOut,
-        t(lang, "play-cancel"),
+        t!(lang, "play-cancel"),
         Message::NetplayDisconnect,
         STANDARD_PADDING,
         widgets::danger_button,
@@ -1844,12 +1840,12 @@ fn lobby_view<'a>(
     let sides_pane = container(
         iced::widget::row![
             side(
-                t(lang, "play-you"),
+                t!(lang, "play-you"),
                 Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
                 lobby.local_ready,
             ),
             vs_chip,
-            side(t(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
+            side(t!(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
         ]
         .spacing(14)
         // Top-align so the YOU slot doesn't bounce upward when
@@ -1894,13 +1890,18 @@ impl SaveTemplateOption {
         // patches ship as `<rom>_<rev>.sav`. Patches' .save-megaman
         // attr usually carries the right label for that.
         let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-        let display = crate::i18n::t_opt(lang, &format!("game-{family}.save-{key_suffix}")).unwrap_or_else(|| {
-            if raw.is_empty() {
-                crate::i18n::t(lang, "save-template-default")
-            } else {
-                raw.to_string()
-            }
-        });
+        // Dynamic key (one per family × template name) — bypass the
+        // literal-only macro and hit the Fluent loader directly.
+        use fluent_templates::Loader;
+        let display = crate::i18n::LOCALES
+            .lookup(lang, &format!("game-{family}.save-{key_suffix}"))
+            .unwrap_or_else(|| {
+                if raw.is_empty() {
+                    t!(lang, "save-template-default")
+                } else {
+                    raw.to_string()
+                }
+            });
         Self {
             raw: raw.to_string(),
             display,
@@ -2066,7 +2067,7 @@ fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, M
             iced::widget::space::horizontal(),
             widgets::icon_button(
                 Icon::X,
-                t(lang, "save-action-cancel"),
+                t!(lang, "save-action-cancel"),
                 Message::DismissError,
                 [4.0, 8.0],
             ),

@@ -338,24 +338,6 @@ pub enum MappedKey {
     SpeedUp,
 }
 
-impl MappedKey {
-    pub fn label_key(self) -> &'static str {
-        match self {
-            Self::Up => "input-key-up",
-            Self::Down => "input-key-down",
-            Self::Left => "input-key-left",
-            Self::Right => "input-key-right",
-            Self::A => "input-key-a",
-            Self::B => "input-key-b",
-            Self::L => "input-key-l",
-            Self::R => "input-key-r",
-            Self::Start => "input-key-start",
-            Self::Select => "input-key-select",
-            Self::SpeedUp => "input-key-speed-up",
-        }
-    }
-
-}
 
 /// Live held-input state combined from keyboard + every connected
 /// gamepad. The session loop updates this on every key/gamepad
