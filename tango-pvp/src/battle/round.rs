@@ -14,17 +14,24 @@ use super::EXPECTED_FPS;
 /// directions when their skew estimates disagree about who's ahead.
 const MAX_ADJUSTMENT: f32 = 30.0;
 
-/// Per-frame EMA weight on the live skew sample, applied as
-/// `smoothed = α·sample + (1-α)·smoothed`. Target time constant
-/// τ ≈ 5 s at 60 Hz → α = 1/300. Long enough that a sub-second
-/// bursty-loss spike (a gap of stalled remote packets followed by
-/// a retransmit burst) only nudges the smoothed value by a few
-/// percent of its peak: a 0.5 s spike of raw skew +30 contributes
-/// ~30·(1-exp(-0.5/5)) ≈ +2.9 to the filtered value, so the
-/// throttle barely moves under heavy stochastic loss. Persistent
-/// clock drift still converges with τ ≈ 5 s, which is well below
-/// the user-noticeable accumulation threshold.
-const SKEW_SMOOTH_ALPHA: f32 = 1.0 / 300.0;
+/// Per-frame EMA weight applied as `smoothed = α·sample + (1-α)·smoothed`,
+/// asymmetric so the throttle prioritizes catching back up to full
+/// speed over slowing down further.
+///
+/// `SLOWDOWN` (skew growing → need more slowdown) uses τ ≈ 5 s at
+/// 60 Hz so a sub-second bursty-loss spike barely moves the smoothed
+/// value: a 0.5 s spike of raw skew +30 contributes
+/// ~30·(1-exp(-0.5/5)) ≈ +2.9, so the throttle barely engages under
+/// heavy stochastic loss.
+///
+/// `SPEEDUP` (skew shrinking → can lift the slowdown) uses τ ≈ 0.5 s
+/// so once the underlying imbalance closes, the local fps returns to
+/// 60 within a handful of frames rather than coasting at the reduced
+/// rate for the full slow τ. Net: the throttle ramps in gently but
+/// recovers fast — the user sees a smooth glide down and a snappy
+/// return to normal.
+const SKEW_SMOOTH_ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
+const SKEW_SMOOTH_ALPHA_SPEEDUP: f32 = 1.0 / 30.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
@@ -284,7 +291,15 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32;
 
-        self.smoothed_skew = SKEW_SMOOTH_ALPHA * skew + (1.0 - SKEW_SMOOTH_ALPHA) * self.smoothed_skew;
+        // Asymmetric α: slow rise (we slow down gradually) but fast
+        // fall (we lift the slowdown quickly so we don't coast
+        // unnecessarily after the imbalance resolves).
+        let alpha = if skew > self.smoothed_skew {
+            SKEW_SMOOTH_ALPHA_SLOWDOWN
+        } else {
+            SKEW_SMOOTH_ALPHA_SPEEDUP
+        };
+        self.smoothed_skew = alpha * skew + (1.0 - alpha) * self.smoothed_skew;
         // Only slow the leader. Negative smoothed skew = trailer, no
         // speed-up — the symmetric invariant guarantees the other side
         // sees positive skew and is the one being throttled.
