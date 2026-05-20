@@ -144,7 +144,16 @@ fn main() {
 
     let mgba_dst = cfg.build();
 
-    println!("cargo:rustc-link-search=native={}/build", mgba_dst.display());
+    // Makefile generators (NMake / Unix / MinGW) output directly under
+    // `build/`; the Visual Studio generator buries artifacts in a
+    // per-config subdir (`build/Release/` for cargo release builds).
+    // Emit both so cargo's link-search picks up whichever actually
+    // contains `mgba.lib` / `libmgba.a`.
+    let build_dir = mgba_dst.join("build");
+    println!("cargo:rustc-link-search=native={}", build_dir.display());
+    for config in ["Release", "Debug", "MinSizeRel", "RelWithDebInfo"] {
+        println!("cargo:rustc-link-search=native={}/{}", build_dir.display(), config);
+    }
     println!("cargo:rustc-link-lib=static=mgba");
     match target_os.as_str() {
         "macos" => {
