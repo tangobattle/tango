@@ -442,11 +442,16 @@ impl PlayState {
                         None
                     }
                 });
-                let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or("");
-                let draft = disambiguate_save_name(
-                    &saves_dir,
-                    &suggest_save_name(&config.language, family, template.as_deref()),
-                );
+                let draft = if let Some(game) = self.local_game {
+                    disambiguate_save_name(
+                        &saves_dir,
+                        &suggest_save_name(&config.language, game, template.as_deref()),
+                    )
+                } else {
+                    // No game selected ⇒ can_new was false ⇒ unreachable
+                    // in practice, but keep a sane fallback.
+                    "new save".to_string()
+                };
                 self.save_action = SaveAction::NewSave {
                     auto_default: Some(draft.clone()),
                     draft,
@@ -475,13 +480,14 @@ impl PlayState {
                 {
                     *template = Some(name);
                     if auto_default.as_deref() == Some(draft.as_str()) {
-                        let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or("");
-                        let new_draft = disambiguate_save_name(
-                            &config.saves_path(),
-                            &suggest_save_name(&config.language, family, template.as_deref()),
-                        );
-                        *draft = new_draft.clone();
-                        *auto_default = Some(new_draft);
+                        if let Some(game) = self.local_game {
+                            let new_draft = disambiguate_save_name(
+                                &config.saves_path(),
+                                &suggest_save_name(&config.language, game, template.as_deref()),
+                            );
+                            *draft = new_draft.clone();
+                            *auto_default = Some(new_draft);
+                        }
                     }
                 }
                 None
@@ -1130,23 +1136,24 @@ fn resolve_remembered_save(
     remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
 }
 
-/// Localized "<game-short> <template-display>" (or just "<game-short>"
+/// Localized "<game-variant> <template-display>" (or just "<game-variant>"
 /// when no template is chosen yet), with filesystem-unsafe characters
 /// stripped so it can be dropped straight into the new-save text field.
+/// Uses the full variant-aware display name so multi-version games like
+/// BN6 Gregar/Falzar get disambiguated.
 fn suggest_save_name(
     lang: &unic_langid::LanguageIdentifier,
-    family: &str,
+    game: rom::GameRef,
     template: Option<&str>,
 ) -> String {
-    let game = crate::i18n::t_opt(lang, &format!("game-{family}.short"))
-        .or_else(|| crate::i18n::t_opt(lang, &format!("game-{family}")))
-        .unwrap_or_else(|| family.to_string());
+    let game_name = crate::game::display_name(lang, game);
+    let family = game.family_and_variant().0;
     let name = match template {
         Some(raw) => {
             let display = SaveTemplateOption::new(lang, family, raw).display;
-            format!("{game} {display}")
+            format!("{game_name} - {display}")
         }
-        None => game,
+        None => game_name,
     };
     sanitize_filename(&name)
 }
