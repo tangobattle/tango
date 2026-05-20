@@ -346,7 +346,12 @@ impl PlayState {
                     save_view::Action::CopyTabImage(tab) => loaded
                         .and_then(|l| save_view::tab_as_image(tab, l))
                         .map(Effect::CopyImage),
-                    save_view::Action::PlayClicked => Some(Effect::StartSinglePlayer),
+                    save_view::Action::PlayClicked => {
+                        // Clear stale error from a prior attempt; the
+                        // new launch's outcome takes its place.
+                        self.last_error = None;
+                        Some(Effect::StartSinglePlayer)
+                    }
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
@@ -370,6 +375,9 @@ impl PlayState {
                 if trimmed.is_empty() {
                     return None;
                 }
+                // Clear any leftover after-the-fact error from a prior
+                // attempt — the new attempt's outcome will replace it.
+                self.last_error = None;
                 Some(Effect::NetplayConnect(match parse_direct_command(trimmed) {
                     Some(role) => crate::netplay::LinkIdent::Direct(role),
                     None => crate::netplay::LinkIdent::Matchmaking(trimmed.to_string()),
@@ -616,12 +624,6 @@ impl PlayState {
             .height(Fill);
 
         let mut col = column![].width(Fill).height(Fill);
-        // After-the-fact failure banner (e.g. PvP build failed,
-        // singleplayer launch errored). Pre-condition errors
-        // ("no save selected") are NOT shown here — the
-        // affordances that would trigger them are disabled, which
-        // self-explains. Only real after-the-fact failures merit
-        // this much chrome.
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
@@ -905,7 +907,7 @@ impl PlayState {
                 // user sees "MegaMan.EXE" / "Saito" etc instead of
                 // the bare filename suffix.
                 let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or_default();
-                let mut options: Vec<SaveTemplateOption> = templates_for_selection(self, scanners)
+                let options: Vec<SaveTemplateOption> = templates_for_selection(self, scanners)
                     .map(|t| {
                         t.keys()
                             .map(|name| SaveTemplateOption::new(lang, family, name))
@@ -1188,16 +1190,19 @@ fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
 pub fn templates_for_selection_public(
     state: &PlayState,
     scanners: &Scanners,
-) -> Option<std::collections::BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
+) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
     templates_for_selection(state, scanners)
 }
 
 fn templates_for_selection<'a>(
     state: &PlayState,
     scanners: &'a Scanners,
-) -> Option<std::collections::BTreeMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
+) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
     let game = state.local_game?;
-    let mut out = std::collections::BTreeMap::new();
+    // IndexMap (not BTreeMap) so templates iterate in declaration order
+    // — patch-provided first, then the game's bundled order — instead
+    // of alphabetically by raw key.
+    let mut out = indexmap::IndexMap::new();
 
     // Patch-provided templates first (so a patch can override the
     // bundled default), then fall back to the built-in for this game.
@@ -2052,17 +2057,18 @@ impl std::fmt::Display for MatchTypeOption {
     }
 }
 
-/// Inline banner used for after-the-fact action failures
-/// (singleplayer launch errored, PvP session build failed, …).
-/// Pre-condition errors are NOT funneled here — those gate the
-/// triggering action instead. Carries a dismiss × the user can
-/// click once they've read the message.
+/// Full-width inline banner for after-the-fact action failures
+/// (singleplayer launch, PvP session build). Softer styling than a
+/// hard-bordered chrome: a danger-tinted wash, rounded corners, an
+/// AlertTriangle glyph, danger-colored body text, and a quiet × the
+/// user can click to dismiss. Auto-clears on the next Fight or Play
+/// retry too, so the user isn't forced into the × path.
 fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, Message> {
     container(
         row![
             Icon::AlertTriangle.widget(),
             text(err.to_string())
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .style(save_view::danger_text_style),
             iced::widget::space::horizontal(),
             widgets::icon_button(
@@ -2072,19 +2078,26 @@ fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, M
                 [4.0, 8.0],
             ),
         ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(8),
+        .spacing(10)
+        .align_y(Alignment::Center),
     )
     .width(Fill)
+    .padding([8, 16])
     .style(|theme: &iced::Theme| {
         let p = theme.extended_palette();
+        // Soft danger-tinted wash — readable against both light and
+        // dark themes without the hard border that made the old
+        // banner feel like an OS-level dialog.
+        let alpha = if p.is_dark { 0.18 } else { 0.10 };
         iced::widget::container::Style {
-            background: Some(iced::Background::Color(p.background.weak.color)),
+            background: Some(iced::Background::Color(iced::Color {
+                a: alpha,
+                ..p.danger.base.color
+            })),
+            text_color: Some(theme.palette().text),
             border: iced::Border {
-                width: 1.0,
-                color: p.danger.strong.color,
-                radius: 0.0.into(),
+                radius: 6.0.into(),
+                ..Default::default()
             },
             ..Default::default()
         }
