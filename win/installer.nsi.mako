@@ -79,11 +79,8 @@ FunctionEnd
 Section
     SetDetailsPrint none
     SetOutPath $INSTDIR
-    File "libstdc++-6.dll"
     File "libEGL.dll"
     File "libGLESv2.dll"
-    File "libgcc_s_seh-1.dll"
-    File "libwinpthread-1.dll"
     File "ffmpeg.exe"
     File "tango.exe"
     WriteUninstaller "$INSTDIR\\uninstall.exe"
@@ -116,11 +113,8 @@ Section "uninstall"
     SetDetailsPrint none
     Delete "$DESKTOP\\Tango.lnk"
     Delete "$SMPROGRAMS\\Tango.lnk"
-    Delete "$INSTDIR\\libstdc++-6.dll"
     Delete "$INSTDIR\\libEGL.dll"
     Delete "$INSTDIR\\libGLESv2.dll"
-    Delete "$INSTDIR\\libgcc_s_seh-1.dll"
-    Delete "$INSTDIR\\libwinpthread-1.dll"
     Delete "$INSTDIR\\ffmpeg.exe"
     Delete "$INSTDIR\\tango.exe"
     Delete "$INSTDIR\\uninstall.exe"

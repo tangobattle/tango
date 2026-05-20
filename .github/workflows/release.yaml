@@ -3,10 +3,9 @@ name: release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 jobs:
-
   create-release:
     runs-on: ubuntu-22.04
     permissions:
@@ -40,7 +39,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   release-win32-x64:
-    runs-on: ubuntu-22.04
+    runs-on: windows-2022
     needs: create-release
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
@@ -57,44 +56,32 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            core/target
-          key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - run: |
-          sudo apt-get autoremove -y clang-13 clang-14
-
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y nsis mingw-w64 imagemagick wget libarchive-tools clang-15
+            target
+          key: win32-x64-msvc-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Horrible hack...
-      - run: |
-          sudo ln -s /usr/x86_64-w64-mingw32/lib/libshell32.a /usr/x86_64-w64-mingw32/lib/libShell32.a
-
-      - run: |
-          sudo pip3 install semver==3.0.0-dev3 toml mako
+      # Source MSVC vcvars (cl.exe / link.exe / nmake.exe / Windows SDK)
+      # into the rest of the workflow so cmake + cc-rs all pick up the
+      # same MSVC toolset.
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-msvc
 
-      - run: |
-          sudo update-alternatives --quiet --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60
-          sudo update-alternatives --quiet --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix 90
-          sudo update-alternatives --quiet --config x86_64-w64-mingw32-gcc
-          sudo update-alternatives --quiet --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-win32 60
-          sudo update-alternatives --quiet --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 90
-          sudo update-alternatives --quiet --config x86_64-w64-mingw32-g++
+      - name: Install Python build deps
+        run: pip install semver==3.0.0-dev3 toml mako
 
       - name: Build
-        run: |
-          BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr/x86_64-w64-mingw32/" ./win/build.sh
+        shell: bash
+        run: ./win/build.sh
 
       - uses: softprops/action-gh-release@v2
         with:
