@@ -67,35 +67,72 @@ impl Throttler for AsymmetricEma {
     }
 }
 
-/// Idle-until-tripped throttler: a sustained-frame counter climbs while
-/// raw skew is above `threshold` and resets to zero otherwise; once it
-/// crosses `trigger_frames`, a linear slowdown proportional to current
-/// skew engages. The deadband + trigger combo rejects bursty packet-
-/// loss spikes (which resolve faster than the trigger).
-pub struct LinearWatchdog {
-    pub threshold: i32,
-    pub trigger_frames: u32,
-    sustained: u32,
+/// Pure-linear slowdown: `slope · skew` for positive skew, 0 otherwise.
+/// Stateless. On its own this would react instantly to every frame of
+/// jitter; pair it with [`Watchdog`] to gate it behind a deadband and
+/// sustained-frame counter.
+pub struct Linear {
+    pub slope: f32,
 }
 
-impl LinearWatchdog {
-    /// Default tuning: 2-frame deadband, 60-frame trigger (~1 s).
+impl Linear {
     pub fn new() -> Self {
-        Self {
-            threshold: 2,
-            trigger_frames: 60,
-            sustained: 0,
-        }
+        Self { slope: 1.0 }
     }
 }
 
-impl Default for LinearWatchdog {
+impl Default for Linear {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Throttler for LinearWatchdog {
+impl Throttler for Linear {
+    fn step(&mut self, skew: i32) -> f32 {
+        if skew <= 0 {
+            0.0
+        } else {
+            skew as f32 * self.slope
+        }
+    }
+}
+
+/// Gates an inner throttler behind a deadband + sustained-frame
+/// counter. Returns 0 until raw skew has been above `threshold` for
+/// `trigger_frames` consecutive frames; while engaged, returns
+/// whatever the inner throttler says. Resets the trigger counter the
+/// first frame skew dips back under the threshold, so bursty loss
+/// spikes (which resolve faster than the trigger) never engage.
+///
+/// Composes with any [`Throttler`] — wrap `Linear` to get the classic
+/// deadband + linear-slowdown behavior, or wrap an EMA to combine the
+/// deadband with smoother engagement.
+pub struct Watchdog<T> {
+    pub threshold: i32,
+    pub trigger_frames: u32,
+    pub inner: T,
+    sustained: u32,
+}
+
+impl<T: Throttler> Watchdog<T> {
+    /// Default tuning: 2-frame deadband, 60-frame trigger (~1 s).
+    pub fn new(inner: T) -> Self {
+        Self {
+            threshold: 2,
+            trigger_frames: 60,
+            inner,
+            sustained: 0,
+        }
+    }
+}
+
+impl<T: Default + Throttler> Default for Watchdog<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T: Throttler> Throttler for Watchdog<T> {
     fn step(&mut self, skew: i32) -> f32 {
         if skew > self.threshold {
             self.sustained = self.sustained.saturating_add(1);
@@ -103,7 +140,7 @@ impl Throttler for LinearWatchdog {
             self.sustained = 0;
         }
         if self.sustained > self.trigger_frames {
-            skew.max(0) as f32
+            self.inner.step(skew)
         } else {
             0.0
         }

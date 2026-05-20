@@ -1004,7 +1004,11 @@ pub fn throttler_factory_for(throttler: config::NetplayThrottler) -> tango_pvp::
         config::NetplayThrottler::AsymmetricEma => {
             Box::new(|| Box::new(tango_pvp::battle::throttler::AsymmetricEma::default()))
         }
-        config::NetplayThrottler::LinearWatchdog => Box::new(|| Box::new(tango_pvp::battle::throttler::LinearWatchdog::default())),
+        config::NetplayThrottler::LinearWatchdog => Box::new(|| {
+            Box::new(tango_pvp::battle::throttler::Watchdog::new(
+                tango_pvp::battle::throttler::Linear::new(),
+            ))
+        }),
         config::NetplayThrottler::Power => Box::new(|| Box::new(tango_pvp::battle::throttler::Power::default())),
     }
 }

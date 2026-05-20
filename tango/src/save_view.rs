@@ -424,25 +424,42 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded) -> Opt
                     out.push_str(&format!("{name}\n"));
                 }
                 tango_dataview::save::NaviView::Navicust(v) => {
-                    // Style name first (BN3 only), then a flat
-                    // list of solid + plus parts — matches the
-                    // legacy `.navi-cust-grid` clipboard export.
+                    // Style name first (BN3 only), then two TSV
+                    // columns: solid parts on the left, plus parts on
+                    // the right, lined up row-by-row to match the
+                    // side-by-side layout the UI renders. Shorter
+                    // column gets blank cells; the trailing tab keeps
+                    // a paste into Google Sheets / Excel parsing as
+                    // two columns even when the last solid row has
+                    // no plus partner.
                     if let Some(style_id) = v.style() {
                         if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
                             out.push_str(&name);
                             out.push('\n');
                         }
                     }
+                    let mut solid = Vec::new();
+                    let mut plus = Vec::new();
                     for i in 0..v.count() {
                         let Some(part) = v.navicust_part(i) else {
                             continue;
                         };
-                        let info = assets.navicust_part(part.id);
-                        let name = info
-                            .as_ref()
-                            .and_then(|n| n.name())
-                            .unwrap_or_else(|| format!("#{}", part.id));
-                        out.push_str(&name);
+                        let Some(info) = assets.navicust_part(part.id) else {
+                            continue;
+                        };
+                        let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+                        if info.is_solid() {
+                            solid.push(name);
+                        } else {
+                            plus.push(name);
+                        }
+                    }
+                    for i in 0..solid.len().max(plus.len()) {
+                        let s = solid.get(i).map(String::as_str).unwrap_or("");
+                        let p = plus.get(i).map(String::as_str).unwrap_or("");
+                        out.push_str(s);
+                        out.push('\t');
+                        out.push_str(p);
                         out.push('\n');
                     }
                 }
