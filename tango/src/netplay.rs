@@ -1201,7 +1201,7 @@ async fn run_tcp_negotiate(
         };
         crate::net::negotiate(&mut sender, &mut receiver)
             .await
-            .map_err(|e| AsyncError::Failed(format!("negotiate: {e}")))?;
+            .map_err(negotiation_error_sentinel)?;
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
@@ -1216,6 +1216,20 @@ async fn run_tcp_negotiate(
     }
 }
 
+/// Map `net::NegotiationError` to a sentinel string the UI can route to
+/// a localized template. The three named variants get fixed-format
+/// sentinels; the `Other` catch-all keeps the raw error text so a
+/// transport-level failure is still surfaced (just unlocalized).
+fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
+    use crate::net::NegotiationError as N;
+    AsyncError::Failed(match e {
+        N::ExpectedHello => "negotiate-expected-hello".to_string(),
+        N::RemoteProtocolVersionTooOld => "negotiate-version-too-old".to_string(),
+        N::RemoteProtocolVersionTooNew => "negotiate-version-too-new".to_string(),
+        N::Other(inner) => format!("negotiate-other: {inner}"),
+    })
+}
+
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
 async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
@@ -1226,7 +1240,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
         biased;
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         result = work => {
-            result.map_err(|e| AsyncError::Failed(format!("negotiate: {e}")))?;
+            result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
                 .map(|d| d.sdp_type == datachannel_wrapper::SdpType::Offer)

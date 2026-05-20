@@ -1660,6 +1660,14 @@ fn lobby_view<'a>(
             // back to the generic "Connection failed: <raw>".
             let label = match error.as_str() {
                 "peer-disconnected" => t!(lang, "play-status-peer-disconnected"),
+                "negotiate-expected-hello" => t!(lang, "play-status-negotiate-expected-hello"),
+                "negotiate-version-too-old" => t!(lang, "play-status-negotiate-version-too-old"),
+                "negotiate-version-too-new" => t!(lang, "play-status-negotiate-version-too-new"),
+                other if other.starts_with("negotiate-other: ") => t!(
+                    lang,
+                    "play-status-negotiate-failed",
+                    error = other.trim_start_matches("negotiate-other: ").to_string(),
+                ),
                 _ => t!(lang, "play-status-failed", error = error.clone()),
             };
             (
