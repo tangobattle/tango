@@ -13,10 +13,10 @@ tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/resource.rc.mako" >tango/
 
 # Create icon.
 mkdir Tango.iconset
-magick -resize 16x16 tango/src/icon.png -depth 32 Tango.iconset/icon_16x16.png
-magick -resize 32x32 tango/src/icon.png -depth 32 Tango.iconset/icon_32x32.png
-magick -resize 128x128 tango/src/icon.png -depth 32 Tango.iconset/icon_128x128.png
-magick -resize 256x256 tango/src/icon.png -depth 32 Tango.iconset/icon_256x256.png
+magick tango/src/icon.png -resize 16x16 -depth 32 Tango.iconset/icon_16x16.png
+magick tango/src/icon.png -resize 32x32 -depth 32 Tango.iconset/icon_32x32.png
+magick tango/src/icon.png -resize 128x128 -depth 32 Tango.iconset/icon_128x128.png
+magick tango/src/icon.png -resize 256x256 -depth 32 Tango.iconset/icon_256x256.png
 magick Tango.iconset/*.png tango/icon.ico
 rm -rf Tango.iconset
 
