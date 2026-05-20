@@ -1,6 +1,6 @@
 //! Length-prefixed TCP adapter for the [`super::PacketSink`] /
 //! [`super::PacketStream`] traits. Each on-wire frame is a 4-byte
-//! big-endian `u32` payload length followed by exactly that many
+//! little-endian `u32` payload length followed by exactly that many
 //! bytes — the existing `protocol::Packet::serialize()` blob. This
 //! recreates the message boundary the DataChannel gives us natively;
 //! see the docs on [`super::PacketSink`] for the contract the rest
@@ -23,7 +23,7 @@ use tokio::net::{
 /// tango protocol ships is a save-state `Chunk` and those are
 /// capped well under a megabyte. Anything larger is a framing-bug
 /// or a hostile peer; bail rather than allocate.
-const MAX_FRAME_BYTES: u32 = 8 * 1024 * 1024;
+const MAX_FRAME_BYTES: u32 = 64 * 1024;
 
 struct TcpSink {
     inner: OwnedWriteHalf,
