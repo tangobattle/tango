@@ -11,6 +11,7 @@
 
 mod match_;
 mod round;
+pub mod throttle;
 mod types;
 
 pub use match_::Match;

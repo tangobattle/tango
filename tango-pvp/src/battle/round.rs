@@ -5,33 +5,14 @@ use tokio::sync::Mutex;
 
 use crate::input::{Input, Pair, PairQueue, PartialInput};
 
+use super::throttle::{AsymmetricEma, Throttle};
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// Cap on the slowdown we'll apply (in fps). Only the leading peer
-/// corrects — the trailing peer relies on the leader slowing down to
-/// converge, which avoids both sides racing each other in opposite
-/// directions when their skew estimates disagree about who's ahead.
+/// Cap on the slowdown any throttle is allowed to request, in fps.
+/// Lives here (not in the throttle impls) so every strategy clamps
+/// uniformly and a single knob controls the worst-case audio warp.
 const MAX_ADJUSTMENT: f32 = 30.0;
-
-/// Per-frame EMA weight applied as `smoothed = α·sample + (1-α)·smoothed`,
-/// asymmetric so the throttle prioritizes catching back up to full
-/// speed over slowing down further.
-///
-/// `SLOWDOWN` (skew growing → need more slowdown) uses τ ≈ 5 s at
-/// 60 Hz so a sub-second bursty-loss spike barely moves the smoothed
-/// value: a 0.5 s spike of raw skew +30 contributes
-/// ~30·(1-exp(-0.5/5)) ≈ +2.9, so the throttle barely engages under
-/// heavy stochastic loss.
-///
-/// `SPEEDUP` (skew shrinking → can lift the slowdown) uses τ ≈ 0.5 s
-/// so once the underlying imbalance closes, the local fps returns to
-/// 60 within a handful of frames rather than coasting at the reduced
-/// rate for the full slow τ. Net: the throttle ramps in gently but
-/// recovers fast — the user sees a smooth glide down and a snappy
-/// return to normal.
-const SKEW_SMOOTH_ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
-const SKEW_SMOOTH_ALPHA_SPEEDUP: f32 = 1.0 / 30.0;
 
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
@@ -49,12 +30,9 @@ pub struct Round {
     /// Stale by ~τ (one-way delay) but in steady state advantage is
     /// constant so staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// EMA of `local_adv - remote_adv`, updated every fastforward
-    /// fire via [`SKEW_SMOOTH_ALPHA`]. Drives a continuous
-    /// proportional slowdown of the leader (negative skew = trailer,
-    /// no correction), so the fps target never steps and there's no
-    /// engagement transient for the player to feel.
-    smoothed_skew: f32,
+    /// Active throttle strategy + its per-round state. Swappable at
+    /// runtime via [`Round::set_throttle`].
+    throttle: Box<dyn Throttle>,
     iq: PairQueue<PartialInput, PartialInput>,
     /// Joyflags + packet of the last committed remote input. Used as the
     /// seed for `hooks.predict_rx` when extending past the committed range.
@@ -89,7 +67,7 @@ impl Round {
             current_tick: 0,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            smoothed_skew: 0.0,
+            throttle: Box::new(AsymmetricEma::default()),
             iq,
             last_committed_remote_input,
             committed_state: None,
@@ -267,45 +245,29 @@ impl Round {
         }
     }
 
+    /// Swap the active throttle strategy. Mid-round-safe; the new
+    /// strategy starts from its default state (no carry-over of the
+    /// old one's smoothed skew / sustained counter / etc.).
+    pub fn set_throttle(&mut self, throttle: Box<dyn Throttle>) {
+        self.throttle = throttle;
+    }
+
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
-        // Continuous EMA-filtered proportional time sync, asymmetric
-        // (only the leading peer slows; trailer relies on the leader
-        // pulling back to converge). `local_adv` and
-        // `last_remote_frame_advantage` both carry the symmetric
+        // Asymmetric time sync (only the leading peer slows; trailer
+        // relies on the leader pulling back to converge). `local_adv`
+        // and `last_remote_frame_advantage` both carry the symmetric
         // network-delay term τ; their difference isolates real-time
         // clock skew. `local_adv_A + local_adv_B` is a network-fixed
         // invariant (60·RTT - 2·input_delay), so the only reachable
         // symmetric state is local_adv_A = local_adv_B = sum/2 →
         // raw_skew = 0, and the asymmetric correction can't have both
         // sides slowing simultaneously in equilibrium.
-        //
-        // The EMA replaces the old watchdog's trigger counter: a
-        // bursty-loss spike that briefly inflates raw skew only nudges
-        // the filtered value by a tiny fraction of its peak, so the
-        // throttle reads through it the same way the deadband did —
-        // but without the binary engagement step that made the
-        // watchdog's transitions visible. Persistent skew converges
-        // exponentially with τ ≈ 5 s; capped at MAX_ADJUSTMENT for
-        // catastrophic rifts.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = (local_advantage - remote_advantage) as f32;
 
-        // Asymmetric α: slow rise (we slow down gradually) but fast
-        // fall (we lift the slowdown quickly so we don't coast
-        // unnecessarily after the imbalance resolves).
-        let alpha = if skew > self.smoothed_skew {
-            SKEW_SMOOTH_ALPHA_SLOWDOWN
-        } else {
-            SKEW_SMOOTH_ALPHA_SPEEDUP
-        };
-        self.smoothed_skew = alpha * skew + (1.0 - alpha) * self.smoothed_skew;
-        // Only slow the leader. Negative smoothed skew = trailer, no
-        // speed-up — the symmetric invariant guarantees the other side
-        // sees positive skew and is the one being throttled.
-        let adjustment = -self.smoothed_skew.max(0.0).min(MAX_ADJUSTMENT);
-
-        let fps_target = (EXPECTED_FPS + adjustment).clamp(EXPECTED_FPS - MAX_ADJUSTMENT, EXPECTED_FPS);
+        let slowdown = self.throttle.step(skew).min(MAX_ADJUSTMENT);
+        let fps_target = EXPECTED_FPS - slowdown;
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
