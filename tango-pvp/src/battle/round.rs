@@ -264,7 +264,7 @@ impl Round {
         // sides slowing simultaneously in equilibrium.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
-        let skew = (local_advantage - remote_advantage) as f32;
+        let skew = local_advantage - remote_advantage;
 
         let slowdown = self.throttler.step(skew).min(MAX_ADJUSTMENT);
         let fps_target = EXPECTED_FPS - slowdown;

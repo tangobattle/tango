@@ -13,9 +13,11 @@
 /// A per-round throttler.
 pub trait Throttler: Send {
     /// Compute the slowdown to apply this frame, in fps below
-    /// `EXPECTED_FPS`. Non-negative; 0 means run at full speed. The
-    /// caller is responsible for capping against any global maximum.
-    fn step(&mut self, skew: f32) -> f32;
+    /// `EXPECTED_FPS`. `skew` is the raw integer frame difference
+    /// `local_advantage - remote_advantage`. Returns a non-negative
+    /// fps slowdown; 0 means run at full speed. The caller is
+    /// responsible for capping against any global maximum.
+    fn step(&mut self, skew: i32) -> f32;
 }
 
 /// Continuous proportional throttler smoothed by an asymmetric EMA on
@@ -53,7 +55,8 @@ impl Default for AsymmetricEma {
 }
 
 impl Throttler for AsymmetricEma {
-    fn step(&mut self, skew: f32) -> f32 {
+    fn step(&mut self, skew: i32) -> f32 {
+        let skew = skew as f32;
         let alpha = if skew > self.smoothed {
             self.alpha_slowdown
         } else {
@@ -70,7 +73,7 @@ impl Throttler for AsymmetricEma {
 /// skew engages. The deadband + trigger combo rejects bursty packet-
 /// loss spikes (which resolve faster than the trigger).
 pub struct LinearWatchdog {
-    pub threshold: f32,
+    pub threshold: i32,
     pub trigger_frames: u32,
     sustained: u32,
 }
@@ -79,7 +82,7 @@ impl LinearWatchdog {
     /// Default tuning: 2-frame deadband, 60-frame trigger (~1 s).
     pub fn new() -> Self {
         Self {
-            threshold: 2.0,
+            threshold: 2,
             trigger_frames: 60,
             sustained: 0,
         }
@@ -93,14 +96,14 @@ impl Default for LinearWatchdog {
 }
 
 impl Throttler for LinearWatchdog {
-    fn step(&mut self, skew: f32) -> f32 {
+    fn step(&mut self, skew: i32) -> f32 {
         if skew > self.threshold {
             self.sustained = self.sustained.saturating_add(1);
         } else {
             self.sustained = 0;
         }
         if self.sustained > self.trigger_frames {
-            skew.max(0.0)
+            skew.max(0) as f32
         } else {
             0.0
         }
@@ -135,11 +138,11 @@ impl Default for Power {
 }
 
 impl Throttler for Power {
-    fn step(&mut self, skew: f32) -> f32 {
-        if skew <= 0.0 {
+    fn step(&mut self, skew: i32) -> f32 {
+        if skew <= 0 {
             0.0
         } else {
-            (skew / self.knee).powf(self.exponent)
+            (skew as f32 / self.knee).powf(self.exponent)
         }
     }
 }
