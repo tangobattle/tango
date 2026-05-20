@@ -23,6 +23,7 @@
 //! per-session post slot for the PvP handoff to take.
 
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 use tokio_util::sync::CancellationToken;
 
 pub mod compat;
@@ -861,8 +862,7 @@ impl State {
             return iced::Task::none();
         }
         let actual = make_commitment(&self.remote_chunks);
-        use subtle::ConstantTimeEq;
-        if actual.ct_eq(&remote_commitment).unwrap_u8() == 0 {
+        if !bool::from(actual.ct_eq(&remote_commitment)) {
             return iced::Task::done(Message::Failed("peer commitment mismatch".to_string()));
         }
         // Decompress + decode the peer's NegotiatedState. We
