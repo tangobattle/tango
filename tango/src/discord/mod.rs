@@ -46,21 +46,36 @@ pub fn make_base_activity(game_info: Option<GameInfo>) -> rpc::activity::Activit
 }
 
 pub fn make_looking_activity(
-    link_code: &str,
+    ident: &crate::netplay::LinkIdent,
     lang: &unic_langid::LanguageIdentifier,
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
         state: Some(i18n::t(lang, "discord-presence-looking")),
-        secrets: Some(rpc::activity::Secrets {
-            join: Some(link_code.to_string()),
+        // Only matchmaking codes carry a join secret — direct-TCP
+        // sessions aren't joinable via Discord deep-link.
+        secrets: ident.discord_join_secret().map(|s| rpc::activity::Secrets {
+            join: Some(s.to_string()),
             ..Default::default()
         }),
         party: Some(rpc::activity::Party {
-            id: Some(format!("party:{}", link_code)),
+            id: party_id(ident),
             size: Some([1, 2]),
         }),
         ..make_base_activity(game_info)
+    }
+}
+
+/// Rich-presence party identifier. Matchmaking codes group users
+/// by code (so two people on the same link share a party); direct
+/// sessions have no cross-instance identity, so we return `None`
+/// and Discord drops the grouping — important not just for
+/// privacy but because a synthetic placeholder like `party:direct`
+/// would collide with a matchmaking code of literally `"direct"`.
+fn party_id(ident: &crate::netplay::LinkIdent) -> Option<String> {
+    match ident {
+        crate::netplay::LinkIdent::Matchmaking(code) => Some(format!("party:{code}")),
+        crate::netplay::LinkIdent::Direct(_) => None,
     }
 }
 
@@ -84,14 +99,14 @@ pub fn make_single_player_activity(
 }
 
 pub fn make_in_lobby_activity(
-    link_code: &str,
+    ident: &crate::netplay::LinkIdent,
     lang: &unic_langid::LanguageIdentifier,
     game_info: Option<GameInfo>,
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
         state: Some(i18n::t(lang, "discord-presence-in-lobby")),
         party: Some(rpc::activity::Party {
-            id: Some(format!("party:{}", link_code)),
+            id: party_id(ident),
             size: Some([2, 2]),
         }),
         ..make_base_activity(game_info)

@@ -63,7 +63,10 @@ pub struct PvpSession {
     /// the session, which tears the network loop down cleanly.
     cancellation_token: tokio_util::sync::CancellationToken,
     latency_counter: Arc<tokio::sync::Mutex<crate::net::LatencyCounter>>,
-    _peer_conn: datachannel_wrapper::PeerConnection,
+    /// `None` for the direct-TCP local transport (the TCP stream
+    /// halves live inside the Sender/Receiver). `Some` for WebRTC,
+    /// where the peer connection must outlive the data channel.
+    _peer_conn: Option<datachannel_wrapper::PeerConnection>,
     /// Kept alive so the background `match_.run(receiver)` task
     /// has a referent. Cleared by that task when it exits. The UI
     /// also locks this each tick to scrape the current round's
@@ -555,8 +558,12 @@ fn build_replay_writer(
         .map(|p| p.name.clone())
         .unwrap_or_else(|| local_gi.family_and_variant.0.clone());
     let ts = chrono::Local::now().format("%Y%m%d%H%M%S");
+    // Direct-TCP sessions have no link code in their metadata —
+    // substitute a stable placeholder here so the filename
+    // doesn't end up with a double-dash where the slot would be.
+    let filename_link_code = if link_code.is_empty() { "direct" } else { link_code };
     let raw_name = format!(
-        "{ts}-{link_code}-{netplay_compat}-vs-{}-p{}",
+        "{ts}-{filename_link_code}-{netplay_compat}-vs-{}-p{}",
         remote_settings.nickname,
         local_player_index + 1
     );

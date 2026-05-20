@@ -44,18 +44,46 @@ pub enum Phase {
     /// point we're still negotiating with the server, after we're
     /// blocked on the peer joining + the WebRTC handshake.
     Connecting {
-        link_code: String,
+        ident: LinkIdent,
         waiting_for_opponent: bool,
     },
     /// Data channel up; exchanging Hello packets / verifying both
     /// peers speak the same `protocol::VERSION`.
-    Negotiating { link_code: String },
+    Negotiating { ident: LinkIdent },
     /// Both peers agreed on the protocol. Lobby loop is running in
     /// the background; settings exchange + match start come next.
-    Lobby { link_code: String },
+    Lobby { ident: LinkIdent },
     /// Last attempt failed. Stays here until the user starts a new
     /// connection or clears the field.
     Failed { error: String },
+}
+
+/// Structured identifier for the current connection. Kept in
+/// `Phase` across the lifecycle, and also the payload of the
+/// play-tab's connect Effect, so consumers (UI header, status
+/// line, Discord rich presence, replay filenames) can render or
+/// dispatch on the actual structure rather than re-parsing a
+/// flat string. Matchmaking carries the raw user-supplied code;
+/// `Direct` carries the parsed `DirectRole` describing whether
+/// we host or dial.
+#[derive(Debug, Clone)]
+pub enum LinkIdent {
+    Matchmaking(String),
+    Direct(DirectRole),
+}
+
+impl LinkIdent {
+    /// Discord join-secret for the rich-presence "Ask to Join" /
+    /// "Join Party" affordances. Only matchmaking codes are
+    /// joinable across the internet via Discord's deep-link;
+    /// direct codes wouldn't reach anyone else, so we surface
+    /// `None` and Discord hides the button.
+    pub fn discord_join_secret(&self) -> Option<&str> {
+        match self {
+            LinkIdent::Matchmaking(code) => Some(code.as_str()),
+            LinkIdent::Direct(_) => None,
+        }
+    }
 }
 
 impl Default for Phase {
@@ -212,9 +240,15 @@ struct LocalCommit {
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    peer_conn: datachannel_wrapper::PeerConnection,
-    /// `true` iff we created the offer SDP — drives the symmetry
-    /// breaker used by `Match::pick_local_player_index`.
+    /// `Some` for WebRTC peer connections (kept alive for the
+    /// duration of the session); `None` for the direct-TCP local
+    /// transport, whose lifetime is owned by the Sender/Receiver
+    /// halves themselves.
+    peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    /// `true` iff we're the "offer side" for symmetry-breaking
+    /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
+    /// or we're the listener on the direct-TCP path. Drives the
+    /// `Match::pick_local_player_index` tie-break.
     is_offerer: bool,
 }
 
@@ -225,6 +259,13 @@ pub enum Message {
     /// User pressed Play with a link code. Kicks off the async
     /// connect task.
     Connect { link_code: String, endpoint: String },
+    /// Direct-TCP local-play entry. Bypasses signaling + WebRTC
+    /// entirely — runs the protocol-version negotiate handshake
+    /// over a raw length-prefixed TCP connection (see
+    /// [`crate::net::tcp`]). `role` says whether we're the
+    /// listener or the dialer; the UI-side identifier is derived
+    /// from it (see [`LinkIdent`]).
+    ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
     Disconnect,
@@ -306,6 +347,17 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<parking_lot::Mutex<Option<T>>>;
 
+/// Which side of a direct-TCP connection the local instance is.
+/// Drives the offer/answer symmetry breaker the WebRTC path gets
+/// for free from SDP role assignment.
+#[derive(Debug, Clone)]
+pub enum DirectRole {
+    /// Listen on the given port and accept the first inbound peer.
+    Host { port: u16 },
+    /// Dial the given `host:port` string.
+    Connect { addr: String },
+}
+
 pub struct ConnectionPayload {
     pub dc: datachannel_wrapper::DataChannel,
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -337,7 +389,12 @@ impl std::fmt::Debug for ConnectionPayload {
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    /// `None` for the direct-TCP local transport. See
+    /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
+    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    /// Pre-computed by the per-transport negotiator. WebRTC reads
+    /// the SDP type; TCP sets host=true, connect=false.
+    pub is_offerer: bool,
 }
 
 impl std::fmt::Debug for NegotiationOutput {
@@ -380,7 +437,7 @@ impl State {
             Message::Connect { link_code, endpoint } => {
                 self.cancel_and_renew();
                 self.phase = Phase::Connecting {
-                    link_code: link_code.clone(),
+                    ident: LinkIdent::Matchmaking(link_code.clone()),
                     waiting_for_opponent: false,
                 };
                 let cancel = self.cancel.clone();
@@ -389,9 +446,23 @@ impl State {
                     map_signaling_hello_result,
                 )
             }
+            Message::ConnectDirect { role } => {
+                self.cancel_and_renew();
+                // Host = "waiting for inbound peer" (accept() is
+                // the slow await); Connect = "actively dialing"
+                // (mirrors the matchmaking-path semantics so the
+                // existing waiting-screen UI reads correctly).
+                let waiting_for_opponent = matches!(role, DirectRole::Host { .. });
+                self.phase = Phase::Connecting {
+                    ident: LinkIdent::Direct(role.clone()),
+                    waiting_for_opponent,
+                };
+                let cancel = self.cancel.clone();
+                iced::Task::perform(run_tcp_negotiate(role, cancel), map_negotiate_result)
+            }
             Message::SignalingHelloReceived(slot_rx) => {
-                let link_code = match &self.phase {
-                    Phase::Connecting { link_code, .. } => link_code.clone(),
+                let ident = match &self.phase {
+                    Phase::Connecting { ident, .. } => ident.clone(),
                     // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
@@ -399,46 +470,46 @@ impl State {
                     return iced::Task::none();
                 };
                 self.phase = Phase::Connecting {
-                    link_code,
+                    ident,
                     waiting_for_opponent: true,
                 };
                 let cancel = self.cancel.clone();
                 iced::Task::perform(run_await_peer(hello, cancel), map_connect_result)
             }
             Message::SignalingDone(slot_rx) => {
-                let link_code = match &self.phase {
-                    Phase::Connecting { link_code, .. } => link_code.clone(),
+                let ident = match &self.phase {
+                    Phase::Connecting { ident, .. } => ident.clone(),
                     // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
                 let Some(payload) = slot_rx.lock().take() else {
                     return iced::Task::none();
                 };
-                self.phase = Phase::Negotiating { link_code };
+                self.phase = Phase::Negotiating { ident };
                 let cancel = self.cancel.clone();
                 iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
             }
             Message::NegotiationDone(slot_rx) => {
-                let link_code = match &self.phase {
-                    Phase::Negotiating { link_code } => link_code.clone(),
+                // Accept both `Connecting` (direct-TCP path: the
+                // negotiate is folded into the single TCP task and
+                // skips the intermediate Negotiating phase) and
+                // `Negotiating` (WebRTC path: signaling +
+                // peer-await + negotiate are split stages). Either
+                // is a valid Connect-or-Direct-Connect lifecycle
+                // that's progressed past the wire handshake.
+                let ident = match &self.phase {
+                    Phase::Negotiating { ident } => ident.clone(),
+                    Phase::Connecting { ident, .. } => ident.clone(),
                     _ => return iced::Task::none(),
                 };
                 let Some(out) = slot_rx.lock().take() else {
                     return iced::Task::none();
                 };
-                // is_offerer = we wrote the SDP offer. Used as the
-                // symmetry breaker for `pick_local_player_index`
-                // and to flag local_side on the replay metadata.
-                let is_offerer = out
-                    .peer_conn
-                    .local_description()
-                    .map(|d| d.sdp_type == datachannel_wrapper::SdpType::Offer)
-                    .unwrap_or(false);
                 let sender = out.sender.clone();
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
                     peer_conn: out.peer_conn,
-                    is_offerer,
+                    is_offerer: out.is_offerer,
                 });
                 // Spawn the lobby loop as a detached tokio task.
                 // It owns the data-channel receiver and bridges
@@ -458,7 +529,7 @@ impl State {
                     let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
                     *post.lock() = Some(receiver);
                 });
-                self.phase = Phase::Lobby { link_code };
+                self.phase = Phase::Lobby { ident };
                 iced::Task::none()
             }
             Message::PingMeasured(dur) => {
@@ -860,8 +931,19 @@ impl State {
         // to recover the nonce + save_data.
         let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)).ok()?;
         let peer_state = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
+        // Direct-TCP codes carry no remote-discoverable identity,
+        // so the replay metadata's `link_code` slot is left empty
+        // for them — the replay filename and view substitute
+        // their own placeholder. Matchmaking codes round-trip
+        // verbatim so a recorded match can be cross-referenced
+        // with the matchmaking-server logs.
         let link_code = match &self.phase {
-            Phase::Lobby { link_code } => link_code.clone(),
+            Phase::Lobby {
+                ident: LinkIdent::Matchmaking(code),
+            } => code.clone(),
+            Phase::Lobby {
+                ident: LinkIdent::Direct(_),
+            } => String::new(),
             _ => return None,
         };
         // RNG seed for the in-match shared RNG: XOR of the two
@@ -907,7 +989,9 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    /// `None` for the direct-TCP local transport; see
+    /// [`ConnectionHandles::peer_conn`].
+    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
@@ -1094,23 +1178,64 @@ async fn run_await_peer(
     }
 }
 
+/// Direct-TCP entry: bind-and-accept (host) or dial (connect),
+/// then run the same `protocol::negotiate` handshake the WebRTC
+/// path uses. No signaling server, no peer-connection — the TCP
+/// stream halves carry the whole transport lifetime themselves.
+/// `is_offerer` is set from the role (host = true) so the
+/// `pick_local_player_index` symmetry break still has a stable
+/// asymmetric input.
+async fn run_tcp_negotiate(
+    role: DirectRole,
+    cancel: CancellationToken,
+) -> Result<NegotiationOutput, AsyncError> {
+    let is_offerer = matches!(role, DirectRole::Host { .. });
+    let work = async {
+        let (mut sender, mut receiver) = match role {
+            DirectRole::Host { port } => crate::net::tcp::host(port)
+                .await
+                .map_err(|e| AsyncError::Failed(format!("tcp host: {e}")))?,
+            DirectRole::Connect { addr } => crate::net::tcp::connect(&addr)
+                .await
+                .map_err(|e| AsyncError::Failed(format!("tcp connect: {e}")))?,
+        };
+        crate::net::negotiate(&mut sender, &mut receiver)
+            .await
+            .map_err(|e| AsyncError::Failed(format!("negotiate: {e}")))?;
+        Ok::<_, AsyncError>(NegotiationOutput {
+            sender: Arc::new(tokio::sync::Mutex::new(sender)),
+            receiver,
+            peer_conn: None,
+            is_offerer,
+        })
+    };
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(AsyncError::Cancelled),
+        out = work => out,
+    }
+}
+
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
 async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let ConnectionPayload { dc, peer_conn } = payload;
-    let (dc_tx, dc_rx) = dc.split();
-    let mut sender = crate::net::Sender::new(dc_tx);
-    let mut receiver = crate::net::Receiver::new(dc_rx);
+    let (mut sender, mut receiver) = crate::net::datachannel::pair(dc);
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         result = work => {
             result.map_err(|e| AsyncError::Failed(format!("negotiate: {e}")))?;
+            let is_offerer = peer_conn
+                .local_description()
+                .map(|d| d.sdp_type == datachannel_wrapper::SdpType::Offer)
+                .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
-                peer_conn,
+                peer_conn: Some(peer_conn),
+                is_offerer,
             })
         }
     }

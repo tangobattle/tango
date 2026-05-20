@@ -800,9 +800,9 @@ impl App {
         }
 
         match &self.netplay.phase {
-            netplay::Phase::Lobby { link_code } => discord::make_in_lobby_activity(link_code, lang, game_info),
-            netplay::Phase::Connecting { link_code, .. } | netplay::Phase::Negotiating { link_code } => {
-                discord::make_looking_activity(link_code, lang, game_info)
+            netplay::Phase::Lobby { ident } => discord::make_in_lobby_activity(ident, lang, game_info),
+            netplay::Phase::Connecting { ident, .. } | netplay::Phase::Negotiating { ident } => {
+                discord::make_looking_activity(ident, lang, game_info)
             }
             netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
         }
@@ -859,12 +859,15 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::NetplayConnect(link_code) => {
-                let endpoint = self.config.matchmaking_endpoint.clone();
-                let task = self
-                    .netplay
-                    .update(netplay::Message::Connect { link_code, endpoint })
-                    .map(Message::Netplay);
+            E::NetplayConnect(ident) => {
+                let msg = match ident {
+                    netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
+                        link_code,
+                        endpoint: self.config.matchmaking_endpoint.clone(),
+                    },
+                    netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
+                };
+                let task = self.netplay.update(msg).map(Message::Netplay);
                 // Connect wipes lobby state — re-apply the
                 // default-MT policy now so the picker shows the
                 // right value from the moment the waiting screen

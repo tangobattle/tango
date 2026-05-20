@@ -590,7 +590,7 @@ impl ReplaysState {
                 .or_else(|| local_gi.map(|g| g.rom_family.clone()))
                 .unwrap_or_default();
             let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
-                md.link_code.clone()
+                link_code_display(lang, &md.link_code).into_owned()
             } else {
                 format!("{local_nick} vs {remote_nick}")
             };
@@ -648,7 +648,7 @@ impl ReplaysState {
             // have loaded for this row).
             let mut text_col = column![
                 text(ts_str).size(TEXT_BODY),
-                text(format!("{game_label} @ {}  ·  {nick_pair}", md.link_code))
+                text(format!("{game_label} @ {}  ·  {nick_pair}", link_code_display(lang, &md.link_code)))
                     .size(TEXT_CAPTION)
                     .style(move |theme: &iced::Theme| if selected {
                         iced::widget::text::Style { color: None }
@@ -785,7 +785,7 @@ fn replay_detail<'a>(
         .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
         .map(|g| crate::game::short_name(lang, g))
         .unwrap_or_else(|| "?".to_string());
-    let title = format!("{game_short} @ {}", md.link_code);
+    let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
 
     // Title + metadata pane: title row with action buttons, then
     // export panel, timestamp, file path.
@@ -1193,5 +1193,18 @@ fn format_duration(ticks: u32) -> String {
         format!("{h}:{m:02}:{s:02}")
     } else {
         format!("{m}:{s:02}")
+    }
+}
+
+/// Display label for the `link_code` field of a replay's
+/// metadata. Direct-TCP sessions leave the field blank in the
+/// metadata (see `netplay::take_pre_match`); render those as a
+/// localized "(direct)" marker so the row / detail panel still
+/// has something where the link code would be.
+fn link_code_display<'a>(lang: &LanguageIdentifier, code: &'a str) -> std::borrow::Cow<'a, str> {
+    if code.is_empty() {
+        std::borrow::Cow::Owned(t(lang, "replays-direct-marker"))
+    } else {
+        std::borrow::Cow::Borrowed(code)
     }
 }

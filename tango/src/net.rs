@@ -1,11 +1,42 @@
-//! Per-peer netplay transport: a Sender + Receiver pair wrapping the
-//! WebRTC DataChannel halves, plus `negotiate()` (exchange Hellos and
-//! check the protocol versions agree). Ported from `tango/src/net.rs`.
+//! Per-peer netplay transport: a Sender + Receiver pair backed by a
+//! pluggable message-oriented transport (`PacketSink` / `PacketStream`),
+//! plus `negotiate()` (exchange Hellos and check the protocol versions
+//! agree).
+//!
+//! The WebRTC DataChannel impl lives in [`datachannel`]; the
+//! transport-agnostic framing and packet helpers live here.
 //!
 //! `PvpSender` / `PvpReceiver` (the `tango_pvp::net` adapters used by
 //! the live battle loop) come in a later netplay round.
 
+pub mod datachannel;
 pub mod protocol;
+pub mod tcp;
+
+/// Default port for the direct-TCP local-play transport (link-code
+/// commands `/host` and `/connect`). `24680` reads as a memorable
+/// even-step sequence and steers clear of every well-known service
+/// in the ephemeral range — easy to type, easy to recite over voice
+/// chat, unlikely to clash with anything already listening locally.
+pub const DEFAULT_LOCAL_PORT: u16 = 24680;
+
+/// One half of a peer connection's send side. Carries discrete,
+/// reliable, in-order byte messages — same contract as a WebRTC
+/// DataChannel configured `unordered: false, unreliable: false`. A
+/// TCP-backed impl must add its own length-prefix framing so each
+/// `send` round-trips as exactly one `recv` on the peer.
+#[async_trait::async_trait]
+pub trait PacketSink: Send + Sync {
+    async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;
+}
+
+/// One half of a peer connection's receive side. See [`PacketSink`]
+/// for the contract on message boundaries. A clean stream close is
+/// reported as `io::ErrorKind::UnexpectedEof`.
+#[async_trait::async_trait]
+pub trait PacketStream: Send + Sync {
+    async fn recv(&mut self) -> std::io::Result<Vec<u8>>;
+}
 
 /// How often the lobby + match loops fire a ping. Latency is computed
 /// from the matching Pong; absent pongs after a few intervals signal
@@ -50,19 +81,16 @@ pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(
 }
 
 pub struct Sender {
-    dc_tx: datachannel_wrapper::DataChannelSender,
+    sink: Box<dyn PacketSink>,
 }
 
 impl Sender {
-    pub fn new(dc_tx: datachannel_wrapper::DataChannelSender) -> Self {
-        Self { dc_tx }
+    pub fn new(sink: Box<dyn PacketSink>) -> Self {
+        Self { sink }
     }
 
     pub async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
-        self.dc_tx
-            .send(p.serialize().unwrap().as_slice())
-            .await?;
-        Ok(())
+        self.sink.send(p.serialize().unwrap().as_slice()).await
     }
 
     pub async fn send_hello(&mut self) -> std::io::Result<()> {
@@ -116,18 +144,16 @@ impl Sender {
 }
 
 pub struct Receiver {
-    dc_rx: datachannel_wrapper::DataChannelReceiver,
+    stream: Box<dyn PacketStream>,
 }
 
 impl Receiver {
-    pub fn new(dc_rx: datachannel_wrapper::DataChannelReceiver) -> Self {
-        Self { dc_rx }
+    pub fn new(stream: Box<dyn PacketStream>) -> Self {
+        Self { stream }
     }
 
     pub async fn receive(&mut self) -> std::io::Result<protocol::Packet> {
-        let bytes = self.dc_rx.receive().await.ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream is empty")
-        })?;
+        let bytes = self.stream.recv().await?;
         protocol::Packet::deserialize(bytes.as_slice())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }

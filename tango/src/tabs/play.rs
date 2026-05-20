@@ -246,9 +246,10 @@ pub enum Effect {
     /// User pressed Play with no link code → start a single-player
     /// session from the current selection.
     StartSinglePlayer,
-    /// User pressed Play with a link code → kick off netplay
-    /// signaling against the matchmaking endpoint.
-    NetplayConnect(String),
+    /// User pressed Play with a link code → kick off netplay.
+    /// The `LinkIdent` variant tells the app handler whether to
+    /// route via matchmaking signaling or direct TCP transport.
+    NetplayConnect(crate::netplay::LinkIdent),
     /// Forward verbatim to the netplay subsystem.
     Netplay(crate::netplay::Message),
     /// Lobby Ready — App reads the local save SRAM and
@@ -369,7 +370,10 @@ impl PlayState {
                 if trimmed.is_empty() {
                     return None;
                 }
-                Some(Effect::NetplayConnect(trimmed.to_string()))
+                Some(Effect::NetplayConnect(match parse_direct_command(trimmed) {
+                    Some(role) => crate::netplay::LinkIdent::Direct(role),
+                    None => crate::netplay::LinkIdent::Matchmaking(trimmed.to_string()),
+                }))
             }
             Message::DismissError => {
                 self.last_error = None;
@@ -1141,11 +1145,7 @@ fn resolve_remembered_save(
 /// stripped so it can be dropped straight into the new-save text field.
 /// Uses the full variant-aware display name so multi-version games like
 /// BN6 Gregar/Falzar get disambiguated.
-fn suggest_save_name(
-    lang: &unic_langid::LanguageIdentifier,
-    game: rom::GameRef,
-    template: Option<&str>,
-) -> String {
+fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, template: Option<&str>) -> String {
     let game_name = crate::game::display_name(lang, game);
     let family = game.family_and_variant().0;
     let name = match template {
@@ -1416,26 +1416,28 @@ fn lobby_view<'a>(
             .into()
         };
 
-    // Pre-handshake we don't have a ping yet, but we always
-    // know the link code — show that instead of the generic
+    // Pre-handshake we don't have a ping yet, but we always know
+    // the connection identifier — show that instead of the generic
     // "Exchanging settings…" placeholder so the user sees the
     // identifier they're matched on. Streamer privacy mode
-    // suppresses the link code so a viewer of the stream can't
-    // scrape it off the screen and crash the lobby.
-    let link_code: Option<&str> = if streamer_mode {
+    // suppresses the matchmaking code so a viewer of the stream
+    // can't scrape it off the screen and crash the lobby; direct
+    // ports/addresses are equally sensitive on a public stream, so
+    // hide them too.
+    let ident: Option<&crate::netplay::LinkIdent> = if streamer_mode {
         None
     } else {
         match phase {
-            crate::netplay::Phase::Connecting { link_code, .. }
-            | crate::netplay::Phase::Negotiating { link_code }
-            | crate::netplay::Phase::Lobby { link_code } => Some(link_code.as_str()),
+            crate::netplay::Phase::Connecting { ident, .. }
+            | crate::netplay::Phase::Negotiating { ident }
+            | crate::netplay::Phase::Lobby { ident } => Some(ident),
             _ => None,
         }
     };
-    // Streamer mode is the only path that reaches the "no
-    // latency, no link code" state (the link code is always
-    // available otherwise); skip the header line entirely
-    // there rather than reserving a slot for it.
+    // Streamer mode is the only path that reaches the "no latency,
+    // no identifier" state (the identifier is always available
+    // otherwise); skip the header line entirely there rather than
+    // reserving a slot for it.
     let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency {
         Some(
             text(t_args(lang, "lobby-latency", &[("ms", (d.as_millis() as i64).into())]))
@@ -1443,13 +1445,20 @@ fn lobby_view<'a>(
                 .style(save_view::muted_text_style)
                 .into(),
         )
-    } else if let Some(code) = link_code {
-        Some(
-            text(t_args(lang, "lobby-link-code", &[("code", code.to_string().into())]))
-                .size(TEXT_BODY)
-                .style(save_view::muted_text_style)
-                .into(),
-        )
+    } else if let Some(ident) = ident {
+        use crate::netplay::{DirectRole, LinkIdent};
+        let label = match ident {
+            LinkIdent::Matchmaking(code) => {
+                t_args(lang, "lobby-link-code", &[("code", code.clone().into())])
+            }
+            LinkIdent::Direct(DirectRole::Host { port }) => {
+                t_args(lang, "lobby-direct-host", &[("port", port.to_string().into())])
+            }
+            LinkIdent::Direct(DirectRole::Connect { addr }) => {
+                t_args(lang, "lobby-direct-connect", &[("target", addr.clone().into())])
+            }
+        };
+        Some(text(label).size(TEXT_BODY).style(save_view::muted_text_style).into())
     } else {
         None
     };
@@ -1658,15 +1667,27 @@ fn lobby_view<'a>(
             )
         }
         Phase::Connecting {
+            ident,
             waiting_for_opponent: false,
-            ..
-        } => (
-            text(t(lang, "play-status-connecting"))
-                .size(TEXT_BODY)
-                .style(save_view::muted_text_style)
-                .into(),
-            false,
-        ),
+        } => {
+            // Matchmaking codes hit the server first ("Connecting
+            // to matchmaking server…"); direct `/connect` codes
+            // dial straight at the peer, so the matchmaking copy
+            // is wrong — use the opponent-targeted string instead.
+            let key = match ident {
+                crate::netplay::LinkIdent::Direct(crate::netplay::DirectRole::Connect { .. }) => {
+                    "play-status-direct-connecting"
+                }
+                _ => "play-status-connecting",
+            };
+            (
+                text(t(lang, key))
+                    .size(TEXT_BODY)
+                    .style(save_view::muted_text_style)
+                    .into(),
+                false,
+            )
+        }
         Phase::Connecting {
             waiting_for_opponent: true,
             ..
@@ -2170,4 +2191,57 @@ pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std:
     }
     std::fs::rename(src, &dst)?;
     Ok(dst)
+}
+
+/// Recognise the direct-TCP link-code commands the user can type
+/// in place of a matchmaking code:
+///
+/// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
+/// - `/host <port>`     — listen on the given port
+/// - `/connect <addr>`  — dial `<addr>`, appending the default
+///                        port if the user didn't specify one
+///
+/// Returns `Ok(Some(role))` for a recognised direct command,
+/// `Ok(None)` for an ordinary matchmaking link code, and `Err`
+/// when the user typed something that started with `/` but
+/// didn't parse — so the play-tab handler can surface the error
+/// inline instead of silently routing to matchmaking with a
+/// nonsense link code.
+fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
+    // The leading slash is the disambiguator — without it, any
+    // input is a matchmaking link code (which can legitimately
+    // contain letters, digits, and the random-code separators).
+    if !input.starts_with('/') {
+        return None;
+    }
+    let mut parts = input.splitn(2, char::is_whitespace);
+    let cmd = parts.next().unwrap_or("");
+    let arg = parts.next().map(str::trim).unwrap_or("");
+    match cmd {
+        "/host" => {
+            let port = if arg.is_empty() {
+                crate::net::DEFAULT_LOCAL_PORT
+            } else {
+                arg.parse::<u16>().ok()?
+            };
+            Some(crate::netplay::DirectRole::Host { port })
+        }
+        "/connect" => {
+            if arg.is_empty() {
+                return None;
+            }
+            // Heuristic: if the user gave no colon (bare IP) or
+            // their input ends with the IPv6 closing bracket
+            // without a trailing colon, append the default port.
+            // We deliberately don't try to validate the address
+            // itself — TcpStream::connect's error surfaces well.
+            let addr = if arg.contains(':') && !arg.ends_with(']') {
+                arg.to_string()
+            } else {
+                format!("{arg}:{}", crate::net::DEFAULT_LOCAL_PORT)
+            };
+            Some(crate::netplay::DirectRole::Connect { addr })
+        }
+        _ => None,
+    }
 }
