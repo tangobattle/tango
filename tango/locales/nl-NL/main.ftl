@@ -197,6 +197,7 @@ settings-patch-repo = Patches repository
 settings-enable-patch-autoupdate = Automatically update patches in the background
 settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
+settings-netplay-throttler = Time-sync throttler
 settings-video-filter = Video filter
 settings-integer-scaling = Integer scaling
 updater-current-version = Current version: { $version }
