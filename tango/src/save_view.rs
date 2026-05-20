@@ -581,6 +581,11 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     // stripe; extra column spacing here adds dead gaps that read
     // as "spreadsheet" rather than "chip list".
     let mut body = column![].spacing(1).padding(0);
+    let total_visible = if grouped {
+        items.len()
+    } else {
+        items.iter().filter(|(c, _)| c.is_some()).count()
+    };
     let mut visible_idx = 0usize;
     for (chip, g) in &items {
         if !grouped && chip.is_none() {
@@ -588,7 +593,19 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
         }
         let chip_id = chip.as_ref().map(|c| c.id);
         let code = chip.as_ref().map(|c| c.code.to_string());
-        body = body.push(chip_row(loaded, chip_id, code, g, grouped, chips_have_mb, visible_idx));
+        let is_first = visible_idx == 0;
+        let is_last = visible_idx + 1 == total_visible;
+        body = body.push(chip_row(
+            loaded,
+            chip_id,
+            code,
+            g,
+            grouped,
+            chips_have_mb,
+            visible_idx,
+            is_first,
+            is_last,
+        ));
         visible_idx += 1;
     }
 
@@ -611,6 +628,8 @@ fn chip_row<M: 'static>(
     show_count_cell: bool,
     chips_have_mb: bool,
     row_idx: usize,
+    is_first: bool,
+    is_last: bool,
 ) -> Element<'static, M> {
     let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
@@ -738,7 +757,7 @@ fn chip_row<M: 'static>(
         .push(power_text)
         .push(mb_text);
 
-    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx);
+    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx, is_first, is_last);
     // Hover tooltip with chip image preview + description.
     // Always rendered when the chip has either; the folder list
     // and Auto Battle Data both want this affordance, so it
@@ -806,19 +825,48 @@ fn card_wrap<M: 'static>(
     inner: Element<'static, M>,
     accent: Option<iced::Color>,
     row_idx: usize,
+    is_first: bool,
+    is_last: bool,
 ) -> Element<'static, M> {
+    // Match the pane's `radius: 4.0` on edge rows so the strip's solid
+    // accent and the zebra wash don't paint into the pane's rounded
+    // corners. The strip only ever touches the left edge, so just the
+    // top-left / bottom-left corners need rounding there.
+    let r = 4.0_f32;
+    let mut strip_radius = iced::border::Radius::new(0.0);
+    if is_first {
+        strip_radius = strip_radius.top_left(r);
+    }
+    if is_last {
+        strip_radius = strip_radius.bottom_left(r);
+    }
+    let mut outer_radius = iced::border::Radius::new(0.0);
+    if is_first {
+        outer_radius = outer_radius.top(r);
+    }
+    if is_last {
+        outer_radius = outer_radius.bottom(r);
+    }
     let strip: Element<'static, M> = container(iced::widget::Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
         .style(move |_theme: &iced::Theme| container::Style {
             background: accent.map(iced::Background::Color),
+            border: iced::Border {
+                radius: strip_radius,
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into();
     let body: Element<'static, M> = container(inner).width(Fill).into();
     container(row![strip, body].height(Length::Shrink))
         .width(Fill)
-        .style(crate::widgets::zebra_row(row_idx))
+        .style(move |theme: &iced::Theme| {
+            let mut s = crate::widgets::zebra_row(row_idx)(theme);
+            s.border.radius = outer_radius;
+            s
+        })
         .into()
 }
 
@@ -1131,30 +1179,12 @@ fn render_navicust<M: 'static>(
             let stacked = stack![image, overlay_col]
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh));
-            // Drop a soft shadow under the rendered grid so it
-            // reads as a screen sitting on the body, not a sticker
-            // pasted onto it. Square corners — iced's container
-            // clip(true) only clips to a rectangle, so a rounded
-            // border here would draw an outline the image
-            // doesn't actually fit inside.
-            let shadowed = container(stacked)
-                .width(Length::Fixed(dw))
-                .height(Length::Fixed(dh))
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    container::Style {
-                        shadow: iced::Shadow {
-                            color: iced::Color {
-                                a: if p.is_dark { 0.65 } else { 0.25 },
-                                ..iced::Color::BLACK
-                            },
-                            offset: iced::Vector::new(0.0, 8.0),
-                            blur_radius: 24.0,
-                        },
-                        ..Default::default()
-                    }
-                });
-            container(shadowed).center_x(Fill).padding(12).into()
+            // Flush against the pane — no shadow, no extra padding.
+            // The image's corners are pre-masked in selection.rs to
+            // match the pane's rounded corners. No Fill / centering
+            // here either: that would propagate up and stretch the
+            // whole pane across the tab.
+            stacked.into()
         }
         None => text(format!("{}: {} × {}", t(lang, "navicust-grid-size"), cols, rows_n))
             .size(TEXT_CAPTION)
@@ -1203,33 +1233,26 @@ fn render_navicust<M: 'static>(
             plus_col = plus_col.push(badge_el);
         }
     }
-    if installed_solid + installed_plus == 0 {
-        solid_col = solid_col.push(text(t(lang, "navicust-empty")).size(TEXT_CAPTION));
-    }
-    let parts_list = row![solid_col, plus_col].spacing(12);
-
-    // Parts label sits above the list so it doesn't push the grid down.
-    let parts_block = column![
-        text(format!("{}:", t(lang, "navicust-parts")))
-            .size(TEXT_BODY)
-            .style(muted_text_style),
-        Space::new().height(6),
-        parts_list,
-    ];
-
-    let layout = row![container(grid_el), container(parts_block).width(Length::Fill),]
-        .spacing(20)
-        .align_y(Alignment::Start);
-
-    let mut col = column![].spacing(8).padding(16);
+    // Single pane sized to its contents — no "(none installed)"
+    // fallback; an empty navicust shows just the rounded image with
+    // pane padding around it. `align_x(Center)` centers narrower rows
+    // (style header, parts list) horizontally inside the column's
+    // shrink-wrapped width without dragging in any Fill that would
+    // stretch the pane across the tab.
+    let mut content = column![].spacing(8).align_x(Alignment::Center);
     if let Some(name) = style_name {
-        col = col.push(text(format!("{}: {}", t(lang, "navi-style"), name)).size(TEXT_HEADING));
+        content =
+            content.push(text(format!("{}: {}", t(lang, "navi-style"), name)).size(TEXT_HEADING));
     }
-    col = col.push(layout);
+    content = content.push(grid_el);
+    if installed_solid + installed_plus > 0 {
+        // No Fill anywhere here — Fill on a child propagates up
+        // through the column, forcing the whole pane to span the tab.
+        content = content.push(row![solid_col, plus_col].spacing(12));
+    }
 
     let _ = (cols, rows_n, installed_solid, installed_plus);
-    container(col)
-        .width(Fill)
+    container(content)
         .padding(crate::widgets::PANE_PADDING)
         .style(crate::widgets::pane)
         .into()
@@ -1349,8 +1372,21 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
         let mut col = column![title_el, Space::new().height(4)].spacing(1);
         let empty_badges = GroupedChip::default();
+        let last_idx = slots.len().saturating_sub(1);
         for (idx, id) in slots.iter().enumerate() {
-            col = col.push(chip_row(loaded, *id, None, &empty_badges, false, chips_have_mb, idx));
+            // is_first stays false — the title row sits above the chips,
+            // so no chip row touches the pane's rounded top corners.
+            col = col.push(chip_row(
+                loaded,
+                *id,
+                None,
+                &empty_badges,
+                false,
+                chips_have_mb,
+                idx,
+                false,
+                idx == last_idx,
+            ));
         }
         container(col).width(Fill).style(crate::widgets::pane).into()
     };

@@ -240,7 +240,7 @@ fn build_navicust_render(
     let (rows, cols) = materialized.dim();
 
     let lang = crate::game::region_to_language(game.region());
-    let img = crate::navicust::render(
+    let mut img = crate::navicust::render(
         &materialized,
         &layout,
         view.as_ref(),
@@ -248,6 +248,11 @@ fn build_navicust_render(
         &lang,
         Some(DISPLAY_TARGET_W * OVERSAMPLE),
     );
+    // Round the image corners to match the pane's `radius: 4.0` (so the
+    // image looks like a screen sitting inside the pane rather than a
+    // square sticker pasted onto it). 4 display px × 2× oversample = 8
+    // handle px.
+    mask_rounded_corners(&mut img, 4 * OVERSAMPLE);
     let (handle_w, handle_h) = (img.width(), img.height());
 
     // Geometry in DISPLAY (logical) coords — the overlay sits on
@@ -281,6 +286,39 @@ fn build_navicust_render(
         rows,
         cell_part_idx,
     })
+}
+
+/// Hard-clip the four corners of `img` to transparency so the iced
+/// Image widget renders with rounded corners. The pane plate behind it
+/// shows through where alpha drops to 0. Iced's container clip(true)
+/// only clips to a rectangle, so the rounding has to live in the
+/// pixels.
+fn mask_rounded_corners(img: &mut image::RgbaImage, radius: u32) {
+    let (w, h) = (img.width(), img.height());
+    let r = radius.min(w / 2).min(h / 2);
+    if r == 0 {
+        return;
+    }
+    let r_sq = (r as f32) * (r as f32);
+    // Iterate just the bounding boxes of the four corner squares.
+    let corners = [
+        // (x_start, y_start, cx_anchor, cy_anchor)
+        (0, 0, r as f32, r as f32),
+        (w - r, 0, w as f32 - r as f32, r as f32),
+        (0, h - r, r as f32, h as f32 - r as f32),
+        (w - r, h - r, w as f32 - r as f32, h as f32 - r as f32),
+    ];
+    for (x0, y0, cx_anchor, cy_anchor) in corners {
+        for y in y0..(y0 + r) {
+            for x in x0..(x0 + r) {
+                let dx = (x as f32 + 0.5) - cx_anchor;
+                let dy = (y as f32 + 0.5) - cy_anchor;
+                if dx * dx + dy * dy > r_sq {
+                    img.get_pixel_mut(x, y).0[3] = 0;
+                }
+            }
+        }
+    }
 }
 
 fn cropped_handle(src: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> iced_image::Handle {

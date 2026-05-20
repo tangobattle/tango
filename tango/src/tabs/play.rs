@@ -912,7 +912,6 @@ impl PlayState {
                             .collect()
                     })
                     .unwrap_or_default();
-                options.sort_by(|a, b| a.display.cmp(&b.display));
                 let selected = template
                     .as_ref()
                     .and_then(|t| options.iter().find(|o| &o.raw == t).cloned());
@@ -1448,9 +1447,7 @@ fn lobby_view<'a>(
     } else if let Some(ident) = ident {
         use crate::netplay::{DirectRole, LinkIdent};
         let label = match ident {
-            LinkIdent::Matchmaking(code) => {
-                t_args(lang, "lobby-link-code", &[("code", code.clone().into())])
-            }
+            LinkIdent::Matchmaking(code) => t_args(lang, "lobby-link-code", &[("code", code.clone().into())]),
             LinkIdent::Direct(DirectRole::Host { port }) => {
                 t_args(lang, "lobby-direct-host", &[("port", port.to_string().into())])
             }

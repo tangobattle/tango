@@ -69,6 +69,45 @@ pub fn t_args(
     t_args_opt(lang, key, args).unwrap_or_else(|| format!("⟦{key}⟧"))
 }
 
+/// Look up `$key` (a string literal, validated at compile time) in
+/// the bundle and return a `String`. Extra `name = value` pairs are
+/// passed as fluent placeholders via `FluentValue::from`.
+///
+/// ```ignore
+/// t!(lang, "save-empty");
+/// t!(lang, "lobby-latency", ms = 42i64);
+/// ```
+macro_rules! t {
+    ($lang:expr, $key:literal $(,)?) => {
+        $crate::i18n::t($lang, $key)
+    };
+    ($lang:expr, $key:literal, $($k:ident = $v:expr),+ $(,)?) => {
+        $crate::i18n::t_args(
+            $lang,
+            $key,
+            &[$((stringify!($k), $crate::i18n::FluentValue::from($v))),+],
+        )
+    };
+}
+pub(crate) use t;
+
+/// Like [`t!`] but returns `Option<String>` — `None` if the locale
+/// (and fallback locale) don't define `$key`. Use when you need to
+/// branch on "string actually defined".
+macro_rules! t_opt {
+    ($lang:expr, $key:literal $(,)?) => {
+        $crate::i18n::t_opt($lang, $key)
+    };
+    ($lang:expr, $key:literal, $($k:ident = $v:expr),+ $(,)?) => {
+        $crate::i18n::t_args_opt(
+            $lang,
+            $key,
+            &[$((stringify!($k), $crate::i18n::FluentValue::from($v))),+],
+        )
+    };
+}
+pub(crate) use t_opt;
+
 /// Picker option for the language dropdown. Holds the
 /// `LanguageIdentifier` (what gets serialized into config) plus
 /// the endonym from each locale's `LANGUAGE` Fluent key. The
