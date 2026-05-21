@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
@@ -50,6 +53,10 @@ pub enum Message {
     /// replay job map. Path identifies which job to drop so the
     /// detail panel can offer a per-replay close button.
     ExportDismiss(std::path::PathBuf),
+    /// User clicked the Cancel button while an export is in flight.
+    /// Sets the job's cancel flag; the encoder thread checks it each
+    /// tick and exits, leaving a partial WebM on disk.
+    CancelExport(std::path::PathBuf),
     /// Open the rendered video with the OS's default handler.
     OpenFile(std::path::PathBuf),
     /// Export settings widgets — scale, lossless, disable-BGM.
@@ -72,6 +79,11 @@ pub enum Message {
     StatsLoaded(std::path::PathBuf, crate::replays::ReplayStats),
     Rescan,
     SaveViewAction(save_view::Action),
+    /// Used by Tasks that need a Message to return but want no
+    /// state mutation. Currently: the user dismissed the Save As
+    /// file dialog without picking a path — the export form should
+    /// stay open and untouched.
+    NoOp,
 }
 
 /// Export status for a single replay. `result` flips to `Some`
@@ -83,6 +95,27 @@ pub struct ExportJob {
     pub completed: usize,
     pub total: usize,
     pub result: Option<Result<std::path::PathBuf, String>>,
+    /// Where the encoder is writing to. Surfaced under the in-flight
+    /// caption so the user can see which file the render is going to.
+    /// Empty for jobs created in an error state before a path was
+    /// known (e.g. ROM lookup failure).
+    pub output: std::path::PathBuf,
+    /// Set to `true` by the UI to ask the encoder thread to stop. The
+    /// encoder checks it each tick and bails out with a partial WebM on
+    /// disk.
+    pub cancel: Arc<AtomicBool>,
+}
+
+impl ExportJob {
+    pub fn new(output: std::path::PathBuf) -> Self {
+        Self {
+            completed: 0,
+            total: 0,
+            result: None,
+            output,
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 /// Every piece of UI state that's specific to one replay path,
@@ -202,6 +235,11 @@ pub enum Effect {
         settings: ExportSettings,
         rounds: Vec<bool>,
     },
+    /// User clicked the Cancel button while an export was in flight.
+    /// App aborts the corresponding `JoinHandle`; dropping the future
+    /// kills the ffmpeg subprocesses via `tokio::process::Child`'s
+    /// `kill_on_drop`.
+    CancelExport(std::path::PathBuf),
     /// Task returned from save_view::State::apply. Generic Task
     /// pipe so save_view-internal side effects (currently just
     /// the scroll-to-top snap on tab changes) flow through here
@@ -280,7 +318,7 @@ impl ReplaysState {
                     // computed" race.
                     rounds = vec![true];
                 }
-                entry.job = Some(ExportJob { completed: 0, total: 0, result: None });
+                entry.job = Some(ExportJob::new(output.clone()));
                 // Pin the panel open so it stays visible if the
                 // user navigates elsewhere mid-render. The Done
                 // state will collapse naturally on the next
@@ -308,11 +346,37 @@ impl ReplaysState {
             }
             Message::ExportFinished { replay, result } => {
                 let entry = self.per.entry(replay).or_default();
-                entry
+                // If the user clicked Cancel, drop the job and close
+                // the panel instead of showing the synthetic
+                // "cancelled" error from the encoder. The partial WebM
+                // on disk is still there if they want to recover it
+                // via the file system; the UI just goes back to its
+                // pre-render state.
+                let was_cancelled = entry
                     .job
-                    .get_or_insert(ExportJob { completed: 0, total: 0, result: None })
-                    .result = Some(result);
+                    .as_ref()
+                    .is_some_and(|j| j.cancel.load(Ordering::Relaxed));
+                if was_cancelled {
+                    entry.job = None;
+                    entry.panel_open = false;
+                } else {
+                    entry
+                        .job
+                        .get_or_insert_with(|| ExportJob::new(std::path::PathBuf::new()))
+                        .result = Some(result);
+                }
                 None
+            }
+            Message::CancelExport(p) => {
+                // Set the per-job flag so the UI greys out the Cancel
+                // button and flips the caption to "Cancelling…"; the
+                // actual teardown happens in the App, which aborts the
+                // running tokio task (dropping the future kills the
+                // ffmpeg subprocesses).
+                if let Some(job) = self.per.get(&p).and_then(|e| e.job.as_ref()) {
+                    job.cancel.store(true, Ordering::Relaxed);
+                }
+                Some(Effect::CancelExport(p))
             }
             Message::ExportDismiss(p) => {
                 if let Some(entry) = self.per.get_mut(&p) {
@@ -364,6 +428,7 @@ impl ReplaysState {
                 self.stats.insert(path, s);
                 None
             }
+            Message::NoOp => None,
         }
     }
 
@@ -995,19 +1060,49 @@ fn export_panel<'a>(
                     0.0
                 };
                 let pct_label = format!("{}%", (pct * 100.0).round() as u32);
+                let cancel_requested = job.cancel.load(Ordering::Relaxed);
+                // Disabled (None on_press) once the user has clicked
+                // cancel — the encoder thread still has to wind down
+                // its current tick + flush the partial WebM, and we
+                // don't want a second click queueing anything.
+                let cancel_button = widgets::icon_button_maybe(
+                    Icon::X,
+                    t!(lang, "replays-export-cancel").to_string(),
+                    if cancel_requested {
+                        None
+                    } else {
+                        Some(Message::CancelExport(replay_path.to_path_buf()))
+                    },
+                    STANDARD_PADDING,
+                );
+                let caption = if cancel_requested {
+                    t!(lang, "replays-export-cancelling")
+                } else {
+                    t!(lang, "replays-export-progress")
+                };
                 column![
-                    text(t!(lang, "replays-export-progress"))
+                    text(caption)
                         .size(TEXT_CAPTION)
                         .style(save_view::muted_text_style),
-                    // Long + thin. `length()` is the primary axis
-                    // (width in horizontal) and defaults to Fill;
-                    // `girth()` is the secondary axis (height) and
-                    // defaults to 30 px, which is the chunky look
-                    // we don't want.
-                    iced::widget::progress_bar(0.0..=1.0, pct).girth(Length::Fixed(4.0)),
-                    text(pct_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                    text(job.output.display().to_string()).size(TEXT_CAPTION),
+                    // Progress bar + percentage + Cancel side-by-side.
+                    // The bar takes the remaining width via `length()`
+                    // = Fill so the icon-only cancel hugs the right
+                    // edge and the percent label sits between them.
+                    row![
+                        // Long + thin. `length()` is the primary axis
+                        // (width in horizontal) and defaults to Fill;
+                        // `girth()` is the secondary axis (height) and
+                        // defaults to 30 px, which is the chunky look
+                        // we don't want.
+                        iced::widget::progress_bar(0.0..=1.0, pct).girth(Length::Fixed(4.0)),
+                        text(pct_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        cancel_button,
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
                 ]
-                .spacing(4)
+                .spacing(6)
                 .into()
             }
             Some(Ok(path)) => {

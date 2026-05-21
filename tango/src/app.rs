@@ -168,6 +168,11 @@ pub struct App {
     /// installer. UI lives in Settings → About; toggle is in
     /// Settings → Network.
     updater: updater::Updater,
+    /// Abort handles for in-flight replay-export tasks, keyed by source
+    /// replay path. When the user clicks Cancel, we look the handle up
+    /// here and `.abort()` it; dropping the future tears down the ffmpeg
+    /// subprocesses via `tokio::process::Child`'s kill-on-drop.
+    export_aborts: std::collections::HashMap<std::path::PathBuf, tokio::task::AbortHandle>,
 }
 
 impl App {
@@ -300,6 +305,7 @@ impl App {
             session_started_at: None,
             patch_autoupdater,
             updater,
+            export_aborts: std::collections::HashMap::new(),
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -1032,6 +1038,13 @@ impl App {
         // effects (clipboard, OS open, session host handoff,
         // file dialog, export task spawn) come back here as an
         // Effect for the App to interpret.
+        // Drop the cached AbortHandle once the export terminates — the
+        // task is already gone, the handle is just bookkeeping. Doing
+        // this before delegating to `replays.update` so the cleanup
+        // happens regardless of how the tab module reacts.
+        if let tabs::replays::Message::ExportFinished { replay, .. } = &msg {
+            self.export_aborts.remove(replay);
+        }
         let Some(effect) = self.replays.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
@@ -1090,10 +1103,11 @@ impl App {
                             replay: replay_for_msg.clone(),
                             output,
                         },
-                        // User cancelled — no-op. Dismiss on a
-                        // path that never had a job entry is a
-                        // safe HashMap remove; status untouched.
-                        None => tabs::replays::Message::ExportDismiss(replay_for_msg.clone()),
+                        // User dismissed the dialog without picking — keep
+                        // the form open and untouched. ExportDismiss would
+                        // also close the panel, which is wrong here since
+                        // no job ever started.
+                        None => tabs::replays::Message::NoOp,
                     },
                 )
             }
@@ -1103,6 +1117,20 @@ impl App {
                 settings,
                 rounds,
             } => self.spawn_replay_export(replay, output, settings, rounds),
+            E::CancelExport(p) => {
+                // Aborting the JoinHandle drops the running future. The
+                // future owns two `tokio::process::Child` instances
+                // configured with `kill_on_drop(true)`, so the ffmpeg
+                // subprocesses are killed as part of unwind. The iced
+                // stream we returned from `spawn_replay_export` then
+                // emits an `ExportFinished` with the "ended without
+                // result" fallback, which the tab module auto-dismisses
+                // because the per-replay cancel flag is set.
+                if let Some(handle) = self.export_aborts.remove(&p) {
+                    handle.abort();
+                }
+                iced::Task::none()
+            }
             E::SaveViewTask(t) => t,
         }
     }
@@ -1160,21 +1188,17 @@ impl App {
         let prep = match prep {
             Ok(p) => p,
             Err(e) => {
-                self.replays.per.entry(replay_path).or_default().job = Some(tabs::replays::ExportJob {
-                    completed: 0,
-                    total: 0,
-                    result: Some(Err(format!("{e}"))),
-                });
+                let mut job = tabs::replays::ExportJob::new(output_path.clone());
+                job.result = Some(Err(format!("{e}")));
+                self.replays.per.entry(replay_path).or_default().job = Some(job);
                 return iced::Task::none();
             }
         };
 
         if !rounds_mask.iter().any(|b| *b) {
-            self.replays.per.entry(replay_path).or_default().job = Some(tabs::replays::ExportJob {
-                completed: 0,
-                total: 0,
-                result: Some(Err("no rounds selected for export".to_string())),
-            });
+            let mut job = tabs::replays::ExportJob::new(output_path.clone());
+            job.result = Some(Err("no rounds selected for export".to_string()));
+            self.replays.per.entry(replay_path).or_default().job = Some(job);
             return iced::Task::none();
         }
 
@@ -1183,7 +1207,11 @@ impl App {
             std::sync::Arc::new(parking_lot::Mutex::new(None));
         let done_arc_task = done_arc.clone();
         let output_for_task = output_path.clone();
-        tokio::task::spawn(async move {
+        // Run the export on a tokio task so the ffmpeg child processes
+        // (set up with `kill_on_drop(true)` inside `tango_pvp::replay::
+        // export`) get killed automatically when the future is dropped —
+        // i.e. when the user clicks Cancel and we abort the JoinHandle.
+        let join = tokio::task::spawn(async move {
             let ExportPrep {
                 local_hooks,
                 local_rom,
@@ -1191,10 +1219,10 @@ impl App {
                 remote_rom,
                 replay,
             } = prep;
-            // Lossless => Settings::ffmpeg_video_flags uses
-            // libx264rgb -qp 0 (legacy parity); otherwise pass
-            // the scale factor through to the swscale neighbor
-            // filter inside default_with_scale.
+            // Lossless => libx264rgb -qp 0 (RGB-domain lossless),
+            // otherwise libx264 + nearest upscale at the user-picked
+            // factor. `default_with_scale` builds the ffmpeg flags
+            // accordingly.
             let scale_arg = if user_settings.lossless {
                 None
             } else {
@@ -1203,9 +1231,16 @@ impl App {
             let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
             settings.disable_bgm = user_settings.disable_bgm;
             let selected_rounds = vec![rounds_mask];
-            let progress_tx = parking_lot::Mutex::new(progress_tx);
-            let cb = |current: usize, total: usize| {
-                let _ = progress_tx.lock().unbounded_send((current, total));
+            // Clone the sender into the callback. The original
+            // `progress_tx` stays alive in the outer task until *after*
+            // `done_arc_task` is set; otherwise the futures channel
+            // closes the moment `cb` (and thus the moved sender) is
+            // dropped, the iced stream wakes up, sees `None`, races to
+            // read `done_arc` while it's still unset, and reports
+            // "export task ended without result".
+            let cb_tx = progress_tx.clone();
+            let cb = move |current: usize, total: usize| {
+                let _ = cb_tx.unbounded_send((current, total));
             };
             let result = if user_settings.twosided {
                 tango_pvp::replay::export::export_twosided(
@@ -1237,7 +1272,13 @@ impl App {
             .map(|()| output_for_task)
             .map_err(|e| format!("{e}"));
             *done_arc_task.lock() = Some(result);
+            // `progress_tx` drops here, closing the channel, which
+            // signals the iced stream to read `done_arc` — which is
+            // now safely set above.
+            drop(progress_tx);
         });
+        self.export_aborts
+            .insert(replay_path.clone(), join.abort_handle());
 
         // Drain progress + a synthetic final ExportFinished from
         // the same stream. We poll done_arc whenever the channel
