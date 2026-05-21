@@ -92,15 +92,13 @@ impl ActiveSession {
 #[derive(Default)]
 pub struct State {
     pub active: Option<ActiveSession>,
-    /// Latest GBA framebuffer (post-upscale-filter). Owned by a
-    /// `crate::widgets::gba_frame` shader widget instead of an iced
-    /// `image::Handle` so the texture is updated in-place via
-    /// `Queue::write_texture` rather than re-uploaded through iced's
-    /// image atlas every Tick.
-    pub frame: Option<crate::widgets::gba_frame::FrameData>,
+    pub frame: Option<iced::widget::image::Handle>,
+    /// Bumped each tick to give the iced `image::Handle::Rgba` an
+    /// always-fresh id (without that, iced caches the texture and the
+    /// emulator picture freezes).
     pub frame_counter: u64,
     /// Frame id of the source emulator frame the current `frame`
-    /// data was built from. Set in the Tick handler and used to
+    /// Handle was built from. Set in the Tick handler and used to
     /// skip texture rebuilds when mgba hasn't produced a new
     /// frame yet (host vsync > emu fps).
     pub displayed_frame_id: u64,
@@ -231,18 +229,25 @@ impl State {
                     let filter = crate::video::filter_by_name(video_filter)
                         .unwrap_or_else(|| Box::new(crate::video::NullFilter));
                     let [out_w, out_h] = filter.output_size([src_w, src_h]);
-                    let (w, h, buf) = if [out_w, out_h] == [src_w, src_h] {
+                    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
                         (src_w as u32, src_h as u32, pixels)
                     } else {
                         let mut dst = vec![0u8; out_w * out_h * 4];
                         filter.apply(&pixels, &mut dst, [src_w, src_h]);
                         (out_w as u32, out_h as u32, dst)
                     };
-                    self.frame = Some(crate::widgets::gba_frame::FrameData {
-                        pixels: std::sync::Arc::new(buf),
-                        width: w,
-                        height: h,
-                    });
+                    // hqx operates on 24-bit RGB and masks the
+                    // alpha byte to 0 in every output pixel
+                    // (see `MASK_RGB = 0x00FFFFFF` in the hqx
+                    // crate). The result reads as fully
+                    // transparent in iced and shows as black /
+                    // strobing depending on what's underneath.
+                    // Pure-2x MMPX preserves alpha, but it's
+                    // cheap to re-stamp unconditionally.
+                    for chunk in buf.chunks_mut(4) {
+                        chunk[3] = 0xff;
+                    }
+                    self.frame = Some(iced::widget::image::Handle::from_rgba(w, h, buf));
                     self.frame_counter = self.frame_counter.wrapping_add(1);
                     self.displayed_frame_id = fid;
                 }
@@ -424,39 +429,56 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
-    use iced::widget::Space;
+    let frame_handle = state.frame.as_ref();
+    use iced::widget::{image, Space};
 
-    let frame: Element<'a, Message> = if let Some(data) = state.frame.as_ref() {
-        // Source texture dimensions — used to compute the scale that
-        // fits the available pane. Carried on FrameData.
-        let img_w = data.width as f32;
-        let img_h = data.height as f32;
-        let data = data.clone();
-        // Always wrap in `responsive` so we can compute either an
-        // integer-floor scale (integer-scale mode) or an aspect-fit
-        // float scale (Contain mode), then render the shader widget
-        // at a fixed pixel size. The shader has no built-in content_fit;
-        // we set Fixed dims and center it.
-        iced::widget::responsive(move |size| {
-            let scale_w = size.width / img_w;
-            let scale_h = size.height / img_h;
-            let mut scale = scale_w.min(scale_h);
-            if integer_scaling {
-                scale = scale.floor().max(1.0);
-            }
-            let fb = crate::widgets::gba_frame::view::<Message>(
-                data.clone(),
-                Length::Fixed(img_w * scale),
-                Length::Fixed(img_h * scale),
-            );
-            iced::widget::container(fb)
+    let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
+        // Source texture dimensions — used by integer-scale to
+        // compute the largest integer multiple that fits.
+        // `Handle::Rgba` carries them; other variants shouldn't
+        // appear here but fall back to the native GBA size.
+        let (img_w, img_h) = match handle {
+            iced::widget::image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
+            _ => (
+                replay_session::SCREEN_WIDTH as f32,
+                replay_session::SCREEN_HEIGHT as f32,
+            ),
+        };
+        if integer_scaling {
+            // Wrap in `responsive` to grab the available size,
+            // pick the largest integer scale that fits, and
+            // render the image at exact `texel * scale` pixels.
+            // The image is Fixed-size, so the inner container
+            // (Fill within the responsive's slot) handles the
+            // centering with `align_x/y`. The outer container
+            // alignment alone wouldn't work because the
+            // responsive widget itself fills its parent.
+            let handle = handle.clone();
+            iced::widget::responsive(move |size| {
+                let scale_w = (size.width / img_w).floor().max(1.0);
+                let scale_h = (size.height / img_h).floor().max(1.0);
+                let scale = scale_w.min(scale_h);
+                let img = image(handle.clone())
+                    .width(Length::Fixed(img_w * scale))
+                    .height(Length::Fixed(img_h * scale))
+                    .filter_method(image::FilterMethod::Nearest)
+                    .content_fit(iced::ContentFit::Fill);
+                iced::widget::container(img)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .into()
+            })
+            .into()
+        } else {
+            image(handle.clone())
                 .width(Fill)
                 .height(Fill)
-                .align_x(iced::alignment::Horizontal::Center)
-                .align_y(iced::alignment::Vertical::Center)
+                .filter_method(image::FilterMethod::Nearest)
+                .content_fit(iced::ContentFit::Contain)
                 .into()
-        })
-        .into()
+        }
     } else {
         Space::new().width(Fill).height(Fill).into()
     };
