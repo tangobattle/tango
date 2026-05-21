@@ -6,6 +6,8 @@
 //! come straight from the `lucide-icons` crate — call sites pass
 //! `Icon::Foo` directly.
 
+pub mod gba_frame;
+
 use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::{button, container, row, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};

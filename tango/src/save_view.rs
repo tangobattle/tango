@@ -1,4 +1,4 @@
-use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING};
+use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::i18n::t;
 use crate::selection::Loaded;
 use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
@@ -1106,14 +1106,6 @@ fn render_navicust<M: 'static>(
     v: &dyn tango_dataview::save::NavicustView,
 ) -> Element<'static, M> {
     let assets = loaded.assets.as_ref();
-    // BN4/5/6 don't have styles — `view.style()` is None there. Only
-    // surface the row when the save actually exposes a style id.
-    let style_name: Option<String> = v.style().map(|id| {
-        assets
-            .style(id)
-            .and_then(|s| s.name())
-            .unwrap_or_else(|| t!(lang, "navi-style-unset"))
-    });
     let [cols, rows_n] = v.size();
 
     // Big rendered grid (tiny-skia, cached at load time). Scale down to

@@ -102,9 +102,9 @@ fn run_frame<'a>(
     let n = {
         let mut core = core.as_mut();
         let core_rate = core.as_ref().audio_sample_rate() as f64;
-        let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
-        resampler.set_source(core_buffer_ptr, core_rate, true);
-        resampler.set_destination(dest_buffer.as_mut_ptr(), SAMPLE_RATE);
+        let mut core_buffer = core.audio_buffer();
+        resampler.set_source(&mut core_buffer, core_rate, true);
+        resampler.set_destination(dest_buffer, SAMPLE_RATE);
         resampler.process();
         let cap = samples.len() / AUDIO_CHANNELS;
         let frames = dest_buffer.available().min(cap);

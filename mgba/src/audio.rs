@@ -20,13 +20,7 @@ impl AudioBuffer {
     }
 
     pub fn read(&mut self, samples: &mut [i16], count: usize) -> usize {
-        unsafe {
-            mgba_sys::mAudioBufferRead(
-                self.inner.as_mut().get_unchecked_mut(),
-                samples.as_mut_ptr(),
-                count,
-            )
-        }
+        unsafe { mgba_sys::mAudioBufferRead(self.inner.as_mut().get_unchecked_mut(), samples.as_mut_ptr(), count) }
     }
 
     pub fn clear(&mut self) {
@@ -87,15 +81,26 @@ impl AudioResampler {
         AudioResampler { inner }
     }
 
-    pub fn set_source(&mut self, source: *mut mgba_sys::mAudioBuffer, rate: f64, consume: bool) {
+    /// Sets the source buffer + its sample rate. The C layer stores
+    /// the pointer for use by subsequent [`Self::process`] calls — the
+    /// caller must ensure `source` stays live until either `process`
+    /// runs or a new source is set.
+    pub fn set_source(&mut self, source: &mut AudioBufferMutRef<'_>, rate: f64, consume: bool) {
         unsafe {
-            mgba_sys::mAudioResamplerSetSource(self.inner.as_mut().get_unchecked_mut(), source, rate, consume);
+            mgba_sys::mAudioResamplerSetSource(self.inner.as_mut().get_unchecked_mut(), source.ptr, rate, consume);
         }
     }
 
-    pub fn set_destination(&mut self, destination: *mut mgba_sys::mAudioBuffer, rate: f64) {
+    /// Sets the destination buffer + its sample rate. As with
+    /// [`Self::set_source`], the C layer stores the pointer across
+    /// calls — the destination must outlive any later `process`.
+    pub fn set_destination(&mut self, destination: &mut AudioBuffer, rate: f64) {
         unsafe {
-            mgba_sys::mAudioResamplerSetDestination(self.inner.as_mut().get_unchecked_mut(), destination, rate);
+            mgba_sys::mAudioResamplerSetDestination(
+                self.inner.as_mut().get_unchecked_mut(),
+                destination.inner.as_mut().get_unchecked_mut(),
+                rate,
+            );
         }
     }
 

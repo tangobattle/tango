@@ -56,10 +56,7 @@ impl LateBinder {
         self.sample_rate
     }
 
-    pub fn bind(
-        &self,
-        stream: Option<Box<dyn Stream + Send + 'static>>,
-    ) -> Result<Binding, BindingError> {
+    pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
         let mut g = self.stream.lock();
         if g.is_some() {
             return Err(BindingError::AlreadyBound);
@@ -96,19 +93,20 @@ pub struct MGBAStream {
     sample_rate: u32,
     resampler: mgba::audio::AudioResampler,
     dest_buffer: mgba::audio::AudioBuffer,
+    /// Tracked separately because `mAudioBuffer` doesn't expose
+    /// capacity through the Rust binding; grown lazily in `fill`.
+    dest_capacity: usize,
 }
 
 impl MGBAStream {
     pub fn new(handle: mgba::thread::Handle, sample_rate: u32) -> MGBAStream {
+        let dest_capacity = SAMPLES * 2;
         Self {
             handle,
             sample_rate,
             resampler: mgba::audio::AudioResampler::new(),
-            // 2x SAMPLES — enough to hold an above-average single
-            // callback's resampler output without losing the tail,
-            // small enough that the leftover doesn't accumulate into
-            // perceptible A/V lag. See tango/src/audio.rs.
-            dest_buffer: mgba::audio::AudioBuffer::new(SAMPLES * 2, NUM_CHANNELS as u32),
+            dest_buffer: mgba::audio::AudioBuffer::new(dest_capacity, NUM_CHANNELS as u32),
+            dest_capacity,
         }
     }
 }
@@ -124,22 +122,34 @@ impl Stream for MGBAStream {
             fps_target = 1.0;
         }
 
-        let mut core = audio_guard.core_mut();
-        let faux_clock = core.as_ref().calculate_framerate_ratio(fps_target as f64);
-        let core_rate = core.as_ref().audio_sample_rate() as f64;
-        let core_buffer_ptr = core.audio_buffer().as_mut_ptr();
+        let (core_rate, faux_clock) = {
+            let core = audio_guard.core_mut();
+            (
+                core.as_ref().audio_sample_rate() as f64,
+                core.as_ref().calculate_framerate_ratio(fps_target as f64),
+            )
+        };
 
         let dest_rate = self.sample_rate as f64 * faux_clock;
-        let high_water =
-            (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
+        let high_water = (frame_count as f64 + 16.0 + frame_count as f64 / 64.0) * core_rate / dest_rate;
         audio_guard.sync_mut().set_audio_high_water(high_water as u32);
 
-        self.resampler.set_source(core_buffer_ptr, core_rate, true);
-        self.resampler.set_destination(self.dest_buffer.as_mut_ptr(), dest_rate);
+        let needed = frame_count.saturating_mul(2);
+        if needed > self.dest_capacity {
+            let new_capacity = needed.next_power_of_two().max(SAMPLES * 2);
+            self.dest_buffer = mgba::audio::AudioBuffer::new(new_capacity, NUM_CHANNELS as u32);
+            self.dest_capacity = new_capacity;
+        }
+
+        let mut core = audio_guard.core_mut();
+        let mut core_buffer = core.audio_buffer();
+        self.resampler.set_source(&mut core_buffer, core_rate, true);
+        self.resampler.set_destination(&mut self.dest_buffer, dest_rate);
         self.resampler.process();
 
         let available = self.dest_buffer.available().min(frame_count);
-        self.dest_buffer.read(&mut linear_buf[..available * NUM_CHANNELS], available);
+        self.dest_buffer
+            .read(&mut linear_buf[..available * NUM_CHANNELS], available);
         available
     }
 }

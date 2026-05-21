@@ -10,9 +10,7 @@ use cpal::{traits::DeviceTrait, Sample};
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
     // Closest to 2-channel 48 kHz wins.
-    supported_configs.sort_by_key(|x| {
-        (x.max_sample_rate().0.abs_diff(48000), x.channels().abs_diff(2))
-    });
+    supported_configs.sort_by_key(|x| (x.max_sample_rate().0.abs_diff(48000), x.channels().abs_diff(2)));
     let cfg = supported_configs
         .into_iter()
         .next()
@@ -124,8 +122,12 @@ impl Backend {
             .ok_or_else(|| anyhow::anyhow!("no default audio output device"))?;
         let supported = get_supported_config(&device)?;
         let mut config = supported.config();
-        config.buffer_size =
-            cpal::BufferSize::Fixed(audio::SAMPLES as u32 * config.channels as u32);
+        // Request the small low-latency buffer cpal supports. Windows
+        // WASAPI honors this; Linux PipeWire / PulseAudio largely
+        // ignore it and serve their own quantum. That's OK — the
+        // MGBAStream destination buffer grows on demand to fit
+        // whatever frame count actually arrives in the callback.
+        config.buffer_size = cpal::BufferSize::Fixed(audio::SAMPLES as u32);
         log::info!("cpal: selected audio config {config:?}");
 
         let s = open_stream(&device, &config, supported.sample_format(), stream)?;
