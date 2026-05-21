@@ -59,9 +59,8 @@ pub enum Message {
     CancelExport(std::path::PathBuf),
     /// Open the rendered video with the OS's default handler.
     OpenFile(std::path::PathBuf),
-    /// Export settings widgets — scale, lossless, disable-BGM.
+    /// Export settings widgets. `scale = 0` is the lossless stop.
     SetExportScale(u8),
-    SetExportLossless(bool),
     SetExportDisableBgm(bool),
     SetExportTwosided(bool),
     /// Toggle the Nth round in `selected_rounds`.
@@ -100,10 +99,19 @@ pub struct ExportJob {
     /// Empty for jobs created in an error state before a path was
     /// known (e.g. ROM lookup failure).
     pub output: std::path::PathBuf,
-    /// Set to `true` by the UI to ask the encoder thread to stop. The
-    /// encoder checks it each tick and bails out with a partial WebM on
-    /// disk.
+    /// UI-side "cancel was clicked" flag. Drives the panel chrome
+    /// (button greys out, caption flips to "Cancelling…") and lets
+    /// `Message::ExportFinished` distinguish a user-cancelled run from
+    /// a real failure so the panel auto-dismisses instead of showing
+    /// the synthetic teardown error.
     pub cancel: Arc<AtomicBool>,
+    /// Filled in by the App right after it spawns the export task.
+    /// `Message::CancelExport` calls `.abort()` here; dropping the
+    /// future tears the ffmpeg subprocesses down via
+    /// `tokio::process::Child`'s `kill_on_drop`. `None` only while the
+    /// job exists *before* the App got a chance to spawn (e.g. a
+    /// synchronous error path that fills `result` directly).
+    pub abort: Option<tokio::task::AbortHandle>,
 }
 
 impl ExportJob {
@@ -114,6 +122,7 @@ impl ExportJob {
             result: None,
             output,
             cancel: Arc::new(AtomicBool::new(false)),
+            abort: None,
         }
     }
 }
@@ -144,8 +153,10 @@ pub struct PerReplay {
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {
+    /// 0 = lossless (libx264rgb -qp 0, no upscale). 1..=10 = lossy
+    /// `scale`× nearest-neighbor upscale. The form surfaces this as a
+    /// single 0..=10 slider with "lossless" as the leftmost stop.
     pub scale: u8,
-    pub lossless: bool,
     pub disable_bgm: bool,
     /// Render both players' screens side-by-side (480x160 frame)
     /// instead of just the local POV. Routes the export through
@@ -157,7 +168,6 @@ impl Default for ExportSettings {
     fn default() -> Self {
         Self {
             scale: 5,
-            lossless: false,
             disable_bgm: false,
             twosided: false,
         }
@@ -235,11 +245,6 @@ pub enum Effect {
         settings: ExportSettings,
         rounds: Vec<bool>,
     },
-    /// User clicked the Cancel button while an export was in flight.
-    /// App aborts the corresponding `JoinHandle`; dropping the future
-    /// kills the ffmpeg subprocesses via `tokio::process::Child`'s
-    /// `kill_on_drop`.
-    CancelExport(std::path::PathBuf),
     /// Task returned from save_view::State::apply. Generic Task
     /// pipe so save_view-internal side effects (currently just
     /// the scroll-to-top snap on tab changes) flow through here
@@ -368,15 +373,18 @@ impl ReplaysState {
                 None
             }
             Message::CancelExport(p) => {
-                // Set the per-job flag so the UI greys out the Cancel
-                // button and flips the caption to "Cancelling…"; the
-                // actual teardown happens in the App, which aborts the
-                // running tokio task (dropping the future kills the
-                // ffmpeg subprocesses).
+                // Set the cancel flag so the panel greys out the button
+                // / flips the caption, then abort the tokio task. The
+                // future owns two `tokio::process::Child`s with
+                // `kill_on_drop(true)`, so unwind tears the ffmpeg
+                // subprocesses down on its way out.
                 if let Some(job) = self.per.get(&p).and_then(|e| e.job.as_ref()) {
                     job.cancel.store(true, Ordering::Relaxed);
+                    if let Some(abort) = &job.abort {
+                        abort.abort();
+                    }
                 }
-                Some(Effect::CancelExport(p))
+                None
             }
             Message::ExportDismiss(p) => {
                 if let Some(entry) = self.per.get_mut(&p) {
@@ -391,11 +399,7 @@ impl ReplaysState {
             }
             Message::OpenFile(p) => Some(Effect::OpenPath(p)),
             Message::SetExportScale(s) => {
-                self.export_settings.scale = s.clamp(1, 10);
-                None
-            }
-            Message::SetExportLossless(b) => {
-                self.export_settings.lossless = b;
+                self.export_settings.scale = s.clamp(0, 10);
                 None
             }
             Message::SetExportDisableBgm(b) => {
@@ -1157,41 +1161,23 @@ fn export_panel<'a>(
     // Some(job)` branch above returned). Multiple concurrent
     // renders are allowed, so the form is always live here.
     let in_flight = false;
+    // Scale slider goes 0..=10. The leftmost stop (0) is the
+    // lossless mode (libx264rgb -qp 0); 1..=10 is the lossy
+    // nearest-neighbor upscale factor.
     let scale_label = text(format!(
         "{}: {}",
         t!(lang, "replays-export-scale"),
-        if settings.lossless {
-            "".into()
+        if settings.scale == 0 {
+            t!(lang, "replays-export-scale-lossless").to_string()
         } else {
             format!("{}×", settings.scale)
         }
     ))
     .size(TEXT_CAPTION)
     .style(save_view::muted_text_style);
-    // Scale isn't used when lossless (libx264rgb -qp 0 ignores
-    // the swscale neighbor filter that would carry the factor);
-    // hide the slider in that case to make the disabled state
-    // visually unambiguous. iced 0.14 has no `slider.enabled()`,
-    // so we just swap the widget.
-    let scale_slider: Element<'a, Message> = if settings.lossless {
-        text(t!(lang, "replays-export-scale-na-lossless"))
-            .size(TEXT_CAPTION)
-            .width(Length::Fixed(140.0))
-            .style(save_view::muted_text_style)
-            .into()
-    } else {
-        iced::widget::slider(1..=10u8, settings.scale, Message::SetExportScale)
-            .width(Length::Fixed(140.0))
-            .into()
-    };
-    let lossless_chk = iced::widget::checkbox(settings.lossless)
-        .label(t!(lang, "replays-export-lossless"))
-        .style(widgets::chunky_checkbox);
-    let lossless_chk: Element<'a, Message> = if in_flight {
-        lossless_chk.into()
-    } else {
-        lossless_chk.on_toggle(Message::SetExportLossless).into()
-    };
+    let scale_slider: Element<'a, Message> = iced::widget::slider(0..=10u8, settings.scale, Message::SetExportScale)
+        .width(Length::Fixed(140.0))
+        .into();
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
         .label(t!(lang, "replays-export-disable-bgm"))
         .style(widgets::chunky_checkbox);
@@ -1208,14 +1194,39 @@ fn export_panel<'a>(
     } else {
         twosided_chk.on_toggle(Message::SetExportTwosided).into()
     };
-    // Round-selection row — only shown for multi-round replays
-    // since a single-round replay's "rounds" selector is pointless.
-    let mut col = column![
-        row![column![scale_label, scale_slider].spacing(2), lossless_chk, bgm_chk, twosided_chk,]
-            .spacing(16)
-            .align_y(Alignment::Center)
-    ]
-    .spacing(6);
+    // Save As… commits the form. Disabled when nothing is selected
+    // for export. Floats to the right of the controls row, bottom-
+    // aligned so it sits level with the slider widget itself (not
+    // the caption above it).
+    let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
+    let can_start = any_round && !in_flight;
+    let save_as_btn: Element<'a, Message> = if can_start {
+        widgets::labeled_icon_button(
+            Icon::Upload,
+            t!(lang, "replays-export-save-as"),
+            Message::Export(replay_path.to_path_buf()),
+            STANDARD_PADDING,
+            widgets::primary_button,
+        )
+    } else {
+        iced::widget::button(
+            iced::widget::row![Icon::Upload.widget(), text(t!(lang, "replays-export-save-as")),]
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .padding(STANDARD_PADDING)
+        .style(widgets::neutral)
+        .into()
+    };
+    // Left column stacks the controls (scale + checkboxes) and the
+    // optional rounds row. The Save As button lives in the outer
+    // row so it can float all the way to the right and bottom-align
+    // against whatever vertical extent the left column ends up at
+    // (which grows when the rounds row is present).
+    let controls_row = row![column![scale_label, scale_slider].spacing(2), bgm_chk, twosided_chk,]
+        .spacing(16)
+        .align_y(Alignment::Center);
+    let mut left_col = column![controls_row].spacing(6);
     if selected_rounds.len() > 1 {
         let label = text(t!(lang, "replays-export-rounds"))
             .size(TEXT_CAPTION)
@@ -1232,39 +1243,13 @@ fn export_panel<'a>(
             };
             rounds_row = rounds_row.push(cb);
         }
-        col = col.push(rounds_row);
+        left_col = left_col.push(rounds_row);
     }
-    // Action row: Save As… commits + Cancel closes the panel.
-    // Save As… is disabled when nothing is selected for export.
-    let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
-    let can_start = any_round && !in_flight;
-    let save_as_btn: Element<'a, Message> = if can_start {
-        widgets::labeled_icon_button(
-            Icon::Upload,
-            t!(lang, "replays-export-save-as"),
-            Message::Export(replay_path.to_path_buf()),
-            STANDARD_PADDING,
-            widgets::primary_button,
-        )
-    } else {
-        iced::widget::button(
-            iced::widget::row![
-                Icon::Upload.widget(),
-                text(t!(lang, "replays-export-save-as")),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .padding(STANDARD_PADDING)
-        .style(widgets::neutral)
-        .into()
-    };
-    let actions = row![horizontal_space(), save_as_btn]
-        .spacing(6)
-        .align_y(Alignment::Center);
-    col = col.push(actions);
+    let body = row![left_col, horizontal_space(), save_as_btn]
+        .spacing(16)
+        .align_y(Alignment::End);
 
-    container(col.padding(12))
+    container(body.padding(12))
         .width(Fill)
         .style(iced::widget::container::bordered_box)
         .into()

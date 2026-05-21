@@ -168,11 +168,6 @@ pub struct App {
     /// installer. UI lives in Settings → About; toggle is in
     /// Settings → Network.
     updater: updater::Updater,
-    /// Abort handles for in-flight replay-export tasks, keyed by source
-    /// replay path. When the user clicks Cancel, we look the handle up
-    /// here and `.abort()` it; dropping the future tears down the ffmpeg
-    /// subprocesses via `tokio::process::Child`'s kill-on-drop.
-    export_aborts: std::collections::HashMap<std::path::PathBuf, tokio::task::AbortHandle>,
 }
 
 impl App {
@@ -305,7 +300,6 @@ impl App {
             session_started_at: None,
             patch_autoupdater,
             updater,
-            export_aborts: std::collections::HashMap::new(),
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -1038,13 +1032,6 @@ impl App {
         // effects (clipboard, OS open, session host handoff,
         // file dialog, export task spawn) come back here as an
         // Effect for the App to interpret.
-        // Drop the cached AbortHandle once the export terminates — the
-        // task is already gone, the handle is just bookkeeping. Doing
-        // this before delegating to `replays.update` so the cleanup
-        // happens regardless of how the tab module reacts.
-        if let tabs::replays::Message::ExportFinished { replay, .. } = &msg {
-            self.export_aborts.remove(replay);
-        }
         let Some(effect) = self.replays.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
@@ -1117,20 +1104,6 @@ impl App {
                 settings,
                 rounds,
             } => self.spawn_replay_export(replay, output, settings, rounds),
-            E::CancelExport(p) => {
-                // Aborting the JoinHandle drops the running future. The
-                // future owns two `tokio::process::Child` instances
-                // configured with `kill_on_drop(true)`, so the ffmpeg
-                // subprocesses are killed as part of unwind. The iced
-                // stream we returned from `spawn_replay_export` then
-                // emits an `ExportFinished` with the "ended without
-                // result" fallback, which the tab module auto-dismisses
-                // because the per-replay cancel flag is set.
-                if let Some(handle) = self.export_aborts.remove(&p) {
-                    handle.abort();
-                }
-                iced::Task::none()
-            }
             E::SaveViewTask(t) => t,
         }
     }
@@ -1219,11 +1192,11 @@ impl App {
                 remote_rom,
                 replay,
             } = prep;
-            // Lossless => libx264rgb -qp 0 (RGB-domain lossless),
-            // otherwise libx264 + nearest upscale at the user-picked
-            // factor. `default_with_scale` builds the ffmpeg flags
-            // accordingly.
-            let scale_arg = if user_settings.lossless {
+            // scale == 0 is the slider's lossless stop → libx264rgb
+            // -qp 0 (RGB-domain lossless); 1..=10 → libx264 + nearest
+            // upscale at that factor. `default_with_scale` builds the
+            // ffmpeg flags accordingly.
+            let scale_arg = if user_settings.scale == 0 {
                 None
             } else {
                 Some(user_settings.scale as usize)
@@ -1277,8 +1250,29 @@ impl App {
             // now safely set above.
             drop(progress_tx);
         });
-        self.export_aborts
-            .insert(replay_path.clone(), join.abort_handle());
+        // Stash the abort handle onto the in-flight ExportJob so the
+        // tab's Cancel button can call `.abort()` directly. Tab owns
+        // its own cancellation; the App is just the spawner.
+        //
+        // Also handle the theoretical "user clicked Cancel between
+        // ExportStart and now" race: today it can't happen because
+        // iced processes update() messages serially with no redraw
+        // in between, but if the path ever becomes async (e.g. async
+        // ROM resolution) a pending cancel would otherwise be lost.
+        // Honour the flag eagerly so the task tears down right away.
+        if let Some(job) = self
+            .replays
+            .per
+            .get_mut(&replay_path)
+            .and_then(|e| e.job.as_mut())
+        {
+            let abort = join.abort_handle();
+            if job.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                abort.abort();
+            } else {
+                job.abort = Some(abort);
+            }
+        }
 
         // Drain progress + a synthetic final ExportFinished from
         // the same stream. We poll done_arc whenever the channel

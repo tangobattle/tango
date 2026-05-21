@@ -146,6 +146,27 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
     } else {
         mix(bg, iced::Color::WHITE, 0.5)
     };
+    // Disabled gets the loud treatment: flat washed-out plate, no
+    // shadow, near-invisible border, text dropped to ~35% alpha.
+    // Keeps "you can't click this" obvious instead of pretending to
+    // be a slightly-different normal button.
+    if matches!(status, button::Status::Disabled) {
+        let dim = mix(plate, bg, 0.55);
+        return button::Style {
+            background: Some(iced::Background::Color(dim)),
+            text_color: iced::Color { a: 0.35, ..text },
+            border: iced::Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: iced::Color {
+                    a: 0.15,
+                    ..p.background.strong.color
+                },
+            },
+            shadow: iced::Shadow::default(),
+            snap: false,
+        };
+    }
     let (top, bottom, border_color, shadow_y, shadow_alpha, text_color) = match status {
         button::Status::Hovered => (
             mix(plate, iced::Color::WHITE, if p.is_dark { 0.15 } else { 0.25 }),
@@ -163,14 +184,8 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
             if p.is_dark { 0.25 } else { 0.08 },
             text,
         ),
-        button::Status::Disabled => (
-            plate,
-            plate,
-            p.background.strong.color,
-            0.0,
-            0.0,
-            crate::save_view::muted_color(theme),
-        ),
+        // Disabled handled above by early return.
+        button::Status::Disabled => unreachable!(),
         button::Status::Active => (
             mix(plate, iced::Color::WHITE, if p.is_dark { 0.05 } else { 0.10 }),
             plate,
@@ -212,17 +227,23 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
 /// background alpha so the user gets click feedback without the
 /// button looking like a CTA.
 pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
-    let text_color = theme.palette().text;
-    let bg = match status {
-        button::Status::Hovered => iced::Background::Color(iced::Color {
-            a: 0.08,
-            ..text_color
-        }),
-        button::Status::Pressed => iced::Background::Color(iced::Color {
-            a: 0.15,
-            ..text_color
-        }),
-        _ => iced::Background::Color(iced::Color::TRANSPARENT),
+    let text = theme.palette().text;
+    let (bg, text_color) = match status {
+        button::Status::Hovered => (
+            iced::Background::Color(iced::Color { a: 0.08, ..text }),
+            text,
+        ),
+        button::Status::Pressed => (
+            iced::Background::Color(iced::Color { a: 0.15, ..text }),
+            text,
+        ),
+        // Borderless flat buttons have no plate to dim, so the only
+        // disabled cue is text alpha. Drop it hard.
+        button::Status::Disabled => (
+            iced::Background::Color(iced::Color::TRANSPARENT),
+            iced::Color { a: 0.3, ..text },
+        ),
+        button::Status::Active => (iced::Background::Color(iced::Color::TRANSPARENT), text),
     };
     button::Style {
         background: Some(bg),
@@ -609,16 +630,36 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
 /// `danger_button` (red) read as the same widget family in
 /// different moods.
 fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color) -> button::Style {
-    let _ = theme;
+    // Disabled drops the accent entirely — no green/red glow, no
+    // gradient, no shadow. Flat de-saturated plate + dim text reads
+    // as "this is OFF" loud and clear instead of "this is just a
+    // dimmer version of the active button".
+    if matches!(status, button::Status::Disabled) {
+        let p = theme.extended_palette();
+        let bg = theme.palette().background;
+        let text = theme.palette().text;
+        let dim = mix(bg, text, if p.is_dark { 0.10 } else { 0.08 });
+        return button::Style {
+            background: Some(iced::Background::Color(dim)),
+            text_color: iced::Color { a: 0.35, ..text },
+            border: iced::Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: iced::Color {
+                    a: 0.15,
+                    ..p.background.strong.color
+                },
+            },
+            shadow: iced::Shadow::default(),
+            snap: false,
+        };
+    }
     let lighter = mix(accent, iced::Color::WHITE, 0.20);
     let darker = mix(accent, iced::Color::BLACK, 0.20);
     let (top, bottom, glow_alpha, offset_y) = match status {
         button::Status::Hovered => (mix(lighter, iced::Color::WHITE, 0.10), accent, 0.65, 5.0),
         button::Status::Pressed => (darker, mix(darker, iced::Color::BLACK, 0.10), 0.25, 1.0),
-        button::Status::Disabled => {
-            let dim = mix(accent, iced::Color::BLACK, 0.45);
-            (dim, mix(dim, iced::Color::BLACK, 0.15), 0.0, 0.0)
-        }
+        button::Status::Disabled => unreachable!(),
         button::Status::Active => (lighter, darker, 0.45, 4.0),
     };
     button::Style {
