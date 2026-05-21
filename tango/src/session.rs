@@ -341,85 +341,11 @@ impl State {
     }
 }
 
-/// Per-frame redraw tick (only while a session is active) + keyboard
-/// subscription (only for single-player sessions, where joyflag input
-/// is meaningful). Tick uses `window::frames()` so it fires once per
-/// actual render frame — paired with `Settings::vsync = false`, the
-/// render loop is free-running at the GPU's full rate instead of
-/// being gated by a fixed timer or by vsync. The per-session
-/// frame-id check inside the Tick handler still skips the GPU
-/// upload when the emulator hasn't advanced, so the cost is just an
-/// atomic load per render.
-pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    let mut subs: Vec<iced::Subscription<Message>> = Vec::new();
-    if state.is_active() {
-        subs.push(iced::window::frames().map(|_| Message::Tick));
-    }
-    if matches!(
-        state.active,
-        Some(ActiveSession::SinglePlayer(_)) | Some(ActiveSession::PvP(_))
-    ) {
-        subs.push(iced::event::listen_with(map_keyboard_event));
-        subs.push(gamepad_subscription());
-    }
-    iced::Subscription::batch(subs)
-}
-
-/// Polls gilrs in the background and forwards events to the
-/// session pipeline. Subscription ID is shared across renders so
-/// iced doesn't tear it down + recreate it every frame. Uses a
-/// short blocking-with-timeout poll so we don't peg a CPU core.
-fn gamepad_subscription() -> iced::Subscription<Message> {
-    // Stateless — the `fn` pointer alone is the subscription's
-    // identity. Iced 0.14 requires the builder to be a plain
-    // function (not a closure), so we hoist the body out.
-    iced::Subscription::run(gamepad_stream)
-}
-
-fn gamepad_stream() -> impl futures::Stream<Item = Message> {
-    iced::stream::channel(64, |mut tx: futures::channel::mpsc::Sender<Message>| async move {
-        use futures::SinkExt;
-        let mut gilrs = match gilrs::Gilrs::new() {
-            Ok(g) => g,
-            Err(e) => {
-                log::warn!("gilrs init failed: {e:?}");
-                return;
-            }
-        };
-        // gilrs is sync; bounce its event polling through a
-        // short async sleep so iced's reactor stays unblocked.
-        // Polling every 4 ms is plenty for input fidelity
-        // (250 Hz) and well under one GBA frame.
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(4)).await;
-            while let Some(event) = gilrs.next_event() {
-                let msg = match event.event {
-                    gilrs::EventType::ButtonPressed(b, _) => {
-                        crate::input::GamepadButton::from_gilrs(b).map(|btn| InputEvent::Button {
-                            button: btn,
-                            pressed: true,
-                        })
-                    }
-                    gilrs::EventType::ButtonReleased(b, _) => {
-                        crate::input::GamepadButton::from_gilrs(b).map(|btn| InputEvent::Button {
-                            button: btn,
-                            pressed: false,
-                        })
-                    }
-                    gilrs::EventType::AxisChanged(a, v, _) => {
-                        crate::input::GamepadAxis::from_gilrs(a).map(|axis| InputEvent::Axis { axis, value: v })
-                    }
-                    gilrs::EventType::Disconnected => Some(InputEvent::GamepadDisconnected),
-                    _ => None,
-                };
-                if let Some(ev) = msg {
-                    if tx.send(Message::Input(ev)).await.is_err() {
-                        return;
-                    }
-                }
-            }
-        }
-    })
+/// Keyboard, gamepad, and the per-redraw Tick all come through
+/// `InputCapture` in `App::view` — see that widget's module
+/// docs for why the subscription path is too laggy.
+pub fn subscription(_state: &State) -> iced::Subscription<Message> {
+    iced::Subscription::none()
 }
 
 /// Render the active session — framebuffer, header, and (for replays
@@ -1045,24 +971,6 @@ pub fn spawn_singleplayer(
         &loaded.save_path,
         audio_binder,
     )
-}
-
-/// Forwards every iced keyboard event into the session pipeline
-/// as an `InputEvent::Key`. The mapping resolution happens at
-/// `Message::Input` handling time — this fn just packages the
-/// raw event up so the resolver has access to the user's full
-/// Mapping table.
-fn map_keyboard_event(event: iced::Event, _status: iced::event::Status, _window: iced::window::Id) -> Option<Message> {
-    use iced::keyboard::Event as Kb;
-    match event {
-        iced::Event::Keyboard(Kb::KeyPressed { key, .. }) => {
-            Some(Message::Input(InputEvent::Key { key, pressed: true }))
-        }
-        iced::Event::Keyboard(Kb::KeyReleased { key, .. }) => {
-            Some(Message::Input(InputEvent::Key { key, pressed: false }))
-        }
-        _ => None,
-    }
 }
 
 /// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub

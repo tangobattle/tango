@@ -160,6 +160,18 @@ impl Handle {
         unsafe { mgba_sys::mCoreThreadRunFunction(&mut thread.raw, Some(c_run_function)) }
     }
 
+    /// Push keys directly into the running core. Bypasses the
+    /// frame-callback round-trip used by the legacy `joyflags`
+    /// atomic so a press that arrives mid-frame can still affect
+    /// that frame's KEYINPUT read instead of waiting for the next
+    /// callback. `setKeys` is a single-word write to `keysActive`,
+    /// safe to race with the emulator thread's KEYINPUT reads.
+    pub fn set_keys(&self, keys: u32) {
+        let thread = self.thread.lock();
+        let core_ptr = thread.raw.core;
+        unsafe { (*core_ptr).setKeys.unwrap()(core_ptr, keys) }
+    }
+
     pub fn lock_audio(&self) -> AudioGuard<'_> {
         let mut thread = self.thread.lock();
         let sync = sync::SyncMutRef {

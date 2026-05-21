@@ -8,14 +8,21 @@
 //! recorded packets, neither of which apply here.)
 
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 const EXPECTED_FPS: f32 = 60.0;
 
 pub struct SinglePlayerSession {
     vbuf: Arc<Mutex<Vec<u8>>>,
-    joyflags: Arc<AtomicU32>,
+    /// Cached so `set_joyflags` can push keys straight into the
+    /// running core. Going through `Handle::set_keys` means an
+    /// input that lands mid-frame can be visible on the GBA's
+    /// KEYINPUT read in that same frame — the previous design
+    /// stored to an `AtomicU32` and only forwarded into mgba
+    /// from the post-frame callback, which baked in one full
+    /// frame of latency.
+    handle: mgba::thread::Handle,
     close_requested: Arc<AtomicBool>,
     /// Bumped once per emulator frame in the frame callback. The UI
     /// tick reads this to decide whether to rebuild the iced
@@ -52,7 +59,6 @@ impl SinglePlayerSession {
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
-        let joyflags = Arc::new(AtomicU32::new(0));
         let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let thread = mgba::thread::Thread::new(core);
         let vbuf = Arc::new(Mutex::new(vec![
@@ -62,13 +68,11 @@ impl SinglePlayerSession {
 
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
-            let joyflags = joyflags.clone();
             let frame_id = frame_id.clone();
-            move |mut core, video_buffer, _thread_handle| {
+            move |_core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
-                core.set_keys(joyflags.load(Ordering::Relaxed));
                 frame_id.fetch_add(1, Ordering::Release);
             }
         });
@@ -89,7 +93,7 @@ impl SinglePlayerSession {
 
         Ok(Self {
             vbuf,
-            joyflags,
+            handle: thread.handle(),
             close_requested: Arc::new(AtomicBool::new(false)),
             frame_id,
             _audio_binding: audio_binding,
@@ -110,9 +114,11 @@ impl SinglePlayerSession {
 
     /// Overwrite the entire mgba joyflag bitmap — the configurable
     /// input mapping resolves multiple held bindings into one
-    /// flag word and pushes the result here every event.
+    /// flag word and pushes the result here every event. Goes
+    /// straight to the running core so a press that arrives
+    /// mid-frame can land in that frame's KEYINPUT read.
     pub fn set_joyflags(&self, mgba_keys: u32) {
-        self.joyflags.store(mgba_keys, Ordering::Relaxed);
+        self.handle.set_keys(mgba_keys);
     }
 
     pub fn request_close(&self) {

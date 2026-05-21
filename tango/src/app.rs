@@ -1463,7 +1463,44 @@ impl App {
                     .height(Fill)
                     .into();
             }
-            return session::view(lang, &self.session, self.config.integer_scaling).map(Message::Session);
+            // Deliver keyboard + gamepad input through the
+            // synchronous widget path so each event reaches
+            // `program.update()` on the same winit iteration it
+            // arrived in. Going through subscriptions would
+            // round-trip through an `mpsc::try_send` and cost ~1
+            // winit iteration of input lag per event.
+            let session_view = session::view(lang, &self.session, self.config.integer_scaling).map(Message::Session);
+            return crate::input_capture::InputCapture::new(
+                session_view,
+                |input| {
+                    let ev = match input {
+                        crate::input_capture::Input::Keyboard(kb) => match kb {
+                            iced::keyboard::Event::KeyPressed { key, .. } => Some(session::InputEvent::Key {
+                                key: key.clone(),
+                                pressed: true,
+                            }),
+                            iced::keyboard::Event::KeyReleased { key, .. } => Some(session::InputEvent::Key {
+                                key: key.clone(),
+                                pressed: false,
+                            }),
+                            _ => None,
+                        },
+                        crate::input_capture::Input::Gamepad(ev) => match ev.event {
+                            gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                                .map(|button| session::InputEvent::Button { button, pressed: true }),
+                            gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                                .map(|button| session::InputEvent::Button { button, pressed: false }),
+                            gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
+                                .map(|axis| session::InputEvent::Axis { axis, value: v }),
+                            gilrs::EventType::Disconnected => Some(session::InputEvent::GamepadDisconnected),
+                            _ => None,
+                        },
+                    };
+                    ev.map(|ev| Message::Session(session::Message::Input(ev)))
+                },
+                || Some(Message::Session(session::Message::Tick)),
+            )
+            .into();
         }
 
         let body: Element<'_, Message> = match self.tab {

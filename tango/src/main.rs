@@ -6,6 +6,7 @@ mod discord;
 mod game;
 mod i18n;
 mod input;
+mod input_capture;
 mod navicust;
 mod net;
 mod netplay;
@@ -241,21 +242,19 @@ fn run_app() -> iced::Result {
     // of the typographic scale (TEXT_TITLE / TEXT_HEADING /
     // TEXT_CAPTION) was tuned against.
     //
-    // `vsync: false` cuts the present queue. With vsync iced 0.14
-    // pipes frames through wgpu's vsync-locked surface, which on
-    // 60 Hz monitors adds a full frame (~16 ms) of presentation
-    // latency on top of the emulator's own 1-frame input delay.
-    // Without vsync the emulator's freshly rendered frame paints
-    // immediately, dropping the perceived input lag from ~3 frames
-    // to ~1. Risks light tearing on a 60 Hz monitor; the screen
-    // area being moved (the GBA screen) is mostly static so this
-    // is barely visible in practice.
+    // `vsync: true` lets the GPU pace at the monitor's refresh.
+    // The dominant input-lag sources (subscription-routed key/
+    // gamepad events, post-frame `core.set_keys`) were on the
+    // CPU side; both are now fixed (synchronous `InputCapture`
+    // widget + direct `Handle::set_keys`), so the present queue
+    // is no longer the long pole and trading the tearing risk
+    // for smooth scanout is the better default.
     let settings = iced::Settings {
         // Same constant the typographic scale + every markdown
         // Settings::with_text_size call uses, so the body text
         // size is in one place.
         default_text_size: iced::Pixels(app::TEXT_BODY),
-        vsync: false,
+        vsync: true,
         ..iced::Settings::default()
     };
     // Load config once here just for window geometry. App::new
