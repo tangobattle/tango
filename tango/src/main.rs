@@ -242,19 +242,22 @@ fn run_app() -> iced::Result {
     // of the typographic scale (TEXT_TITLE / TEXT_HEADING /
     // TEXT_CAPTION) was tuned against.
     //
-    // `vsync: true` lets the GPU pace at the monitor's refresh.
-    // The dominant input-lag sources (subscription-routed key/
-    // gamepad events, post-frame `core.set_keys`) were on the
-    // CPU side; both are now fixed (synchronous `InputCapture`
-    // widget + direct `Handle::set_keys`), so the present queue
-    // is no longer the long pole and trading the tearing risk
-    // for smooth scanout is the better default.
+    // `vsync: false` so `iced_wgpu` picks `AutoNoVsync` →
+    // `PresentMode::Immediate` on every backend that supports
+    // it (DX12, Vulkan, Metal). On Metal that flips
+    // `CAMetalLayer.displaySyncEnabled = false`
+    // (wgpu-hal/metal/surface.rs:150) so the Fifo swap-chain
+    // queue collapses; the macOS WindowServer still composites
+    // at the panel's refresh, but we save the ~1 frame of
+    // present-queue depth that `Fifo` insists on. On the GBA's
+    // mostly-static framebuffer the residual tearing risk on
+    // Linux/Win is barely perceptible.
     let settings = iced::Settings {
         // Same constant the typographic scale + every markdown
         // Settings::with_text_size call uses, so the body text
         // size is in one place.
         default_text_size: iced::Pixels(app::TEXT_BODY),
-        vsync: true,
+        vsync: false,
         ..iced::Settings::default()
     };
     // Load config once here just for window geometry. App::new
