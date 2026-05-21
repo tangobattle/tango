@@ -1240,18 +1240,9 @@ fn render_navicust<M: 'static>(
     let mut content = column![].spacing(8).align_x(Alignment::Center);
     content = content.push(grid_el);
     if installed_solid + installed_plus > 0 {
-        // Two-column structure even when one side is empty —
-        // solid badges left, plus badges right. Each column is
-        // wrapped in a fixed-width container so an empty column
-        // still reserves its slot instead of collapsing and
-        // letting the populated side slide toward center. Fixed
-        // (not Fill) because Fill on a child propagates up
-        // through the wrapping column and stretches the whole
-        // pane across the tab.
-        const NCP_COL_WIDTH: f32 = 150.0;
-        let solid_pane = container(solid_col).width(iced::Length::Fixed(NCP_COL_WIDTH));
-        let plus_pane = container(plus_col).width(iced::Length::Fixed(NCP_COL_WIDTH));
-        content = content.push(row![solid_pane, plus_pane].spacing(12));
+        // No Fill anywhere here — Fill on a child propagates up
+        // through the column, forcing the whole pane to span the tab.
+        content = content.push(row![solid_col, plus_col].spacing(12));
     }
 
     let _ = (cols, rows_n, installed_solid, installed_plus);
