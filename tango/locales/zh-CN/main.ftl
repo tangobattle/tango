@@ -167,8 +167,9 @@ playback-speed = 速度
 playback-play = 播放
 playback-pause = 暂停
 replays-select-prompt = 请选择一个回放。
-replays-opponent = 对手
-replays-match-type = 对战类型: { $type }
+play-opponent = 对手
+replays-match-type = 对战类型:
+replays-match-type-value = { $type } ({ $count } 回合)
 replays-rounds-short = { $count ->
    *[other] { $count } 回合
 }
@@ -180,7 +181,9 @@ patches-readme-placeholder = 此补丁没有 README。
 patches-netplay-compatibility = 联机兼容性:
 settings-section-general = 常规
 settings-section-graphics = 图像
-settings-section-network = 网络
+settings-section-netplay = 联机
+settings-section-audio = 音频
+settings-volume = 音量
 settings-section-about = 关于
 settings-section-input = 按键
 settings-input-press-key = 请按一个按键或按钮…

@@ -1,6 +1,7 @@
 use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::i18n::t;
 use crate::selection::Loaded;
+use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
@@ -993,53 +994,10 @@ fn effect_badge<M: 'static>(e: &tango_dataview::rom::PatchCard56Effect, enabled:
     colored_badge(name, bg, iced::Color::BLACK)
 }
 
-/// Theme-aware muted text color: mix the palette's text into the
-/// background until the contrast drops to "secondary". Works on
-/// both light + dark themes — alpha-fading the text on a dark bg
-/// turns it into a washed-out near-bg blob; mixing yields a true
-/// mid-tone gray instead.
-pub fn muted_color(theme: &iced::Theme) -> iced::Color {
-    let p = theme.palette();
-    fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
-        iced::Color {
-            r: a.r * (1.0 - t) + b.r * t,
-            g: a.g * (1.0 - t) + b.g * t,
-            b: a.b * (1.0 - t) + b.b * t,
-            a: 1.0,
-        }
-    }
-    // Heavy mix breaks contrast on Dark (text tops out at 0.9
-    // and bg is ~0.18, so 0.45 lands at ~2.8:1 contrast —
-    // basically invisible). 0.25 stays around 4:1 on both
-    // themes — visibly secondary but still legible.
-    mix(p.text, p.background, 0.25)
-}
-
-pub fn muted_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
-    iced::widget::text::Style {
-        color: Some(muted_color(theme)),
-    }
-}
-
-/// "OK / success" text color tuned for readability on both Light
-/// and Dark themes. The default `extended_palette().success.base`
-/// is a dark teal that disappears on a dark background, so we
-/// reach for the `strong` variant which iced derives by deviating
-/// from base toward higher contrast.
-pub fn success_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
-    iced::widget::text::Style {
-        color: Some(theme.extended_palette().success.strong.color),
-    }
-}
-
-/// Same idea as [`success_text_style`] for danger — the `strong`
-/// variant of palette.danger reads brightly on dark backgrounds
-/// where the base color washes out.
-pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
-    iced::widget::text::Style {
-        color: Some(theme.extended_palette().danger.strong.color),
-    }
-}
+// muted_color / muted_text_style / success_text_style /
+// danger_text_style now live in `crate::widgets`. Kept here as
+// nothing — every call site outside this module reaches the
+// widgets module directly.
 
 fn tooltip_style(_theme: &iced::Theme) -> container::Style {
     container::Style {

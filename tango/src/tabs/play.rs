@@ -881,7 +881,7 @@ impl PlayState {
             .into(),
             SaveAction::ConfirmDelete => row![
                 text(t!(lang, "save-delete-prompt"))
-                    .style(save_view::muted_text_style)
+                    .style(widgets::muted_text_style)
                     .width(Length::Fill),
                 widgets::labeled_icon_button(
                     Icon::Trash,
@@ -1346,10 +1346,10 @@ fn lobby_view<'a>(
                     row![
                         dot_color(false),
                         column![
-                            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
                             text(t!(lang, "lobby-waiting"))
                                 .size(TEXT_TITLE)
-                                .style(save_view::muted_text_style),
+                                .style(widgets::muted_text_style),
                         ]
                         .spacing(2),
                     ]
@@ -1409,9 +1409,9 @@ fn lobby_view<'a>(
                 row![
                     dot_color(ready),
                     column![
-                        text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
                         text(nickname).size(TEXT_TITLE).style(nickname_style),
-                        text(subline).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        text(subline).size(TEXT_CAPTION),
                     ]
                     .spacing(2),
                 ]
@@ -1448,7 +1448,7 @@ fn lobby_view<'a>(
         Some(
             text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
                 .size(TEXT_BODY)
-                .style(save_view::muted_text_style)
+                .style(widgets::muted_text_style)
                 .into(),
         )
     } else if let Some(ident) = ident {
@@ -1462,7 +1462,7 @@ fn lobby_view<'a>(
                 t!(lang, "lobby-direct-connect", target = addr.clone())
             }
         };
-        Some(text(label).size(TEXT_BODY).style(save_view::muted_text_style).into())
+        Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
     } else {
         None
     };
@@ -1502,7 +1502,7 @@ fn lobby_view<'a>(
         };
         if options.is_empty() {
             text(t!(lang, "lobby-no-match-types"))
-                .style(save_view::muted_text_style)
+                .style(widgets::muted_text_style)
                 .into()
         } else {
             pick_list(options, selected, move |o| on_change((o.mode, o.subtype)))
@@ -1565,12 +1565,12 @@ fn lobby_view<'a>(
     let (reveal_label, reveal_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
         if let Some(r) = lobby.remote.as_ref() {
             if r.reveal_setup {
-                (t!(lang, "lobby-reveal-peer-on"), save_view::success_text_style)
+                (t!(lang, "lobby-reveal-peer-on"), widgets::success_text_style)
             } else {
-                (t!(lang, "lobby-reveal-peer-off"), save_view::danger_text_style)
+                (t!(lang, "lobby-reveal-peer-off"), widgets::danger_text_style)
             }
         } else {
-            (t!(lang, "lobby-reveal-peer-unknown"), save_view::muted_text_style)
+            (t!(lang, "lobby-reveal-peer-unknown"), widgets::muted_text_style)
         };
 
     // Settings table — one stacked row per setting, each shaped
@@ -1579,7 +1579,7 @@ fn lobby_view<'a>(
     // single coherent settings group; visual weight differences
     // between picker / slider / checkbox stop mattering because
     // every control hangs off the same label column.
-    let label_style: fn(&iced::Theme) -> iced::widget::text::Style = save_view::muted_text_style;
+    let label_style: fn(&iced::Theme) -> iced::widget::text::Style = widgets::muted_text_style;
     let setting_row = |label_el: Element<'a, Message>, control: Element<'a, Message>| -> Element<'a, Message> {
         row![
             container(label_el).width(Length::Fixed(140.0)),
@@ -1669,7 +1669,7 @@ fn lobby_view<'a>(
                 _ => t!(lang, "play-status-failed", error = error.clone()),
             };
             (
-                text(label).size(TEXT_BODY).style(save_view::danger_text_style).into(),
+                text(label).size(TEXT_BODY).style(widgets::danger_text_style).into(),
                 false,
             )
         }
@@ -1688,7 +1688,7 @@ fn lobby_view<'a>(
                 _ => t!(lang, "play-status-connecting"),
             };
             (
-                text(label).size(TEXT_BODY).style(save_view::muted_text_style).into(),
+                text(label).size(TEXT_BODY).style(widgets::muted_text_style).into(),
                 false,
             )
         }
@@ -1698,14 +1698,14 @@ fn lobby_view<'a>(
         } => (
             text(t!(lang, "play-status-waiting-opponent"))
                 .size(TEXT_BODY)
-                .style(save_view::muted_text_style)
+                .style(widgets::muted_text_style)
                 .into(),
             false,
         ),
         Phase::Negotiating { .. } => (
             text(t!(lang, "play-status-negotiating"))
                 .size(TEXT_BODY)
-                .style(save_view::muted_text_style)
+                .style(widgets::muted_text_style)
                 .into(),
             false,
         ),
@@ -1723,16 +1723,16 @@ fn lobby_view<'a>(
                 };
                 let ok = matches!(verdict, Verdict::Compatible);
                 let style: fn(&iced::Theme) -> iced::widget::text::Style = if ok {
-                    save_view::success_text_style
+                    widgets::success_text_style
                 } else {
-                    save_view::danger_text_style
+                    widgets::danger_text_style
                 };
                 (text(label).size(TEXT_BODY).style(style).into(), ok)
             }
             _ => (
                 text(t!(lang, "lobby-handshake"))
                     .size(TEXT_BODY)
-                    .style(save_view::muted_text_style)
+                    .style(widgets::muted_text_style)
                     .into(),
                 false,
             ),
@@ -1835,28 +1835,24 @@ fn lobby_view<'a>(
         .spacing(12)
         .align_y(Alignment::Center);
 
-    // Sides row: the you / opponent cards are spaced wide enough
-    // to expose a slim diagonal cut through the middle of the
-    // pane. `widgets::vs_splitter` is layered *under* the row so
-    // the band reads as the pane plate having been sliced — the
-    // page background showing through the cut.
+    // Sides row: you / opponent cards with a wide gap so the
+    // diagonal cut + VS badge from `widgets::vs_splitter` paints
+    // through the middle. The splitter canvas (which also paints
+    // the red/blue half tints) is layered *under* the row.
     let sides_row = iced::widget::row![
         side(
             t!(lang, "play-you"),
             Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
             lobby.local_ready,
         ),
-        side(t!(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
+        side(t!(lang, "play-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
     ]
-    // Wide enough to leave breathing room around the staggered
-    // V/S glyphs that flank the diagonal cut. Matches the
-    // replay-detail matchup pane's gap.
     .spacing(56)
     // Top-align so the YOU slot doesn't bounce upward when the
     // opponent's settings land and their card grows from a 2-line
     // placeholder to a 3-line filled card.
     .align_y(Alignment::Start);
-    let sides_pane = container(
+    let matchup_pane = container(
         iced::widget::Stack::new()
             .push(container(sides_row).padding(widgets::PANE_PADDING).width(Fill))
             .push_under(widgets::vs_splitter()),
@@ -1872,7 +1868,7 @@ fn lobby_view<'a>(
         .width(Fill)
         .style(widgets::pane);
     container(
-        column![header_pane, sides_pane, controls_pane]
+        column![header_pane, matchup_pane, controls_pane]
             .spacing(widgets::PANE_GAP)
             .padding(widgets::PANE_GAP),
     )
@@ -1971,7 +1967,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
     match palette {
         ReadyPalette::Starting => button::Style {
             background: Some(iced::Background::Color(p.background.weak.color)),
-            text_color: crate::save_view::muted_color(theme),
+            text_color: widgets::muted_color(theme),
             border: iced::Border {
                 radius: 10.0.into(),
                 width: 1.0,
@@ -2071,7 +2067,7 @@ fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, M
             Icon::AlertTriangle.widget(),
             text(err.to_string())
                 .size(TEXT_BODY)
-                .style(save_view::danger_text_style),
+                .style(widgets::danger_text_style),
             iced::widget::space::horizontal(),
             widgets::icon_button(
                 Icon::X,
@@ -2129,7 +2125,7 @@ fn empty_state_card(
     .spacing(10)
     .align_x(Alignment::Center);
     for line in body_lines {
-        col = col.push(text(line).size(TEXT_CAPTION).style(save_view::muted_text_style));
+        col = col.push(text(line).size(TEXT_CAPTION).style(widgets::muted_text_style));
     }
     if let Some((label, path)) = open_folder {
         col = col.push(Space::new().height(4)).push(widgets::labeled_icon_button(

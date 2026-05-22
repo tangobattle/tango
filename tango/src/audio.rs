@@ -38,6 +38,10 @@ impl Drop for Binding {
 pub struct LateBinder {
     sample_rate: u32,
     stream: std::sync::Arc<parking_lot::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
+    /// User-facing master volume, stored as raw f32 bits in an atomic
+    /// so the UI thread can mutate it while the audio thread reads it
+    /// on each `fill`. Domain is [0.0, 1.0]; values outside clamp.
+    volume: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl LateBinder {
@@ -45,6 +49,7 @@ impl LateBinder {
         Self {
             sample_rate: 0,
             stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            volume: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(1.0_f32.to_bits())),
         }
     }
 
@@ -54,6 +59,18 @@ impl LateBinder {
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    /// Set the master output volume. Clamped to `[0.0, 1.0]`. Cheap
+    /// (single atomic store) — safe to call from the UI thread.
+    pub fn set_volume(&self, v: f32) {
+        let v = v.clamp(0.0, 1.0);
+        self.volume
+            .store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn read_volume(&self) -> f32 {
+        f32::from_bits(self.volume.load(std::sync::atomic::Ordering::Relaxed))
     }
 
     pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
@@ -69,7 +86,7 @@ impl LateBinder {
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut s = self.stream.lock();
-        match &mut *s {
+        let n = match &mut *s {
             None => {
                 // Silence when nothing's bound. Returning buf.len()
                 // means we consider the whole buffer "filled" so cpal
@@ -80,7 +97,18 @@ impl Stream for LateBinder {
                 buf.len()
             }
             Some(stream) => stream.fill(buf),
+        };
+        // Master volume gain. Skip the multiply at unity so the
+        // common case is free.
+        let v = self.read_volume();
+        if v < 1.0 {
+            for sample in &mut buf[..n] {
+                for ch in sample.iter_mut() {
+                    *ch = (*ch as f32 * v) as i16;
+                }
+            }
         }
+        n
     }
 }
 

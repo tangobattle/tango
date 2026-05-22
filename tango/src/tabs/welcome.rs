@@ -1,7 +1,7 @@
 use crate::app::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::tabs::settings::labeled;
-use crate::{save_view, widgets};
+use crate::widgets;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -90,7 +90,7 @@ pub fn view<'a>(
         .align_y(Alignment::Center),
         text(t!(lang, "welcome-step-roms-description"))
             .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),
+            .style(widgets::muted_text_style),
         text(roms_path.display().to_string())
             .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE),
@@ -141,7 +141,7 @@ pub fn view<'a>(
         .align_y(Alignment::Center),
         text(t!(lang, "welcome-step-nickname-description"))
             .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),
+            .style(widgets::muted_text_style),
         labeled::<Message>(
             t!(lang, "settings-nickname"),
             text_input("", &state.nickname_draft)
@@ -157,7 +157,7 @@ pub fn view<'a>(
         nickname_block = nickname_block.push(
             text(t!(lang, "welcome-roms-needed"))
                 .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
         );
     }
     nickname_block = nickname_block.push(Space::new().height(8)).push(continue_btn);
@@ -172,7 +172,7 @@ pub fn view<'a>(
             .align_y(Alignment::Center),
             text(t!(lang, "welcome-subtitle"))
                 .size(TEXT_BODY)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
             Space::new().height(16),
             roms_block,
             Space::new().height(20),

@@ -450,6 +450,52 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
+/// Theme-aware muted text color: mix the palette's text into the
+/// background until the contrast drops to "secondary". Works on
+/// both light + dark themes — alpha-fading the text on a dark bg
+/// turns it into a washed-out near-bg blob; mixing yields a true
+/// mid-tone gray instead.
+pub fn muted_color(theme: &iced::Theme) -> iced::Color {
+    let p = theme.palette();
+    // Heavy mix breaks contrast on Dark (text tops out at 0.9
+    // and bg is ~0.18, so 0.45 lands at ~2.8:1 contrast —
+    // basically invisible). 0.25 stays around 4:1 on both
+    // themes — visibly secondary but still legible.
+    let t = 0.25;
+    iced::Color {
+        r: p.text.r * (1.0 - t) + p.background.r * t,
+        g: p.text.g * (1.0 - t) + p.background.g * t,
+        b: p.text.b * (1.0 - t) + p.background.b * t,
+        a: 1.0,
+    }
+}
+
+pub fn muted_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(muted_color(theme)),
+    }
+}
+
+/// "OK / success" text color tuned for readability on both Light
+/// and Dark themes. The default `extended_palette().success.base`
+/// is a dark teal that disappears on a dark background, so we
+/// reach for the `strong` variant which iced derives by deviating
+/// from base toward higher contrast.
+pub fn success_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(theme.extended_palette().success.strong.color),
+    }
+}
+
+/// Same idea as [`success_text_style`] for danger — the `strong`
+/// variant of palette.danger reads brightly on dark backgrounds
+/// where the base color washes out.
+pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(theme.extended_palette().danger.strong.color),
+    }
+}
+
 pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     iced::widget::container::Style {
@@ -768,9 +814,9 @@ pub fn chunky_text_input(theme: &Theme, status: iced::widget::text_input::Status
             color: border_color,
         },
         icon: text,
-        placeholder: crate::save_view::muted_color(theme),
+        placeholder: muted_color(theme),
         value: if matches!(status, Status::Disabled) {
-            crate::save_view::muted_color(theme)
+            muted_color(theme)
         } else {
             text
         },
@@ -808,7 +854,7 @@ pub fn chunky_pick_list(theme: &Theme, status: iced::widget::pick_list::Status) 
     };
     iced::widget::pick_list::Style {
         text_color: text,
-        placeholder_color: crate::save_view::muted_color(theme),
+        placeholder_color: muted_color(theme),
         handle_color: primary,
         background: iced::Background::Gradient(iced::Gradient::Linear(
             iced::gradient::Linear::new(0.0)
@@ -882,7 +928,7 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
             color: border_color,
         },
         text_color: Some(if is_disabled {
-            crate::save_view::muted_color(theme)
+            muted_color(theme)
         } else {
             text
         }),
@@ -919,16 +965,21 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
     /// the slash trailing off short of the pane border.
     const OVERSHOOT: f32 = 16.0;
     /// "V" / "S" glyph size.
-    const GLYPH: f32 = 24.0;
+    const GLYPH: f32 = 18.0;
+    /// Radius of the body-bg-colored circle that the "VS" sits
+    /// inside. Sized so the glyph pair has a comfortable margin
+    /// to the rim; the circle merges seamlessly with the band
+    /// (same color), reading as a node bulging out of the cut.
+    const BADGE_R: f32 = 18.0;
     /// Half the horizontal spread between the V and S glyph
     /// centers. Less than the glyph half-width so the two
     /// letters smush into each other — the pair reads as one
     /// stamped "VS" mark, not two separate characters.
-    const GLYPH_DX: f32 = 4.0;
+    const GLYPH_DX: f32 = 3.0;
     /// Half the vertical stagger between the V and S glyph
     /// centers. V sits above center, S sits below, giving the
     /// pair a fighting-game-style diagonal stack.
-    const GLYPH_DY: f32 = 4.0;
+    const GLYPH_DY: f32 = 3.0;
 
     struct VsDiagonal;
 
@@ -945,18 +996,66 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
         ) -> Vec<iced::widget::canvas::Geometry> {
             let mut frame = Frame::new(renderer, bounds.size());
             let cx = bounds.width / 2.0;
+            let w = bounds.width;
             let h = bounds.height;
 
+            // Player-color tints — left half red (P1), right half
+            // blue (P2), split by the diagonal cut. Outer corners
+            // are rounded to [`PANE_RADIUS`] so the painted halves
+            // match the pane plate's rounded chrome; inner edge is
+            // the straight diagonal. Alpha is moderate so the
+            // pane plate underneath still reads as the dominant
+            // surface and the side cards' text stays legible.
+            const PANE_RADIUS: f32 = 4.0;
+            let red = iced::Color {
+                a: 0.35,
+                ..iced::Color::from_rgb(0.85, 0.22, 0.28)
+            };
+            let blue = iced::Color {
+                a: 0.35,
+                ..iced::Color::from_rgb(0.18, 0.40, 0.85)
+            };
+            let left = Path::new(|p| {
+                // Start on the top edge, just right of the
+                // top-left arc; trace the top edge to the
+                // diagonal, down the diagonal, along the bottom
+                // edge to the bottom-left arc, then round the two
+                // outer corners on the way back up.
+                p.move_to(Point::new(PANE_RADIUS, 0.0));
+                p.line_to(Point::new(cx + TILT, 0.0));
+                p.line_to(Point::new(cx - TILT, h));
+                p.line_to(Point::new(PANE_RADIUS, h));
+                p.arc_to(Point::new(0.0, h), Point::new(0.0, 0.0), PANE_RADIUS);
+                p.arc_to(Point::new(0.0, 0.0), Point::new(w, 0.0), PANE_RADIUS);
+                p.close();
+            });
+            frame.fill(&left, red);
+            let right = Path::new(|p| {
+                p.move_to(Point::new(w - PANE_RADIUS, 0.0));
+                p.line_to(Point::new(cx + TILT, 0.0));
+                p.line_to(Point::new(cx - TILT, h));
+                p.line_to(Point::new(w - PANE_RADIUS, h));
+                p.arc_to(Point::new(w, h), Point::new(w, 0.0), PANE_RADIUS);
+                p.arc_to(Point::new(w, 0.0), Point::new(0.0, 0.0), PANE_RADIUS);
+                p.close();
+            });
+            frame.fill(&right, blue);
+
             // Body-bg-colored band so the pane plate reads as
-            // cut, with the page surface showing through. Endpoints
-            // overshoot top/bottom generously so the butt caps land
-            // well outside the canvas and the cut visibly meets
-            // (and continues past) the pane edges into the inter-
-            // pane gap.
+            // cut, with the page surface showing through. The
+            // band has to share the polygons' slope, otherwise
+            // the visible diagonals diverge — at the canvas edges
+            // the band's centerline would land short of the
+            // polygon corner. So extrapolate the polygon line
+            // (cx±TILT at y=0/h) out to y=±OVERSHOOT, picking up
+            // an extra horizontal swing of `slash_extra` at each
+            // end. Butt caps land outside the canvas; visibly the
+            // cut meets (and continues past) the pane edges.
             let body_bg = theme.palette().background;
+            let slash_extra = TILT * 2.0 * OVERSHOOT / h;
             let line = Path::line(
-                Point::new(cx + TILT, -OVERSHOOT),
-                Point::new(cx - TILT, h + OVERSHOOT),
+                Point::new(cx + TILT + slash_extra, -OVERSHOOT),
+                Point::new(cx - TILT - slash_extra, h + OVERSHOOT),
             );
             frame.stroke(
                 &line,
@@ -968,12 +1067,19 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
                 },
             );
 
+            // Body-bg-colored circle the "VS" sits in. Same color
+            // as the band so the two visually fuse into one shape:
+            // a slim cut through the pane with a wider node where
+            // the badge sits.
+            let badge = Path::circle(Point::new(cx, h / 2.0), BADGE_R);
+            frame.fill(&badge, body_bg);
+
             // V upper-left of center, S lower-right of center —
             // the cut runs diagonally between them. Heavy italic
             // in the theme's primary accent so the pair reads as
             // a fighting-game splash on top of the slash.
             let cy = h / 2.0;
-            let primary = theme.palette().primary;
+            let color = muted_color(theme);
             let fun_font = iced::Font {
                 weight: iced::font::Weight::Black,
                 style: iced::font::Style::Italic,
@@ -983,7 +1089,7 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
                 frame.fill_text(CanvasText {
                     content: content.into(),
                     position: Point::new(x, y),
-                    color: primary,
+                    color,
                     size: Pixels(GLYPH),
                     font: fun_font,
                     align_x: iced::advanced::text::Alignment::Center,

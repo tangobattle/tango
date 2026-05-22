@@ -723,7 +723,7 @@ impl ReplaysState {
                 .style(move |theme: &iced::Theme| if selected {
                     iced::widget::text::Style { color: None }
                 } else {
-                    save_view::muted_text_style(theme)
+                    widgets::muted_text_style(theme)
                 }),
             ]
             .spacing(2)
@@ -731,11 +731,11 @@ impl ReplaysState {
             if let Some(line) = stats_line {
                 text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
                     if !is_complete {
-                        save_view::danger_text_style(theme)
+                        widgets::danger_text_style(theme)
                     } else if selected {
                         iced::widget::text::Style { color: None }
                     } else {
-                        save_view::muted_text_style(theme)
+                        widgets::muted_text_style(theme)
                     }
                 }));
             }
@@ -821,7 +821,7 @@ fn replay_detail<'a>(
             })
             .unwrap_or_default();
         let col = column![
-            text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
             text(nick).size(TEXT_TITLE),
             text(game_line).size(TEXT_CAPTION),
         ]
@@ -918,7 +918,7 @@ fn replay_detail<'a>(
             .align_y(Alignment::Start),
             text(format!("{parent_str}{filename}"))
                 .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
             export_panel(
                 lang,
                 state.is_panel_open(&r.path),
@@ -927,19 +927,38 @@ fn replay_detail<'a>(
                 state.job(&r.path),
                 &r.path,
             ),
-            text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
-            text({
+            text(ts_str).size(TEXT_CAPTION).style(widgets::muted_text_style),
+            {
                 let family = md
                     .local_side
                     .as_ref()
                     .and_then(|s| s.game_info.as_ref())
                     .map(|g| g.rom_family.clone())
                     .unwrap_or_default();
-                let label = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-                t!(lang, "replays-match-type", type = label)
-            })
-            .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style),
+                let type_name =
+                    crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+                // "Triple (2 rounds)" once the lazy stats worker
+                // gets here; just "Triple" until then, so the row
+                // doesn't pop when the count loads.
+                let value = if let Some(s) = state.stats.get(&r.path) {
+                    t!(
+                        lang,
+                        "replays-match-type-value",
+                        type = type_name,
+                        count = s.round_count as i64,
+                    )
+                } else {
+                    type_name
+                };
+                row![
+                    text(t!(lang, "replays-match-type"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                    text(value).size(TEXT_CAPTION),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+            },
         ]
         .spacing(6),
     )
@@ -947,13 +966,13 @@ fn replay_detail<'a>(
     .padding(widgets::PANE_PADDING)
     .style(widgets::pane);
 
-    // Matchup pane: you-vs-opponent cards with a diagonal cut
-    // through the middle of the pane. `widgets::vs_splitter` is
-    // layered *under* the row so the cut reads as the pane plate
-    // being sliced — the page background showing through.
+    // Matchup pane: you-vs-opponent cards with a wide gap. The
+    // diagonal cut + red/blue halves + VS badge are painted by
+    // `widgets::vs_splitter`, layered *under* the row so the
+    // cards sit on top of the colored plate.
     let matchup_row = row![
         row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
-        row_for_side(t!(lang, "replays-opponent"), md.remote_side.as_ref()),
+        row_for_side(t!(lang, "play-opponent"), md.remote_side.as_ref()),
     ]
     .spacing(56)
     .align_y(iced::Alignment::Start)
@@ -975,7 +994,7 @@ fn replay_detail<'a>(
         container(
             text(t!(lang, "save-empty"))
                 .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
         )
         .padding(widgets::PANE_PADDING)
         .width(Fill)
@@ -1067,7 +1086,7 @@ fn export_panel<'a>(
                     t!(lang, "replays-export-progress")
                 };
                 column![
-                    text(caption).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                    text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
                     text(job.output.display().to_string()).size(TEXT_CAPTION),
                     // Progress bar + percentage + Cancel side-by-side.
                     // The bar takes the remaining width via `length()`
@@ -1080,7 +1099,7 @@ fn export_panel<'a>(
                         // defaults to 30 px, which is the chunky look
                         // we don't want.
                         iced::widget::progress_bar(0.0..=1.0, pct).girth(Length::Fixed(4.0)),
-                        text(pct_label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                        text(pct_label).size(TEXT_CAPTION).style(widgets::muted_text_style),
                         cancel_button,
                     ]
                     .spacing(8)
@@ -1094,7 +1113,7 @@ fn export_panel<'a>(
                 column![
                     text(t!(lang, "replays-export-success"))
                         .size(TEXT_CAPTION)
-                        .style(save_view::success_text_style),
+                        .style(widgets::success_text_style),
                     text(path.display().to_string()).size(TEXT_CAPTION),
                     row![
                         widgets::labeled_icon_button(
@@ -1120,7 +1139,7 @@ fn export_panel<'a>(
             Some(Err(e)) => column![
                 text(t!(lang, "replays-export-error", error = format!("{e}")))
                     .size(TEXT_CAPTION)
-                    .style(save_view::danger_text_style),
+                    .style(widgets::danger_text_style),
                 widgets::labeled_icon_button(
                     Icon::RefreshCw,
                     t!(lang, "replays-export-reset"),
@@ -1154,7 +1173,7 @@ fn export_panel<'a>(
         }
     ))
     .size(TEXT_CAPTION)
-    .style(save_view::muted_text_style);
+    .style(widgets::muted_text_style);
     let scale_slider: Element<'a, Message> = iced::widget::slider(0..=10u8, settings.scale, Message::SetExportScale)
         .width(Length::Fixed(140.0))
         .into();
@@ -1210,7 +1229,7 @@ fn export_panel<'a>(
     if selected_rounds.len() > 1 {
         let label = text(t!(lang, "replays-export-rounds"))
             .size(TEXT_CAPTION)
-            .style(save_view::muted_text_style);
+            .style(widgets::muted_text_style);
         let mut rounds_row = row![label].spacing(6).align_y(Alignment::Center);
         for (i, picked) in selected_rounds.iter().enumerate() {
             let cb = iced::widget::checkbox(*picked)

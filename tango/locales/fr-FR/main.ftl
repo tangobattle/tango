@@ -167,8 +167,12 @@ playback-speed = Vitesse
 playback-play = Lire
 playback-pause = Pause
 replays-select-prompt = Sélectionnez un replay.
-replays-opponent = Adversaire
-replays-match-type = Type de match: { $type }
+play-opponent = Adversaire
+replays-match-type = Type de match :
+replays-match-type-value = { $type } ({ $count ->
+    [one] 1 round
+   *[other] { $count } rounds
+})
 replays-rounds-short = { $count ->
     [one] 1 round
    *[other] { $count } rounds
@@ -181,7 +185,9 @@ patches-readme-placeholder = Ce patch n'a pas de README.
 patches-netplay-compatibility = Compatibilité netplay :
 settings-section-general = Général
 settings-section-graphics = Graphismes
-settings-section-network = Réseau
+settings-section-netplay = Netplay
+settings-section-audio = Audio
+settings-volume = Volume
 settings-section-about = À propos
 settings-section-input = Entrée
 settings-input-press-key = Appuyez sur une touche ou un bouton…

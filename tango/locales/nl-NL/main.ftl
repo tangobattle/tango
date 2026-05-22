@@ -167,8 +167,12 @@ playback-speed = Snelheid
 playback-play = Afspelen
 playback-pause = Pauzeren
 replays-select-prompt = Selecteer een herhaling.
-replays-opponent = Tegenstander
-replays-match-type = Matchtype: { $type }
+play-opponent = Tegenstander
+replays-match-type = Matchtype:
+replays-match-type-value = { $type } ({ $count ->
+    [one] 1 ronde
+   *[other] { $count } rondes
+})
 replays-rounds-short = { $count ->
     [one] 1 ronde
    *[other] { $count } rondes
@@ -181,7 +185,9 @@ patches-readme-placeholder = Deze patch heeft geen README.
 patches-netplay-compatibility = Netplay-compatibiliteit:
 settings-section-general = Algemeen
 settings-section-graphics = Beeld
-settings-section-network = Netwerk
+settings-section-netplay = Netplay
+settings-section-audio = Geluid
+settings-volume = Volume
 settings-section-about = Info
 settings-section-input = Invoer
 settings-input-press-key = Druk op een toets of knop…

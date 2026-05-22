@@ -586,7 +586,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
                 text(format_tick(total))
                     .size(14)
                     .font(iced::Font::MONOSPACE)
-                    .style(save_view::muted_text_style),
+                    .style(widgets::muted_text_style),
             )
             .push(options_btn);
     } else {
@@ -613,14 +613,14 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
                 text(format!("P{}", s.local_player_index + 1))
                     .size(TEXT_CAPTION)
                     .font(iced::Font::MONOSPACE)
-                    .style(save_view::muted_text_style),
+                    .style(widgets::muted_text_style),
             );
         }
         metrics = metrics.push(
             text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
         );
         if let Some(s) = stats {
             metrics = metrics.push(
@@ -630,14 +630,14 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
                 ))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
             );
         }
         metrics = metrics.push(
             text(format!("ping {:>3} ms", ping_ms))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
-                .style(save_view::muted_text_style),
+                .style(widgets::muted_text_style),
         );
         controls = controls.push(metrics);
     }
@@ -745,7 +745,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
             container(
                 text(t!(lang, "playback-speed"))
                     .size(TEXT_CAPTION)
-                    .style(save_view::muted_text_style),
+                    .style(widgets::muted_text_style),
             )
             .padding(iced::Padding {
                 top: 4.0,

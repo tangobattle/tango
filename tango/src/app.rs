@@ -237,6 +237,7 @@ impl App {
         // source. Sessions later bind their MGBAStream into the binder
         // and the cpal stream keeps going across selections.
         let mut audio_binder = audio::LateBinder::new();
+        audio_binder.set_volume(config.volume);
         let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
             Ok(b) => {
                 use audio::Backend;
@@ -1349,6 +1350,11 @@ impl App {
                 // next launch. Config change still gets
                 // persisted so it survives the restart.
                 self.config.allow_prerelease_upgrades = b;
+            }
+            C::Volume(v) => {
+                let v = v.clamp(0.0, 1.0);
+                self.config.volume = v;
+                self.audio_binder.set_volume(v);
             }
             C::NetplayThrottler(t) => {
                 // Persist + propagate to the live match (if any) so the

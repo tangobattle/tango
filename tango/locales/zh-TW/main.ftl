@@ -167,8 +167,9 @@ playback-speed = 速度
 playback-play = 播放
 playback-pause = 暫停
 replays-select-prompt = 請選擇一個重播。
-replays-opponent = 對手
-replays-match-type = 對戰類型: { $type }
+play-opponent = 對手
+replays-match-type = 對戰類型:
+replays-match-type-value = { $type } ({ $count } 回合)
 replays-rounds-short = { $count ->
    *[other] { $count } 回合
 }
@@ -180,7 +181,9 @@ patches-readme-placeholder = 此修補檔沒有 README。
 patches-netplay-compatibility = 連線相容性:
 settings-section-general = 一般
 settings-section-graphics = 影像
-settings-section-network = 網路
+settings-section-netplay = 連線
+settings-section-audio = 音訊
+settings-volume = 音量
 settings-section-about = 關於
 settings-section-input = 輸入
 settings-input-press-key = 請按一個按鍵或按鈕…

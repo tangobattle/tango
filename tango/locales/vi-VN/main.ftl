@@ -167,8 +167,9 @@ playback-speed = Tốc độ
 playback-play = Phát
 playback-pause = Tạm dừng
 replays-select-prompt = Chọn một replay.
-replays-opponent = Đối thủ
-replays-match-type = Kiểu trận: { $type }
+play-opponent = Đối thủ
+replays-match-type = Kiểu trận:
+replays-match-type-value = { $type } ({ $count } vòng)
 replays-rounds-short = { $count ->
    *[other] { $count } vòng
 }
@@ -180,7 +181,9 @@ patches-readme-placeholder = Bản vá này không có README.
 patches-netplay-compatibility = Tương thích netplay:
 settings-section-general = Chung
 settings-section-graphics = Hiển thị
-settings-section-network = Mạng
+settings-section-netplay = Netplay
+settings-section-audio = Âm thanh
+settings-volume = Âm lượng
 settings-section-about = Giới thiệu
 settings-section-input = Đầu vào
 settings-input-press-key = Nhấn phím hoặc nút…

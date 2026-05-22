@@ -167,8 +167,13 @@ playback-speed = Скорость
 playback-play = Воспроизвести
 playback-pause = Пауза
 replays-select-prompt = Выберите повтор.
-replays-opponent = Соперник
-replays-match-type = Тип матча: { $type }
+play-opponent = Соперник
+replays-match-type = Тип матча:
+replays-match-type-value = { $type } ({ $count ->
+    [one] 1 раунд
+    [few] { $count } раунда
+   *[many] { $count } раундов
+})
 replays-rounds-short = { $count ->
     [one] 1 раунд
     [few] { $count } раунда
@@ -182,7 +187,9 @@ patches-readme-placeholder = У этого патча нет README.
 patches-netplay-compatibility = Совместимость netplay:
 settings-section-general = Общие
 settings-section-graphics = Графика
-settings-section-network = Сеть
+settings-section-netplay = Сетевая игра
+settings-section-audio = Звук
+settings-volume = Громкость
 settings-section-about = О программе
 settings-section-input = Управление
 settings-input-press-key = Нажмите клавишу или кнопку…

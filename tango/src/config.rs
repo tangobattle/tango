@@ -25,6 +25,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_volume() -> f32 {
+    1.0
+}
+
 fn default_language() -> unic_langid::LanguageIdentifier {
     crate::i18n::FALLBACK_LANG
 }
@@ -163,6 +167,11 @@ pub struct Config {
     /// Picks the netplay throttler strategy used at every new round.
     #[serde(default)]
     pub netplay_throttler: NetplayThrottler,
+    /// Master output volume in `[0.0, 1.0]`. Multiplied into each
+    /// audio sample by [`crate::audio::LateBinder`]; takes effect on
+    /// the next buffer fill.
+    #[serde(default = "default_volume")]
+    pub volume: f32,
 }
 
 impl Default for Config {
@@ -194,6 +203,7 @@ impl Default for Config {
             last_window_maximized: false,
             input_mapping: crate::input::Mapping::default(),
             netplay_throttler: NetplayThrottler::default(),
+            volume: 1.0,
         }
     }
 }

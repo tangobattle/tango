@@ -160,8 +160,12 @@ playback-pause = Pause
 playback-options = Options
 playback-speed = Speed
 replays-select-prompt = Select a replay.
-replays-opponent = Opponent
-replays-match-type = Match type: { $type }
+play-opponent = Opponent
+replays-match-type = Match type:
+replays-match-type-value = { $type } ({ $count ->
+    [one] 1 round
+   *[other] { $count } rounds
+})
 replays-rounds-short = { $count ->
     [one] 1 round
    *[other] { $count } rounds
@@ -190,7 +194,9 @@ patches-netplay-compatibility = Netplay compatibility:
 # Settings panel
 settings-section-general = General
 settings-section-graphics = Graphics
-settings-section-network = Network
+settings-section-netplay = Netplay
+settings-section-audio = Audio
+settings-volume = Volume
 settings-nickname = Nickname
 settings-language = Language
 settings-data-path = Data path

@@ -1,7 +1,7 @@
 use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
-use crate::{game, save_view};
+use crate::game;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
@@ -164,7 +164,7 @@ impl PatchesState {
             top_row = top_row.push(
                 text(t!(lang, "patches-updating"))
                     .size(TEXT_CAPTION)
-                    .style(save_view::muted_text_style),
+                    .style(widgets::muted_text_style),
             );
         } else if let Some(err) = &self.last_update_error {
             top_row = top_row.push(
@@ -241,7 +241,7 @@ impl PatchesState {
                             .style(move |theme: &iced::Theme| if selected {
                                 iced::widget::text::Style { color: None }
                             } else {
-                                save_view::muted_text_style(theme)
+                                widgets::muted_text_style(theme)
                             }),
                     ]
                     .spacing(2),
@@ -354,7 +354,7 @@ impl PatchesState {
             // caption rows (e.g. save list metadata).
             let detail_row = |label: String, value: String| -> Element<'_, Message> {
                 row![
-                    text(label).size(TEXT_CAPTION).style(save_view::muted_text_style),
+                    text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
                     text(value).size(TEXT_CAPTION),
                 ]
                 .spacing(6)
