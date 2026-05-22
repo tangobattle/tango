@@ -169,14 +169,11 @@ playback-pause = Pause
 replays-select-prompt = Wähle eine Wiederholung.
 play-opponent = Gegner
 replays-match-type = Match-Typ:
+replays-duration = Dauer:
 replays-match-type-value = { $type } ({ $count ->
     [one] 1 Runde
    *[other] { $count } Runden
 })
-replays-rounds-short = { $count ->
-    [one] 1 Runde
-   *[other] { $count } Runden
-}
 replays-incomplete = unvollständig
 patches-updating = Aktualisiere…
 patches-update-failed = Aktualisierung fehlgeschlagen: { $error }

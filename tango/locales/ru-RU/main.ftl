@@ -169,16 +169,12 @@ playback-pause = Пауза
 replays-select-prompt = Выберите повтор.
 play-opponent = Соперник
 replays-match-type = Тип матча:
+replays-duration = Длительность:
 replays-match-type-value = { $type } ({ $count ->
     [one] 1 раунд
     [few] { $count } раунда
    *[many] { $count } раундов
 })
-replays-rounds-short = { $count ->
-    [one] 1 раунд
-    [few] { $count } раунда
-   *[many] { $count } раундов
-}
 replays-incomplete = неполный
 patches-updating = Обновление…
 patches-update-failed = Сбой обновления: { $error }

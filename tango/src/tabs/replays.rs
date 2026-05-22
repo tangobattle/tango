@@ -690,24 +690,28 @@ impl ReplaysState {
             } else {
                 Space::new().width(Length::Fixed(0.0)).into()
             };
-            // Duration / rounds / completion come from the lazy
-            // stats cache. While the worker hasn't gotten to this
-            // path yet, the row just renders without that line.
+            // Match-type name (e.g. "Triple") for the stats line.
+            let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
+            let type_name = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+            // Stats line: "Triple (2 rounds) · 0:42" once the lazy
+            // stats worker gets here, with " · incomplete" tacked on
+            // when the recorded stream didn't reach END_OF_REPLAY.
+            // Composed from the per-locale match-type-value + the
+            // shared "incomplete" string so we don't carry a
+            // dedicated stats-line template just to glue them.
             let stats = self.stats.get(&r.path);
             let stats_line = stats.map(|s| {
-                let duration_str = format_duration(s.tick_count);
-                let rounds_str = t!(lang, "replays-rounds-short", count = s.round_count as i64);
-                if s.is_complete {
-                    t!(lang, "replays-stats-line", duration = duration_str, rounds = rounds_str)
-                } else {
-                    t!(
-                        lang,
-                        "replays-stats-line-incomplete",
-                        duration = duration_str,
-                        rounds = rounds_str,
-                        incomplete = t!(lang, "replays-incomplete"),
-                    )
+                let match_type = t!(
+                    lang,
+                    "replays-match-type-value",
+                    type = type_name.clone(),
+                    count = s.round_count as i64,
+                );
+                let mut parts = vec![match_type, format_duration(s.tick_count)];
+                if !s.is_complete {
+                    parts.push(t!(lang, "replays-incomplete"));
                 }
+                parts.join(" · ")
             });
             let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
             // Two static caption lines, optionally a third with
@@ -916,9 +920,69 @@ fn replay_detail<'a>(
             // Top-align so the action buttons stay anchored when
             // a long title wraps to a second line.
             .align_y(Alignment::Start),
-            text(format!("{parent_str}{filename}"))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
+            // Metadata rows: file path, timestamp, match type,
+            // duration. Stacked tight in a sub-column so the rows
+            // read as one block (matches the patches detail-card
+            // density at .spacing(3)), with the outer column still
+            // breathing at .spacing(6) between sections.
+            column![
+                text(format!("{parent_str}{filename}"))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+                text(ts_str).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                {
+                    let family = md
+                        .local_side
+                        .as_ref()
+                        .and_then(|s| s.game_info.as_ref())
+                        .map(|g| g.rom_family.clone())
+                        .unwrap_or_default();
+                    let type_name =
+                        crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+                    // "Triple (2 rounds)" once the lazy stats
+                    // worker gets here; just "Triple" until then,
+                    // so the row doesn't pop when the count loads.
+                    let value = if let Some(s) = state.stats.get(&r.path) {
+                        t!(
+                            lang,
+                            "replays-match-type-value",
+                            type = type_name,
+                            count = s.round_count as i64,
+                        )
+                    } else {
+                        type_name
+                    };
+                    row![
+                        text(t!(lang, "replays-match-type"))
+                            .size(TEXT_CAPTION)
+                            .style(widgets::muted_text_style),
+                        text(value).size(TEXT_CAPTION),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                },
+                // Duration row, matching the match-type styling.
+                // Value fills in once the lazy stats worker has
+                // tallied the tick count for this path; em-dash
+                // placeholder until then so the row doesn't pop
+                // into existence.
+                row![
+                    text(t!(lang, "replays-duration"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                    text(
+                        state
+                            .stats
+                            .get(&r.path)
+                            .map(|s| format_duration(s.tick_count))
+                            .unwrap_or_else(|| "—".to_string())
+                    )
+                    .size(TEXT_CAPTION),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(3),
             export_panel(
                 lang,
                 state.is_panel_open(&r.path),
@@ -927,38 +991,6 @@ fn replay_detail<'a>(
                 state.job(&r.path),
                 &r.path,
             ),
-            text(ts_str).size(TEXT_CAPTION).style(widgets::muted_text_style),
-            {
-                let family = md
-                    .local_side
-                    .as_ref()
-                    .and_then(|s| s.game_info.as_ref())
-                    .map(|g| g.rom_family.clone())
-                    .unwrap_or_default();
-                let type_name =
-                    crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-                // "Triple (2 rounds)" once the lazy stats worker
-                // gets here; just "Triple" until then, so the row
-                // doesn't pop when the count loads.
-                let value = if let Some(s) = state.stats.get(&r.path) {
-                    t!(
-                        lang,
-                        "replays-match-type-value",
-                        type = type_name,
-                        count = s.round_count as i64,
-                    )
-                } else {
-                    type_name
-                };
-                row![
-                    text(t!(lang, "replays-match-type"))
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                    text(value).size(TEXT_CAPTION),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center)
-            },
         ]
         .spacing(6),
     )

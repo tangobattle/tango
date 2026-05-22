@@ -169,14 +169,11 @@ playback-pause = Pauzeren
 replays-select-prompt = Selecteer een herhaling.
 play-opponent = Tegenstander
 replays-match-type = Matchtype:
+replays-duration = Duur:
 replays-match-type-value = { $type } ({ $count ->
     [one] 1 ronde
    *[other] { $count } rondes
 })
-replays-rounds-short = { $count ->
-    [one] 1 ronde
-   *[other] { $count } rondes
-}
 replays-incomplete = onvolledig
 patches-updating = Bijwerken…
 patches-update-failed = Bijwerken mislukt: { $error }

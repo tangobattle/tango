@@ -169,10 +169,8 @@ playback-pause = Tạm dừng
 replays-select-prompt = Chọn một replay.
 play-opponent = Đối thủ
 replays-match-type = Kiểu trận:
+replays-duration = Thời lượng:
 replays-match-type-value = { $type } ({ $count } vòng)
-replays-rounds-short = { $count ->
-   *[other] { $count } vòng
-}
 replays-incomplete = chưa hoàn tất
 patches-updating = Đang cập nhật…
 patches-update-failed = Cập nhật thất bại: { $error }

@@ -159,8 +159,8 @@ playback-pause = 一時停止
 replays-select-prompt = リプレイを選択してください。
 play-opponent = 相手
 replays-match-type = マッチタイプ:
+replays-duration = 再生時間:
 replays-match-type-value = { $type } ({ $count }ラウンド)
-replays-rounds-short = { $count }ラウンド
 replays-incomplete = 未完了
 play-you = 自分
 

@@ -169,10 +169,8 @@ playback-pause = 暫停
 replays-select-prompt = 請選擇一個重播。
 play-opponent = 對手
 replays-match-type = 對戰類型:
+replays-duration = 時長:
 replays-match-type-value = { $type } ({ $count } 回合)
-replays-rounds-short = { $count ->
-   *[other] { $count } 回合
-}
 replays-incomplete = 未完成
 patches-updating = 更新中…
 patches-update-failed = 更新失敗: { $error }
