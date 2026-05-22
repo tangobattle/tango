@@ -182,7 +182,7 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum InputEvent {
     Key {
-        key: iced::keyboard::Key,
+        physical: iced::keyboard::key::Physical,
         pressed: bool,
     },
     Button {
@@ -262,7 +262,7 @@ impl State {
             }
             Message::Input(ev) => {
                 match ev {
-                    InputEvent::Key { key, pressed } => self.input_held.set_key(&key, pressed),
+                    InputEvent::Key { physical, pressed } => self.input_held.set_key(physical, pressed),
                     InputEvent::Button { button, pressed } => self.input_held.set_button(button, pressed),
                     InputEvent::Axis { axis, value } => self.input_held.set_axis(axis, value),
                     InputEvent::GamepadDisconnected => self.input_held.clear_gamepad(),

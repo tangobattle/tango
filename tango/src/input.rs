@@ -1,9 +1,9 @@
 //! Configurable input mapping for the live emulator sessions.
 //!
 //! - [`PhysicalInput`] describes a single binding source: keyboard
-//!   key (serialized via a small string-keyed subset of iced's
-//!   `keyboard::Key`), gamepad button, or gamepad axis past a
-//!   threshold.
+//!   key (iced's physical [`Code`], serialized as its Debug name,
+//!   e.g. `"KeyZ"` / `"ArrowLeft"` / `"ShiftLeft"`), gamepad
+//!   button, or gamepad axis past a threshold.
 //! - [`Mapping`] is the per-mgba-key list of `PhysicalInput`s the
 //!   user has assigned (so one mgba key can have multiple
 //!   bindings — keyboard *and* controller).
@@ -11,9 +11,14 @@
 //!   gamepad event streams. The session main loop combines
 //!   `Mapping` + `HeldState` into the joyflags it pushes to mgba.
 //!
-//! Legacy parity: same `PhysicalInput` shape as
-//! `tango/src/input.rs`, same default bindings.
+//! Keyboard bindings are layout-independent: we match on the
+//! physical key's [`Code`] rather than the logical character it
+//! produces, so a binding placed on the QWERTY `Z` position keeps
+//! working on AZERTY (where that physical key types `W`).
+//!
+//! [`Code`]: iced::keyboard::key::Code
 
+use iced::keyboard::key::{Code, NativeCode, Physical};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -22,75 +27,182 @@ use std::collections::{HashMap, HashSet};
 /// (i16 0x4000 → ~0.5 normalized).
 pub const AXIS_THRESHOLD: f32 = 0.5;
 
-/// A single binding source. Keyboard keys are stored as strings
-/// so the on-disk config stays human-readable + portable across
-/// iced versions; gamepad buttons + axes mirror the SDL3
-/// `gamepad::Button` / `gamepad::Axis` enums via [`GamepadButton`]
-/// / [`GamepadAxis`].
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// A single binding source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value")]
 #[serde(rename_all = "snake_case")]
 pub enum PhysicalInput {
-    Key(KeyId),
+    Key(KeyPhysical),
     Button(GamepadButton),
     Axis { axis: GamepadAxis, dir: AxisDir },
 }
 
-/// Serializable string-keyed wrapper around iced's keyboard key.
-/// Round-tripped via a tiny manual table covering everything you'd
-/// realistically bind for a GBA emulator — letters, arrows,
-/// enter/space/shift/etc. Anything outside the table parses back
-/// to [`KeyId::Unbindable`] (kept around so a stale binding
-/// doesn't disappear from the config silently).
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct KeyId(pub String);
+/// Thin wrapper around iced's [`Physical`] that adds serde
+/// support — iced doesn't ship a `serde` feature. Serializes as
+/// the `Code` Debug name (`"KeyZ"`, `"ArrowLeft"`, …) for known
+/// codes, or `"<Platform>:<n>"` (e.g. `"Windows:42"`) for
+/// unidentified scancodes so users can still bind exotic keys
+/// we don't have a `Code` for.
+///
+/// [`Physical`]: iced::keyboard::key::Physical
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KeyPhysical(pub Physical);
 
-impl KeyId {
-    /// Translate from an iced runtime key event. Returns None for
-    /// keys we have no string representation for (the user has to
-    /// pick another one to bind).
-    pub fn from_iced(key: &iced::keyboard::Key) -> Option<Self> {
-        let s = key_to_string(key)?;
-        Some(KeyId(s))
-    }
-
-    /// Human-readable label for the settings UI.
-    pub fn label(&self) -> &str {
-        &self.0
+impl Serialize for KeyPhysical {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        physical_to_string(&self.0).serialize(s)
     }
 }
 
-/// Render an iced key as the lowercase string we store on disk.
-/// Falls through to None for stuff like Meta/Compose that doesn't
-/// make sense as a game-control binding.
-fn key_to_string(key: &iced::keyboard::Key) -> Option<String> {
-    use iced::keyboard::key::{Key, Named};
-    Some(match key {
-        Key::Named(n) => match n {
-            Named::ArrowLeft => "ArrowLeft".into(),
-            Named::ArrowRight => "ArrowRight".into(),
-            Named::ArrowUp => "ArrowUp".into(),
-            Named::ArrowDown => "ArrowDown".into(),
-            Named::Enter => "Enter".into(),
-            Named::Space => "Space".into(),
-            Named::Tab => "Tab".into(),
-            Named::Escape => "Escape".into(),
-            Named::Backspace => "Backspace".into(),
-            Named::Shift => "Shift".into(),
-            Named::Control => "Control".into(),
-            Named::Alt => "Alt".into(),
-            Named::CapsLock => "CapsLock".into(),
-            Named::Home => "Home".into(),
-            Named::End => "End".into(),
-            Named::PageUp => "PageUp".into(),
-            Named::PageDown => "PageDown".into(),
-            Named::Insert => "Insert".into(),
-            Named::Delete => "Delete".into(),
+impl<'de> Deserialize<'de> for KeyPhysical {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        string_to_physical(&s)
+            .map(KeyPhysical)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown physical key: {s}")))
+    }
+}
+
+fn physical_to_string(p: &Physical) -> String {
+    match p {
+        Physical::Code(c) => format!("{c:?}"),
+        Physical::Unidentified(NativeCode::Unidentified) => "Unidentified".into(),
+        Physical::Unidentified(NativeCode::Android(n)) => format!("Android:{n}"),
+        Physical::Unidentified(NativeCode::MacOS(n)) => format!("MacOS:{n}"),
+        Physical::Unidentified(NativeCode::Windows(n)) => format!("Windows:{n}"),
+        Physical::Unidentified(NativeCode::Xkb(n)) => format!("Xkb:{n}"),
+    }
+}
+
+fn string_to_physical(s: &str) -> Option<Physical> {
+    if s == "Unidentified" {
+        return Some(Physical::Unidentified(NativeCode::Unidentified));
+    }
+    if let Some((platform, n)) = s.split_once(':') {
+        let native = match platform {
+            "Android" => NativeCode::Android(n.parse().ok()?),
+            "MacOS" => NativeCode::MacOS(n.parse().ok()?),
+            "Windows" => NativeCode::Windows(n.parse().ok()?),
+            "Xkb" => NativeCode::Xkb(n.parse().ok()?),
             _ => return None,
-        },
-        Key::Character(c) => c.to_lowercase(),
-        Key::Unidentified => return None,
+        };
+        return Some(Physical::Unidentified(native));
+    }
+    string_to_code(s).map(Physical::Code)
+}
+
+/// Parse a `Code` Debug-name back to the enum. Limited to the
+/// subset users would actually bind for a GBA emulator.
+fn string_to_code(s: &str) -> Option<Code> {
+    Some(match s {
+        // Letters
+        "KeyA" => Code::KeyA,
+        "KeyB" => Code::KeyB,
+        "KeyC" => Code::KeyC,
+        "KeyD" => Code::KeyD,
+        "KeyE" => Code::KeyE,
+        "KeyF" => Code::KeyF,
+        "KeyG" => Code::KeyG,
+        "KeyH" => Code::KeyH,
+        "KeyI" => Code::KeyI,
+        "KeyJ" => Code::KeyJ,
+        "KeyK" => Code::KeyK,
+        "KeyL" => Code::KeyL,
+        "KeyM" => Code::KeyM,
+        "KeyN" => Code::KeyN,
+        "KeyO" => Code::KeyO,
+        "KeyP" => Code::KeyP,
+        "KeyQ" => Code::KeyQ,
+        "KeyR" => Code::KeyR,
+        "KeyS" => Code::KeyS,
+        "KeyT" => Code::KeyT,
+        "KeyU" => Code::KeyU,
+        "KeyV" => Code::KeyV,
+        "KeyW" => Code::KeyW,
+        "KeyX" => Code::KeyX,
+        "KeyY" => Code::KeyY,
+        "KeyZ" => Code::KeyZ,
+        // Digits
+        "Digit0" => Code::Digit0,
+        "Digit1" => Code::Digit1,
+        "Digit2" => Code::Digit2,
+        "Digit3" => Code::Digit3,
+        "Digit4" => Code::Digit4,
+        "Digit5" => Code::Digit5,
+        "Digit6" => Code::Digit6,
+        "Digit7" => Code::Digit7,
+        "Digit8" => Code::Digit8,
+        "Digit9" => Code::Digit9,
+        // Arrows / navigation
+        "ArrowLeft" => Code::ArrowLeft,
+        "ArrowRight" => Code::ArrowRight,
+        "ArrowUp" => Code::ArrowUp,
+        "ArrowDown" => Code::ArrowDown,
+        "Home" => Code::Home,
+        "End" => Code::End,
+        "PageUp" => Code::PageUp,
+        "PageDown" => Code::PageDown,
+        "Insert" => Code::Insert,
+        "Delete" => Code::Delete,
+        // Modifiers (physical: left/right are distinct)
+        "ShiftLeft" => Code::ShiftLeft,
+        "ShiftRight" => Code::ShiftRight,
+        "ControlLeft" => Code::ControlLeft,
+        "ControlRight" => Code::ControlRight,
+        "AltLeft" => Code::AltLeft,
+        "AltRight" => Code::AltRight,
+        "SuperLeft" => Code::SuperLeft,
+        "SuperRight" => Code::SuperRight,
+        "CapsLock" => Code::CapsLock,
+        // Misc
+        "Enter" => Code::Enter,
+        "Space" => Code::Space,
+        "Tab" => Code::Tab,
+        "Escape" => Code::Escape,
+        "Backspace" => Code::Backspace,
+        // Punctuation
+        "Backquote" => Code::Backquote,
+        "Minus" => Code::Minus,
+        "Equal" => Code::Equal,
+        "BracketLeft" => Code::BracketLeft,
+        "BracketRight" => Code::BracketRight,
+        "Backslash" => Code::Backslash,
+        "Semicolon" => Code::Semicolon,
+        "Quote" => Code::Quote,
+        "Comma" => Code::Comma,
+        "Period" => Code::Period,
+        "Slash" => Code::Slash,
+        // Function keys
+        "F1" => Code::F1,
+        "F2" => Code::F2,
+        "F3" => Code::F3,
+        "F4" => Code::F4,
+        "F5" => Code::F5,
+        "F6" => Code::F6,
+        "F7" => Code::F7,
+        "F8" => Code::F8,
+        "F9" => Code::F9,
+        "F10" => Code::F10,
+        "F11" => Code::F11,
+        "F12" => Code::F12,
+        // Numpad
+        "Numpad0" => Code::Numpad0,
+        "Numpad1" => Code::Numpad1,
+        "Numpad2" => Code::Numpad2,
+        "Numpad3" => Code::Numpad3,
+        "Numpad4" => Code::Numpad4,
+        "Numpad5" => Code::Numpad5,
+        "Numpad6" => Code::Numpad6,
+        "Numpad7" => Code::Numpad7,
+        "Numpad8" => Code::Numpad8,
+        "Numpad9" => Code::Numpad9,
+        "NumpadEnter" => Code::NumpadEnter,
+        "NumpadAdd" => Code::NumpadAdd,
+        "NumpadSubtract" => Code::NumpadSubtract,
+        "NumpadMultiply" => Code::NumpadMultiply,
+        "NumpadDivide" => Code::NumpadDivide,
+        "NumpadDecimal" => Code::NumpadDecimal,
+        _ => return None,
     })
 }
 
@@ -213,37 +325,37 @@ impl Default for Mapping {
         // for L/R, Z/X for A/B, Enter/Space for Start/Select.
         // Speed-up = LShift. Controller defaults track the
         // legacy app's Xbox-layout bindings.
-        let key = |s: &str| PhysicalInput::Key(KeyId(s.to_string()));
-        let btn = |b| PhysicalInput::Button(b);
+        let key = |c| PhysicalInput::Key(KeyPhysical(Physical::Code(c)));
+        let btn = PhysicalInput::Button;
         let axis = |axis, dir| PhysicalInput::Axis { axis, dir };
         Self {
             up: vec![
-                key("ArrowUp"),
+                key(Code::ArrowUp),
                 btn(GamepadButton::DPadUp),
                 axis(GamepadAxis::LeftStickY, AxisDir::Positive),
             ],
             down: vec![
-                key("ArrowDown"),
+                key(Code::ArrowDown),
                 btn(GamepadButton::DPadDown),
                 axis(GamepadAxis::LeftStickY, AxisDir::Negative),
             ],
             left: vec![
-                key("ArrowLeft"),
+                key(Code::ArrowLeft),
                 btn(GamepadButton::DPadLeft),
                 axis(GamepadAxis::LeftStickX, AxisDir::Negative),
             ],
             right: vec![
-                key("ArrowRight"),
+                key(Code::ArrowRight),
                 btn(GamepadButton::DPadRight),
                 axis(GamepadAxis::LeftStickX, AxisDir::Positive),
             ],
-            a: vec![key("z"), btn(GamepadButton::South)],
-            b: vec![key("x"), btn(GamepadButton::East)],
-            l: vec![key("a"), btn(GamepadButton::LeftShoulder)],
-            r: vec![key("s"), btn(GamepadButton::RightShoulder)],
-            start: vec![key("Enter"), btn(GamepadButton::Start)],
-            select: vec![key("Space"), btn(GamepadButton::Select)],
-            speed_up: vec![key("Shift")],
+            a: vec![key(Code::KeyZ), btn(GamepadButton::South)],
+            b: vec![key(Code::KeyX), btn(GamepadButton::East)],
+            l: vec![key(Code::KeyA), btn(GamepadButton::LeftShoulder)],
+            r: vec![key(Code::KeyS), btn(GamepadButton::RightShoulder)],
+            start: vec![key(Code::Enter), btn(GamepadButton::Start)],
+            select: vec![key(Code::Space), btn(GamepadButton::Select)],
+            speed_up: vec![key(Code::ShiftLeft)],
         }
     }
 }
@@ -334,7 +446,7 @@ pub enum MappedKey {
 /// event then asks the Mapping to compute the resulting joyflags.
 #[derive(Default)]
 pub struct HeldState {
-    keys: HashSet<String>,
+    keys: HashSet<Physical>,
     buttons: HashSet<GamepadButton>,
     /// Per-axis last-known normalized value in [-1, 1]. Bindings
     /// trigger when |value| crosses [`AXIS_THRESHOLD`].
@@ -342,14 +454,11 @@ pub struct HeldState {
 }
 
 impl HeldState {
-    pub fn set_key(&mut self, key: &iced::keyboard::Key, pressed: bool) {
-        let Some(s) = key_to_string(key) else {
-            return;
-        };
+    pub fn set_key(&mut self, physical: Physical, pressed: bool) {
         if pressed {
-            self.keys.insert(s);
+            self.keys.insert(physical);
         } else {
-            self.keys.remove(&s);
+            self.keys.remove(&physical);
         }
     }
 
@@ -374,7 +483,7 @@ impl HeldState {
 
     pub fn is_active(&self, p: &PhysicalInput) -> bool {
         match p {
-            PhysicalInput::Key(k) => self.keys.contains(&k.0),
+            PhysicalInput::Key(c) => self.keys.contains(&c.0),
             PhysicalInput::Button(b) => self.buttons.contains(b),
             PhysicalInput::Axis { axis, dir } => {
                 let v = self.axes.get(axis).copied().unwrap_or(0.0);
@@ -399,7 +508,7 @@ pub enum DescribeKind {
 /// kind (for the chip's Lucide glyph) and a plain-text label.
 pub fn describe(p: &PhysicalInput) -> (DescribeKind, String) {
     match p {
-        PhysicalInput::Key(k) => (DescribeKind::Keyboard, k.label().to_string()),
+        PhysicalInput::Key(c) => (DescribeKind::Keyboard, physical_to_string(&c.0)),
         PhysicalInput::Button(b) => (DescribeKind::Gamepad, b.label().to_string()),
         PhysicalInput::Axis { axis, dir } => {
             let sign = match dir {

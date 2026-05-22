@@ -238,9 +238,9 @@ pub fn view<'a>(
             root,
             |input| {
                 let captured = match input {
-                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
-                        input::KeyId::from_iced(key).map(input::PhysicalInput::Key)
-                    }
+                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
+                        physical_key, ..
+                    }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
                     crate::input_capture::Input::Keyboard(_) => None,
                     crate::input_capture::Input::Gamepad(ev) => match *ev {
                         crate::gamepad::GamepadEvent::ButtonDown(b) => {

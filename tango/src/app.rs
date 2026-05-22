@@ -1469,12 +1469,12 @@ impl App {
                 |input| {
                     let ev = match input {
                         crate::input_capture::Input::Keyboard(kb) => match kb {
-                            iced::keyboard::Event::KeyPressed { key, .. } => Some(session::InputEvent::Key {
-                                key: key.clone(),
+                            iced::keyboard::Event::KeyPressed { physical_key, .. } => Some(session::InputEvent::Key {
+                                physical: *physical_key,
                                 pressed: true,
                             }),
-                            iced::keyboard::Event::KeyReleased { key, .. } => Some(session::InputEvent::Key {
-                                key: key.clone(),
+                            iced::keyboard::Event::KeyReleased { physical_key, .. } => Some(session::InputEvent::Key {
+                                physical: *physical_key,
                                 pressed: false,
                             }),
                             _ => None,
