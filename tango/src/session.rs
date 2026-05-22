@@ -1179,16 +1179,15 @@ pub async fn spawn_pvp(
 /// Shared between `spawn_pvp` (initial round) and the app's settings
 /// handler (live mid-round swap).
 pub fn throttler_factory_for(throttler: config::NetplayThrottler) -> tango_pvp::battle::ThrottlerFactory {
+    use tango_pvp::battle::throttler::{AsymmetricEma, Clamp, Linear, Power, Watchdog};
     match throttler {
         config::NetplayThrottler::AsymmetricEma => {
-            Box::new(|| Box::new(tango_pvp::battle::throttler::AsymmetricEma::default()))
+            Box::new(|| Box::new(Clamp::<AsymmetricEma>::default()))
         }
-        config::NetplayThrottler::LinearWatchdog => Box::new(|| {
-            Box::new(tango_pvp::battle::throttler::Watchdog::new(
-                tango_pvp::battle::throttler::Linear::new(),
-            ))
-        }),
-        config::NetplayThrottler::Power => Box::new(|| Box::new(tango_pvp::battle::throttler::Power::default())),
+        config::NetplayThrottler::LinearWatchdog => {
+            Box::new(|| Box::new(Clamp::<Watchdog<Linear>>::default()))
+        }
+        config::NetplayThrottler::Power => Box::new(|| Box::new(Clamp::<Power>::default())),
     }
 }
 

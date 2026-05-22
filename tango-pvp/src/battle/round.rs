@@ -9,11 +9,6 @@ use super::throttler::Throttler;
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// Cap on the slowdown any throttler is allowed to request, in fps.
-/// Lives here (not in the throttler impls) so every strategy clamps
-/// uniformly and a single knob controls the worst-case audio warp.
-const MAX_ADJUSTMENT: f32 = 30.0;
-
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
 /// helpers that wire remote-side prediction into FF runs.
@@ -262,7 +257,7 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = local_advantage - remote_advantage;
 
-        let slowdown = self.throttler.step(skew).min(MAX_ADJUSTMENT);
+        let slowdown = self.throttler.step(skew);
         let fps_target = EXPECTED_FPS - slowdown;
         core.gba_mut()
             .sync_mut()

@@ -633,12 +633,13 @@ impl App {
                 // reflects the fresh on-disk SRAM.
                 let sp_closing = matches!(m, session::Message::Close)
                     && matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
-                // PvP sessions write a `.tangoreplay` next to the
-                // saves dir on match end; once the session closes
-                // we want the new file to show up in the Replays
-                // tab without a manual rescan.
-                let pvp_closing =
-                    matches!(m, session::Message::Close) && matches!(self.session.active, Some(ActiveSession::PvP(_)));
+                // Snapshot "was PvP" before dispatch — PvP
+                // sessions can auto-tear-down inside
+                // `UpdateFramebuffer` (peer-end / disconnect /
+                // grace timeout), not just from a Close message.
+                // We trigger the replay rescan whenever a PvP
+                // session was active before and isn't after.
+                let was_pvp = matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self
                     .session
                     .update(m, &self.config.input_mapping, &self.config.video_filter)
@@ -652,7 +653,12 @@ impl App {
                     self.loaded = None;
                     self.refresh_loaded();
                 }
-                if pvp_closing {
+                // PvP sessions write a `.tangoreplay` next to
+                // the saves dir on match end; once the session
+                // clears we want the new file to show up in the
+                // Replays tab without a manual rescan.
+                let pvp_closed = was_pvp && self.session.active.is_none();
+                if pvp_closed {
                     let replays_path = self.config.replays_path();
                     self.scanners
                         .replays
