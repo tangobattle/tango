@@ -46,7 +46,10 @@ pub enum Message {
     PatchRepoChanged(String),
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
-    ToggleIntegerScaling(bool),
+    ToggleFractionalScaling(bool),
+    ToggleFullscreen(bool),
+    ResolutionChanged(ResolutionChoice),
+    UiScaleChanged(UiScaleChoice),
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     NetplayThrottlerChanged(config::NetplayThrottler),
@@ -94,7 +97,10 @@ pub enum ConfigChange {
     PatchRepo(String),
     PatchAutoupdate(bool),
     VideoFilter(String),
-    IntegerScaling(bool),
+    FractionalScaling(bool),
+    Fullscreen(bool),
+    Resolution(f32, f32),
+    UiScale(f32),
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     NetplayThrottler(config::NetplayThrottler),
@@ -122,7 +128,10 @@ impl State {
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
-            Message::ToggleIntegerScaling(b) => Some(ConfigChange::IntegerScaling(b)),
+            Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
+            Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
+            Message::ResolutionChanged(c) => Some(ConfigChange::Resolution(c.width, c.height)),
+            Message::UiScaleChanged(c) => Some(ConfigChange::UiScale(c.0)),
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::NetplayThrottlerChanged(t) => Some(ConfigChange::NetplayThrottler(t)),
@@ -405,8 +414,118 @@ impl std::fmt::Display for VideoFilterChoice {
     }
 }
 
+/// Standard windowed resolutions surfaced in the graphics settings
+/// pick-list. Selecting one resizes the live window and updates
+/// `config.last_window_size`. Skips anything smaller than the
+/// min_size enforced in `main.rs` (800×600).
+const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
+    (800, 600),
+    (1024, 768),
+    (1280, 720),
+    (1280, 800),
+    (1366, 768),
+    (1440, 900),
+    (1600, 900),
+    (1680, 1050),
+    (1920, 1080),
+    (2560, 1440),
+    (3840, 2160),
+];
+
+/// Pick-list adapter for a window resolution. PartialEq is exact
+/// f32 — fine since the values come straight from
+/// `STANDARD_RESOLUTIONS` constants and matched by equality.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ResolutionChoice {
+    pub width: f32,
+    pub height: f32,
+}
+impl Eq for ResolutionChoice {}
+impl std::fmt::Display for ResolutionChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}×{}", self.width as u32, self.height as u32)
+    }
+}
+
+/// UI scale presets surfaced in the graphics-settings pick-list.
+/// Multiplies on top of the OS DPI scale.
+const UI_SCALE_PRESETS: &[f32] = &[0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+/// Pick-list adapter for the UI scale multiplier. `PartialEq` is
+/// exact on f32, which is fine since values come from the
+/// `UI_SCALE_PRESETS` constants and matched by equality.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UiScaleChoice(pub f32);
+impl Eq for UiScaleChoice {}
+impl std::fmt::Display for UiScaleChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Print integer percent for the round 25%-step presets,
+        // 25%-step decimals would just clutter the dropdown.
+        write!(f, "{}%", (self.0 * 100.0).round() as u32)
+    }
+}
+
 fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
+    let resolution_options: Vec<ResolutionChoice> = STANDARD_RESOLUTIONS
+        .iter()
+        .map(|(w, h)| ResolutionChoice {
+            width: *w as f32,
+            height: *h as f32,
+        })
+        .collect();
+    // Match the current windowed size against the preset list so
+    // the picker shows a selected value when it lines up exactly.
+    // No match (custom drag-resized size) renders as blank.
+    let current_size = config.last_window_size.map(|(w, h)| ResolutionChoice { width: w, height: h });
+    let selected_resolution = current_size.and_then(|cur| resolution_options.iter().find(|o| **o == cur).copied());
+    // Disable the window-size picker while fullscreen is on:
+    // picking a sub-monitor size while fullscreen is meaningless
+    // (the live window stays at monitor resolution). Render the
+    // shared disabled-dropdown placeholder so it reads as the
+    // same control family as the live picker.
+    let window_size_picker: Element<'a, Message> = if config.fullscreen {
+        let label = selected_resolution
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "—".into());
+        widgets::disabled_pick_list(label).width(Fill).into()
+    } else {
+        pick_list(resolution_options, selected_resolution, Message::ResolutionChanged)
+            .padding(STANDARD_PADDING)
+            .width(Fill)
+            .style(widgets::chunky_pick_list)
+            .into()
+    };
+    let ui_scale_options: Vec<UiScaleChoice> = UI_SCALE_PRESETS.iter().copied().map(UiScaleChoice).collect();
+    let selected_ui_scale = ui_scale_options
+        .iter()
+        .find(|c| (c.0 - config.ui_scale).abs() < f32::EPSILON)
+        .copied();
     column![
+        // Label hovers over just the dropdown; the row beneath
+        // it centers the fullscreen checkbox with the dropdown
+        // box itself (not the dropdown+label column).
+        column![
+            text(t!(lang, "settings-window-size"))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+            iced::widget::row![
+                window_size_picker,
+                iced::widget::checkbox(config.fullscreen)
+                    .label(t!(lang, "settings-fullscreen"))
+                    .on_toggle(Message::ToggleFullscreen)
+                    .style(widgets::chunky_checkbox),
+            ]
+            .spacing(14)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(4),
+        labeled::<Message>(
+            t!(lang, "settings-ui-scale"),
+            pick_list(ui_scale_options, selected_ui_scale, Message::UiScaleChanged)
+                .padding(STANDARD_PADDING)
+                .width(Fill)
+                .style(widgets::chunky_pick_list),
+        ),
         labeled::<Message>(t!(lang, "settings-video-filter"), {
             let options: Vec<VideoFilterChoice> = crate::video::FILTERS
                 .iter()
@@ -423,9 +542,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             .width(Fill)
             .style(widgets::chunky_pick_list)
         },),
-        iced::widget::checkbox(config.integer_scaling)
-            .label(t!(lang, "settings-integer-scaling"))
-            .on_toggle(Message::ToggleIntegerScaling)
+        iced::widget::checkbox(config.fractional_scaling)
+            .label(t!(lang, "settings-fractional-scaling"))
+            .on_toggle(Message::ToggleFractionalScaling)
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)

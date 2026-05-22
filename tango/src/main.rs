@@ -279,6 +279,7 @@ fn run_app() -> iced::Result {
         .settings(settings)
         .title(App::title)
         .theme(App::theme)
+        .scale_factor(App::scale_factor)
         .subscription(App::subscription)
         .window(iced::window::Settings {
             // min_size keeps the user from shrinking the window so
@@ -288,6 +289,7 @@ fn run_app() -> iced::Result {
             size: iced::Size::new(start_w, start_h),
             min_size: Some(iced::Size::new(800.0, 600.0)),
             maximized: geom_cfg.last_window_maximized,
+            fullscreen: geom_cfg.fullscreen,
             // OS-level window icon (title bar + taskbar). Same
             // PNG we render in the nav strip; iced wants raw
             // RGBA so decode once at startup. Best-effort —

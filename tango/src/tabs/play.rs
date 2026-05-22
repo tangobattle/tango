@@ -834,15 +834,26 @@ impl PlayState {
                 vs
             })
             .unwrap_or_default();
-        let version = pick_list(
-            version_options,
-            self.local_patch_version.clone(),
-            Message::LocalPatchVersionSelected,
-        )
-        .placeholder(t!(lang, "play-version-placeholder"))
-        .padding(STANDARD_PADDING)
-        .width(Length::Fixed(100.0))
-        .style(widgets::chunky_pick_list);
+        // No patch selected (or none with matching versions) →
+        // render the shared disabled-dropdown placeholder so the
+        // version slot reads as locked-off instead of an empty
+        // picker users can still click.
+        let version: Element<'_, Message> = if version_options.is_empty() {
+            widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
+                .width(Length::Fixed(100.0))
+                .into()
+        } else {
+            pick_list(
+                version_options,
+                self.local_patch_version.clone(),
+                Message::LocalPatchVersionSelected,
+            )
+            .placeholder(t!(lang, "play-version-placeholder"))
+            .padding(STANDARD_PADDING)
+            .width(Length::Fixed(100.0))
+            .style(widgets::chunky_pick_list)
+            .into()
+        };
 
         let refresh = widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
 
@@ -1222,7 +1233,7 @@ fn templates_for_selection<'a>(
     // trait. Patch templates take precedence: if a patch ships a
     // "heat-guts" template, it overrides the built-in of the same name.
     if let Some(game_impl) = game::from_gamedb_entry(game) {
-        for (name, save) in game_impl.save_templates() {
+        for (name, save) in game_impl.save_templates.iter() {
             out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
         }
     }
@@ -1477,7 +1488,7 @@ fn lobby_view<'a>(
     // picks a game.
     let mt_picker: Element<'a, Message> = if let Some(g) = local_game {
         let game_impl = crate::game::from_gamedb_entry(g);
-        let mt_table = game_impl.map(|gi| gi.match_types()).unwrap_or(&[]);
+        let mt_table = game_impl.map(|gi| gi.match_types).unwrap_or(&[]);
         let mut options = Vec::new();
         for (mode, subtype_count) in mt_table.iter().enumerate() {
             for sub in 0..*subtype_count {

@@ -14,6 +14,7 @@ use std::sync::Arc;
 const EXPECTED_FPS: f32 = 60.0;
 
 pub struct SinglePlayerSession {
+    game: &'static crate::game::Game,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
@@ -28,7 +29,7 @@ pub struct SinglePlayerSession {
 
 impl SinglePlayerSession {
     pub fn new(
-        game: &'static (dyn crate::game::Game + Send + Sync),
+        game: &'static crate::game::Game,
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
         audio_binder: &crate::audio::LateBinder,
@@ -45,7 +46,7 @@ impl SinglePlayerSession {
         // hooks().patch installs the per-game memory patches that fix
         // determinism bugs (RNG seeding, RTC reads, etc.). Safe to apply
         // in single-player too — they don't depend on a partner.
-        let hooks = game.hooks();
+        let hooks = game.hooks;
         hooks.patch(core.as_mut());
 
         let joyflags = Arc::new(AtomicU32::new(0));
@@ -85,6 +86,7 @@ impl SinglePlayerSession {
         };
 
         Ok(Self {
+            game,
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
@@ -92,6 +94,10 @@ impl SinglePlayerSession {
             _audio_binding: audio_binding,
             _thread: thread,
         })
+    }
+
+    pub fn game(&self) -> &'static crate::game::Game {
+        self.game
     }
 
     /// Monotonically-increasing counter of frames the emulator

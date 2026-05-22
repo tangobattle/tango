@@ -25,6 +25,7 @@ pub use tango_pvp::battle::EXPECTED_FPS;
 const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct PvpSession {
+    local_game: &'static crate::game::Game,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
@@ -98,9 +99,9 @@ impl PvpSession {
     /// we poll the handoff slot until it appears (worst case a
     /// few ms after `take_pre_match` flips the cancel flag).
     pub async fn new(
-        local_game: &'static (dyn crate::game::Game + Send + Sync),
+        local_game: &'static crate::game::Game,
         local_rom: Arc<Vec<u8>>,
-        remote_game: &'static (dyn crate::game::Game + Send + Sync),
+        remote_game: &'static crate::game::Game,
         remote_rom: Arc<Vec<u8>>,
         pre_match: crate::netplay::PreMatchData,
         replays_path: &Path,
@@ -119,12 +120,12 @@ impl PvpSession {
         // by the Shadow constructor (its primary trap needs
         // remote_save.as_raw_wram()).
         let remote_save = remote_game
-            .gamedb_entry()
+            .gamedb_entry
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
         // Local save is whatever we committed; same path.
         let local_save = local_game
-            .gamedb_entry()
+            .gamedb_entry
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
 
@@ -141,7 +142,7 @@ impl PvpSession {
             .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
 
         let joyflags = Arc::new(AtomicU32::new(0));
-        let local_hooks = local_game.hooks();
+        let local_hooks = local_game.hooks;
         local_hooks.patch(core.as_mut());
 
         let match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>> =
@@ -203,7 +204,7 @@ impl PvpSession {
         })
         .ok();
 
-        let remote_hooks = remote_game.hooks();
+        let remote_hooks = remote_game.hooks;
         let identity = tango_pvp::battle::MatchIdentity {
             match_type: pre_match.match_type,
             is_offerer: pre_match.is_offerer,
@@ -351,6 +352,7 @@ impl PvpSession {
         });
 
         Ok(Self {
+            local_game,
             vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
@@ -371,6 +373,10 @@ impl PvpSession {
             opponent_loaded,
             opponent_save_view: crate::save_view::State::new(),
         })
+    }
+
+    pub fn game(&self) -> &'static crate::game::Game {
+        self.local_game
     }
 
     /// See `singleplayer_session::SinglePlayerSession::frame_id`.

@@ -83,6 +83,17 @@ impl ActiveSession {
             _ => None,
         }
     }
+
+    /// Local-perspective Game registration for this session. Used by
+    /// the session view to pull per-game chrome (background image,
+    /// logo) into the emulator pane.
+    pub fn local_game(&self) -> &'static crate::game::Game {
+        match self {
+            Self::Replay(s) => s.game(),
+            Self::SinglePlayer(s) => s.game(),
+            Self::PvP(s) => s.game(),
+        }
+    }
 }
 
 /// Per-session UI state. App holds `session: State`; the Play and
@@ -348,10 +359,31 @@ pub fn subscription(_state: &State) -> iced::Subscription<Message> {
     iced::Subscription::none()
 }
 
+/// Iced texture handle for a Game's background art, cached by Game
+/// pointer. The Game's `background_image` LazyImage decodes once on
+/// first deref; this helper additionally caches the RGBA → iced
+/// `Handle` conversion so we don't re-upload the same texture every
+/// frame.
+fn background_handle(game: &'static crate::game::Game) -> iced::widget::image::Handle {
+    use std::collections::HashMap;
+    use std::sync::LazyLock;
+    static CACHE: LazyLock<parking_lot::Mutex<HashMap<usize, iced::widget::image::Handle>>> =
+        LazyLock::new(Default::default);
+    let key = game as *const _ as usize;
+    if let Some(h) = CACHE.lock().get(&key).cloned() {
+        return h;
+    }
+    let rgba = game.background_image.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let handle = iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw());
+    CACHE.lock().insert(key, handle.clone());
+    handle
+}
+
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
-pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling: bool) -> Element<'a, Message> {
+pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, fractional_scaling: bool) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
@@ -359,10 +391,10 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
     use iced::widget::{image, Space};
 
     let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
-        // Source texture dimensions — used by integer-scale to
-        // compute the largest integer multiple that fits.
-        // `Handle::Rgba` carries them; other variants shouldn't
-        // appear here but fall back to the native GBA size.
+        // Source texture dimensions — drive scale calc inside
+        // `responsive`. `Handle::Rgba` carries them; other
+        // variants shouldn't appear here but fall back to the
+        // native GBA size.
         let (img_w, img_h) = match handle {
             iced::widget::image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
             _ => (
@@ -370,41 +402,47 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
                 replay_session::SCREEN_HEIGHT as f32,
             ),
         };
-        if integer_scaling {
-            // Wrap in `responsive` to grab the available size,
-            // pick the largest integer scale that fits, and
-            // render the image at exact `texel * scale` pixels.
-            // The image is Fixed-size, so the inner container
-            // (Fill within the responsive's slot) handles the
-            // centering with `align_x/y`. The outer container
-            // alignment alone wouldn't work because the
-            // responsive widget itself fills its parent.
-            let handle = handle.clone();
-            iced::widget::responsive(move |size| {
-                let scale_w = (size.width / img_w).floor().max(1.0);
-                let scale_h = (size.height / img_h).floor().max(1.0);
-                let scale = scale_w.min(scale_h);
-                let img = image(handle.clone())
-                    .width(Length::Fixed(img_w * scale))
-                    .height(Length::Fixed(img_h * scale))
-                    .filter_method(image::FilterMethod::Nearest)
-                    .content_fit(iced::ContentFit::Fill);
-                iced::widget::container(img)
-                    .width(Fill)
-                    .height(Fill)
-                    .align_x(iced::alignment::Horizontal::Center)
-                    .align_y(iced::alignment::Vertical::Center)
-                    .into()
-            })
-            .into()
-        } else {
-            image(handle.clone())
+        // `responsive` to grab the available size and produce a
+        // Fixed-size framebuffer. We always go through it (even
+        // when fractional scaling is on) so the surrounding
+        // shadow container can be sized to the *displayed*
+        // pixels, not the pane — that way the drop shadow traces
+        // the GBA screen edges instead of the whole pane.
+        let handle = handle.clone();
+        iced::widget::responsive(move |size| {
+            let raw_scale = (size.width / img_w).min(size.height / img_h).max(0.0);
+            let scale = if fractional_scaling {
+                raw_scale
+            } else {
+                raw_scale.floor().max(1.0)
+            };
+            let (w, h) = (img_w * scale, img_h * scale);
+            let img = image(handle.clone())
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h))
+                .filter_method(image::FilterMethod::Nearest)
+                .content_fit(iced::ContentFit::Fill);
+            // Tight wrapper so the shadow style hugs the
+            // displayed framebuffer rather than its parent pane.
+            let framed = iced::widget::container(img)
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h))
+                .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                    shadow: iced::Shadow {
+                        color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+                        offset: iced::Vector::new(0.0, 8.0),
+                        blur_radius: 24.0,
+                    },
+                    ..Default::default()
+                });
+            iced::widget::container(framed)
                 .width(Fill)
                 .height(Fill)
-                .filter_method(image::FilterMethod::Nearest)
-                .content_fit(iced::ContentFit::Contain)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center)
                 .into()
-        }
+        })
+        .into()
     } else {
         Space::new().width(Fill).height(Fill).into()
     };
@@ -463,30 +501,30 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
 
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
 
-    // Body: framebuffer, optionally split with the opponent's
-    // save view on the right when reveal-setup is active +
-    // panel toggled on.
-    // Emulator framebuffer sits on pure black so the upscaled
-    // GBA viewport reads as a screen against bezel, not an
-    // image floating over the app's navy body.
-    let black_bg = |_theme: &iced::Theme| iced::widget::container::Style {
-        background: Some(iced::Background::Color(iced::Color::BLACK)),
-        ..Default::default()
-    };
+    // Body: framebuffer over the game's background art, optionally
+    // split with the opponent's save view on the right when
+    // reveal-setup is active + panel toggled on. The background
+    // image is cover-fit so it fills the pane and crops as needed.
+    let bg_handle = background_handle(session.local_game());
+    let bg = iced::widget::image(bg_handle)
+        .width(Fill)
+        .height(Fill)
+        .content_fit(iced::ContentFit::Cover);
+    let emu_pane: Element<'a, Message> = stack![bg, container(frame).center(Fill).padding(8)].into();
     let body: Element<'a, Message> = match session {
         ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
             let opponent = s.opponent_loaded.as_ref().unwrap();
             let panel =
                 save_view::view(lang, opponent, &s.opponent_save_view, true, None).map(Message::OpponentSaveViewAction);
             iced::widget::row![
-                container(frame).center(Fill).padding(8).style(black_bg),
+                emu_pane,
                 iced::widget::rule::vertical(1),
                 container(panel).width(iced::Length::Fixed(380.0)).height(Fill),
             ]
             .height(Fill)
             .into()
         }
-        _ => container(frame).center(Fill).padding(8).style(black_bg).into(),
+        _ => emu_pane,
     };
     layout = layout.push(body);
 
@@ -625,7 +663,7 @@ pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, integer_scaling:
         if let Some(s) = stats {
             metrics = metrics.push(
                 text(format!(
-                    "fa {:+3}:{:+3}",
+                    "fadv {:+3}:{:+3}",
                     s.local_frame_advantage, s.remote_frame_advantage
                 ))
                 .size(TEXT_CAPTION)
@@ -791,7 +829,7 @@ pub fn build_playback(
     let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
     let resolve_rom = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
-        &'static (dyn game::Game + Send + Sync),
+        &'static game::Game,
         std::sync::Arc<Vec<u8>>,
     )> {
         let gi = side

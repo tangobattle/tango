@@ -701,13 +701,8 @@ impl ReplaysState {
             // dedicated stats-line template just to glue them.
             let stats = self.stats.get(&r.path);
             let stats_line = stats.map(|s| {
-                let match_type = t!(
-                    lang,
-                    "replays-match-type-value",
-                    type = type_name.clone(),
-                    count = s.round_count as i64,
-                );
-                let mut parts = vec![match_type, format_duration(s.tick_count)];
+                let rounds = t!(lang, "replays-round-count", count = s.round_count as i64);
+                let mut parts = vec![type_name.clone(), rounds, format_duration(s.tick_count)];
                 if !s.is_complete {
                     parts.push(t!(lang, "replays-incomplete"));
                 }
@@ -943,12 +938,8 @@ fn replay_detail<'a>(
                     // worker gets here; just "Triple" until then,
                     // so the row doesn't pop when the count loads.
                     let value = if let Some(s) = state.stats.get(&r.path) {
-                        t!(
-                            lang,
-                            "replays-match-type-value",
-                            type = type_name,
-                            count = s.round_count as i64,
-                        )
+                        let rounds = t!(lang, "replays-round-count", count = s.round_count as i64);
+                        format!("{type_name} · {rounds}")
                     } else {
                         type_name
                     };

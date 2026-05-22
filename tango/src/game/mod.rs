@@ -1,17 +1,15 @@
-//! Per-game registration: trait, dispatch table, helpers.
+//! Per-game registration: struct, dispatch table, helpers.
 //!
 //! Mirrors the structure of `tango/src/game.rs` from the legacy app —
-//! each gamedb variant has its own `&'static dyn Game` constant in a
-//! per-family submodule. The trait surfaces `match_types`,
-//! `save_templates`, `load_rom_assets` (with patch overrides), and the
-//! per-game `tango_pvp::hooks::Hooks` so PVP / replay code has one
-//! lookup point.
+//! each gamedb variant has its own `&'static Game` constant in a
+//! per-family submodule. The struct surfaces `match_types`,
+//! `save_templates`, and the per-game `tango_pvp::hooks::Hooks` so PVP /
+//! replay code has one lookup point.
 
 use crate::i18n::LOCALES;
 use crate::rom::GameRef;
-use crate::rom_overrides::{OverridenAssets, Overrides};
 use fluent_templates::Loader;
-use std::any::Any;
+use std::sync::LazyLock;
 
 mod bn1;
 mod bn2;
@@ -21,101 +19,71 @@ mod bn5;
 mod bn6;
 mod exe45;
 
-/// Per-game registration trait. Each gamedb variant has an
-/// implementation in the appropriate `bnX` / `exe45` submodule, and
-/// the dispatch table in `from_gamedb_entry` maps the gamedb's
-/// `family_and_variant` to the right `&'static dyn Game`.
-pub trait Game
-where
-    Self: Any + Send + Sync,
-{
+pub type SaveTemplates = LazyLock<Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))>>;
+
+/// Lazily-decoded bundled image (logo / background). The
+/// `include_bytes!` blob is held in .rodata; the decode runs on first
+/// access. Consumers convert to whatever pixel format they need
+/// (typically `.to_rgba8()` for upload as an iced texture).
+pub type LazyImage = LazyLock<image::DynamicImage>;
+
+/// Per-game registration. Each gamedb variant has a `&'static Game`
+/// constant in the appropriate `bnX` / `exe45` submodule, and the
+/// dispatch table in `from_gamedb_entry` maps the gamedb's
+/// `family_and_variant` to the right entry.
+pub struct Game {
     /// The gamedb entry this Game wraps. The gamedb entry exposes the
     /// rom_code / region / variant / parse_save / etc.
-    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync);
-
+    pub gamedb_entry: &'static (dyn tango_gamedb::Game + Send + Sync),
     /// PVP / replay hooks for the underlying ROM. Used by the replay
     /// playback / export / netplay session pipelines.
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync);
-
+    pub hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
     /// Length-per-mode list. Entry `i` is how many subtypes mode `i`
     /// has — e.g. BN6 is `[1, 1]` (single battle, triple battle, one
     /// subtype each). Drives the match-type pick_list in the lobby.
-    fn match_types(&self) -> &'static [usize];
-
-    /// Build the rom Assets, layering patch-driven `overrides` on top
-    /// of gamedb's per-game defaults. The default impl converts the
-    /// override charset into the gamedb-friendly `Option<&[&str]>`
-    /// shape and wraps the gamedb result with `OverridenAssets`.
-    fn load_rom_assets(
-        &self,
-        rom: &[u8],
-        wram: &[u8],
-        overrides: &Overrides,
-    ) -> Box<dyn tango_dataview::rom::Assets + Send + Sync> {
-        let charset_owned: Option<Vec<&str>> = overrides
-            .charset
-            .as_ref()
-            .map(|c| c.iter().map(|s| s.as_str()).collect());
-        let inner = self.gamedb_entry().load_rom_assets(rom, wram, charset_owned.as_deref());
-        Box::new(OverridenAssets::new(inner, overrides.clone()))
-    }
-
+    pub match_types: &'static [usize],
     /// Bundled save templates for this game. Each entry is a
     /// `(template_name, save)` pair; the empty-string name is the
-    /// default template.
-    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))];
-}
-
-impl PartialEq for &'static (dyn Game + Send + Sync) {
-    fn eq(&self, other: &Self) -> bool {
-        (*self).type_id() == (*other).type_id()
-    }
-}
-impl Eq for &'static (dyn Game + Send + Sync) {}
-
-impl std::hash::Hash for &'static (dyn Game + Send + Sync) {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (*self).type_id().hash(state);
-    }
-}
-
-impl std::fmt::Debug for &'static (dyn Game + Send + Sync) {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        (*self).type_id().fmt(f)
-    }
+    /// default template. Lazily parsed from `include_bytes!` blobs on
+    /// first access.
+    pub save_templates: &'static SaveTemplates,
+    /// Logo for the game. Decoded on first access.
+    pub logo_image: &'static LazyImage,
+    /// Background image for the game. Decoded on first access.
+    pub background_image: &'static LazyImage,
 }
 
 /// Returns the per-game registration for a given gamedb entry, or
 /// None when the gamedb entry isn't one we have a Game impl for.
-pub fn from_gamedb_entry(entry: GameRef) -> Option<&'static (dyn Game + Send + Sync)> {
+pub fn from_gamedb_entry(entry: GameRef) -> Option<&'static Game> {
     Some(match entry.family_and_variant() {
-        ("exe1", 0) => bn1::EXE1,
-        ("bn1", 0) => bn1::BN1,
+        ("exe1", 0) => &bn1::EXE1,
+        ("bn1", 0) => &bn1::BN1,
 
-        ("exe2", 0) => bn2::EXE2,
-        ("bn2", 0) => bn2::BN2,
+        ("exe2", 0) => &bn2::EXE2,
+        ("bn2", 0) => &bn2::BN2,
 
-        ("exe3", 0) => bn3::EXE3W,
-        ("exe3", 1) => bn3::EXE3B,
-        ("bn3", 0) => bn3::BN3W,
-        ("bn3", 1) => bn3::BN3B,
+        ("exe3", 0) => &bn3::EXE3W,
+        ("exe3", 1) => &bn3::EXE3B,
+        ("bn3", 0) => &bn3::BN3W,
+        ("bn3", 1) => &bn3::BN3B,
 
-        ("exe4", 0) => bn4::EXE4RS,
-        ("exe4", 1) => bn4::EXE4BM,
-        ("bn4", 0) => bn4::BN4RS,
-        ("bn4", 1) => bn4::BN4BM,
+        ("exe4", 0) => &bn4::EXE4RS,
+        ("exe4", 1) => &bn4::EXE4BM,
+        ("bn4", 0) => &bn4::BN4RS,
+        ("bn4", 1) => &bn4::BN4BM,
 
-        ("exe5", 0) => bn5::EXE5B,
-        ("exe5", 1) => bn5::EXE5C,
-        ("bn5", 0) => bn5::BN5P,
-        ("bn5", 1) => bn5::BN5C,
+        ("exe5", 0) => &bn5::EXE5B,
+        ("exe5", 1) => &bn5::EXE5C,
+        ("bn5", 0) => &bn5::BN5P,
+        ("bn5", 1) => &bn5::BN5C,
 
-        ("exe6", 0) => bn6::EXE6G,
-        ("exe6", 1) => bn6::EXE6F,
-        ("bn6", 0) => bn6::BN6G,
-        ("bn6", 1) => bn6::BN6F,
+        ("exe6", 0) => &bn6::EXE6G,
+        ("exe6", 1) => &bn6::EXE6F,
+        ("bn6", 0) => &bn6::BN6G,
+        ("bn6", 1) => &bn6::BN6F,
 
-        ("exe45", 0) => exe45::EXE45,
+        ("exe45", 0) => &exe45::EXE45,
 
         _ => return None,
     })

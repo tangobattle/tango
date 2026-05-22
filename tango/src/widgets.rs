@@ -869,6 +869,42 @@ pub fn chunky_pick_list(theme: &Theme, status: iced::widget::pick_list::Status) 
     }
 }
 
+/// Container style that mimics a disabled `chunky_pick_list`. iced
+/// 0.14's `pick_list::Status` has no Disabled variant, so we render
+/// a styled `container` instead of the picker when the control isn't
+/// usable. Same recipe as `tinted_button`'s Disabled branch (flat
+/// desaturated plate + dim text + dim border) so disabled dropdowns
+/// and disabled buttons read as the same family.
+pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    let text = theme.palette().text;
+    let dim = mix(bg, text, if p.is_dark { 0.10 } else { 0.08 });
+    iced::widget::container::Style {
+        text_color: Some(iced::Color { a: 0.35, ..text }),
+        background: Some(iced::Background::Color(dim)),
+        border: iced::Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: 0.15,
+                ..p.background.strong.color
+            },
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
+/// Drop-in stand-in for a `chunky_pick_list` when the choice isn't
+/// available. Pads + radii match the live picker so the layout
+/// doesn't shift when toggling between enabled/disabled states.
+pub fn disabled_pick_list<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
+    iced::widget::container(iced::widget::text(label.into()))
+        .padding(crate::app::STANDARD_PADDING)
+        .style(disabled_pick_list_style)
+}
+
 /// Chunky checkbox: 4 px rounded box, primary-tinted border when
 /// hovered or checked, gradient fill when checked. iced 0.14's
 /// checkbox::Style has no shadow, but the thick accent border

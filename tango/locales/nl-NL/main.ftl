@@ -56,7 +56,10 @@ settings-enable-patch-autoupdate = Autoupdate inschakelen
 settings-data-path = Gegevenspad
     .open = Openen
     .change = Wijzigen
-settings-integer-scaling = Integer schalen
+settings-window-size = Venstergrootte
+settings-fullscreen = Volledig scherm
+settings-ui-scale = UI-schaal
+settings-fractional-scaling = Fractionele schaling
 save-tab-cover = Omslag
 save-tab-navi = Navi
 save-tab-folder = Map
@@ -170,10 +173,10 @@ replays-select-prompt = Selecteer een herhaling.
 play-opponent = Tegenstander
 replays-match-type = Matchtype:
 replays-duration = Duur:
-replays-match-type-value = { $type } ({ $count ->
+replays-round-count = { $count ->
     [one] 1 ronde
    *[other] { $count } rondes
-})
+}
 replays-incomplete = onvolledig
 patches-updating = Bijwerken…
 patches-update-failed = Bijwerken mislukt: { $error }

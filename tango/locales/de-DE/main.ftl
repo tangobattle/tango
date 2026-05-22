@@ -56,7 +56,10 @@ settings-enable-patch-autoupdate = Aktiviere automatische Aktualisierung
 settings-data-path = Datenpfad
     .open = Öffnen
     .change = Ändern
-settings-integer-scaling = Integer Skalierung
+settings-window-size = Fenstergröße
+settings-fullscreen = Vollbild
+settings-ui-scale = UI-Skalierung
+settings-fractional-scaling = Fraktionale Skalierung
 save-tab-cover = Deckel
 save-tab-navi = Navi
 save-tab-folder = Ordner
@@ -170,10 +173,10 @@ replays-select-prompt = Wähle eine Wiederholung.
 play-opponent = Gegner
 replays-match-type = Match-Typ:
 replays-duration = Dauer:
-replays-match-type-value = { $type } ({ $count ->
+replays-round-count = { $count ->
     [one] 1 Runde
    *[other] { $count } Runden
-})
+}
 replays-incomplete = unvollständig
 patches-updating = Aktualisiere…
 patches-update-failed = Aktualisierung fehlgeschlagen: { $error }

@@ -29,6 +29,10 @@ fn default_volume() -> f32 {
     1.0
 }
 
+fn default_ui_scale() -> f32 {
+    1.0
+}
+
 fn default_language() -> unic_langid::LanguageIdentifier {
     crate::i18n::FALLBACK_LANG
 }
@@ -108,14 +112,13 @@ pub struct Config {
     /// See `video::filter_by_name`.
     #[serde(default)]
     pub video_filter: String,
-    /// When true, the emulator frame is rendered at the largest
-    /// integer multiple of its texture size that fits the
-    /// window (instead of the default `ContentFit::Contain`,
-    /// which fractionally scales). Keeps every source pixel
-    /// at uniform host-pixel size — no bilinear shimmer at
-    /// non-integer scales.
+    /// When true, the emulator frame uses the full fractional
+    /// scale that fits the window. Default (false) snaps to the
+    /// largest whole-integer multiple of the source texture so
+    /// every source pixel maps to the same host-pixel count —
+    /// no bilinear shimmer at non-integer scales.
     #[serde(default)]
-    pub integer_scaling: bool,
+    pub fractional_scaling: bool,
     /// When true, the self-updater (`updater::Updater`) runs in
     /// the background and downloads any newer GitHub release.
     /// Toggle takes effect immediately via Settings; downloaded
@@ -158,6 +161,16 @@ pub struct Config {
     /// `iced::window::Settings::maximized` at startup.
     #[serde(default)]
     pub last_window_maximized: bool,
+    /// Whether the app should launch (and stay) in fullscreen. The
+    /// graphics-settings toggle calls `iced::window::set_mode` live;
+    /// this value persists the user's choice across restarts.
+    #[serde(default)]
+    pub fullscreen: bool,
+    /// Global UI scale factor, fed to `iced::application().scale_factor`.
+    /// `1.0` = native; higher values enlarge every widget uniformly.
+    /// Independent of the OS DPI scale — multiplies on top of it.
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f32,
 
     /// User-editable input bindings (keyboard + gamepad). See
     /// [`crate::input::Mapping::default`] for the out-of-the-box
@@ -191,7 +204,7 @@ impl Default for Config {
             patch_repo: default_patch_repo(),
             enable_patch_autoupdate: true,
             video_filter: String::new(),
-            integer_scaling: false,
+            fractional_scaling: false,
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,
@@ -201,6 +214,8 @@ impl Default for Config {
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
+            fullscreen: false,
+            ui_scale: default_ui_scale(),
             input_mapping: crate::input::Mapping::default(),
             netplay_throttler: NetplayThrottler::default(),
             volume: 1.0,

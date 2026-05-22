@@ -17,6 +17,7 @@ pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
 const EXPECTED_FPS: f32 = 60.0;
 
 pub struct ReplaySession {
+    game: &'static crate::game::Game,
     vbuf: Arc<Mutex<Vec<u8>>>,
     completion_token: tango_pvp::hooks::CompletionToken,
     close_requested: Arc<AtomicBool>,
@@ -41,9 +42,9 @@ pub struct ReplaySession {
 
 impl ReplaySession {
     pub fn new(
-        game: &'static (dyn crate::game::Game + Send + Sync),
+        game: &'static crate::game::Game,
         rom: Arc<Vec<u8>>,
-        remote_game: &'static (dyn crate::game::Game + Send + Sync),
+        remote_game: &'static crate::game::Game,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
         audio_binder: &crate::audio::LateBinder,
@@ -55,7 +56,7 @@ impl ReplaySession {
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
 
-        let hooks = game.hooks();
+        let hooks = game.hooks;
         hooks.patch(core.as_mut());
 
         let completion_token = tango_pvp::hooks::CompletionToken::new();
@@ -66,7 +67,7 @@ impl ReplaySession {
         let total_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
         let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
-        let remote_hooks = remote_game.hooks();
+        let remote_hooks = remote_game.hooks;
         let shadow = Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
         let shadow = Arc::new(Mutex::new(shadow));
 
@@ -161,6 +162,7 @@ impl ReplaySession {
         };
 
         Ok(Self {
+            game,
             vbuf,
             completion_token,
             close_requested: Arc::new(AtomicBool::new(false)),
@@ -175,6 +177,10 @@ impl ReplaySession {
             _prefetcher: prefetcher,
             thread,
         })
+    }
+
+    pub fn game(&self) -> &'static crate::game::Game {
+        self.game
     }
 
     /// Clone of the latest framebuffer (RGBA8, 240x160).
@@ -330,15 +336,15 @@ impl Prefetcher {
         rom: Arc<Vec<u8>>,
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
-        game: &'static (dyn crate::game::Game + Send + Sync),
-        remote_game: &'static (dyn crate::game::Game + Send + Sync),
+        game: &'static crate::game::Game,
+        remote_game: &'static crate::game::Game,
         snapshots: SnapshotStore,
         progress: Arc<AtomicU32>,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = cancel.clone();
-        let hooks = game.hooks();
-        let remote_hooks = remote_game.hooks();
+        let hooks = game.hooks;
+        let remote_hooks = remote_game.hooks;
         let join_handle = std::thread::spawn(move || {
             if let Err(e) = tango_pvp::replay::playback::run_prefetch(
                 rom.as_ref(),

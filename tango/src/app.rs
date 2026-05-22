@@ -400,7 +400,7 @@ impl App {
     /// and defensively inside `resend_settings_if_lobby`.
     fn apply_default_match_type(&mut self) {
         let Some(game) = self.play.local_game else { return };
-        let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types()).unwrap_or(&[]);
+        let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types).unwrap_or(&[]);
         let game_key = {
             let (fam, var) = game.family_and_variant();
             (fam.to_string(), var)
@@ -1340,7 +1340,39 @@ impl App {
                 }
             }
             C::VideoFilter(s) => self.config.video_filter = s,
-            C::IntegerScaling(b) => self.config.integer_scaling = b,
+            C::FractionalScaling(b) => self.config.fractional_scaling = b,
+            C::Fullscreen(b) => {
+                self.config.fullscreen = b;
+                self.persist_config();
+                let mode = if b {
+                    iced::window::Mode::Fullscreen
+                } else {
+                    iced::window::Mode::Windowed
+                };
+                return iced::window::latest()
+                    .and_then(move |id| iced::window::set_mode(id, mode));
+            }
+            C::UiScale(s) => self.config.ui_scale = s,
+            C::Resolution(w, h) => {
+                // Picking a windowed resolution implies leaving
+                // fullscreen — iced's Mode::Fullscreen is
+                // borderless and always covers the monitor, so a
+                // sub-monitor resize has no visible effect until
+                // we drop back to Windowed. Do both atomically.
+                let was_fullscreen = self.config.fullscreen;
+                self.config.fullscreen = false;
+                self.config.last_window_size = Some((w, h));
+                self.persist_config();
+                let size = iced::Size::new(w, h);
+                return iced::window::latest().and_then(move |id| {
+                    let resize = iced::window::resize(id, size);
+                    if was_fullscreen {
+                        iced::window::set_mode(id, iced::window::Mode::Windowed).chain(resize)
+                    } else {
+                        resize
+                    }
+                });
+            }
             C::EnableUpdater(b) => {
                 self.config.enable_updater = b;
                 self.updater.set_enabled(b);
@@ -1469,7 +1501,7 @@ impl App {
             // arrived in. Going through subscriptions would
             // round-trip through an `mpsc::try_send` and cost ~1
             // winit iteration of input lag per event.
-            let session_view = session::view(lang, &self.session, self.config.integer_scaling).map(Message::Session);
+            let session_view = session::view(lang, &self.session, self.config.fractional_scaling).map(Message::Session);
             return crate::input_capture::InputCapture::new(
                 session_view,
                 |input| {
@@ -1546,6 +1578,13 @@ impl App {
         // active palette (markdown link colors etc.) calls this
         // free fn too so we never drift.
         theme_for(&self.config)
+    }
+
+    /// Global UI scale multiplier — fed to `iced::application().scale_factor`.
+    /// Sourced from the user's pick in graphics settings; multiplies on
+    /// top of the OS DPI scale.
+    pub fn scale_factor(&self) -> f32 {
+        self.config.ui_scale
     }
 }
 
