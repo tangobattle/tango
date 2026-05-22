@@ -148,19 +148,13 @@ playback-speed = Speed
 replays-select-prompt = Select a replay.
 play-opponent = Opponent
 replays-match-type = Match type:
+replays-duration = Duration:
 replays-match-type-value =
     { $type } ({ $count ->
         [one] 1 round
        *[other] { $count } rounds
     })
-replays-rounds-short =
-    { $count ->
-        [one] 1 round
-       *[other] { $count } rounds
-    }
 replays-incomplete = incomplete
-replays-stats-line = { $duration } · { $rounds }
-replays-stats-line-incomplete = { $duration } · { $rounds } · { $incomplete }
 play-you = You
 # Patches
 patches-update = Update
