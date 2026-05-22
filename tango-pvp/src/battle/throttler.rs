@@ -147,7 +147,7 @@ impl<T: Throttler> Throttler for Watchdog<T> {
     }
 }
 
-/// Asymmetric power-law throttler on instantaneous skew. Matches tango
+/// Symmetric power-law throttler on instantaneous skew. Matches tango
 /// v4.x's `dtick`-based tuning: at |skew| = `knee` the slowdown is
 /// exactly 1 fps, below it the curve falls off sharply (implicit
 /// deadband), above it it grows super-linearly so big rifts close
@@ -176,10 +176,8 @@ impl Default for Power {
 
 impl Throttler for Power {
     fn step(&mut self, skew: i32) -> f32 {
-        if skew <= 0 {
-            0.0
-        } else {
-            (skew as f32 / self.knee).powf(self.exponent)
-        }
+        (skew.abs() as f32 / self.knee)
+            .powf(self.exponent)
+            .copysign(skew as f32)
     }
 }
