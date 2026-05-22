@@ -90,12 +90,12 @@ lobby-compat-match-mismatch = 対戦モードが一致しません。
 lobby-ready = 準備完了
 lobby-unready = 取消
 lobby-match-starting = 開始中…
-lobby-reveal-mine = 自分のセットアップを相手に公開
-lobby-reveal-peer-on = 相手はセットアップを公開しています。
+lobby-reveal-mine = 自分の構築を相手に公開
+lobby-reveal-peer-on = 相手は構築を公開しています。
 lobby-reveal-peer-off = 相手は公開していません。
 lobby-reveal-peer-unknown = （相手の応答待ち）
-session-show-opponent = 相手を表示
-session-hide-opponent = 相手を隠す
+session-opponent = 相手の構築
+session-self = 自分の構築
 session-back-to-session = 対戦に戻る
 
 # Save view sub-tabs
@@ -217,6 +217,7 @@ settings-window-size = ウィンドウサイズ
 settings-fullscreen = フルスクリーン
 settings-ui-scale = UI拡大率
 settings-fractional-scaling = フラクショナルスケーリング
+settings-hide-emulator-border = エミュレーターの枠を非表示
 settings-video-filter = ビデオフィルター
 updater-current-version = 現在のバージョン: { $version }
 updater-latest-version = 最新バージョン: { $version }

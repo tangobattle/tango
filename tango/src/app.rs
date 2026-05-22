@@ -537,6 +537,10 @@ pub enum Tab {
 /// per-tab `update_*` methods below.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// No-op message — used by overlay layers (e.g. the
+    /// settings-modal panel itself) to swallow clicks without
+    /// triggering any state change.
+    NoOp,
     TabSelected(Tab),
     Play(tabs::play::Message),
     Patches(tabs::patches::Message),
@@ -573,6 +577,7 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
+            Message::NoOp => iced::Task::none(),
             Message::TabSelected(t) => {
                 self.tab = t;
                 iced::Task::none()
@@ -1361,6 +1366,7 @@ impl App {
             }
             C::VideoFilter(s) => self.config.video_filter = s,
             C::FractionalScaling(b) => self.config.fractional_scaling = b,
+            C::HideEmulatorBorder(b) => self.config.hide_emulator_border = b,
             C::Fullscreen(b) => {
                 self.config.fullscreen = b;
                 self.persist_config();
@@ -1489,32 +1495,6 @@ impl App {
         }
 
         if self.session.is_active() {
-            // In-session Settings overlay: render the same
-            // settings panel the standalone tab uses, with a
-            // "back to session" header strip. The emulator keeps
-            // running underneath; only the visible body swaps.
-            if self.session.show_settings {
-                let back = widgets::labeled_icon_button(
-                    lucide_icons::Icon::ArrowLeft,
-                    t!(lang, "session-back-to-session"),
-                    Message::Session(session::Message::CloseSettings),
-                    STANDARD_PADDING,
-                    widgets::neutral,
-                );
-                let header = iced::widget::container(
-                    iced::widget::row![back, iced::widget::space::horizontal()]
-                        .padding(8)
-                        .align_y(iced::Alignment::Center),
-                )
-                .width(Fill);
-                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
-                    .map(Message::Settings);
-                return iced::widget::column![header, iced::widget::rule::horizontal(1), body]
-                    .spacing(0)
-                    .width(Fill)
-                    .height(Fill)
-                    .into();
-            }
             // Deliver keyboard + gamepad input through the
             // synchronous widget path so each event reaches
             // `program.update()` on the same winit iteration it
@@ -1525,10 +1505,80 @@ impl App {
                 lang,
                 &self.session,
                 self.config.fractional_scaling,
+                self.config.hide_emulator_border,
                 &self.config.video_filter,
             )
             .map(Message::Session);
-            return crate::input_capture::InputCapture::new(session_view, |input| {
+            // In-session settings modal: floats centered over the
+            // running session with a dimmed click-to-dismiss
+            // backdrop. The emulator keeps running underneath.
+            let composed: Element<'_, Message> = if self.session.show_settings {
+                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
+                    .map(Message::Settings);
+                // Top header row carrying the X close button. The
+                // close is the only affordance for dismissing the
+                // modal — the backdrop is inert. Inline (not a
+                // floating overlay) so the body lays out beneath.
+                let close_btn = widgets::icon_button(
+                    lucide_icons::Icon::X,
+                    t!(lang, "playback-close"),
+                    Message::Session(session::Message::CloseSettings),
+                    [4.0, 8.0],
+                );
+                let heading = iced::widget::text(t!(lang, "tab-settings")).size(TEXT_HEADING);
+                let header = iced::widget::container(
+                    iced::widget::row![heading, iced::widget::space::horizontal(), close_btn]
+                        .padding(iced::Padding {
+                            top: 8.0,
+                            right: 8.0,
+                            bottom: 0.0,
+                            left: 14.0,
+                        })
+                        .align_y(iced::Alignment::Center),
+                )
+                .width(Fill);
+                let modal_panel = iced::widget::container(
+                    iced::widget::column![header, body]
+                        .spacing(0)
+                        .width(Fill)
+                        .height(Fill),
+                )
+                .width(iced::Length::Fixed(820.0))
+                .height(iced::Length::Fixed(560.0))
+                .style(widgets::panel);
+                // Wrap the panel in a mouse_area so clicks on
+                // its inert regions (background, headings) get
+                // swallowed instead of falling through to the
+                // dismiss-on-press backdrop layer below.
+                let modal_panel_swallow = iced::widget::mouse_area(modal_panel).on_press(Message::NoOp);
+                let placement = iced::widget::container(modal_panel_swallow)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center);
+                // Backdrop — dim wash that also dismisses the
+                // modal on click. Captures the press so it
+                // doesn't reach the session HUD beneath.
+                let backdrop = iced::widget::mouse_area(
+                    iced::widget::container(iced::widget::Space::new().width(Fill).height(Fill))
+                        .width(Fill)
+                        .height(Fill)
+                        .style(|_: &iced::Theme| iced::widget::container::Style {
+                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.45))),
+                            ..Default::default()
+                        }),
+                )
+                .on_press(Message::Session(session::Message::CloseSettings));
+                iced::widget::stack![
+                    Element::from(session_view),
+                    Element::from(backdrop),
+                    Element::from(placement),
+                ]
+                .into()
+            } else {
+                session_view
+            };
+            return crate::input_capture::InputCapture::new(composed, |input| {
                 let ev = match input {
                     crate::input_capture::Input::Keyboard(kb) => match kb {
                         iced::keyboard::Event::KeyPressed { physical_key, .. } => Some(session::InputEvent::Key {

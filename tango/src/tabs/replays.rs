@@ -998,7 +998,7 @@ fn replay_detail<'a>(
     // when a save is loaded; otherwise a single placeholder pane
     // explaining the empty state.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        save_view::view(lang, loaded, &state.save_view, false, None).map(Message::SaveViewAction)
+        save_view::view(lang, loaded, &state.save_view, false, None, true).map(Message::SaveViewAction)
     } else {
         container(
             text(t!(lang, "save-empty"))

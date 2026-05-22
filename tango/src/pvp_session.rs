@@ -83,6 +83,15 @@ pub struct PvpSession {
     /// save-view panel. Mutated via
     /// `session::Message::OpponentSaveViewAction`.
     pub opponent_save_view: crate::save_view::State,
+    /// Local side's fully-loaded selection — mirror of
+    /// [`opponent_loaded`] for the in-session "my setup" toggle.
+    /// Always present in PvP (the user always has access to
+    /// their own save); kept Optional only to match the shape
+    /// of the opponent field for the shared rendering path.
+    pub local_loaded: Option<crate::selection::Loaded>,
+    /// Active-tab / grouping state for the in-match self
+    /// save-view panel. Mirror of [`opponent_save_view`].
+    pub local_save_view: crate::save_view::State,
 }
 
 impl PvpSession {
@@ -103,6 +112,7 @@ impl PvpSession {
         replays_path: &Path,
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
+        local_loaded: Option<crate::selection::Loaded>,
         throttler_factory: tango_pvp::battle::ThrottlerFactory,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
@@ -388,6 +398,8 @@ impl PvpSession {
             remote_nickname: pre_match.remote_settings.nickname,
             opponent_loaded,
             opponent_save_view: crate::save_view::State::new(),
+            local_loaded,
+            local_save_view: crate::save_view::State::new(),
         })
     }
 

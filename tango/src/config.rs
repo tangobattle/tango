@@ -119,6 +119,12 @@ pub struct Config {
     /// no bilinear shimmer at non-integer scales.
     #[serde(default)]
     pub fractional_scaling: bool,
+    /// When true, hide the BNLC per-game background art that
+    /// sits behind the framebuffer — fall back to a plain black
+    /// backdrop instead. Default (false) shows the BNLC border
+    /// when the corresponding volume is installed.
+    #[serde(default)]
+    pub hide_emulator_border: bool,
     /// When true, the self-updater (`updater::Updater`) runs in
     /// the background and downloads any newer GitHub release.
     /// Toggle takes effect immediately via Settings; downloaded
@@ -205,6 +211,7 @@ impl Default for Config {
             enable_patch_autoupdate: true,
             video_filter: String::new(),
             fractional_scaling: false,
+            hide_emulator_border: false,
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,

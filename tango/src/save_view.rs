@@ -162,6 +162,7 @@ pub fn view<'a>(
     state: &'a State,
     streamer_mode: bool,
     play_button: Option<bool>,
+    inline_actions: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
     use iced::{Alignment, Fill};
@@ -175,7 +176,15 @@ pub fn view<'a>(
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
 
-    let mut tab_row = row![].spacing(2).align_y(Alignment::Center);
+    // Tab strip: tabs left, extras+Play right. We split into two
+    // rows so the tab list can wrap onto a second line without
+    // dragging the extras/Play tail with it. The tail is a
+    // separate row, sized to its content and capped to the tab
+    // button height so the strip's overall height doesn't grow
+    // when active-tab extras (folder group toggle, copy buttons)
+    // change.
+    const TAB_STRIP_HEIGHT: f32 = 31.0;
+    let mut tabs_only = row![].spacing(2).align_y(Alignment::Center);
     for tab in &available {
         let label = match tab {
             Tab::Cover => t!(lang, "save-tab-cover"),
@@ -184,21 +193,19 @@ pub fn view<'a>(
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
             Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
         };
-        tab_row = tab_row.push(widgets::tab_button(
+        tabs_only = tabs_only.push(widgets::tab_button(
             tab_icon(*tab),
             label,
             Action::SelectTab(*tab),
             *tab == active,
         ));
     }
-    tab_row = tab_row.push(horizontal_space());
-    // Tab strip's outer spacing is tight (2 px between tabs) but
-    // extras / Play sit visually grouped on the right and want a
-    // looser internal rhythm matching the copy-button row's own
-    // spacing. Compose them into one tail row.
+    let tabs_only = tabs_only.wrap();
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
-    if let Some(extras) = tab_extras(lang, active, state, loaded) {
-        tail = tail.push(extras);
+    if inline_actions {
+        if let Some(extras) = tab_extras(lang, active, state, loaded) {
+            tail = tail.push(extras);
+        }
     }
     if let Some(enabled) = play_button {
         use lucide_icons::Icon;
@@ -213,7 +220,12 @@ pub fn view<'a>(
         }
         tail = tail.push(btn);
     }
-    tab_row = tab_row.push(tail);
+    let tab_row = row![
+        container(tabs_only).width(Fill),
+        container(tail).height(Length::Fixed(TAB_STRIP_HEIGHT)).align_y(Alignment::Center),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Start);
 
     let opts = RenderOpts {
         folder_grouped: state.folder_grouped,
@@ -296,10 +308,6 @@ fn tab_extras<'a>(
         }
         _ => None,
     }
-}
-
-fn horizontal_space() -> iced::widget::Space {
-    iced::widget::space::horizontal()
 }
 
 /// Plain-text representation of the active save-view tab, for the

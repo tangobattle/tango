@@ -36,7 +36,6 @@ pub enum ActiveSession {
 }
 
 impl ActiveSession {
-
     pub fn request_close(&self) {
         match self {
             Self::Replay(s) => s.request_close(),
@@ -103,6 +102,10 @@ pub struct State {
     /// the panel is available; user can hide it via the toggle
     /// button in the header.
     pub show_opponent_panel: bool,
+    /// PvP-only: shows the local player's save view in a side
+    /// panel. Defaults to hidden; user toggles via the
+    /// red toolbar button.
+    pub show_self_panel: bool,
     /// Combined keyboard + gamepad held state. Updated from
     /// the input event stream; the user's Mapping resolves it
     /// into mgba joyflags each event.
@@ -141,6 +144,7 @@ impl Default for State {
             ])),
             active: None,
             show_opponent_panel: false,
+            show_self_panel: false,
             input_held: crate::input::HeldState::default(),
             speed_up_engaged: false,
             show_settings: false,
@@ -183,9 +187,13 @@ pub enum Message {
     ToggleOptionsMenu,
     /// Show/hide the opponent's reveal-setup side panel. PvP-only.
     ToggleOpponentPanel,
+    /// Show/hide the local player's save-view panel. PvP-only.
+    ToggleSelfPanel,
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …). PvP-only.
     OpponentSaveViewAction(save_view::Action),
+    /// Mirror of [`OpponentSaveViewAction`] for the local panel.
+    SelfSaveViewAction(save_view::Action),
     /// Show the in-session Settings overlay. The emulator keeps
     /// running; only the visible body swaps. Replaces the
     /// legacy in-game pause menu.
@@ -230,12 +238,7 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(
-        &mut self,
-        msg: Message,
-        mapping: &crate::input::Mapping,
-        video_filter: &str,
-    ) -> iced::Task<Message> {
+    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
@@ -309,10 +312,19 @@ impl State {
             Message::ToggleOpponentPanel => {
                 self.show_opponent_panel = !self.show_opponent_panel;
             }
+            Message::ToggleSelfPanel => {
+                self.show_self_panel = !self.show_self_panel;
+            }
             Message::OpponentSaveViewAction(action) => {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
                     let sv_task = s.opponent_save_view.apply(&action);
                     return sv_task.map(Message::OpponentSaveViewAction);
+                }
+            }
+            Message::SelfSaveViewAction(action) => {
+                if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
+                    let sv_task = s.local_save_view.apply(&action);
+                    return sv_task.map(Message::SelfSaveViewAction);
                 }
             }
             Message::OpenSettings => {
@@ -354,7 +366,12 @@ impl State {
 /// [`crate::input_capture`] — see that module's docs for why the
 /// subscription path is too laggy for joypad state.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    iced::Subscription::run_with(FrameTag { notify: state.frame_notify.clone() }, build_frame_stream)
+    iced::Subscription::run_with(
+        FrameTag {
+            notify: state.frame_notify.clone(),
+        },
+        build_frame_stream,
+    )
 }
 
 /// Stable subscription identity. The hash is a constant string so
@@ -397,12 +414,6 @@ fn build_frame_handle(pixels: Vec<u8>, video_filter: &str) -> iced::widget::imag
         filter.apply(&pixels, &mut dst, [src_w, src_h]);
         (out_w as u32, out_h as u32, dst)
     };
-    // hqx operates on 24-bit RGB and masks the alpha byte to 0 in
-    // every output pixel (see `MASK_RGB = 0x00FFFFFF` in the hqx
-    // crate). The result reads as fully transparent in iced and
-    // shows as black / strobing depending on what's underneath.
-    // Pure-2x MMPX preserves alpha, but it's cheap to re-stamp
-    // unconditionally.
     for chunk in buf.chunks_mut(4) {
         chunk[3] = 0xff;
     }
@@ -451,6 +462,7 @@ pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     state: &'a State,
     fractional_scaling: bool,
+    hide_emulator_border: bool,
     video_filter: &'a str,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
@@ -529,45 +541,92 @@ pub fn view<'a>(
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
-        iced::widget::tooltip(
-            iced::widget::button(icon.widget().size(CTRL_ICON))
+    let ctrl_icon_btn_maybe =
+        |icon: Icon,
+         label: String,
+         msg: Option<Message>,
+         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+         -> Element<'a, Message> {
+            let mut btn = iced::widget::button(icon.widget().size(CTRL_ICON))
                 .padding(CTRL_PAD)
                 .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-                .style(widgets::neutral)
-                .on_press(msg),
-            iced::widget::container(text(label).size(TEXT_CAPTION))
-                .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
+                .style(style);
+            if let Some(m) = msg {
+                btn = btn.on_press(m);
+            }
+            iced::widget::tooltip(
+                btn,
+                iced::widget::container(text(label).size(TEXT_CAPTION))
+                    .padding(6)
+                    .style(|theme: &iced::Theme| {
+                        let p = theme.extended_palette();
+                        iced::widget::container::Style {
+                            background: Some(iced::Background::Color(p.background.strong.color)),
+                            text_color: Some(p.background.strong.text),
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4)
-        .into()
+                        }
+                    }),
+                iced::widget::tooltip::Position::Top,
+            )
+            .gap(4)
+            .into()
+        };
+    let ctrl_icon_btn_styled =
+        |icon: Icon,
+         label: String,
+         msg: Message,
+         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+         -> Element<'a, Message> { ctrl_icon_btn_maybe(icon, label, Some(msg), style) };
+    let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
+        ctrl_icon_btn_styled(icon, label, msg, widgets::neutral)
     };
 
-    // PvP-only: if the opponent revealed their setup, expose a
-    // toggle for the side panel so the user can collapse it
-    // mid-match without losing it. Folded into the controls strip
-    // below alongside the close button.
+    // PvP-only: red "show my setup" toggle (left of the controls
+    // strip) and blue "show opponent's setup" toggle (right).
+    // Color-coded like the matchup-pane diagonal split — red = P1,
+    // blue = P2. Opponent toggle is always rendered for PvP; it's
+    // disabled when the peer didn't enable reveal-setup.
+    let self_toggle: Option<Element<'a, Message>> = match session {
+        ActiveSession::PvP(s) if s.local_loaded.is_some() => {
+            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+                if state.show_self_panel {
+                    widgets::pvp_red_button
+                } else {
+                    widgets::neutral
+                };
+            Some(ctrl_icon_btn_styled(
+                Icon::FileUser,
+                t!(lang, "session-self"),
+                Message::ToggleSelfPanel,
+                style,
+            ))
+        }
+        _ => None,
+    };
     let opponent_toggle: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(s) if s.opponent_loaded.is_some() => {
-            let (icon, label) = if state.show_opponent_panel {
-                (Icon::ArrowRightFromLine, t!(lang, "session-hide-opponent"))
+        ActiveSession::PvP(s) => {
+            let revealed = s.opponent_loaded.is_some();
+            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+                if state.show_opponent_panel && revealed {
+                    widgets::pvp_blue_button
+                } else {
+                    widgets::neutral
+                };
+            let msg = if revealed {
+                Some(Message::ToggleOpponentPanel)
             } else {
-                (Icon::ArrowLeftFromLine, t!(lang, "session-show-opponent"))
+                None
             };
-            Some(ctrl_icon_btn(icon, label, Message::ToggleOpponentPanel))
+            Some(ctrl_icon_btn_maybe(
+                Icon::FileUser,
+                t!(lang, "session-opponent"),
+                msg,
+                style,
+            ))
         }
         _ => None,
     };
@@ -575,13 +634,18 @@ pub fn view<'a>(
 
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
 
-    // Body: framebuffer over either the game's BNLC background
-    // art (cover-fit, crops as needed) or a pure-black backdrop
-    // when BNLC isn't installed. The framebuffer container takes
-    // the whole pane with no padding so the bezel reads as
-    // CRT-style edge against the backdrop.
+    // Body: framebuffer + optional setup panes layered over the
+    // game's BNLC background art (cover-fit, crops as needed) or
+    // a pure-black backdrop when BNLC isn't installed. The
+    // backdrop spans the full body width so the setup panes
+    // float on top of the same bezel art.
     let frame_container = container(frame).center(Fill);
-    let backdrop: Element<'a, Message> = match background_handle(session.local_game()) {
+    let bnlc_bg = if hide_emulator_border {
+        None
+    } else {
+        background_handle(session.local_game())
+    };
+    let backdrop: Element<'a, Message> = match bnlc_bg {
         Some(bg_handle) => iced::widget::image(bg_handle)
             .width(Fill)
             .height(Fill)
@@ -594,23 +658,51 @@ pub fn view<'a>(
             })
             .into(),
     };
-    let emu_pane: Element<'a, Message> = stack![backdrop, frame_container].into();
-    let body: Element<'a, Message> = match session {
-        ActiveSession::PvP(s) if state.show_opponent_panel && s.opponent_loaded.is_some() => {
+
+    // Optional left/right setup panes for PvP. Each occupies a
+    // fixed width when shown; the emulator fills the rest of the
+    // row. The panes ride on top of the backdrop layer so the
+    // BNLC bezel art shows around their outer margins. Only the
+    // panes carry padding — the emulator itself still extends to
+    // the screen edges.
+    const SETUP_PANE_WIDTH: f32 = 420.0;
+    let mut content_row = row![].spacing(0).height(Fill).width(Fill);
+    if let ActiveSession::PvP(s) = session {
+        if state.show_self_panel && s.local_loaded.is_some() {
+            let me = s.local_loaded.as_ref().unwrap();
+            let panel =
+                save_view::view(lang, me, &s.local_save_view, true, None, false).map(Message::SelfSaveViewAction);
+            let pane = container(panel)
+                .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
+                .height(Fill)
+                .padding(widgets::PANE_PADDING)
+                .style(widgets::panel);
+            content_row = content_row.push(
+                container(pane).height(Fill).padding(widgets::PANE_PADDING),
+            );
+        }
+    }
+    content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
+    if let ActiveSession::PvP(s) = session {
+        if state.show_opponent_panel && s.opponent_loaded.is_some() {
             let opponent = s.opponent_loaded.as_ref().unwrap();
             let panel =
-                save_view::view(lang, opponent, &s.opponent_save_view, true, None).map(Message::OpponentSaveViewAction);
-            iced::widget::row![
-                emu_pane,
-                iced::widget::rule::vertical(1),
-                container(panel).width(iced::Length::Fixed(380.0)).height(Fill),
-            ]
-            .height(Fill)
-            .into()
+                save_view::view(lang, opponent, &s.opponent_save_view, true, None, false).map(Message::OpponentSaveViewAction);
+            let pane = container(panel)
+                .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
+                .height(Fill)
+                .padding(widgets::PANE_PADDING)
+                .style(widgets::panel);
+            content_row = content_row.push(
+                container(pane).height(Fill).padding(widgets::PANE_PADDING),
+            );
         }
-        _ => emu_pane,
-    };
-    layout = layout.push(body);
+    }
+    let emu_pane: Element<'a, Message> = container(stack![backdrop, Element::from(content_row)])
+        .width(Fill)
+        .height(Fill)
+        .into();
+    layout = layout.push(emu_pane);
 
     // Controls strip. Replay sessions get the full transport
     // (play/pause + scrubber + speed); single-player + PvP get a
@@ -712,8 +804,14 @@ pub fn view<'a>(
             )
             .push(options_btn);
     } else {
-        // No transport widgets for SP/PvP — push a spacer so the
-        // close button (and opponent toggle) hug the right edge.
+        // No transport widgets for SP/PvP. Drop the self-setup
+        // toggle on the left (PvP-only) so it pairs visually
+        // with the right-anchored opponent toggle, then push a
+        // spacer so the rest of the strip (metrics, settings,
+        // opponent, close) hugs the right edge.
+        if let Some(t) = self_toggle {
+            controls = controls.push(t);
+        }
         controls = controls.push(horizontal_space());
     }
     // PvP-only status readout: P1/P2, TPS, frame advantage, ping.
@@ -791,25 +889,16 @@ pub fn view<'a>(
         .push(widgets::hud_scanline())
         .push(container(controls).width(Fill).style(widgets::hud_bar));
 
-    // Options popover. Built as a top Stack layer anchored above
-    // the HUD bar so it floats over the framebuffer without pushing
-    // the controls strip up. Only present while the cogwheel toggle
-    // is engaged on a replay session — the menu owns its own dismiss
-    // (changing a setting closes it; clicking the cogwheel again
-    // toggles it off).
-    //
-    // Sectioned: a small caption labels each settings group so when
-    // we add more replay knobs they slot in alongside Speed instead
-    // of needing their own popover.
-    if state.show_options_menu && session.as_replay().is_some() {
+    // Replay options popover. Built as a top Stack layer anchored
+    // above the HUD bar so it floats over the framebuffer without
+    // pushing the controls strip up. Only present while the
+    // cogwheel toggle is engaged on a replay session — the menu
+    // owns its own dismiss (changing a setting closes it; clicking
+    // the cogwheel again toggles it off).
+    let options_overlay: Option<Element<'a, Message>> = if state.show_options_menu && session.as_replay().is_some() {
         let r = session.as_replay().unwrap();
         let current = r.speed();
         let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
-        // Flat menu-row style: no border / shadow / chunky bevel at
-        // rest, just a subtle hover wash. The button chrome we use
-        // elsewhere reads as transport widgets and looks busy when
-        // a column of them is stacked — a select-menu row needs to
-        // read as a list line item, not a button.
         let menu_row_style = |selected: bool| {
             move |theme: &iced::Theme, status: iced::widget::button::Status| {
                 use iced::widget::button::Status;
@@ -842,9 +931,6 @@ pub fn view<'a>(
             } else {
                 format!("{:.1}×", v)
             };
-            // Reserve a fixed slot for the check glyph so the labels
-            // stay vertically aligned regardless of which row is
-            // selected.
             let check: Element<'a, Message> = if selected {
                 Icon::Check.widget().size(14.0).into()
             } else {
@@ -879,24 +965,30 @@ pub fn view<'a>(
         ]
         .spacing(2);
         let popover = container(speed_section).padding(6).style(widgets::panel);
-        // Anchor to bottom-right and lift above the HUD bar (control
-        // height + bar padding + scanline + a small gap).
         let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
-        let overlay = container(popover)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 16.0,
-                bottom: lift,
-                left: 0.0,
-            });
-        stack![layout, overlay].into()
+        Some(
+            container(popover)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .align_y(iced::alignment::Vertical::Bottom)
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 16.0,
+                    bottom: lift,
+                    left: 0.0,
+                })
+                .into(),
+        )
     } else {
-        layout.into()
+        None
+    };
+
+    let mut stacked = stack![Element::from(layout)];
+    if let Some(o) = options_overlay {
+        stacked = stacked.push(o);
     }
+    stacked.into()
 }
 
 /// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional
@@ -1043,6 +1135,29 @@ pub async fn spawn_pvp(
         None
     };
 
+    // Build the local-side Loaded so the in-session "my setup"
+    // toggle can render the same save-view we use for the
+    // opponent panel.
+    let local_loaded = {
+        let local_save = local_game
+            .parse_save(&pre_match.local_save_data)
+            .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
+        let patch_meta = local_patch.as_ref().and_then(|(name, version)| {
+            let patches = scanners.patches.read();
+            let pinfo = patches.get(name)?;
+            let v = pinfo.versions.get(version).cloned()?;
+            Some((name.clone(), version.clone(), v))
+        });
+        Some(crate::selection::Loaded::build(
+            local_game,
+            local_rom_bytes.clone(),
+            std::path::PathBuf::new(),
+            local_save,
+            &config.patches_path(),
+            patch_meta,
+        ))
+    };
+
     pvp_session::PvpSession::new(
         local_game_impl,
         std::sync::Arc::new(local_rom_bytes),
@@ -1052,6 +1167,7 @@ pub async fn spawn_pvp(
         &config.replays_path(),
         &audio_binder,
         opponent_loaded,
+        local_loaded,
         throttler_factory_for(config.netplay_throttler),
         frame_notify,
         vbuf,

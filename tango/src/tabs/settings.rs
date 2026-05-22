@@ -47,6 +47,7 @@ pub enum Message {
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
+    ToggleHideEmulatorBorder(bool),
     ToggleFullscreen(bool),
     ResolutionChanged(ResolutionChoice),
     UiScaleChanged(UiScaleChoice),
@@ -93,6 +94,7 @@ pub enum ConfigChange {
     PatchAutoupdate(bool),
     VideoFilter(String),
     FractionalScaling(bool),
+    HideEmulatorBorder(bool),
     Fullscreen(bool),
     Resolution(f32, f32),
     UiScale(f32),
@@ -124,6 +126,7 @@ impl State {
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
+            Message::ToggleHideEmulatorBorder(b) => Some(ConfigChange::HideEmulatorBorder(b)),
             Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
             Message::ResolutionChanged(c) => Some(ConfigChange::Resolution(c.width, c.height)),
             Message::UiScaleChanged(c) => Some(ConfigChange::UiScale(c.0)),
@@ -507,6 +510,10 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         iced::widget::checkbox(config.fractional_scaling)
             .label(t!(lang, "settings-fractional-scaling"))
             .on_toggle(Message::ToggleFractionalScaling)
+            .style(widgets::chunky_checkbox),
+        iced::widget::checkbox(config.hide_emulator_border)
+            .label(t!(lang, "settings-hide-emulator-border"))
+            .on_toggle(Message::ToggleHideEmulatorBorder)
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)

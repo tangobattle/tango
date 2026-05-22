@@ -1039,7 +1039,7 @@ impl PlayState {
         // so it can't fight with that lobby for the same
         // save/emulator slot.
         let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
-        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button).map(Message::SaveViewAction)
+        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button, true).map(Message::SaveViewAction)
     }
 
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
