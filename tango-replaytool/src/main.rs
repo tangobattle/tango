@@ -231,6 +231,7 @@ async fn cmd_export(
     }
 
     let selected_rounds = vec![vec![true; replay.rounds.len()]];
+    let canceller = tango_pvp::replay::export::Canceller::new();
     if twosided {
         tango_pvp::replay::export::export_twosided(
             &local_rom,
@@ -241,9 +242,9 @@ async fn cmd_export(
             &selected_rounds,
             &output_path,
             &settings,
+            &canceller,
             cb,
-        )
-        .await?;
+        )?;
     } else {
         tango_pvp::replay::export::export(
             &local_rom,
@@ -254,9 +255,9 @@ async fn cmd_export(
             &selected_rounds,
             &output_path,
             &settings,
+            &canceller,
             cb,
-        )
-        .await?;
+        )?;
     }
 
     Ok(())

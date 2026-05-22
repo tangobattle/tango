@@ -1201,96 +1201,93 @@ impl App {
         let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();
         let done_arc: std::sync::Arc<parking_lot::Mutex<Option<Result<std::path::PathBuf, String>>>> =
             std::sync::Arc::new(parking_lot::Mutex::new(None));
-        let done_arc_task = done_arc.clone();
-        let output_for_task = output_path.clone();
-        // Run the export on a tokio task so the ffmpeg child processes
-        // (set up with `kill_on_drop(true)` inside `tango_pvp::replay::
-        // export`) get killed automatically when the future is dropped —
-        // i.e. when the user clicks Cancel and we abort the JoinHandle.
-        let join = tokio::task::spawn(async move {
-            let ExportPrep {
-                local_hooks,
-                local_rom,
-                remote_hooks,
-                remote_rom,
-                replay,
-            } = prep;
-            // scale == 0 is the slider's lossless stop → libx264rgb
-            // -qp 0 (RGB-domain lossless); 1..=10 → libx264 + nearest
-            // upscale at that factor. `default_with_scale` builds the
-            // ffmpeg flags accordingly.
-            let scale_arg = if user_settings.scale == 0 {
-                None
-            } else {
-                Some(user_settings.scale as usize)
-            };
-            let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
-            settings.disable_bgm = user_settings.disable_bgm;
-            let selected_rounds = vec![rounds_mask];
-            // Clone the sender into the callback. The original
-            // `progress_tx` stays alive in the outer task until *after*
-            // `done_arc_task` is set; otherwise the futures channel
-            // closes the moment `cb` (and thus the moved sender) is
-            // dropped, the iced stream wakes up, sees `None`, races to
-            // read `done_arc` while it's still unset, and reports
-            // "export task ended without result".
-            let cb_tx = progress_tx.clone();
-            let cb = move |current: usize, total: usize| {
-                let _ = cb_tx.unbounded_send((current, total));
-            };
-            let result = if user_settings.twosided {
-                tango_pvp::replay::export::export_twosided(
-                    &local_rom,
+        let done_arc_thread = done_arc.clone();
+        let output_for_thread = output_path.clone();
+        // The ExportJob the tab module created in `ExportStart` already
+        // owns the canceller. Clone it for the thread; the tab's
+        // Cancel button calls `kill()` on its copy.
+        let canceller_thread = self
+            .replays
+            .per
+            .get(&replay_path)
+            .and_then(|e| e.job.as_ref())
+            .map(|j| j.canceller.clone())
+            .unwrap_or_default();
+        // Run the export on a dedicated OS thread. The export is fully
+        // synchronous (std::process ffmpeg subprocesses, no async), so
+        // it lives entirely outside the iced/tokio worker pool — no
+        // shared-runtime starvation regardless of how tight the
+        // export inner loop runs.
+        std::thread::Builder::new()
+            .name("replay-export".to_string())
+            .spawn(move || {
+                let ExportPrep {
                     local_hooks,
-                    &remote_rom,
+                    local_rom,
                     remote_hooks,
-                    &[replay],
-                    &selected_rounds,
-                    &output_for_task,
-                    &settings,
-                    cb,
-                )
-                .await
-            } else {
-                tango_pvp::replay::export::export(
-                    &local_rom,
-                    local_hooks,
-                    &remote_rom,
-                    remote_hooks,
-                    &[replay],
-                    &selected_rounds,
-                    &output_for_task,
-                    &settings,
-                    cb,
-                )
-                .await
-            }
-            .map(|()| output_for_task)
-            .map_err(|e| format!("{e}"));
-            *done_arc_task.lock() = Some(result);
-            // `progress_tx` drops here, closing the channel, which
-            // signals the iced stream to read `done_arc` — which is
-            // now safely set above.
-            drop(progress_tx);
-        });
-        // Stash the abort handle onto the in-flight ExportJob so the
-        // tab's Cancel button can call `.abort()` directly. Tab owns
-        // its own cancellation; the App is just the spawner.
-        //
-        // Also handle the theoretical "user clicked Cancel between
-        // ExportStart and now" race: today it can't happen because
-        // iced processes update() messages serially with no redraw
-        // in between, but if the path ever becomes async (e.g. async
-        // ROM resolution) a pending cancel would otherwise be lost.
-        // Honour the flag eagerly so the task tears down right away.
-        if let Some(job) = self.replays.per.get_mut(&replay_path).and_then(|e| e.job.as_mut()) {
-            let abort = join.abort_handle();
-            if job.cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                abort.abort();
-            } else {
-                job.abort = Some(abort);
-            }
-        }
+                    remote_rom,
+                    replay,
+                } = prep;
+                // scale == 0 is the slider's lossless stop → libx264rgb
+                // -qp 0 (RGB-domain lossless); 1..=10 → libx264 + nearest
+                // upscale at that factor. `default_with_scale` builds the
+                // ffmpeg flags accordingly.
+                let scale_arg = if user_settings.scale == 0 {
+                    None
+                } else {
+                    Some(user_settings.scale as usize)
+                };
+                let mut settings = tango_pvp::replay::export::Settings::default_with_scale(scale_arg);
+                settings.disable_bgm = user_settings.disable_bgm;
+                let selected_rounds = vec![rounds_mask];
+                // Clone the sender into the callback. The original
+                // `progress_tx` stays alive on the thread scope until
+                // *after* `done_arc_thread` is set; otherwise the
+                // futures channel closes the moment `cb` (and thus the
+                // moved sender) is dropped, the iced stream wakes up,
+                // sees `None`, races to read `done_arc` while it's
+                // still unset, and reports "export task ended without
+                // result".
+                let cb_tx = progress_tx.clone();
+                let cb = move |current: usize, total: usize| {
+                    let _ = cb_tx.unbounded_send((current, total));
+                };
+                let result = if user_settings.twosided {
+                    tango_pvp::replay::export::export_twosided(
+                        &local_rom,
+                        local_hooks,
+                        &remote_rom,
+                        remote_hooks,
+                        &[replay],
+                        &selected_rounds,
+                        &output_for_thread,
+                        &settings,
+                        &canceller_thread,
+                        cb,
+                    )
+                } else {
+                    tango_pvp::replay::export::export(
+                        &local_rom,
+                        local_hooks,
+                        &remote_rom,
+                        remote_hooks,
+                        &[replay],
+                        &selected_rounds,
+                        &output_for_thread,
+                        &settings,
+                        &canceller_thread,
+                        cb,
+                    )
+                }
+                .map(|()| output_for_thread)
+                .map_err(|e| format!("{e}"));
+                *done_arc_thread.lock() = Some(result);
+                // `progress_tx` drops here, closing the channel, which
+                // signals the iced stream to read `done_arc` — which is
+                // now safely set above.
+                drop(progress_tx);
+            })
+            .expect("spawn replay-export thread");
 
         // Drain progress + a synthetic final ExportFinished from
         // the same stream. We poll done_arc whenever the channel

@@ -1,6 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
 use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
@@ -54,8 +51,9 @@ pub enum Message {
     /// detail panel can offer a per-replay close button.
     ExportDismiss(std::path::PathBuf),
     /// User clicked the Cancel button while an export is in flight.
-    /// Sets the job's cancel flag; the encoder thread checks it each
-    /// tick and exits, leaving a partial WebM on disk.
+    /// Calls `kill()` on the job's canceller; the export thread sees
+    /// it next tick (or via its in-flight ffmpeg pipe failing) and
+    /// returns, leaving a partial WebM on disk.
     CancelExport(std::path::PathBuf),
     /// Open the rendered video with the OS's default handler.
     OpenFile(std::path::PathBuf),
@@ -99,19 +97,15 @@ pub struct ExportJob {
     /// Empty for jobs created in an error state before a path was
     /// known (e.g. ROM lookup failure).
     pub output: std::path::PathBuf,
-    /// UI-side "cancel was clicked" flag. Drives the panel chrome
-    /// (button greys out, caption flips to "Cancelling…") and lets
-    /// `Message::ExportFinished` distinguish a user-cancelled run from
-    /// a real failure so the panel auto-dismisses instead of showing
-    /// the synthetic teardown error.
-    pub cancel: Arc<AtomicBool>,
-    /// Filled in by the App right after it spawns the export task.
-    /// `Message::CancelExport` calls `.abort()` here; dropping the
-    /// future tears the ffmpeg subprocesses down via
-    /// `tokio::process::Child`'s `kill_on_drop`. `None` only while the
-    /// job exists *before* the App got a chance to spawn (e.g. a
-    /// synchronous error path that fills `result` directly).
-    pub abort: Option<tokio::task::AbortHandle>,
+    /// Push-cancel handle for the export thread. `kill()` flips the
+    /// canceller's internal flag (which the export checks every loop
+    /// iteration + at each ffmpeg-free boundary) AND terminates the
+    /// in-flight ffmpeg subprocesses. Same handle doubles as the UI's
+    /// "cancel was clicked" check via `is_cancelled()` — drives panel
+    /// chrome (button greys out, caption flips to "Cancelling…") and
+    /// lets `Message::ExportFinished` distinguish a user-cancelled
+    /// run from a real failure.
+    pub canceller: tango_pvp::replay::export::Canceller,
 }
 
 impl ExportJob {
@@ -121,8 +115,7 @@ impl ExportJob {
             total: 0,
             result: None,
             output,
-            cancel: Arc::new(AtomicBool::new(false)),
-            abort: None,
+            canceller: tango_pvp::replay::export::Canceller::new(),
         }
     }
 }
@@ -351,13 +344,7 @@ impl ReplaysState {
             }
             Message::ExportFinished { replay, result } => {
                 let entry = self.per.entry(replay).or_default();
-                // If the user clicked Cancel, drop the job and close
-                // the panel instead of showing the synthetic
-                // "cancelled" error from the encoder. The partial WebM
-                // on disk is still there if they want to recover it
-                // via the file system; the UI just goes back to its
-                // pre-render state.
-                let was_cancelled = entry.job.as_ref().is_some_and(|j| j.cancel.load(Ordering::Relaxed));
+                let was_cancelled = entry.job.as_ref().is_some_and(|j| j.canceller.is_cancelled());
                 if was_cancelled {
                     entry.job = None;
                     entry.panel_open = false;
@@ -370,27 +357,26 @@ impl ReplaysState {
                 None
             }
             Message::CancelExport(p) => {
-                // Set the cancel flag so the panel greys out the button
-                // / flips the caption, then abort the tokio task. The
-                // future owns two `tokio::process::Child`s with
-                // `kill_on_drop(true)`, so unwind tears the ffmpeg
-                // subprocesses down on its way out.
+                // Flip the canceller. The export thread sees it via
+                // either (a) its per-iteration `is_cancelled()` check
+                // or (b) `BrokenPipe` on its next ffmpeg pipe write,
+                // and returns Err. The canceller's own `is_cancelled`
+                // is what the UI reads for "Cancelling…" chrome and
+                // for `ExportFinished` to tell user-cancel apart from
+                // a real failure.
                 if let Some(job) = self.per.get(&p).and_then(|e| e.job.as_ref()) {
-                    job.cancel.store(true, Ordering::Relaxed);
-                    if let Some(abort) = &job.abort {
-                        abort.abort();
-                    }
+                    job.canceller.kill();
                 }
                 None
             }
             Message::ExportDismiss(p) => {
+                // Reset clears the finished/errored job so the panel
+                // reverts to its form state. Panel stays open — Reset
+                // is "do another render of this replay", not "I'm done
+                // with the panel". Closing is the dedicated Render
+                // toggle's job.
                 if let Some(entry) = self.per.get_mut(&p) {
                     entry.job = None;
-                    // Dismiss also closes the panel — the user
-                    // explicitly clicked Reset, so the form
-                    // shouldn't pop back open until they re-open
-                    // it via the Render toggle.
-                    entry.panel_open = false;
                 }
                 None
             }
@@ -1088,7 +1074,7 @@ fn export_panel<'a>(
                     0.0
                 };
                 let pct_label = format!("{}%", (pct * 100.0).round() as u32);
-                let cancel_requested = job.cancel.load(Ordering::Relaxed);
+                let cancel_requested = job.canceller.is_cancelled();
                 // Disabled (None on_press) once the user has clicked
                 // cancel — the encoder thread still has to wind down
                 // its current tick + flush the partial WebM, and we

@@ -1,6 +1,77 @@
+use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use byteorder::ByteOrder;
 use image::EncodableLayout;
-use tokio::io::AsyncWriteExt;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Caller-side cancel handle. `kill()` does two things:
+///
+///   * Sets an internal flag the export checks every iteration (and
+///     at each ffmpeg-free boundary: start of function, start of
+///     each per-replay setup) so a cancel takes effect promptly
+///     regardless of which phase the export is in — pre-ffmpeg,
+///     between replays, or mid-encode-loop during a skipped round
+///     where no pipe writes are happening.
+///   * Terminates every ffmpeg subprocess that has been registered,
+///     so the encode loop's current pipe write (if mid-write) and
+///     the post-loop `wait()` on each child return Err immediately.
+///
+/// Either signal alone is enough to unblock the export; both fire
+/// from one `kill()` so neither has to cover the other's gap.
+#[derive(Clone, Default)]
+pub struct Canceller {
+    inner: Arc<CancellerInner>,
+}
+
+impl std::fmt::Debug for Canceller {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Canceller").finish_non_exhaustive()
+    }
+}
+
+#[derive(Default)]
+struct CancellerInner {
+    cancelled: AtomicBool,
+    children: parking_lot::Mutex<Vec<Arc<parking_lot::Mutex<Option<std::process::Child>>>>>,
+}
+
+impl Canceller {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark this canceller cancelled and kill every ffmpeg subprocess
+    /// it has registered. Safe to call from any thread, multiple times.
+    pub fn kill(&self) {
+        self.inner.cancelled.store(true, Ordering::Relaxed);
+        for slot in self.inner.children.lock().iter() {
+            if let Some(child) = slot.lock().as_mut() {
+                let _ = child.kill();
+            }
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.cancelled.load(Ordering::Relaxed)
+    }
+
+    fn register(&self, child: std::process::Child) -> Arc<parking_lot::Mutex<Option<std::process::Child>>> {
+        let slot = Arc::new(parking_lot::Mutex::new(Some(child)));
+        self.inner.children.lock().push(slot.clone());
+        // Race guard: if kill() already fired before this child was
+        // registered, kill it on arrival so it doesn't slip the net.
+        if self.inner.cancelled.load(Ordering::Relaxed) {
+            if let Some(c) = slot.lock().as_mut() {
+                let _ = c.kill();
+            }
+        }
+        slot
+    }
+}
 
 pub struct Settings {
     pub ffmpeg: Option<std::path::PathBuf>,
@@ -140,16 +211,67 @@ fn resolve_ffmpeg_path(ffmpeg: &Option<std::path::PathBuf>) -> std::path::PathBu
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// RAII wrapper around an ffmpeg subprocess. Holds the stdin handle
+/// directly (so the encode loop writes without locking) and a shared
+/// `Arc<Mutex<Option<Child>>>` slot registered with the `Canceller`
+/// — `Canceller::kill()` reaches in through that slot to terminate
+/// the process. On Drop (early return / panic / cancel) the wrapper
+/// kills + reaps the child if it hasn't been waited for yet.
+struct FfmpegChild {
+    slot: Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    stdin: Option<std::process::ChildStdin>,
+}
+
+impl FfmpegChild {
+    fn from_spawn(mut child: std::process::Child, canceller: &Canceller) -> Self {
+        let stdin = child.stdin.take();
+        let slot = canceller.register(child);
+        Self { slot, stdin }
+    }
+
+    fn stdin(&mut self) -> &mut std::process::ChildStdin {
+        self.stdin.as_mut().expect("ffmpeg stdin closed")
+    }
+
+    /// Drop the stdin handle so ffmpeg sees EOF and finishes encoding.
+    fn close_stdin(&mut self) {
+        self.stdin.take();
+    }
+
+    /// Block until ffmpeg exits. If the canceller already killed the
+    /// process, `wait()` returns with a non-success status and we
+    /// surface that as Err — no polling, no fixed cancel latency.
+    fn wait(self) -> anyhow::Result<()> {
+        let taken = self.slot.lock().take();
+        let mut child = taken.ok_or_else(|| anyhow::anyhow!("ffmpeg child already taken"))?;
+        let status = child.wait()?;
+        if !status.success() {
+            anyhow::bail!("ffmpeg exited with status {status:?}");
+        }
+        Ok(())
+    }
+}
+
+impl Drop for FfmpegChild {
+    fn drop(&mut self) {
+        let taken = self.slot.lock().take();
+        if let Some(mut child) = taken {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 fn make_video_ffmpeg(
     ffmpeg: &Option<std::path::PathBuf>,
     output_path: &std::path::Path,
     width: usize,
     height: usize,
     flags: &[std::ffi::OsString],
-) -> anyhow::Result<tokio::process::Child> {
-    let mut child = tokio::process::Command::new(resolve_ffmpeg_path(ffmpeg));
+    canceller: &Canceller,
+) -> anyhow::Result<FfmpegChild> {
+    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
     child
-        .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
         .args(["-y"])
         // Input args.
@@ -171,17 +293,17 @@ fn make_video_ffmpeg(
         .arg(output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
-    Ok(child.spawn()?)
+    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
 }
 
 fn make_audio_ffmpeg(
     ffmpeg: &Option<std::path::PathBuf>,
     output_path: &std::path::Path,
     flags: &[std::ffi::OsString],
-) -> anyhow::Result<tokio::process::Child> {
-    let mut child = tokio::process::Command::new(resolve_ffmpeg_path(ffmpeg));
+    canceller: &Canceller,
+) -> anyhow::Result<FfmpegChild> {
+    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
     child
-        .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
         .args(["-y"])
         // Input args.
@@ -192,7 +314,7 @@ fn make_audio_ffmpeg(
         .arg(output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
-    Ok(child.spawn()?)
+    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
 }
 
 fn make_mux_ffmpeg(
@@ -201,9 +323,10 @@ fn make_mux_ffmpeg(
     video_input_path: &std::path::Path,
     audio_input_paths: &[&std::path::Path],
     flags: &[std::ffi::OsString],
-) -> anyhow::Result<tokio::process::Child> {
-    let mut child = tokio::process::Command::new(resolve_ffmpeg_path(ffmpeg));
-    child.kill_on_drop(true).args(["-y"]).args(["-i"]).arg(video_input_path);
+    canceller: &Canceller,
+) -> anyhow::Result<FfmpegChild> {
+    let mut child = std::process::Command::new(resolve_ffmpeg_path(ffmpeg));
+    child.args(["-y"]).args(["-i"]).arg(video_input_path);
 
     for path in audio_input_paths {
         child.args(["-i"]).arg(path);
@@ -221,7 +344,7 @@ fn make_mux_ffmpeg(
 
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
-    Ok(child.spawn()?)
+    Ok(FfmpegChild::from_spawn(child.spawn()?, canceller))
 }
 
 fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize {
@@ -231,7 +354,7 @@ fn kept_input_pairs(replay: &crate::replay::Replay, selected: &[bool]) -> usize 
     }
 }
 
-pub async fn export(
+pub fn export(
     local_rom: &[u8],
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_rom: &[u8],
@@ -240,8 +363,16 @@ pub async fn export(
     selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
     settings: &Settings,
+    canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
+    // Boundary check: caller may have flipped the canceller before
+    // we got here. Without this, a cancel that arrives in the gap
+    // between thread spawn and the first ffmpeg subprocess running
+    // has nothing to act on.
+    if canceller.is_cancelled() {
+        anyhow::bail!("cancelled");
+    }
     let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
 
     let video_output = tempfile::NamedTempFile::new()?;
@@ -254,6 +385,7 @@ pub async fn export(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
 
     let audio_output = tempfile::NamedTempFile::new()?;
@@ -264,6 +396,7 @@ pub async fn export(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
 
     let total_frames: usize = replays
@@ -279,6 +412,12 @@ pub async fn export(
     let mut prev_should_write = false;
 
     for (replay_idx, replay) in replays.iter().enumerate() {
+        // Boundary check: per-replay setup (core init + shadow stepper
+        // construction) runs ffmpeg-free, so the kill mechanism can't
+        // reach it. One check before each setup is enough.
+        if canceller.is_cancelled() {
+            anyhow::bail!("cancelled");
+        }
         let (mut core, state) = make_core_and_state(
             local_rom,
             &replay.local_sram_dump(),
@@ -295,6 +434,9 @@ pub async fn export(
 
         let last_round_idx = replay.rounds.len().saturating_sub(1);
         loop {
+            if canceller.is_cancelled() {
+                anyhow::bail!("cancelled");
+            }
             let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
                 (
@@ -333,11 +475,11 @@ pub async fn export(
             let samples = run_frame(&mut core, &mut resampler, &mut dest_buffer, &mut samples, &mut vbuf);
 
             if should_write {
-                video_child.stdin.as_mut().unwrap().write_all(&vbuf).await?;
+                video_child.stdin().write_all(&vbuf)?;
 
                 let mut audio_bytes = vec![0u8; samples.len() * 2];
                 byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
-                audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
+                audio_child.stdin().write_all(&audio_bytes)?;
             }
             progress_callback(
                 full_replay_len - state.lock_inner().total_input_pairs_left() + completed_total,
@@ -348,12 +490,12 @@ pub async fn export(
         completed_total += kept_replay_len;
     }
 
-    video_child.stdin = None;
-    video_child.wait().await?;
-    audio_child.stdin = None;
-    audio_child.wait().await?;
+    video_child.close_stdin();
+    video_child.wait()?;
+    audio_child.close_stdin();
+    audio_child.wait()?;
 
-    let mut mux_child = make_mux_ffmpeg(
+    let mux_child = make_mux_ffmpeg(
         &settings.ffmpeg,
         output_path,
         video_output.path(),
@@ -362,13 +504,14 @@ pub async fn export(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
-    mux_child.wait().await?;
+    mux_child.wait()?;
 
     Ok(())
 }
 
-pub async fn export_twosided(
+pub fn export_twosided(
     local_rom: &[u8],
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     remote_rom: &[u8],
@@ -377,8 +520,13 @@ pub async fn export_twosided(
     selected_rounds: &[Vec<bool>],
     output_path: &std::path::Path,
     settings: &Settings,
+    canceller: &Canceller,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
+    // See `export` — boundary check before the first ffmpeg spawns.
+    if canceller.is_cancelled() {
+        anyhow::bail!("cancelled");
+    }
     let mut vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
     let mut composed_vbuf = image::RgbaImage::new(mgba::gba::SCREEN_WIDTH * 2, mgba::gba::SCREEN_HEIGHT);
 
@@ -392,6 +540,7 @@ pub async fn export_twosided(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
 
     let local_audio_output = tempfile::NamedTempFile::new()?;
@@ -402,6 +551,7 @@ pub async fn export_twosided(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
 
     let remote_audio_output = tempfile::NamedTempFile::new()?;
@@ -412,6 +562,7 @@ pub async fn export_twosided(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
 
     let total_frames: usize = replays
@@ -430,6 +581,11 @@ pub async fn export_twosided(
     let mut prev_should_write = false;
 
     for (replay_idx, replay) in replays.iter().enumerate() {
+        // See `export` — boundary check before each ffmpeg-free
+        // per-replay setup.
+        if canceller.is_cancelled() {
+            anyhow::bail!("cancelled");
+        }
         let local_replay = replay.clone();
         let remote_replay = local_replay.clone().into_remote();
 
@@ -461,6 +617,9 @@ pub async fn export_twosided(
         let last_round_idx = replay.rounds.len().saturating_sub(1);
 
         loop {
+            if canceller.is_cancelled() {
+                anyhow::bail!("cancelled");
+            }
             let cur_round_idx = local_state.lock_inner().current_round_index() as usize;
 
             {
@@ -525,12 +684,7 @@ pub async fn export_twosided(
                         image::imageops::replace(&mut composed_vbuf, &vbuf, 0, 0);
                         let mut audio_bytes = vec![0u8; local_samples.len() * 2];
                         byteorder::LittleEndian::write_i16_into(local_samples, &mut audio_bytes[..]);
-                        local_audio_child
-                            .stdin
-                            .as_mut()
-                            .unwrap()
-                            .write_all(&audio_bytes)
-                            .await?;
+                        local_audio_child.stdin().write_all(&audio_bytes)?;
                     }
                 }
 
@@ -546,22 +700,12 @@ pub async fn export_twosided(
                         image::imageops::replace(&mut composed_vbuf, &vbuf, mgba::gba::SCREEN_WIDTH as i64, 0);
                         let mut audio_bytes = vec![0u8; remote_samples.len() * 2];
                         byteorder::LittleEndian::write_i16_into(remote_samples, &mut audio_bytes[..]);
-                        remote_audio_child
-                            .stdin
-                            .as_mut()
-                            .unwrap()
-                            .write_all(&audio_bytes)
-                            .await?;
+                        remote_audio_child.stdin().write_all(&audio_bytes)?;
                     }
                 }
 
                 if should_write {
-                    video_child
-                        .stdin
-                        .as_mut()
-                        .unwrap()
-                        .write_all(composed_vbuf.as_bytes())
-                        .await?;
+                    video_child.stdin().write_all(composed_vbuf.as_bytes())?;
                 }
             }
 
@@ -594,14 +738,14 @@ pub async fn export_twosided(
         completed_total += kept_replay_len;
     }
 
-    video_child.stdin = None;
-    video_child.wait().await?;
-    local_audio_child.stdin = None;
-    local_audio_child.wait().await?;
-    remote_audio_child.stdin = None;
-    remote_audio_child.wait().await?;
+    video_child.close_stdin();
+    video_child.wait()?;
+    local_audio_child.close_stdin();
+    local_audio_child.wait()?;
+    remote_audio_child.close_stdin();
+    remote_audio_child.wait()?;
 
-    let mut mux_child = make_mux_ffmpeg(
+    let mux_child = make_mux_ffmpeg(
         &settings.ffmpeg,
         output_path,
         video_output.path(),
@@ -610,8 +754,9 @@ pub async fn export_twosided(
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>(),
+        canceller,
     )?;
-    mux_child.wait().await?;
+    mux_child.wait()?;
 
     Ok(())
 }
