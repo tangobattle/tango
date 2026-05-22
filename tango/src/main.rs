@@ -197,6 +197,13 @@ fn run_app() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
+    // Warm the SDL gamepad context now (main thread) so the first
+    // emulator session's first redraw doesn't pay for SDL_Init +
+    // enumerating + opening every attached controller. sdl3
+    // enforces "first thread to call init owns the pump", so we
+    // have to do this on the iced/winit main thread anyway.
+    gamepad::init();
+
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
     // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front
     // with a throwaway `wgpu::Instance`; if no adapter shows up,
