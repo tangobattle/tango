@@ -3,10 +3,8 @@ use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[1, 1];
-static BACKGROUND_G: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/6-0.png")).unwrap());
-static BACKGROUND_F: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/6-1.png")).unwrap());
+static BACKGROUND: LazyImage =
+    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/6.png")).unwrap());
 static EXE6G_LOGO: LazyImage =
     LazyLock::new(|| image::load_from_memory(include_bytes!("../../logos/exe6-0.png")).unwrap());
 static EXE6F_LOGO: LazyImage =
@@ -57,7 +55,7 @@ pub static EXE6G: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE6G_T,
     logo_image: &EXE6G_LOGO,
-    background_image: &BACKGROUND_G,
+    background_image: &BACKGROUND,
 };
 
 // ---------------- EXE6 Falzar JP (BR6J_00) ----------------
@@ -86,7 +84,7 @@ pub static EXE6F: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE6F_T,
     logo_image: &EXE6F_LOGO,
-    background_image: &BACKGROUND_F,
+    background_image: &BACKGROUND,
 };
 
 // ---------------- BN6 Gregar US (BR5E_00) ----------------
@@ -115,7 +113,7 @@ pub static BN6G: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN6G_T,
     logo_image: &BN6G_LOGO,
-    background_image: &BACKGROUND_G,
+    background_image: &BACKGROUND,
 };
 
 // ---------------- BN6 Falzar US (BR6E_00) ----------------
@@ -144,5 +142,5 @@ pub static BN6F: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN6F_T,
     logo_image: &BN6F_LOGO,
-    background_image: &BACKGROUND_F,
+    background_image: &BACKGROUND,
 };
