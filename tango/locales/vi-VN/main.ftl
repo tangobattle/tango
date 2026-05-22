@@ -149,11 +149,11 @@ replays-select-prompt = Select a replay.
 play-opponent = Opponent
 replays-match-type = Match type:
 replays-duration = Duration:
-replays-match-type-value =
-    { $type } ({ $count ->
+replays-round-count =
+    { $count ->
         [one] 1 round
        *[other] { $count } rounds
-    })
+    }
 replays-incomplete = incomplete
 play-you = You
 # Patches
@@ -204,8 +204,11 @@ settings-enable-patch-autoupdate = Automatically update patches in the backgroun
 settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-netplay-throttler = Time-sync throttler
+settings-window-size = Window size
+settings-fullscreen = Fullscreen
+settings-ui-scale = UI scale
 settings-video-filter = Video filter
-settings-integer-scaling = Integer scaling
+settings-fractional-scaling = Fractional scaling
 updater-current-version = Current version: { $version }
 updater-latest-version = Latest version: { $version }
 updater-loading = checking…
