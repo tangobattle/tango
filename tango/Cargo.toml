@@ -44,7 +44,7 @@ tango-signaling = { path = "../tango-signaling" }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 bincode = "1"
 async-trait = "0.1"
-gilrs = "0.10"
+sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
 rfd = "0.14"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 # Auto-generated Rust bindings for the Lucide icon font. Gives us

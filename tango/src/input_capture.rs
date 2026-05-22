@@ -14,11 +14,11 @@
 //! next `program.update()` call.
 //!
 //! Keyboard events arrive as `Event::Keyboard` and are forwarded
-//! verbatim. Gamepads aren't part of iced's event stream, so the
-//! widget owns a `Gilrs` in its `tree::State` and drains it on
-//! every `RedrawRequested` (which `interface.update` synthesizes
-//! once per redraw — see the `let redraw_event` block in
-//! `iced_winit::run_with_executor`).
+//! verbatim. Gamepads aren't part of iced's event stream, so we
+//! drain SDL3's event pump (via the thread-local helper in
+//! [`crate::gamepad`]) on every `RedrawRequested` — which
+//! `interface.update` synthesizes once per redraw (see the
+//! `let redraw_event` block in `iced_winit::run_with_executor`).
 //!
 //! The optional `on_tick` callback fires on the same
 //! `RedrawRequested` and is meant for the per-frame refresh of
@@ -35,16 +35,20 @@
 use iced::advanced::layout;
 use iced::advanced::overlay;
 use iced::advanced::renderer;
-use iced::advanced::widget::{tree, Operation, Tree};
+use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::{mouse, window, Element, Event, Length, Rectangle, Size, Vector};
 
-/// Tagged input handed to the [`InputCapture`] callback. Borrows the
-/// underlying event so the caller can pattern-match without cloning;
-/// produce an owned `Message` from the relevant fields.
+use crate::gamepad::GamepadEvent;
+
+/// Tagged input handed to the [`InputCapture`] callback. Keyboard
+/// events borrow the iced event so the caller can pattern-match
+/// without cloning; gamepad events come pre-normalized from
+/// [`crate::gamepad`] (SDL3-derived but with the call-site facing
+/// surface narrowed).
 pub enum Input<'a> {
     Keyboard(&'a iced::keyboard::Event),
-    Gamepad(&'a gilrs::Event),
+    Gamepad(&'a GamepadEvent),
 }
 
 pub struct InputCapture<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
@@ -67,49 +71,10 @@ impl<'a, Message, Theme, Renderer> InputCapture<'a, Message, Theme, Renderer> {
     }
 }
 
-/// Per-widget state. `gilrs` is initialized lazily — `Gilrs::new()`
-/// fails on hosts without an input subsystem and we don't want to
-/// keep retrying. `init_failed` records that case so we log the
-/// warning exactly once.
-struct State {
-    gilrs: Option<gilrs::Gilrs>,
-    init_failed: bool,
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            gilrs: None,
-            init_failed: false,
-        }
-    }
-
-    fn ensure_gilrs(&mut self) -> Option<&mut gilrs::Gilrs> {
-        if self.gilrs.is_none() && !self.init_failed {
-            match gilrs::Gilrs::new() {
-                Ok(g) => self.gilrs = Some(g),
-                Err(e) => {
-                    log::warn!("gilrs init failed: {e:?}");
-                    self.init_failed = true;
-                }
-            }
-        }
-        self.gilrs.as_mut()
-    }
-}
-
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for InputCapture<'_, Message, Theme, Renderer>
 where
     Renderer: renderer::Renderer,
 {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
-    fn state(&self) -> tree::State {
-        tree::State::new(State::new())
-    }
-
     fn children(&self) -> Vec<Tree> {
         vec![Tree::new(&self.content)]
     }
@@ -169,14 +134,11 @@ where
                 }
             }
             Event::Window(window::Event::RedrawRequested(_)) => {
-                let state: &mut State = tree.state.downcast_mut();
-                if let Some(gilrs) = state.ensure_gilrs() {
-                    while let Some(ev) = gilrs.next_event() {
-                        if let Some(message) = (self.on_input)(Input::Gamepad(&ev)) {
-                            shell.publish(message);
-                        }
+                crate::gamepad::pump(|ev| {
+                    if let Some(message) = (self.on_input)(Input::Gamepad(&ev)) {
+                        shell.publish(message);
                     }
-                }
+                });
                 if let Some(message) = (self.on_tick)() {
                     shell.publish(message);
                 }

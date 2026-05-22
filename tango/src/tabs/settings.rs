@@ -161,65 +161,21 @@ impl State {
     }
 }
 
-/// Subscription that listens for the *next* key/button event when
+/// Subscription that listens for the *next* keyboard event when
 /// we're in binding-capture mode. Silent otherwise. Modifier
 /// keys are filtered out so a user trying to bind "A" doesn't
-/// accidentally bind Shift.
+/// accidentally bind Shift. Gamepad capture is handled by the
+/// `InputCapture` wrapper added in [`view`] — SDL3 has to run on
+/// the main thread, but subscriptions run on the tokio executor.
 pub fn subscription(state: &State) -> iced::Subscription<Message> {
     if state.capture_target.is_none() {
         return iced::Subscription::none();
     }
-    let kbd = iced::event::listen_with(|event, _, _| match event {
+    iced::event::listen_with(|event, _, _| match event {
         iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
             input::KeyId::from_iced(&key).map(|k| Message::BindingCaptured(input::PhysicalInput::Key(k)))
         }
         _ => None,
-    });
-    let pad = iced::Subscription::run(pad_capture_stream);
-    iced::Subscription::batch([kbd, pad])
-}
-
-/// Builds the binding-capture gamepad polling stream. Stateless
-/// — iced 0.14 requires subscription builders to be plain
-/// functions (not closures), so this lives outside `subscription`.
-fn pad_capture_stream() -> impl futures::Stream<Item = Message> {
-    iced::stream::channel(8, |mut tx: futures::channel::mpsc::Sender<Message>| async move {
-        use futures::SinkExt;
-        let Ok(mut gilrs) = gilrs::Gilrs::new() else { return };
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(4)).await;
-            while let Some(event) = gilrs.next_event() {
-                let captured = match event.event {
-                    gilrs::EventType::ButtonPressed(b, _) => {
-                        input::GamepadButton::from_gilrs(b).map(input::PhysicalInput::Button)
-                    }
-                    gilrs::EventType::AxisChanged(a, v, _) => {
-                        // Treat an axis as captured when it
-                        // crosses the activation threshold —
-                        // mirrors the runtime activation rule
-                        // so the binding will fire next time.
-                        if v.abs() > input::AXIS_THRESHOLD {
-                            input::GamepadAxis::from_gilrs(a).map(|axis| input::PhysicalInput::Axis {
-                                axis,
-                                dir: if v > 0.0 {
-                                    input::AxisDir::Positive
-                                } else {
-                                    input::AxisDir::Negative
-                                },
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                };
-                if let Some(p) = captured {
-                    if tx.send(Message::BindingCaptured(p)).await.is_err() {
-                        return;
-                    }
-                }
-            }
-        }
     })
 }
 
@@ -283,12 +239,56 @@ pub fn view<'a>(
         .height(Fill)
         .style(widgets::pane);
 
-    row![sidebar, body_wrap]
+    let root = row![sidebar, body_wrap]
         .spacing(widgets::PANE_GAP)
         .padding(widgets::PANE_GAP)
         .width(Fill)
-        .height(Fill)
+        .height(Fill);
+
+    // Gamepad binding-capture: wrap in `InputCapture` while the
+    // user is binding so SDL3's event pump (which lives on the
+    // main thread; can't be reached from a subscription) gets
+    // drained on every redraw. The wrapper publishes a
+    // `BindingCaptured` the first time a button or axis-past-
+    // threshold event lands. Keyboard capture stays on the
+    // subscription path — iced's own event stream is fine for that
+    // and doesn't need to touch SDL.
+    if state.capture_target.is_some() {
+        crate::input_capture::InputCapture::new(
+            root,
+            |input| {
+                let crate::input_capture::Input::Gamepad(ev) = input else {
+                    return None;
+                };
+                let captured = match *ev {
+                    crate::gamepad::GamepadEvent::ButtonDown(b) => {
+                        input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
+                    }
+                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                        let (axis, v) = input::GamepadAxis::from_sdl3_value(axis, value)?;
+                        if v.abs() > input::AXIS_THRESHOLD {
+                            Some(input::PhysicalInput::Axis {
+                                axis,
+                                dir: if v > 0.0 {
+                                    input::AxisDir::Positive
+                                } else {
+                                    input::AxisDir::Negative
+                                },
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                captured.map(Message::BindingCaptured)
+            },
+            || None,
+        )
         .into()
+    } else {
+        root.into()
+    }
 }
 
 /// Generic over Message so the welcome screen can use it too with its

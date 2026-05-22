@@ -24,7 +24,9 @@ pub const AXIS_THRESHOLD: f32 = 0.5;
 
 /// A single binding source. Keyboard keys are stored as strings
 /// so the on-disk config stays human-readable + portable across
-/// iced versions; gamepad buttons + axes mirror the gilrs enums.
+/// iced versions; gamepad buttons + axes mirror the SDL3
+/// `gamepad::Button` / `gamepad::Axis` enums via [`GamepadButton`]
+/// / [`GamepadAxis`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value")]
 #[serde(rename_all = "snake_case")]
@@ -101,10 +103,14 @@ pub enum AxisDir {
     Negative,
 }
 
-/// Subset of gilrs gamepad buttons we expose for binding. We
-/// don't expose every button gilrs supports — just the standard
-/// Xbox/PS layout, since rebinding to esoteric paddle/touchpad
-/// buttons isn't useful here.
+/// Subset of SDL3 gamepad buttons we expose for binding. We don't
+/// expose every button SDL3 reports — just the standard Xbox/PS
+/// layout, since rebinding to esoteric paddle/touchpad buttons
+/// isn't useful here. `LeftTrigger` / `RightTrigger` are retained
+/// for on-disk config back-compat with the previous gilrs-era
+/// builds but never fire from SDL3 — SDL3 only reports triggers
+/// as axes (`TriggerLeft` / `TriggerRight`). Rebind triggers as
+/// axes if needed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamepadButton {
@@ -119,7 +125,7 @@ pub enum GamepadButton {
     RightThumb,
     LeftShoulder,
     RightShoulder,
-    LeftTrigger,   // digital trigger pull
+    LeftTrigger,   // legacy digital trigger pull (gilrs-era); SDL3 reports as axis
     RightTrigger,
     DPadUp,
     DPadDown,
@@ -128,22 +134,20 @@ pub enum GamepadButton {
 }
 
 impl GamepadButton {
-    pub fn from_gilrs(b: gilrs::Button) -> Option<Self> {
-        use gilrs::Button as B;
+    pub fn from_sdl3(b: sdl3::gamepad::Button) -> Option<Self> {
+        use sdl3::gamepad::Button as B;
         Some(match b {
             B::South => Self::South,
             B::East => Self::East,
             B::West => Self::West,
             B::North => Self::North,
-            B::Select => Self::Select,
+            B::Back => Self::Select,
             B::Start => Self::Start,
-            B::Mode => Self::Mode,
-            B::LeftThumb => Self::LeftThumb,
-            B::RightThumb => Self::RightThumb,
-            B::LeftTrigger => Self::LeftShoulder,
-            B::RightTrigger => Self::RightShoulder,
-            B::LeftTrigger2 => Self::LeftTrigger,
-            B::RightTrigger2 => Self::RightTrigger,
+            B::Guide => Self::Mode,
+            B::LeftStick => Self::LeftThumb,
+            B::RightStick => Self::RightThumb,
+            B::LeftShoulder => Self::LeftShoulder,
+            B::RightShoulder => Self::RightShoulder,
             B::DPadUp => Self::DPadUp,
             B::DPadDown => Self::DPadDown,
             B::DPadLeft => Self::DPadLeft,
@@ -185,15 +189,34 @@ pub enum GamepadAxis {
 }
 
 impl GamepadAxis {
-    pub fn from_gilrs(a: gilrs::Axis) -> Option<Self> {
-        use gilrs::Axis as A;
+    pub fn from_sdl3(a: sdl3::gamepad::Axis) -> Option<Self> {
+        use sdl3::gamepad::Axis as A;
         Some(match a {
-            A::LeftStickX => Self::LeftStickX,
-            A::LeftStickY => Self::LeftStickY,
-            A::RightStickX => Self::RightStickX,
-            A::RightStickY => Self::RightStickY,
+            A::LeftX => Self::LeftStickX,
+            A::LeftY => Self::LeftStickY,
+            A::RightX => Self::RightStickX,
+            A::RightY => Self::RightStickY,
             _ => return None,
         })
+    }
+
+    /// Convert an SDL3 axis + raw i16 value into a normalized
+    /// `(axis, value)` pair matching the gilrs-era convention the
+    /// rest of the input code (and on-disk default bindings) was
+    /// written against: positive Y means "stick pushed up".
+    /// SDL3 reports Y with positive=down (raw joystick convention),
+    /// so we flip it here at the entry point. Returns `None` for
+    /// axes we don't expose (triggers).
+    pub fn from_sdl3_value(a: sdl3::gamepad::Axis, raw: i16) -> Option<(Self, f32)> {
+        let axis = Self::from_sdl3(a)?;
+        // Asymmetric range: i16 is [-32768, 32767]. Normalize by the
+        // larger of |min|, max so we never produce > 1.0; clamp the
+        // tail.
+        let mut v = (raw as f32 / 32767.0).clamp(-1.0, 1.0);
+        if matches!(axis, Self::LeftStickY | Self::RightStickY) {
+            v = -v;
+        }
+        Some((axis, v))
     }
 }
 

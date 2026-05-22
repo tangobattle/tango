@@ -4,6 +4,7 @@ mod audio;
 mod config;
 mod discord;
 mod game;
+mod gamepad;
 mod i18n;
 mod input;
 mod input_capture;

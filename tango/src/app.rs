@@ -1485,15 +1485,16 @@ impl App {
                             }),
                             _ => None,
                         },
-                        crate::input_capture::Input::Gamepad(ev) => match ev.event {
-                            gilrs::EventType::ButtonPressed(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                        crate::input_capture::Input::Gamepad(ev) => match *ev {
+                            crate::gamepad::GamepadEvent::ButtonDown(b) => crate::input::GamepadButton::from_sdl3(b)
                                 .map(|button| session::InputEvent::Button { button, pressed: true }),
-                            gilrs::EventType::ButtonReleased(b, _) => crate::input::GamepadButton::from_gilrs(b)
+                            crate::gamepad::GamepadEvent::ButtonUp(b) => crate::input::GamepadButton::from_sdl3(b)
                                 .map(|button| session::InputEvent::Button { button, pressed: false }),
-                            gilrs::EventType::AxisChanged(a, v, _) => crate::input::GamepadAxis::from_gilrs(a)
-                                .map(|axis| session::InputEvent::Axis { axis, value: v }),
-                            gilrs::EventType::Disconnected => Some(session::InputEvent::GamepadDisconnected),
-                            _ => None,
+                            crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                                crate::input::GamepadAxis::from_sdl3_value(axis, value)
+                                    .map(|(axis, value)| session::InputEvent::Axis { axis, value })
+                            }
+                            crate::gamepad::GamepadEvent::DeviceRemoved => Some(session::InputEvent::GamepadDisconnected),
                         },
                     };
                     ev.map(|ev| Message::Session(session::Message::Input(ev)))
