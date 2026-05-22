@@ -888,3 +888,115 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
         }),
     }
 }
+
+/// Full-height "VS" splitter: paints a near-vertical band in the
+/// body background color through the middle of its bounds so that,
+/// when layered behind a padded row of content via
+/// `Stack::push_under`, the pane reads as sliced diagonally in
+/// half — the body surface peeking through the cut. "VS" sits
+/// centered on the band.
+///
+/// Width and height are both [`Length::Fill`]; the splitter sizes
+/// itself to whatever the layered content needs, so the cut
+/// reaches the pane's top and bottom edges automatically. See
+/// `tabs/play.rs` and `tabs/replays.rs` for the layout pattern.
+pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
+    use iced::widget::canvas::{Canvas, Frame, LineCap, Path, Stroke, Style, Text as CanvasText};
+    use iced::{Pixels, Point, Rectangle, Renderer};
+
+    /// Thickness of the cut, perpendicular to the band axis. Half
+    /// the inter-pane gap so the slice reads as slimmer than the
+    /// gaps separating sibling panes — a hairline, not a chasm.
+    const BAND_W: f32 = PANE_GAP / 2.0;
+    /// Horizontal offset of each band endpoint from the canvas
+    /// center. Small relative to typical pane heights so the cut
+    /// leans gently rather than racing across the pane — the
+    /// "shallow gradient" close-to-vertical look.
+    const TILT: f32 = 14.0;
+    /// Distance the band extends past the canvas top/bottom edges
+    /// before the butt cap kicks in. Has to be > a couple of pixels
+    /// or anti-aliasing leaves a soft tapered edge that reads as
+    /// the slash trailing off short of the pane border.
+    const OVERSHOOT: f32 = 16.0;
+    /// "V" / "S" glyph size.
+    const GLYPH: f32 = 24.0;
+    /// Half the horizontal spread between the V and S glyph
+    /// centers. Less than the glyph half-width so the two
+    /// letters smush into each other — the pair reads as one
+    /// stamped "VS" mark, not two separate characters.
+    const GLYPH_DX: f32 = 4.0;
+    /// Half the vertical stagger between the V and S glyph
+    /// centers. V sits above center, S sits below, giving the
+    /// pair a fighting-game-style diagonal stack.
+    const GLYPH_DY: f32 = 4.0;
+
+    struct VsDiagonal;
+
+    impl<M> iced::widget::canvas::Program<M> for VsDiagonal {
+        type State = ();
+
+        fn draw(
+            &self,
+            _state: &(),
+            renderer: &Renderer,
+            theme: &Theme,
+            bounds: Rectangle,
+            _cursor: iced::mouse::Cursor,
+        ) -> Vec<iced::widget::canvas::Geometry> {
+            let mut frame = Frame::new(renderer, bounds.size());
+            let cx = bounds.width / 2.0;
+            let h = bounds.height;
+
+            // Body-bg-colored band so the pane plate reads as
+            // cut, with the page surface showing through. Endpoints
+            // overshoot top/bottom generously so the butt caps land
+            // well outside the canvas and the cut visibly meets
+            // (and continues past) the pane edges into the inter-
+            // pane gap.
+            let body_bg = theme.palette().background;
+            let line = Path::line(
+                Point::new(cx + TILT, -OVERSHOOT),
+                Point::new(cx - TILT, h + OVERSHOOT),
+            );
+            frame.stroke(
+                &line,
+                Stroke {
+                    style: Style::Solid(body_bg),
+                    width: BAND_W,
+                    line_cap: LineCap::Butt,
+                    ..Default::default()
+                },
+            );
+
+            // V upper-left of center, S lower-right of center —
+            // the cut runs diagonally between them. Heavy italic
+            // in the theme's primary accent so the pair reads as
+            // a fighting-game splash on top of the slash.
+            let cy = h / 2.0;
+            let primary = theme.palette().primary;
+            let fun_font = iced::Font {
+                weight: iced::font::Weight::Black,
+                style: iced::font::Style::Italic,
+                ..iced::Font::default()
+            };
+            let mut glyph = |content: &str, x: f32, y: f32| {
+                frame.fill_text(CanvasText {
+                    content: content.into(),
+                    position: Point::new(x, y),
+                    color: primary,
+                    size: Pixels(GLYPH),
+                    font: fun_font,
+                    align_x: iced::advanced::text::Alignment::Center,
+                    align_y: iced::alignment::Vertical::Center,
+                    ..Default::default()
+                });
+            };
+            glyph("V", cx - GLYPH_DX, cy - GLYPH_DY);
+            glyph("S", cx + GLYPH_DX, cy + GLYPH_DY);
+
+            vec![frame.into_geometry()]
+        }
+    }
+
+    Canvas::new(VsDiagonal).width(Length::Fill).height(Length::Fill).into()
+}

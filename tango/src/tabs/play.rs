@@ -1,4 +1,4 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_HEADING, TEXT_TITLE};
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
@@ -1356,7 +1356,6 @@ fn lobby_view<'a>(
                     .spacing(10)
                     .align_y(Alignment::Start),
                 )
-                .padding(6)
                 .width(Length::Fill)
                 .into();
             };
@@ -1419,7 +1418,6 @@ fn lobby_view<'a>(
                 .spacing(10)
                 .align_y(Alignment::Start),
             )
-            .padding(6)
             .width(Length::Fill)
             .into()
         };
@@ -1837,36 +1835,32 @@ fn lobby_view<'a>(
         .spacing(12)
         .align_y(Alignment::Center);
 
-    // Central "VS" mark between the two player slots. Muted text,
-    // shifted down with a fixed top padding so it lines up with
-    // the nickname row of the side cards — the row itself stays
-    // top-aligned (see below) so the cards don't shift around as
-    // the opponent's placeholder fills in.
-    let vs_chip: Element<'a, Message> = container(text("VS").size(TEXT_DISPLAY).style(save_view::muted_text_style))
-        .padding(iced::Padding {
-            top: 17.0,
-            right: 0.0,
-            bottom: 0.0,
-            left: 0.0,
-        })
-        .into();
+    // Sides row: the you / opponent cards are spaced wide enough
+    // to expose a slim diagonal cut through the middle of the
+    // pane. `widgets::vs_splitter` is layered *under* the row so
+    // the band reads as the pane plate having been sliced — the
+    // page background showing through the cut.
+    let sides_row = iced::widget::row![
+        side(
+            t!(lang, "play-you"),
+            Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
+            lobby.local_ready,
+        ),
+        side(t!(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
+    ]
+    // Wide enough to leave breathing room around the staggered
+    // V/S glyphs that flank the diagonal cut. Matches the
+    // replay-detail matchup pane's gap.
+    .spacing(56)
+    // Top-align so the YOU slot doesn't bounce upward when the
+    // opponent's settings land and their card grows from a 2-line
+    // placeholder to a 3-line filled card.
+    .align_y(Alignment::Start);
     let sides_pane = container(
-        iced::widget::row![
-            side(
-                t!(lang, "play-you"),
-                Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
-                lobby.local_ready,
-            ),
-            vs_chip,
-            side(t!(lang, "replays-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
-        ]
-        .spacing(14)
-        // Top-align so the YOU slot doesn't bounce upward when
-        // the opponent's settings land and their card grows
-        // from a 2-line placeholder to a 3-line filled card.
-        .align_y(Alignment::Start),
+        iced::widget::Stack::new()
+            .push(container(sides_row).padding(widgets::PANE_PADDING).width(Fill))
+            .push_under(widgets::vs_splitter()),
     )
-    .padding(widgets::PANE_PADDING)
     .width(Fill)
     .style(widgets::pane);
     let controls_pane = container(controls)

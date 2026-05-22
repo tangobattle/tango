@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
+use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::i18n::t;
 use crate::widgets;
 use crate::{config, replays, save_view};
@@ -916,6 +916,9 @@ fn replay_detail<'a>(
             // Top-align so the action buttons stay anchored when
             // a long title wraps to a second line.
             .align_y(Alignment::Start),
+            text(format!("{parent_str}{filename}"))
+                .size(TEXT_CAPTION)
+                .style(save_view::muted_text_style),
             export_panel(
                 lang,
                 state.is_panel_open(&r.path),
@@ -925,28 +928,6 @@ fn replay_detail<'a>(
                 &r.path,
             ),
             text(ts_str).size(TEXT_CAPTION).style(save_view::muted_text_style),
-            text(format!("{parent_str}{filename}"))
-                .size(TEXT_CAPTION)
-                .style(save_view::muted_text_style),
-        ]
-        .spacing(6),
-    )
-    .width(Fill)
-    .padding(widgets::PANE_PADDING)
-    .style(widgets::pane);
-
-    // Matchup pane: you-vs-opponent side cards and the match-type
-    // line under them.
-    let matchup_pane = container(
-        column![
-            row![
-                row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
-                container(text("VS").size(TEXT_DISPLAY).style(save_view::muted_text_style),).padding([0, 12]),
-                row_for_side(t!(lang, "replays-opponent"), md.remote_side.as_ref()),
-            ]
-            .spacing(12)
-            .align_y(iced::Alignment::Center)
-            .height(Length::Shrink),
             text({
                 let family = md
                     .local_side
@@ -957,12 +938,32 @@ fn replay_detail<'a>(
                 let label = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
                 t!(lang, "replays-match-type", type = label)
             })
-            .size(TEXT_CAPTION),
+            .size(TEXT_CAPTION)
+            .style(save_view::muted_text_style),
         ]
-        .spacing(8),
+        .spacing(6),
     )
     .width(Fill)
     .padding(widgets::PANE_PADDING)
+    .style(widgets::pane);
+
+    // Matchup pane: you-vs-opponent cards with a diagonal cut
+    // through the middle of the pane. `widgets::vs_splitter` is
+    // layered *under* the row so the cut reads as the pane plate
+    // being sliced — the page background showing through.
+    let matchup_row = row![
+        row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
+        row_for_side(t!(lang, "replays-opponent"), md.remote_side.as_ref()),
+    ]
+    .spacing(56)
+    .align_y(iced::Alignment::Start)
+    .height(Length::Shrink);
+    let matchup_pane = container(
+        iced::widget::Stack::new()
+            .push(container(matchup_row).padding(widgets::PANE_PADDING).width(Fill))
+            .push_under(widgets::vs_splitter()),
+    )
+    .width(Fill)
     .style(widgets::pane);
 
     // Save view contributes its own pane pair (tab strip + body)
