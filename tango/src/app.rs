@@ -636,7 +636,7 @@ impl App {
                     matches!(m, session::Message::Close) && matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self
                     .session
-                    .update(m, &self.config.input_mapping, &self.config.video_filter)
+                    .update(m, &self.config.input_mapping)
                     .map(Message::Session);
                 if sp_closing {
                     let saves_path = self.config.saves_path();
@@ -717,7 +717,6 @@ impl App {
                     Ok(session) => {
                         let has_opponent_panel = session.opponent_loaded.is_some();
                         self.session.active = Some(ActiveSession::PvP(session));
-                        self.session.frame = None;
                         self.session.show_opponent_panel = has_opponent_panel;
                     }
                     Err(e) => {
@@ -850,7 +849,6 @@ impl App {
                 match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::SinglePlayer(s));
-                        self.session.frame = None;
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
@@ -1047,7 +1045,6 @@ impl App {
                 match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::Replay(s));
-                        self.session.frame = None;
                     }
                     Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
                 }
@@ -1501,39 +1498,39 @@ impl App {
             // arrived in. Going through subscriptions would
             // round-trip through an `mpsc::try_send` and cost ~1
             // winit iteration of input lag per event.
-            let session_view = session::view(lang, &self.session, self.config.fractional_scaling).map(Message::Session);
-            return crate::input_capture::InputCapture::new(
-                session_view,
-                |input| {
-                    let ev = match input {
-                        crate::input_capture::Input::Keyboard(kb) => match kb {
-                            iced::keyboard::Event::KeyPressed { physical_key, .. } => Some(session::InputEvent::Key {
-                                physical: *physical_key,
-                                pressed: true,
-                            }),
-                            iced::keyboard::Event::KeyReleased { physical_key, .. } => Some(session::InputEvent::Key {
-                                physical: *physical_key,
-                                pressed: false,
-                            }),
-                            _ => None,
-                        },
-                        crate::input_capture::Input::Gamepad(ev) => match *ev {
-                            crate::gamepad::GamepadEvent::ButtonDown(b) => crate::input::GamepadButton::from_sdl3(b)
-                                .map(|button| session::InputEvent::Button { button, pressed: true }),
-                            crate::gamepad::GamepadEvent::ButtonUp(b) => crate::input::GamepadButton::from_sdl3(b)
-                                .map(|button| session::InputEvent::Button { button, pressed: false }),
-                            crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                                Some(session::InputEvent::Axis { axis, value })
-                            }
-                            crate::gamepad::GamepadEvent::DeviceRemoved => {
-                                Some(session::InputEvent::GamepadDisconnected)
-                            }
-                        },
-                    };
-                    ev.map(|ev| Message::Session(session::Message::Input(ev)))
-                },
-                || Some(Message::Session(session::Message::Tick)),
+            let session_view = session::view(
+                lang,
+                &self.session,
+                self.config.fractional_scaling,
+                &self.config.video_filter,
             )
+            .map(Message::Session);
+            return crate::input_capture::InputCapture::new(session_view, |input| {
+                let ev = match input {
+                    crate::input_capture::Input::Keyboard(kb) => match kb {
+                        iced::keyboard::Event::KeyPressed { physical_key, .. } => Some(session::InputEvent::Key {
+                            physical: *physical_key,
+                            pressed: true,
+                        }),
+                        iced::keyboard::Event::KeyReleased { physical_key, .. } => Some(session::InputEvent::Key {
+                            physical: *physical_key,
+                            pressed: false,
+                        }),
+                        _ => None,
+                    },
+                    crate::input_capture::Input::Gamepad(ev) => match *ev {
+                        crate::gamepad::GamepadEvent::ButtonDown(b) => crate::input::GamepadButton::from_sdl3(b)
+                            .map(|button| session::InputEvent::Button { button, pressed: true }),
+                        crate::gamepad::GamepadEvent::ButtonUp(b) => crate::input::GamepadButton::from_sdl3(b)
+                            .map(|button| session::InputEvent::Button { button, pressed: false }),
+                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                            Some(session::InputEvent::Axis { axis, value })
+                        }
+                        crate::gamepad::GamepadEvent::DeviceRemoved => Some(session::InputEvent::GamepadDisconnected),
+                    },
+                };
+                ev.map(|ev| Message::Session(session::Message::Input(ev)))
+            })
             .into();
         }
 

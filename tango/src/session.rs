@@ -103,16 +103,6 @@ impl ActiveSession {
 #[derive(Default)]
 pub struct State {
     pub active: Option<ActiveSession>,
-    pub frame: Option<iced::widget::image::Handle>,
-    /// Bumped each tick to give the iced `image::Handle::Rgba` an
-    /// always-fresh id (without that, iced caches the texture and the
-    /// emulator picture freezes).
-    pub frame_counter: u64,
-    /// Frame id of the source emulator frame the current `frame`
-    /// Handle was built from. Set in the Tick handler and used to
-    /// skip texture rebuilds when mgba hasn't produced a new
-    /// frame yet (host vsync > emu fps).
-    pub displayed_frame_id: u64,
     /// PvP-only: shows the opponent's save view in a side panel
     /// when they enabled reveal-setup. Defaults to visible when
     /// the panel is available; user can hide it via the toggle
@@ -154,9 +144,6 @@ impl State {
 /// inert when `state.active` is `None`.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// 60 Hz tick from the subscription. Pulls a fresh framebuffer
-    /// out of the emulator and updates `state.frame`.
-    Tick,
     /// Close the session and return to the previous tab.
     Close,
     /// Raw input event from the keyboard or a gamepad. The
@@ -213,62 +200,13 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
+    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
         match msg {
-            Message::Tick => {
-                if let Some(session) = self.active.as_ref() {
-                    // Match background task signaled it's done
-                    // (clean finish / peer disconnect / comm
-                    // error). Self-close so the user isn't stuck
-                    // on a frozen final frame.
-                    if session.is_ended() {
-                        return iced::Task::done(Message::Close);
-                    }
-                    // Skip the rebuild + GPU re-upload when the
-                    // emulator hasn't advanced. On a 144 Hz host
-                    // running a 60 fps game that's >50% of ticks.
-                    let fid = session.frame_id();
-                    if fid == self.displayed_frame_id && self.frame.is_some() {
-                        return iced::Task::none();
-                    }
-                    let pixels = session.snapshot_vbuf();
-                    let src_w = replay_session::SCREEN_WIDTH as usize;
-                    let src_h = replay_session::SCREEN_HEIGHT as usize;
-                    // Run the upscale filter selected in
-                    // settings, if any. Bad / empty name falls
-                    // back to NullFilter (pass-through).
-                    let filter = crate::video::filter_by_name(video_filter)
-                        .unwrap_or_else(|| Box::new(crate::video::NullFilter));
-                    let [out_w, out_h] = filter.output_size([src_w, src_h]);
-                    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
-                        (src_w as u32, src_h as u32, pixels)
-                    } else {
-                        let mut dst = vec![0u8; out_w * out_h * 4];
-                        filter.apply(&pixels, &mut dst, [src_w, src_h]);
-                        (out_w as u32, out_h as u32, dst)
-                    };
-                    // hqx operates on 24-bit RGB and masks the
-                    // alpha byte to 0 in every output pixel
-                    // (see `MASK_RGB = 0x00FFFFFF` in the hqx
-                    // crate). The result reads as fully
-                    // transparent in iced and shows as black /
-                    // strobing depending on what's underneath.
-                    // Pure-2x MMPX preserves alpha, but it's
-                    // cheap to re-stamp unconditionally.
-                    for chunk in buf.chunks_mut(4) {
-                        chunk[3] = 0xff;
-                    }
-                    self.frame = Some(iced::widget::image::Handle::from_rgba(w, h, buf));
-                    self.frame_counter = self.frame_counter.wrapping_add(1);
-                    self.displayed_frame_id = fid;
-                }
-            }
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
                     s.request_close();
                 }
                 self.active = None;
-                self.frame = None;
                 self.show_options_menu = false;
             }
             Message::Input(ev) => {
@@ -352,11 +290,46 @@ impl State {
     }
 }
 
-/// Keyboard, gamepad, and the per-redraw Tick all come through
-/// `InputCapture` in `App::view` — see that widget's module
-/// docs for why the subscription path is too laggy.
+/// Keyboard and gamepad input flow through `InputCapture` in
+/// `App::view` — see that widget's module docs for why the
+/// subscription path is too laggy. The per-frame GBA framebuffer
+/// upload happens inside the [`crate::screen::Screen`] widget so
+/// it doesn't have to round-trip through a Message every redraw.
 pub fn subscription(_state: &State) -> iced::Subscription<Message> {
     iced::Subscription::none()
+}
+
+/// Build an iced texture handle from the active session's latest
+/// framebuffer, applying the configured upscale filter and re-
+/// stamping alpha to 0xff. Called from the `Screen` widget's
+/// per-redraw callback. Returns the (handle, frame_id) pair so
+/// the widget can stash the id for next-redraw dedup.
+fn build_frame_handle(session: &ActiveSession, video_filter: &str) -> (iced::widget::image::Handle, u64) {
+    let fid = session.frame_id();
+    let pixels = session.snapshot_vbuf();
+    let src_w = replay_session::SCREEN_WIDTH as usize;
+    let src_h = replay_session::SCREEN_HEIGHT as usize;
+    // Run the upscale filter selected in settings, if any. Bad /
+    // empty name falls back to NullFilter (pass-through).
+    let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
+    let [out_w, out_h] = filter.output_size([src_w, src_h]);
+    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
+        (src_w as u32, src_h as u32, pixels)
+    } else {
+        let mut dst = vec![0u8; out_w * out_h * 4];
+        filter.apply(&pixels, &mut dst, [src_w, src_h]);
+        (out_w as u32, out_h as u32, dst)
+    };
+    // hqx operates on 24-bit RGB and masks the alpha byte to 0 in
+    // every output pixel (see `MASK_RGB = 0x00FFFFFF` in the hqx
+    // crate). The result reads as fully transparent in iced and
+    // shows as black / strobing depending on what's underneath.
+    // Pure-2x MMPX preserves alpha, but it's cheap to re-stamp
+    // unconditionally.
+    for chunk in buf.chunks_mut(4) {
+        chunk[3] = 0xff;
+    }
+    (iced::widget::image::Handle::from_rgba(w, h, buf), fid)
 }
 
 /// Optional iced texture handle for a Game's background art. Pulls
@@ -397,68 +370,83 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
-pub fn view<'a>(lang: &'a LanguageIdentifier, state: &'a State, fractional_scaling: bool) -> Element<'a, Message> {
+pub fn view<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    fractional_scaling: bool,
+    video_filter: &'a str,
+) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
-    let frame_handle = state.frame.as_ref();
-    use iced::widget::{image, Space};
 
-    let frame: Element<'a, Message> = if let Some(handle) = frame_handle {
-        // Fractional scaling: smooth Fill+Contain, lets the
-        // renderer scale the image to fit the pane at any
-        // ratio. Integer scaling: pick the largest whole-integer
-        // multiple of the source texture that fits — needs the
-        // pane size, which only `responsive` can provide.
-        if fractional_scaling {
-            image(handle.clone())
+    // Post-filter framebuffer dimensions. Drives the integer-scale
+    // math below; same numbers that `build_frame_handle` ultimately
+    // hands to the `Screen` widget.
+    let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
+    let [out_w, out_h] = filter.output_size([
+        replay_session::SCREEN_WIDTH as usize,
+        replay_session::SCREEN_HEIGHT as usize,
+    ]);
+    let img_w = out_w as f32;
+    let img_h = out_h as f32;
+
+    let make_screen = move || {
+        crate::screen::Screen::new(move |last_frame_id| {
+            if session.is_ended() {
+                return crate::screen::Tick::Ended;
+            }
+            let fid = session.frame_id();
+            if fid == last_frame_id {
+                return crate::screen::Tick::Idle;
+            }
+            let (handle, frame_id) = build_frame_handle(session, video_filter);
+            crate::screen::Tick::NewFrame { handle, frame_id }
+        })
+        .on_ended(Message::Close)
+    };
+
+    let frame: Element<'a, Message> = if fractional_scaling {
+        // Smooth Fill+Contain — let the renderer scale the image to
+        // fit the pane at any ratio.
+        make_screen()
+            .width(Fill)
+            .height(Fill)
+            .content_fit(iced::ContentFit::Contain)
+            .into()
+    } else {
+        // Integer scaling: pick the largest whole-integer multiple
+        // of the source texture that fits — needs the pane size,
+        // which only `responsive` can provide.
+        iced::widget::responsive(move |size| {
+            let scale = (size.width / img_w).min(size.height / img_h).floor().max(1.0);
+            let (w, h) = (img_w * scale, img_h * scale);
+            let screen = make_screen()
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h))
+                .content_fit(iced::ContentFit::Fill);
+            // Tight container around the Fixed-size framebuffer so
+            // the shadow style traces its edges, not the surrounding
+            // pane.
+            let framed = iced::widget::container(screen)
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h))
+                .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                    shadow: iced::Shadow {
+                        color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+                        offset: iced::Vector::new(0.0, 8.0),
+                        blur_radius: 24.0,
+                    },
+                    ..Default::default()
+                });
+            iced::widget::container(framed)
                 .width(Fill)
                 .height(Fill)
-                .filter_method(image::FilterMethod::Nearest)
-                .content_fit(iced::ContentFit::Contain)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center)
                 .into()
-        } else {
-            let (img_w, img_h) = match handle {
-                iced::widget::image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
-                _ => (
-                    replay_session::SCREEN_WIDTH as f32,
-                    replay_session::SCREEN_HEIGHT as f32,
-                ),
-            };
-            let handle = handle.clone();
-            iced::widget::responsive(move |size| {
-                let scale = (size.width / img_w).min(size.height / img_h).floor().max(1.0);
-                let (w, h) = (img_w * scale, img_h * scale);
-                let img = image(handle.clone())
-                    .width(Length::Fixed(w))
-                    .height(Length::Fixed(h))
-                    .filter_method(image::FilterMethod::Nearest)
-                    .content_fit(iced::ContentFit::Fill);
-                // Tight container around the Fixed-size image so the
-                // shadow style traces the framebuffer's edges, not
-                // the surrounding pane.
-                let framed = iced::widget::container(img)
-                    .width(Length::Fixed(w))
-                    .height(Length::Fixed(h))
-                    .style(|_theme: &iced::Theme| iced::widget::container::Style {
-                        shadow: iced::Shadow {
-                            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
-                            offset: iced::Vector::new(0.0, 8.0),
-                            blur_radius: 24.0,
-                        },
-                        ..Default::default()
-                    });
-                iced::widget::container(framed)
-                    .width(Fill)
-                    .height(Fill)
-                    .align_x(iced::alignment::Horizontal::Center)
-                    .align_y(iced::alignment::Vertical::Center)
-                    .into()
-            })
-            .into()
-        }
-    } else {
-        Space::new().width(Fill).height(Fill).into()
+        })
+        .into()
     };
 
     // Controls-strip sizing: one icon size + padding so the

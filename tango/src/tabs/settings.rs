@@ -237,35 +237,31 @@ pub fn view<'a>(
     // drained. The callback publishes a `BindingCaptured` for the
     // first key press, button press, or axis-past-threshold event.
     if state.capture_target.is_some() {
-        crate::input_capture::InputCapture::new(
-            root,
-            |input| {
-                let captured = match input {
-                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed {
-                        physical_key, ..
-                    }) => Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key))),
-                    crate::input_capture::Input::Keyboard(_) => None,
-                    crate::input_capture::Input::Gamepad(ev) => match *ev {
-                        crate::gamepad::GamepadEvent::ButtonDown(b) => {
-                            input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
-                        }
-                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                            (value.abs() > input::AXIS_THRESHOLD).then(|| input::PhysicalInput::Axis {
-                                axis,
-                                dir: if value > 0.0 {
-                                    input::AxisDir::Positive
-                                } else {
-                                    input::AxisDir::Negative
-                                },
-                            })
-                        }
-                        _ => None,
-                    },
-                };
-                captured.map(Message::BindingCaptured)
-            },
-            || None,
-        )
+        crate::input_capture::InputCapture::new(root, |input| {
+            let captured = match input {
+                crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed { physical_key, .. }) => {
+                    Some(input::PhysicalInput::Key(input::KeyPhysical(*physical_key)))
+                }
+                crate::input_capture::Input::Keyboard(_) => None,
+                crate::input_capture::Input::Gamepad(ev) => match *ev {
+                    crate::gamepad::GamepadEvent::ButtonDown(b) => {
+                        input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
+                    }
+                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                        (value.abs() > input::AXIS_THRESHOLD).then(|| input::PhysicalInput::Axis {
+                            axis,
+                            dir: if value > 0.0 {
+                                input::AxisDir::Positive
+                            } else {
+                                input::AxisDir::Negative
+                            },
+                        })
+                    }
+                    _ => None,
+                },
+            };
+            captured.map(Message::BindingCaptured)
+        })
         .into()
     } else {
         root.into()

@@ -20,17 +20,15 @@
 //! `interface.update` synthesizes once per redraw (see the
 //! `let redraw_event` block in `iced_winit::run_with_executor`).
 //!
-//! The optional `on_tick` callback fires on the same
-//! `RedrawRequested` and is meant for the per-frame refresh of
-//! the GBA framebuffer Handle. Going through
-//! `iced::window::frames()` for that would lose a full redraw
-//! cycle: the Tick `Message` is broadcast *after* draw and
-//! arrives at `program.update` one winit iteration later, so the
-//! freshly-uploaded image only appears on the *next* present. A
-//! widget-published Tick lands in the same `RedrawRequested`
-//! call — iced re-enters `interface.update` and rebuilds the
-//! view before drawing, so the new framebuffer is on screen
-//! this very redraw.
+//! Per-frame GBA framebuffer uploads live in [`crate::screen`]
+//! rather than going through a Tick message here. Publishing a
+//! Message on every RedrawRequested trips iced 0.14's
+//! `if message_count == messages.len() && !state.has_layout_changed()`
+//! convergence check, which warns "More than 3 consecutive
+//! RedrawRequested events produced layout invalidation" after
+//! three loop iterations. The widget-update-only path is
+//! message-free in the common case and keeps the redraw loop
+//! settling on the first iteration.
 
 use iced::advanced::layout;
 use iced::advanced::overlay;
@@ -54,19 +52,16 @@ pub enum Input<'a> {
 pub struct InputCapture<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     on_input: Box<dyn Fn(Input<'_>) -> Option<Message> + 'a>,
-    on_tick: Box<dyn Fn() -> Option<Message> + 'a>,
 }
 
 impl<'a, Message, Theme, Renderer> InputCapture<'a, Message, Theme, Renderer> {
     pub fn new(
         content: impl Into<Element<'a, Message, Theme, Renderer>>,
         on_input: impl Fn(Input<'_>) -> Option<Message> + 'a,
-        on_tick: impl Fn() -> Option<Message> + 'a,
     ) -> Self {
         Self {
             content: content.into(),
             on_input: Box::new(on_input),
-            on_tick: Box::new(on_tick),
         }
     }
 }
@@ -139,9 +134,6 @@ where
                         shell.publish(message);
                     }
                 });
-                if let Some(message) = (self.on_tick)() {
-                    shell.publish(message);
-                }
                 // Replaces what `iced::window::frames()` did for
                 // us — keep the redraw loop self-perpetuating
                 // without going through a subscription.
