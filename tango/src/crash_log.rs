@@ -43,7 +43,7 @@ pub fn install() -> crash_handler::CrashHandler {
     // runs in a signal / exception context. Our closure only
     // touches stderr and a backtrace capture — see the
     // module-level note on signal safety.
-    crash_handler::CrashHandler::attach(unsafe {
+    let handler = crash_handler::CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |cc: &crash_handler::CrashContext| {
             if IN_HANDLER.swap(true, Ordering::SeqCst) {
                 // Re-entrant crash — get out of the way and let
