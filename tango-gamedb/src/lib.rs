@@ -19,11 +19,6 @@ pub trait Game: Any + Send + Sync {
     fn crc32(&self) -> u32;
     fn region(&self) -> Region;
 
-    /// Build a [`Save`](tango_dataview::save::Save) from a WRAM-format
-    /// save dump. Used by replay loading to reconstitute saves stored
-    /// in the WRAM-format `.tangoreplay` field.
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, Error>;
-
     /// Parse a cartridge SRAM dump into a [`Save`](tango_dataview::save::Save),
     /// validating that the dump matches this game (region/variant). Errors
     /// when the dump is for a different game.

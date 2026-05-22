@@ -27,14 +27,6 @@ impl Game for AREJ_00_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        Ok(Box::new(tango_dataview::game::bn1::save::Save::from_wram(
-            wram,
-            tango_dataview::game::bn1::save::GameInfo {
-                region: tango_dataview::game::bn1::save::Region::JP,
-            },
-        )?))
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         let save = tango_dataview::game::bn1::save::Save::new(data)?;
         if save.game_info()
@@ -76,14 +68,6 @@ impl Game for AREE_00_ {
     }
     fn region(&self) -> Region {
         Region::US
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        Ok(Box::new(tango_dataview::game::bn1::save::Save::from_wram(
-            wram,
-            tango_dataview::game::bn1::save::GameInfo {
-                region: tango_dataview::game::bn1::save::Region::US,
-            },
-        )?))
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         let save = tango_dataview::game::bn1::save::Save::new(data)?;
@@ -128,9 +112,6 @@ impl Game for AE2J_00_AC_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::from_wram(wram)?))
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         Ok(Box::new(tango_dataview::game::bn2::save::Save::new(data)?))
     }
@@ -165,9 +146,6 @@ impl Game for AE2E_00_ {
     fn region(&self) -> Region {
         Region::US
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        Ok(Box::new(tango_dataview::game::bn2::save::Save::from_wram(wram)?))
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         Ok(Box::new(tango_dataview::game::bn2::save::Save::new(data)?))
     }
@@ -187,16 +165,6 @@ impl Game for AE2E_00_ {
     }
 }
 
-// ──────── BN3 ────────
-fn bn3_save_from_wram(
-    wram: &[u8],
-    variant: tango_dataview::game::bn3::save::Variant,
-) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-    Ok(Box::new(tango_dataview::game::bn3::save::Save::from_wram(
-        wram,
-        tango_dataview::game::bn3::save::GameInfo { variant },
-    )?))
-}
 fn bn3_parse_save(
     data: &[u8],
     variant: tango_dataview::game::bn3::save::Variant,
@@ -222,9 +190,6 @@ impl Game for A6BJ_01_ {
     }
     fn region(&self) -> Region {
         Region::JP
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn3_save_from_wram(wram, tango_dataview::game::bn3::save::Variant::White)
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn3_parse_save(data, tango_dataview::game::bn3::save::Variant::White)
@@ -260,9 +225,6 @@ impl Game for A3XJ_01_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn3_save_from_wram(wram, tango_dataview::game::bn3::save::Variant::Blue)
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn3_parse_save(data, tango_dataview::game::bn3::save::Variant::Blue)
     }
@@ -296,9 +258,6 @@ impl Game for A6BE_00_ {
     }
     fn region(&self) -> Region {
         Region::US
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn3_save_from_wram(wram, tango_dataview::game::bn3::save::Variant::White)
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn3_parse_save(data, tango_dataview::game::bn3::save::Variant::White)
@@ -334,9 +293,6 @@ impl Game for A3XE_00_ {
     fn region(&self) -> Region {
         Region::US
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn3_save_from_wram(wram, tango_dataview::game::bn3::save::Variant::Blue)
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn3_parse_save(data, tango_dataview::game::bn3::save::Variant::Blue)
     }
@@ -357,16 +313,6 @@ impl Game for A3XE_00_ {
 }
 
 // ──────── BN4 ────────
-fn bn4_save_from_wram(
-    wram: &[u8],
-    region: tango_dataview::game::bn4::save::Region,
-    variant: tango_dataview::game::bn4::save::Variant,
-) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-    Ok(Box::new(tango_dataview::game::bn4::save::Save::from_wram(
-        wram,
-        tango_dataview::game::bn4::save::GameInfo { region, variant },
-    )?))
-}
 fn bn4_parse_save(
     data: &[u8],
     is_jp: bool,
@@ -399,13 +345,6 @@ impl Game for B4WJ_01_ {
     }
     fn region(&self) -> Region {
         Region::JP
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn4_save_from_wram(
-            wram,
-            tango_dataview::game::bn4::save::Region { jp: true, us: false },
-            tango_dataview::game::bn4::save::Variant::RedSun,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn4_parse_save(data, true, tango_dataview::game::bn4::save::Variant::RedSun)
@@ -441,13 +380,6 @@ impl Game for B4BJ_01_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn4_save_from_wram(
-            wram,
-            tango_dataview::game::bn4::save::Region { jp: true, us: false },
-            tango_dataview::game::bn4::save::Variant::BlueMoon,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn4_parse_save(data, true, tango_dataview::game::bn4::save::Variant::BlueMoon)
     }
@@ -481,13 +413,6 @@ impl Game for B4WE_00_ {
     }
     fn region(&self) -> Region {
         Region::US
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn4_save_from_wram(
-            wram,
-            tango_dataview::game::bn4::save::Region { jp: false, us: true },
-            tango_dataview::game::bn4::save::Variant::RedSun,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn4_parse_save(data, false, tango_dataview::game::bn4::save::Variant::RedSun)
@@ -523,13 +448,6 @@ impl Game for B4BE_00_ {
     fn region(&self) -> Region {
         Region::US
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn4_save_from_wram(
-            wram,
-            tango_dataview::game::bn4::save::Region { jp: false, us: true },
-            tango_dataview::game::bn4::save::Variant::BlueMoon,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn4_parse_save(data, false, tango_dataview::game::bn4::save::Variant::BlueMoon)
     }
@@ -550,16 +468,6 @@ impl Game for B4BE_00_ {
 }
 
 // ──────── BN5 ────────
-fn bn5_save_from_wram(
-    wram: &[u8],
-    region: tango_dataview::game::bn5::save::Region,
-    variant: tango_dataview::game::bn5::save::Variant,
-) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-    Ok(Box::new(tango_dataview::game::bn5::save::Save::from_wram(
-        wram,
-        tango_dataview::game::bn5::save::GameInfo { region, variant },
-    )?))
-}
 fn bn5_parse_save(
     data: &[u8],
     region: tango_dataview::game::bn5::save::Region,
@@ -586,13 +494,6 @@ impl Game for BRBJ_00_ {
     }
     fn region(&self) -> Region {
         Region::JP
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn5_save_from_wram(
-            wram,
-            tango_dataview::game::bn5::save::Region::JP,
-            tango_dataview::game::bn5::save::Variant::Protoman,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn5_parse_save(
@@ -632,13 +533,6 @@ impl Game for BRKJ_00_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn5_save_from_wram(
-            wram,
-            tango_dataview::game::bn5::save::Region::JP,
-            tango_dataview::game::bn5::save::Variant::Colonel,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn5_parse_save(
             data,
@@ -676,13 +570,6 @@ impl Game for BRBE_00_ {
     }
     fn region(&self) -> Region {
         Region::US
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn5_save_from_wram(
-            wram,
-            tango_dataview::game::bn5::save::Region::US,
-            tango_dataview::game::bn5::save::Variant::Protoman,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn5_parse_save(
@@ -722,13 +609,6 @@ impl Game for BRKE_00_ {
     fn region(&self) -> Region {
         Region::US
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn5_save_from_wram(
-            wram,
-            tango_dataview::game::bn5::save::Region::US,
-            tango_dataview::game::bn5::save::Variant::Colonel,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn5_parse_save(
             data,
@@ -753,16 +633,6 @@ impl Game for BRKE_00_ {
 }
 
 // ──────── BN6 ────────
-fn bn6_save_from_wram(
-    wram: &[u8],
-    region: tango_dataview::game::bn6::save::Region,
-    variant: tango_dataview::game::bn6::save::Variant,
-) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-    Ok(Box::new(tango_dataview::game::bn6::save::Save::from_wram(
-        wram,
-        tango_dataview::game::bn6::save::GameInfo { region, variant },
-    )?))
-}
 fn bn6_parse_save(
     data: &[u8],
     region: tango_dataview::game::bn6::save::Region,
@@ -789,13 +659,6 @@ impl Game for BR5J_00_ {
     }
     fn region(&self) -> Region {
         Region::JP
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn6_save_from_wram(
-            wram,
-            tango_dataview::game::bn6::save::Region::JP,
-            tango_dataview::game::bn6::save::Variant::Gregar,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn6_parse_save(
@@ -835,13 +698,6 @@ impl Game for BR6J_00_ {
     fn region(&self) -> Region {
         Region::JP
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn6_save_from_wram(
-            wram,
-            tango_dataview::game::bn6::save::Region::JP,
-            tango_dataview::game::bn6::save::Variant::Falzar,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn6_parse_save(
             data,
@@ -879,13 +735,6 @@ impl Game for BR5E_00_ {
     }
     fn region(&self) -> Region {
         Region::US
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn6_save_from_wram(
-            wram,
-            tango_dataview::game::bn6::save::Region::US,
-            tango_dataview::game::bn6::save::Variant::Gregar,
-        )
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn6_parse_save(
@@ -925,13 +774,6 @@ impl Game for BR6E_00_ {
     fn region(&self) -> Region {
         Region::US
     }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        bn6_save_from_wram(
-            wram,
-            tango_dataview::game::bn6::save::Region::US,
-            tango_dataview::game::bn6::save::Variant::Falzar,
-        )
-    }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         bn6_parse_save(
             data,
@@ -970,9 +812,6 @@ impl Game for BR4J_00_ {
     }
     fn region(&self) -> Region {
         Region::JP
-    }
-    fn save_from_wram(&self, wram: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
-        Ok(Box::new(tango_dataview::game::exe45::save::Save::from_wram(wram)?))
     }
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn tango_dataview::save::Save + Send + Sync>, crate::Error> {
         Ok(Box::new(tango_dataview::game::exe45::save::Save::new(data)?))
