@@ -1,10 +1,13 @@
-use super::{Game, LazyImage, SaveTemplates};
+use super::{BackgroundRef, Game, LazyImage, SaveTemplates};
+use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[2, 2];
-static BACKGROUND: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/4.png")).unwrap());
+const BACKGROUND: BackgroundRef = BackgroundRef {
+    volume: bnlc::Volume::Vol2,
+    tga: "13.tga",
+};
 static EXE4RS_LOGO: LazyImage =
     LazyLock::new(|| image::load_from_memory(include_bytes!("../../logos/exe4-0.png")).unwrap());
 static EXE4BM_LOGO: LazyImage =
@@ -50,7 +53,7 @@ pub static EXE4RS: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE4RS_T,
     logo_image: &EXE4RS_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- EXE4 Blue Moon (JP) ----------------
@@ -74,7 +77,7 @@ pub static EXE4BM: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE4BM_T,
     logo_image: &EXE4BM_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- BN4 Red Sun (US) ----------------
@@ -98,7 +101,7 @@ pub static BN4RS: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN4RS_T,
     logo_image: &BN4RS_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- BN4 Blue Moon (US) ----------------
@@ -122,5 +125,5 @@ pub static BN4BM: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN4BM_T,
     logo_image: &BN4BM_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };

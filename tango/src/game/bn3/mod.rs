@@ -1,10 +1,13 @@
-use super::{Game, LazyImage, SaveTemplates};
+use super::{BackgroundRef, Game, LazyImage, SaveTemplates};
+use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[4, 1];
-static BACKGROUND: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/3.png")).unwrap());
+const BACKGROUND: BackgroundRef = BackgroundRef {
+    volume: bnlc::Volume::Vol1,
+    tga: "07.tga",
+};
 static EXE3W_LOGO: LazyImage =
     LazyLock::new(|| image::load_from_memory(include_bytes!("../../logos/exe3-0.png")).unwrap());
 static EXE3B_LOGO: LazyImage =
@@ -166,7 +169,7 @@ pub static EXE3W: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &WHITE_T,
     logo_image: &EXE3W_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 pub static EXE3B: Game = Game {
@@ -175,7 +178,7 @@ pub static EXE3B: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BLUE_T,
     logo_image: &EXE3B_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 pub static BN3W: Game = Game {
@@ -184,7 +187,7 @@ pub static BN3W: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &WHITE_T,
     logo_image: &BN3W_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 pub static BN3B: Game = Game {
@@ -193,5 +196,5 @@ pub static BN3B: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BLUE_T,
     logo_image: &BN3B_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };

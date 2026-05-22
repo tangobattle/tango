@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 mod audio;
+mod bnlc;
 mod config;
 mod discord;
 mod game;

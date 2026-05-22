@@ -6,6 +6,7 @@
 //! `save_templates`, and the per-game `tango_pvp::hooks::Hooks` so PVP /
 //! replay code has one lookup point.
 
+use crate::bnlc;
 use crate::i18n::LOCALES;
 use crate::rom::GameRef;
 use fluent_templates::Loader;
@@ -21,11 +22,21 @@ mod exe45;
 
 pub type SaveTemplates = LazyLock<Vec<(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))>>;
 
-/// Lazily-decoded bundled image (logo / background). The
-/// `include_bytes!` blob is held in .rodata; the decode runs on first
-/// access. Consumers convert to whatever pixel format they need
-/// (typically `.to_rgba8()` for upload as an iced texture).
+/// Lazily-decoded bundled image (logo). The `include_bytes!` blob is
+/// held in .rodata; the decode runs on first access. Consumers convert
+/// to whatever pixel format they need (typically `.to_rgba8()` for
+/// upload as an iced texture).
 pub type LazyImage = LazyLock<image::DynamicImage>;
+
+/// Points at a background TGA inside a BNLC volume's shared `exe.dat`
+/// asset archive. The full path in the zip is `exe/data/bg/<tga>`.
+/// Resolved at runtime via `crate::bnlc::read_shared_file`; if BNLC
+/// isn't installed the caller falls back to no background.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct BackgroundRef {
+    pub volume: bnlc::Volume,
+    pub tga: &'static str,
+}
 
 /// Per-game registration. Each gamedb variant has a `&'static Game`
 /// constant in the appropriate `bnX` / `exe45` submodule, and the
@@ -49,8 +60,10 @@ pub struct Game {
     pub save_templates: &'static SaveTemplates,
     /// Logo for the game. Decoded on first access.
     pub logo_image: &'static LazyImage,
-    /// Background image for the game. Decoded on first access.
-    pub background_image: &'static LazyImage,
+    /// Pointer to the BNLC-hosted background TGA. Decoded lazily by
+    /// the session view; if BNLC isn't installed the background is
+    /// silently omitted.
+    pub background: BackgroundRef,
 }
 
 /// Returns the per-game registration for a given gamedb entry, or

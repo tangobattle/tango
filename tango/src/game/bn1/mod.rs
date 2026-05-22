@@ -1,11 +1,13 @@
-use super::{Game, LazyImage, SaveTemplates};
+use super::{BackgroundRef, Game, LazyImage, SaveTemplates};
+use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[1];
-
-static BACKGROUND: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/1.png")).unwrap());
+const BACKGROUND: BackgroundRef = BackgroundRef {
+    volume: bnlc::Volume::Vol1,
+    tga: "01.tga",
+};
 
 // ---------------- EXE1 JP ----------------
 static EXE1_SAVE: LazyLock<tango_dataview::game::bn1::save::Save> = LazyLock::new(|| {
@@ -27,7 +29,7 @@ pub static EXE1: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE1_T,
     logo_image: &EXE1_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- BN1 US ----------------
@@ -50,5 +52,5 @@ pub static BN1: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN1_T,
     logo_image: &BN1_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };

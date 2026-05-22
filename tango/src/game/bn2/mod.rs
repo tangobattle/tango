@@ -1,8 +1,13 @@
-use super::{Game, LazyImage, SaveTemplates};
+use super::{BackgroundRef, Game, LazyImage, SaveTemplates};
+use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[1];
+const BACKGROUND: BackgroundRef = BackgroundRef {
+    volume: bnlc::Volume::Vol1,
+    tga: "05.tga",
+};
 
 macro_rules! bn2_save {
     ($file:expr) => {
@@ -15,9 +20,6 @@ static GUTS_ANY: LazyLock<tango_dataview::game::bn2::save::Save> = bn2_save!("sa
 static CUSTOM_ANY: LazyLock<tango_dataview::game::bn2::save::Save> = bn2_save!("save/custom_any.raw");
 static TEAM_ANY: LazyLock<tango_dataview::game::bn2::save::Save> = bn2_save!("save/team_any.raw");
 static SHIELD_ANY: LazyLock<tango_dataview::game::bn2::save::Save> = bn2_save!("save/shield_any.raw");
-
-static BACKGROUND: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/2.png")).unwrap());
 
 static TEMPLATES: SaveTemplates = LazyLock::new(|| {
     vec![
@@ -40,7 +42,7 @@ pub static EXE2: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &TEMPLATES,
     logo_image: &EXE2_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 pub static BN2: Game = Game {
@@ -49,5 +51,5 @@ pub static BN2: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &TEMPLATES,
     logo_image: &BN2_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };

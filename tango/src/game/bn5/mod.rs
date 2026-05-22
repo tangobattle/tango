@@ -1,10 +1,13 @@
-use super::{Game, LazyImage, SaveTemplates};
+use super::{BackgroundRef, Game, LazyImage, SaveTemplates};
+use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
 const MATCH_TYPES: &[usize] = &[1, 1];
-static BACKGROUND: LazyImage =
-    LazyLock::new(|| image::load_from_memory(include_bytes!("../../backgrounds/5.png")).unwrap());
+const BACKGROUND: BackgroundRef = BackgroundRef {
+    volume: bnlc::Volume::Vol2,
+    tga: "16.tga",
+};
 static EXE5B_LOGO: LazyImage =
     LazyLock::new(|| image::load_from_memory(include_bytes!("../../logos/exe5-0.png")).unwrap());
 static EXE5C_LOGO: LazyImage =
@@ -47,7 +50,7 @@ pub static EXE5B: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE5B_T,
     logo_image: &EXE5B_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- EXE5 Colonel JP ----------------
@@ -67,7 +70,7 @@ pub static EXE5C: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &EXE5C_T,
     logo_image: &EXE5C_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- BN5 Protoman US ----------------
@@ -88,7 +91,7 @@ pub static BN5P: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN5P_T,
     logo_image: &BN5P_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };
 
 // ---------------- BN5 Colonel US ----------------
@@ -108,5 +111,5 @@ pub static BN5C: Game = Game {
     match_types: MATCH_TYPES,
     save_templates: &BN5C_T,
     logo_image: &BN5C_LOGO,
-    background_image: &BACKGROUND,
+    background: BACKGROUND,
 };

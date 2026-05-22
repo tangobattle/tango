@@ -1,3 +1,4 @@
+use crate::bnlc;
 use crate::scanner;
 use std::io::Read;
 
@@ -47,48 +48,18 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<GameR
     roms
 }
 
-/// Locate Steam-installed Battle Network Legacy Collection (Vol 1 + Vol 2)
-/// and extract every recognized .srl ROM from their packaged .dat zips.
+/// Pull every recognized .srl ROM out of each BNLC volume's
+/// per-game `exeN.dat` archives. Steam discovery + the per-volume
+/// `Bnlc` handle live in `crate::bnlc`.
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<GameRef, Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
-    let Ok(steamdir) = steamlocate::SteamDir::locate().inspect_err(|err| {
-        log::debug!("steam not located: {err:?}");
-    }) else {
-        return roms;
-    };
-
-    // App IDs are the published Steam IDs for BNLC Vol 1 / Vol 2.
-    for app_id in [1798010_u32, 1798020] {
-        if let Ok(Some((app, lib))) = steamdir.find_app(app_id) {
-            roms.extend(scan_bnlc_rom_archives(&lib.resolve_app_dir(&app)));
-        }
-    }
-    roms
-}
-
-fn scan_bnlc_rom_archives(lc_path: &std::path::Path) -> std::collections::HashMap<GameRef, Vec<u8>> {
-    let mut roms = std::collections::HashMap::new();
-    let data_path = lc_path.join("exe").join("data");
-    let read_dir = match std::fs::read_dir(&data_path) {
-        Ok(rd) => rd,
-        Err(e) => {
-            log::warn!("bnlc: {}: {e}", lc_path.display());
-            return roms;
-        }
-    };
-    for entry in read_dir {
-        let Ok(entry) = entry else { continue };
-        let p = entry.path();
-        let Some(file_name) = p.file_name() else { continue };
-        // Only the `exe*.dat` archives contain ROMs; exe.dat itself is
-        // the shared assets file and shouldn't be opened.
-        if file_name == std::ffi::OsStr::new("exe.dat")
-            || !file_name.to_string_lossy().starts_with("exe")
-            || p.extension() != Some(std::ffi::OsStr::new("dat"))
-        {
+    for volume in [bnlc::Volume::Vol1, bnlc::Volume::Vol2] {
+        let Some(b) = bnlc::get(volume) else {
             continue;
+        };
+        for archive in b.rom_archives() {
+            roms.extend(scan_bnlc_rom_archive(&archive));
         }
-        roms.extend(scan_bnlc_rom_archive(&p));
     }
     roms
 }
