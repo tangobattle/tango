@@ -22,7 +22,6 @@ mod rom_overrides;
 mod save;
 mod save_view;
 mod scanner;
-mod screen;
 mod scrubber;
 mod selection;
 mod session;

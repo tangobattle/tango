@@ -636,7 +636,7 @@ impl App {
                     matches!(m, session::Message::Close) && matches!(self.session.active, Some(ActiveSession::PvP(_)));
                 let task = self
                     .session
-                    .update(m, &self.config.input_mapping)
+                    .update(m, &self.config.input_mapping, &self.config.video_filter)
                     .map(Message::Session);
                 if sp_closing {
                     let saves_path = self.config.saves_path();
@@ -674,6 +674,8 @@ impl App {
                 let scanners = self.scanners.clone();
                 let config = self.config.clone();
                 let audio_binder = self.audio_binder.clone();
+                let frame_notify = self.session.frame_notify.clone();
+                let vbuf = self.session.vbuf.clone();
                 let local_game = self.play.local_game;
                 let local_patch = self.play.local_patch.clone().zip(self.play.local_patch_version.clone());
                 iced::Task::perform(
@@ -681,7 +683,17 @@ impl App {
                         let Some(local_game) = local_game else {
                             return Err(anyhow::anyhow!("no local game selected"));
                         };
-                        session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
+                        session::spawn_pvp(
+                            scanners,
+                            config,
+                            audio_binder,
+                            frame_notify,
+                            vbuf,
+                            local_game,
+                            local_patch,
+                            pre_match,
+                        )
+                        .await
                     },
                     |result| Message::PvpSessionBuilt(std::sync::Arc::new(parking_lot::Mutex::new(Some(result)))),
                 )
@@ -846,7 +858,14 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                match session::spawn_singleplayer(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    self.session.frame_notify.clone(),
+                    self.session.vbuf.clone(),
+                    loaded,
+                ) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::SinglePlayer(s));
                     }
@@ -1042,7 +1061,14 @@ impl App {
                 iced::Task::none()
             }
             E::Watch(p) => {
-                match session::build_playback(&self.scanners, &self.config, &self.audio_binder, &p) {
+                match session::build_playback(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    self.session.frame_notify.clone(),
+                    self.session.vbuf.clone(),
+                    &p,
+                ) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::Replay(s));
                     }

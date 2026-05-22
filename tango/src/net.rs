@@ -230,6 +230,10 @@ pub struct PvpReceiver {
     /// to know the peer has also reached its match_end_ret hook
     /// and the connection is safe to tear down.
     peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Session subscription wake. Pinged after `peer_ended` flips
+    /// so `is_ended` is re-checked without waiting on the next
+    /// vblank — by then the emu thread has already paused.
+    frame_notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl PvpReceiver {
@@ -238,6 +242,7 @@ impl PvpReceiver {
         sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
         latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
         peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        frame_notify: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
         Self {
             receiver,
@@ -245,6 +250,7 @@ impl PvpReceiver {
             latency_counter,
             ping_timer: tokio::time::interval(PING_INTERVAL),
             peer_ended,
+            frame_notify,
         }
     }
 }
@@ -285,6 +291,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             // any tail-end Input packets the peer
                             // already queued can still arrive.
                             self.peer_ended.store(true, std::sync::atomic::Ordering::Release);
+                            self.frame_notify.notify_one();
                         }
                         p => {
                             return Err(std::io::Error::new(

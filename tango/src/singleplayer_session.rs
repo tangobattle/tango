@@ -15,14 +15,8 @@ const EXPECTED_FPS: f32 = 60.0;
 
 pub struct SinglePlayerSession {
     game: &'static crate::game::Game,
-    vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
-    /// Bumped once per emulator frame in the frame callback. The UI
-    /// tick reads this to decide whether to rebuild the iced
-    /// `Handle` (which would otherwise re-upload the same texture
-    /// to the GPU on every vsync of a high-refresh display).
-    frame_id: Arc<std::sync::atomic::AtomicU64>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
 }
@@ -33,6 +27,8 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save_path: &std::path::Path,
         audio_binder: &crate::audio::LateBinder,
+        frame_notify: Arc<tokio::sync::Notify>,
+        vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -50,24 +46,26 @@ impl SinglePlayerSession {
         hooks.patch(core.as_mut());
 
         let joyflags = Arc::new(AtomicU32::new(0));
-        let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let thread = mgba::thread::Thread::new(core);
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-                as usize
-        ]));
+        // Wipe the shared framebuffer so the previous session's
+        // last frame doesn't flash through before mgba writes its
+        // first one. The post-constructor `current_handle` clear
+        // covers iced's side; this covers the source.
+        vbuf.lock().fill(0);
 
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
-            let frame_id = frame_id.clone();
+            let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
-                frame_id.fetch_add(1, Ordering::Release);
+                // Wake the session subscription so iced rebuilds
+                // the texture handle for this frame. Notify
+                // coalesces — a slow UI doesn't queue up wakes.
+                frame_notify.notify_one();
             }
         });
 
@@ -87,10 +85,8 @@ impl SinglePlayerSession {
 
         Ok(Self {
             game,
-            vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
-            frame_id,
             _audio_binding: audio_binding,
             _thread: thread,
         })
@@ -98,17 +94,6 @@ impl SinglePlayerSession {
 
     pub fn game(&self) -> &'static crate::game::Game {
         self.game
-    }
-
-    /// Monotonically-increasing counter of frames the emulator
-    /// has rendered. Read by the UI tick to skip redundant
-    /// texture uploads when the host vsync is faster than mgba.
-    pub fn frame_id(&self) -> u64 {
-        self.frame_id.load(Ordering::Acquire)
-    }
-
-    pub fn snapshot_vbuf(&self) -> Vec<u8> {
-        self.vbuf.lock().clone()
     }
 
     /// Overwrite the entire mgba joyflag bitmap — the configurable

@@ -26,7 +26,6 @@ const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct PvpSession {
     local_game: &'static crate::game::Game,
-    vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<AtomicU32>,
     close_requested: Arc<AtomicBool>,
     /// Per-game in-match hook fires `completion_token.complete()`
@@ -73,9 +72,6 @@ pub struct PvpSession {
     /// also locks this each tick to scrape the current round's
     /// player-index / queue-lengths for the status bar.
     match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>>,
-    /// Bumped once per emulator frame in the frame callback —
-    /// see `frame_id()` for usage.
-    frame_id: Arc<std::sync::atomic::AtomicU64>,
     pub link_code: String,
     pub remote_nickname: String,
     /// Opponent's fully-loaded selection (rom + parsed save +
@@ -108,6 +104,8 @@ impl PvpSession {
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
         throttler_factory: tango_pvp::battle::ThrottlerFactory,
+        frame_notify: Arc<tokio::sync::Notify>,
+        vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
         // Wait for the lobby loop to drop the data-channel
         // receiver into the handoff slot (it does this on
@@ -250,11 +248,13 @@ impl PvpSession {
             let inner_match = inner_match.clone();
             let completion_token = completion_token.clone();
             let peer_disconnected = peer_disconnected.clone();
+            let frame_notify_for_disc = frame_notify.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
                 latency_counter.clone(),
                 peer_ended.clone(),
+                frame_notify.clone(),
             ));
             tokio::task::spawn(async move {
                 tokio::select! {
@@ -267,6 +267,11 @@ impl PvpSession {
                         // can short-circuit past PEER_END_GRACE.
                         log::info!("pvp match thread ending: {:?}", r);
                         peer_disconnected.store(true, Ordering::Release);
+                        // Wake the session subscription so it
+                        // re-checks `is_ended` and tears the view
+                        // down without waiting on the next vblank
+                        // (which would never come — emu paused).
+                        frame_notify_for_disc.notify_one();
                     }
                     _ = inner_match.cancelled() => {
                         log::info!("pvp match thread cancelled");
@@ -303,19 +308,17 @@ impl PvpSession {
             }
         };
 
-        let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-                as usize
-        ]));
+        // Wipe the shared framebuffer so the previous session's
+        // last frame doesn't flash through before mgba writes its
+        // first one.
+        vbuf.lock().fill(0);
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
             let completion_token = completion_token.clone();
-            let frame_id = frame_id.clone();
+            let frame_notify = frame_notify.clone();
             let tps_counter = tps_counter.clone();
             let local_eom_sent = local_eom_sent.clone();
             let local_completed_at = local_completed_at.clone();
@@ -326,7 +329,10 @@ impl PvpSession {
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
-                frame_id.fetch_add(1, Ordering::Release);
+                // Wake the session subscription so iced rebuilds
+                // the texture handle for this frame. See
+                // `singleplayer_session` for rationale.
+                frame_notify.notify_one();
                 tps_counter.lock().mark();
                 if completion_token.is_complete() {
                     // Pause the emulator (no more inputs to feed),
@@ -346,6 +352,18 @@ impl PvpSession {
                                 log::warn!("pvp: send EndOfMatch failed: {e}");
                             }
                         });
+                        // Wake the subscription once the grace
+                        // window closes so `is_ended` is rechecked
+                        // even if the peer never sends EndOfMatch
+                        // and the data channel never errors.
+                        // peer_ended / peer_disconnected already
+                        // notify on their own; this is the
+                        // wall-clock fallback.
+                        let notify = frame_notify.clone();
+                        rt_handle.spawn(async move {
+                            tokio::time::sleep(PEER_END_GRACE).await;
+                            notify.notify_one();
+                        });
                     }
                 }
             }
@@ -353,7 +371,6 @@ impl PvpSession {
 
         Ok(Self {
             local_game,
-            vbuf,
             joyflags,
             close_requested: Arc::new(AtomicBool::new(false)),
             completion_token,
@@ -367,7 +384,6 @@ impl PvpSession {
             latency_counter,
             _peer_conn: pre_match.peer_conn,
             match_handle,
-            frame_id,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
             opponent_loaded,
@@ -377,15 +393,6 @@ impl PvpSession {
 
     pub fn game(&self) -> &'static crate::game::Game {
         self.local_game
-    }
-
-    /// See `singleplayer_session::SinglePlayerSession::frame_id`.
-    pub fn frame_id(&self) -> u64 {
-        self.frame_id.load(Ordering::Acquire)
-    }
-
-    pub fn snapshot_vbuf(&self) -> Vec<u8> {
-        self.vbuf.lock().clone()
     }
 
     /// Overwrite the joyflag bitmap (same shape as singleplayer's

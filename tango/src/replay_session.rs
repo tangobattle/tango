@@ -18,7 +18,6 @@ const EXPECTED_FPS: f32 = 60.0;
 
 pub struct ReplaySession {
     game: &'static crate::game::Game,
-    vbuf: Arc<Mutex<Vec<u8>>>,
     completion_token: tango_pvp::hooks::CompletionToken,
     close_requested: Arc<AtomicBool>,
     replay: Arc<tango_pvp::replay::Replay>,
@@ -27,8 +26,6 @@ pub struct ReplaySession {
     snapshots: SnapshotStore,
     prefetch_progress: Arc<AtomicU32>,
     total_ticks: u32,
-    /// See `singleplayer_session::SinglePlayerSession::frame_id`.
-    frame_id: Arc<std::sync::atomic::AtomicU64>,
     /// Held so the audio binding survives for the session's lifetime;
     /// the LateBinder swaps back to silence when this Drops.
     _audio_binding: Option<crate::audio::Binding>,
@@ -48,6 +45,8 @@ impl ReplaySession {
         remote_rom: Arc<Vec<u8>>,
         replay: Arc<tango_pvp::replay::Replay>,
         audio_binder: &crate::audio::LateBinder,
+        frame_notify: Arc<tokio::sync::Notify>,
+        vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -91,7 +90,10 @@ impl ReplaySession {
         core.set_traps(traps);
 
         let thread = mgba::thread::Thread::new(core);
-        let vbuf = Arc::new(Mutex::new(vec![0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize]));
+        // Wipe the shared framebuffer so the previous session's
+        // last frame doesn't flash through before mgba writes its
+        // first one.
+        vbuf.lock().fill(0);
 
         let snapshots = SnapshotStore::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
@@ -105,19 +107,21 @@ impl ReplaySession {
             prefetch_progress.clone(),
         );
 
-        let frame_id = Arc::new(std::sync::atomic::AtomicU64::new(0));
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let completion_token = completion_token.clone();
             let stepper_state = stepper_state.clone();
             let snapshots = snapshots.clone();
             let shadow = shadow.clone();
-            let frame_id = frame_id.clone();
+            let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
-                frame_id.fetch_add(1, Ordering::Release);
+                // Wake the session subscription so iced rebuilds
+                // the texture handle for this frame. See
+                // `singleplayer_session` for rationale.
+                frame_notify.notify_one();
 
                 if let Some(err) = stepper_state.lock_inner().take_error() {
                     log::error!("replay stepper error: {err:?}");
@@ -163,7 +167,6 @@ impl ReplaySession {
 
         Ok(Self {
             game,
-            vbuf,
             completion_token,
             close_requested: Arc::new(AtomicBool::new(false)),
             replay,
@@ -172,7 +175,6 @@ impl ReplaySession {
             snapshots,
             prefetch_progress,
             total_ticks,
-            frame_id,
             _audio_binding: audio_binding,
             _prefetcher: prefetcher,
             thread,
@@ -181,16 +183,6 @@ impl ReplaySession {
 
     pub fn game(&self) -> &'static crate::game::Game {
         self.game
-    }
-
-    /// Clone of the latest framebuffer (RGBA8, 240x160).
-    pub fn snapshot_vbuf(&self) -> Vec<u8> {
-        self.vbuf.lock().clone()
-    }
-
-    /// See `singleplayer_session::SinglePlayerSession::frame_id`.
-    pub fn frame_id(&self) -> u64 {
-        self.frame_id.load(Ordering::Acquire)
     }
 
     pub fn is_paused(&self) -> bool {

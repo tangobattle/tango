@@ -36,27 +36,6 @@ pub enum ActiveSession {
 }
 
 impl ActiveSession {
-    pub fn snapshot_vbuf(&self) -> Vec<u8> {
-        match self {
-            Self::Replay(s) => s.snapshot_vbuf(),
-            Self::SinglePlayer(s) => s.snapshot_vbuf(),
-            Self::PvP(s) => s.snapshot_vbuf(),
-        }
-    }
-
-    /// Monotonic per-session frame counter. The UI tick compares
-    /// against the last value it pushed to GPU and skips the
-    /// rebuild when unchanged — without this the high-refresh
-    /// display would re-upload the same texture multiple times
-    /// per emulator frame, racing with the present and showing as
-    /// tearing.
-    pub fn frame_id(&self) -> u64 {
-        match self {
-            Self::Replay(s) => s.frame_id(),
-            Self::SinglePlayer(s) => s.frame_id(),
-            Self::PvP(s) => s.frame_id(),
-        }
-    }
 
     pub fn request_close(&self) {
         match self {
@@ -100,8 +79,24 @@ impl ActiveSession {
 /// Replays tabs swap an `ActiveSession` into `active` to start a
 /// session, then [`State::update`] handles the rest until [`Close`]
 /// clears it.
-#[derive(Default)]
 pub struct State {
+    /// Permanent iced ↔ emu-thread wake handle. Cloned into each
+    /// active session at construction so its frame callback (and
+    /// PvP end-detection wires) can `notify_one()` whenever a new
+    /// frame lands or `is_ended` could flip. The [`subscription`]
+    /// `.notified().await`s on this single Notify across the
+    /// program's lifetime — no per-session re-keying needed.
+    pub frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    /// Shared GBA framebuffer. The active session's frame callback
+    /// `copy_from_slice`s mgba's video buffer into this Mutex once
+    /// per emu vblank; the [`Message::UpdateFramebuffer`] handler
+    /// locks it, clones the bytes, and rebuilds
+    /// [`State::current_handle`]. Pre-sized to GBA dimensions and
+    /// reused across sessions — saves the per-session
+    /// `Arc<Mutex<Vec<u8>>>` allocation dance and lets the handler
+    /// read straight off `State` without dispatching through
+    /// `ActiveSession`.
+    pub vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
     /// PvP-only: shows the opponent's save view in a side panel
     /// when they enabled reveal-setup. Defaults to visible when
@@ -127,6 +122,32 @@ pub struct State {
     /// (filter overrides, audio toggle, etc.) live here too.
     /// Closes when a setting is changed or the session is closed.
     pub show_options_menu: bool,
+    /// Latest GBA framebuffer rebuilt into an iced image handle.
+    /// Refreshed in [`Message::UpdateFramebuffer`] (which the
+    /// session subscription fires once per emulator vblank); the
+    /// view widget just renders this handle. `None` between
+    /// sessions and before the first frame lands.
+    pub current_handle: Option<iced::widget::image::Handle>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            frame_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+            vbuf: std::sync::Arc::new(parking_lot::Mutex::new(vec![
+                0u8;
+                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+                    as usize
+            ])),
+            active: None,
+            show_opponent_panel: false,
+            input_held: crate::input::HeldState::default(),
+            speed_up_engaged: false,
+            show_settings: false,
+            show_options_menu: false,
+            current_handle: None,
+        }
+    }
 }
 
 impl State {
@@ -172,6 +193,15 @@ pub enum Message {
     /// Hide the in-session Settings overlay (the "back to
     /// session" button on the overlay's header).
     CloseSettings,
+    /// One emulator frame has landed, or `is_ended` could have
+    /// flipped (PvP peer-end / disconnect / grace-timeout). The
+    /// handler rebuilds the iced texture handle from the active
+    /// session's vbuf into [`State::current_handle`] and tears
+    /// the session down if it's now ended. Fired by the session
+    /// subscription, which wakes on [`State::frame_notify`] —
+    /// `notify_one()`'d by both the frame callback and the PvP
+    /// end-detection wires.
+    UpdateFramebuffer,
 }
 
 /// Atomic input event we feed to the mapping resolver. Carries
@@ -200,13 +230,19 @@ impl State {
     /// Apply a session message to the state. Returns the iced Task
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
-    pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping) -> iced::Task<Message> {
+    pub fn update(
+        &mut self,
+        msg: Message,
+        mapping: &crate::input::Mapping,
+        video_filter: &str,
+    ) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
                     s.request_close();
                 }
                 self.active = None;
+                self.current_handle = None;
                 self.show_options_menu = false;
             }
             Message::Input(ev) => {
@@ -285,28 +321,69 @@ impl State {
             Message::CloseSettings => {
                 self.show_settings = false;
             }
+            Message::UpdateFramebuffer => {
+                if let Some(session) = self.active.as_ref() {
+                    // PvP self-closes when the per-game match-end
+                    // hook + peer-end handshake (or grace timeout)
+                    // are both satisfied. The end-detection paths
+                    // each call `notify_one()` so this branch fires
+                    // even after the emu thread has paused.
+                    if session.is_ended() {
+                        self.active = None;
+                        self.current_handle = None;
+                        self.show_options_menu = false;
+                    } else {
+                        let pixels = self.vbuf.lock().clone();
+                        self.current_handle = Some(build_frame_handle(pixels, video_filter));
+                    }
+                }
+            }
         }
         iced::Task::none()
     }
 }
 
-/// Keyboard and gamepad input flow through `InputCapture` in
-/// `App::view` — see that widget's module docs for why the
-/// subscription path is too laggy. The per-frame GBA framebuffer
-/// upload happens inside the [`crate::screen::Screen`] widget so
-/// it doesn't have to round-trip through a Message every redraw.
-pub fn subscription(_state: &State) -> iced::Subscription<Message> {
-    iced::Subscription::none()
+/// Per-emulator-frame wake stream. Yields
+/// [`Message::UpdateFramebuffer`] each time someone fires
+/// `notify_one()` on [`State::frame_notify`] — the per-frame
+/// callback for new vbuf data, and the PvP end-detection wires
+/// (peer-end packet, peer disconnect, grace timeout) for
+/// state-transition checks. Always-on across the program's
+/// lifetime; parks silently with no active session because
+/// nothing fires the notify. Keyboard input still flows through
+/// [`crate::input_capture`] — see that module's docs for why the
+/// subscription path is too laggy for joypad state.
+pub fn subscription(state: &State) -> iced::Subscription<Message> {
+    iced::Subscription::run_with(FrameTag { notify: state.frame_notify.clone() }, build_frame_stream)
 }
 
-/// Build an iced texture handle from the active session's latest
+/// Stable subscription identity. The hash is a constant string so
+/// iced keeps the same stream alive across view rebuilds; the
+/// `notify` payload carries the actual wake handle through to
+/// [`build_frame_stream`].
+struct FrameTag {
+    notify: std::sync::Arc<tokio::sync::Notify>,
+}
+
+impl std::hash::Hash for FrameTag {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        "session-frame".hash(h);
+    }
+}
+
+fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
+    let notify = tag.notify.clone();
+    futures::stream::unfold(notify, |notify| async move {
+        notify.notified().await;
+        Some((Message::UpdateFramebuffer, notify))
+    })
+}
+
+/// Build an iced texture handle from a freshly-snapshotted
 /// framebuffer, applying the configured upscale filter and re-
-/// stamping alpha to 0xff. Called from the `Screen` widget's
-/// per-redraw callback. Returns the (handle, frame_id) pair so
-/// the widget can stash the id for next-redraw dedup.
-fn build_frame_handle(session: &ActiveSession, video_filter: &str) -> (iced::widget::image::Handle, u64) {
-    let fid = session.frame_id();
-    let pixels = session.snapshot_vbuf();
+/// stamping alpha to 0xff. Called from [`Message::UpdateFramebuffer`]
+/// once per emulator vblank.
+fn build_frame_handle(pixels: Vec<u8>, video_filter: &str) -> iced::widget::image::Handle {
     let src_w = replay_session::SCREEN_WIDTH as usize;
     let src_h = replay_session::SCREEN_HEIGHT as usize;
     // Run the upscale filter selected in settings, if any. Bad /
@@ -329,7 +406,7 @@ fn build_frame_handle(session: &ActiveSession, video_filter: &str) -> (iced::wid
     for chunk in buf.chunks_mut(4) {
         chunk[3] = 0xff;
     }
-    (iced::widget::image::Handle::from_rgba(w, h, buf), fid)
+    iced::widget::image::Handle::from_rgba(w, h, buf)
 }
 
 /// Optional iced texture handle for a Game's background art. Pulls
@@ -381,8 +458,8 @@ pub fn view<'a>(
     };
 
     // Post-filter framebuffer dimensions. Drives the integer-scale
-    // math below; same numbers that `build_frame_handle` ultimately
-    // hands to the `Screen` widget.
+    // math below; matches the (w, h) `build_frame_handle` bakes
+    // into the iced texture handle stored in `state.current_handle`.
     let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
     let [out_w, out_h] = filter.output_size([
         replay_session::SCREEN_WIDTH as usize,
@@ -391,25 +468,20 @@ pub fn view<'a>(
     let img_w = out_w as f32;
     let img_h = out_h as f32;
 
-    let make_screen = move || {
-        crate::screen::Screen::new(move |last_frame_id| {
-            if session.is_ended() {
-                return crate::screen::Tick::Ended;
-            }
-            let fid = session.frame_id();
-            if fid == last_frame_id {
-                return crate::screen::Tick::Idle;
-            }
-            let (handle, frame_id) = build_frame_handle(session, video_filter);
-            crate::screen::Tick::NewFrame { handle, frame_id }
-        })
-        .on_ended(Message::Close)
+    let make_image = move || -> iced::widget::Image<iced::widget::image::Handle> {
+        // No frame yet → empty Handle renders as transparent. The
+        // first `Message::UpdateFramebuffer` (one vblank in) drops
+        // the real handle into `state.current_handle`.
+        let handle = state.current_handle.clone().unwrap_or_else(|| {
+            iced::widget::image::Handle::from_rgba(out_w as u32, out_h as u32, vec![0u8; out_w * out_h * 4])
+        });
+        iced::widget::image(handle).filter_method(iced::widget::image::FilterMethod::Nearest)
     };
 
     let frame: Element<'a, Message> = if fractional_scaling {
         // Smooth Fill+Contain — let the renderer scale the image to
         // fit the pane at any ratio.
-        make_screen()
+        make_image()
             .width(Fill)
             .height(Fill)
             .content_fit(iced::ContentFit::Contain)
@@ -421,14 +493,14 @@ pub fn view<'a>(
         iced::widget::responsive(move |size| {
             let scale = (size.width / img_w).min(size.height / img_h).floor().max(1.0);
             let (w, h) = (img_w * scale, img_h * scale);
-            let screen = make_screen()
+            let image = make_image()
                 .width(Length::Fixed(w))
                 .height(Length::Fixed(h))
                 .content_fit(iced::ContentFit::Fill);
             // Tight container around the Fixed-size framebuffer so
             // the shadow style traces its edges, not the surrounding
             // pane.
-            let framed = iced::widget::container(screen)
+            let framed = iced::widget::container(image)
                 .width(Length::Fixed(w))
                 .height(Length::Fixed(h))
                 .style(|_theme: &iced::Theme| iced::widget::container::Style {
@@ -835,6 +907,8 @@ pub fn build_playback(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
+    frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
     path: &std::path::Path,
 ) -> anyhow::Result<replay_session::ReplaySession> {
     let f = std::fs::File::open(path)?;
@@ -871,7 +945,16 @@ pub fn build_playback(
 
     let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-    replay_session::ReplaySession::new(local_game, local_rom, remote_game, remote_rom, replay, audio_binder)
+    replay_session::ReplaySession::new(
+        local_game,
+        local_rom,
+        remote_game,
+        remote_rom,
+        replay,
+        audio_binder,
+        frame_notify,
+        vbuf,
+    )
 }
 
 /// Build the live PvP session from the netplay handoff data
@@ -882,6 +965,8 @@ pub async fn spawn_pvp(
     scanners: Scanners,
     config: config::Config,
     audio_binder: audio::LateBinder,
+    frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
     local_game: crate::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
@@ -968,6 +1053,8 @@ pub async fn spawn_pvp(
         &audio_binder,
         opponent_loaded,
         throttler_factory_for(config.netplay_throttler),
+        frame_notify,
+        vbuf,
     )
     .await
 }
@@ -997,6 +1084,8 @@ pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
+    frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
     loaded: &selection::Loaded,
 ) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
     let game = game::from_gamedb_entry(loaded.game)
@@ -1020,6 +1109,8 @@ pub fn spawn_singleplayer(
         std::sync::Arc::new(rom_bytes),
         &loaded.save_path,
         audio_binder,
+        frame_notify,
+        vbuf,
     )
 }
 

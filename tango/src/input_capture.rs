@@ -20,15 +20,10 @@
 //! `interface.update` synthesizes once per redraw (see the
 //! `let redraw_event` block in `iced_winit::run_with_executor`).
 //!
-//! Per-frame GBA framebuffer uploads live in [`crate::screen`]
-//! rather than going through a Tick message here. Publishing a
-//! Message on every RedrawRequested trips iced 0.14's
-//! `if message_count == messages.len() && !state.has_layout_changed()`
-//! convergence check, which warns "More than 3 consecutive
-//! RedrawRequested events produced layout invalidation" after
-//! three loop iterations. The widget-update-only path is
-//! message-free in the common case and keeps the redraw loop
-//! settling on the first iteration.
+//! Redraws are driven by [`crate::session::subscription`]'s wake
+//! on the active session's `tokio::sync::Notify` (signaled in the
+//! per-frame `frame_callback`), so gamepad polling lines up with
+//! the GBA's vblank instead of spinning on `shell.request_redraw()`.
 
 use iced::advanced::layout;
 use iced::advanced::overlay;
@@ -134,10 +129,11 @@ where
                         shell.publish(message);
                     }
                 });
-                // Replaces what `iced::window::frames()` did for
-                // us — keep the redraw loop self-perpetuating
-                // without going through a subscription.
-                shell.request_redraw();
+                // No `shell.request_redraw()` — the session
+                // subscription's vblank-notify wake is what
+                // perpetuates the loop now. Pacing redraws here
+                // would race the notify and waste CPU on
+                // redundant uploads.
             }
             _ => {}
         }
