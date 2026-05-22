@@ -1160,10 +1160,7 @@ async fn run_signaling_connect(
 
 /// Stage 2: drive the `Connecting` future to completion — peer
 /// joins + WebRTC ICE handshake opens the data channel.
-async fn run_await_peer(
-    hello: SignalingHello,
-    cancel: CancellationToken,
-) -> Result<ConnectionPayload, AsyncError> {
+async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
         let (dc, peer_conn) = hello
             .connecting
@@ -1185,10 +1182,7 @@ async fn run_await_peer(
 /// `is_offerer` is set from the role (host = true) so the
 /// `pick_local_player_index` symmetry break still has a stable
 /// asymmetric input.
-async fn run_tcp_negotiate(
-    role: DirectRole,
-    cancel: CancellationToken,
-) -> Result<NegotiationOutput, AsyncError> {
+async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
         let (mut sender, mut receiver) = match role {

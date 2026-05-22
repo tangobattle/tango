@@ -105,7 +105,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
             })
         }),
@@ -113,7 +115,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
                 core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
             })
         }),
@@ -122,7 +126,9 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else { return };
+                let Some(round) = round_state.round.as_mut() else {
+                    return;
+                };
 
                 if !munger.is_linking(core) && !round.has_first_committed_state() {
                     return;

@@ -29,16 +29,11 @@ fn default_language() -> unic_langid::LanguageIdentifier {
     crate::i18n::FALLBACK_LANG
 }
 
-fn ser_language<S: serde::Serializer>(
-    lang: &unic_langid::LanguageIdentifier,
-    s: S,
-) -> Result<S::Ok, S::Error> {
+fn ser_language<S: serde::Serializer>(lang: &unic_langid::LanguageIdentifier, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&lang.to_string())
 }
 
-fn de_language<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<unic_langid::LanguageIdentifier, D::Error> {
+fn de_language<'de, D: serde::Deserializer<'de>>(d: D) -> Result<unic_langid::LanguageIdentifier, D::Error> {
     let s = String::deserialize(d)?;
     s.parse().map_err(serde::de::Error::custom)
 }
@@ -282,7 +277,8 @@ impl Config {
         if STALE_PATCH_REPOS.iter().any(|u| self.patch_repo.eq(*u)) {
             log::info!(
                 "migrating stale patch_repo {:?} -> {:?}",
-                self.patch_repo, DEFAULT_PATCH_REPO,
+                self.patch_repo,
+                DEFAULT_PATCH_REPO,
             );
             self.patch_repo = DEFAULT_PATCH_REPO.to_string();
             let _ = self.save();
@@ -296,8 +292,8 @@ impl Config {
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let s = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
+        let s =
+            serde_json::to_string_pretty(self).map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
         let mut f = std::fs::File::create(&p)?;
         f.write_all(s.as_bytes())?;
         Ok(())

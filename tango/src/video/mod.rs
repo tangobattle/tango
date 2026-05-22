@@ -47,9 +47,4 @@ pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
 /// texture 60×/sec. With vsync off (input-latency fix, task #118)
 /// the present races the upload and the user sees flicker. HQ3X
 /// is the practical ceiling for the iced image path.
-pub const FILTERS: &[(&str, &str)] = &[
-    ("", "None"),
-    ("hq2x", "HQ2x"),
-    ("hq3x", "HQ3x"),
-    ("mmpx", "MMPX"),
-];
+pub const FILTERS: &[(&str, &str)] = &[("", "None"), ("hq2x", "HQ2x"), ("hq3x", "HQ3x"), ("mmpx", "MMPX")];

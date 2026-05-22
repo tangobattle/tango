@@ -30,4 +30,3 @@ pub struct CommittedState {
     pub tick: u32,
     pub packet: Vec<u8>,
 }
-

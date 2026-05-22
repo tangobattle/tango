@@ -60,12 +60,7 @@ pub fn scan_replays(path: &std::path::Path) -> Vec<ScannedReplay> {
             metadata,
         });
     }
-    out.sort_by_key(|r| {
-        (
-            std::cmp::Reverse(r.metadata.ts),
-            r.metadata.link_code.clone(),
-        )
-    });
+    out.sort_by_key(|r| (std::cmp::Reverse(r.metadata.ts), r.metadata.link_code.clone()));
     out
 }
 

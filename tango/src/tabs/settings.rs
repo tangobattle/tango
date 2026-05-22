@@ -246,16 +246,16 @@ pub fn view<'a>(
                         crate::gamepad::GamepadEvent::ButtonDown(b) => {
                             input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
                         }
-                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => (value.abs()
-                            > input::AXIS_THRESHOLD)
-                            .then(|| input::PhysicalInput::Axis {
+                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
+                            (value.abs() > input::AXIS_THRESHOLD).then(|| input::PhysicalInput::Axis {
                                 axis,
                                 dir: if value > 0.0 {
                                     input::AxisDir::Positive
                                 } else {
                                     input::AxisDir::Negative
                                 },
-                            }),
+                            })
+                        }
                         _ => None,
                     },
                 };

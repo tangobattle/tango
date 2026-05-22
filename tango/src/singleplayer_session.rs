@@ -39,12 +39,8 @@ impl SinglePlayerSession {
             .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.
-        let save_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(save_path)?;
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::from_file(save_file))?;
+        let save_file = std::fs::OpenOptions::new().read(true).write(true).open(save_path)?;
+        core.as_mut().load_save(mgba::vfile::VFile::from_file(save_file))?;
 
         // hooks().patch installs the per-game memory patches that fix
         // determinism bugs (RNG seeding, RTC reads, etc.). Safe to apply
@@ -57,7 +53,8 @@ impl SinglePlayerSession {
         let thread = mgba::thread::Thread::new(core);
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
-            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+                as usize
         ]));
 
         thread.set_frame_callback({
@@ -124,11 +121,7 @@ impl SinglePlayerSession {
     /// start dropping samples; clamp accordingly to keep audio coherent.
     pub fn set_speed(&self, factor: f32) {
         let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
-        self._thread
-            .handle()
-            .lock_audio()
-            .sync_mut()
-            .set_fps_target(fps);
+        self._thread.handle().lock_audio().sync_mut().set_fps_target(fps);
     }
 }
 
@@ -137,4 +130,3 @@ fn fix_vbuf_alpha(vbuf: &mut [u8]) {
         px[3] = 0xFF;
     }
 }
-

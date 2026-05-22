@@ -28,12 +28,7 @@ pub(super) struct InnerState {
 pub struct State(pub(super) Arc<InnerState>);
 
 impl State {
-    pub fn new(
-        match_type: (u8, u8),
-        is_offerer: bool,
-        local_player_index: u8,
-        rng: rand_pcg::Mcg128Xsl64,
-    ) -> State {
+    pub fn new(match_type: (u8, u8), is_offerer: bool, local_player_index: u8, rng: rand_pcg::Mcg128Xsl64) -> State {
         State(Arc::new(InnerState {
             match_type,
             is_offerer,
@@ -75,10 +70,7 @@ impl State {
     pub fn start_round(&self) {
         let mut round_state = self.0.round_state.lock();
         let local_player_index = self.0.local_player_index;
-        log::info!(
-            "starting shadow round: local_player_index = {}",
-            local_player_index
-        );
+        log::info!("starting shadow round: local_player_index = {}", local_player_index);
         round_state.round = Some(Round::new(local_player_index));
         round_state.result_is_in = false;
     }

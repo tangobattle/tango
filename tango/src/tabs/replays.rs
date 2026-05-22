@@ -5,10 +5,10 @@ use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPL
 use crate::i18n::t;
 use crate::widgets;
 use crate::{config, replays, save_view};
-use lucide_icons::Icon;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
@@ -357,10 +357,7 @@ impl ReplaysState {
                 // on disk is still there if they want to recover it
                 // via the file system; the UI just goes back to its
                 // pre-render state.
-                let was_cancelled = entry
-                    .job
-                    .as_ref()
-                    .is_some_and(|j| j.cancel.load(Ordering::Relaxed));
+                let was_cancelled = entry.job.as_ref().is_some_and(|j| j.cancel.load(Ordering::Relaxed));
                 if was_cancelled {
                     entry.job = None;
                     entry.panel_open = false;
@@ -452,9 +449,8 @@ impl ReplaysState {
     /// for it (rounds defaults, panel-open intent, etc.).
     fn sweep_idle_entries(&mut self) {
         let keep = self.selected.clone();
-        self.per.retain(|p, e| {
-            Some(p) == keep.as_ref() || e.job.as_ref().is_some_and(|j| j.result.is_none())
-        });
+        self.per
+            .retain(|p, e| Some(p) == keep.as_ref() || e.job.as_ref().is_some_and(|j| j.result.is_none()));
     }
 
     /// True iff the panel for `path` should render — either the
@@ -463,9 +459,9 @@ impl ReplaysState {
     /// flag directly so the "in-flight = always open" invariant
     /// lives in one place.
     pub fn is_panel_open(&self, path: &std::path::Path) -> bool {
-        self.per.get(path).is_some_and(|e| {
-            e.panel_open || e.job.as_ref().is_some_and(|j| j.result.is_none())
-        })
+        self.per
+            .get(path)
+            .is_some_and(|e| e.panel_open || e.job.as_ref().is_some_and(|j| j.result.is_none()))
     }
 
     /// True iff `path` has a render currently in progress. The
@@ -487,10 +483,7 @@ impl ReplaysState {
     /// nothing's loaded yet. Always returns the live slice — the
     /// caller can pass it straight to the export form view.
     pub fn rounds_for(&self, path: &std::path::Path) -> &[bool] {
-        self.per
-            .get(path)
-            .map(|e| e.rounds.as_slice())
-            .unwrap_or(&[])
+        self.per.get(path).map(|e| e.rounds.as_slice()).unwrap_or(&[])
     }
 
     /// Decode the currently-selected replay just enough to build
@@ -592,12 +585,7 @@ impl ReplaysState {
                     .width(Length::Fixed(220.0))
                     .style(widgets::chunky_text_input),
                 horizontal_space(),
-                widgets::icon_button(
-                    Icon::RefreshCw,
-                    t!(lang, "rescan"),
-                    Message::Rescan,
-                    STANDARD_PADDING,
-                ),
+                widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING,),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -674,20 +662,28 @@ impl ReplaysState {
             let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
             let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
             let badge: Element<'_, Message> = if rendering {
-                container(Icon::Clapperboard.widget().style(|theme: &iced::Theme| {
-                    iced::widget::text::Style { color: Some(theme.palette().primary) }
-                }))
+                container(
+                    Icon::Clapperboard
+                        .widget()
+                        .style(|theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(theme.palette().primary),
+                        }),
+                )
                 .padding([0, 4])
                 .into()
             } else if render_done_ok {
-                container(Icon::Check.widget().style(|theme: &iced::Theme| {
-                    iced::widget::text::Style { color: Some(theme.palette().success) }
-                }))
+                container(
+                    Icon::Check
+                        .widget()
+                        .style(|theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(theme.palette().success),
+                        }),
+                )
                 .padding([0, 4])
                 .into()
             } else if render_done_err {
-                container(Icon::X.widget().style(|theme: &iced::Theme| {
-                    iced::widget::text::Style { color: Some(theme.palette().danger) }
+                container(Icon::X.widget().style(|theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().danger),
                 }))
                 .padding([0, 4])
                 .into()
@@ -719,30 +715,29 @@ impl ReplaysState {
             // have loaded for this row).
             let mut text_col = column![
                 text(ts_str).size(TEXT_BODY),
-                text(format!("{game_label} @ {}  ·  {nick_pair}", link_code_display(lang, &md.link_code)))
-                    .size(TEXT_CAPTION)
-                    .style(move |theme: &iced::Theme| if selected {
-                        iced::widget::text::Style { color: None }
-                    } else {
-                        save_view::muted_text_style(theme)
-                    }),
+                text(format!(
+                    "{game_label} @ {}  ·  {nick_pair}",
+                    link_code_display(lang, &md.link_code)
+                ))
+                .size(TEXT_CAPTION)
+                .style(move |theme: &iced::Theme| if selected {
+                    iced::widget::text::Style { color: None }
+                } else {
+                    save_view::muted_text_style(theme)
+                }),
             ]
             .spacing(2)
             .width(Fill);
             if let Some(line) = stats_line {
-                text_col = text_col.push(
-                    text(line)
-                        .size(TEXT_CAPTION)
-                        .style(move |theme: &iced::Theme| {
-                            if !is_complete {
-                                save_view::danger_text_style(theme)
-                            } else if selected {
-                                iced::widget::text::Style { color: None }
-                            } else {
-                                save_view::muted_text_style(theme)
-                            }
-                        }),
-                );
+                text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
+                    if !is_complete {
+                        save_view::danger_text_style(theme)
+                    } else if selected {
+                        iced::widget::text::Style { color: None }
+                    } else {
+                        save_view::muted_text_style(theme)
+                    }
+                }));
             }
             list = list.push(
                 button(row![text_col, badge].spacing(0).align_y(Alignment::Center))
@@ -776,14 +771,11 @@ impl ReplaysState {
                 .into()
         };
 
-        column![
-            top,
-            row![left, right].spacing(widgets::PANE_GAP).height(Fill),
-        ]
-        .spacing(widgets::PANE_GAP)
-        .padding(widgets::PANE_GAP)
-        .height(Fill)
-        .into()
+        column![top, row![left, right].spacing(widgets::PANE_GAP).height(Fill),]
+            .spacing(widgets::PANE_GAP)
+            .padding(widgets::PANE_GAP)
+            .height(Fill)
+            .into()
     }
 }
 
@@ -880,12 +872,7 @@ fn replay_detail<'a>(
                     } else {
                         Some(Message::ExportPanelOpen(r.path.clone()))
                     };
-                    widgets::icon_button_maybe(
-                        Icon::Clapperboard,
-                        t!(lang, "replays-export"),
-                        msg,
-                        STANDARD_PADDING,
-                    )
+                    widgets::icon_button_maybe(Icon::Clapperboard, t!(lang, "replays-export"), msg, STANDARD_PADDING)
                 },
                 widgets::icon_button(
                     Icon::FolderOpen,
@@ -954,12 +941,7 @@ fn replay_detail<'a>(
         column![
             row![
                 row_for_side(t!(lang, "play-you"), md.local_side.as_ref()),
-                container(
-                    text("VS")
-                        .size(TEXT_DISPLAY)
-                        .style(save_view::muted_text_style),
-                )
-                .padding([0, 12]),
+                container(text("VS").size(TEXT_DISPLAY).style(save_view::muted_text_style),).padding([0, 12]),
                 row_for_side(t!(lang, "replays-opponent"), md.remote_side.as_ref()),
             ]
             .spacing(12)
@@ -987,8 +969,7 @@ fn replay_detail<'a>(
     // when a save is loaded; otherwise a single placeholder pane
     // explaining the empty state.
     let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
-        save_view::view(lang, loaded, &state.save_view, false, None)
-            .map(Message::SaveViewAction)
+        save_view::view(lang, loaded, &state.save_view, false, None).map(Message::SaveViewAction)
     } else {
         container(
             text(t!(lang, "save-empty"))
@@ -1085,9 +1066,7 @@ fn export_panel<'a>(
                     t!(lang, "replays-export-progress")
                 };
                 column![
-                    text(caption)
-                        .size(TEXT_CAPTION)
-                        .style(save_view::muted_text_style),
+                    text(caption).size(TEXT_CAPTION).style(save_view::muted_text_style),
                     text(job.output.display().to_string()).size(TEXT_CAPTION),
                     // Progress bar + percentage + Cancel side-by-side.
                     // The bar takes the remaining width via `length()`

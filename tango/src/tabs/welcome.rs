@@ -2,9 +2,9 @@ use crate::app::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEX
 use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::tabs::settings::labeled;
 use crate::{save_view, widgets};
-use lucide_icons::Icon;
 use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
@@ -116,10 +116,10 @@ pub fn view<'a>(
     if has_roms {
         roms_block = roms_block.push(
             text(t!(lang, "welcome-step-roms-detected", count = roms_count as i64))
-            .size(TEXT_CAPTION)
-            .style(|theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(theme.palette().primary),
-            }),
+                .size(TEXT_CAPTION)
+                .style(|theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().primary),
+                }),
         );
     }
 

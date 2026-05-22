@@ -1259,12 +1259,7 @@ impl App {
         // in between, but if the path ever becomes async (e.g. async
         // ROM resolution) a pending cancel would otherwise be lost.
         // Honour the flag eagerly so the task tears down right away.
-        if let Some(job) = self
-            .replays
-            .per
-            .get_mut(&replay_path)
-            .and_then(|e| e.job.as_mut())
-        {
+        if let Some(job) = self.replays.per.get_mut(&replay_path).and_then(|e| e.job.as_mut()) {
             let abort = join.abort_handle();
             if job.cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 abort.abort();
@@ -1492,7 +1487,9 @@ impl App {
                             crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
                                 Some(session::InputEvent::Axis { axis, value })
                             }
-                            crate::gamepad::GamepadEvent::DeviceRemoved => Some(session::InputEvent::GamepadDisconnected),
+                            crate::gamepad::GamepadEvent::DeviceRemoved => {
+                                Some(session::InputEvent::GamepadDisconnected)
+                            }
                         },
                     };
                     ev.map(|ev| Message::Session(session::Message::Input(ev)))

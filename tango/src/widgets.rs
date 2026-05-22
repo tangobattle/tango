@@ -84,15 +84,9 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
         // featureless wall of text.
         let stripe = if idx % 2 == 1 {
             Some(iced::Background::Color(if p.is_dark {
-                iced::Color {
-                    a: 0.05,
-                    ..text
-                }
+                iced::Color { a: 0.05, ..text }
             } else {
-                iced::Color {
-                    a: 0.04,
-                    ..text
-                }
+                iced::Color { a: 0.04, ..text }
             }))
         } else {
             None
@@ -229,14 +223,8 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
 pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
     let text = theme.palette().text;
     let (bg, text_color) = match status {
-        button::Status::Hovered => (
-            iced::Background::Color(iced::Color { a: 0.08, ..text }),
-            text,
-        ),
-        button::Status::Pressed => (
-            iced::Background::Color(iced::Color { a: 0.15, ..text }),
-            text,
-        ),
+        button::Status::Hovered => (iced::Background::Color(iced::Color { a: 0.08, ..text }), text),
+        button::Status::Pressed => (iced::Background::Color(iced::Color { a: 0.15, ..text }), text),
         // Borderless flat buttons have no plate to dim, so the only
         // disabled cue is text alpha. Drop it hard.
         button::Status::Disabled => (
@@ -356,7 +344,11 @@ fn tab_button_inner<'a, M: Clone + 'a>(
         content = content.push(lbl);
     }
     let padding = if large { [8.0, 18.0] } else { [6.0, 14.0] };
-    button(content).padding(padding).style(pill_tab_style(active)).on_press(msg).into()
+    button(content)
+        .padding(padding)
+        .style(pill_tab_style(active))
+        .on_press(msg)
+        .into()
 }
 
 /// Shared "pill tab" button style — used by the global top nav,
@@ -413,7 +405,10 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
                 color: iced::Color::TRANSPARENT,
             },
             shadow: iced::Shadow {
-                color: iced::Color { a: glow_alpha, ..primary },
+                color: iced::Color {
+                    a: glow_alpha,
+                    ..primary
+                },
                 offset: iced::Vector::new(0.0, 3.0),
                 blur_radius: blur,
             },
@@ -557,30 +552,34 @@ pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
 /// so the rule has motion — not a single flat color stripe across
 /// the window.
 pub fn hud_scanline<'a, M: 'a>() -> Element<'a, M> {
-    container(iced::widget::Space::new().width(Length::Fill).height(Length::Fixed(3.0)))
-        .width(Length::Fill)
-        .height(Length::Fixed(3.0))
-        .style(|theme: &Theme| {
-            let primary = theme.palette().primary;
-            // Cool the right edge by pulling primary toward a
-            // cyan-ish tone — keeps the rule from looking like a
-            // dumb solid green bar, gives it a console-trim vibe.
-            let right = iced::Color {
-                r: primary.r * 0.4,
-                g: primary.g * 0.85 + 0.15,
-                b: primary.b * 0.4 + 0.55,
-                a: 1.0,
-            };
-            iced::widget::container::Style {
-                background: Some(iced::Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2)
-                        .add_stop(0.0, primary)
-                        .add_stop(1.0, right),
-                ))),
-                ..Default::default()
-            }
-        })
-        .into()
+    container(
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::Fixed(3.0)),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(3.0))
+    .style(|theme: &Theme| {
+        let primary = theme.palette().primary;
+        // Cool the right edge by pulling primary toward a
+        // cyan-ish tone — keeps the rule from looking like a
+        // dumb solid green bar, gives it a console-trim vibe.
+        let right = iced::Color {
+            r: primary.r * 0.4,
+            g: primary.g * 0.85 + 0.15,
+            b: primary.b * 0.4 + 0.55,
+            a: 1.0,
+        };
+        iced::widget::container::Style {
+            background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+                iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2)
+                    .add_stop(0.0, primary)
+                    .add_stop(1.0, right),
+            ))),
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 /// HUD frame for inline cards (empty-state hints, lobby side
@@ -730,10 +729,7 @@ pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Styl
 /// (lighter top → darker bottom) so it reads as the same
 /// "physical widget" family as the buttons sitting next to it.
 /// Focus = thicker primary border; hover = tinted border.
-pub fn chunky_text_input(
-    theme: &Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
+pub fn chunky_text_input(theme: &Theme, status: iced::widget::text_input::Status) -> iced::widget::text_input::Style {
     use iced::widget::text_input::Status;
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
@@ -892,4 +888,3 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
         }),
     }
 }
-

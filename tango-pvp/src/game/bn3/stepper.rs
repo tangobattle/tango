@@ -156,8 +156,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active()
-                {
+                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let rng2_state = generate_rng2_state(&mut *rng.lock());
                         munger.set_rng2_state(core, rng2_state);

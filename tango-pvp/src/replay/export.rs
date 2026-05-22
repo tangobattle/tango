@@ -297,7 +297,11 @@ pub async fn export(
         loop {
             let (cur_round_idx, is_ended, pairs_left) = {
                 let state = state.lock_inner();
-                (state.current_round_index() as usize, state.is_round_ended(), state.total_input_pairs_left())
+                (
+                    state.current_round_index() as usize,
+                    state.is_round_ended(),
+                    state.total_input_pairs_left(),
+                )
             };
 
             // Incomplete: stop the moment the stepper has fed the

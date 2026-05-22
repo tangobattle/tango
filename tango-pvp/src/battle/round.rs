@@ -46,17 +46,10 @@ pub struct Round {
 }
 
 impl Round {
-    pub(super) fn new(
-        match_: &super::Match,
-        iq: PairQueue<PartialInput, PartialInput>,
-    ) -> anyhow::Result<Self> {
+    pub(super) fn new(match_: &super::Match, iq: PairQueue<PartialInput, PartialInput>) -> anyhow::Result<Self> {
         let hooks = match_.local_hooks();
-        let stepper = crate::stepper::Fastforwarder::new(
-            match_.rom(),
-            hooks,
-            match_.match_type(),
-            match_.local_player_index(),
-        )?;
+        let stepper =
+            crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), match_.local_player_index())?;
         let last_committed_remote_input = Input {
             joyflags: 0,
             packet: vec![0u8; hooks.packet_size()],
@@ -113,7 +106,12 @@ impl Round {
         let (input_pairs, last_committed_state, commit_tick, dirty_tick) = self.prepare_input_pairs();
         let ff_result = self.run_fastforward(input_pairs, &last_committed_state, commit_tick, dirty_tick)?;
 
-        self.commit_remote_inputs(&ff_result.output_pairs, last_committed_state.tick, commit_tick, ff_result.round_result);
+        self.commit_remote_inputs(
+            &ff_result.output_pairs,
+            last_committed_state.tick,
+            commit_tick,
+            ff_result.round_result,
+        );
 
         core.load_state(&ff_result.dirty_state.state).expect("load dirty state");
         self.committed_state = Some(ff_result.committed_state);
@@ -157,9 +155,7 @@ impl Round {
         self.last_remote_frame_advantage
     }
 
-    fn prepare_input_pairs(
-        &mut self,
-    ) -> (Vec<Pair<PartialInput, PartialInput>>, CommittedState, u32, u32) {
+    fn prepare_input_pairs(&mut self) -> (Vec<Pair<PartialInput, PartialInput>>, CommittedState, u32, u32) {
         let (committable, predict_required) = self.iq.consume_and_peek_local();
         let last_committed_state = self.committed_state.take().expect("committed state");
 
@@ -332,7 +328,6 @@ impl Round {
     pub(super) fn can_add_remote_input(&self) -> bool {
         self.iq.can_add_remote_input()
     }
-
 }
 
 impl Drop for Round {

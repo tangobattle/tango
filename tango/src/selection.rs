@@ -69,25 +69,25 @@ impl Loaded {
         // failure we fall back to the unpatched ROM (and log) so the
         // save view still renders.
         let (rom, applied_patch) = match patch {
-            Some((name, version, meta)) => match crate::patch::apply_patch_from_disk(
-                &rom, game, patches_path, &name, &version,
-            ) {
-                Ok(patched) => (
-                    patched,
-                    Some(AppliedPatch {
-                        name,
-                        version,
-                        version_meta: meta,
-                    }),
-                ),
-                Err(e) => {
-                    log::error!(
-                        "failed to apply patch {name} v{version} to {:?}: {e}",
-                        game.family_and_variant()
-                    );
-                    (rom, None)
+            Some((name, version, meta)) => {
+                match crate::patch::apply_patch_from_disk(&rom, game, patches_path, &name, &version) {
+                    Ok(patched) => (
+                        patched,
+                        Some(AppliedPatch {
+                            name,
+                            version,
+                            version_meta: meta,
+                        }),
+                    ),
+                    Err(e) => {
+                        log::error!(
+                            "failed to apply patch {name} v{version} to {:?}: {e}",
+                            game.family_and_variant()
+                        );
+                        (rom, None)
+                    }
                 }
-            },
+            }
             None => (rom, None),
         };
 
@@ -170,8 +170,8 @@ impl Loaded {
             .game_info
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        let variant = u8::try_from(gi.rom_variant)
-            .map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
+        let variant =
+            u8::try_from(gi.rom_variant).map_err(|_| anyhow::anyhow!("variant {} out of range", gi.rom_variant))?;
         let game = tango_gamedb::find_by_family_and_variant(&gi.rom_family, variant)
             .ok_or_else(|| anyhow::anyhow!("unknown rom {}/{}", gi.rom_family, gi.rom_variant))?;
         let rom = scanners

@@ -291,16 +291,14 @@ fn render_color_bar_bn3(extra: Option<NavicustPartColor>) -> image::RgbaImage {
 
 /// BN4/5/6 color bar: up to 4 non-bug colors on the left, optional bug
 /// colors on the right (separated by a gap).
-fn render_color_bar_bn456(
-    body_width: u32,
-    view: &dyn NavicustView,
-    assets: &dyn Assets,
-) -> image::RgbaImage {
+fn render_color_bar_bn456(body_width: u32, view: &dyn NavicustView, assets: &dyn Assets) -> image::RgbaImage {
     const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
     let mut colors: Vec<NavicustPartColor> = Vec::new();
     for i in 0..view.count() {
         let Some(ncp) = view.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(ncp.id) else { continue };
+        let Some(info) = assets.navicust_part(ncp.id) else {
+            continue;
+        };
         let Some(c) = info.color() else { continue };
         if !colors.contains(&c) {
             colors.push(c);
@@ -461,7 +459,13 @@ pub fn render_grid(
                 continue;
             }
             let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
-            pixmap.fill_path(&square_path, &bg_fill_paint, tiny_skia::FillRule::Winding, transform, None);
+            pixmap.fill_path(
+                &square_path,
+                &bg_fill_paint,
+                tiny_skia::FillRule::Winding,
+                transform,
+                None,
+            );
             pixmap.stroke_path(&square_path, &border_stroke_paint, &stroke, transform, None);
         }
     }
@@ -471,8 +475,12 @@ pub fn render_grid(
         let x = i % width;
         let y = i / width;
         let Some(ncp_i) = ncp_i else { continue };
-        let Some(ncp) = view.navicust_part(*ncp_i) else { continue };
-        let Some(info) = assets.navicust_part(ncp.id) else { continue };
+        let Some(ncp) = view.navicust_part(*ncp_i) else {
+            continue;
+        };
+        let Some(info) = assets.navicust_part(ncp.id) else {
+            continue;
+        };
         let Some(color) = info.color() else { continue };
 
         let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);

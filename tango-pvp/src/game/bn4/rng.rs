@@ -14,7 +14,11 @@ pub fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
 pub fn pick_rng_states(rng: &mut impl rand::Rng, is_offerer: bool) -> (u32, u32) {
     let offerer_rng1_state = generate_rng1_state(rng);
     let answerer_rng1_state = generate_rng1_state(rng);
-    let rng1_state = if is_offerer { offerer_rng1_state } else { answerer_rng1_state };
+    let rng1_state = if is_offerer {
+        offerer_rng1_state
+    } else {
+        answerer_rng1_state
+    };
     let rng2_state = generate_rng2_state(rng);
     (rng1_state, rng2_state)
 }

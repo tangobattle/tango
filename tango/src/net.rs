@@ -63,11 +63,7 @@ pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(
         .send_hello()
         .await
         .map_err(|e| NegotiationError::Other(e.into()))?;
-    let hello = match receiver
-        .receive()
-        .await
-        .map_err(|_| NegotiationError::ExpectedHello)?
-    {
+    let hello = match receiver.receive().await.map_err(|_| NegotiationError::ExpectedHello)? {
         protocol::Packet::Hello(h) => h,
         _ => return Err(NegotiationError::ExpectedHello),
     };
@@ -302,4 +298,3 @@ impl tango_pvp::net::Receiver for PvpReceiver {
         }
     }
 }
-

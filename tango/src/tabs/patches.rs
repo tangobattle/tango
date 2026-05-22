@@ -2,10 +2,10 @@ use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE
 use crate::i18n::t;
 use crate::widgets;
 use crate::{game, save_view};
-use lucide_icons::Icon;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
 use unic_langid::LanguageIdentifier;
 
 /// Gold tone used for filled favorite stars. Hardcoded (not from
@@ -200,9 +200,7 @@ impl PatchesState {
         let mut ordered_patches: Vec<(&String, &std::sync::Arc<crate::patch::Patch>)> = patches
             .iter()
             .filter(|(n, p)| {
-                query.is_empty()
-                    || n.to_lowercase().contains(&query)
-                    || p.title.to_lowercase().contains(&query)
+                query.is_empty() || n.to_lowercase().contains(&query) || p.title.to_lowercase().contains(&query)
             })
             .collect();
         // Favorites first, alphabetical within each group.
@@ -221,9 +219,11 @@ impl PatchesState {
             // lives in the detail header.
             let title_row: Element<'_, Message> = if is_fav {
                 row![
-                    text("\u{2605}").size(TEXT_BODY).style(|_: &iced::Theme| iced::widget::text::Style {
-                        color: Some(FAVORITE_GOLD),
-                    }),
+                    text("\u{2605}")
+                        .size(TEXT_BODY)
+                        .style(|_: &iced::Theme| iced::widget::text::Style {
+                            color: Some(FAVORITE_GOLD),
+                        }),
                     text(patch.title.clone()).size(TEXT_BODY),
                 ]
                 .spacing(6)
@@ -300,15 +300,15 @@ impl PatchesState {
                     t!(lang, "patches-favorite")
                 };
                 let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
-                let star = text(glyph).size(TEXT_TITLE).style(move |theme: &iced::Theme| {
-                    iced::widget::text::Style {
+                let star = text(glyph)
+                    .size(TEXT_TITLE)
+                    .style(move |theme: &iced::Theme| iced::widget::text::Style {
                         color: Some(if is_fav {
                             FAVORITE_GOLD
                         } else {
                             theme.extended_palette().background.weak.text
                         }),
-                    }
-                });
+                    });
                 let btn = button(star)
                     .padding([4, 6])
                     .style(widgets::flat)
@@ -364,7 +364,10 @@ impl PatchesState {
 
             let mut details = column![].spacing(3);
             if !patch.authors.is_empty() {
-                details = details.push(detail_row(t!(lang, "patches-details-authors"), patch.authors.join(", ")));
+                details = details.push(detail_row(
+                    t!(lang, "patches-details-authors"),
+                    patch.authors.join(", "),
+                ));
             }
             if let Some(license) = &patch.license {
                 details = details.push(detail_row(t!(lang, "patches-details-license"), license.clone()));
@@ -396,12 +399,10 @@ impl PatchesState {
                 .map(Message::ReadmeLinkClicked)
             };
 
-            let meta_pane = container(
-                column![header, details,].spacing(6),
-            )
-            .width(Fill)
-            .padding(widgets::PANE_PADDING)
-            .style(widgets::pane);
+            let meta_pane = container(column![header, details,].spacing(6))
+                .width(Fill)
+                .padding(widgets::PANE_PADDING)
+                .style(widgets::pane);
             // README is flush with the pane edges (no outer
             // padding) so the scrollbar hugs the pane; the markdown
             // body has its own PANE_PADDING inset so the prose
@@ -409,11 +410,9 @@ impl PatchesState {
             // content but capped by the parent column's remaining
             // space — long readmes scroll inside, short ones don't
             // pad to the full page height.
-            let readme_pane = container(scrollable(
-                container(readme_body).padding(widgets::PANE_PADDING),
-            ))
-            .width(Fill)
-            .style(widgets::pane);
+            let readme_pane = container(scrollable(container(readme_body).padding(widgets::PANE_PADDING)))
+                .width(Fill)
+                .style(widgets::pane);
             column![meta_pane, readme_pane]
                 .spacing(widgets::PANE_GAP)
                 .width(Fill)
@@ -426,13 +425,10 @@ impl PatchesState {
                 .into()
         };
 
-        column![
-            top,
-            row![left, right].spacing(widgets::PANE_GAP).height(Fill),
-        ]
-        .spacing(widgets::PANE_GAP)
-        .padding(widgets::PANE_GAP)
-        .height(Fill)
-        .into()
+        column![top, row![left, right].spacing(widgets::PANE_GAP).height(Fill),]
+            .spacing(widgets::PANE_GAP)
+            .padding(widgets::PANE_GAP)
+            .height(Fill)
+            .into()
     }
 }

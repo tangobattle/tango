@@ -14,10 +14,7 @@ pub const VERSION: u8 = crate::netplay::PROTOCOL_VERSION as u8;
 
 static BINCODE_OPTIONS: LazyLock<
     bincode::config::WithOtherLimit<
-        bincode::config::WithOtherIntEncoding<
-            bincode::config::DefaultOptions,
-            bincode::config::VarintEncoding,
-        >,
+        bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding>,
         bincode::config::Bounded,
     >,
 > = LazyLock::new(|| {
@@ -27,10 +24,7 @@ static BINCODE_OPTIONS: LazyLock<
 });
 
 static STATE_BINCODE_OPTIONS: LazyLock<
-    bincode::config::WithOtherIntEncoding<
-        bincode::config::DefaultOptions,
-        bincode::config::VarintEncoding,
-    >,
+    bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding>,
 > = LazyLock::new(|| bincode::DefaultOptions::new().with_varint_encoding());
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

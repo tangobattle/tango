@@ -32,10 +32,20 @@ pub enum Status {
     /// Either we haven't queried yet (`release: None`) or we
     /// queried and the latest is what we're running
     /// (`release: Some(...)`).
-    UpToDate { release: Option<Option<Release>> },
-    UpdateAvailable { release: Release },
-    Downloading { release: Release, current: u64, total: u64 },
-    ReadyToUpdate { release: Release },
+    UpToDate {
+        release: Option<Option<Release>>,
+    },
+    UpdateAvailable {
+        release: Release,
+    },
+    Downloading {
+        release: Release,
+        current: u64,
+        total: u64,
+    },
+    ReadyToUpdate {
+        release: Release,
+    },
 }
 
 #[derive(serde::Deserialize)]
@@ -182,20 +192,17 @@ impl Updater {
             'l: loop {
                 let res = async {
                     let client = reqwest::Client::new();
-                    let releases = tokio::time::timeout(
-                        std::time::Duration::from_secs(30),
-                        async {
-                            Ok::<_, anyhow::Error>(
-                                client
-                                    .get(GITHUB_RELEASES_URL)
-                                    .header("User-Agent", "tango")
-                                    .send()
-                                    .await?
-                                    .json::<Vec<GithubReleaseInfo>>()
-                                    .await?,
-                            )
-                        },
-                    )
+                    let releases = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                        Ok::<_, anyhow::Error>(
+                            client
+                                .get(GITHUB_RELEASES_URL)
+                                .header("User-Agent", "tango")
+                                .send()
+                                .await?
+                                .json::<Vec<GithubReleaseInfo>>()
+                                .await?,
+                        )
+                    })
                     .await??;
 
                     // Pick the highest semver among non-prerelease
@@ -227,8 +234,8 @@ impl Updater {
                         let mut g = status.lock().await;
                         match &*g {
                             Status::UpToDate { .. } => {
-                                let has_latest = version == current_version
-                                    || (allow_prerelease && version < current_version);
+                                let has_latest =
+                                    version == current_version || (allow_prerelease && version < current_version);
                                 if has_latest {
                                     *g = Status::UpToDate {
                                         release: Some(if version == current_version {
@@ -241,8 +248,7 @@ impl Updater {
                                 }
                             }
                             Status::ReadyToUpdate { release: r } => {
-                                let has_latest = version == r.version
-                                    || (allow_prerelease && version < r.version);
+                                let has_latest = version == r.version || (allow_prerelease && version < r.version);
                                 if has_latest {
                                     return Ok(());
                                 }
@@ -274,11 +280,8 @@ impl Updater {
                     {
                         let mut f = tokio::fs::File::create(&incomplete_path).await?;
                         let mut stream = resp.bytes_stream();
-                        while let Some(chunk) = tokio::time::timeout(
-                            std::time::Duration::from_secs(30),
-                            stream.next(),
-                        )
-                        .await?
+                        while let Some(chunk) =
+                            tokio::time::timeout(std::time::Duration::from_secs(30), stream.next()).await?
                         {
                             let chunk = chunk?;
                             f.write_all(&chunk).await?;

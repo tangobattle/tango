@@ -10,8 +10,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
                 let stepper_state = stepper_state.lock_inner();
-                munger
-                    .start_battle_from_comm_menu(core, stepper_state.match_type().0);
+                munger.start_battle_from_comm_menu(core, stepper_state.match_type().0);
             })
         }),
         (hooks.offsets.rom.comm_menu_settings_entry, {

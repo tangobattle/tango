@@ -17,9 +17,7 @@ impl Game for EXE1Impl {
     fn match_types(&self) -> &'static [usize] {
         MATCH_TYPES
     }
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
         static SAVE: LazyLock<tango_dataview::game::bn1::save::Save> = LazyLock::new(|| {
             tango_dataview::game::bn1::save::Save::from_wram(
                 include_bytes!("../../../tango/src/game/bn1/save/jp.raw"),
@@ -48,9 +46,7 @@ impl Game for BN1Impl {
     fn match_types(&self) -> &'static [usize] {
         MATCH_TYPES
     }
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
         static SAVE: LazyLock<tango_dataview::game::bn1::save::Save> = LazyLock::new(|| {
             tango_dataview::game::bn1::save::Save::from_wram(
                 include_bytes!("../../../tango/src/game/bn1/save/us.raw"),

@@ -6,7 +6,6 @@
 use iced::widget::canvas::{self, Canvas, Frame, Path};
 use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-
 pub struct Scrubber<F> {
     current: u32,
     total: u32,
@@ -202,12 +201,7 @@ where
         None
     }
 
-    fn mouse_interaction(
-        &self,
-        state: &State,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
-    ) -> mouse::Interaction {
+    fn mouse_interaction(&self, state: &State, bounds: Rectangle, cursor: mouse::Cursor) -> mouse::Interaction {
         if state.dragging || cursor.is_over(bounds) {
             mouse::Interaction::Pointer
         } else {

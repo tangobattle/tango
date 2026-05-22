@@ -64,10 +64,7 @@ impl ReplaySession {
         }
         let replay_is_complete = replay.is_complete;
         let total_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
-        let match_type = (
-            replay.metadata.match_type as u8,
-            replay.metadata.match_subtype as u8,
-        );
+        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
         let remote_hooks = remote_game.hooks();
         let shadow = Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
@@ -93,10 +90,7 @@ impl ReplaySession {
         core.set_traps(traps);
 
         let thread = mgba::thread::Thread::new(core);
-        let vbuf = Arc::new(Mutex::new(vec![
-            0u8;
-            (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize
-        ]));
+        let vbuf = Arc::new(Mutex::new(vec![0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize]));
 
         let snapshots = SnapshotStore::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));

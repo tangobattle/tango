@@ -41,11 +41,7 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<GameR
             log::debug!("rom scan: {}: not a recognized rom", path.display());
             continue;
         };
-        log::info!(
-            "rom scan: {}: {:?}",
-            path.display(),
-            game.family_and_variant()
-        );
+        log::info!("rom scan: {}: {:?}", path.display(), game.family_and_variant());
         roms.insert(game, buf);
     }
     roms

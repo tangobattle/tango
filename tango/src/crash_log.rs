@@ -43,7 +43,7 @@ pub fn install() -> crash_handler::CrashHandler {
     // runs in a signal / exception context. Our closure only
     // touches stderr and a backtrace capture — see the
     // module-level note on signal safety.
-    let handler = crash_handler::CrashHandler::attach(unsafe {
+    crash_handler::CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |cc: &crash_handler::CrashContext| {
             if IN_HANDLER.swap(true, Ordering::SeqCst) {
                 // Re-entrant crash — get out of the way and let
@@ -80,10 +80,7 @@ fn describe(cc: &crash_handler::CrashContext) -> String {
 #[cfg(target_os = "macos")]
 fn describe(cc: &crash_handler::CrashContext) -> String {
     match &cc.exception {
-        Some(e) => format!(
-            "mach exception kind={} code={} subcode={:?}",
-            e.kind, e.code, e.subcode,
-        ),
+        Some(e) => format!("mach exception kind={} code={} subcode={:?}", e.kind, e.code, e.subcode,),
         None => "mach exception (no info)".to_string(),
     }
 }

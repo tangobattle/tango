@@ -212,10 +212,8 @@ pub async fn connect(
         fut: Box::pin(async move {
             const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
             const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-            let mut ping_interval = tokio::time::interval_at(
-                tokio::time::Instant::now() + PING_INTERVAL,
-                PING_INTERVAL,
-            );
+            let mut ping_interval =
+                tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
             ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
             loop {

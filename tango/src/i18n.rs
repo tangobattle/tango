@@ -72,11 +72,7 @@ pub fn t_args_opt(
 /// ```ignore
 /// t_args(lang, "welcome-step-roms-detected", &[("count", 4.into())])
 /// ```
-pub fn t_args(
-    lang: &unic_langid::LanguageIdentifier,
-    key: &str,
-    args: &[(&'static str, FluentValue<'_>)],
-) -> String {
+pub fn t_args(lang: &unic_langid::LanguageIdentifier, key: &str, args: &[(&'static str, FluentValue<'_>)]) -> String {
     t_args_opt(lang, key, args).unwrap_or_else(|| format!("⟦{key}⟧"))
 }
 

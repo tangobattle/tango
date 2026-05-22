@@ -114,18 +114,18 @@ pub enum AxisDir {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamepadButton {
-    South,         // A on Xbox, X on PS
-    East,          // B on Xbox, Circle on PS
-    West,          // X on Xbox, Square on PS
-    North,         // Y on Xbox, Triangle on PS
-    Select,        // Back / Share
-    Start,         // Start / Options
-    Mode,          // Guide / PS button
+    South,  // A on Xbox, X on PS
+    East,   // B on Xbox, Circle on PS
+    West,   // X on Xbox, Square on PS
+    North,  // Y on Xbox, Triangle on PS
+    Select, // Back / Share
+    Start,  // Start / Options
+    Mode,   // Guide / PS button
     LeftThumb,
     RightThumb,
     LeftShoulder,
     RightShoulder,
-    LeftTrigger,   // legacy digital trigger pull (gilrs-era); SDL3 reports as axis
+    LeftTrigger, // legacy digital trigger pull (gilrs-era); SDL3 reports as axis
     RightTrigger,
     DPadUp,
     DPadDown,
@@ -187,7 +187,6 @@ pub enum GamepadAxis {
     RightStickX,
     RightStickY,
 }
-
 
 /// Per-mgba-key list of `PhysicalInput`. Each key can have
 /// multiple bindings (kbd + gamepad simultaneously); pressing
@@ -329,7 +328,6 @@ pub enum MappedKey {
     Select,
     SpeedUp,
 }
-
 
 /// Live held-input state combined from keyboard + every connected
 /// gamepad. The session loop updates this on every key/gamepad

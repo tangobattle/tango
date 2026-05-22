@@ -21,7 +21,6 @@ pub enum Tab {
     AutoBattleData,
 }
 
-
 #[derive(Default, Clone, Copy)]
 pub struct RenderOpts {
     pub folder_grouped: bool,
@@ -184,7 +183,12 @@ pub fn view<'a>(
             Tab::PatchCards => t!(lang, "save-tab-patch-cards"),
             Tab::AutoBattleData => t!(lang, "save-tab-auto-battle-data"),
         };
-        tab_row = tab_row.push(widgets::tab_button(tab_icon(*tab), label, Action::SelectTab(*tab), *tab == active));
+        tab_row = tab_row.push(widgets::tab_button(
+            tab_icon(*tab),
+            label,
+            Action::SelectTab(*tab),
+            *tab == active,
+        ));
     }
     tab_row = tab_row.push(horizontal_space());
     // Tab strip's outer spacing is tight (2 px between tabs) but
@@ -215,9 +219,7 @@ pub fn view<'a>(
     };
     let body = render::<Action>(lang, active, loaded, opts);
 
-    let tab_pane = container(tab_row.padding([4, 8]))
-        .width(Fill)
-        .style(widgets::pane);
+    let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
     // Body: each render_* returns one-or-more pane-styled
     // containers stacked into an Element. We wrap that whole
     // group in a Shrink-height scrollable so when its panes don't
@@ -762,9 +764,7 @@ fn chip_row<M: 'static>(
     if let Some(code_text) = code_text {
         r = r.push(code_text);
     }
-    r = r
-        .push(power_text)
-        .push(mb_text);
+    r = r.push(power_text).push(mb_text);
 
     let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx, is_first, is_last);
     // Hover tooltip with chip image preview + description.
@@ -1083,12 +1083,9 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                 })
                 .unwrap_or_else(|| Space::new().height(Length::Fixed(64.0)).into());
             container(
-                column![
-                    emblem,
-                    text(name).size(TEXT_DISPLAY)
-                ]
-                .spacing(8)
-                .align_x(Alignment::Center),
+                column![emblem, text(name).size(TEXT_DISPLAY)]
+                    .spacing(8)
+                    .align_x(Alignment::Center),
             )
             .width(Fill)
             .align_x(Alignment::Center)

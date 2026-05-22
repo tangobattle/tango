@@ -17,9 +17,7 @@ impl Game for EXE45Impl {
     fn match_types(&self) -> &'static [usize] {
         MATCH_TYPES
     }
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
         static SAVE: LazyLock<tango_dataview::game::exe45::save::Save> = LazyLock::new(|| {
             tango_dataview::game::exe45::save::Save::from_wram(include_bytes!(
                 "../../../tango/src/game/exe45/save/any.raw"

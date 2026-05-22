@@ -79,10 +79,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
                 let mut rng = rng.lock();
-                let rng_state = pick_rng_state(
-                    &mut *rng,
-                    stepper_state.lock_inner().replay_is_offerer(),
-                );
+                let rng_state = pick_rng_state(&mut *rng, stepper_state.lock_inner().replay_is_offerer());
                 munger.set_rng_state(core, rng_state);
                 munger.set_frame_counter(core, rng_state as u16);
             })

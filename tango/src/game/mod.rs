@@ -8,9 +8,9 @@
 //! lookup point.
 
 use crate::i18n::LOCALES;
-use fluent_templates::Loader;
 use crate::rom::GameRef;
 use crate::rom_overrides::{OverridenAssets, Overrides};
+use fluent_templates::Loader;
 use std::any::Any;
 
 mod bn1;
@@ -56,18 +56,14 @@ where
             .charset
             .as_ref()
             .map(|c| c.iter().map(|s| s.as_str()).collect());
-        let inner = self
-            .gamedb_entry()
-            .load_rom_assets(rom, wram, charset_owned.as_deref());
+        let inner = self.gamedb_entry().load_rom_assets(rom, wram, charset_owned.as_deref());
         Box::new(OverridenAssets::new(inner, overrides.clone()))
     }
 
     /// Bundled save templates for this game. Each entry is a
     /// `(template_name, save)` pair; the empty-string name is the
     /// default template.
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))];
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn tango_dataview::save::Save + Send + Sync))];
 }
 
 impl PartialEq for &'static (dyn Game + Send + Sync) {

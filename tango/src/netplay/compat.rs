@@ -36,19 +36,9 @@ pub fn netplay_compatibility(
 
 /// Same as `netplay_compatibility` but starting from a
 /// `protocol::GameInfo` (what we receive from the peer).
-pub fn netplay_compatibility_from_game_info(
-    g: &protocol::GameInfo,
-    patches: &PatchMap,
-) -> Option<String> {
-    let game = tango_gamedb::find_by_family_and_variant(
-        g.family_and_variant.0.as_str(),
-        g.family_and_variant.1,
-    )?;
-    netplay_compatibility(
-        game,
-        g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)),
-        patches,
-    )
+pub fn netplay_compatibility_from_game_info(g: &protocol::GameInfo, patches: &PatchMap) -> Option<String> {
+    let game = tango_gamedb::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
+    netplay_compatibility(game, g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)), patches)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,24 +62,13 @@ pub enum Verdict {
 /// `are_settings_compatible` from the legacy app but returns a
 /// structured Verdict so the UI can show the specific reason
 /// instead of just "incompatible".
-pub fn check(
-    local: &protocol::Settings,
-    remote: &protocol::Settings,
-    patches: &PatchMap,
-) -> Verdict {
-    let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref())
-    else {
+pub fn check(local: &protocol::Settings, remote: &protocol::Settings, patches: &PatchMap) -> Verdict {
+    let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
         return Verdict::MissingGame;
     };
 
-    if !remote
-        .available_games
-        .iter()
-        .any(|g| g == &local_gi.family_and_variant)
-        || !local
-            .available_games
-            .iter()
-            .any(|g| g == &remote_gi.family_and_variant)
+    if !remote.available_games.iter().any(|g| g == &local_gi.family_and_variant)
+        || !local.available_games.iter().any(|g| g == &remote_gi.family_and_variant)
     {
         return Verdict::MissingRomOrPatch;
     }

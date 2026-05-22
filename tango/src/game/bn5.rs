@@ -34,10 +34,18 @@ static EXE5B_T: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Syn
 struct EXE5BImpl;
 pub const EXE5B: &'static (dyn Game + Send + Sync) = &EXE5BImpl;
 impl Game for EXE5BImpl {
-    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) { &tango_gamedb::BRBJ_00 }
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) { &tango_pvp::game::bn5::BRBJ_00 }
-    fn match_types(&self) -> &'static [usize] { MATCH_TYPES }
-    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] { EXE5B_T.as_slice() }
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
+        &tango_gamedb::BRBJ_00
+    }
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn5::BRBJ_00
+    }
+    fn match_types(&self) -> &'static [usize] {
+        MATCH_TYPES
+    }
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+        EXE5B_T.as_slice()
+    }
 }
 
 // ---------------- EXE5 Colonel JP ----------------
@@ -55,10 +63,18 @@ static EXE5C_T: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Syn
 struct EXE5CImpl;
 pub const EXE5C: &'static (dyn Game + Send + Sync) = &EXE5CImpl;
 impl Game for EXE5CImpl {
-    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) { &tango_gamedb::BRKJ_00 }
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) { &tango_pvp::game::bn5::BRKJ_00 }
-    fn match_types(&self) -> &'static [usize] { MATCH_TYPES }
-    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] { EXE5C_T.as_slice() }
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
+        &tango_gamedb::BRKJ_00
+    }
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn5::BRKJ_00
+    }
+    fn match_types(&self) -> &'static [usize] {
+        MATCH_TYPES
+    }
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+        EXE5C_T.as_slice()
+    }
 }
 
 // ---------------- BN5 Protoman US ----------------
@@ -76,10 +92,18 @@ static BN5P_T: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Sync
 struct BN5PImpl;
 pub const BN5P: &'static (dyn Game + Send + Sync) = &BN5PImpl;
 impl Game for BN5PImpl {
-    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) { &tango_gamedb::BRBE_00 }
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) { &tango_pvp::game::bn5::BRBE_00 }
-    fn match_types(&self) -> &'static [usize] { MATCH_TYPES }
-    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] { BN5P_T.as_slice() }
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
+        &tango_gamedb::BRBE_00
+    }
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn5::BRBE_00
+    }
+    fn match_types(&self) -> &'static [usize] {
+        MATCH_TYPES
+    }
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+        BN5P_T.as_slice()
+    }
 }
 
 // ---------------- BN5 Colonel US ----------------
@@ -97,8 +121,16 @@ static BN5C_T: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Sync
 struct BN5CImpl;
 pub const BN5C: &'static (dyn Game + Send + Sync) = &BN5CImpl;
 impl Game for BN5CImpl {
-    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) { &tango_gamedb::BRKE_00 }
-    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) { &tango_pvp::game::bn5::BRKE_00 }
-    fn match_types(&self) -> &'static [usize] { MATCH_TYPES }
-    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] { BN5C_T.as_slice() }
+    fn gamedb_entry(&self) -> &'static (dyn tango_gamedb::Game + Send + Sync) {
+        &tango_gamedb::BRKE_00
+    }
+    fn hooks(&self) -> &'static (dyn tango_pvp::hooks::Hooks + Send + Sync) {
+        &tango_pvp::game::bn5::BRKE_00
+    }
+    fn match_types(&self) -> &'static [usize] {
+        MATCH_TYPES
+    }
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+        BN5C_T.as_slice()
+    }
 }

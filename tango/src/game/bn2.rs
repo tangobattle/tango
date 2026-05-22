@@ -6,9 +6,7 @@ const MATCH_TYPES: &[usize] = &[1];
 
 macro_rules! bn2_save {
     ($file:expr) => {
-        LazyLock::new(|| {
-            tango_dataview::game::bn2::save::Save::from_wram(include_bytes!($file)).unwrap()
-        })
+        LazyLock::new(|| tango_dataview::game::bn2::save::Save::from_wram(include_bytes!($file)).unwrap())
     };
 }
 
@@ -23,16 +21,15 @@ static TEAM_ANY: LazyLock<tango_dataview::game::bn2::save::Save> =
 static SHIELD_ANY: LazyLock<tango_dataview::game::bn2::save::Save> =
     bn2_save!("../../../tango/src/game/bn2/save/shield_any.raw");
 
-static TEMPLATES: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Sync))>> =
-    LazyLock::new(|| {
-        vec![
-            ("hub", &*HUB_ANY as &(dyn SaveTrait + Send + Sync)),
-            ("guts", &*GUTS_ANY as &(dyn SaveTrait + Send + Sync)),
-            ("custom", &*CUSTOM_ANY as &(dyn SaveTrait + Send + Sync)),
-            ("team", &*TEAM_ANY as &(dyn SaveTrait + Send + Sync)),
-            ("shield", &*SHIELD_ANY as &(dyn SaveTrait + Send + Sync)),
-        ]
-    });
+static TEMPLATES: LazyLock<Vec<(&'static str, &'static (dyn SaveTrait + Send + Sync))>> = LazyLock::new(|| {
+    vec![
+        ("hub", &*HUB_ANY as &(dyn SaveTrait + Send + Sync)),
+        ("guts", &*GUTS_ANY as &(dyn SaveTrait + Send + Sync)),
+        ("custom", &*CUSTOM_ANY as &(dyn SaveTrait + Send + Sync)),
+        ("team", &*TEAM_ANY as &(dyn SaveTrait + Send + Sync)),
+        ("shield", &*SHIELD_ANY as &(dyn SaveTrait + Send + Sync)),
+    ]
+});
 
 struct EXE2Impl;
 pub const EXE2: &'static (dyn Game + Send + Sync) = &EXE2Impl;
@@ -47,9 +44,7 @@ impl Game for EXE2Impl {
     fn match_types(&self) -> &'static [usize] {
         MATCH_TYPES
     }
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
         TEMPLATES.as_slice()
     }
 }
@@ -67,9 +62,7 @@ impl Game for BN2Impl {
     fn match_types(&self) -> &'static [usize] {
         MATCH_TYPES
     }
-    fn save_templates(
-        &self,
-    ) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
+    fn save_templates(&self) -> &'static [(&'static str, &'static (dyn SaveTrait + Send + Sync))] {
         TEMPLATES.as_slice()
     }
 }

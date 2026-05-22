@@ -131,10 +131,18 @@ fn hex_decode_32(s: &str) -> anyhow::Result<[u8; 32]> {
 impl Fingerprint {
     fn to_text(&self) -> String {
         let mut s = String::new();
-        s.push_str(&format!("shadow_packets_sha256 = {}\n", hex_encode(&self.shadow_packets_sha256)));
+        s.push_str(&format!(
+            "shadow_packets_sha256 = {}\n",
+            hex_encode(&self.shadow_packets_sha256)
+        ));
         s.push_str(&format!("final_ram_sha256 = {}\n", hex_encode(&self.final_ram_sha256)));
         for r in &self.rounds {
-            s.push_str(&format!("round {} = {} @ {}\n", r.index, outcome_str(r.outcome), r.tick));
+            s.push_str(&format!(
+                "round {} = {} @ {}\n",
+                r.index,
+                outcome_str(r.outcome),
+                r.tick
+            ));
         }
         s
     }
@@ -173,8 +181,7 @@ impl Fingerprint {
         Ok(Fingerprint {
             shadow_packets_sha256: shadow_packets_sha256
                 .ok_or_else(|| anyhow::anyhow!("missing shadow_packets_sha256"))?,
-            final_ram_sha256: final_ram_sha256
-                .ok_or_else(|| anyhow::anyhow!("missing final_ram_sha256"))?,
+            final_ram_sha256: final_ram_sha256.ok_or_else(|| anyhow::anyhow!("missing final_ram_sha256"))?,
             rounds,
         })
     }
@@ -211,7 +218,8 @@ fn compute_fingerprint(
 ) -> anyhow::Result<Fingerprint> {
     let mut core = mgba::core::Core::new_gba("tango-test")?;
     core.enable_video_buffer();
-    core.as_mut().load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
+    core.as_mut()
+        .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;
     core.as_mut()
         .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
     // Pin the cart RTC before reset so games that surface RTC into RAM
@@ -334,8 +342,7 @@ fn compute_fingerprint(
         core.as_mut().run_frame();
     }
 
-    let (wram, iwram) = ram_snapshot
-        .ok_or_else(|| anyhow::anyhow!("replay exited before consuming any inputs"))?;
+    let (wram, iwram) = ram_snapshot.ok_or_else(|| anyhow::anyhow!("replay exited before consuming any inputs"))?;
     let mut ram_hasher = Sha256::new();
     ram_hasher.update(&wram);
     ram_hasher.update(&iwram);
@@ -425,11 +432,7 @@ fn run_one(path: &Path, roms: &HashMap<(&'static str, u8), Vec<u8>>, bless: bool
     let expected = match Fingerprint::from_text(&expected_text) {
         Ok(fp) => fp,
         Err(e) => {
-            return CaseResult::Fail(anyhow::anyhow!(
-                "parse expected {}: {}",
-                expected_path.display(),
-                e
-            ));
+            return CaseResult::Fail(anyhow::anyhow!("parse expected {}: {}", expected_path.display(), e));
         }
     };
 
@@ -461,7 +464,10 @@ fn diff_fingerprints(expected: &Fingerprint, actual: &Fingerprint) -> anyhow::Er
             expected.rounds, actual.rounds,
         ));
     }
-    anyhow::anyhow!("fingerprint mismatch (re-bless with TANGO_GOLDEN_BLESS=1 if intentional):\n  {}", diffs.join("\n  "))
+    anyhow::anyhow!(
+        "fingerprint mismatch (re-bless with TANGO_GOLDEN_BLESS=1 if intentional):\n  {}",
+        diffs.join("\n  ")
+    )
 }
 
 #[test]
@@ -494,11 +500,7 @@ fn golden_replays() {
     let mut failed: Vec<(String, anyhow::Error)> = vec![];
 
     for replay_path in &replays {
-        let name = replay_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
+        let name = replay_path.file_name().unwrap().to_string_lossy().into_owned();
         match run_one(replay_path, &roms, bless) {
             CaseResult::Ok => {
                 eprintln!("{}   {}", if bless { "bless" } else { "ok " }, name);

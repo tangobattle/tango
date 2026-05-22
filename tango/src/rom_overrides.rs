@@ -11,9 +11,8 @@ fn deserialize_option_language_identifier<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    Option::<String>::deserialize(deserializer)?.map_or(Ok(None), |buf| {
-        buf.parse().map(Some).map_err(serde::de::Error::custom)
-    })
+    Option::<String>::deserialize(deserializer)?
+        .map_or(Ok(None), |buf| buf.parse().map(Some).map_err(serde::de::Error::custom))
 }
 
 fn deserialize_option_patch_card56_effect_template<'de, D>(

@@ -59,9 +59,7 @@ impl Fastforwarder {
         commit_tick: u32,
         dirty_tick: u32,
         last_local_packet: &[u8],
-        apply_shadow_input: Box<
-            dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send,
-        >,
+        apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>,
     ) -> anyhow::Result<FastforwardResult> {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());

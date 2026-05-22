@@ -100,10 +100,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick()
-                    && !state.has_committed_this_round()
-                    && state.round_active()
-                {
+                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock();
                         let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
