@@ -58,11 +58,6 @@ pub enum Message {
     /// settings handler calls `updater.finish_update()` which
     /// hands off to the installer + exits the process.
     UpdateNow,
-    /// User clicked "Open folder" next to the data path
-    /// readout in General settings. Pure side effect — opens
-    /// the OS file manager at the carried path
-    /// (config.data_path; sourced from the view).
-    OpenDataFolder(std::path::PathBuf),
     ThemeChanged(config::ThemeMode),
     /// User clicked "Add binding" for `k`. The next key/button
     /// event captured by the settings subscription is appended.
@@ -140,13 +135,6 @@ impl State {
             // calls `updater.finish_update()` which exits the
             // process on success. Nothing to fold into config.
             Message::UpdateNow => None,
-            Message::OpenDataFolder(p) => {
-                let _ = std::fs::create_dir_all(&p);
-                if let Err(e) = open::that(&p) {
-                    log::warn!("open data folder {}: {e}", p.display());
-                }
-                None
-            }
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
             Message::BindingCaptureStart(k) => {
                 self.capture_target = Some(k);
@@ -302,6 +290,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             text_input("", config.nickname.as_deref().unwrap_or(""))
                 .on_input(Message::NicknameChanged)
                 .padding(STANDARD_PADDING)
+                .width(Length::Fixed(240.0))
                 .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(t!(lang, "settings-language"), {
@@ -318,7 +307,6 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Message::LanguageSelected(c.id)
             })
             .padding(STANDARD_PADDING)
-            .width(Fill)
             .style(widgets::chunky_pick_list)
         },),
         labeled::<Message>(
@@ -329,7 +317,6 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
                 Message::ThemeChanged,
             )
             .padding(STANDARD_PADDING)
-            .width(Fill)
             .style(widgets::chunky_pick_list),
         ),
         iced::widget::checkbox(config.streamer_mode)
@@ -337,29 +324,11 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .on_toggle(Message::ToggleStreamerMode)
             .style(widgets::chunky_checkbox),
         labeled::<Message>(
-            t!(lang, "settings-data-path"),
-            row![
-                // Path in a Fill container so a long Windows
-                // path (e.g. nested under Documents) wraps
-                // instead of squashing the Open Folder button.
-                container(text(config.data_path.display().to_string()).size(TEXT_CAPTION)).width(Fill),
-                widgets::icon_button(
-                    Icon::Folder,
-                    t!(lang, "save-open-folder"),
-                    Message::OpenDataFolder(config.data_path.clone()),
-                    STANDARD_PADDING,
-                ),
-            ]
-            .spacing(8)
-            // Top-align so the Open Folder button stays put when
-            // a long data path wraps to a second line.
-            .align_y(Alignment::Start),
-        ),
-        labeled::<Message>(
             t!(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
                 .on_input(Message::PatchRepoChanged)
                 .padding(STANDARD_PADDING)
+                .width(Length::Fixed(480.0))
                 .style(widgets::chunky_text_input),
         ),
         iced::widget::checkbox(config.enable_patch_autoupdate)
@@ -487,11 +456,10 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         let label = selected_resolution
             .map(|r| r.to_string())
             .unwrap_or_else(|| "—".into());
-        widgets::disabled_pick_list(label).width(Fill).into()
+        widgets::disabled_pick_list(label).into()
     } else {
         pick_list(resolution_options, selected_resolution, Message::ResolutionChanged)
             .padding(STANDARD_PADDING)
-            .width(Fill)
             .style(widgets::chunky_pick_list)
             .into()
     };
@@ -523,7 +491,6 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             t!(lang, "settings-ui-scale"),
             pick_list(ui_scale_options, selected_ui_scale, Message::UiScaleChanged)
                 .padding(STANDARD_PADDING)
-                .width(Fill)
                 .style(widgets::chunky_pick_list),
         ),
         labeled::<Message>(t!(lang, "settings-video-filter"), {
@@ -539,7 +506,6 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                 Message::VideoFilterChanged(c.key)
             })
             .padding(STANDARD_PADDING)
-            .width(Fill)
             .style(widgets::chunky_pick_list)
         },),
         iced::widget::checkbox(config.fractional_scaling)
@@ -564,6 +530,7 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             text_input("", &config.matchmaking_endpoint)
                 .on_input(Message::MatchmakingEndpointChanged)
                 .padding(STANDARD_PADDING)
+                .width(Length::Fixed(480.0))
                 .style(widgets::chunky_text_input),
         ),
         labeled::<Message>(
