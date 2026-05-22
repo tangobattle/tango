@@ -410,9 +410,11 @@ impl PatchesState {
             // content but capped by the parent column's remaining
             // space — long readmes scroll inside, short ones don't
             // pad to the full page height.
-            let readme_pane = container(scrollable(container(readme_body).padding(widgets::PANE_PADDING)))
-                .width(Fill)
-                .style(widgets::pane);
+            let readme_pane = container(scrollable(
+                container(readme_body).padding(widgets::PANE_PADDING).width(Fill),
+            ))
+            .width(Fill)
+            .style(widgets::pane);
             column![meta_pane, readme_pane]
                 .spacing(widgets::PANE_GAP)
                 .width(Fill)
