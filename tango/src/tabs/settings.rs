@@ -161,24 +161,6 @@ impl State {
     }
 }
 
-/// Subscription that listens for the *next* keyboard event when
-/// we're in binding-capture mode. Silent otherwise. Modifier
-/// keys are filtered out so a user trying to bind "A" doesn't
-/// accidentally bind Shift. Gamepad capture is handled by the
-/// `InputCapture` wrapper added in [`view`] — SDL3 has to run on
-/// the main thread, but subscriptions run on the tokio executor.
-pub fn subscription(state: &State) -> iced::Subscription<Message> {
-    if state.capture_target.is_none() {
-        return iced::Subscription::none();
-    }
-    iced::event::listen_with(|event, _, _| match event {
-        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
-            input::KeyId::from_iced(&key).map(|k| Message::BindingCaptured(input::PhysicalInput::Key(k)))
-        }
-        _ => None,
-    })
-}
-
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     config: &'a config::Config,
@@ -245,41 +227,37 @@ pub fn view<'a>(
         .width(Fill)
         .height(Fill);
 
-    // Gamepad binding-capture: wrap in `InputCapture` while the
-    // user is binding so SDL3's event pump (which lives on the
-    // main thread; can't be reached from a subscription) gets
-    // drained on every redraw. The wrapper publishes a
-    // `BindingCaptured` the first time a button or axis-past-
-    // threshold event lands. Keyboard capture stays on the
-    // subscription path — iced's own event stream is fine for that
-    // and doesn't need to touch SDL.
+    // Binding capture: while the user is rebinding a key, wrap the
+    // settings UI in `InputCapture` so both keyboard and gamepad
+    // events flow through one synchronous path. Without the wrapper
+    // we'd be idle and SDL3's pump (main-thread only) wouldn't get
+    // drained. The callback publishes a `BindingCaptured` for the
+    // first key press, button press, or axis-past-threshold event.
     if state.capture_target.is_some() {
         crate::input_capture::InputCapture::new(
             root,
             |input| {
-                let crate::input_capture::Input::Gamepad(ev) = input else {
-                    return None;
-                };
-                let captured = match *ev {
-                    crate::gamepad::GamepadEvent::ButtonDown(b) => {
-                        input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
+                let captured = match input {
+                    crate::input_capture::Input::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) => {
+                        input::KeyId::from_iced(key).map(input::PhysicalInput::Key)
                     }
-                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                        let (axis, v) = input::GamepadAxis::from_sdl3_value(axis, value)?;
-                        if v.abs() > input::AXIS_THRESHOLD {
-                            Some(input::PhysicalInput::Axis {
+                    crate::input_capture::Input::Keyboard(_) => None,
+                    crate::input_capture::Input::Gamepad(ev) => match *ev {
+                        crate::gamepad::GamepadEvent::ButtonDown(b) => {
+                            input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
+                        }
+                        crate::gamepad::GamepadEvent::AxisMotion { axis, value } => (value.abs()
+                            > input::AXIS_THRESHOLD)
+                            .then(|| input::PhysicalInput::Axis {
                                 axis,
-                                dir: if v > 0.0 {
+                                dir: if value > 0.0 {
                                     input::AxisDir::Positive
                                 } else {
                                     input::AxisDir::Negative
                                 },
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
+                            }),
+                        _ => None,
+                    },
                 };
                 captured.map(Message::BindingCaptured)
             },

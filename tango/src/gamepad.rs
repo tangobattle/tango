@@ -25,17 +25,22 @@ use std::thread::ThreadId;
 
 use parking_lot::Mutex;
 use sdl3::event::Event as SdlEvent;
-use sdl3::gamepad::{Axis, Button, Gamepad};
+use sdl3::gamepad::{Button, Gamepad};
 use sdl3::sys::joystick::SDL_JoystickID;
 use sdl3::{EventPump, GamepadSubsystem, Sdl};
 
+use crate::input::GamepadAxis;
+
 /// What `input_capture` / settings binding-capture care about. Keeps
 /// the surface narrow so we don't propagate `sdl3` types into the
-/// rest of the UI.
+/// rest of the UI. Axis events are pre-normalized: SDL3's raw i16
+/// `[-32768, 32767]` reading is mapped to `f32` in `[-1, 1]`, with Y
+/// flipped so positive means "stick pushed up" (matches the default
+/// binding map; SDL3's raw joystick convention is the opposite).
 pub enum GamepadEvent {
     ButtonDown(Button),
     ButtonUp(Button),
-    AxisMotion { axis: Axis, value: i16 },
+    AxisMotion { axis: GamepadAxis, value: f32 },
     DeviceRemoved,
 }
 
@@ -150,7 +155,19 @@ pub fn pump(mut on_event: impl FnMut(GamepadEvent)) {
                 on_event(GamepadEvent::ButtonUp(button));
             }
             SdlEvent::ControllerAxisMotion { axis, value, .. } => {
-                on_event(GamepadEvent::AxisMotion { axis, value });
+                use sdl3::gamepad::Axis as A;
+                let axis = match axis {
+                    A::LeftX => GamepadAxis::LeftStickX,
+                    A::LeftY => GamepadAxis::LeftStickY,
+                    A::RightX => GamepadAxis::RightStickX,
+                    A::RightY => GamepadAxis::RightStickY,
+                    _ => continue,
+                };
+                let mut v = (value as f32 / 32767.0).clamp(-1.0, 1.0);
+                if matches!(axis, GamepadAxis::LeftStickY | GamepadAxis::RightStickY) {
+                    v = -v;
+                }
+                on_event(GamepadEvent::AxisMotion { axis, value: v });
             }
             SdlEvent::ControllerDeviceAdded { which, .. } => {
                 let id = SDL_JoystickID(which);

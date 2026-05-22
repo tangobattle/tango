@@ -188,37 +188,6 @@ pub enum GamepadAxis {
     RightStickY,
 }
 
-impl GamepadAxis {
-    pub fn from_sdl3(a: sdl3::gamepad::Axis) -> Option<Self> {
-        use sdl3::gamepad::Axis as A;
-        Some(match a {
-            A::LeftX => Self::LeftStickX,
-            A::LeftY => Self::LeftStickY,
-            A::RightX => Self::RightStickX,
-            A::RightY => Self::RightStickY,
-            _ => return None,
-        })
-    }
-
-    /// Convert an SDL3 axis + raw i16 value into a normalized
-    /// `(axis, value)` pair matching the gilrs-era convention the
-    /// rest of the input code (and on-disk default bindings) was
-    /// written against: positive Y means "stick pushed up".
-    /// SDL3 reports Y with positive=down (raw joystick convention),
-    /// so we flip it here at the entry point. Returns `None` for
-    /// axes we don't expose (triggers).
-    pub fn from_sdl3_value(a: sdl3::gamepad::Axis, raw: i16) -> Option<(Self, f32)> {
-        let axis = Self::from_sdl3(a)?;
-        // Asymmetric range: i16 is [-32768, 32767]. Normalize by the
-        // larger of |min|, max so we never produce > 1.0; clamp the
-        // tail.
-        let mut v = (raw as f32 / 32767.0).clamp(-1.0, 1.0);
-        if matches!(axis, Self::LeftStickY | Self::RightStickY) {
-            v = -v;
-        }
-        Some((axis, v))
-    }
-}
 
 /// Per-mgba-key list of `PhysicalInput`. Each key can have
 /// multiple bindings (kbd + gamepad simultaneously); pressing

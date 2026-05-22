@@ -734,7 +734,6 @@ impl App {
         iced::Subscription::batch([
             session::subscription(&self.session).map(Message::Session),
             netplay::subscription(&self.netplay).map(Message::Netplay),
-            tabs::settings::subscription(&self.settings).map(Message::Settings),
             // 1 Hz Discord refresh — cheap (compares activity for
             // equality before re-sending) and gives us the join-
             // secret pickup loop too.
@@ -1491,8 +1490,7 @@ impl App {
                             crate::gamepad::GamepadEvent::ButtonUp(b) => crate::input::GamepadButton::from_sdl3(b)
                                 .map(|button| session::InputEvent::Button { button, pressed: false }),
                             crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                                crate::input::GamepadAxis::from_sdl3_value(axis, value)
-                                    .map(|(axis, value)| session::InputEvent::Axis { axis, value })
+                                Some(session::InputEvent::Axis { axis, value })
                             }
                             crate::gamepad::GamepadEvent::DeviceRemoved => Some(session::InputEvent::GamepadDisconnected),
                         },
