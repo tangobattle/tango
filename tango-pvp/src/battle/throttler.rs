@@ -40,6 +40,22 @@ impl<T: Throttler> Clamp<T> {
     pub fn new(inner: T, min: f32, max: f32) -> Self {
         Self { min, max, inner }
     }
+
+    /// Override the lower bound, returning `self` for chaining.
+    /// Pair with [`Clamp::with_max`] to tweak one side at a time
+    /// against a [`Default`] base.
+    pub fn with_min(mut self, min: f32) -> Self {
+        self.min = min;
+        self
+    }
+
+    /// Override the upper bound, returning `self` for chaining.
+    /// Pair with [`Clamp::with_min`] to tweak one side at a time
+    /// against a [`Default`] base.
+    pub fn with_max(mut self, max: f32) -> Self {
+        self.max = max;
+        self
+    }
 }
 
 impl<T: Default + Throttler> Default for Clamp<T> {
@@ -68,13 +84,15 @@ impl<T: Throttler> Throttler for Clamp<T> {
 /// throttler); `alpha_speedup` is used when skew is shrinking (smoothed
 /// value drops fast, so the throttler lifts as soon as the imbalance
 /// closes). Net: gentle glide into a slowdown, snappy return out of it.
-pub struct AsymmetricEma {
+/// Returns the raw smoothed value, including negatives — wrap with
+/// [`Clamp`] (`with_min(0.0)`) if the caller wants to gate speed-ups.
+pub struct Ema {
     pub alpha_slowdown: f32,
     pub alpha_speedup: f32,
     smoothed: f32,
 }
 
-impl AsymmetricEma {
+impl Ema {
     /// Default tuning: τ ≈ 5 s rise, τ ≈ 0.5 s fall.
     pub fn new() -> Self {
         Self {
@@ -90,13 +108,13 @@ impl AsymmetricEma {
     }
 }
 
-impl Default for AsymmetricEma {
+impl Default for Ema {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Throttler for AsymmetricEma {
+impl Throttler for Ema {
     fn step(&mut self, skew: i32) -> f32 {
         let skew = skew as f32;
         let alpha = if skew > self.smoothed {
@@ -105,14 +123,16 @@ impl Throttler for AsymmetricEma {
             self.alpha_speedup
         };
         self.smoothed = alpha * skew + (1.0 - alpha) * self.smoothed;
-        self.smoothed.max(0.0)
+        self.smoothed
     }
 }
 
-/// Pure-linear slowdown: `slope · skew` for positive skew, 0 otherwise.
-/// Stateless. On its own this would react instantly to every frame of
-/// jitter; pair it with [`Watchdog`] to gate it behind a deadband and
-/// sustained-frame counter.
+/// Pure-linear, symmetric: `slope · skew` for any skew (negative skew
+/// yields a negative slowdown, i.e. a speed-up). Stateless. On its
+/// own this would react instantly to every frame of jitter; pair it
+/// with [`Watchdog`] to gate it behind a deadband and sustained-
+/// frame counter. To suppress the speed-up branch wrap with
+/// [`Clamp`] (`with_min(0.0)`).
 pub struct Linear {
     pub slope: f32,
 }
@@ -131,11 +151,7 @@ impl Default for Linear {
 
 impl Throttler for Linear {
     fn step(&mut self, skew: i32) -> f32 {
-        if skew <= 0 {
-            0.0
-        } else {
-            skew as f32 * self.slope
-        }
+        skew as f32 * self.slope
     }
 }
 
