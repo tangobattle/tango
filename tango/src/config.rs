@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-const DATA_DIR_NAME: &str = "Tango";
+const DATA_DIR_NAME: &str = "Trill";
 
 const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";

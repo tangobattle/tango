@@ -1250,7 +1250,7 @@ fn templates_for_selection<'a>(
 /// `rebuild_checksum()` is required before `to_sram_dump()` — without
 /// it the SRAM checksum is stale (computed at template-construction
 /// time, before this game-specific clone) and both the GBA game and
-/// Tango's `parse_save` reject the resulting file. The legacy app
+/// Trill's `parse_save` reject the resulting file. The legacy app
 /// does the same in `gui/save_select_view.rs::create_new_save`.
 pub fn create_new_save(
     saves_dir: &std::path::Path,

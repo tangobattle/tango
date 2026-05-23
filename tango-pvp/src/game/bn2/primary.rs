@@ -44,14 +44,14 @@ pub(super) fn traps(
                 let Some(match_) = guard.as_ref() else { return };
                 let mut rng = match_.lock_rng();
                 // The ROM bg gen reads the game's single rng state.
-                // Tango's comm_menu_init_ret seeded it to a per-peer
+                // Trill's comm_menu_init_ret seeded it to a per-peer
                 // value (offerer vs answerer) — override to a shared
                 // value so both peers compute the same bg.
                 let shared_rng_seed = generate_rng_state(&mut *rng);
                 munger.set_rng_state(core, shared_rng_seed);
                 // Advance submenu_control[1]=0x2c so once the handler
                 // returns the next outer-dispatcher tick lands at
-                // Tango's working post-handshake state.
+                // Trill's working post-handshake state.
                 munger.select_battle_init_substate(core, 0x2c);
                 // PC-redirect past the function's SIO checks, its own
                 // [1] advance, and the sound/SIO calls — landing at

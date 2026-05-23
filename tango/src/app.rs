@@ -47,7 +47,7 @@ pub const BAR_CONTROL_HEIGHT: f32 = 40.0;
 // (random 12px next to 11px next to 13px). If you need a new
 // size, add it here and update the audit.
 //
-//   DISPLAY — splash titles ("Welcome to Tango").
+//   DISPLAY — splash titles ("Welcome to Trill").
 //   TITLE   — section headers ("tab-settings", empty-state cards).
 //   HEADING — sub-section labels (nickname on side cards).
 //   BODY    — default body copy. Same value as the iced default.
@@ -721,7 +721,7 @@ impl App {
                 let became_lobby = !was_lobby && matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
                 // Opponent just completed the handshake — flash the
                 // taskbar / bounce the dock so the lobby host
-                // notices even if Tango isn't focused. No-op if the
+                // notices even if Trill isn't focused. No-op if the
                 // window is already focused (per iced docs).
                 let attention = if became_lobby {
                     iced::window::latest().and_then(|id| {
@@ -1669,7 +1669,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
     use lucide_icons::Icon;
     use std::sync::LazyLock;
 
-    // Small Tango logo at the left edge of the nav strip.
+    // Small Trill logo at the left edge of the nav strip.
     // Uses `icon.png` (the standalone logo mark) — the emblem
     // image is the long About-page banner, not what we want
     // next to a button-sized tab strip. Parsed once via

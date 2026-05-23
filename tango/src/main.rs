@@ -169,7 +169,13 @@ static INIT_LINK_CODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock
 /// mismatch, etc.) — the OS just falls back to its default
 /// icon, no need to escalate.
 fn load_window_icon() -> Option<iced::window::Icon> {
-    let img = image::load_from_memory(include_bytes!("icon.png")).ok()?.into_rgba8();
+    let img = image::load_from_memory(include_bytes!(
+        if cfg!(target_os = "windows") {
+            "icon_16.png"
+        } else {
+            "icon.png"
+        }
+    )).ok()?.into_rgba8();
     let (w, h) = img.dimensions();
     iced::window::icon::from_rgba(img.into_raw(), w, h).ok()
 }

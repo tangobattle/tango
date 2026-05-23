@@ -9,7 +9,7 @@ with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) 
 
 version = semver.Version.parse(cargo_toml["package"]["version"])
 
-%>!define NAME "Tango"
+%>!define NAME "Trill"
 !define REGPATH_UNINSTSUBKEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\<%text>$</%text>{NAME}"
 
 LoadLanguageFile "<%text>$</%text>{NSISDIR}\Contrib\Language files\English.nlf"
@@ -24,8 +24,8 @@ OutFile "installer.exe"
 VIProductVersion "${version.major}.${version.minor}.${version.patch}.0"
 VIAddVersionKey "ProductName" "<%text>$</%text>{NAME}"
 VIAddVersionKey "FileVersion" "${version.major}.${version.minor}.${version.patch}.0"
-VIAddVersionKey "FileDescription" "Tango Installer"
-VIAddVersionKey "LegalCopyright" "© Copyright The Tango Developers"
+VIAddVersionKey "FileDescription" "Trill Installer"
+VIAddVersionKey "LegalCopyright" "© Copyright The Trill Developers"
 
 SetCompressor /solid /final lzma
 Unicode true
@@ -53,7 +53,7 @@ Function .onInit
         StrCpy $INSTDIR "$INSTDIR\\$(^Name)"
     <%text>$</%text>{EndIf}
 
-    ExecWait '"$INSTDIR\\Uninstall Tango.exe" /S'
+    ExecWait '"$INSTDIR\\Uninstall Trill.exe" /S'
 FunctionEnd
 
 Function un.onInit
@@ -68,7 +68,7 @@ LangString MessageDeleteConfig <%text>$</%text>{LANG_TRADCHINESE} "您是否也�
 Function un.onGUIInit
     MessageBox MB_YESNO "$(MessageDeleteConfig)" /SD IDNO IDYES true IDNO false
     true:
-        Delete "$APPDATA\\Tango\\config\\config.json"
+        Delete "$APPDATA\\Trill\\config\\config.json"
     false:
 FunctionEnd
 
@@ -86,7 +86,7 @@ Section
     WriteUninstaller "$INSTDIR\\uninstall.exe"
     WriteRegStr HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "DisplayName" "<%text>$</%text>{NAME}"
     WriteRegStr HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "DisplayIcon" "$INSTDIR\\tango.exe,0"
-    WriteRegStr HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "Publisher" "The Tango Developers"
+    WriteRegStr HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "Publisher" "The Trill Developers"
     WriteRegStr HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "InstallLocation" "$INSTDIR"
 
     IntFmt $0 "0x%08X" "{version.major}"
@@ -105,14 +105,14 @@ Section
 
     WriteRegDWORD HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "NoModify" 1
     WriteRegDWORD HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "NoRepair" 1
-    CreateShortcut "$SMPROGRAMS\\Tango.lnk" "$INSTDIR\\tango.exe"
-    CreateShortcut "$DESKTOP\\Tango.lnk" "$INSTDIR\\tango.exe"
+    CreateShortcut "$SMPROGRAMS\\Trill.lnk" "$INSTDIR\\tango.exe"
+    CreateShortcut "$DESKTOP\\Trill.lnk" "$INSTDIR\\tango.exe"
 SectionEnd
 
 Section "uninstall"
     SetDetailsPrint none
-    Delete "$DESKTOP\\Tango.lnk"
-    Delete "$SMPROGRAMS\\Tango.lnk"
+    Delete "$DESKTOP\\Trill.lnk"
+    Delete "$SMPROGRAMS\\Trill.lnk"
     Delete "$INSTDIR\\libEGL.dll"
     Delete "$INSTDIR\\libGLESv2.dll"
     Delete "$INSTDIR\\ffmpeg.exe"

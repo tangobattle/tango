@@ -19,7 +19,7 @@ use crate::config;
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
+const GITHUB_RELEASES_URL: &str = "https://api.hikaricalyx.com/Trill/v5/GetLatestUpdate";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Release {

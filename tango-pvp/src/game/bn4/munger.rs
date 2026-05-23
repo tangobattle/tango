@@ -31,7 +31,7 @@ impl Munger {
     }
 
     pub(super) fn select_battle_init_substate(&self, mut core: mgba::core::CoreMutRef) {
-        // Advance the comm-menu state to Tango's original "skip to
+        // Advance the comm-menu state to Trill's original "skip to
         // battle init" target: outer dispatcher entry 7 (= [1]=0x1c),
         // sub-state 4, sub-sub-state 0x20. The settings-handler trap
         // calls this after pre-seeding rng so that once the handler

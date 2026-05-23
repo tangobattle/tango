@@ -43,7 +43,7 @@ pub(super) struct ROMOffsets {
 
     /// This is directly after where KEYINPUT is read into r4 and then processed.
     ///
-    /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
+    /// Input is injected here directly by Trill into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
     pub(super) init_sio_call: u32,
@@ -58,7 +58,7 @@ pub(super) struct ROMOffsets {
 
     /// This hooks the point after the battle start routine is complete.
     ///
-    /// Tango initializes its own battle tracking state at this point.
+    /// Trill initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
 
     pub(super) round_end_set_win: u32,
@@ -84,7 +84,7 @@ pub(super) struct ROMOffsets {
 
     /// This is the entry point to the comm menu.
     ///
-    /// Here, Tango jumps directly into link battle.
+    /// Here, Trill jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
     /// Entry into the comm-menu state handler whose generator-path
@@ -98,7 +98,7 @@ pub(super) struct ROMOffsets {
 
     /// This hooks the exit from the function that is called when a match ends.
     ///
-    /// Tango ends its match here.
+    /// Trill ends its match here.
     pub(super) match_end_ret: u32,
 
     pub(super) battle_start_play_music_call: u32,

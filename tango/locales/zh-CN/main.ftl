@@ -2,17 +2,17 @@
 LANGUAGE = 中文 (简体)
 
 crash =
-    哎呀，Tango 遇到错误并崩溃了！
+    哎呀，Trill 遇到错误并崩溃了！
 
     报告此崩溃时，请包含以下日志文件：
 
     { $path }
 crash-no-log =
-    哎呀，Tango 遇到错误并崩溃了！
+    哎呀，Trill 遇到错误并崩溃了！
 
     { $error }
-window-title = Tango
-    .running = Tango（进行中）
+window-title = Trill
+    .running = Trill（进行中）
 play-play = 启动
 play-fight = 战斗！
 play-link-code = 链接代码
@@ -113,8 +113,8 @@ play-status-negotiating = 正在协商…
 play-status-failed = 连接失败: { $error }
 play-status-peer-disconnected = 对方已离开。
 play-status-negotiate-expected-hello = 对方未发送预期的握手信号。
-play-status-negotiate-version-too-old = 对方使用的是较旧版本的Tango。
-play-status-negotiate-version-too-new = 对方使用的是较新版本的Tango。
+play-status-negotiate-version-too-old = 对方使用的是较旧版本的Trill。
+play-status-negotiate-version-too-new = 对方使用的是较新版本的Trill。
 play-status-negotiate-failed = 协商时发生错误：{ $error }
 lobby-waiting = 等待中…
 lobby-no-game = （未选择游戏）
@@ -212,7 +212,7 @@ updater-up-to-date = v{ $version } (已是最新)
 updater-downloading = 下载中: { $pct }%
 updater-ready-to-update = 更新已下载，可安装。
 updater-update-now = 立即更新
-welcome-title = 欢迎使用 Tango！
+welcome-title = 欢迎使用 Trill！
 welcome-subtitle = 还有几个步骤就可以开始对战啦。
 welcome-step-roms = 添加 ROM
 welcome-step-roms-description = 将 Battle Network / Rockman EXE 的 .gba 文件放入：

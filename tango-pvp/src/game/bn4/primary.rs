@@ -29,7 +29,7 @@ pub(super) fn traps(
                     let seed = generate_rng2_state(&mut *rng);
                     munger.set_rng1_state(core, seed);
                     munger.set_rng2_state(core, seed);
-                    // Advance to Tango's battle-init state so once the
+                    // Advance to Trill's battle-init state so once the
                     // settings handler returns and the state machine
                     // ticks again, the outer dispatcher routes to the
                     // battle-init path (which reads the [0x11]/[0x2c]

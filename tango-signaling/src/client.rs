@@ -113,7 +113,7 @@ pub async fn connect(
         .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
     );
     req.headers_mut().append(
-        "X-Tango-Protocol-Version",
+        "X-Trill-Protocol-Version",
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("{:x}", protocol_version))
             .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
     );

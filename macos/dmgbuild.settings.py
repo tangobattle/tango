@@ -1,10 +1,10 @@
 format = "UDBZ"
-files = ["Tango.app"]
+files = ["Trill.app"]
 
-badge_icon = "Tango.app/Contents/Resources/Tango.icns"
+badge_icon = "Trill.app/Contents/Resources/Trill.icns"
 
 symlinks = {"Applications": "/Applications"}
-icon_locations = {"Tango.app": (140, 120), "Applications": (500, 120)}
+icon_locations = {"Trill.app": (140, 120), "Applications": (500, 120)}
 
 background = "builtin-arrow"
 

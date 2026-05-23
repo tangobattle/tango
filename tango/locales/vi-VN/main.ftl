@@ -2,17 +2,17 @@
 LANGUAGE = Tiếng Việt
 
 crash =
-    Tango đã gặp lỗi và ngừng hoạt động!
+    Trill đã gặp lỗi và ngừng hoạt động!
 
     Khi báo lỗi, hãy đính kèm file log sau đây:
 
     {$path}
 crash-no-log =
-    Tango đã gặp lỗi và ngừng hoạt động!
+    Trill đã gặp lỗi và ngừng hoạt động!
 
     {$error}
-window-title = Tango
-    .running = Tango (đang chạy)
+window-title = Trill
+    .running = Trill (đang chạy)
 play-play = Chơi
 play-fight = Đấu!
 play-link-code = Mã kết nối
@@ -113,8 +113,8 @@ play-status-negotiating = Đang thương lượng…
 play-status-failed = Kết nối thất bại: { $error }
 play-status-peer-disconnected = Người chơi kia đã rời đi.
 play-status-negotiate-expected-hello = Người chơi kia không gửi tín hiệu bắt tay mong đợi.
-play-status-negotiate-version-too-old = Người chơi kia đang dùng phiên bản Tango cũ hơn.
-play-status-negotiate-version-too-new = Người chơi kia đang dùng phiên bản Tango mới hơn.
+play-status-negotiate-version-too-old = Người chơi kia đang dùng phiên bản Trill cũ hơn.
+play-status-negotiate-version-too-new = Người chơi kia đang dùng phiên bản Trill mới hơn.
 play-status-negotiate-failed = Đã xảy ra lỗi trong khi đàm phán: { $error }
 lobby-waiting = Đang đợi…
 lobby-no-game = (chưa chọn game)
@@ -212,7 +212,7 @@ updater-up-to-date = v{ $version } (đã cập nhật)
 updater-downloading = Đang tải: { $pct }%
 updater-ready-to-update = Đã tải xong, sẵn sàng cài.
 updater-update-now = Cập nhật ngay
-welcome-title = Chào mừng đến với Tango!
+welcome-title = Chào mừng đến với Trill!
 welcome-subtitle = Còn vài bước nữa trước khi bạn bắt đầu chơi.
 welcome-step-roms = Thêm ROM của bạn
 welcome-step-roms-description = Đặt các tệp .gba Battle Network / Rockman EXE của bạn vào:

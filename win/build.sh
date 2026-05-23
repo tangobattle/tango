@@ -21,7 +21,7 @@ fi
 
 # Cleanup.
 function cleanup {
-    rm -rf Tango.iconset tango_win_workdir
+    rm -rf Trill.iconset tango_win_workdir
 }
 trap cleanup EXIT
 cleanup
@@ -30,13 +30,13 @@ cleanup
 tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/resource.rc.mako" >tango/resource.rc
 
 # Create icon.
-mkdir Tango.iconset
-magick tango/src/icon.png -resize 16x16 -depth 32 Tango.iconset/icon_16x16.png
-magick tango/src/icon.png -resize 32x32 -depth 32 Tango.iconset/icon_32x32.png
-magick tango/src/icon.png -resize 128x128 -depth 32 Tango.iconset/icon_128x128.png
-magick tango/src/icon.png -resize 256x256 -depth 32 Tango.iconset/icon_256x256.png
-magick Tango.iconset/*.png tango/icon.ico
-rm -rf Tango.iconset
+mkdir Trill.iconset
+magick tango/src/icon.png -resize 16x16 -depth 32 Trill.iconset/icon_16x16.png
+magick tango/src/icon.png -resize 32x32 -depth 32 Trill.iconset/icon_32x32.png
+magick tango/src/icon.png -resize 128x128 -depth 32 Trill.iconset/icon_128x128.png
+magick tango/src/icon.png -resize 256x256 -depth 32 Trill.iconset/icon_256x256.png
+magick Trill.iconset/*.png tango/icon.ico
+rm -rf Trill.iconset
 
 # Build Windows binaries. MSVC target — statically links the MSVC
 # runtime so no mingw DLL bundling is needed.

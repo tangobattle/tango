@@ -38,7 +38,7 @@ impl<'a> SyncMutRef<'a> {
     // kHz, at which point 512 source frames isn't enough to fill a single
     // host audio callback — the producer blocks every fill and the emulator
     // throttles below realtime (audible as low-pitched playback + underrun
-    // crunch). Tango rescales this per fill mirroring mGBA's SDL frontend.
+    // crunch). Trill rescales this per fill mirroring mGBA's SDL frontend.
     pub fn set_audio_high_water(&mut self, frames: u32) {
         unsafe {
             (*self.ptr).audioHighWater = frames as _;

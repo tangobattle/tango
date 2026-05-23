@@ -2,17 +2,17 @@
 LANGUAGE = Français
 
 crash =
-    Oups, Tango a rencontré une erreur et a planté !
+    Oups, Trill a rencontré une erreur et a planté !
 
     Lorsque vous signalez ce plantage, veuillez inclure le log suivant :
 
     { $path }
 crash-no-log =
-    Oups, Tango a rencontré une erreur et a planté !
+    Oups, Trill a rencontré une erreur et a planté !
 
     { $error }
-window-title = Tango
-    .running = Tango (en cours d'exécution)
+window-title = Trill
+    .running = Trill (en cours d'exécution)
 play-play = Jouer
 play-fight = Bagarre !
 play-link-code = Code de connexion
@@ -113,8 +113,8 @@ play-status-negotiating = Négociation…
 play-status-failed = Échec de la connexion: { $error }
 play-status-peer-disconnected = L'autre joueur a quitté la partie.
 play-status-negotiate-expected-hello = L'autre joueur n'a pas envoyé la poignée de main attendue.
-play-status-negotiate-version-too-old = L'autre joueur utilise une version plus ancienne de Tango.
-play-status-negotiate-version-too-new = L'autre joueur utilise une version plus récente de Tango.
+play-status-negotiate-version-too-old = L'autre joueur utilise une version plus ancienne de Trill.
+play-status-negotiate-version-too-new = L'autre joueur utilise une version plus récente de Trill.
 play-status-negotiate-failed = Une erreur s'est produite lors de la négociation : { $error }
 lobby-waiting = En attente…
 lobby-no-game = (aucun jeu choisi)
@@ -215,7 +215,7 @@ updater-up-to-date = v{ $version } (à jour)
 updater-downloading = Téléchargement: { $pct }%
 updater-ready-to-update = Mise à jour téléchargée, prête à installer.
 updater-update-now = Mettre à jour
-welcome-title = Bienvenue dans Tango !
+welcome-title = Bienvenue dans Trill !
 welcome-subtitle = Encore quelques étapes avant de pouvoir jouer.
 welcome-step-roms = Ajoutez vos ROMs
 welcome-step-roms-description = Placez vos fichiers .gba de Battle Network / Rockman EXE dans :

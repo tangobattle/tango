@@ -2,15 +2,15 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = 日本語
 
-window-title = Tango
+window-title = Trill
 
 # Crash handler dialogs (parent process)
-crash = Tango がエラーで終了しました。
+crash = Trill がエラーで終了しました。
 
     報告の際は次のログファイルを添付してください：
 
     { $path }
-crash-no-log = Tango がエラーで終了しました。
+crash-no-log = Trill がエラーで終了しました。
 
     { $error }
 
@@ -67,8 +67,8 @@ play-status-negotiating = ネゴシエーション中…
 play-status-failed = 接続失敗: { $error }
 play-status-peer-disconnected = 相手が退出しました。
 play-status-negotiate-expected-hello = 相手から想定したハンドシェイクが届きませんでした。
-play-status-negotiate-version-too-old = 相手は古いバージョンのTangoを使用しています。
-play-status-negotiate-version-too-new = 相手は新しいバージョンのTangoを使用しています。
+play-status-negotiate-version-too-old = 相手は古いバージョンのTrillを使用しています。
+play-status-negotiate-version-too-new = 相手は新しいバージョンのTrillを使用しています。
 play-status-negotiate-failed = ネゴシエーション中にエラーが発生しました: { $error }
 lobby-waiting = 待機中…
 lobby-no-game = （ゲーム未選択）
@@ -228,7 +228,7 @@ updater-ready-to-update = 更新の準備が完了しました。
 updater-update-now = 今すぐ更新
 
 # Welcome screen
-welcome-title = Tango へようこそ！
+welcome-title = Trill へようこそ！
 welcome-subtitle = 対戦できる前にいくつかの初期設定をしてください。
 welcome-continue = 続ける
 welcome-step-roms = ROM を追加

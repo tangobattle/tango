@@ -69,7 +69,7 @@ pub(super) fn traps(
                 // the same bg.
                 let r2_seed = generate_rng2_state(&mut *rng);
                 munger.set_rng2_state(core, r2_seed);
-                // Advance to Tango's original post-handshake state so
+                // Advance to Trill's original post-handshake state so
                 // once the handler returns, the next outer-dispatcher
                 // tick lands at the battle-init path.
                 munger.select_battle_init_substate(core, 0x30);

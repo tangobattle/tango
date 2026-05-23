@@ -2,17 +2,17 @@
 LANGUAGE = Nederlands
 
 crash =
-    Oepsie woepsie! Tango is een fout tegengekomen en is gecrasht!
+    Oepsie woepsie! Trill is een fout tegengekomen en is gecrasht!
 
     Bij het rapporteren van deze crash, gaarne het volgende logboekbestand toe te voegen:
 
     { $path }
 crash-no-log =
-    Oepsie woepsie! Tango is stukkie wukkie!
+    Oepsie woepsie! Trill is stukkie wukkie!
 
     { $error }
-window-title = Tango
-    .running = Tango (actief)
+window-title = Trill
+    .running = Trill (actief)
 play-play = Spelen
 play-fight = Vechten!
 play-link-code = Link code
@@ -113,8 +113,8 @@ play-status-negotiating = Onderhandelen…
 play-status-failed = Verbinding mislukt: { $error }
 play-status-peer-disconnected = De andere speler is vertrokken.
 play-status-negotiate-expected-hello = De andere speler heeft de verwachte handshake niet verzonden.
-play-status-negotiate-version-too-old = De andere speler gebruikt een oudere versie van Tango.
-play-status-negotiate-version-too-new = De andere speler gebruikt een nieuwere versie van Tango.
+play-status-negotiate-version-too-old = De andere speler gebruikt een oudere versie van Trill.
+play-status-negotiate-version-too-new = De andere speler gebruikt een nieuwere versie van Trill.
 play-status-negotiate-failed = Er is een fout opgetreden tijdens de onderhandeling: { $error }
 lobby-waiting = Wachten…
 lobby-no-game = (geen spel gekozen)
@@ -215,7 +215,7 @@ updater-up-to-date = v{ $version } (actueel)
 updater-downloading = Downloaden: { $pct }%
 updater-ready-to-update = Update gedownload en klaar om te installeren.
 updater-update-now = Nu bijwerken
-welcome-title = Welkom bij Tango!
+welcome-title = Welkom bij Trill!
 welcome-subtitle = Nog een paar stappen voor je kunt beginnen met spelen.
 welcome-step-roms = Voeg je ROMs toe
 welcome-step-roms-description = Plaats je Battle Network / Rockman EXE .gba-bestanden in:

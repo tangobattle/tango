@@ -20,7 +20,7 @@ pub(super) struct EWRAMOffsets {
 
     /// Main-loop tick counter (`frames_since_boot`). The battle-start
     /// routine reads this halfword and uses it as `stage = counter % 12`,
-    /// so Tango overwrites it from `rng_state` before each round to make
+    /// so Trill overwrites it from `rng_state` before each round to make
     /// the game's own stage pick come out synced across peers.
     pub(super) frame_counter: u32,
 
@@ -48,7 +48,7 @@ pub(super) struct ROMOffsets {
 
     /// This is directly after where KEYINPUT is read into r4 and then processed.
     ///
-    /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
+    /// Input is injected here directly by Trill into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
     pub(super) init_sio_call: u32,
@@ -59,13 +59,13 @@ pub(super) struct ROMOffsets {
     pub(super) round_call_jump_table_ret: u32,
 
     /// First instruction of the battle-start routine (the `push {r5, lr}`
-    /// prologue). Tango uses this to seed `rng_state` early enough that the
+    /// prologue). Trill uses this to seed `rng_state` early enough that the
     /// stage-pick code further down the same function sees a synced value.
     pub(super) round_start_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
-    /// Tango initializes its own battle tracking state at this point.
+    /// Trill initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
 
     pub(super) round_end_set_win: u32,
@@ -84,12 +84,12 @@ pub(super) struct ROMOffsets {
 
     /// This is the entry point to the comm menu.
     ///
-    /// Here, Tango jumps directly into link battle.
+    /// Here, Trill jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
     /// This hooks the exit from the function that is called when a match ends.
     ///
-    /// Tango ends its match here.
+    /// Trill ends its match here.
     pub(super) match_end_ret: u32,
 
     pub(super) battle_start_play_music_call: u32,

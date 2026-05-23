@@ -9,7 +9,7 @@ pub enum Region {
     JP,
 }
 
-/// One ROM revision known to Tango. Each variant is a zero-sized type
+/// One ROM revision known to Trill. Each variant is a zero-sized type
 /// (see [`games`]) with a `pub static` instance — callers refer to games
 /// by the `&AREJ_00` style. Compare via the `&dyn Game` PartialEq impl,
 /// which uses TypeId, so each per-game type is its own identity.
