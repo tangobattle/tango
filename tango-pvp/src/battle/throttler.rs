@@ -162,6 +162,11 @@ impl Throttler for Linear {
 /// first frame skew dips back under the threshold, so bursty loss
 /// spikes (which resolve faster than the trigger) never engage.
 ///
+/// The inner throttler is stepped every frame regardless of gating,
+/// so stateful inners (e.g. [`Ema`]) track real skew history during
+/// the warm-up and across disengage→re-engage gaps. Only the output
+/// is gated.
+///
 /// Composes with any [`Throttler`] — wrap `Linear` to get the classic
 /// deadband + linear-slowdown behavior, or wrap an EMA to combine the
 /// deadband with smoother engagement.
@@ -197,8 +202,9 @@ impl<T: Throttler> Throttler for Watchdog<T> {
         } else {
             self.sustained = 0;
         }
+        let inner = self.inner.step(skew);
         if self.sustained > self.trigger_frames {
-            self.inner.step(skew)
+            inner
         } else {
             0.0
         }
