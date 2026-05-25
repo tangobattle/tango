@@ -498,8 +498,7 @@ impl PvpSession {
         let round = round_state.as_ref()?;
         Some(RoundStats {
             local_player_index: round.local_player_index(),
-            local_frame_advantage: round.local_frame_advantage(),
-            remote_frame_advantage: round.last_remote_frame_advantage(),
+            skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
         })
     }
 }
@@ -509,12 +508,12 @@ impl PvpSession {
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
     pub local_player_index: u8,
-    /// Local frame advantage — `current_tick - last_remote_received_tick`.
-    /// Positive when I'm ahead of the latest remote input I've received.
-    pub local_frame_advantage: i16,
-    /// Peer's frame advantage as of their most recent packet (stale by
-    /// ~τ one-way delay).
-    pub remote_frame_advantage: i16,
+    /// Real-time clock skew the throttler reacts to: `local_advantage −
+    /// remote_advantage` (see `Round::update_fps_target`). The shared
+    /// input-delay offset cancels in the difference, so this reads ~0 at
+    /// clock sync, positive when we're leading (and being slowed), and
+    /// negative when the peer is leading.
+    pub skew: i32,
 }
 
 impl std::fmt::Debug for PvpSession {

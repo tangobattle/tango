@@ -134,12 +134,21 @@ impl Round {
         Ok(())
     }
 
-    /// "How far ahead of the latest remote input I am." Sent in each
+    /// "How far ahead of the latest remote input I am," with our own
+    /// input delay subtracted out. The raw tick difference carries the
+    /// symmetric network term *plus* the peer's input-delay padding (the
+    /// peer front-loads `input_delay` zero-inputs at round start, all of
+    /// which bump `last_remote_received_tick`). Subtracting our own
+    /// `local_delay` makes the steady-state skew (`local_adv -
+    /// remote_adv`) cancel to zero even when the two peers pick different
+    /// input delays — without it, the higher-delay peer reads a constant
+    /// positive skew and throttles itself spuriously. Sent in each
     /// outgoing packet so the peer can compute relative real-time skew.
     /// Saturating cast: clamps to i16 range, which fits any realistic
     /// frame advantage.
     pub fn local_frame_advantage(&self) -> i16 {
-        let diff = self.current_tick as i32 - self.last_remote_received_tick as i32;
+        let diff =
+            self.current_tick as i32 - self.last_remote_received_tick as i32 - self.iq.local_delay() as i32;
         diff.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
@@ -248,11 +257,15 @@ impl Round {
         // relies on the leader pulling back to converge). `local_adv`
         // and `last_remote_frame_advantage` both carry the symmetric
         // network-delay term τ; their difference isolates real-time
-        // clock skew. `local_adv_A + local_adv_B` is a network-fixed
-        // invariant (60·RTT - 2·input_delay), so the only reachable
+        // clock skew. Since `local_frame_advantage` already nets out
+        // both peers' input delays (own subtracted here, peer's via its
+        // padding in `last_remote_received_tick`), `local_adv_A +
+        // local_adv_B` is a network-fixed invariant that no longer
+        // depends on the chosen input delays — so the only reachable
         // symmetric state is local_adv_A = local_adv_B = sum/2 →
-        // raw_skew = 0, and the asymmetric correction can't have both
-        // sides slowing simultaneously in equilibrium.
+        // raw_skew = 0 regardless of delay asymmetry, and the asymmetric
+        // correction can't have both sides slowing simultaneously in
+        // equilibrium.
         let local_advantage = self.local_frame_advantage() as i32;
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = local_advantage - remote_advantage;

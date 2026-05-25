@@ -844,10 +844,7 @@ pub fn view<'a>(
         );
         if let Some(s) = stats {
             metrics = metrics.push(
-                text(format!(
-                    "fadv {:+3}:{:+3}",
-                    s.local_frame_advantage, s.remote_frame_advantage
-                ))
+                text(format!("skew {:+3}", s.skew))
                 .size(TEXT_CAPTION)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
