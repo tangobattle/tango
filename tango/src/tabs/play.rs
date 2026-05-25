@@ -340,9 +340,14 @@ impl PlayState {
             Message::SaveViewAction(action) => {
                 let sv_task = self.save_view.apply(&action);
                 match action {
-                    save_view::Action::CopyTab(tab) => loaded
-                        .and_then(|l| save_view::tab_as_text(&config.language, tab, l))
-                        .map(Effect::CopyText),
+                    save_view::Action::CopyTab(tab) => {
+                        let opts = save_view::RenderOpts {
+                            folder_grouped: self.save_view.folder_grouped,
+                        };
+                        loaded
+                            .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
+                            .map(Effect::CopyText)
+                    }
                     save_view::Action::CopyTabImage(tab) => loaded
                         .and_then(|l| save_view::tab_as_image(tab, l))
                         .map(Effect::CopyImage),

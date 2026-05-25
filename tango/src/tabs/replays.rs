@@ -287,11 +287,15 @@ impl ReplaysState {
                 // (currently used for the scroll-to-top snap on a
                 // tab change).
                 match action {
-                    save_view::Action::CopyTab(tab) => self
-                        .loaded
-                        .as_ref()
-                        .and_then(|l| save_view::tab_as_text(&config.language, tab, l))
-                        .map(Effect::CopyText),
+                    save_view::Action::CopyTab(tab) => {
+                        let opts = save_view::RenderOpts {
+                            folder_grouped: self.save_view.folder_grouped,
+                        };
+                        self.loaded
+                            .as_ref()
+                            .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
+                            .map(Effect::CopyText)
+                    }
                     save_view::Action::CopyTabImage(tab) => self
                         .loaded
                         .as_ref()
