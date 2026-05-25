@@ -217,7 +217,6 @@ impl PvpSession {
             match_type: pre_match.match_type,
             is_offerer: pre_match.is_offerer,
             local_player_index,
-            input_delay: pre_match.input_delay as u32,
         };
         let shadow = tango_pvp::shadow::Shadow::new(
             remote_rom.as_ref(),
@@ -509,10 +508,10 @@ impl PvpSession {
 pub struct RoundStats {
     pub local_player_index: u8,
     /// Real-time clock skew the throttler reacts to: `local_advantage −
-    /// remote_advantage` (see `Round::update_fps_target`). The shared
-    /// input-delay offset cancels in the difference, so this reads ~0 at
-    /// clock sync, positive when we're leading (and being slowed), and
-    /// negative when the peer is leading.
+    /// remote_advantage` (see `Round::update_fps_target`). The symmetric
+    /// network term cancels in the difference, so this reads ~0 at clock
+    /// sync, positive when we're leading (and being slowed), and negative
+    /// when the peer is leading.
     pub skew: i32,
 }
 

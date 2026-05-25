@@ -27,10 +27,10 @@ pub enum Message {
     /// this through netplay::Message::SetMatchType so the resend
     /// machinery picks it up.
     NetplaySetMatchType((u8, u8)),
-    /// Lobby UI: user dragged the input-delay slider, OR pressed
+    /// Lobby UI: user dragged the frame-delay slider, OR pressed
     /// the "suggest" button (which dispatches a value computed
     /// from `lobby.latency`).
-    NetplaySetInputDelay(u8),
+    NetplaySetFrameDelay(u8),
     /// Lobby UI: user toggled the reveal-setup checkbox.
     NetplaySetRevealSetup(bool),
     /// Lobby UI: user pressed Ready. App loads the local
@@ -63,7 +63,7 @@ pub enum Message {
     DismissError,
     /// Soft-disable sentinel for widgets that don't accept a
     /// `None` handler in iced 0.14 (pick_list, slider). The
-    /// lobby reroutes match-type / input-delay changes here in
+    /// lobby reroutes match-type / frame-delay changes here in
     /// Phase::Failed so the controls render inert without
     /// touching layout. The update handler drops it.
     Noop,
@@ -395,7 +395,7 @@ impl PlayState {
             Message::Noop => None,
             Message::NetplayDisconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::NetplaySetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
-            Message::NetplaySetInputDelay(d) => Some(Effect::Netplay(crate::netplay::Message::SetInputDelay(d))),
+            Message::NetplaySetFrameDelay(d) => Some(Effect::Netplay(crate::netplay::Message::SetFrameDelay(d))),
             Message::NetplaySetRevealSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v))),
             Message::NetplayReady => Some(Effect::NetplayReadyWithSave),
             Message::NetplayUnready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
@@ -1554,16 +1554,16 @@ fn lobby_view<'a>(
     // and the connection has been handed to the PvP session).
     let inert = failed || handoff_pending;
 
-    // Input delay slider — legacy app caps at 10 frames. Each
-    // increment is one full GBA frame (~16.7 ms one-way) of
-    // smoothing for jittery connections. Reroute through Noop
-    // when inert so dragging it doesn't do anything.
+    // Frame delay slider — caps at 10 frames. Each increment is one
+    // full GBA frame (~16.7 ms) of local render buffering (inert for
+    // now — the buffer isn't wired up yet). Reroute through Noop when
+    // inert so dragging it doesn't do anything.
     let slider_on_change: fn(u8) -> Message = if inert {
         |_| Message::Noop
     } else {
-        Message::NetplaySetInputDelay
+        Message::NetplaySetFrameDelay
     };
-    let id_slider = iced::widget::slider(2..=10u8, lobby.input_delay, slider_on_change).width(Length::Fixed(160.0));
+    let id_slider = iced::widget::slider(2..=10u8, lobby.frame_delay, slider_on_change).width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
@@ -1575,12 +1575,12 @@ fn lobby_view<'a>(
         lobby.latency.map(|rtt| {
             let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
             let d = (one_way_frames + 1 - 2).clamp(2, 10) as u8;
-            Message::NetplaySetInputDelay(d)
+            Message::NetplaySetFrameDelay(d)
         })
     };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,
-        t!(lang, "lobby-input-delay-suggest"),
+        t!(lang, "lobby-frame-delay-suggest"),
         suggest_msg,
         STANDARD_PADDING,
     );
@@ -1631,7 +1631,7 @@ fn lobby_view<'a>(
     );
 
     let delay_row = setting_row(
-        text(t!(lang, "lobby-input-delay"))
+        text(t!(lang, "lobby-frame-delay"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1640,7 +1640,7 @@ fn lobby_view<'a>(
             // Live value rendered as a fixed-width monospaced
             // numeral so the slider's position has a readable
             // numeric counterpart that doesn't jiggle layout.
-            text(format!("{}", lobby.input_delay))
+            text(format!("{}", lobby.frame_delay))
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .width(Length::Fixed(18.0)),

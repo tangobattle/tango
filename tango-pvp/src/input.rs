@@ -33,7 +33,6 @@ pub struct Pair<LocalInput, RemoteInput> {
 pub struct PairQueue<LocalInput, RemoteInput> {
     local_queue: std::collections::VecDeque<LocalInput>,
     remote_queue: std::collections::VecDeque<RemoteInput>,
-    local_delay: u32,
     max_length: usize,
 }
 
@@ -42,11 +41,10 @@ where
     LocalInput: Clone,
     RemoteInput: Clone,
 {
-    pub fn new(capacity: usize, local_delay: u32) -> Self {
+    pub fn new(capacity: usize) -> Self {
         PairQueue {
             local_queue: std::collections::VecDeque::with_capacity(capacity),
             remote_queue: std::collections::VecDeque::with_capacity(capacity),
-            local_delay,
             max_length: capacity,
         }
     }
@@ -67,10 +65,6 @@ where
         self.remote_queue.len() < self.max_length
     }
 
-    pub fn local_delay(&self) -> u32 {
-        self.local_delay
-    }
-
     pub fn local_queue_length(&self) -> usize {
         self.local_queue.len()
     }
@@ -80,28 +74,15 @@ where
     }
 
     pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<LocalInput, RemoteInput>>, Vec<LocalInput>) {
-        let to_commit = {
-            let n = std::cmp::max(
-                std::cmp::min(
-                    self.local_queue.len() as isize - self.local_delay as isize,
-                    self.remote_queue.len() as isize,
-                ),
-                0,
-            );
-
-            std::iter::zip(
-                self.local_queue.drain(..n as usize),
-                self.remote_queue.drain(..n as usize),
-            )
+        let n = std::cmp::min(self.local_queue.len(), self.remote_queue.len());
+        let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n))
             .map(|(local, remote)| Pair { local, remote })
-            .collect()
-        };
-
-        let peeked = self
-            .local_queue
-            .range(..std::cmp::max(self.local_queue.len() as isize - self.local_delay as isize, 0) as usize)
-            .cloned()
             .collect();
+
+        // Everything still in the local queue is ahead of the latest
+        // remote input — those frames get committed against a predicted
+        // remote input until the real one arrives.
+        let peeked = self.local_queue.iter().cloned().collect();
 
         (to_commit, peeked)
     }

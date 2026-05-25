@@ -300,8 +300,7 @@ impl Match {
         self.identity.is_offerer
     }
 
-    /// Allocates a new [`Round`] in the round_state, fills `input_delay`
-    /// frames of zero-input padding into its queue, and bumps round_progress
+    /// Allocates a new [`Round`] in the round_state and bumps round_progress
     /// so the network receive loop wakes up to (re-)evaluate.
     pub async fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
@@ -319,21 +318,7 @@ impl Match {
         log::info!("preparing round state");
 
         const MAX_QUEUE_LENGTH: usize = 300;
-        let mut iq = crate::input::PairQueue::new(MAX_QUEUE_LENGTH, self.identity.input_delay);
-        log::info!("filling {} ticks of input delay", self.identity.input_delay);
-
-        {
-            let mut sender = self.sender.lock().await;
-            for _ in 0..self.identity.input_delay {
-                iq.add_local_input(crate::input::PartialInput { joyflags: 0 });
-                sender
-                    .send(&crate::net::Input {
-                        joyflags: 0,
-                        frame_advantage: 0,
-                    })
-                    .await?;
-            }
-        }
+        let iq = crate::input::PairQueue::new(MAX_QUEUE_LENGTH);
 
         *round_state = Some(Round::new(self, iq)?);
         self.bump_round_progress();

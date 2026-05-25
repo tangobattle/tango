@@ -156,9 +156,10 @@ pub struct LobbyState {
     /// = Single. Local-only UI state; gets folded into Settings
     /// on send.
     pub match_type: (u8, u8),
-    /// User-picked input delay frames. Higher = smoother on flaky
-    /// connections, more responsive on good ones. Range 2..=10.
-    pub input_delay: u8,
+    /// User-picked frame delay. Local-only presentation knob (the
+    /// future render-buffer depth); does not affect the netcode or the
+    /// wire yet. Range 2..=10.
+    pub frame_delay: u8,
     /// Per-lobby "reveal my setup to the opponent" flag. Crosses
     /// the wire via `protocol::Settings.reveal_setup`; each side
     /// picks their own independently. When the peer flips it on
@@ -190,10 +191,10 @@ impl Default for LobbyState {
             remote: None,
             latency: None,
             match_type: (0, 0),
-            // 2 = floor of the slider range; matches the legacy
-            // app's minimum and keeps the live match comfortably
-            // smooth even on a perfect LAN.
-            input_delay: 2,
+            // 2 = floor of the slider range; carried over from the old
+            // input-delay default. Inert until the render buffer is
+            // wired up.
+            frame_delay: 2,
             reveal_setup: false,
             local_ready: false,
             remote_ready: false,
@@ -311,8 +312,8 @@ pub enum Message {
     /// User changed the match-type pick. Lobby state updates and
     /// the App resends the Settings packet.
     SetMatchType((u8, u8)),
-    /// User dragged the input-delay slider. Same resend flow.
-    SetInputDelay(u8),
+    /// User dragged the frame-delay slider. Local-only; no resend.
+    SetFrameDelay(u8),
     /// User toggled the "reveal setup" checkbox. Triggers a
     /// Settings resend (the flag's part of the wire format).
     SetRevealSetup(bool),
@@ -610,9 +611,9 @@ impl State {
                 // material-diff check.
                 iced::Task::none()
             }
-            Message::SetInputDelay(d) => {
-                self.lobby.input_delay = d.clamp(2, 10);
-                // Input delay is local-only — never crosses the
+            Message::SetFrameDelay(d) => {
+                self.lobby.frame_delay = d.clamp(2, 10);
+                // Frame delay is local-only — never crosses the
                 // wire and isn't part of the commitment — so no
                 // unready / no resend.
                 iced::Task::none()
@@ -980,7 +981,6 @@ impl State {
             remote_settings,
             link_code,
             match_type: self.lobby.match_type,
-            input_delay: self.lobby.input_delay,
         };
         Some(pre_match)
     }
@@ -1025,7 +1025,6 @@ pub struct PreMatchData {
     pub remote_settings: crate::net::protocol::Settings,
     pub link_code: String,
     pub match_type: (u8, u8),
-    pub input_delay: u8,
 }
 
 /// Does this settings change warrant auto-unready? `true` for

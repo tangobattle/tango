@@ -14,7 +14,6 @@ pub struct MatchIdentity {
     pub match_type: (u8, u8),
     pub is_offerer: bool,
     pub local_player_index: u8,
-    pub input_delay: u32,
 }
 
 /// Replay sink: a writer, or none if not recording.

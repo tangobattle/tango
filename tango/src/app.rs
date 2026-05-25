@@ -713,7 +713,7 @@ impl App {
                 // Always resend after a netplay message too: this
                 // covers the Negotiating → Lobby transition (first
                 // announce) and lobby-state mutations like
-                // SetMatchType / SetInputDelay. The dedupe inside
+                // SetMatchType / SetFrameDelay. The dedupe inside
                 // netplay::State::update::SendLocalSettings makes
                 // unchanged dispatches a no-op.
                 let was_lobby = matches!(self.netplay.phase, netplay::Phase::Lobby { .. });
