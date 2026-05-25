@@ -586,6 +586,7 @@ impl PlayState {
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
         netplay_lobby: &'a crate::netplay::LobbyState,
+        netplay_handoff_pending: bool,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -600,13 +601,18 @@ impl PlayState {
         // bottom bar through the handshake. The verdict line and
         // opponent slot degrade gracefully when peer info isn't
         // there yet.
+        // `handoff_pending` keeps the lobby strip visible while
+        // spawn_pvp builds the live session in the background —
+        // take_pre_match has dropped the connection but deliberately
+        // left phase/lobby state intact so this view doesn't flash
+        // to the singleplayer bottom strip.
         let show_lobby = matches!(
             netplay_phase,
             crate::netplay::Phase::Connecting { .. }
                 | crate::netplay::Phase::Negotiating { .. }
                 | crate::netplay::Phase::Lobby { .. }
                 | crate::netplay::Phase::Failed { .. }
-        );
+        ) || netplay_handoff_pending;
         // Synthesize the local side's Settings from the play
         // tab's current selection so the "You" slot fills in
         // immediately — pre-Lobby phases haven't populated
@@ -649,6 +655,7 @@ impl PlayState {
                     loaded.is_some(),
                     local_fallback,
                     streamer_mode,
+                    netplay_handoff_pending,
                 ))
                 .width(Fill),
             );
@@ -1300,6 +1307,7 @@ fn lobby_view<'a>(
     has_save: bool,
     local_fallback: crate::net::protocol::Settings,
     streamer_mode: bool,
+    handoff_pending: bool,
 ) -> Element<'a, Message> {
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
@@ -1508,10 +1516,12 @@ fn lobby_view<'a>(
             .iter()
             .find(|o| o.mode == lobby.match_type.0 && o.subtype == lobby.match_type.1)
             .cloned();
-        // In Phase::Failed the dropdown's on_change reroutes
-        // to Noop so picks are inert without touching layout.
-        let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
-        let on_change: fn((u8, u8)) -> Message = if failed {
+        // In Phase::Failed (or during the post-StartMatch handoff
+        // window, where the connection is already gone) the
+        // dropdown's on_change reroutes to Noop so picks are
+        // inert without touching layout.
+        let inert = matches!(phase, crate::netplay::Phase::Failed { .. }) || handoff_pending;
+        let on_change: fn((u8, u8)) -> Message = if inert {
             |_| Message::Noop
         } else {
             Message::NetplaySetMatchType
@@ -1537,12 +1547,18 @@ fn lobby_view<'a>(
     };
 
     let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
+    // `inert` collapses Failed and handoff-pending — both are
+    // states where the lobby controls are still on screen but
+    // shouldn't accept input (Failed because the connection is
+    // gone, handoff-pending because the match is spinning up
+    // and the connection has been handed to the PvP session).
+    let inert = failed || handoff_pending;
 
     // Input delay slider — legacy app caps at 10 frames. Each
     // increment is one full GBA frame (~16.7 ms one-way) of
     // smoothing for jittery connections. Reroute through Noop
-    // when Failed so dragging it doesn't do anything.
-    let slider_on_change: fn(u8) -> Message = if failed {
+    // when inert so dragging it doesn't do anything.
+    let slider_on_change: fn(u8) -> Message = if inert {
         |_| Message::Noop
     } else {
         Message::NetplaySetInputDelay
@@ -1552,8 +1568,8 @@ fn lobby_view<'a>(
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
     // gives us a latency reading — and unconditionally disabled
-    // in Failed phase.
-    let suggest_msg = if failed {
+    // when the controls are inert.
+    let suggest_msg = if inert {
         None
     } else {
         lobby.latency.map(|rtt| {
@@ -1635,7 +1651,7 @@ fn lobby_view<'a>(
         .into(),
     );
 
-    let reveal_toggle = if failed {
+    let reveal_toggle = if inert {
         None
     } else {
         Some(Message::NetplaySetRevealSetup as fn(bool) -> Message)
@@ -1832,14 +1848,23 @@ fn lobby_view<'a>(
     // Leave-lobby (Disconnect) button. Top-right of the header —
     // out of the way of the verdict line, and visually paired
     // with the Ready CTA in the bottom-right of the lobby pane
-    // (same right edge, opposite corner).
-    let leave_button: Element<'a, Message> = widgets::labeled_icon_button(
-        Icon::LogOut,
-        t!(lang, "play-cancel"),
-        Message::NetplayDisconnect,
-        STANDARD_PADDING,
-        widgets::danger_button,
-    );
+    // (same right edge, opposite corner). Disabled during the
+    // handoff window so the user can't tear down a lobby whose
+    // PvP session is already being built — clicking Disconnect
+    // there wouldn't actually cancel spawn_pvp, just leave the
+    // user confused when the match view pops up anyway.
+    let leave_button: Element<'a, Message> = {
+        let inner = row![Icon::LogOut.widget(), text(t!(lang, "play-cancel"))]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        let mut btn = iced::widget::button(inner)
+            .padding(STANDARD_PADDING)
+            .style(widgets::danger_button);
+        if !handoff_pending {
+            btn = btn.on_press(Message::NetplayDisconnect);
+        }
+        btn.into()
+    };
 
     // Header row: verdict on the left, leave button on the right.
     let mut header_text_col = column![].spacing(2);

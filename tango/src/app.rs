@@ -745,9 +745,14 @@ impl App {
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
                         self.play.last_error = Some(format!("{e}"));
-                        // netplay state is already back to Idle.
                     }
                 }
+                // Drop the post-handoff lobby snapshot now that the
+                // PvP view (or the error banner) is taking over the
+                // screen. take_pre_match deliberately left it in
+                // place so the bottom strip didn't flash blank
+                // while spawn_pvp ran.
+                self.netplay.finish_handoff();
                 iced::Task::none()
             }
         }
@@ -1624,6 +1629,7 @@ impl App {
                     &self.config,
                     &self.netplay.phase,
                     &self.netplay.lobby,
+                    self.netplay.handoff_pending(),
                 )
                 .map(Message::Play),
             Tab::Replays => self

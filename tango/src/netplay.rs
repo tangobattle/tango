@@ -918,6 +918,14 @@ impl State {
     /// — the cancellation token fires (which tears down the
     /// lobby loop), and the App owns sender / receiver /
     /// peer_conn / negotiated state.
+    ///
+    /// `phase` and `lobby` are deliberately NOT cleared here —
+    /// the lobby UI keeps rendering its post-ready snapshot while
+    /// `spawn_pvp` builds the live session in the background, so
+    /// the user doesn't see the bottom strip flash back to the
+    /// singleplayer Fight/link-code chrome. The App calls
+    /// [`finish_handoff`] when the PvP session is built (or its
+    /// build fails) to clear that state.
     pub fn take_pre_match(&mut self) -> Option<PreMatchData> {
         if !(self.lobby.match_ready && self.lobby.remote_match_ready) {
             return None;
@@ -974,14 +982,28 @@ impl State {
             match_type: self.lobby.match_type,
             input_delay: self.lobby.input_delay,
         };
-        // Phase reset — the lobby is gone, the App is in charge
-        // of the next thing the user sees (the match screen).
+        Some(pre_match)
+    }
+
+    /// Clear the lobby snapshot that `take_pre_match` left visible.
+    /// Called by the App once `spawn_pvp` resolves (either the PvP
+    /// view has taken over, or the build failed and `last_error`
+    /// is showing). Idempotent.
+    pub fn finish_handoff(&mut self) {
         self.phase = Phase::Idle;
         self.lobby = LobbyState::default();
         self.remote_commitment = None;
         self.remote_chunks.clear();
         self.local_chunks_sent = false;
-        Some(pre_match)
+    }
+
+    /// True once both sides have exchanged StartMatch and the
+    /// connection handles have been drained into a PreMatchData,
+    /// but before [`finish_handoff`] fires. The lobby UI uses
+    /// this to disable the ready / cancel chrome and show a
+    /// "Starting match…" placeholder while `spawn_pvp` runs.
+    pub fn handoff_pending(&self) -> bool {
+        self.lobby.match_ready && self.lobby.remote_match_ready && self.conn.is_none()
     }
 }
 
