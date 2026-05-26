@@ -6,6 +6,12 @@ use super::types::RoundResult;
 /// Output of a single Fastforwarder run.
 pub struct FastforwardResult {
     pub committed_state: crate::battle::CommittedState,
+    /// State to hand the display core: the run's estimate of
+    /// `frontier - frame_delay`, captured at the same `main_read_joyflags`
+    /// point as `dirty_state` so it loads seamlessly on the render core.
+    /// `None` when no display core is active (`present_tick` left past
+    /// `dirty_tick`), so games on the legacy single-core path pay nothing.
+    pub present_state: Option<Box<mgba::state::State>>,
     pub dirty_state: crate::battle::CommittedState,
     pub round_result: Option<RoundResult>,
     pub output_pairs: Vec<Pair<Input, Input>>,
@@ -51,6 +57,7 @@ impl Fastforwarder {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
@@ -58,6 +65,7 @@ impl Fastforwarder {
         current_tick: u32,
         commit_tick: u32,
         dirty_tick: u32,
+        present_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>,
     ) -> anyhow::Result<FastforwardResult> {
@@ -71,6 +79,7 @@ impl Fastforwarder {
             current_tick,
             commit_tick,
             dirty_tick,
+            present_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
@@ -79,7 +88,10 @@ impl Fastforwarder {
             {
                 let mut guard = self.state.0.lock();
                 let inner = guard.as_mut().unwrap();
-                if inner.has_committed_state_snapshot() && inner.has_dirty_state_snapshot() {
+                if inner.has_committed_state_snapshot()
+                    && inner.has_dirty_state_snapshot()
+                    && inner.has_present_state_snapshot()
+                {
                     return Ok(guard.take().expect("state").into_fastforward_result());
                 }
                 let _ = inner.take_error();

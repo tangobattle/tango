@@ -38,6 +38,24 @@ pub struct Round {
     primary_thread_handle: mgba::thread::Handle,
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: Arc<PlMutex<crate::shadow::Shadow>>,
+    /// Live → display hand-off. Each frame the `present_state`
+    /// (`frontier - frame_delay`) is published here for the display core.
+    presentation: Arc<PlMutex<super::present::PresentationBuffer>>,
+    /// Local presentation delay in frames. Read each frame to derive the
+    /// display's target tick; settable live from the UI via [`super::Match`].
+    frame_delay: Arc<std::sync::atomic::AtomicU32>,
+    /// The single settled checkpoint the present roll advances. Lags
+    /// the frontier by ~`frame_delay`; advances one tick per frame (it only
+    /// moves forward, since the frontier does). `None` until the round's first
+    /// commit seeds it.
+    present_seed: Option<CommittedState>,
+    /// Confirmed input pairs (real remote packet included) not yet consumed by
+    /// the rolling seed: a sliding window `[confirmed_base, commit_frontier)`.
+    /// Front entries are dropped as the seed rolls past them, so this stays
+    /// small (~`frame_delay` deep) instead of growing for the whole round.
+    confirmed: std::collections::VecDeque<Pair<Input, Input>>,
+    /// Tick of `confirmed.front()` — lets us index the deque by absolute tick.
+    confirmed_base: u32,
 }
 
 impl Round {
@@ -64,6 +82,11 @@ impl Round {
             primary_thread_handle: match_.primary_thread_handle(),
             sender: match_.sender_handle(),
             shadow: match_.shadow_handle(),
+            presentation: match_.presentation_handle(),
+            frame_delay: match_.frame_delay_handle(),
+            present_seed: None,
+            confirmed: std::collections::VecDeque::new(),
+            confirmed_base: 0,
         })
     }
 
@@ -80,11 +103,15 @@ impl Round {
     }
 
     pub fn set_first_committed_state(&mut self, local_state: Box<mgba::state::State>, first_packet: &[u8]) {
-        self.committed_state = Some(CommittedState {
+        let first = CommittedState {
             state: local_state,
             tick: 0,
             packet: first_packet.to_vec(),
-        });
+        };
+        // Seed the rolling present checkpoint at the round's tick-0 state.
+        self.present_seed = Some(first.clone());
+        self.confirmed_base = 0;
+        self.committed_state = Some(first);
     }
 
     /// Called once per main_read_joyflags fire on the live primary. Sends
@@ -99,7 +126,19 @@ impl Round {
         self.send_and_queue_local_input(joyflags).await?;
 
         let (input_pairs, last_committed_state, commit_tick, dirty_tick) = self.prepare_input_pairs();
-        let ff_result = self.run_fastforward(input_pairs, &last_committed_state, commit_tick, dirty_tick)?;
+        // Display target: the tick the display core renders, `frontier -
+        // frame_delay`.
+        let present_target = {
+            let frame_delay = self.frame_delay.load(std::sync::atomic::Ordering::Relaxed);
+            dirty_tick.saturating_sub(frame_delay)
+        };
+        let ff_result = self.run_fastforward(
+            input_pairs,
+            &last_committed_state,
+            commit_tick,
+            dirty_tick,
+            present_target,
+        )?;
 
         self.commit_remote_inputs(
             &ff_result.output_pairs,
@@ -108,8 +147,27 @@ impl Round {
             ff_result.round_result,
         );
 
+        // The live core advances to the speculative frontier (it's the
+        // netcode clock and must stay there); the display core renders the
+        // delayed present_state we publish below.
         core.load_state(&ff_result.dirty_state.state).expect("load dirty state");
         self.committed_state = Some(ff_result.committed_state);
+
+        let target = present_target;
+        // Roll the settled checkpoint forward, clamped to the last
+        // *committed* tick (commit_tick is the frontier of committed
+        // inputs, exclusive — there's no confirmed input there yet).
+        let rolled = self.roll_present_to(target.min(commit_tick.saturating_sub(1)))?;
+        // In settled territory the rolled checkpoint IS the present; in the
+        // rarer speculative range (frame_delay < rollback window) the live
+        // FF captured the speculative present and the roll just keeps the
+        // checkpoint current for when it settles again.
+        let present_state = if target < commit_tick {
+            rolled
+        } else {
+            ff_result.present_state.expect("live FF captures the speculative present")
+        };
+        self.presentation.lock().publish(present_state);
         self.update_fps_target(core);
 
         self.finalize_round(ff_result.round_result, commit_tick)
@@ -177,16 +235,29 @@ impl Round {
         last_committed_state: &CommittedState,
         commit_tick: u32,
         dirty_tick: u32,
+        present_target: u32,
     ) -> anyhow::Result<crate::stepper::FastforwardResult> {
         let shadow = self.shadow.clone();
         let hooks = self.hooks;
         let mut last_commit = self.last_committed_remote_input.packet.clone();
+        // Capture present_state here only for the speculative case
+        // (`target >= commit_tick` — frame_delay below the rollback window):
+        // those ticks aren't committed, so the rolling checkpoint can't reach
+        // them and we use this live capture instead. Settled targets are
+        // rolled from the confirmed window (see `roll_present_to`), so leave
+        // present_tick past dirty_tick to capture nothing.
+        let present_tick = if present_target >= commit_tick {
+            present_target
+        } else {
+            u32::MAX
+        };
         self.stepper.fastforward(
             &last_committed_state.state,
             input_pairs,
             last_committed_state.tick,
             commit_tick,
             dirty_tick,
+            present_tick,
             &last_committed_state.packet,
             Box::new(move |tick, ip| {
                 Ok(if tick < commit_tick {
@@ -201,6 +272,70 @@ impl Round {
         )
     }
 
+    /// Roll the single settled checkpoint forward to `target` (which is at or
+    /// behind the commit frontier) and return the state there for the display.
+    /// Replays the confirmed inputs from the seed's tick over the present
+    /// stepper — no shadow (packets come from the confirmed window) and no
+    /// prediction (every tick up to `target` is committed). The seed only ever
+    /// moves forward; if `target` is at or behind it (frame_delay just
+    /// increased, or no advance yet) we hold the current frame.
+    fn roll_present_to(&mut self, target: u32) -> anyhow::Result<Box<mgba::state::State>> {
+        let seed_tick = self.present_seed.as_ref().expect("present seed").tick;
+        if target <= seed_tick {
+            // Hold (don't roll backward): re-show the current checkpoint while
+            // the frontier catches up to a freshly-increased frame_delay.
+            return Ok(self.present_seed.as_ref().unwrap().state.clone());
+        }
+
+        let seed = self.present_seed.take().unwrap();
+        let base = self.confirmed_base;
+        // Inputs for ticks [seed_tick, target] — inclusive: the per-game
+        // stepper trap peeks an input pair at the dirty tick before it captures
+        // the dirty state, so the queue must still hold `target`'s input or the
+        // capture is skipped and the FF spins forever. `target < commit_tick`
+        // guarantees `confirmed` holds it.
+        let input_pairs: Vec<Pair<PartialInput, PartialInput>> = (seed_tick..=target)
+            .map(|t| {
+                let pair = &self.confirmed[(t - base) as usize];
+                Pair {
+                    local: PartialInput {
+                        joyflags: pair.local.joyflags,
+                    },
+                    remote: PartialInput {
+                        joyflags: pair.remote.joyflags,
+                    },
+                }
+            })
+            .collect();
+        let packets: Vec<Vec<u8>> = (seed_tick..=target)
+            .map(|t| self.confirmed[(t - base) as usize].remote.packet.clone())
+            .collect();
+
+        // Reuse the live Fastforwarder (it's free at this point — the live run
+        // already returned its result): the present roll covers a tick range
+        // behind the commit frontier, disjoint from the live run, and each
+        // `fastforward` call loads its own state fresh, so one core does both.
+        let result = self.stepper.fastforward(
+            &seed.state,
+            input_pairs,
+            seed_tick,
+            target,
+            target,
+            u32::MAX, // no present capture in this run — we use its dirty state
+            &seed.packet,
+            Box::new(move |tick, _ip| Ok(packets[(tick - seed_tick) as usize].clone())),
+        )?;
+        // The FF's committed_state and dirty_state are both at `target`: keep
+        // the committed one as the new rolling seed, hand the dirty one to the
+        // display. Drop the now-consumed confirmed inputs ahead of the seed.
+        self.present_seed = Some(result.committed_state);
+        while self.confirmed_base < target {
+            self.confirmed.pop_front();
+            self.confirmed_base += 1;
+        }
+        Ok(result.dirty_state.state)
+    }
+
     fn commit_remote_inputs(
         &mut self,
         output_pairs: &[Pair<Input, Input>],
@@ -213,6 +348,13 @@ impl Round {
             if tick >= commit_tick {
                 break;
             }
+
+            // Retain the confirmed pair (real remote packet) for the present
+            // roll to replay. Commits run contiguously, so a push keeps the
+            // deque's tail at `tick`; the front is pruned as the rolling seed
+            // consumes it. Independent of the round-result replay cap below.
+            debug_assert_eq!(self.confirmed_base + self.confirmed.len() as u32, tick);
+            self.confirmed.push_back(ip.clone());
 
             if round_result.map_or(true, |rr| tick < rr.tick) {
                 if let Some(writer) = self.replay_writer.lock().as_mut() {

@@ -29,8 +29,9 @@ pub enum Message {
     NetplaySetMatchType((u8, u8)),
     /// Lobby UI: user dragged the frame-delay slider, OR pressed
     /// the "suggest" button (which dispatches a value computed
-    /// from `lobby.latency`).
-    NetplaySetFrameDelay(u8),
+    /// from `lobby.latency`). Routes to the shared `config.frame_delay`
+    /// (same store the Settings-tab slider writes), not lobby-local state.
+    NetplaySetFrameDelay(u32),
     /// Lobby UI: user toggled the reveal-setup checkbox.
     NetplaySetRevealSetup(bool),
     /// Lobby UI: user pressed Ready. App loads the local
@@ -252,6 +253,10 @@ pub enum Effect {
     NetplayConnect(crate::netplay::LinkIdent),
     /// Forward verbatim to the netplay subsystem.
     Netplay(crate::netplay::Message),
+    /// Lobby frame-delay slider moved. App persists `config.frame_delay`
+    /// and live-updates the active PvP match — same handler as the
+    /// Settings-tab slider (`ConfigChange::FrameDelay`).
+    SetFrameDelay(u32),
     /// Lobby Ready — App reads the local save SRAM and
     /// dispatches `netplay::Message::Commit`.
     NetplayReadyWithSave,
@@ -395,7 +400,7 @@ impl PlayState {
             Message::Noop => None,
             Message::NetplayDisconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::NetplaySetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
-            Message::NetplaySetFrameDelay(d) => Some(Effect::Netplay(crate::netplay::Message::SetFrameDelay(d))),
+            Message::NetplaySetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
             Message::NetplaySetRevealSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v))),
             Message::NetplayReady => Some(Effect::NetplayReadyWithSave),
             Message::NetplayUnready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
@@ -656,6 +661,7 @@ impl PlayState {
                     local_fallback,
                     streamer_mode,
                     netplay_handoff_pending,
+                    config.frame_delay,
                 ))
                 .width(Fill),
             );
@@ -1308,6 +1314,7 @@ fn lobby_view<'a>(
     local_fallback: crate::net::protocol::Settings,
     streamer_mode: bool,
     handoff_pending: bool,
+    frame_delay: u32,
 ) -> Element<'a, Message> {
     // Compact "you / opponent" card — 2 lines max so the lobby
     // strip can fit in ~220 px without losing the ready button.
@@ -1555,15 +1562,16 @@ fn lobby_view<'a>(
     let inert = failed || handoff_pending;
 
     // Frame delay slider — caps at 10 frames. Each increment is one
-    // full GBA frame (~16.7 ms) of local render buffering (inert for
-    // now — the buffer isn't wired up yet). Reroute through Noop when
-    // inert so dragging it doesn't do anything.
-    let slider_on_change: fn(u8) -> Message = if inert {
+    // full GBA frame (~16.7 ms) the display core trails the live
+    // frontier by. Backed by the shared `config.frame_delay`, so this
+    // and the Settings-tab slider move together. Reroute through Noop
+    // when inert so dragging it doesn't do anything.
+    let slider_on_change: fn(u32) -> Message = if inert {
         |_| Message::Noop
     } else {
         Message::NetplaySetFrameDelay
     };
-    let id_slider = iced::widget::slider(2..=10u8, lobby.frame_delay, slider_on_change).width(Length::Fixed(160.0));
+    let id_slider = iced::widget::slider(2..=10u32, frame_delay, slider_on_change).width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
@@ -1574,7 +1582,7 @@ fn lobby_view<'a>(
     } else {
         lobby.latency.map(|rtt| {
             let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-            let d = (one_way_frames + 1 - 2).clamp(2, 10) as u8;
+            let d = (one_way_frames + 1 - 2).clamp(2, 10) as u32;
             Message::NetplaySetFrameDelay(d)
         })
     };
@@ -1631,7 +1639,7 @@ fn lobby_view<'a>(
     );
 
     let delay_row = setting_row(
-        text(t!(lang, "lobby-frame-delay"))
+        text(t!(lang, "settings-netplay-frame-delay"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
@@ -1640,7 +1648,7 @@ fn lobby_view<'a>(
             // Live value rendered as a fixed-width monospaced
             // numeral so the slider's position has a readable
             // numeric counterpart that doesn't jiggle layout.
-            text(format!("{}", lobby.frame_delay))
+            text(format!("{}", frame_delay))
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .width(Length::Fixed(18.0)),

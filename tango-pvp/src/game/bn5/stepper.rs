@@ -128,6 +128,10 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
+                if current_tick == state.present_tick() {
+                    state.set_present_state(core.save_state().expect("save present state"));
+                }
+
                 if current_tick == state.dirty_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.set_dirty_state(core.save_state().expect("save dirty state"));

@@ -189,6 +189,10 @@ pub enum Message {
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel. PvP-only.
     ToggleSelfPanel,
+    /// Bottom-bar frame-delay slider moved. PvP-only. Intercepted at the
+    /// app level (it owns config + the live match handle); the session State
+    /// itself has nothing to do with it.
+    SetFrameDelay(u32),
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …). PvP-only.
     OpponentSaveViewAction(save_view::Action),
@@ -327,6 +331,9 @@ impl State {
                     return sv_task.map(Message::SelfSaveViewAction);
                 }
             }
+            Message::SetFrameDelay(_) => {
+                // Handled by the app (config + live match); nothing here.
+            }
             Message::OpenSettings => {
                 self.show_settings = true;
             }
@@ -464,6 +471,7 @@ pub fn view<'a>(
     fractional_scaling: bool,
     hide_emulator_border: bool,
     video_filter: &'a str,
+    frame_delay: u32,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
@@ -481,11 +489,15 @@ pub fn view<'a>(
     let img_h = out_h as f32;
 
     let make_image = move || -> iced::widget::Image<iced::widget::image::Handle> {
-        // No frame yet → empty Handle renders as transparent. The
-        // first `Message::UpdateFramebuffer` (one vblank in) drops
-        // the real handle into `state.current_handle`.
+        // No frame yet → show opaque black (an all-zero RGBA buffer would be
+        // transparent). The first `Message::UpdateFramebuffer` (one vblank in)
+        // drops the real handle into `state.current_handle`.
         let handle = state.current_handle.clone().unwrap_or_else(|| {
-            iced::widget::image::Handle::from_rgba(out_w as u32, out_h as u32, vec![0u8; out_w * out_h * 4])
+            let mut px = vec![0u8; out_w * out_h * 4];
+            for p in px.chunks_exact_mut(4) {
+                p[3] = 0xFF;
+            }
+            iced::widget::image::Handle::from_rgba(out_w as u32, out_h as u32, px)
         });
         iced::widget::image(handle).filter_method(iced::widget::image::FilterMethod::Nearest)
     };
@@ -811,6 +823,26 @@ pub fn view<'a>(
         // opponent, close) hugs the right edge.
         if let Some(t) = self_toggle {
             controls = controls.push(t);
+        }
+        // PvP-only: frame-delay slider on the left, backed by the same
+        // config.frame_delay the lobby + Settings sliders write. Adjusts the
+        // live match's presentation delay in place.
+        if matches!(session, ActiveSession::PvP(_)) {
+            controls = controls.push(
+                row![
+                    text(t!(lang, "settings-netplay-frame-delay"))
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                    iced::widget::slider(2..=10u32, frame_delay, Message::SetFrameDelay)
+                        .width(Length::Fixed(120.0)),
+                    text(format!("{}", frame_delay))
+                        .size(TEXT_CAPTION)
+                        .font(iced::Font::MONOSPACE)
+                        .width(Length::Fixed(16.0)),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            );
         }
         controls = controls.push(horizontal_space());
     }
@@ -1168,6 +1200,7 @@ pub async fn spawn_pvp(
         throttler_factory_for(config.netplay_throttler),
         frame_notify,
         vbuf,
+        config.frame_delay,
     )
     .await
 }

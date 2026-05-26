@@ -54,6 +54,7 @@ pub enum Message {
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     NetplayThrottlerChanged(config::NetplayThrottler),
+    FrameDelayChanged(u32),
     VolumeChanged(f32),
     /// User clicked "Update Now" on the About panel. App's
     /// settings handler calls `updater.finish_update()` which
@@ -101,6 +102,7 @@ pub enum ConfigChange {
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     NetplayThrottler(config::NetplayThrottler),
+    FrameDelay(u32),
     Volume(f32),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
@@ -133,6 +135,7 @@ impl State {
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::NetplayThrottlerChanged(t) => Some(ConfigChange::NetplayThrottler(t)),
+            Message::FrameDelayChanged(d) => Some(ConfigChange::FrameDelay(d)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
@@ -545,6 +548,16 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             )
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list),
+        ),
+        labeled::<Message>(
+            t!(lang, "settings-netplay-frame-delay"),
+            row![
+                container(iced::widget::slider(2..=10u32, config.frame_delay, Message::FrameDelayChanged))
+                    .width(Length::Fixed(220.0)),
+                text(format!("{}", config.frame_delay)).size(TEXT_CAPTION),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center),
         ),
     ]
     .spacing(14)

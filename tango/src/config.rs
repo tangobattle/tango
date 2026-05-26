@@ -29,6 +29,10 @@ fn default_volume() -> f32 {
     1.0
 }
 
+fn default_frame_delay() -> u32 {
+    2
+}
+
 fn default_ui_scale() -> f32 {
     1.0
 }
@@ -191,6 +195,11 @@ pub struct Config {
     /// the next buffer fill.
     #[serde(default = "default_volume")]
     pub volume: f32,
+    /// Local presentation delay in frames for PvP — how far behind the live
+    /// netcode frontier the display core renders. Purely local (never on the
+    /// wire); live-adjustable mid-match.
+    #[serde(default = "default_frame_delay")]
+    pub frame_delay: u32,
 }
 
 impl Default for Config {
@@ -226,6 +235,7 @@ impl Default for Config {
             input_mapping: crate::input::Mapping::default(),
             netplay_throttler: NetplayThrottler::default(),
             volume: 1.0,
+            frame_delay: default_frame_delay(),
         }
     }
 }

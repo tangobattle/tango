@@ -4,6 +4,7 @@ use std::sync::Arc;
 use parking_lot::Mutex as PlMutex;
 use tokio::sync::{watch, Mutex};
 
+use super::present::PresentationBuffer;
 use super::round::Round;
 use super::throttler::Throttler;
 use super::types::{MatchIdentity, ReplayConfig};
@@ -41,6 +42,13 @@ pub struct Match {
     /// so the active strategy can be swapped between rounds via
     /// [`Self::set_throttler_factory`].
     throttler_factory: PlMutex<ThrottlerFactory>,
+    /// Live → display hand-off. The live `Round` publishes the FF's delayed
+    /// `present_state` here each frame; the display core renders it.
+    presentation: Arc<PlMutex<PresentationBuffer>>,
+    /// Local presentation delay in frames, settable live from the UI. Read by
+    /// the live `Round` each frame to derive the FF's `present_tick`. Local-
+    /// only — never touches the netcode or the wire.
+    frame_delay: Arc<AtomicU32>,
 }
 
 impl Match {
@@ -72,6 +80,8 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
             throttler_factory: PlMutex::new(throttler_factory),
+            presentation: Arc::new(PlMutex::new(PresentationBuffer::new())),
+            frame_delay: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -119,6 +129,27 @@ impl Match {
 
     pub(super) fn primary_thread_handle(&self) -> mgba::thread::Handle {
         self.primary_thread_handle.clone()
+    }
+
+    pub(super) fn presentation_handle(&self) -> Arc<PlMutex<PresentationBuffer>> {
+        self.presentation.clone()
+    }
+
+    pub(super) fn frame_delay_handle(&self) -> Arc<AtomicU32> {
+        self.frame_delay.clone()
+    }
+
+    /// Shared presentation buffer for the display side. The PvP session hands
+    /// this to the display core so it can render the delayed `present_state`
+    /// the live core publishes each frame.
+    pub fn presentation(&self) -> Arc<PlMutex<PresentationBuffer>> {
+        self.presentation.clone()
+    }
+
+    /// Set the local presentation delay (frames the display core trails the
+    /// live frontier by). Takes effect on the next live frame; local-only.
+    pub fn set_frame_delay(&self, frames: u32) {
+        self.frame_delay.store(frames, Ordering::Relaxed);
     }
 
     /// Picks the per-match local_player_index. Both peers must call this with

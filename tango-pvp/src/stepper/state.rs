@@ -80,6 +80,13 @@ pub struct InnerState {
     committed_state: Option<crate::battle::CommittedState>,
     dirty_tick: u32,
     dirty_state: Option<crate::battle::CommittedState>,
+    /// Fastforwarder-mode-only: tick at which to snapshot the presentation
+    /// state for the display core (`frontier - frame_delay`, clamped into the
+    /// run window). `u32::MAX` in replay mode so the capture never fires.
+    present_tick: u32,
+    /// The presentation snapshot captured at [`present_tick`]. Just the mgba
+    /// state — the display core only renders it, so no packet/tick bookkeeping.
+    present_state: Option<Box<mgba::state::State>>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
@@ -180,6 +187,9 @@ impl InnerState {
             committed_state: None,
             dirty_tick: 0,
             dirty_state: None,
+            // Replay mode never captures a presentation state.
+            present_tick: u32::MAX,
+            present_state: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -201,6 +211,7 @@ impl InnerState {
 
     /// Construct an InnerState for a Fastforwarder run. Wired up by
     /// [`super::Fastforwarder::fastforward`].
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn for_fastforward(
         match_type: (u8, u8),
         local_player_index: u8,
@@ -208,6 +219,7 @@ impl InnerState {
         current_tick: u32,
         commit_tick: u32,
         dirty_tick: u32,
+        present_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
@@ -229,6 +241,8 @@ impl InnerState {
             committed_state: None,
             dirty_tick,
             dirty_state: None,
+            present_tick,
+            present_state: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -278,6 +292,12 @@ impl InnerState {
 
     pub fn dirty_tick(&self) -> u32 {
         self.dirty_tick
+    }
+
+    /// Tick at which the presentation snapshot is taken. `u32::MAX` (never
+    /// matches `current_tick`) outside Fastforwarder mode.
+    pub fn present_tick(&self) -> u32 {
+        self.present_tick
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -450,6 +470,19 @@ impl InnerState {
         self.dirty_state.is_some()
     }
 
+    /// Capture the presentation snapshot for the display core. Called by
+    /// per-game stepper traps when `current_tick == present_tick()`.
+    pub fn set_present_state(&mut self, state: Box<mgba::state::State>) {
+        self.present_state = Some(state);
+    }
+
+    /// True iff the presentation snapshot has been captured, or isn't needed
+    /// (replay mode / `present_tick` past `dirty_tick`). The Fastforwarder
+    /// loop waits on this alongside the committed/dirty snapshots.
+    pub(super) fn has_present_state_snapshot(&self) -> bool {
+        self.present_state.is_some() || self.present_tick > self.dirty_tick
+    }
+
     /// Consumes self into a Fastforwarder result. Panics if either the
     /// committed or dirty state hasn't been set yet — callers must check via
     /// [`InnerState::has_committed_state_snapshot`] / [`has_dirty_state_snapshot`]
@@ -457,6 +490,9 @@ impl InnerState {
     pub(super) fn into_fastforward_result(self) -> super::fastforwarder::FastforwardResult {
         super::fastforwarder::FastforwardResult {
             committed_state: self.committed_state.expect("committed state"),
+            // None when no display core requested a present snapshot
+            // (`present_tick` left past `dirty_tick`).
+            present_state: self.present_state,
             dirty_state: self.dirty_state.expect("dirty state"),
             round_result: self.round_result,
             output_pairs: self.output_pairs,

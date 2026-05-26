@@ -182,6 +182,68 @@ impl Stream for MGBAStream {
     }
 }
 
+/// Audio for the two-core PvP presentation-buffer model. Plays whichever core
+/// is currently on screen and drains+discards the other (so neither stalls):
+/// during a battle the **display** core (rollback-mitigated, `frame_delay`
+/// behind, in sync with the displayed video); outside a battle — boot, the
+/// between-battles interlude, the communication-error screen on disconnect —
+/// the **live** core, which renders those non-battle screens correctly (the
+/// display core can't). The `showing_battle` flag, set by the live
+/// frame_callback, selects which. Each callback the display core's clock is
+/// pinned to the live core's throttler-set fps_target so it tracks the frontier
+/// ~1:1 (consecutive ticks → continuous audio) rather than skipping/repeating.
+pub struct DualMGBAStream {
+    display_stream: MGBAStream,
+    live_stream: MGBAStream,
+    display: mgba::thread::Handle,
+    live: mgba::thread::Handle,
+    /// True while a battle is in progress (display core shown + heard); false
+    /// outside it (live core shown + heard).
+    showing_battle: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    scratch: Vec<[i16; NUM_CHANNELS]>,
+}
+
+impl DualMGBAStream {
+    pub fn new(
+        display: mgba::thread::Handle,
+        live: mgba::thread::Handle,
+        showing_battle: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        sample_rate: u32,
+    ) -> Self {
+        Self {
+            display_stream: MGBAStream::new(display.clone(), sample_rate),
+            live_stream: MGBAStream::new(live.clone(), sample_rate),
+            display,
+            live,
+            showing_battle,
+            scratch: Vec::new(),
+        }
+    }
+}
+
+impl Stream for DualMGBAStream {
+    fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
+        // Keep the display core's clock pinned to the live core's throttler-set
+        // fps_target so it consumes published present_states ~1:1.
+        let live_fps = self.live.lock_audio().sync().fps_target();
+        if live_fps > 0.0 {
+            self.display.lock_audio().sync_mut().set_fps_target(live_fps);
+        }
+        if self.scratch.len() < buf.len() {
+            self.scratch.resize(buf.len(), [0, 0]);
+        }
+        let n = buf.len();
+        // Play the on-screen core; drain (discard) the other to pace it.
+        if self.showing_battle.load(std::sync::atomic::Ordering::Relaxed) {
+            self.live_stream.fill(&mut self.scratch[..n]);
+            self.display_stream.fill(buf)
+        } else {
+            self.display_stream.fill(&mut self.scratch[..n]);
+            self.live_stream.fill(buf)
+        }
+    }
+}
+
 pub trait Backend {
     fn sample_rate(&self) -> u32;
 }

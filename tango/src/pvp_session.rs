@@ -58,6 +58,11 @@ pub struct PvpSession {
     tps_counter: Arc<parking_lot::Mutex<crate::stats::Counter>>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
+    /// Display core in the two-core presentation-buffer model: renders the
+    /// live core's published `present_state` frames `frame_delay` behind. The
+    /// live `_thread` runs headless (netcode only); this one carries the
+    /// video + audio the player sees.
+    _display_thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
     /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
     /// the session, which tears the network loop down cleanly.
@@ -116,6 +121,7 @@ impl PvpSession {
         throttler_factory: tango_pvp::battle::ThrottlerFactory,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
+        frame_delay: u32,
     ) -> anyhow::Result<Self> {
         // Wait for the lobby loop to drop the data-channel
         // receiver into the handoff slot (it does this on
@@ -248,6 +254,11 @@ impl PvpSession {
         );
         *match_handle.try_lock().unwrap() = Some(inner_match.clone());
 
+        // Seed the local presentation delay from the shared config. Local-only;
+        // the live `Round` reads it each frame and the display core trails the
+        // frontier by this many frames. Adjustable live via the match handle.
+        inner_match.set_frame_delay(frame_delay);
+
         // Spawn the network receive loop. Holds inner_match alive
         // until the receiver errors (peer disconnected) or the
         // cancellation_token fires. On exit, drop the handle out
@@ -306,10 +317,46 @@ impl PvpSession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
+        // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
+        let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
+        vbuf.lock().fill(0);
+
+        // Which core is currently on screen + heard: the display core during a
+        // battle, the live core outside one (boot / interlude / comm-error
+        // screen, which the display core can't render). Set each live frame.
+        let showing_battle = Arc::new(AtomicBool::new(false));
+
+        // Two-core presentation-buffer model: stand up a display core that
+        // renders the live core's published present_state frames frame_delay
+        // behind. The live core then runs headless (netcode + input only).
+        let display_thread = {
+            let mut dcore = mgba::core::Core::new_gba("tango")?;
+            dcore.enable_video_buffer();
+            dcore
+                .as_mut()
+                .load_rom(mgba::vfile::VFile::from_vec(local_rom.as_ref().clone()))?;
+            dcore
+                .as_mut()
+                .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
+            local_hooks.patch(dcore.as_mut());
+            let mut dtraps = local_hooks.common_traps();
+            dtraps.extend(local_hooks.display_traps(inner_match.presentation()));
+            dcore.set_traps(dtraps);
+            let dthread = mgba::thread::Thread::new(dcore);
+            dthread.start()?;
+            dthread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
+            dthread
+        };
+
+        // DualMGBAStream plays whichever core is on screen (display during a
+        // battle, live outside it) and drains the other to pace it.
+        let audio_stream: Box<dyn crate::audio::Stream + Send> = Box::new(crate::audio::DualMGBAStream::new(
+            display_thread.handle(),
             thread.handle(),
+            showing_battle.clone(),
             audio_binder.sample_rate(),
-        )))) {
+        ));
+        let audio_binding = match audio_binder.bind(Some(audio_stream)) {
             Ok(b) => Some(b),
             Err(e) => {
                 log::warn!("pvp: audio bind failed: {e:?}");
@@ -317,64 +364,100 @@ impl PvpSession {
             }
         };
 
-        // Wipe the shared framebuffer so the previous session's
-        // last frame doesn't flash through before mgba writes its
-        // first one.
-        vbuf.lock().fill(0);
-        // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
-        thread.set_frame_callback({
-            let vbuf = vbuf.clone();
-            let joyflags = joyflags.clone();
+        // Completion / EndOfMatch handling, shared by both core layouts. Runs
+        // on the live core's frame_callback: returns whether the match has
+        // completed (caller pauses the live emulator if so) and fires the
+        // EndOfMatch packet + grace-window wake exactly once on the edge.
+        let handle_completion = {
             let completion_token = completion_token.clone();
             let frame_notify = frame_notify.clone();
-            let tps_counter = tps_counter.clone();
             let local_eom_sent = local_eom_sent.clone();
             let local_completed_at = local_completed_at.clone();
             let sender_for_eom = pre_match.sender.clone();
             let rt_handle = tokio::runtime::Handle::current();
+            move || -> bool {
+                if !completion_token.is_complete() {
+                    return false;
+                }
+                if !local_eom_sent.swap(true, Ordering::AcqRel) {
+                    *local_completed_at.lock() = Some(std::time::Instant::now());
+                    let sender = sender_for_eom.clone();
+                    rt_handle.spawn(async move {
+                        if let Err(e) = sender.lock().await.send_end_of_match().await {
+                            log::warn!("pvp: send EndOfMatch failed: {e}");
+                        }
+                    });
+                    // Wall-clock fallback wake so `is_ended` is rechecked even
+                    // if the peer never sends EndOfMatch / the channel errors.
+                    let notify = frame_notify.clone();
+                    rt_handle.spawn(async move {
+                        tokio::time::sleep(PEER_END_GRACE).await;
+                        notify.notify_one();
+                    });
+                }
+                true
+            }
+        };
+
+        // Live core: the runahead + netcode host, and what's shown outside a
+        // battle. Feeds local input, marks TPS, drives completion. Each frame
+        // it learns whether the round path published a battle present_state (→
+        // display core is on screen) or not (→ boot / interlude / comm-error
+        // screen, where the display core can't follow, so the live core renders
+        // directly to the UI here).
+        thread.set_frame_callback({
+            let joyflags = joyflags.clone();
+            let tps_counter = tps_counter.clone();
+            let handle_completion = handle_completion.clone();
+            let buffer = inner_match.presentation();
+            let showing_battle = showing_battle.clone();
+            let vbuf = vbuf.clone();
+            let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
+                core.set_keys(joyflags.load(Ordering::Relaxed));
+                tps_counter.lock().mark();
+
+                let (battle, presenting) = {
+                    let mut buf = buffer.lock();
+                    (buf.take_battle_published(), buf.is_presenting())
+                };
+                showing_battle.store(battle, Ordering::Relaxed);
+                // Outside a battle (but past the hidden boot), the live core
+                // is on screen — push its frame straight to the UI so the
+                // comm-error screen / interlude shows instead of the display
+                // core's frozen last battle frame.
+                if !battle && presenting {
+                    let mut vbuf = vbuf.lock();
+                    vbuf.copy_from_slice(video_buffer);
+                    fix_vbuf_alpha(&mut vbuf);
+                    drop(vbuf);
+                    frame_notify.notify_one();
+                }
+
+                if handle_completion() {
+                    thread_handle.pause();
+                }
+            }
+        });
+        // Display core: the clock that drives consumption. Its
+        // main_read_joyflags trap pops the next queued present_state in
+        // order; here we push the rendered (frame_delay-behind) frame to
+        // the UI — but only while a battle is on screen (outside one the
+        // live core's frame_callback drives the UI instead).
+        display_thread.set_frame_callback({
+            let vbuf = vbuf.clone();
+            let frame_notify = frame_notify.clone();
+            let buffer = inner_match.presentation();
+            let showing_battle = showing_battle.clone();
+            move |_core, video_buffer, _thread_handle| {
+                if !showing_battle.load(Ordering::Relaxed) || !buffer.lock().is_presenting() {
+                    return;
+                }
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
-                core.set_keys(joyflags.load(Ordering::Relaxed));
-                // Wake the session subscription so iced rebuilds
-                // the texture handle for this frame. See
-                // `singleplayer_session` for rationale.
+                drop(vbuf);
                 frame_notify.notify_one();
-                tps_counter.lock().mark();
-                if completion_token.is_complete() {
-                    // Pause the emulator (no more inputs to feed),
-                    // but keep the data channel alive so the peer
-                    // can finish its own match-end animation —
-                    // see `is_ended` for the handshake.
-                    thread_handle.pause();
-                    // First time crossing the completion edge:
-                    // stamp the wall-clock deadline and fire the
-                    // EndOfMatch packet. `swap` makes this a
-                    // single-shot per session.
-                    if !local_eom_sent.swap(true, Ordering::AcqRel) {
-                        *local_completed_at.lock() = Some(std::time::Instant::now());
-                        let sender = sender_for_eom.clone();
-                        rt_handle.spawn(async move {
-                            if let Err(e) = sender.lock().await.send_end_of_match().await {
-                                log::warn!("pvp: send EndOfMatch failed: {e}");
-                            }
-                        });
-                        // Wake the subscription once the grace
-                        // window closes so `is_ended` is rechecked
-                        // even if the peer never sends EndOfMatch
-                        // and the data channel never errors.
-                        // peer_ended / peer_disconnected already
-                        // notify on their own; this is the
-                        // wall-clock fallback.
-                        let notify = frame_notify.clone();
-                        rt_handle.spawn(async move {
-                            tokio::time::sleep(PEER_END_GRACE).await;
-                            notify.notify_one();
-                        });
-                    }
-                }
             }
         });
 
@@ -389,6 +472,7 @@ impl PvpSession {
             tps_counter,
             _audio_binding: audio_binding,
             _thread: thread,
+            _display_thread: display_thread,
             cancellation_token,
             latency_counter,
             _peer_conn: pre_match.peer_conn,
