@@ -7,7 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
-use crate::app::{Scanners, TEXT_CAPTION};
+use crate::app::{Scanners, TEXT_BODY, TEXT_CAPTION};
 use crate::audio;
 use crate::config;
 use crate::game;
@@ -863,28 +863,28 @@ pub fn view<'a>(
         if let Some(s) = stats {
             metrics = metrics.push(
                 text(format!("P{}", s.local_player_index + 1))
-                    .size(TEXT_CAPTION)
+                    .size(TEXT_BODY)
                     .font(iced::Font::MONOSPACE)
                     .style(widgets::muted_text_style),
             );
         }
         metrics = metrics.push(
             text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
         );
         if let Some(s) = stats {
             metrics = metrics.push(
                 text(format!("skew {:+3}", s.skew))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
             );
         }
         metrics = metrics.push(
             text(format!("ping {:>3} ms", ping_ms))
-                .size(TEXT_CAPTION)
+                .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
         );
