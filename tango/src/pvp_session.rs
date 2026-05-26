@@ -319,9 +319,6 @@ impl PvpSession {
 
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
-        // INSTRUMENTATION (temporary): the display core's own achieved frame
-        // rate, to confirm whether it outruns the live core's production.
-        let display_tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
         vbuf.lock().fill(0);
 
         // Which core is currently on screen + heard: the display core during a
@@ -416,35 +413,13 @@ impl PvpSession {
             let showing_battle = showing_battle.clone();
             let vbuf = vbuf.clone();
             let frame_notify = frame_notify.clone();
-            // INSTRUMENTATION (temporary): per-second live fps_target vs achieved
-            // tps, the DISPLAY core's achieved fps, and runahead depth — to see
-            // directly whether the display consumes faster than the live produces.
-            let dbg_frame = Arc::new(AtomicU32::new(0));
-            let display_tps_counter = display_tps_counter.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 tps_counter.lock().mark();
 
                 let battle = buffer.take_battle_published();
                 let presenting = buffer.is_presenting();
-                let depth = buffer.depth();
                 showing_battle.store(battle, Ordering::Relaxed);
-
-                if presenting && dbg_frame.fetch_add(1, Ordering::Relaxed) % 60 == 0 {
-                    let fps_target = core.as_ref().gba().sync().map(|s| s.fps_target()).unwrap_or(0.0);
-                    let mean = tps_counter.lock().mean_duration();
-                    let tps = if mean.is_zero() { 0.0 } else { 1.0 / mean.as_secs_f32() };
-                    let dmean = display_tps_counter.lock().mean_duration();
-                    let dfps = if dmean.is_zero() { 0.0 } else { 1.0 / dmean.as_secs_f32() };
-                    log::warn!(
-                        "live pacing: live_fps_target={:.2} live_tps={:.2} display_fps={:.2} runahead_depth={} ({})",
-                        fps_target,
-                        tps,
-                        dfps,
-                        depth,
-                        if battle { "battle" } else { "non-battle" }
-                    );
-                }
                 // Outside a battle (but past the hidden boot), the live core
                 // is on screen — push its frame straight to the UI so the
                 // comm-error screen / interlude shows instead of the display
@@ -472,11 +447,7 @@ impl PvpSession {
             let frame_notify = frame_notify.clone();
             let buffer = inner_match.presentation();
             let showing_battle = showing_battle.clone();
-            let display_tps_counter = display_tps_counter.clone();
             move |_core, video_buffer, _thread_handle| {
-                // Count every display frame (even hidden ones) to measure the
-                // display core's true frame rate vs the live core's production.
-                display_tps_counter.lock().mark();
                 if !showing_battle.load(Ordering::Relaxed) || !buffer.is_presenting() {
                     return;
                 }

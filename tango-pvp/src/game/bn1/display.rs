@@ -61,7 +61,7 @@ pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
         (hooks.offsets.rom.main_read_joyflags, {
             let buffer = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let _ = buffer.advance_blocking(|state| {
+                let _ = buffer.advance(|state| {
                     core.load_state(state).expect("load present state");
                 });
             })

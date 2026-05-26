@@ -167,7 +167,7 @@ impl Round {
         } else {
             ff_result.present_state.expect("live FF captures the speculative present")
         };
-        self.presentation.publish(present_target, present_state);
+        self.presentation.publish(present_state);
         self.update_fps_target(core);
 
         self.finalize_round(ff_result.round_result, commit_tick)
