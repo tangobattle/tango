@@ -45,10 +45,10 @@ const PRIME_FRAMES: usize = 2;
 /// consecutive ticks and its played audio never shifts. The buffer absorbs the
 /// live core's rollback spikes; only a sustained underrun repeats a frame.
 pub struct PresentationBuffer {
-    queue: std::collections::VecDeque<Box<mgba::state::State>>,
-    /// Last frame handed out, re-served on underrun so the display stays pinned
-    /// rather than running past the live frontier.
-    last: Option<Box<mgba::state::State>>,
+    queue: std::collections::VecDeque<(u32, Box<mgba::state::State>)>,
+    /// Last `(present_tick, frame)` handed out, re-served on underrun so the
+    /// display stays pinned rather than running past the live frontier.
+    last: Option<(u32, Box<mgba::state::State>)>,
     /// False until the queue first fills to `PRIME_FRAMES` (the live core
     /// building its runahead); the display shows nothing until then.
     primed: bool,
@@ -68,18 +68,19 @@ impl PresentationBuffer {
         }
     }
 
-    fn push_capped(&mut self, state: Box<mgba::state::State>) {
-        self.queue.push_back(state);
+    fn push_capped(&mut self, item: (u32, Box<mgba::state::State>)) {
+        self.queue.push_back(item);
         while self.queue.len() > QUEUE_CAP {
             self.queue.pop_front();
         }
     }
 
-    /// Push the live FF's `present_state` for the current battle frame. Called
-    /// once per live frame from the round path. Drops the oldest if the display
-    /// has fallen `QUEUE_CAP` behind (rare; a one-time catch-up skip).
-    pub fn publish(&mut self, state: Box<mgba::state::State>) {
-        self.push_capped(state);
+    /// Push the live FF's `present_state` (rendered at `present_tick`, i.e.
+    /// `frontier - frame_delay`) for the current battle frame. Called once per
+    /// live frame from the round path. Drops the oldest if the display has
+    /// fallen `QUEUE_CAP` behind (rare; a one-time catch-up skip).
+    pub fn publish(&mut self, present_tick: u32, state: Box<mgba::state::State>) {
+        self.push_capped((present_tick, state));
         self.battle_published = true;
     }
 
@@ -107,13 +108,21 @@ impl PresentationBuffer {
         if let Some(next) = self.queue.pop_front() {
             self.last = Some(next);
         }
-        self.last.as_deref()
+        self.last.as_ref().map(|(_, state)| state.as_ref())
     }
 
     /// Whether the display has started presenting (runahead primed). Gates the
     /// display frame_callback's UI push so the hidden boot stays off-screen.
     pub fn is_presenting(&self) -> bool {
         self.primed
+    }
+
+    /// The present tick (`frontier - frame_delay`) of the frame the display most
+    /// recently loaded. Lets a per-game `send_and_receive` neuter stamp the
+    /// matching tick into the canned rx packet (mirroring the primary path)
+    /// instead of leaving a stale tick in the rendered frame.
+    pub fn current_tick(&self) -> u32 {
+        self.last.as_ref().map(|(tick, _)| *tick).unwrap_or(0)
     }
 }
 

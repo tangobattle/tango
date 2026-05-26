@@ -13,6 +13,8 @@
 //! `Match`/round/netcode logic — the loaded state already carries the per-tick
 //! state we want to render.
 
+use byteorder::ByteOrder;
+
 use crate::battle::DisplayHandle;
 use crate::hooks::Trap;
 
@@ -20,10 +22,23 @@ use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
     let make_send_and_receive_call_hook = || {
+        let munger = hooks.munger();
+        let handle = handle.clone();
         Box::new(move |mut core: mgba::core::CoreMutRef| {
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             core.gba_mut().cpu_mut().set_gpr(0, 3);
+            // Stamp the displayed frame's own present tick into the canned rx
+            // (mirroring the primary path's `current_tick - 2`), reading it from
+            // the present buffer's last-loaded frame so the rendered frame sees a
+            // tick that matches its state rather than a stale/zero one.
+            let current_tick = handle.lock().current_tick();
+            if current_tick > 1 {
+                let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick.saturating_sub(2));
+                munger.set_rx_packet(core, 0, &rx);
+                munger.set_rx_packet(core, 1, &rx);
+            }
         })
     };
 
