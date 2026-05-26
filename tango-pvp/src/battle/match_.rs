@@ -348,7 +348,7 @@ impl Match {
 
         log::info!("preparing round state");
 
-        const MAX_QUEUE_LENGTH: usize = 300;
+        const MAX_QUEUE_LENGTH: usize = 60;
         let iq = crate::input::PairQueue::new(MAX_QUEUE_LENGTH);
 
         *round_state = Some(Round::new(self, iq)?);
