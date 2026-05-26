@@ -831,12 +831,12 @@ pub fn view<'a>(
             controls = controls.push(
                 row![
                     text(t!(lang, "settings-netplay-frame-delay"))
-                        .size(TEXT_CAPTION)
+                        .size(TEXT_BODY)
                         .style(widgets::muted_text_style),
                     iced::widget::slider(2..=10u32, frame_delay, Message::SetFrameDelay)
                         .width(Length::Fixed(120.0)),
                     text(format!("{}", frame_delay))
-                        .size(TEXT_CAPTION)
+                        .size(TEXT_BODY)
                         .font(iced::Font::MONOSPACE)
                         .width(Length::Fixed(16.0)),
                 ]
