@@ -552,8 +552,12 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         labeled::<Message>(
             t!(lang, "settings-netplay-frame-delay"),
             row![
-                container(iced::widget::slider(2..=10u32, config.frame_delay, Message::FrameDelayChanged))
-                    .width(Length::Fixed(220.0)),
+                container(iced::widget::slider(
+                    tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+                    config.frame_delay,
+                    Message::FrameDelayChanged,
+                ))
+                .width(Length::Fixed(220.0)),
                 text(format!("{}", config.frame_delay)).size(TEXT_CAPTION),
             ]
             .spacing(12)

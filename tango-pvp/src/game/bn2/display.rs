@@ -23,7 +23,7 @@ pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             core.gba_mut().cpu_mut().set_gpr(0, 3);
-        }) as Box<dyn Fn(mgba::core::CoreMutRef)>
+        })
     };
 
     vec![
@@ -58,10 +58,9 @@ pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
         (hooks.offsets.rom.main_read_joyflags, {
             let buffer = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let mut buffer = buffer.lock();
-                if let Some(state) = buffer.advance() {
+                let _ = buffer.advance_blocking(|state| {
                     core.load_state(state).expect("load present state");
-                }
+                });
             })
         }),
     ]

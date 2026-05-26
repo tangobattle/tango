@@ -16,9 +16,15 @@ pub mod throttler;
 mod types;
 
 pub use match_::{Match, ThrottlerFactory};
-pub use present::{DisplayHandle, PresentationBuffer};
+pub use present::{DisplayHandle, PresentationChannel};
 pub use round::Round;
 pub use types::{BattleOutcome, CommittedState, MatchIdentity, ReplayConfig};
 
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
+
+/// Inclusive bounds for the local presentation delay (frames the display core
+/// trails the network frontier). 0 disables the delay (display follows the
+/// frontier directly); the UI sliders and config clamp to this range.
+pub const MIN_FRAME_DELAY: u32 = 0;
+pub const MAX_FRAME_DELAY: u32 = 10;

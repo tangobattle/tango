@@ -20,13 +20,10 @@ use super::INIT_RX;
 
 pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
     let make_send_and_receive_call_hook = || {
-        let munger = hooks.munger();
         Box::new(move |mut core: mgba::core::CoreMutRef| {
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             core.gba_mut().cpu_mut().set_gpr(0, 3);
-            munger.set_rx_packet(core, 0, &INIT_RX);
-            munger.set_rx_packet(core, 1, &INIT_RX);
         })
     };
 
@@ -92,10 +89,9 @@ pub(super) fn traps(hooks: &super::Hooks, handle: DisplayHandle) -> Vec<Trap> {
         (hooks.offsets.rom.main_read_joyflags, {
             let buffer = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let mut buffer = buffer.lock();
-                if let Some(state) = buffer.advance() {
+                let _ = buffer.advance_blocking(|state| {
                     core.load_state(state).expect("load present state");
-                }
+                });
             })
         }),
     ]

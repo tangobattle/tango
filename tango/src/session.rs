@@ -833,7 +833,11 @@ pub fn view<'a>(
                     text(t!(lang, "settings-netplay-frame-delay"))
                         .size(TEXT_BODY)
                         .style(widgets::muted_text_style),
-                    iced::widget::slider(2..=10u32, frame_delay, Message::SetFrameDelay)
+                    iced::widget::slider(
+                        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+                        frame_delay,
+                        Message::SetFrameDelay,
+                    )
                         .width(Length::Fixed(120.0)),
                     text(format!("{}", frame_delay))
                         .size(TEXT_BODY)

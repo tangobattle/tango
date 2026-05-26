@@ -4,7 +4,7 @@ use std::sync::Arc;
 use parking_lot::Mutex as PlMutex;
 use tokio::sync::{watch, Mutex};
 
-use super::present::PresentationBuffer;
+use super::present::PresentationChannel;
 use super::round::Round;
 use super::throttler::Throttler;
 use super::types::{MatchIdentity, ReplayConfig};
@@ -44,7 +44,7 @@ pub struct Match {
     throttler_factory: PlMutex<ThrottlerFactory>,
     /// Live → display hand-off. The live `Round` publishes the FF's delayed
     /// `present_state` here each frame; the display core renders it.
-    presentation: Arc<PlMutex<PresentationBuffer>>,
+    presentation: Arc<PresentationChannel>,
     /// Local presentation delay in frames, settable live from the UI. Read by
     /// the live `Round` each frame to derive the FF's `present_tick`. Local-
     /// only — never touches the netcode or the wire.
@@ -80,7 +80,7 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
             throttler_factory: PlMutex::new(throttler_factory),
-            presentation: Arc::new(PlMutex::new(PresentationBuffer::new())),
+            presentation: Arc::new(PresentationChannel::new()),
             frame_delay: Arc::new(AtomicU32::new(0)),
         })
     }
@@ -131,7 +131,7 @@ impl Match {
         self.primary_thread_handle.clone()
     }
 
-    pub(super) fn presentation_handle(&self) -> Arc<PlMutex<PresentationBuffer>> {
+    pub(super) fn presentation_handle(&self) -> Arc<PresentationChannel> {
         self.presentation.clone()
     }
 
@@ -142,7 +142,7 @@ impl Match {
     /// Shared presentation buffer for the display side. The PvP session hands
     /// this to the display core so it can render the delayed `present_state`
     /// the live core publishes each frame.
-    pub fn presentation(&self) -> Arc<PlMutex<PresentationBuffer>> {
+    pub fn presentation(&self) -> Arc<PresentationChannel> {
         self.presentation.clone()
     }
 

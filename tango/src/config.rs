@@ -30,7 +30,7 @@ fn default_volume() -> f32 {
 }
 
 fn default_frame_delay() -> u32 {
-    2
+    0
 }
 
 fn default_ui_scale() -> f32 {

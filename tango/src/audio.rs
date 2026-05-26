@@ -124,6 +124,10 @@ pub struct MGBAStream {
     /// Tracked separately because `mAudioBuffer` doesn't expose
     /// capacity through the Rust binding; grown lazily in `fill`.
     dest_capacity: usize,
+    /// INSTRUMENTATION (temporary): "display"/"live" label + fill counter, for
+    /// the per-second resampler-rate log. Empty label = no logging.
+    label: &'static str,
+    dbg_fills: u32,
 }
 
 impl MGBAStream {
@@ -135,6 +139,8 @@ impl MGBAStream {
             resampler: mgba::audio::AudioResampler::new(),
             dest_buffer: mgba::audio::AudioBuffer::new(dest_capacity, NUM_CHANNELS as u32),
             dest_capacity,
+            label: "",
+            dbg_fills: 0,
         }
     }
 }
@@ -178,6 +184,25 @@ impl Stream for MGBAStream {
         let available = self.dest_buffer.available().min(frame_count);
         self.dest_buffer
             .read(&mut linear_buf[..available * NUM_CHANNELS], available);
+
+        // INSTRUMENTATION (temporary): ~once/sec, dump the resampler rate inputs
+        // so the display stream can be compared against the live stream. If the
+        // two are identical the 64-vs-60 gap is the live's network cap (not the
+        // resampler); if they differ the resampler is mis-rating the display.
+        self.dbg_fills = self.dbg_fills.wrapping_add(1);
+        if !self.label.is_empty() && self.dbg_fills % 90 == 0 {
+            log::warn!(
+                "audio[{}]: req={} core_rate={:.0} fps_target={:.2} faux_clock={:.5} dest_rate={:.1} high_water={:.0} delivered={}",
+                self.label,
+                frame_count,
+                core_rate,
+                fps_target,
+                faux_clock,
+                dest_rate,
+                high_water,
+                available,
+            );
+        }
         available
     }
 }
@@ -210,9 +235,13 @@ impl DualMGBAStream {
         showing_battle: std::sync::Arc<std::sync::atomic::AtomicBool>,
         sample_rate: u32,
     ) -> Self {
+        let mut display_stream = MGBAStream::new(display.clone(), sample_rate);
+        display_stream.label = "display";
+        let mut live_stream = MGBAStream::new(live.clone(), sample_rate);
+        live_stream.label = "live";
         Self {
-            display_stream: MGBAStream::new(display.clone(), sample_rate),
-            live_stream: MGBAStream::new(live.clone(), sample_rate),
+            display_stream,
+            live_stream,
             display,
             live,
             showing_battle,

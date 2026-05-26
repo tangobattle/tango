@@ -1571,7 +1571,12 @@ fn lobby_view<'a>(
     } else {
         Message::NetplaySetFrameDelay
     };
-    let id_slider = iced::widget::slider(2..=10u32, frame_delay, slider_on_change).width(Length::Fixed(160.0));
+    let id_slider = iced::widget::slider(
+        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+        frame_delay,
+        slider_on_change,
+    )
+    .width(Length::Fixed(160.0));
 
     // "Suggest" button: legacy formula = one-way frames + 1 - 2,
     // clamped to the slider range. Disabled until the first Pong
