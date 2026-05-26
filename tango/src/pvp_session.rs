@@ -417,8 +417,10 @@ impl PvpSession {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 tps_counter.lock().mark();
 
-                let battle = buffer.take_battle_published();
-                let presenting = buffer.is_presenting();
+                let (battle, presenting) = {
+                    let mut buf = buffer.lock();
+                    (buf.take_battle_published(), buf.is_presenting())
+                };
                 showing_battle.store(battle, Ordering::Relaxed);
                 // Outside a battle (but past the hidden boot), the live core
                 // is on screen — push its frame straight to the UI so the
@@ -448,7 +450,7 @@ impl PvpSession {
             let buffer = inner_match.presentation();
             let showing_battle = showing_battle.clone();
             move |_core, video_buffer, _thread_handle| {
-                if !showing_battle.load(Ordering::Relaxed) || !buffer.is_presenting() {
+                if !showing_battle.load(Ordering::Relaxed) || !buffer.lock().is_presenting() {
                     return;
                 }
                 let mut vbuf = vbuf.lock();

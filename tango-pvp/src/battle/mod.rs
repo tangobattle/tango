@@ -16,7 +16,7 @@ pub mod throttler;
 mod types;
 
 pub use match_::{Match, ThrottlerFactory};
-pub use present::{DisplayHandle, PresentationChannel};
+pub use present::{DisplayHandle, PresentationBuffer};
 pub use round::Round;
 pub use types::{BattleOutcome, CommittedState, MatchIdentity, ReplayConfig};
 

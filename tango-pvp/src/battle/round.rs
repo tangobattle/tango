@@ -40,7 +40,7 @@ pub struct Round {
     shadow: Arc<PlMutex<crate::shadow::Shadow>>,
     /// Live → display hand-off. Each frame the `present_state`
     /// (`frontier - frame_delay`) is published here for the display core.
-    presentation: Arc<super::present::PresentationChannel>,
+    presentation: Arc<PlMutex<super::present::PresentationBuffer>>,
     /// Local presentation delay in frames. Read each frame to derive the
     /// display's target tick; settable live from the UI via [`super::Match`].
     frame_delay: Arc<std::sync::atomic::AtomicU32>,
@@ -167,7 +167,7 @@ impl Round {
         } else {
             ff_result.present_state.expect("live FF captures the speculative present")
         };
-        self.presentation.publish(present_state);
+        self.presentation.lock().publish(present_state);
         self.update_fps_target(core);
 
         self.finalize_round(ff_result.round_result, commit_tick)
