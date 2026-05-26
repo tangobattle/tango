@@ -1,0 +1,182 @@
+diff --git a/include/mgba/internal/gb/serialize.h b/include/mgba/internal/gb/serialize.h
+index 72fe9c436..2611c54a5 100644
+--- a/include/mgba/internal/gb/serialize.h
++++ b/include/mgba/internal/gb/serialize.h
+@@ -211,12 +211,20 @@ DECL_BIT(GBSerializedAudioFlags, Ch1SweepEnabled, 25);
+ DECL_BIT(GBSerializedAudioFlags, Ch1SweepOccurred, 26);
+ DECL_BIT(GBSerializedAudioFlags, Ch3Readable, 27);
+ DECL_BIT(GBSerializedAudioFlags, SkipFrame, 28);
++// ch3's decoded GBA volume — round-tripped in spare flag bits (see the PSG
++// state struct's frequency/duty/rate fields for the why).
++DECL_BITS(GBSerializedAudioFlags, Ch3Volume, 29, 3);
+ 
+ DECL_BITFIELD(GBSerializedAudioEnvelope, uint32_t);
+ DECL_BITS(GBSerializedAudioEnvelope, Length, 0, 7);
+ DECL_BITS(GBSerializedAudioEnvelope, NextStep, 7, 3);
+ DECL_BITS(GBSerializedAudioEnvelope, Frequency, 10, 11);
+ DECL_BITS(GBSerializedAudioEnvelope, DutyIndex, 21, 3);
++// ch4 has no reserved struct slot, so its decoded noise control round-trips in
++// the unused high bits of its envelope word (square channels don't use these).
++DECL_BITS(GBSerializedAudioEnvelope, NoiseRatio, 24, 3);
++DECL_BITS(GBSerializedAudioEnvelope, NoiseFrequency, 27, 4);
++DECL_BIT(GBSerializedAudioEnvelope, NoisePower, 31);
+ 
+ DECL_BITFIELD(GBSerializedAudioSweep, uint32_t);
+ DECL_BITS(GBSerializedAudioSweep, Time, 0, 3);
+@@ -225,19 +233,30 @@ struct GBSerializedPSGState {
+ 	struct {
+ 		GBSerializedAudioEnvelope envelope;
+ 		int32_t nextFrame;
+-		int32_t reserved;
++		// Decoded control fields the SOUNDxCNT_* handlers set but that weren't
++		// otherwise serialized — a load_state left them stale and the PSG
++		// channels resampled at the wrong pitch/duty (audible as crunch under
++		// Tango's per-frame deserialize). Round-tripped in the reserved slots
++		// as decoded values (sweep-adjusted frequency included), so the struct
++		// size is unchanged.
++		uint16_t frequency;
++		uint8_t duty;
++		uint8_t reserved;
+ 		GBSerializedAudioSweep sweep;
+ 		uint32_t lastUpdate;
+ 	} ch1;
+ 	struct {
+ 		GBSerializedAudioEnvelope envelope;
+-		int32_t reserved[2];
++		uint16_t frequency;
++		uint8_t duty;
++		uint8_t reserved;
++		int32_t reserved2;
+ 		uint32_t lastUpdate;
+ 	} ch2;
+ 	struct {
+ 		uint32_t wavebanks[8];
+ 		int16_t length;
+-		int16_t reserved;
++		uint16_t rate;
+ 		uint32_t nextEvent;
+ 	} ch3;
+ 	struct {
+diff --git a/src/gb/audio.c b/src/gb/audio.c
+index 6a97d8bea..011274c15 100644
+--- a/src/gb/audio.c
++++ b/src/gb/audio.c
+@@ -1014,6 +1014,12 @@ void GBAudioPSGSerialize(const struct GBAudio* audio, struct GBSerializedPSGStat
+ 	STORE_32LE(ch1Flags, 0, &state->ch1.envelope);
+ 	STORE_32LE(sweep, 0, &state->ch1.sweep);
+ 	STORE_32LE(audio->ch1.lastUpdate - mTimingCurrentTime(audio->timing), 0, &state->ch1.lastUpdate);
++	// Round-trip the decoded control fields the SOUNDxCNT_* handlers set but
++	// that weren't otherwise serialized — leaving them stale after a load and
++	// crunching the PSG under Tango's per-frame deserialize. Stored as decoded
++	// values (sweep-adjusted frequency included), not raw registers.
++	STORE_16LE(audio->ch1.control.frequency, 0, &state->ch1.frequency);
++	state->ch1.duty = audio->ch1.envelope.duty;
+ 
+ 	flags = GBSerializedAudioFlagsSetCh2Volume(flags, audio->ch2.envelope.currentVolume);
+ 	flags = GBSerializedAudioFlagsSetCh2Dead(flags, audio->ch2.envelope.dead);
+@@ -1022,17 +1028,24 @@ void GBAudioPSGSerialize(const struct GBAudio* audio, struct GBSerializedPSGStat
+ 	ch2Flags = GBSerializedAudioEnvelopeSetDutyIndex(ch2Flags, audio->ch2.index);
+ 	STORE_32LE(ch2Flags, 0, &state->ch2.envelope);
+ 	STORE_32LE(audio->ch2.lastUpdate - mTimingCurrentTime(audio->timing), 0, &state->ch2.lastUpdate);
++	STORE_16LE(audio->ch2.control.frequency, 0, &state->ch2.frequency);
++	state->ch2.duty = audio->ch2.envelope.duty;
+ 
+ 	flags = GBSerializedAudioFlagsSetCh3Readable(flags, audio->ch3.readable);
+ 	memcpy(state->ch3.wavebanks, audio->ch3.wavedata32, sizeof(state->ch3.wavebanks));
+ 	STORE_16LE(audio->ch3.length, 0, &state->ch3.length);
+ 	STORE_32LE(audio->ch3.nextUpdate - mTimingCurrentTime(audio->timing), 0, &state->ch3.nextEvent);
++	STORE_16LE(audio->ch3.rate, 0, &state->ch3.rate);
++	flags = GBSerializedAudioFlagsSetCh3Volume(flags, audio->ch3.volume);
+ 
+ 	flags = GBSerializedAudioFlagsSetCh4Volume(flags, audio->ch4.envelope.currentVolume);
+ 	flags = GBSerializedAudioFlagsSetCh4Dead(flags, audio->ch4.envelope.dead);
+ 	STORE_32LE(audio->ch4.lfsr, 0, &state->ch4.lfsr);
+ 	ch4Flags = GBSerializedAudioEnvelopeSetLength(ch4Flags, audio->ch4.length);
+ 	ch4Flags = GBSerializedAudioEnvelopeSetNextStep(ch4Flags, audio->ch4.envelope.nextStep);
++	ch4Flags = GBSerializedAudioEnvelopeSetNoiseRatio(ch4Flags, audio->ch4.ratio);
++	ch4Flags = GBSerializedAudioEnvelopeSetNoiseFrequency(ch4Flags, audio->ch4.frequency);
++	ch4Flags = GBSerializedAudioEnvelopeSetNoisePower(ch4Flags, audio->ch4.power);
+ 	STORE_32LE(ch4Flags, 0, &state->ch4.envelope);
+ 	STORE_32LE(audio->ch4.lastEvent, 0, &state->ch4.lastEvent);
+ 
+@@ -1083,6 +1096,8 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+ 	audio->ch1.index = GBSerializedAudioEnvelopeGetDutyIndex(ch1Flags);
+ 	LOAD_32LE(audio->ch1.lastUpdate, 0, &state->ch1.lastUpdate);
+ 	audio->ch1.lastUpdate += mTimingCurrentTime(audio->timing);
++	LOAD_16LE(audio->ch1.control.frequency, 0, &state->ch1.frequency);
++	audio->ch1.envelope.duty = state->ch1.duty;
+ 
+ 	LOAD_32LE(ch2Flags, 0, &state->ch2.envelope);
+ 	audio->ch2.envelope.currentVolume = GBSerializedAudioFlagsGetCh2Volume(flags);
+@@ -1092,6 +1107,8 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+ 	audio->ch2.index = GBSerializedAudioEnvelopeGetDutyIndex(ch2Flags);
+ 	LOAD_32LE(audio->ch2.lastUpdate, 0, &state->ch2.lastUpdate);
+ 	audio->ch2.lastUpdate += mTimingCurrentTime(audio->timing);
++	LOAD_16LE(audio->ch2.control.frequency, 0, &state->ch2.frequency);
++	audio->ch2.envelope.duty = state->ch2.duty;
+ 
+ 	audio->ch3.readable = GBSerializedAudioFlagsGetCh3Readable(flags);
+ 	// TODO: Big endian?
+@@ -1099,12 +1116,17 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+ 	LOAD_16LE(audio->ch3.length, 0, &state->ch3.length);
+ 	LOAD_32LE(audio->ch3.nextUpdate, 0, &state->ch3.nextEvent);
+ 	audio->ch3.nextUpdate += mTimingCurrentTime(audio->timing);
++	LOAD_16LE(audio->ch3.rate, 0, &state->ch3.rate);
++	audio->ch3.volume = GBSerializedAudioFlagsGetCh3Volume(flags);
+ 
+ 	LOAD_32LE(ch4Flags, 0, &state->ch4.envelope);
+ 	audio->ch4.envelope.currentVolume = GBSerializedAudioFlagsGetCh4Volume(flags);
+ 	audio->ch4.envelope.dead = GBSerializedAudioFlagsGetCh4Dead(flags);
+ 	audio->ch4.length = GBSerializedAudioEnvelopeGetLength(ch4Flags);
+ 	audio->ch4.envelope.nextStep = GBSerializedAudioEnvelopeGetNextStep(ch4Flags);
++	audio->ch4.ratio = GBSerializedAudioEnvelopeGetNoiseRatio(ch4Flags);
++	audio->ch4.frequency = GBSerializedAudioEnvelopeGetNoiseFrequency(ch4Flags);
++	audio->ch4.power = GBSerializedAudioEnvelopeGetNoisePower(ch4Flags);
+ 	LOAD_32LE(audio->ch4.lfsr, 0, &state->ch4.lfsr);
+ 	LOAD_32LE(audio->ch4.lastEvent, 0, &state->ch4.lastEvent);
+ 	LOAD_32LE(when, 0, &state->ch4.nextEvent);
+@@ -1118,8 +1140,6 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+ 			audio->ch4.lastEvent = currentTime + (when & (cycles - 1)) - cycles;
+ 		}
+ 	}
+-	audio->ch4.nSamples = 0;
+-	audio->ch4.samples = 0;
+ }
+ 
+ void GBAudioSerialize(const struct GBAudio* audio, struct GBSerializedState* state) {
+diff --git a/src/gba/audio.c b/src/gba/audio.c
+index 1e913554f..271ebb30c 100644
+--- a/src/gba/audio.c
++++ b/src/gba/audio.c
+@@ -495,16 +495,6 @@ void GBAAudioSerialize(const struct GBAAudio* audio, struct GBASerializedState*
+ void GBAAudioDeserialize(struct GBAAudio* audio, const struct GBASerializedState* state) {
+ 	GBAudioPSGDeserialize(&audio->psg, &state->audio.psg, &state->audio.flags);
+ 
+-	uint16_t reg;
+-	LOAD_16(reg, GBA_REG_SOUND1CNT_X, state->io);
+-	GBAIOWrite(audio->p, GBA_REG_SOUND1CNT_X, reg & 0x7FFF);
+-	LOAD_16(reg, GBA_REG_SOUND2CNT_HI, state->io);
+-	GBAIOWrite(audio->p, GBA_REG_SOUND2CNT_HI, reg & 0x7FFF);
+-	LOAD_16(reg, GBA_REG_SOUND3CNT_X, state->io);
+-	GBAIOWrite(audio->p, GBA_REG_SOUND3CNT_X, reg & 0x7FFF);
+-	LOAD_16(reg, GBA_REG_SOUND4CNT_HI, state->io);
+-	GBAIOWrite(audio->p, GBA_REG_SOUND4CNT_HI, reg & 0x7FFF);
+-
+ 	LOAD_32(audio->chA.internalSample, 0, &state->audio.internalA);
+ 	LOAD_32(audio->chB.internalSample, 0, &state->audio.internalB);
+ 	memcpy(audio->chA.samples, state->samples.chA, sizeof(audio->chA.samples));
+diff --git a/src/gba/io.c b/src/gba/io.c
+index 658036e4c..86286864a 100644
+--- a/src/gba/io.c
++++ b/src/gba/io.c
+@@ -244,8 +244,8 @@ static const int _isWSpecialRegister[GBA_REG(INTERNAL_MAX)] = {
+ 	/* 04 */ 0, 0, 0, 0, 0, 0, 0, 0,
+ 	/* 05 */ 0, 0, 0, 0, 0, 0, 0, 0,
+ 	/*    Audio */
+-	/* 06 */ 0, 0, 1, 0, 0, 0, 1, 0,
+-	/* 07 */ 0, 0, 1, 0, 0, 0, 1, 0,
++	/* 06 */ 1, 1, 1, 0, 1, 0, 1, 0,
++	/* 07 */ 1, 0, 1, 0, 1, 0, 1, 0,
+ 	/* 08 */ 0, 0, 1, 0, 0, 0, 0, 0,
+ 	/* 09 */ 1, 1, 1, 1, 1, 1, 1, 1,
+ 	/* 0A */ 1, 1, 1, 1, 0, 0, 0, 0,
