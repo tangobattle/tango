@@ -601,6 +601,7 @@ impl PvpSession {
             local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
             depth: round.rollback_depth(),
+            input_delay: round.input_delay(),
         })
     }
 }
@@ -620,6 +621,9 @@ pub struct RoundStats {
     /// input the live core ran on prediction this frame, and thus how far a
     /// real remote packet can force a re-simulation.
     pub depth: u32,
+    /// Shared input delay for the match (`min` of the two peers' frame_delay).
+    /// Constant; shown next to `depth` as the rollback already shaved off.
+    pub input_delay: u32,
 }
 
 impl std::fmt::Debug for PvpSession {

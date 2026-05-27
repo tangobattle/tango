@@ -854,7 +854,7 @@ pub fn view<'a>(
                 .style(widgets::muted_text_style),
             );
             metrics = metrics.push(
-                text(format!("depth {:>3}", s.depth))
+                text(format!("depth {:>3} (+{})", s.depth, s.input_delay))
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),

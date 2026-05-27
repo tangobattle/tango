@@ -259,6 +259,13 @@ impl Round {
         self.last_rollback_depth
     }
 
+    /// Shared input delay applied this match (`min` of the two peers'
+    /// frame_delay). Constant for the match; this much was already shaved off
+    /// `rollback_depth` versus a pure-presentation-delay setup.
+    pub fn input_delay(&self) -> u32 {
+        self.input_delay
+    }
+
     fn prepare_input_pairs(&mut self) -> (Vec<Pair<PartialInput, PartialInput>>, CommittedState, u32, u32) {
         let (committable, predict_required) = self.iq.consume_and_peek_local();
         let last_committed_state = self.committed_state.take().expect("committed state");
