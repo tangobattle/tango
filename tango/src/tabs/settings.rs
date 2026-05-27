@@ -526,7 +526,6 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 
 fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     const THROTTLE_OPTIONS: &[config::NetplayThrottler] = &[
-        config::NetplayThrottler::ProportionalIntegral,
         config::NetplayThrottler::AsymmetricEma,
         config::NetplayThrottler::LinearWatchdog,
         config::NetplayThrottler::Power,

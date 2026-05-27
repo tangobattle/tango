@@ -72,12 +72,9 @@ impl std::fmt::Display for ThemeMode {
 /// effect at the next round boundary without a session restart.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum NetplayThrottler {
-    /// Proportional-integral. Integral action drives steady-state skew to
-    /// zero, so a CPU-bound peer's rollback backlog drains instead of
-    /// parking at a standing offset. Default.
-    #[default]
-    ProportionalIntegral,
     /// Continuous EMA, asymmetric (gentle slowdown, snappy recovery).
+    /// Default.
+    #[default]
     AsymmetricEma,
     /// Idle-until-tripped deadband + linear engagement.
     LinearWatchdog,
@@ -88,7 +85,6 @@ pub enum NetplayThrottler {
 impl std::fmt::Display for NetplayThrottler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            NetplayThrottler::ProportionalIntegral => "Proportional-Integral",
             NetplayThrottler::AsymmetricEma => "Asymmetric EMA",
             NetplayThrottler::LinearWatchdog => "Linear Watchdog",
             NetplayThrottler::Power => "Power (legacy)",

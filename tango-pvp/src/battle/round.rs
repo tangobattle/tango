@@ -399,12 +399,6 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = local_advantage - remote_advantage;
 
-        // A CPU-bound peer is just a persistent skew disturbance: it can't hit
-        // EXPECTED_FPS, so it sends inputs slower than we consume and our skew
-        // climbs. A throttler with integral action (the `Pi` strategy) builds a
-        // matching standing slowdown so the rollback backlog drains, where a
-        // pure-proportional throttler would leave it parked. No capacity
-        // advertisement needed.
         let slowdown = self.throttler.step(skew);
         let fps_target = EXPECTED_FPS - slowdown;
 
