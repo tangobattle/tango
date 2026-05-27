@@ -872,8 +872,15 @@ pub fn view<'a>(
                     .style(widgets::muted_text_style),
             );
         }
+        // [P] right after the tps when the peer's capacity is what's holding
+        // our fps target down (we're waiting on a CPU-bound peer); [ ] otherwise.
+        let peer_cap_marker = if stats.map_or(false, |s| s.peer_cap_binding) {
+            "P"
+        } else {
+            " "
+        };
         metrics = metrics.push(
-            text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
+            text(format!("tps {:5.1}/{:5.1} [{}]", tps, fps_target, peer_cap_marker))
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),

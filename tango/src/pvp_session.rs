@@ -582,6 +582,7 @@ impl PvpSession {
         Some(RoundStats {
             local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
+            peer_cap_binding: round.peer_cap_binding(),
         })
     }
 }
@@ -597,6 +598,10 @@ pub struct RoundStats {
     /// sync, positive when we're leading (and being slowed), and negative
     /// when the peer is leading.
     pub skew: i32,
+    /// True while our fps target is being held down by the peer's reported
+    /// capacity (rather than the skew throttler) — drives the `[P]`
+    /// status-bar indicator.
+    pub peer_cap_binding: bool,
 }
 
 impl std::fmt::Debug for PvpSession {
