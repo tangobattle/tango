@@ -885,6 +885,12 @@ pub fn view<'a>(
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
             );
+            metrics = metrics.push(
+                text(format!("depth {:>3}", s.depth))
+                .size(TEXT_BODY)
+                .font(iced::Font::MONOSPACE)
+                .style(widgets::muted_text_style),
+            );
         }
         metrics = metrics.push(
             text(format!("ping {:>3} ms", ping_ms))

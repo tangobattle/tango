@@ -56,6 +56,11 @@ pub struct Round {
     confirmed: std::collections::VecDeque<Pair<Input, Input>>,
     /// Tick of `confirmed.front()` — lets us index the deque by absolute tick.
     confirmed_base: u32,
+    /// Speculative depth of the most recent FF run: how many ticks past the
+    /// last committed input we ran on prediction (`dirty_tick − commit_tick +
+    /// 1`). This is the number of frames a real remote packet can force us to
+    /// roll back and re-simulate. Surfaced in the status bar as "depth".
+    last_rollback_depth: u32,
 }
 
 impl Round {
@@ -87,6 +92,7 @@ impl Round {
             present_seed: None,
             confirmed: std::collections::VecDeque::new(),
             confirmed_base: 0,
+            last_rollback_depth: 0,
         })
     }
 
@@ -126,6 +132,7 @@ impl Round {
         self.send_and_queue_local_input(joyflags).await?;
 
         let (input_pairs, last_committed_state, commit_tick, dirty_tick) = self.prepare_input_pairs();
+        self.last_rollback_depth = (dirty_tick + 1).saturating_sub(commit_tick);
         // Display target: the tick the display core renders, `frontier -
         // frame_delay`.
         let present_target = {
@@ -206,6 +213,12 @@ impl Round {
     /// is reacting to.
     pub fn last_remote_frame_advantage(&self) -> i16 {
         self.last_remote_frame_advantage
+    }
+
+    /// Speculative depth of the most recent FF run — the number of frames a
+    /// real remote packet can force us to roll back and re-simulate.
+    pub fn rollback_depth(&self) -> u32 {
+        self.last_rollback_depth
     }
 
     fn prepare_input_pairs(&mut self) -> (Vec<Pair<PartialInput, PartialInput>>, CommittedState, u32, u32) {
