@@ -535,6 +535,14 @@ impl PvpSession {
         if self.peer_disconnected.load(Ordering::Acquire) {
             return true;
         }
+        // We tore our own netcode down (local input-buffer overflow cancels the
+        // match via the primary `main_read_joyflags` hook). Same rationale as
+        // `peer_disconnected`, from our side: no useful EndOfMatch is coming, so
+        // skip the grace window. The completion gate above still holds, so the
+        // comm-error / match-end screen runs to completion as normal first.
+        if self.cancellation_token.is_cancelled() {
+            return true;
+        }
         match *self.local_completed_at.lock() {
             Some(t) => t.elapsed() >= PEER_END_GRACE,
             // Completion-token can flip before the frame_callback
