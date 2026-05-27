@@ -2,13 +2,15 @@
 //!
 //! In the presentation-buffer model the live core runs the rollback netcode at
 //! the network frontier with video/audio disabled, while a second *display*
-//! core renders what the player sees, trailing `frame_delay` frames behind. The
-//! delay *mitigates* rollback: the live Fastforwarder already re-simulates
-//! `[committed_tick, frontier]` every frame, so it passes through
-//! `frontier - frame_delay` on the way to the frontier — we capture that
+//! core renders what the player sees, trailing `presentation_delay` frames
+//! behind. That delay *hides* rollback: the live Fastforwarder already
+//! re-simulates `[committed_tick, frontier]` every frame, so it passes through
+//! `frontier - presentation_delay` on the way to the frontier — we capture that
 //! `present_state` and render it. Most mispredictions settle before the display
-//! reaches them; a correction reaching deeper than `frame_delay` still surfaces
-//! as a (smaller, rarer) rollback on the display.
+//! reaches them; a correction reaching deeper than `presentation_delay` still
+//! surfaces as a (smaller, rarer) rollback on the display. (The other half of a
+//! peer's requested delay, the shared `input_delay`, instead *shrinks* the live
+//! rollback window itself — see `Round`.)
 //!
 //! The live core is the sole writer, publishing one [`Frame`] per emulated
 //! frame; the display core is the sole reader. No input log, shadow, or second
@@ -23,38 +25,29 @@ use parking_lot::Mutex as PlMutex;
 /// `Hooks::display_traps`.
 pub type DisplayHandle = Arc<PlMutex<PresentationBuffer>>;
 
-/// Soft cap on the runahead queue. The depth normally hovers near
-/// `PRIME_FRAMES`; this just bounds memory / catch-up if the display ever falls
-/// far behind (oldest frames drop, a one-time visible skip).
+/// Soft cap on the hand-off queue. The depth normally hovers near 0–1 (the
+/// display consumes about as fast as the live core produces); this just bounds
+/// memory / catch-up if the display ever falls far behind (oldest frames drop,
+/// a one-time visible skip).
 const QUEUE_CAP: usize = 32;
-/// Producer/consumer handoff depth between the live and display threads. This
-/// is NOT `frame_delay` — that's already realized by the FF capturing
-/// `present_state` at `frontier - frame_delay` (the live core's runahead lives
-/// in *which tick* it captures, recomputed each frame). This buffer only
-/// absorbs thread-scheduling jitter / an occasional heavier live frame so the
-/// display never underruns; its size is governed by that jitter (a constant),
-/// not by how much rollback mitigation was requested. 2 is the minimum for a
-/// stable lock-free double-buffer (1 oscillates 0↔1 and underruns on any
-/// hiccup; 2 keeps one frame in reserve).
-const PRIME_FRAMES: usize = 2;
 
-/// In-order runahead queue from the live core to the display core. The live
-/// core is the runahead: it runs freely, pushing one `present_state` per frame
-/// and staying ~`PRIME_FRAMES` ahead. The display core's clock drives
-/// consumption — it pops exactly one per frame **in order**, so it always loads
-/// consecutive ticks and its played audio never shifts. The buffer absorbs the
-/// live core's rollback spikes; only a sustained underrun repeats a frame.
+/// In-order hand-off queue from the live core to the display core. The live
+/// core runs freely, pushing one `present_state` per frame; the display core's
+/// clock drives consumption — it pops exactly one per frame **in order**, so it
+/// always loads consecutive ticks and its played audio never shifts. The
+/// display starts on the first frame published (no runahead reserve), so its
+/// latency is exactly `presentation_delay`; the cost is that scheduling jitter
+/// can momentarily underrun, re-serving the last frame for a one-frame judder.
 pub struct PresentationBuffer {
     queue: std::collections::VecDeque<(u32, Box<mgba::state::State>)>,
     /// Last `(present_tick, frame)` handed out, re-served on underrun so the
-    /// display stays pinned rather than running past the live frontier.
+    /// display stays pinned rather than running past the live frontier. `Some`
+    /// once the display has shown its first frame — doubles as the "presenting"
+    /// signal (see [`Self::is_presenting`]).
     last: Option<(u32, Box<mgba::state::State>)>,
-    /// False until the queue first fills to `PRIME_FRAMES` (the live core
-    /// building its runahead); the display shows nothing until then.
-    primed: bool,
     /// Set by [`publish`] (a battle present_state) and cleared each live frame
-    /// by [`should_follow_live`]. Lets the live frame_callback tell whether the
-    /// in-battle path already published this frame.
+    /// by [`take_battle_published`]. Lets the live frame_callback tell whether
+    /// the in-battle path already published this frame.
     battle_published: bool,
 }
 
@@ -63,7 +56,6 @@ impl PresentationBuffer {
         Self {
             queue: std::collections::VecDeque::new(),
             last: None,
-            primed: false,
             battle_published: false,
         }
     }
@@ -76,7 +68,7 @@ impl PresentationBuffer {
     }
 
     /// Push the live FF's `present_state` (rendered at `present_tick`, i.e.
-    /// `frontier - frame_delay`) for the current battle frame. Called once per
+    /// `frontier - presentation_delay`) for the current battle frame. Called once per
     /// live frame from the round path. Drops the oldest if the display has
     /// fallen `QUEUE_CAP` behind (rare; a one-time catch-up skip).
     pub fn publish(&mut self, present_tick: u32, state: Box<mgba::state::State>) {
@@ -95,29 +87,25 @@ impl PresentationBuffer {
         std::mem::replace(&mut self.battle_published, false)
     }
 
-    /// Pop the next frame in order for the display to load. `None` until the
-    /// runahead has primed (display still booting); on underrun re-serves the
-    /// last frame. Called once per display frame from its joyflags trap.
+    /// Pop the next frame in order for the display to load. `None` only before
+    /// the first frame is ever published (display still booting); on underrun
+    /// re-serves the last frame. Called once per display frame from its joyflags
+    /// trap.
     pub fn advance(&mut self) -> Option<&mgba::state::State> {
-        if !self.primed {
-            if self.queue.len() < PRIME_FRAMES {
-                return None;
-            }
-            self.primed = true;
-        }
         if let Some(next) = self.queue.pop_front() {
             self.last = Some(next);
         }
         self.last.as_ref().map(|(_, state)| state.as_ref())
     }
 
-    /// Whether the display has started presenting (runahead primed). Gates the
-    /// display frame_callback's UI push so the hidden boot stays off-screen.
+    /// Whether the display has started presenting (has shown at least one
+    /// frame). Gates the display frame_callback's UI push so the hidden boot
+    /// stays off-screen.
     pub fn is_presenting(&self) -> bool {
-        self.primed
+        self.last.is_some()
     }
 
-    /// The present tick (`frontier - frame_delay`) of the frame the display most
+    /// The present tick (`frontier - presentation_delay`) of the frame the display most
     /// recently loaded. Lets a per-game `send_and_receive` neuter stamp the
     /// matching tick into the canned rx packet (mirroring the primary path)
     /// instead of leaving a stale tick in the rendered frame.

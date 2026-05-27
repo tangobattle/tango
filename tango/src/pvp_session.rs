@@ -59,9 +59,9 @@ pub struct PvpSession {
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Display core in the two-core presentation-buffer model: renders the
-    /// live core's published `present_state` frames `frame_delay` behind. The
-    /// live `_thread` runs headless (netcode only); this one carries the
-    /// video + audio the player sees.
+    /// live core's published `present_state` frames `presentation_delay`
+    /// behind. The live `_thread` runs headless (netcode only); this one
+    /// carries the video + audio the player sees.
     _display_thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
     /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
@@ -121,7 +121,6 @@ impl PvpSession {
         throttler_factory: tango_pvp::battle::ThrottlerFactory,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
-        frame_delay: u32,
     ) -> anyhow::Result<Self> {
         // Wait for the lobby loop to drop the data-channel
         // receiver into the handoff slot (it does this on
@@ -240,6 +239,19 @@ impl PvpSession {
         let peer_disconnected = Arc::new(AtomicBool::new(false));
         let local_eom_sent = Arc::new(AtomicBool::new(false));
         let local_completed_at = Arc::new(parking_lot::Mutex::new(None::<std::time::Instant>));
+        // Split each side's exchanged frame_delay into the shared input delay
+        // (`min` of the two — reduces rollback depth for both peers, symmetric
+        // so it's fair) and this side's leftover presentation delay (realized
+        // locally by the display core trailing the frontier). Both peers
+        // compute `min` over the same exchanged pair, so input_delay matches on
+        // both sides — required for the deterministic simulation. Read from the
+        // *sent* settings (not live config) so a slider nudge after the lobby
+        // exchange can't desync the two sides.
+        let local_frame_delay = pre_match.local_settings.frame_delay;
+        let remote_frame_delay = pre_match.remote_settings.frame_delay;
+        let input_delay = local_frame_delay.min(remote_frame_delay);
+        let presentation_delay = local_frame_delay - input_delay;
+
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,
@@ -251,13 +263,10 @@ impl PvpSession {
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             throttler_factory,
+            input_delay,
+            presentation_delay,
         );
         *match_handle.try_lock().unwrap() = Some(inner_match.clone());
-
-        // Seed the local presentation delay from the shared config. Local-only;
-        // the live `Round` reads it each frame and the display core trails the
-        // frontier by this many frames. Adjustable live via the match handle.
-        inner_match.set_frame_delay(frame_delay);
 
         // Spawn the network receive loop. Holds inner_match alive
         // until the receiver errors (peer disconnected) or the
@@ -327,8 +336,9 @@ impl PvpSession {
         let showing_battle = Arc::new(AtomicBool::new(false));
 
         // Two-core presentation-buffer model: stand up a display core that
-        // renders the live core's published present_state frames frame_delay
-        // behind. The live core then runs headless (netcode + input only).
+        // renders the live core's published present_state frames
+        // presentation_delay behind. The live core then runs headless (netcode
+        // + input only).
         let display_thread = {
             let mut dcore = mgba::core::Core::new_gba("tango")?;
             dcore.enable_video_buffer();
@@ -441,7 +451,7 @@ impl PvpSession {
         });
         // Display core: the clock that drives consumption. Its
         // main_read_joyflags trap pops the next queued present_state in
-        // order; here we push the rendered (frame_delay-behind) frame to
+        // order; here we push the rendered (presentation_delay-behind) frame to
         // the UI — but only while a battle is on screen (outside one the
         // live core's frame_callback drives the UI instead).
         display_thread.set_frame_callback({

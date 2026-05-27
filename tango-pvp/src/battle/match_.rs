@@ -45,10 +45,17 @@ pub struct Match {
     /// Live → display hand-off. The live `Round` publishes the FF's delayed
     /// `present_state` here each frame; the display core renders it.
     presentation: Arc<PlMutex<PresentationBuffer>>,
-    /// Local presentation delay in frames, settable live from the UI. Read by
-    /// the live `Round` each frame to derive the FF's `present_tick`. Local-
-    /// only — never touches the netcode or the wire.
-    frame_delay: Arc<AtomicU32>,
+    /// Shared input delay in frames: `min(local_frame_delay, peer_frame_delay)`.
+    /// Both peers compute the same value, apply it symmetrically (local input
+    /// ring + remote-queue prefill in the `Round`), and so each side's rollback
+    /// depth drops by this much. Part of the deterministic simulation — fixed
+    /// for the whole match.
+    input_delay: u32,
+    /// Local presentation delay in frames: `local_frame_delay − input_delay`.
+    /// The leftover of this side's requested delay that couldn't be cashed in as
+    /// shared input delay; realized purely locally by the `Round` rendering
+    /// `frontier − presentation_delay`. Never touches the netcode or the wire.
+    presentation_delay: u32,
 }
 
 impl Match {
@@ -63,6 +70,8 @@ impl Match {
         identity: MatchIdentity,
         replay: ReplayConfig,
         throttler_factory: ThrottlerFactory,
+        input_delay: u32,
+        presentation_delay: u32,
     ) -> Arc<Self> {
         let (round_progress, _) = watch::channel(0);
         Arc::new(Self {
@@ -81,7 +90,8 @@ impl Match {
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
             throttler_factory: PlMutex::new(throttler_factory),
             presentation: Arc::new(PlMutex::new(PresentationBuffer::new())),
-            frame_delay: Arc::new(AtomicU32::new(0)),
+            input_delay,
+            presentation_delay,
         })
     }
 
@@ -135,8 +145,12 @@ impl Match {
         self.presentation.clone()
     }
 
-    pub(super) fn frame_delay_handle(&self) -> Arc<AtomicU32> {
-        self.frame_delay.clone()
+    pub(super) fn input_delay(&self) -> u32 {
+        self.input_delay
+    }
+
+    pub(super) fn presentation_delay(&self) -> u32 {
+        self.presentation_delay
     }
 
     /// Shared presentation buffer for the display side. The PvP session hands
@@ -144,12 +158,6 @@ impl Match {
     /// the live core publishes each frame.
     pub fn presentation(&self) -> Arc<PlMutex<PresentationBuffer>> {
         self.presentation.clone()
-    }
-
-    /// Set the local presentation delay (frames the display core trails the
-    /// live frontier by). Takes effect on the next live frame; local-only.
-    pub fn set_frame_delay(&self, frames: u32) {
-        self.frame_delay.store(frames, Ordering::Relaxed);
     }
 
     /// Picks the per-match local_player_index. Both peers must call this with

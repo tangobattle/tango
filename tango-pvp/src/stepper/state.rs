@@ -81,7 +81,7 @@ pub struct InnerState {
     dirty_tick: u32,
     dirty_state: Option<crate::battle::CommittedState>,
     /// Fastforwarder-mode-only: tick at which to snapshot the presentation
-    /// state for the display core (`frontier - frame_delay`, clamped into the
+    /// state for the display core (`frontier - presentation_delay`, clamped into the
     /// run window). `u32::MAX` in replay mode so the capture never fires.
     present_tick: u32,
     /// The presentation snapshot captured at [`present_tick`]. Just the mgba

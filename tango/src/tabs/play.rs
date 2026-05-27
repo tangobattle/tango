@@ -253,9 +253,10 @@ pub enum Effect {
     NetplayConnect(crate::netplay::LinkIdent),
     /// Forward verbatim to the netplay subsystem.
     Netplay(crate::netplay::Message),
-    /// Lobby frame-delay slider moved. App persists `config.frame_delay`
-    /// and live-updates the active PvP match — same handler as the
-    /// Settings-tab slider (`ConfigChange::FrameDelay`).
+    /// Lobby frame-delay slider moved. App persists `config.frame_delay`; the
+    /// value is exchanged with the peer at match start and fixed for the match
+    /// (it feeds the deterministic input-delay split), so there's nothing live
+    /// to update.
     SetFrameDelay(u32),
     /// Lobby Ready — App reads the local save SRAM and
     /// dispatches `netplay::Message::Commit`.
@@ -579,6 +580,13 @@ impl PlayState {
                 .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
                 .collect(),
             reveal_setup: lobby.reveal_setup,
+            // Clamp to the supported range here so the value the peer sees (and
+            // halves the shared input delay against) is always >= MIN, even if
+            // an older config persisted a smaller frame_delay.
+            frame_delay: config.frame_delay.clamp(
+                tango_pvp::battle::MIN_FRAME_DELAY,
+                tango_pvp::battle::MAX_FRAME_DELAY,
+            ),
         }
     }
 
@@ -1561,11 +1569,11 @@ fn lobby_view<'a>(
     // and the connection has been handed to the PvP session).
     let inert = failed || handoff_pending;
 
-    // Frame delay slider — caps at 10 frames. Each increment is one
-    // full GBA frame (~16.7 ms) the display core trails the live
-    // frontier by. Backed by the shared `config.frame_delay`, so this
-    // and the Settings-tab slider move together. Reroute through Noop
-    // when inert so dragging it doesn't do anything.
+    // Frame delay slider — 2..=10 frames. Set here before the match; it's
+    // exchanged with the peer, and `min` of the two becomes shared input delay
+    // (rollback reduction) with the remainder as local presentation delay. Each
+    // increment is one GBA frame (~16.7 ms) of total added input latency.
+    // Reroute through Noop when inert so dragging it doesn't do anything.
     let slider_on_change: fn(u32) -> Message = if inert {
         |_| Message::Noop
     } else {

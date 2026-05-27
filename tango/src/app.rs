@@ -623,14 +623,6 @@ impl App {
             Message::Replays(m) => self.update_replays(m).map(Message::Replays),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
-            Message::Session(session::Message::SetFrameDelay(d)) => {
-                // In-session bottom-bar slider — same destination as the lobby
-                // + Settings sliders. Intercepted here (the session State can't
-                // reach config or the match handle).
-                self.apply_frame_delay(d);
-                self.persist_config();
-                iced::Task::none()
-            }
             Message::Session(m) => {
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
@@ -879,8 +871,10 @@ impl App {
                 iced::Task::none()
             }
             E::SetFrameDelay(d) => {
-                // Lobby slider — same destination as the Settings-tab slider.
-                self.apply_frame_delay(d);
+                // Lobby slider. Persisted to config and exchanged with the peer
+                // at match start (see `make_local_settings`); fixed for the
+                // match, so there's no live match to push it to here.
+                self.config.frame_delay = d;
                 self.persist_config();
                 iced::Task::none()
             }
@@ -1363,23 +1357,6 @@ impl App {
         iced::Task::stream(stream)
     }
 
-    /// Set the local presentation delay and push it to the live PvP match (if
-    /// any) so it takes effect immediately. Shared by the three sliders that
-    /// write it: Settings tab (`ConfigChange::FrameDelay`), lobby
-    /// (`play::Effect::SetFrameDelay`), and in-session bottom bar
-    /// (`session::Message::SetFrameDelay`). Caller persists config.
-    fn apply_frame_delay(&mut self, d: u32) {
-        self.config.frame_delay = d;
-        if let Some(ActiveSession::PvP(pvp)) = &self.session.active {
-            let match_handle = pvp.match_handle();
-            tokio::spawn(async move {
-                if let Some(m) = match_handle.lock().await.clone() {
-                    m.set_frame_delay(d);
-                }
-            });
-        }
-    }
-
     fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {
         // UpdateNow is a side effect (kicks the installer +
         // exits the process) not a config change; intercept
@@ -1472,11 +1449,6 @@ impl App {
                     });
                 }
             }
-            C::FrameDelay(d) => {
-                // Persisted by the trailing persist_config(); pushed to the
-                // live match here. Purely local — it doesn't touch the wire.
-                self.apply_frame_delay(d);
-            }
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);
@@ -1554,7 +1526,6 @@ impl App {
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 &self.config.video_filter,
-                self.config.frame_delay,
             )
             .map(Message::Session);
             // In-session settings modal: floats centered over the

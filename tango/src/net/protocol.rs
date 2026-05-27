@@ -116,6 +116,11 @@ pub struct Settings {
     pub available_games: Vec<(String, u8)>,
     pub available_patches: Vec<(String, Vec<semver::Version>)>,
     pub reveal_setup: bool,
+    /// This side's requested frame delay. Both peers exchange it before the
+    /// match; `min` of the two becomes the shared input delay (rollback
+    /// reduction), the local remainder becomes presentation delay. See
+    /// `tango_pvp::battle` and `PvpSession::new`.
+    pub frame_delay: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

@@ -1,7 +1,7 @@
 //! Display-core traps for the presentation-buffer model.
 //!
 //! The display core renders the live core's published `present_state` frames
-//! `frame_delay` behind the network frontier. The actual state load happens in
+//! `presentation_delay` behind the network frontier. The actual state load happens in
 //! the PvP session's display frame_callback (it owns the core each frame and
 //! the published buffer); these traps only have to keep the core able to *run*
 //! a battle frame from a loaded state without blocking on the link cable —

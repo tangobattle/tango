@@ -30,7 +30,7 @@ fn default_volume() -> f32 {
 }
 
 fn default_frame_delay() -> u32 {
-    0
+    2
 }
 
 fn default_ui_scale() -> f32 {
@@ -323,6 +323,18 @@ impl Config {
                 DEFAULT_PATCH_REPO,
             );
             self.patch_repo = DEFAULT_PATCH_REPO.to_string();
+            let _ = self.save();
+        }
+
+        // frame_delay gained a minimum (the shared input-delay floor). Clamp any
+        // stale value below it so the lobby slider's handle, the displayed
+        // number, and the value exchanged with the peer all stay in range.
+        let clamped = self
+            .frame_delay
+            .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
+        if clamped != self.frame_delay {
+            log::info!("clamping stale frame_delay {} -> {}", self.frame_delay, clamped);
+            self.frame_delay = clamped;
             let _ = self.save();
         }
     }

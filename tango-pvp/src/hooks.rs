@@ -46,7 +46,7 @@ pub trait Hooks {
     /// Traps that let a display core run battle frames from a loaded
     /// `present_state` without driving the `Match` or blocking on the link
     /// cable. Used in the presentation-buffer model, where the display core
-    /// renders the live core's published frames `frame_delay` behind.
+    /// renders the live core's published frames `presentation_delay` behind.
     fn display_traps(&self, handle: crate::battle::DisplayHandle) -> Vec<Trap>;
 
     fn packet_size(&self) -> usize {

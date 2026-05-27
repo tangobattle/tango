@@ -189,10 +189,6 @@ pub enum Message {
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel. PvP-only.
     ToggleSelfPanel,
-    /// Bottom-bar frame-delay slider moved. PvP-only. Intercepted at the
-    /// app level (it owns config + the live match handle); the session State
-    /// itself has nothing to do with it.
-    SetFrameDelay(u32),
     /// User interacted with the opponent's save-view (tab swap,
     /// folder-group toggle, hover, …). PvP-only.
     OpponentSaveViewAction(save_view::Action),
@@ -331,9 +327,6 @@ impl State {
                     return sv_task.map(Message::SelfSaveViewAction);
                 }
             }
-            Message::SetFrameDelay(_) => {
-                // Handled by the app (config + live match); nothing here.
-            }
             Message::OpenSettings => {
                 self.show_settings = true;
             }
@@ -471,7 +464,6 @@ pub fn view<'a>(
     fractional_scaling: bool,
     hide_emulator_border: bool,
     video_filter: &'a str,
-    frame_delay: u32,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
@@ -823,30 +815,6 @@ pub fn view<'a>(
         // opponent, close) hugs the right edge.
         if let Some(t) = self_toggle {
             controls = controls.push(t);
-        }
-        // PvP-only: frame-delay slider on the left, backed by the same
-        // config.frame_delay the lobby + Settings sliders write. Adjusts the
-        // live match's presentation delay in place.
-        if matches!(session, ActiveSession::PvP(_)) {
-            controls = controls.push(
-                row![
-                    text(t!(lang, "settings-netplay-frame-delay"))
-                        .size(TEXT_BODY)
-                        .style(widgets::muted_text_style),
-                    iced::widget::slider(
-                        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
-                        frame_delay,
-                        Message::SetFrameDelay,
-                    )
-                        .width(Length::Fixed(120.0)),
-                    text(format!("{}", frame_delay))
-                        .size(TEXT_BODY)
-                        .font(iced::Font::MONOSPACE)
-                        .width(Length::Fixed(16.0)),
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-            );
         }
         controls = controls.push(horizontal_space());
     }
@@ -1210,7 +1178,6 @@ pub async fn spawn_pvp(
         throttler_factory_for(config.netplay_throttler),
         frame_notify,
         vbuf,
-        config.frame_delay,
     )
     .await
 }

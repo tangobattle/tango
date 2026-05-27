@@ -39,20 +39,34 @@ pub struct Round {
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: Arc<PlMutex<crate::shadow::Shadow>>,
     /// Live → display hand-off. Each frame the `present_state`
-    /// (`frontier - frame_delay`) is published here for the display core.
+    /// (`frontier - presentation_delay`) is published here for the display core.
     presentation: Arc<PlMutex<super::present::PresentationBuffer>>,
-    /// Local presentation delay in frames. Read each frame to derive the
-    /// display's target tick; settable live from the UI via [`super::Match`].
-    frame_delay: Arc<std::sync::atomic::AtomicU32>,
+    /// Local presentation delay in frames (`frontier − presentation_delay` is
+    /// the display's target tick). Fixed for the match; the netcode-affecting
+    /// part of this side's requested `frame_delay` lives in `input_delay`.
+    presentation_delay: u32,
+    /// Shared input delay in frames (`min` of the two peers' `frame_delay`).
+    /// Local input is delay-lined by this much before it's queued, and the
+    /// remote queue is seeded with this many neutral inputs at round start, so
+    /// the committed frontier sits `input_delay` closer to the live frontier —
+    /// i.e. rollback depth drops by `input_delay`. Symmetric, so it's "fair".
+    input_delay: u32,
+    /// Depth-`input_delay` ring delaying the local joyflags before they enter
+    /// the queue: the input committed at tick T is the one sampled at T −
+    /// `input_delay` (neutral for the first `input_delay` ticks). Pre-seeded
+    /// with `input_delay` neutral frames. The value *sent on the wire* is the
+    /// raw, un-delayed sample — the peer's matching remote-queue prefill is what
+    /// realizes the delay on their side.
+    local_input_delay_line: std::collections::VecDeque<u16>,
     /// The single settled checkpoint the present roll advances. Lags
-    /// the frontier by ~`frame_delay`; advances one tick per frame (it only
+    /// the frontier by ~`presentation_delay`; advances one tick per frame (it only
     /// moves forward, since the frontier does). `None` until the round's first
     /// commit seeds it.
     present_seed: Option<CommittedState>,
     /// Confirmed input pairs (real remote packet included) not yet consumed by
     /// the rolling seed: a sliding window `[confirmed_base, commit_frontier)`.
     /// Front entries are dropped as the seed rolls past them, so this stays
-    /// small (~`frame_delay` deep) instead of growing for the whole round.
+    /// small (~`presentation_delay` deep) instead of growing for the whole round.
     confirmed: std::collections::VecDeque<Pair<Input, Input>>,
     /// Tick of `confirmed.front()` — lets us index the deque by absolute tick.
     confirmed_base: u32,
@@ -64,7 +78,7 @@ pub struct Round {
 }
 
 impl Round {
-    pub(super) fn new(match_: &super::Match, iq: PairQueue<PartialInput, PartialInput>) -> anyhow::Result<Self> {
+    pub(super) fn new(match_: &super::Match, mut iq: PairQueue<PartialInput, PartialInput>) -> anyhow::Result<Self> {
         let hooks = match_.local_hooks();
         let stepper =
             crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), match_.local_player_index())?;
@@ -72,6 +86,20 @@ impl Round {
             joyflags: 0,
             packet: vec![0u8; hooks.packet_size()],
         };
+
+        let input_delay = match_.input_delay();
+        // Seed the remote queue with `input_delay` neutral inputs: this is the
+        // peer's "head start". Their inputs are relabeled `input_delay` ticks
+        // ahead (the early ticks are free neutrals), so the confirmed frontier
+        // reaches `input_delay` further than one-per-frame arrivals alone would
+        // — that's the rollback reduction. These prefilled neutrals must NOT
+        // bump `last_remote_received_tick` (the throttler's metric tracks the
+        // *real* network relationship), so push them straight onto the queue
+        // rather than through `add_remote_input`.
+        for _ in 0..input_delay {
+            iq.add_remote_input(PartialInput { joyflags: 0 });
+        }
+
         Ok(Self {
             hooks,
             local_player_index: match_.local_player_index(),
@@ -88,7 +116,12 @@ impl Round {
             sender: match_.sender_handle(),
             shadow: match_.shadow_handle(),
             presentation: match_.presentation_handle(),
-            frame_delay: match_.frame_delay_handle(),
+            presentation_delay: match_.presentation_delay(),
+            input_delay,
+            // Pre-seeded with `input_delay` neutral frames so the first
+            // `input_delay` committed local inputs are neutral, mirroring the
+            // remote prefill above.
+            local_input_delay_line: std::collections::VecDeque::from(vec![0u16; input_delay as usize]),
             present_seed: None,
             confirmed: std::collections::VecDeque::new(),
             confirmed_base: 0,
@@ -134,11 +167,8 @@ impl Round {
         let (input_pairs, last_committed_state, commit_tick, dirty_tick) = self.prepare_input_pairs();
         self.last_rollback_depth = (dirty_tick + 1).saturating_sub(commit_tick);
         // Display target: the tick the display core renders, `frontier -
-        // frame_delay`.
-        let present_target = {
-            let frame_delay = self.frame_delay.load(std::sync::atomic::Ordering::Relaxed);
-            dirty_tick.saturating_sub(frame_delay)
-        };
+        // presentation_delay`.
+        let present_target = dirty_tick.saturating_sub(self.presentation_delay);
         let ff_result = self.run_fastforward(
             input_pairs,
             &last_committed_state,
@@ -166,7 +196,7 @@ impl Round {
         // inputs, exclusive — there's no confirmed input there yet).
         let rolled = self.roll_present_to(target.min(commit_tick.saturating_sub(1)))?;
         // In settled territory the rolled checkpoint IS the present; in the
-        // rarer speculative range (frame_delay < rollback window) the live
+        // rarer speculative range (presentation_delay < rollback window) the live
         // FF captured the speculative present and the roll just keeps the
         // checkpoint current for when it settles again.
         let present_state = if target < commit_tick {
@@ -186,6 +216,8 @@ impl Round {
         }
 
         let frame_advantage = self.local_frame_advantage();
+        // Send the raw sample. The peer realizes the input delay on its end via
+        // its remote-queue prefill, so the wire carries un-delayed joyflags.
         self.sender
             .lock()
             .await
@@ -195,7 +227,13 @@ impl Round {
             })
             .await?;
 
-        self.add_local_input(PartialInput { joyflags });
+        // Queue the delay-lined sample: what we commit at this tick is the
+        // joyflags from `input_delay` frames ago (neutral for the first
+        // `input_delay` ticks). One value in, one out — the ring shifts content
+        // without changing the queue's per-frame growth.
+        self.local_input_delay_line.push_back(joyflags);
+        let delayed = self.local_input_delay_line.pop_front().unwrap_or(0);
+        self.add_local_input(PartialInput { joyflags: delayed });
         Ok(())
     }
 
@@ -254,7 +292,7 @@ impl Round {
         let hooks = self.hooks;
         let mut last_commit = self.last_committed_remote_input.packet.clone();
         // Capture present_state here only for the speculative case
-        // (`target >= commit_tick` — frame_delay below the rollback window):
+        // (`target >= commit_tick` — presentation_delay below the rollback window):
         // those ticks aren't committed, so the rolling checkpoint can't reach
         // them and we use this live capture instead. Settled targets are
         // rolled from the confirmed window (see `roll_present_to`), so leave
@@ -290,13 +328,15 @@ impl Round {
     /// Replays the confirmed inputs from the seed's tick over the present
     /// stepper — no shadow (packets come from the confirmed window) and no
     /// prediction (every tick up to `target` is committed). The seed only ever
-    /// moves forward; if `target` is at or behind it (frame_delay just
-    /// increased, or no advance yet) we hold the current frame.
+    /// moves forward; if `target` is at or behind it (early in the round, before
+    /// the frontier has advanced `presentation_delay` ticks, or no advance yet)
+    /// we hold the current frame.
     fn roll_present_to(&mut self, target: u32) -> anyhow::Result<Box<mgba::state::State>> {
         let seed_tick = self.present_seed.as_ref().expect("present seed").tick;
         if target <= seed_tick {
             // Hold (don't roll backward): re-show the current checkpoint while
-            // the frontier catches up to a freshly-increased frame_delay.
+            // the frontier climbs to `presentation_delay` ticks past the round's
+            // start (the present can't move until then).
             return Ok(self.present_seed.as_ref().unwrap().state.clone());
         }
 

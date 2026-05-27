@@ -7,7 +7,7 @@ use super::types::RoundResult;
 pub struct FastforwardResult {
     pub committed_state: crate::battle::CommittedState,
     /// State to hand the display core: the run's estimate of
-    /// `frontier - frame_delay`, captured at the same `main_read_joyflags`
+    /// `frontier - presentation_delay`, captured at the same `main_read_joyflags`
     /// point as `dirty_state` so it loads seamlessly on the render core.
     /// `None` when no display core is active (`present_tick` left past
     /// `dirty_tick`), so games on the legacy single-core path pay nothing.
