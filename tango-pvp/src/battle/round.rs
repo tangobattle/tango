@@ -9,20 +9,6 @@ use super::throttler::Throttler;
 use super::types::{BattleOutcome, CommittedState};
 use super::EXPECTED_FPS;
 
-/// EMA weight for the achieved-fps estimate (τ ≈ 20 frames ≈ 0.4 s at
-/// 60 Hz) — fast enough to surface a sustained CPU deficit within half a
-/// second, slow enough to ride out per-frame scheduler jitter.
-const ACHIEVED_FPS_ALPHA: f32 = 0.05;
-/// We advertise a reduced sustainable rate only once our achieved rate
-/// sits this far below the target we're *trying* to hit. Above the
-/// margin we report `EXPECTED_FPS` — a peer that's merely being throttled
-/// by choice (meeting a lowered target) is not CPU-bound and must not
-/// signal a constraint, or two peers would ratchet each other down.
-const CPU_BOUND_MARGIN_FPS: f32 = 3.0;
-/// Hard floor on the locally applied fps target, so a bogus or pathological
-/// peer capacity can never stall the core outright.
-const MIN_FPS_TARGET: f32 = 20.0;
-
 /// Per-round state for the live primary. Owns the input queue, the
 /// committed state, the Fastforwarder dedicated to this round, and the
 /// helpers that wire remote-side prediction into FF runs.
@@ -70,26 +56,6 @@ pub struct Round {
     confirmed: std::collections::VecDeque<Pair<Input, Input>>,
     /// Tick of `confirmed.front()` — lets us index the deque by absolute tick.
     confirmed_base: u32,
-    /// Peer's most recently reported sustainable tick rate (fps). Caps our
-    /// own fps target so we never outrun a CPU-bound peer. `EXPECTED_FPS`
-    /// (the default) means "no constraint".
-    peer_sustainable_fps: f32,
-    /// EMA of our own achieved tick rate, measured from the wall-clock
-    /// cadence of `add_local_input_and_fastforward` calls (one per emulated
-    /// frame). Compared against `last_fps_target` to tell a CPU deficit
-    /// apart from a deliberate throttle.
-    achieved_fps_ema: f32,
-    /// Timestamp of the previous frame, for the achieved-fps measurement.
-    /// `None` until the round's first frame.
-    last_frame_at: Option<std::time::Instant>,
-    /// The fps target we last asked the core to hit. The gate that decides
-    /// whether we're CPU-bound compares `achieved_fps_ema` against this, not
-    /// against `EXPECTED_FPS`, so being capped low by a slow peer doesn't
-    /// make us falsely report ourselves as the bottleneck.
-    last_fps_target: f32,
-    /// Whether the peer's reported capacity (not the skew throttler) is what
-    /// last set our fps target. Surfaced as the `[P]` status-bar indicator.
-    peer_cap_binding: bool,
 }
 
 impl Round {
@@ -121,11 +87,6 @@ impl Round {
             present_seed: None,
             confirmed: std::collections::VecDeque::new(),
             confirmed_base: 0,
-            peer_sustainable_fps: EXPECTED_FPS,
-            achieved_fps_ema: EXPECTED_FPS,
-            last_frame_at: None,
-            last_fps_target: EXPECTED_FPS,
-            peer_cap_binding: false,
         })
     }
 
@@ -162,7 +123,6 @@ impl Round {
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
     ) -> anyhow::Result<Option<BattleOutcome>> {
-        self.measure_achieved_fps();
         self.send_and_queue_local_input(joyflags).await?;
 
         let (input_pairs, last_committed_state, commit_tick, dirty_tick) = self.prepare_input_pairs();
@@ -225,40 +185,11 @@ impl Round {
             .send(&crate::net::Input {
                 joyflags,
                 frame_advantage,
-                sustainable_millifps: (self.local_sustainable_fps() * 1000.0).round() as u32,
             })
             .await?;
 
         self.add_local_input(PartialInput { joyflags });
         Ok(())
-    }
-
-    // Folds this frame's wall-clock interval into the achieved-fps EMA.
-    // Called once per emulated frame; the interval includes any throttle
-    // sleep, which is what we want — when we're meeting a lowered target the
-    // EMA tracks that target, and local_sustainable_fps reads it as "not
-    // CPU-bound".
-    fn measure_achieved_fps(&mut self) {
-        let now = std::time::Instant::now();
-        if let Some(prev) = self.last_frame_at.replace(now) {
-            let dt = now.duration_since(prev).as_secs_f32();
-            if dt > 0.0 {
-                let inst = 1.0 / dt;
-                self.achieved_fps_ema += ACHIEVED_FPS_ALPHA * (inst - self.achieved_fps_ema);
-            }
-        }
-    }
-
-    // The capacity we advertise to the peer: EXPECTED_FPS unless we're
-    // missing our own target by more than CPU_BOUND_MARGIN_FPS, in which case
-    // we report the measured rate so the peer can pull back to let our
-    // backlog drain.
-    fn local_sustainable_fps(&self) -> f32 {
-        if self.achieved_fps_ema < self.last_fps_target - CPU_BOUND_MARGIN_FPS {
-            self.achieved_fps_ema
-        } else {
-            EXPECTED_FPS
-        }
     }
 
     /// "How far ahead of the latest remote input I am." Sent in each
@@ -275,13 +206,6 @@ impl Round {
     /// is reacting to.
     pub fn last_remote_frame_advantage(&self) -> i16 {
         self.last_remote_frame_advantage
-    }
-
-    /// True when our fps target is currently set by the peer's reported
-    /// capacity rather than the skew throttler — i.e. we're holding back to
-    /// let a CPU-bound peer keep up.
-    pub fn peer_cap_binding(&self) -> bool {
-        self.peer_cap_binding
     }
 
     fn prepare_input_pairs(&mut self) -> (Vec<Pair<PartialInput, PartialInput>>, CommittedState, u32, u32) {
@@ -475,33 +399,15 @@ impl Round {
         let remote_advantage = self.last_remote_frame_advantage as i32;
         let skew = local_advantage - remote_advantage;
 
+        // A CPU-bound peer is just a persistent skew disturbance: it can't hit
+        // EXPECTED_FPS, so it sends inputs slower than we consume and our skew
+        // climbs. A throttler with integral action (the `Pi` strategy) builds a
+        // matching standing slowdown so the rollback backlog drains, where a
+        // pure-proportional throttler would leave it parked. No capacity
+        // advertisement needed.
         let slowdown = self.throttler.step(skew);
-        let throttled = EXPECTED_FPS - slowdown;
+        let fps_target = EXPECTED_FPS - slowdown;
 
-        // Frame-skew alone tells the leader to slow only until the *frame*
-        // gap closes; a CPU-bound trailer's deficit then hides as
-        // ever-growing rollback depth instead. So additionally cap our
-        // steady-state target at the peer's reported sustainable rate, so we
-        // stop trying to balance against a 59.7 target it can never reach.
-        // We cap at the peer's rate *exactly* (not below it) to avoid
-        // inverting the imbalance and overflowing the peer's input queue;
-        // the transient backlog that built up before the cap engaged drains
-        // through `throttled`, which the skew throttler already pulls below
-        // the cap whenever we're the leader. Only engages once the peer has
-        // flagged itself CPU-bound; healthy peers report EXPECTED_FPS and
-        // this is a no-op.
-        let cap_engaged = self.peer_sustainable_fps < EXPECTED_FPS - CPU_BOUND_MARGIN_FPS;
-        let fps_target = if cap_engaged {
-            throttled.min(self.peer_sustainable_fps).max(MIN_FPS_TARGET)
-        } else {
-            throttled
-        };
-        // The peer cap "wins" only when it's engaged AND actually below what
-        // the skew throttler alone would have allowed — otherwise the target
-        // came from the throttler and the indicator stays off.
-        self.peer_cap_binding = cap_engaged && self.peer_sustainable_fps <= throttled;
-
-        self.last_fps_target = fps_target;
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
@@ -557,12 +463,6 @@ impl Round {
         });
         self.last_remote_received_tick = self.last_remote_received_tick.wrapping_add(1);
         self.last_remote_frame_advantage = input.frame_advantage;
-        // Wire value is milli-fps; back to fps and clamp into the sane range,
-        // so a peer that under- or over-claims (incl. the "keeping up" value
-        // that exceeds native) can't push our target below the floor or above
-        // native. A value below EXPECTED_FPS means it's asking us to slow to
-        // its sustainable rate.
-        self.peer_sustainable_fps = (input.sustainable_millifps as f32 / 1000.0).clamp(MIN_FPS_TARGET, EXPECTED_FPS);
     }
 
     pub(super) fn can_add_remote_input(&self) -> bool {

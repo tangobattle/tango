@@ -872,15 +872,8 @@ pub fn view<'a>(
                     .style(widgets::muted_text_style),
             );
         }
-        // [P] right after the tps when the peer's capacity is what's holding
-        // our fps target down (we're waiting on a CPU-bound peer); [ ] otherwise.
-        let peer_cap_marker = if stats.map_or(false, |s| s.peer_cap_binding) {
-            "P"
-        } else {
-            " "
-        };
         metrics = metrics.push(
-            text(format!("tps {:5.1}/{:5.1} [{}]", tps, fps_target, peer_cap_marker))
+            text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
                 .style(widgets::muted_text_style),
@@ -1220,8 +1213,14 @@ pub async fn spawn_pvp(
 /// Shared between `spawn_pvp` (initial round) and the app's settings
 /// handler (live mid-round swap).
 pub fn throttler_factory_for(throttler: config::NetplayThrottler) -> tango_pvp::battle::ThrottlerFactory {
-    use tango_pvp::battle::throttler::{Clamp, Ema, Linear, Power, Watchdog};
+    use tango_pvp::battle::throttler::{Clamp, Ema, Linear, Pi, Power, Watchdog};
     match throttler {
+        // Pi is already slowdown-only (integral + output both clamped to
+        // >= 0); Clamp here just enforces the shared 30 fps audio-warp
+        // ceiling on the upper side.
+        config::NetplayThrottler::ProportionalIntegral => {
+            Box::new(|| Box::new(Clamp::<Pi>::default().with_min(0.0)))
+        }
         // Ema + Linear are symmetric — they can request both
         // slowdown and speed-up. Clamp `min` to 0 here so the
         // surfaced strategies stay slowdown-only, matching the

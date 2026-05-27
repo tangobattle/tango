@@ -6,17 +6,6 @@ pub struct Input {
     /// raw skew that drives the time-sync throttler (see
     /// `Round::update_fps_target`).
     pub frame_advantage: i16,
-    /// The fastest tick rate the sender can actually sustain right now, in
-    /// **milli-fps** (fps × 1000). ~59727 when the sender is keeping up;
-    /// drops to its measured throughput when it is CPU-bound and missing its
-    /// fps target. The receiver caps its own target at this so it never
-    /// outruns a peer whose rollback backlog can't drain (see
-    /// `Round::update_fps_target`). This is a *capacity* signal, not the
-    /// sender's current (possibly throttled-by-choice) rate, so two healthy
-    /// peers never ratchet each other down. Milli-fps in a varint-encoded
-    /// u32 keeps the 0.001-fps resolution a pacing target wants while still
-    /// costing only ~3 bytes on the wire vs. 4 for an f32.
-    pub sustainable_millifps: u32,
 }
 
 /// What the in-match receive loop yields. `Input` is the per-tick
