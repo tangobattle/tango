@@ -31,10 +31,16 @@ pub(super) fn traps(
                 return;
             };
 
-            let current_tick = round.current_tick();
-            if current_tick > 1 {
+            // Stamp the live core's *game* tick (not the netcode frontier),
+            // since this trap fires during the game's in-tick processing where
+            // its game.current_tick == last_loaded_tick. With a presentation
+            // delay the two diverge by `presentation_delay`; stamping with
+            // `round.current_tick()` here under-runs the rx tick field by D
+            // and the game sees rx sequence numbers out of order.
+            let game_tick = round.last_loaded_tick();
+            if game_tick > 1 {
                 let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick.saturating_sub(2));
+                byteorder::LittleEndian::write_u32(&mut rx[4..8], game_tick.saturating_sub(2));
                 munger.set_rx_packet(core, 0, &rx);
                 munger.set_rx_packet(core, 1, &rx);
             }

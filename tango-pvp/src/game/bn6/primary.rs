@@ -114,6 +114,22 @@ pub(super) fn traps(
                     return;
                 };
 
+                // Verify before the first-commit branch: `has_committed_state`
+                // is false only on the very first trap fire (the game's just
+                // started, last_loaded == 0 hasn't been set by any
+                // add_local_input_and_fastforward yet), and the game tick has
+                // nothing to compare against until we've loaded at least once.
+                if round.has_committed_state() {
+                    let game_current_tick = munger.current_tick(core);
+                    let expected = round.last_loaded_tick() + 1;
+                    if game_current_tick != expected {
+                        panic!(
+                            "read joyflags: expected game tick = {} but game tick = {}",
+                            expected, game_current_tick
+                        );
+                    }
+                }
+
                 if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
 
@@ -137,15 +153,6 @@ pub(super) fn traps(
                         munger.rng2_state(core),
                     );
                     log::info!("battle state committed on {}", round.current_tick());
-                }
-
-                let game_current_tick = munger.current_tick(core);
-                let expected = round.expected_game_tick();
-                if game_current_tick != expected {
-                    panic!(
-                        "read joyflags: expected game tick = {} but game tick = {}",
-                        expected, game_current_tick
-                    );
                 }
 
                 if let Err(e) =
@@ -175,7 +182,7 @@ pub(super) fn traps(
 
                 round.increment_current_tick();
                 let game_current_tick = munger.current_tick(core);
-                let expected = round.expected_game_tick();
+                let expected = round.last_loaded_tick() + 1;
                 if game_current_tick != expected {
                     panic!(
                         "post increment tick: expected game tick = {} but game tick = {}",

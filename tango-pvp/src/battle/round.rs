@@ -38,14 +38,15 @@ pub struct Round {
     primary_thread_handle: mgba::thread::Handle,
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: Arc<PlMutex<crate::shadow::Shadow>>,
-    /// Tick of the last `present_state` loaded into the live core, or `None`
-    /// before the first load. The live core's game tick advances naturally from
-    /// here, so the per-game `primary` trap verifies
-    /// `game.current_tick == last_loaded_tick + 1` (see
-    /// [`Self::expected_game_tick`]). Decoupled from `current_tick` (the
-    /// netcode frontier), which advances at wall-clock rate via the post-tick
-    /// hook regardless of how far the live core lags.
-    last_loaded_tick: Option<u32>,
+    /// Tick of the last `present_state` loaded into the live core (0 before
+    /// any load — same as the game's initial tick, so callers don't need a
+    /// special pre-load case). The live core's game tick advances naturally
+    /// from here, so per-game `primary` traps that need the game's tick read
+    /// [`Self::last_loaded_tick`] and add `+ 1` once
+    /// `round_post_increment_tick` has fired. Decoupled from `current_tick`
+    /// (the netcode frontier), which advances at wall-clock rate via the
+    /// post-tick hook regardless of how far the live core lags.
+    last_loaded_tick: u32,
     /// Local presentation delay in frames (`frontier − presentation_delay` is
     /// the display's target tick). Fixed for the match; the netcode-affecting
     /// part of this side's requested `frame_delay` lives in `input_delay`.
@@ -121,7 +122,7 @@ impl Round {
             primary_thread_handle: match_.primary_thread_handle(),
             sender: match_.sender_handle(),
             shadow: match_.shadow_handle(),
-            last_loaded_tick: None,
+            last_loaded_tick: 0,
             presentation_delay: match_.presentation_delay(),
             input_delay,
             // Pre-seeded with `input_delay` neutral frames so the first
@@ -139,14 +140,17 @@ impl Round {
         self.current_tick
     }
 
-    /// What the live core's game tick should be at the next per-game `primary`
-    /// trap fire: one past the last `present_state` we loaded (which is where
-    /// the game resumed from), or 0 before any load. Decoupled from
-    /// `current_tick`, which is the netcode frontier and runs `presentation_delay`
-    /// ticks ahead. Per-game `primary` traps that verify the game's tick should
-    /// compare against this, not `current_tick`.
-    pub fn expected_game_tick(&self) -> u32 {
-        self.last_loaded_tick.map_or(0, |t| t + 1)
+    /// Tick of the last `present_state` we loaded into the live core, or `None`
+    /// before any load. The live core's game tick is this value while
+    /// in-tick processing (between `main_read_joyflags` and
+    /// `round_post_increment_tick`), and this value `+ 1` once
+    /// `round_post_increment_tick` has fired (i.e. at the next
+    /// `main_read_joyflags`). Decoupled from `current_tick` (the netcode
+    /// frontier, which runs `presentation_delay` ticks ahead). Per-game
+    /// primary traps that need the game's tick (not the netcode frontier)
+    /// read this and apply the appropriate `+ 1` for the phase they fire in.
+    pub fn last_loaded_tick(&self) -> u32 {
+        self.last_loaded_tick
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -247,7 +251,12 @@ impl Round {
             // presentation_delay in steady state), which is what the live core
             // shows when the user sees beyond the commit frontier.
             let hooks = self.hooks;
+            // Pre-apply `predict_rx` once so the seed already represents the
+            // packet at `commit_tick` — the callback then returns-then-predicts,
+            // i.e. on entry `predict_packet` always represents the *current*
+            // tick's packet (cleaner invariant than predict-then-return).
             let mut predict_packet = self.last_committed_remote_input.packet.clone();
+            hooks.predict_rx(&mut predict_packet);
             let count = (target - commit_tick + 1) as usize;
             let input_pairs: Vec<Pair<PartialInput, PartialInput>> = peeked[..count]
                 .iter()
@@ -267,8 +276,9 @@ impl Round {
                 u32::MAX, // dirty_state at `target` IS the present
                 &new_committed_state.packet,
                 Box::new(move |_tick, _ip| {
+                    let out = predict_packet.clone();
                     hooks.predict_rx(&mut predict_packet);
-                    Ok(predict_packet.clone())
+                    Ok(out)
                 }),
             )?;
             result.dirty_state.state
@@ -276,7 +286,7 @@ impl Round {
 
         self.committed_state = Some(new_committed_state);
         core.load_state(&present_state).expect("load present state");
-        self.last_loaded_tick = Some(target);
+        self.last_loaded_tick = target;
         self.update_fps_target(core);
 
         self.finalize_round(round_result, commit_tick)
