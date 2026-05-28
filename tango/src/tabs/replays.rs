@@ -17,6 +17,12 @@ pub enum Message {
     /// filter; otherwise a substring (case-insensitive) match
     /// against the remote side's nickname.
     OpponentFilterChanged(String),
+    /// User toggled the "show incomplete" checkbox in the top
+    /// filter row. Off by default — incomplete replays (the
+    /// recorded stream didn't reach `END_OF_REPLAY`) are hidden
+    /// from the list so the default view shows finished matches
+    /// only.
+    ShowIncompleteToggled(bool),
     Selected(std::path::PathBuf),
     OpenFolder(std::path::PathBuf),
     Watch(std::path::PathBuf),
@@ -181,6 +187,11 @@ pub struct ReplaysState {
     /// Substring (case-insensitive) match against the remote
     /// side's nickname. Empty = no filter.
     pub opponent_filter: String,
+    /// When false (the default), replays whose loaded stats say
+    /// `is_complete = false` are hidden from the list. Replays
+    /// without loaded stats yet are always shown — we only know
+    /// they're incomplete once the lazy stats worker reports.
+    pub show_incomplete: bool,
     pub selected: Option<std::path::PathBuf>,
     /// Cached Loaded for the currently-selected replay's local side.
     /// Rebuilt by the App's `Selected` handler; view borrows read-only.
@@ -267,6 +278,15 @@ impl ReplaysState {
                 // the detail panel when the selected path no
                 // longer matches the current filtered list.
                 self.opponent_filter = s;
+                None
+            }
+            Message::ShowIncompleteToggled(v) => {
+                // Same rule as opponent-filter: don't clear the
+                // selection — the user might have an incomplete
+                // replay open while toggling. The detail panel
+                // re-checks membership itself, so a now-filtered-
+                // out selection just hides the right column.
+                self.show_incomplete = v;
                 None
             }
             Message::Selected(p) => {
@@ -564,6 +584,12 @@ impl ReplaysState {
             .find(|o| o.pair == self.game_filter)
             .cloned()
             .unwrap_or_else(|| game_options[0].clone());
+        let show_incomplete_toggle = iced::widget::checkbox(self.show_incomplete)
+            .on_toggle(Message::ShowIncompleteToggled)
+            .label(t!(lang, "replays-show-incomplete"))
+            .size(TEXT_BODY)
+            .text_size(TEXT_BODY)
+            .style(widgets::chunky_checkbox);
         let top = container(
             row![
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
@@ -574,6 +600,7 @@ impl ReplaysState {
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(220.0))
                     .style(widgets::chunky_text_input),
+                show_incomplete_toggle,
                 horizontal_space(),
                 widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING,),
             ]
@@ -584,11 +611,15 @@ impl ReplaysState {
         .width(Fill)
         .style(widgets::pane);
 
-        // Left list — AND of game + opponent filters. Opponent
-        // match is case-insensitive substring (mirrors the
-        // text-input UX).
+        // Left list — AND of game + opponent + completeness
+        // filters. Opponent match is case-insensitive substring
+        // (mirrors the text-input UX). Completeness only drops a
+        // row once its stats have actually loaded — unloaded
+        // entries pass through so a freshly-scanned replay isn't
+        // hidden during the lazy stats-worker window.
         let game_filter = self.game_filter.as_ref();
         let opp_needle = self.opponent_filter.trim().to_lowercase();
+        let show_incomplete = self.show_incomplete;
         let filtered: Vec<&replays::ScannedReplay> = replays
             .iter()
             .filter(|r| {
@@ -611,7 +642,8 @@ impl ReplaysState {
                         .map(|s| s.nickname.to_lowercase().contains(&opp_needle))
                         .unwrap_or(false)
                 };
-                g_ok && o_ok
+                let c_ok = show_incomplete || self.stats.get(&r.path).map(|s| s.is_complete).unwrap_or(false);
+                g_ok && o_ok && c_ok
             })
             .collect();
 

@@ -156,6 +156,7 @@ save-empty = Cette sauvegarde n'a pas de données pour cette vue.
 play-no-selection = Choisissez un jeu et une sauvegarde à inspecter.
 replays-filter-all-games = Tous les jeux
 replays-filter-opponent-placeholder = Tous
+replays-show-incomplete = Afficher incomplets
 replays-direct-marker = (direct)
 replays-watch = Regarder
 replays-watch-missing-rom = Regarder (ROM de ce jeu non analysée)

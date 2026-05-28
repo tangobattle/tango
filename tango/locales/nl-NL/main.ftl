@@ -156,6 +156,7 @@ save-empty = Deze save heeft geen gegevens voor deze weergave.
 play-no-selection = Kies een spel en save om te bekijken.
 replays-filter-all-games = Alle spellen
 replays-filter-opponent-placeholder = Alle
+replays-show-incomplete = Onvolledige tonen
 replays-direct-marker = (direct)
 replays-watch = Bekijken
 replays-watch-missing-rom = Bekijken (ROM voor dit spel niet gescand)

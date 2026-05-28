@@ -136,6 +136,7 @@ play-no-selection = 検査するゲームとセーブを選択してください
 # Replays
 replays-filter-all-games = すべて
 replays-filter-opponent-placeholder = 検索
+replays-show-incomplete = 未完了も表示
 replays-direct-marker = （ダイレクト）
 replays-watch = 再生
 replays-watch-missing-rom = 再生（このゲームのROMが未スキャン）

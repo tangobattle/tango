@@ -156,6 +156,7 @@ save-empty = 此存档没有该视图的数据。
 play-no-selection = 请选择要查看的游戏与存档。
 replays-filter-all-games = 全部游戏
 replays-filter-opponent-placeholder = 任意
+replays-show-incomplete = 显示未完成
 replays-direct-marker = （直连）
 replays-watch = 观看
 replays-watch-missing-rom = 观看（此游戏的ROM未扫描）

@@ -156,6 +156,7 @@ save-empty = Save này không có dữ liệu cho mục này.
 play-no-selection = Chọn một game và save để xem.
 replays-filter-all-games = Tất cả game
 replays-filter-opponent-placeholder = Bất kỳ
+replays-show-incomplete = Hiện chưa hoàn tất
 replays-direct-marker = (trực tiếp)
 replays-watch = Xem
 replays-watch-missing-rom = Xem (chưa quét được ROM cho game này)

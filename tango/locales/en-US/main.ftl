@@ -136,6 +136,7 @@ play-no-selection = Select a game and a save to inspect.
 # Replays
 replays-filter-all-games = All games
 replays-filter-opponent-placeholder = Search opponents…
+replays-show-incomplete = Show incomplete
 replays-direct-marker = (direct)
 replays-watch = Watch
 replays-watch-missing-rom = Watch (ROM for this game isn't scanned)

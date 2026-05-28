@@ -156,6 +156,7 @@ save-empty = Dieser Speicherstand hat keine Daten für diese Ansicht.
 play-no-selection = Wähle ein Spiel und einen Speicherstand zur Prüfung aus.
 replays-filter-all-games = Alle Spiele
 replays-filter-opponent-placeholder = Beliebig
+replays-show-incomplete = Unvollständige anzeigen
 replays-direct-marker = (direkt)
 replays-watch = Ansehen
 replays-watch-missing-rom = Ansehen (ROM für dieses Spiel ist nicht gescannt)
