@@ -21,11 +21,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "Tango\\0"
-            VALUE "ProductVersion", "${version.major}.${version.minor}.${version.patch}.0\\0"
-            VALUE "FileVersion", "${version.major}.${version.minor}.${version.patch}.0\\0"
-            VALUE "OriginalFilename", "tango.exe\\0"
-            VALUE "Info", "https://tango.n1gp.net\\0"
+            VALUE "FileDescription", "Tango\0"
+            VALUE "ProductVersion", "${version.major}.${version.minor}.${version.patch}.0\0"
+            VALUE "FileVersion", "${version.major}.${version.minor}.${version.patch}.0\0"
+            VALUE "OriginalFilename", "tango.exe\0"
+            VALUE "Info", "https://tango.n1gp.net\0"
         END
     END
     BLOCK "VarFileInfo"
