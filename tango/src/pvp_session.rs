@@ -325,10 +325,10 @@ impl PvpSession {
         let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
         vbuf.lock().fill(0);
 
-        // Stage 1b: single-core PvP. The live mgba thread is the only core —
-        // it runs the netcode and renders straight to the UI. No separate
-        // display thread, no PresentationBuffer hand-off (the Round path still
-        // writes to it but no one reads it; that's pruned in Stage 1c).
+        // Single-core PvP: the live mgba thread is the only core — it runs the
+        // netcode and renders straight to the UI. The `Round` loads the FF's
+        // computed `present_state` into it each frame, so the live core's game
+        // tick lags `current_tick` by `presentation_delay`.
         let audio_stream: Box<dyn crate::audio::Stream + Send> =
             Box::new(crate::audio::MGBAStream::new(thread.handle(), audio_binder.sample_rate()));
         let audio_binding = match audio_binder.bind(Some(audio_stream)) {

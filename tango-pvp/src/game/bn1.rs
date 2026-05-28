@@ -1,7 +1,6 @@
 use byteorder::ByteOrder;
 
 mod common;
-mod display;
 mod munger;
 mod offsets;
 mod primary;
@@ -47,10 +46,6 @@ impl crate::hooks::Hooks for Hooks {
 
     fn shadow_traps(&self, shadow_state: crate::shadow::State) -> Vec<crate::hooks::Trap> {
         shadow::traps(self, shadow_state)
-    }
-
-    fn display_traps(&self, handle: crate::battle::DisplayHandle) -> Vec<crate::hooks::Trap> {
-        display::traps(self, handle)
     }
 
     fn stepper_traps(&self, stepper_state: crate::stepper::State) -> Vec<crate::hooks::Trap> {
