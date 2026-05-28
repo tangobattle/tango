@@ -140,11 +140,11 @@ pub(super) fn traps(
                 }
 
                 let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
+                let expected = round.expected_game_tick();
+                if game_current_tick != expected {
                     panic!(
-                        "read joyflags: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
+                        "read joyflags: expected game tick = {} but game tick = {}",
+                        expected, game_current_tick
                     );
                 }
 
@@ -175,11 +175,11 @@ pub(super) fn traps(
 
                 round.increment_current_tick();
                 let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
+                let expected = round.expected_game_tick();
+                if game_current_tick != expected {
                     panic!(
-                        "post increment tick: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
+                        "post increment tick: expected game tick = {} but game tick = {}",
+                        expected, game_current_tick
                     );
                 }
             })

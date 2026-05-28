@@ -38,9 +38,14 @@ pub struct Round {
     primary_thread_handle: mgba::thread::Handle,
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     shadow: Arc<PlMutex<crate::shadow::Shadow>>,
-    /// Live → display hand-off. Each frame the `present_state`
-    /// (`frontier - presentation_delay`) is published here for the display core.
-    presentation: Arc<PlMutex<super::present::PresentationBuffer>>,
+    /// Tick of the last `present_state` loaded into the live core, or `None`
+    /// before the first load. The live core's game tick advances naturally from
+    /// here, so the per-game `primary` trap verifies
+    /// `game.current_tick == last_loaded_tick + 1` (see
+    /// [`Self::expected_game_tick`]). Decoupled from `current_tick` (the
+    /// netcode frontier), which advances at wall-clock rate via the post-tick
+    /// hook regardless of how far the live core lags.
+    last_loaded_tick: Option<u32>,
     /// Local presentation delay in frames (`frontier − presentation_delay` is
     /// the display's target tick). Fixed for the match; the netcode-affecting
     /// part of this side's requested `frame_delay` lives in `input_delay`.
@@ -115,7 +120,7 @@ impl Round {
             primary_thread_handle: match_.primary_thread_handle(),
             sender: match_.sender_handle(),
             shadow: match_.shadow_handle(),
-            presentation: match_.presentation_handle(),
+            last_loaded_tick: None,
             presentation_delay: match_.presentation_delay(),
             input_delay,
             // Pre-seeded with `input_delay` neutral frames so the first
@@ -131,6 +136,16 @@ impl Round {
 
     pub fn current_tick(&self) -> u32 {
         self.current_tick
+    }
+
+    /// What the live core's game tick should be at the next per-game `primary`
+    /// trap fire: one past the last `present_state` we loaded (which is where
+    /// the game resumed from), or 0 before any load. Decoupled from
+    /// `current_tick`, which is the netcode frontier and runs `presentation_delay`
+    /// ticks ahead. Per-game `primary` traps that verify the game's tick should
+    /// compare against this, not `current_tick`.
+    pub fn expected_game_tick(&self) -> u32 {
+        self.last_loaded_tick.map_or(0, |t| t + 1)
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -184,10 +199,6 @@ impl Round {
             ff_result.round_result,
         );
 
-        // The live core advances to the speculative frontier (it's the
-        // netcode clock and must stay there); the display core renders the
-        // delayed present_state we publish below.
-        core.load_state(&ff_result.dirty_state.state).expect("load dirty state");
         self.committed_state = Some(ff_result.committed_state);
 
         let target = present_target;
@@ -204,7 +215,15 @@ impl Round {
         } else {
             ff_result.present_state.expect("live FF captures the speculative present")
         };
-        self.presentation.lock().publish(present_target, present_state);
+        // Single-core PvP: the live core loads the rendered `present_state`
+        // (not the speculative frontier — `dirty_state` is unused on the live
+        // side now). Its game tick lags `current_tick` by `presentation_delay`;
+        // the per-game `primary` trap verifies against [`expected_game_tick`]
+        // to account for this. `current_tick` (the netcode clock) still
+        // advances at wall rate via the post-tick hook, decoupled from where
+        // the live core happens to be loaded.
+        core.load_state(&present_state).expect("load present state");
+        self.last_loaded_tick = Some(present_target);
         self.update_fps_target(core);
 
         self.finalize_round(ff_result.round_result, commit_tick)
