@@ -26,19 +26,19 @@ use parking_lot::Mutex as PlMutex;
 /// `Hooks::display_traps`.
 pub type DisplayHandle = Arc<PlMutex<PresentationBuffer>>;
 
+/// Max queue length. This is a jitter buffer between the live and display cores,
+/// not the presentation delay (that's already baked into *which* tick the FF
+/// captures, `frontier - presentation_delay`). Every queued frame is already at
+/// the budgeted tick, so any backlog is pure added latency — keep it tiny and
+/// governed by scheduling jitter, a small constant. 2 = one hand-off slot + one
+/// frame of in-order slack; beyond it the oldest frame drops (a catch-up skip).
+const QUEUE_CAP: usize = 2;
+
 /// In-order hand-off queue from the live core to the display core. The live core
 /// pushes one `present_state` per frame; the display core pops one per display
 /// frame **in order**, so it loads consecutive ticks and its played audio never
 /// shifts. The two run on independent ~60 fps clocks; the queue absorbs the
-/// jitter between them.
-///
-/// Its depth is capped at the match's `presentation_delay` (the latency budget
-/// you've already chosen to pay), so the in-order backlog can't push the display
-/// more than that far behind the freshest publish — past the cap the oldest
-/// frames drop (a catch-up skip). In steady state the queue hovers near empty
-/// (lag ≈ `presentation_delay`); it only fills toward the cap under a sustained
-/// burst (worst-case lag ≈ `2 * presentation_delay`). At `presentation_delay
-/// == 0` the cap is a single slot, i.e. always the freshest frame.
+/// jitter between them, bounded by [`QUEUE_CAP`].
 pub struct PresentationBuffer {
     queue: std::collections::VecDeque<(u32, Box<mgba::state::State>)>,
     /// Last `(present_tick, frame)` handed out, re-served on underrun so the
@@ -46,12 +46,6 @@ pub struct PresentationBuffer {
     /// once the display has shown its first frame — doubles as the "presenting"
     /// signal (see [`Self::is_presenting`]).
     last: Option<(u32, Box<mgba::state::State>)>,
-    /// Max queue length: `presentation_delay + 1`. The `+ 1` is the slot for the
-    /// frame currently being handed off; the remaining `presentation_delay` is
-    /// the in-order backlog, so when full the display's oldest frame is exactly
-    /// `presentation_delay` behind the freshest publish. At `presentation_delay
-    /// == 0` this is a single freshest slot.
-    cap: usize,
     /// Set by [`publish`] (a battle present_state) and cleared each live frame
     /// by [`take_battle_published`]. Lets the live frame_callback tell whether
     /// the in-battle path already published this frame.
@@ -59,23 +53,21 @@ pub struct PresentationBuffer {
 }
 
 impl PresentationBuffer {
-    pub fn new(presentation_delay: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             queue: std::collections::VecDeque::new(),
             last: None,
-            cap: presentation_delay as usize + 1,
             battle_published: false,
         }
     }
 
     /// Push the live FF's `present_state` (rendered at `present_tick`, i.e.
     /// `frontier - presentation_delay`) for the current battle frame. Called once
-    /// per live frame from the round path. Drops the oldest queued frame if the
-    /// backlog would exceed `cap` (the display fell `presentation_delay` behind;
-    /// a one-time catch-up skip).
+    /// per live frame from the round path. Drops the oldest queued frame once the
+    /// backlog exceeds [`QUEUE_CAP`] (the display fell behind; a catch-up skip).
     pub fn publish(&mut self, present_tick: u32, state: Box<mgba::state::State>) {
         self.queue.push_back((present_tick, state));
-        while self.queue.len() > self.cap {
+        while self.queue.len() > QUEUE_CAP {
             self.queue.pop_front();
         }
         self.battle_published = true;
@@ -121,6 +113,6 @@ impl PresentationBuffer {
 
 impl Default for PresentationBuffer {
     fn default() -> Self {
-        Self::new(0)
+        Self::new()
     }
 }

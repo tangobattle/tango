@@ -89,7 +89,7 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
             throttler_factory: PlMutex::new(throttler_factory),
-            presentation: Arc::new(PlMutex::new(PresentationBuffer::new(presentation_delay))),
+            presentation: Arc::new(PlMutex::new(PresentationBuffer::new())),
             input_delay,
             presentation_delay,
         })
