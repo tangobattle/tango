@@ -743,7 +743,7 @@ fn settings_about<'a>(
     let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
-    column![emblem, body, updater_section(lang, updater_status)]
+    column![emblem, body, updater_section(lang, updater_status, config.enable_updater)]
         .spacing(12)
         // Symmetric inner padding so the emblem doesn't rub
         // the nav scanline at the top, the updater section
@@ -757,7 +757,11 @@ fn settings_about<'a>(
 /// vs. latest, a one-line status, and an Update Now button
 /// when a download is ready. Hidden release notes/download
 /// progress until they're actually relevant.
-fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Status) -> Element<'a, Message> {
+fn updater_section<'a>(
+    lang: &'a LanguageIdentifier,
+    status: crate::updater::Status,
+    enable_updater: bool,
+) -> Element<'a, Message> {
     use crate::updater::Status as S;
 
     let current = env!("CARGO_PKG_VERSION");
@@ -804,22 +808,30 @@ fn updater_section<'a>(lang: &'a LanguageIdentifier, status: crate::updater::Sta
         )
     });
 
-    let mut col = column![
-        iced::widget::rule::horizontal(1),
-        row![
-            text(t!(lang, "updater-current-version", version = format!("v{current}"))).size(TEXT_CAPTION),
-            horizontal_space(),
-            text(t!(lang, "updater-latest-version", version = latest_label)).size(TEXT_CAPTION),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
+    // The "latest version" readout only makes sense when the updater is on; with
+    // it disabled we never fetch a release, so show just the current version and
+    // drop the latest-version line.
+    let mut version_row = row![
+        text(t!(lang, "updater-current-version", version = format!("v{current}"))).size(TEXT_CAPTION),
     ]
-    .spacing(8);
-    if let Some(s) = status_line {
-        col = col.push(s);
+    .spacing(8)
+    .align_y(Alignment::Center);
+    if enable_updater {
+        version_row = version_row.push(horizontal_space());
+        version_row =
+            version_row.push(text(t!(lang, "updater-latest-version", version = latest_label)).size(TEXT_CAPTION));
     }
-    if let Some(a) = action {
-        col = col.push(row![horizontal_space(), a].spacing(8));
+
+    let mut col = column![iced::widget::rule::horizontal(1), version_row].spacing(8);
+    match (status_line, action) {
+        // Update ready: the button sits to the right of the status message on the
+        // same row, rather than on its own row below it.
+        (Some(s), Some(a)) => {
+            col = col.push(row![s, horizontal_space(), a].spacing(8).align_y(Alignment::Center));
+        }
+        (Some(s), None) => col = col.push(s),
+        (None, Some(a)) => col = col.push(row![horizontal_space(), a].spacing(8)),
+        (None, None) => {}
     }
     col.into()
 }
