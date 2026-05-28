@@ -21,11 +21,16 @@ pub struct ReplayConfig {
     pub writer: Option<crate::replay::Writer>,
 }
 
-/// Save snapshot at a specific tick, with the local emulator's outgoing
-/// link-cable packet for that tick. Both Fastforwarder and replay use this.
+/// Save snapshot from the FF, paired with the local emulator's outgoing
+/// link-cable packet at the moment of capture. Both Fastforwarder and replay
+/// use this.
 #[derive(Clone)]
 pub struct CommittedState {
     pub state: Box<mgba::state::State>,
+    /// `game.current_tick` at the moment the snapshot was captured — i.e. the
+    /// tick the game is *about to process next*, an exclusive upper bound of
+    /// what's already been simulated. For `Round::committed_state` this is the
+    /// commit frontier; for `Round::rolled_state` it's the display target.
     pub tick: u32,
     pub packet: Vec<u8>,
 }

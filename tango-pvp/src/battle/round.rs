@@ -237,8 +237,8 @@ impl Round {
         self.send_and_queue_local_input(joyflags).await?;
 
         let (committable, peeked) = self.input_queue.consume_and_peek_local();
-        let last_committed_state = self.committed_state.take().expect("committed state");
-        let prev_commit_frontier = last_committed_state.tick;
+        let prev_committed_state = self.committed_state.take().expect("committed state");
+        let prev_commit_frontier = prev_committed_state.tick;
         let commit_frontier = prev_commit_frontier + committable.len() as u32;
         self.last_rollback_depth = peeked.len() as u32;
 
@@ -250,7 +250,7 @@ impl Round {
         // handled by the fresh speculative-tail FF below — so this FF saves
         // `rollback_depth` ticks of emulation per frame vs the old wide main FF.
         let (new_committed_state, output_pairs, round_result) = if committable.is_empty() {
-            (last_committed_state, vec![], None)
+            (prev_committed_state, vec![], None)
         } else {
             let shadow = self.shadow.clone();
             // The FF's post-peek state capture needs the trap to peek an
@@ -275,11 +275,11 @@ impl Round {
             // works since the value is discarded.
             let filler_packet = self.last_committed_remote_input.packet.clone();
             let result = self.stepper.fastforward(
-                &last_committed_state.state,
+                &prev_committed_state.state,
                 input_pairs,
-                last_committed_state.tick,
+                prev_committed_state.tick,
                 commit_frontier,
-                &last_committed_state.packet,
+                &prev_committed_state.packet,
                 Box::new(move |tick, ip| {
                     if tick < commit_frontier {
                         shadow.lock().apply_input(tick, ip)
