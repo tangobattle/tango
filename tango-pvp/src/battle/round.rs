@@ -136,7 +136,11 @@ impl Round {
         })
     }
 
-    pub fn current_tick(&self) -> u32 {
+    /// Netcode frontier — advances one per wall-frame via the post-tick hook,
+    /// regardless of how far the live core lags. Internal to the crate; per-game
+    /// traps that need a tick should reach for [`Self::last_loaded_tick`]
+    /// (the game's tick) instead.
+    pub(crate) fn current_tick(&self) -> u32 {
         self.current_tick
     }
 

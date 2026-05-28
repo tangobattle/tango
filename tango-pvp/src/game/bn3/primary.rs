@@ -157,7 +157,6 @@ pub(super) fn traps(
                         munger.rng1_state(core),
                         munger.rng2_state(core),
                     );
-                    log::info!("battle state committed on {}", round.current_tick());
                 }
 
                 if let Err(e) =

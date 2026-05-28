@@ -100,7 +100,6 @@ pub(super) fn traps(
                         .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
                         .expect("record first commit");
                     log::info!("primary rng state: {:08x}", munger.rng_state(core));
-                    log::info!("battle state committed on {}", round.current_tick());
                 }
 
                 if let Err(e) =
