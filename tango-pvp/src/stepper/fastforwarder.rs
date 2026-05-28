@@ -47,6 +47,12 @@ impl Fastforwarder {
         traps.extend(hooks.stepper_traps(state.clone()));
         core.set_traps(traps);
         core.as_mut().reset();
+        // Headless re-sim core: never rasterize. Its pixels are never shown (the
+        // display core re-renders from the states this captures), and it re-sims
+        // the speculative window every frame, so skipping drawScanline cuts a
+        // large constant off the dominant cost. Set after reset() — which zeroes
+        // frameskip — and it sticks (frameskip isn't serialized).
+        core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
         Ok(Fastforwarder {
             core,

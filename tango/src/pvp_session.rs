@@ -432,6 +432,14 @@ impl PvpSession {
                     (buf.take_battle_published(), buf.is_presenting())
                 };
                 showing_battle.store(battle, Ordering::Relaxed);
+                // During a battle the display core is what's shown, so the live
+                // core's rasterization is thrown away — skip it (it's the netcode
+                // host then, effectively a third headless core). Re-enable it
+                // outside a battle, where the live core is what's on screen.
+                // This is set for the *next* frame, so the battle→non-battle
+                // transition shows one stale frame before rendering resumes;
+                // battle state is sticky, so that's the only cost.
+                core.gba_mut().set_frameskip(if battle { i32::MAX } else { 0 });
                 // Outside a battle (but past the hidden boot), the live core
                 // is on screen — push its frame straight to the UI so the
                 // comm-error screen / interlude shows instead of the display

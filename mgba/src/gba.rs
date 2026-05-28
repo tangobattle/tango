@@ -65,6 +65,21 @@ impl<'a> GBAMutRef<'a> {
         }
     }
 
+    /// Set the video frameskip. A large value makes the GBA video module skip
+    /// `drawScanline` + `finishFrame` outright (both gated on
+    /// `frameskipCounter <= 0` in gba/video.c), so the core advances game logic
+    /// without rasterizing. Used on the headless fast-forward and shadow cores,
+    /// whose pixels are never shown — the display core re-renders from the save
+    /// states they capture, and VRAM/IO are driven by the CPU, not the renderer.
+    /// `frameskip` isn't part of the serialized state, so loading a save state
+    /// (e.g. one captured on a rendering core) won't clear it.
+    pub fn set_frameskip(&self, frameskip: i32) {
+        unsafe {
+            (*self.ptr).video.frameskip = frameskip;
+            (*self.ptr).video.frameskipCounter = frameskip;
+        }
+    }
+
     pub fn cpu_mut(&self) -> arm_core::ARMCoreMutRef<'a> {
         arm_core::ARMCoreMutRef {
             ptr: unsafe { (*self.ptr).cpu },

@@ -12,9 +12,10 @@
 //! peer's requested delay, the shared `input_delay`, instead *shrinks* the live
 //! rollback window itself — see `Round`.)
 //!
-//! The live core is the sole writer, publishing one [`Frame`] per emulated
-//! frame; the display core is the sole reader. No input log, shadow, or second
-//! FF is involved — the display just renders the states the live side hands it.
+//! The live core is the sole writer, publishing one frame per emulated frame
+//! into a small in-order queue; the display core is the sole reader, popping one
+//! per display frame. No input log, shadow, or second FF is involved — the
+//! display just loads and renders the states the live side hands it.
 
 use std::sync::Arc;
 
@@ -25,19 +26,19 @@ use parking_lot::Mutex as PlMutex;
 /// `Hooks::display_traps`.
 pub type DisplayHandle = Arc<PlMutex<PresentationBuffer>>;
 
-/// Soft cap on the hand-off queue. The depth normally hovers near 0–1 (the
-/// display consumes about as fast as the live core produces); this just bounds
-/// memory / catch-up if the display ever falls far behind (oldest frames drop,
-/// a one-time visible skip).
-const QUEUE_CAP: usize = 32;
-
-/// In-order hand-off queue from the live core to the display core. The live
-/// core runs freely, pushing one `present_state` per frame; the display core's
-/// clock drives consumption — it pops exactly one per frame **in order**, so it
-/// always loads consecutive ticks and its played audio never shifts. The
-/// display starts on the first frame published (no runahead reserve), so its
-/// latency is exactly `presentation_delay`; the cost is that scheduling jitter
-/// can momentarily underrun, re-serving the last frame for a one-frame judder.
+/// In-order hand-off queue from the live core to the display core. The live core
+/// pushes one `present_state` per frame; the display core pops one per display
+/// frame **in order**, so it loads consecutive ticks and its played audio never
+/// shifts. The two run on independent ~60 fps clocks; the queue absorbs the
+/// jitter between them.
+///
+/// Its depth is capped at the match's `presentation_delay` (the latency budget
+/// you've already chosen to pay), so the in-order backlog can't push the display
+/// more than that far behind the freshest publish — past the cap the oldest
+/// frames drop (a catch-up skip). In steady state the queue hovers near empty
+/// (lag ≈ `presentation_delay`); it only fills toward the cap under a sustained
+/// burst (worst-case lag ≈ `2 * presentation_delay`). At `presentation_delay
+/// == 0` the cap is a single slot, i.e. always the freshest frame.
 pub struct PresentationBuffer {
     queue: std::collections::VecDeque<(u32, Box<mgba::state::State>)>,
     /// Last `(present_tick, frame)` handed out, re-served on underrun so the
@@ -45,6 +46,12 @@ pub struct PresentationBuffer {
     /// once the display has shown its first frame — doubles as the "presenting"
     /// signal (see [`Self::is_presenting`]).
     last: Option<(u32, Box<mgba::state::State>)>,
+    /// Max queue length: `presentation_delay + 1`. The `+ 1` is the slot for the
+    /// frame currently being handed off; the remaining `presentation_delay` is
+    /// the in-order backlog, so when full the display's oldest frame is exactly
+    /// `presentation_delay` behind the freshest publish. At `presentation_delay
+    /// == 0` this is a single freshest slot.
+    cap: usize,
     /// Set by [`publish`] (a battle present_state) and cleared each live frame
     /// by [`take_battle_published`]. Lets the live frame_callback tell whether
     /// the in-battle path already published this frame.
@@ -52,27 +59,25 @@ pub struct PresentationBuffer {
 }
 
 impl PresentationBuffer {
-    pub fn new() -> Self {
+    pub fn new(presentation_delay: u32) -> Self {
         Self {
             queue: std::collections::VecDeque::new(),
             last: None,
+            cap: presentation_delay as usize + 1,
             battle_published: false,
         }
     }
 
-    fn push_capped(&mut self, item: (u32, Box<mgba::state::State>)) {
-        self.queue.push_back(item);
-        while self.queue.len() > QUEUE_CAP {
+    /// Push the live FF's `present_state` (rendered at `present_tick`, i.e.
+    /// `frontier - presentation_delay`) for the current battle frame. Called once
+    /// per live frame from the round path. Drops the oldest queued frame if the
+    /// backlog would exceed `cap` (the display fell `presentation_delay` behind;
+    /// a one-time catch-up skip).
+    pub fn publish(&mut self, present_tick: u32, state: Box<mgba::state::State>) {
+        self.queue.push_back((present_tick, state));
+        while self.queue.len() > self.cap {
             self.queue.pop_front();
         }
-    }
-
-    /// Push the live FF's `present_state` (rendered at `present_tick`, i.e.
-    /// `frontier - presentation_delay`) for the current battle frame. Called once per
-    /// live frame from the round path. Drops the oldest if the display has
-    /// fallen `QUEUE_CAP` behind (rare; a one-time catch-up skip).
-    pub fn publish(&mut self, present_tick: u32, state: Box<mgba::state::State>) {
-        self.push_capped((present_tick, state));
         self.battle_published = true;
     }
 
@@ -105,10 +110,10 @@ impl PresentationBuffer {
         self.last.is_some()
     }
 
-    /// The present tick (`frontier - presentation_delay`) of the frame the display most
-    /// recently loaded. Lets a per-game `send_and_receive` neuter stamp the
-    /// matching tick into the canned rx packet (mirroring the primary path)
-    /// instead of leaving a stale tick in the rendered frame.
+    /// The present tick (`frontier - presentation_delay`) of the frame the
+    /// display most recently loaded. Lets a per-game `send_and_receive` neuter
+    /// stamp the matching tick into the canned rx packet (mirroring the primary
+    /// path) instead of leaving a stale tick in the rendered frame.
     pub fn current_tick(&self) -> u32 {
         self.last.as_ref().map(|(tick, _)| *tick).unwrap_or(0)
     }
@@ -116,6 +121,6 @@ impl PresentationBuffer {
 
 impl Default for PresentationBuffer {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }

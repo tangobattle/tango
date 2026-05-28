@@ -116,6 +116,10 @@ impl Shadow {
         traps.extend(hooks.shadow_traps(state.clone()));
         core.set_traps(traps);
         core.as_mut().reset();
+        // The shadow only derives the remote side's packets (game logic); its
+        // pixels are never shown, so skip rasterization. Set after reset() (which
+        // zeroes frameskip); it sticks, as frameskip isn't serialized.
+        core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
         Ok(Shadow { core, hooks, state })
     }
