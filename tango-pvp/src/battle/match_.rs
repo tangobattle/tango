@@ -184,7 +184,7 @@ impl Match {
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
         self.shadow.lock().advance_until_first_committed_state()?;
-        round.set_first_committed_state(local_state, first_packet);
+        round.set_first_settled_state(local_state, first_packet);
         self.bump_round_progress();
         Ok(())
     }

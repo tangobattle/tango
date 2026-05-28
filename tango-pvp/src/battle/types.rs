@@ -29,8 +29,8 @@ pub struct CommittedState {
     pub state: Box<mgba::state::State>,
     /// `game.current_tick` at the moment the snapshot was captured — i.e. the
     /// tick the game is *about to process next*, an exclusive upper bound of
-    /// what's already been simulated. For `Round::committed_state` this is the
-    /// commit frontier; for `Round::rolled_state` it's the display target.
+    /// what's already been simulated. For `Round::settled_state` this is the
+    /// display target, capped at `commit_frontier − 1`.
     pub tick: u32,
     pub packet: Vec<u8>,
 }
