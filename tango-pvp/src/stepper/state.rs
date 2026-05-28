@@ -44,9 +44,9 @@ struct ReplayExtras {
     /// Set true when `round_start_ret` has fired for the current round.
     /// Gates first commit so RNG isn't seeded before battle init completes.
     round_active: bool,
-    /// Set true at first set_committed_state for the current round; reset
-    /// by `load_replay_round` between replay rounds. Per-game traps gate
-    /// first-commit work on this so it only fires once per round.
+    /// Set true at first on_first_commit for the current round; reset by
+    /// `load_replay_round` between replay rounds. Per-game traps gate the
+    /// first-commit hook on this so it only fires once per round.
     has_committed_this_round: bool,
     /// Set true once `advance_until_round_end` has been called on the shadow
     /// for the current round; reset on `load_replay_round`. Guards against
@@ -76,17 +76,19 @@ pub struct InnerState {
     output_pairs: Vec<InputPair>,
     apply_shadow_input: ApplyShadowInput,
     local_packet: Option<LocalPacket>,
+    /// Replay-mode-only: tick at which the per-round first-commit hook fires
+    /// (seeds RNG, sets game tick to 0, advances shadow). `u32::MAX` in
+    /// Fastforwarder mode (the per-game trap gates this branch on
+    /// `is_replaying()` so the value is irrelevant there).
     commit_tick: u32,
-    committed_state: Option<crate::battle::CommittedState>,
-    dirty_tick: u32,
-    dirty_state: Option<crate::battle::CommittedState>,
-    /// Fastforwarder-mode-only: tick at which to snapshot the presentation
-    /// state for the display core (`frontier - presentation_delay`, clamped into the
-    /// run window). `u32::MAX` in replay mode so the capture never fires.
-    present_tick: u32,
-    /// The presentation snapshot captured at [`present_tick`]. Just the mgba
-    /// state — the display core only renders it, so no packet/tick bookkeeping.
-    present_state: Option<Box<mgba::state::State>>,
+    /// Tick at which the per-game stepper trap snapshots the state into
+    /// [`captured_state`]. Captured *post-peek* (after `peek_input_pair` +
+    /// `set_gpr(r4, ip.local.joyflags)`), so the saved state's r4 is the
+    /// local joyflags for `current_tick` — suitable both for loading into the
+    /// live core and for using as the next FF's base state. `u32::MAX` in
+    /// replay mode so the capture never fires.
+    capture_tick: u32,
+    captured_state: Option<crate::battle::CommittedState>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
@@ -184,12 +186,9 @@ impl InnerState {
             apply_shadow_input,
             local_packet,
             commit_tick,
-            committed_state: None,
-            dirty_tick: 0,
-            dirty_state: None,
-            // Replay mode never captures a presentation state.
-            present_tick: u32::MAX,
-            present_state: None,
+            // Replay mode never runs the FF capture branch.
+            capture_tick: u32::MAX,
+            captured_state: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -211,15 +210,12 @@ impl InnerState {
 
     /// Construct an InnerState for a Fastforwarder run. Wired up by
     /// [`super::Fastforwarder::fastforward`].
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn for_fastforward(
         match_type: (u8, u8),
         local_player_index: u8,
         input_pairs: Vec<PartialInputPair>,
         current_tick: u32,
-        commit_tick: u32,
-        dirty_tick: u32,
-        present_tick: u32,
+        capture_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
@@ -237,12 +233,11 @@ impl InnerState {
                 send_count: 0,
                 packet: last_local_packet,
             }),
-            commit_tick,
-            committed_state: None,
-            dirty_tick,
-            dirty_state: None,
-            present_tick,
-            present_state: None,
+            // FF mode bypasses the replay-mode first-commit hook (the trap
+            // branch is gated on `is_replaying()`), so `commit_tick` is unused.
+            commit_tick: u32::MAX,
+            capture_tick,
+            captured_state: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -280,7 +275,7 @@ impl InnerState {
         1 - self.local_player_index
     }
 
-    // ----- tick / commit_tick / dirty_tick -----
+    // ----- tick / commit_tick / capture_tick -----
 
     pub fn current_tick(&self) -> u32 {
         self.current_tick
@@ -290,14 +285,8 @@ impl InnerState {
         self.commit_tick
     }
 
-    pub fn dirty_tick(&self) -> u32 {
-        self.dirty_tick
-    }
-
-    /// Tick at which the presentation snapshot is taken. `u32::MAX` (never
-    /// matches `current_tick`) outside Fastforwarder mode.
-    pub fn present_tick(&self) -> u32 {
-        self.present_tick
+    pub fn capture_tick(&self) -> u32 {
+        self.capture_tick
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -423,27 +412,23 @@ impl InnerState {
         &self.output_pairs
     }
 
-    // ----- committed / dirty save snapshots -----
+    // ----- state capture -----
 
-    pub fn set_committed_state(&mut self, state: Box<mgba::state::State>) {
+    /// Replay-mode only: per-round first-commit side effects (advance the
+    /// shadow up to its matching first-committed snapshot so subsequent
+    /// `apply_input` calls have a valid round_state). The local-packet
+    /// `send_count` check guards against trap-ordering bugs. No state is
+    /// stored here — the FF's single state capture happens at
+    /// [`Self::capture_tick`] via [`Self::set_captured_state`].
+    pub fn on_first_commit(&mut self) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
             panic!(
-                "local packet send mismatch at commit: stored for send {}, current send {}",
+                "local packet send mismatch at first commit: stored for send {}, current send {}",
                 p.send_count, expected,
             );
         }
-        self.committed_state = Some(crate::battle::CommittedState {
-            tick: self.current_tick,
-            state,
-            packet: p.packet,
-        });
-        // Replay-mode only: this is the round's first commit. Drive the
-        // shadow forward to its matching first-commit snapshot now so the
-        // upcoming apply_input calls have a valid round_state on the
-        // shadow side. Errors go into `self.error` and surface to the
-        // outer stepper loop the same way per-game trap errors do.
         let shadow_to_advance = self.replay.as_mut().and_then(|replay| {
             let needs_advance = !replay.has_committed_this_round;
             replay.has_committed_this_round = true;
@@ -456,63 +441,39 @@ impl InnerState {
         }
     }
 
-    pub fn take_committed_state(&mut self) -> Option<crate::battle::CommittedState> {
-        self.committed_state.take()
-    }
-
-    /// True iff a committed state has been captured for the current run.
-    pub(super) fn has_committed_state_snapshot(&self) -> bool {
-        self.committed_state.is_some()
-    }
-
-    /// True iff a dirty state has been captured for the current run.
-    pub(super) fn has_dirty_state_snapshot(&self) -> bool {
-        self.dirty_state.is_some()
-    }
-
-    /// Capture the presentation snapshot for the display core. Called by
-    /// per-game stepper traps when `current_tick == present_tick()`.
-    pub fn set_present_state(&mut self, state: Box<mgba::state::State>) {
-        self.present_state = Some(state);
-    }
-
-    /// True iff the presentation snapshot has been captured, or isn't needed
-    /// (replay mode / `present_tick` past `dirty_tick`). The Fastforwarder
-    /// loop waits on this alongside the committed/dirty snapshots.
-    pub(super) fn has_present_state_snapshot(&self) -> bool {
-        self.present_state.is_some() || self.present_tick > self.dirty_tick
-    }
-
-    /// Consumes self into a Fastforwarder result. Panics if either the
-    /// committed or dirty state hasn't been set yet — callers must check via
-    /// [`InnerState::has_committed_state_snapshot`] / [`has_dirty_state_snapshot`]
-    /// first.
-    pub(super) fn into_fastforward_result(self) -> super::fastforwarder::FastforwardResult {
-        super::fastforwarder::FastforwardResult {
-            committed_state: self.committed_state.expect("committed state"),
-            // None when no display core requested a present snapshot
-            // (`present_tick` left past `dirty_tick`).
-            present_state: self.present_state,
-            dirty_state: self.dirty_state.expect("dirty state"),
-            round_result: self.round_result,
-            output_pairs: self.output_pairs,
-        }
-    }
-
-    pub fn set_dirty_state(&mut self, state: Box<mgba::state::State>) {
+    /// Capture the FF's single state snapshot. Called by per-game stepper traps
+    /// when `current_tick == capture_tick()` (post-peek, so r4 is set to the
+    /// peeked input's local joyflags).
+    pub fn set_captured_state(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
             panic!(
-                "local packet send mismatch at dirty: stored for send {}, current send {}",
+                "local packet send mismatch at capture: stored for send {}, current send {}",
                 p.send_count, expected,
             );
         }
-        self.dirty_state = Some(crate::battle::CommittedState {
+        self.captured_state = Some(crate::battle::CommittedState {
             tick: self.current_tick,
             state,
             packet: p.packet,
         });
+    }
+
+    /// True iff the FF state snapshot has been captured. The Fastforwarder
+    /// outer loop exits when this flips to true.
+    pub(super) fn has_captured_state(&self) -> bool {
+        self.captured_state.is_some()
+    }
+
+    /// Consumes self into a Fastforwarder result. Panics if the state hasn't
+    /// been captured yet — callers must check [`Self::has_captured_state`] first.
+    pub(super) fn into_fastforward_result(self) -> super::fastforwarder::FastforwardResult {
+        super::fastforwarder::FastforwardResult {
+            state: self.captured_state.expect("captured state"),
+            round_result: self.round_result,
+            output_pairs: self.output_pairs,
+        }
     }
 
     // ----- round phase / outcome -----
@@ -645,8 +606,9 @@ impl InnerState {
 
         self.input_pairs = round_inputs.into_iter().collect();
         self.output_pairs = vec![];
-        self.committed_state = None;
-        self.dirty_state = None;
+        // Replay mode never sets captured_state, so resetting here is just
+        // defensive; included for symmetry with the other per-round fields.
+        self.captured_state = None;
         self.round_result = None;
         self.phase = RoundPhase::InProgress;
     }

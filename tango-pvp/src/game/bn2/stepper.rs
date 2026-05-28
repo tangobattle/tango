@@ -161,7 +161,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
+                // Replay-mode-only first-commit hook. FF mode bypasses this
+                // (commit_tick = u32::MAX there).
+                if state.is_replaying()
+                    && current_tick == state.commit_tick()
+                    && !state.has_committed_this_round()
+                    && state.round_active()
+                {
                     // Mirror primary: re-seed rng_state at first commit. Primary
                     // sets it once at comm_menu_init_ret (used during init) and
                     // again here (used in-battle). Without this second seed in
@@ -171,12 +177,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                         munger.set_rng_state(core, shared_rng_state);
                     }
                     // v0x18 replay stores joyflags only; seed local_packet
-                    // from the game's tx_packet (set by the comm-menu
-                    // bg-gen path) so set_committed_state has a packet to
-                    // record and the upcoming send/receive trap has a
-                    // value to inject into rx[local].
+                    // from the game's tx_packet (set by the comm-menu bg-gen
+                    // path) so the upcoming send/receive trap has a value to
+                    // inject into rx[local].
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.set_committed_state(core.save_state().expect("save committed state"));
+                    state.on_first_commit();
                 }
 
                 let Some(ip) = state.peek_input_pair().cloned() else {
@@ -185,13 +190,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                if current_tick == state.present_tick() {
-                    state.set_present_state(core.save_state().expect("save present state"));
-                }
-
-                if current_tick == state.dirty_tick() {
+                // FF state capture (post-peek so r4 is set). `capture_tick` is
+                // u32::MAX in replay mode, so this never fires there.
+                if current_tick == state.capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    state.set_captured_state(core.save_state().expect("save captured state"));
                 }
             })
         }),

@@ -174,7 +174,7 @@ pub(super) fn traps(
                 if !round.has_committed_state() {
                     return;
                 }
-                round.increment_current_tick();
+                round.advance_frontier();
             })
         }),
     ]

@@ -172,7 +172,7 @@ pub(super) fn traps(
                     return;
                 }
 
-                round.increment_current_tick();
+                round.advance_frontier();
                 let game_current_tick = munger.current_tick(core);
                 let expected = round.last_loaded_tick() + 1;
                 if game_current_tick != expected {

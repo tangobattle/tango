@@ -200,7 +200,7 @@ impl Match {
             let Some(round) = round_state.take() else {
                 return Ok(());
             };
-            log::info!("round ended at {:x}", round.current_tick());
+            log::info!("round ended at {:x}", round.frontier());
         }
         self.shadow.lock().advance_until_round_end()?;
         // Bump BEFORE sending so a racing remote-Input arrival is compared
@@ -341,9 +341,9 @@ impl Match {
         log::info!("preparing round state");
 
         const MAX_QUEUE_LENGTH: usize = 120;
-        let iq = crate::input::PairQueue::new(MAX_QUEUE_LENGTH);
+        let input_queue = crate::input::PairQueue::new(MAX_QUEUE_LENGTH);
 
-        *round_state = Some(Round::new(self, iq)?);
+        *round_state = Some(Round::new(self, input_queue)?);
         self.bump_round_progress();
         log::info!("round has started");
         Ok(())

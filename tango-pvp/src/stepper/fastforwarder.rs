@@ -5,22 +5,20 @@ use super::types::RoundResult;
 
 /// Output of a single Fastforwarder run.
 pub struct FastforwardResult {
-    pub committed_state: crate::battle::CommittedState,
-    /// State to hand the display core: the run's estimate of
-    /// `frontier - presentation_delay`, captured at the same `main_read_joyflags`
-    /// point as `dirty_state` so it loads seamlessly on the render core.
-    /// `None` when no display core is active (`present_tick` left past
-    /// `dirty_tick`), so games on the legacy single-core path pay nothing.
-    pub present_state: Option<Box<mgba::state::State>>,
-    pub dirty_state: crate::battle::CommittedState,
+    /// State captured at `capture_tick` post-peek: the per-game stepper trap
+    /// fires `main_read_joyflags`, sets r4 to the peeked input's local
+    /// joyflags, and snapshots from there — so loading this state into either
+    /// the live core (immediate render) or another `fastforward` run (as the
+    /// next base state) resumes with the right local-joyflags register.
+    pub state: crate::battle::CommittedState,
     pub round_result: Option<RoundResult>,
     pub output_pairs: Vec<Pair<Input, Input>>,
 }
 
 /// Per-Match emulator dedicated to running the per-frame stepper traps over a
 /// known input window. Each [`fastforward`](Fastforwarder::fastforward) call
-/// loads a saved state, processes the input pairs, and returns fresh
-/// committed and dirty save snapshots.
+/// loads a saved state, processes the input pairs, and returns a single fresh
+/// save snapshot at `capture_tick`.
 pub struct Fastforwarder {
     core: mgba::core::Core,
     state: State,
@@ -47,11 +45,10 @@ impl Fastforwarder {
         traps.extend(hooks.stepper_traps(state.clone()));
         core.set_traps(traps);
         core.as_mut().reset();
-        // Headless re-sim core: never rasterize. Its pixels are never shown (the
-        // display core re-renders from the states this captures), and it re-sims
-        // the speculative window every frame, so skipping drawScanline cuts a
-        // large constant off the dominant cost. Set after reset() — which zeroes
-        // frameskip — and it sticks (frameskip isn't serialized).
+        // Headless re-sim core: never rasterize. Its pixels are never shown,
+        // and the round re-runs the FF every frame, so skipping drawScanline
+        // cuts a large constant off the dominant cost. Set after reset() —
+        // which zeroes frameskip — and it sticks (frameskip isn't serialized).
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
         Ok(Fastforwarder {
@@ -63,15 +60,12 @@ impl Fastforwarder {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
         input_pairs: Vec<Pair<PartialInput, PartialInput>>,
         current_tick: u32,
-        commit_tick: u32,
-        dirty_tick: u32,
-        present_tick: u32,
+        capture_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>,
     ) -> anyhow::Result<FastforwardResult> {
@@ -83,9 +77,7 @@ impl Fastforwarder {
             self.local_player_index,
             input_pairs,
             current_tick,
-            commit_tick,
-            dirty_tick,
-            present_tick,
+            capture_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
@@ -94,10 +86,7 @@ impl Fastforwarder {
             {
                 let mut guard = self.state.0.lock();
                 let inner = guard.as_mut().unwrap();
-                if inner.has_committed_state_snapshot()
-                    && inner.has_dirty_state_snapshot()
-                    && inner.has_present_state_snapshot()
-                {
+                if inner.has_captured_state() {
                     return Ok(guard.take().expect("state").into_fastforward_result());
                 }
                 let _ = inner.take_error();

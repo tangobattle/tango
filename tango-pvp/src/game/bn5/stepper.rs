@@ -101,7 +101,14 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 let current_tick = state.current_tick();
 
-                if current_tick == state.commit_tick() && !state.has_committed_this_round() && state.round_active() {
+                // Replay-mode-only first-commit hook: seed RNG, snap game tick
+                // to 0, run the shadow-side first-commit advance. FF mode
+                // bypasses this entirely (commit_tick = u32::MAX there).
+                if state.is_replaying()
+                    && current_tick == state.commit_tick()
+                    && !state.has_committed_this_round()
+                    && state.round_active()
+                {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock();
                         let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
@@ -114,7 +121,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                         munger.set_current_tick(core, 0);
                     }
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.set_committed_state(core.save_state().expect("save committed state"));
+                    state.on_first_commit();
                 }
 
                 let game_current_tick = munger.current_tick(core);
@@ -128,13 +135,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                if current_tick == state.present_tick() {
-                    state.set_present_state(core.save_state().expect("save present state"));
-                }
-
-                if current_tick == state.dirty_tick() {
+                // FF state capture (post-peek so r4 is set). `capture_tick` is
+                // u32::MAX in replay mode, so this never fires there.
+                if current_tick == state.capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    state.set_captured_state(core.save_state().expect("save captured state"));
                 }
             })
         }),
