@@ -23,6 +23,7 @@ mod save;
 mod save_view;
 mod scanner;
 mod scrubber;
+mod sdl_init;
 mod selection;
 mod session;
 mod singleplayer_session;
@@ -198,11 +199,14 @@ fn run_app() -> iced::Result {
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.
     mgba::log::install_default_logger();
 
-    // Warm the SDL gamepad context now (main thread) so the first
-    // emulator session's first redraw doesn't pay for SDL_Init +
-    // enumerating + opening every attached controller. sdl3
-    // enforces "first thread to call init owns the pump", so we
-    // have to do this on the iced/winit main thread anyway.
+    // Initialize SDL3 itself + warm the gamepad context now (main
+    // thread) so the first emulator session's first redraw doesn't
+    // pay for SDL_Init + enumerating + opening every attached
+    // controller, and so the audio backend below can borrow the
+    // already-initialized Sdl. sdl3 enforces "first thread to call
+    // init owns the pump", so this has to happen on the iced/winit
+    // main thread.
+    sdl_init::init();
     gamepad::init();
 
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.

@@ -1,24 +1,25 @@
 //! Global SDL3 gamepad helper. Replaces the previous `gilrs`
 //! dependency.
 //!
-//! SDL3's `Sdl`, `EventPump`, and `GamepadSubsystem` are all `!Send`
-//! and the crate enforces "first thread to call `SDL_Init` is the
-//! only one that can pump". We wrap the context in a `Send` newtype
-//! so it can live in a plain `static`, and rely on the discipline
-//! that [`init`] runs on the iced/winit main thread and every
-//! [`pump`] call site (widget `update()`) does too — sdl3's own
-//! runtime check will catch any cross-thread misuse anyway.
+//! SDL3 itself is initialized in [`crate::sdl_init`] — this
+//! module just borrows the global `Sdl` to spin up an
+//! `EventPump` and `GamepadSubsystem` on the main thread. Both
+//! are `!Send` and the crate enforces "first thread to call
+//! `SDL_Init` is the only one that can pump", so we wrap the
+//! local context in a `Send` newtype and hand-check the owning
+//! thread at every access.
 //!
-//! The event pump is a singleton — only one `EventPump` can exist at
-//! a time per the sdl3 crate's reference counting — so a single
-//! shared pumper is the only viable shape. [`pump`] drains the entire
-//! pump once and emits gamepad-relevant events via a callback.
-//! Auto-opens gamepads on `ControllerDeviceAdded` and closes on
-//! `Removed` so the caller doesn't have to.
+//! The event pump is a singleton — only one `EventPump` can exist
+//! at a time per the sdl3 crate's reference counting — so a
+//! single shared pumper is the only viable shape. [`pump`] drains
+//! the entire pump once and emits gamepad-relevant events via a
+//! callback. Auto-opens gamepads on `ControllerDeviceAdded` and
+//! closes on `Removed` so the caller doesn't have to.
 //!
-//! Convenience: [`GamepadEvent`] is the small subset we actually care
-//! about (button up/down, axis motion, device removed). Keeps the call
-//! sites independent of `sdl3`'s richer event enum.
+//! Convenience: [`GamepadEvent`] is the small subset we actually
+//! care about (button up/down, axis motion, device removed).
+//! Keeps the call sites independent of `sdl3`'s richer event
+//! enum.
 
 use std::collections::HashMap;
 use std::thread::ThreadId;
@@ -27,9 +28,10 @@ use parking_lot::Mutex;
 use sdl3::event::Event as SdlEvent;
 use sdl3::gamepad::{Button, Gamepad};
 use sdl3::sys::joystick::SDL_JoystickID;
-use sdl3::{EventPump, GamepadSubsystem, Sdl};
+use sdl3::{EventPump, GamepadSubsystem};
 
 use crate::input::GamepadAxis;
+use crate::sdl_init;
 
 /// What `input_capture` / settings binding-capture care about. Keeps
 /// the surface narrow so we don't propagate `sdl3` types into the
@@ -45,7 +47,6 @@ pub enum GamepadEvent {
 }
 
 struct Context {
-    _sdl: Sdl,
     pump: EventPump,
     gamepads: GamepadSubsystem,
     /// Keep `Gamepad` handles alive — `GamepadSubsystem::open` returns
@@ -54,12 +55,6 @@ struct Context {
     open: HashMap<u32, Gamepad>,
 }
 
-/// `Sdl` and friends carry `PhantomData<*mut ()>` to opt out of `Send`
-/// (sdl3 enforces single-thread ownership at runtime). We need a
-/// plain `static` to hold the context though, so wrap it and
-/// hand-check at every borrow that we're on the same thread that
-/// called [`init`]. Catches the misuse earlier and with a clearer
-/// panic message than sdl3's own check would.
 struct SendContext {
     inner: Context,
     owner: ThreadId,
@@ -91,34 +86,25 @@ impl SendContext {
     }
 }
 
-static SDL_CONTEXT: Mutex<Option<SendContext>> = Mutex::new(None);
+static GAMEPAD_CONTEXT: Mutex<Option<SendContext>> = Mutex::new(None);
 
-/// Initialize SDL, open every attached gamepad, and stash the context
-/// in the global. Call this once at startup on the iced/winit main
-/// thread. Failures are logged and turn subsequent [`pump`] calls
-/// into no-ops — the app keeps running without gamepad support.
+/// Open every attached gamepad and stash the context in the
+/// global. Call this once at startup, after
+/// [`crate::sdl_init::init`], on the iced/winit main thread.
+/// Failures are logged and turn subsequent [`pump`] calls into
+/// no-ops — the app keeps running without gamepad support.
 pub fn init() {
-    // Per the SDL3 gamepad example: needed on Windows so the joystick
-    // subsystem spins up its own polling thread when we don't have a
-    // video subsystem hooked into the message loop.
-    sdl3::hint::set("SDL_JOYSTICK_THREAD", "1");
-
-    let ctx = match build_context() {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!("sdl3 gamepad init failed: {e}");
-            return;
-        }
-    };
-    *SDL_CONTEXT.lock() = Some(SendContext::new(ctx));
+    match sdl_init::with_sdl(build_context) {
+        Some(Ok(ctx)) => *GAMEPAD_CONTEXT.lock() = Some(SendContext::new(ctx)),
+        Some(Err(e)) => log::warn!("sdl3 gamepad init failed: {e}"),
+        None => log::warn!("sdl3 gamepad init skipped: sdl not initialized"),
+    }
 }
 
-fn build_context() -> Result<Context, String> {
-    let sdl = sdl3::init().map_err(|e| e.to_string())?;
+fn build_context(sdl: &sdl3::Sdl) -> Result<Context, String> {
     let gamepads = sdl.gamepad().map_err(|e| e.to_string())?;
     let pump = sdl.event_pump().map_err(|e| e.to_string())?;
     let mut ctx = Context {
-        _sdl: sdl,
         pump,
         gamepads,
         open: HashMap::new(),
@@ -143,7 +129,7 @@ fn build_context() -> Result<Context, String> {
 /// internally — callers only see the narrow [`GamepadEvent`]. No-op
 /// if [`init`] never succeeded.
 pub fn pump(mut on_event: impl FnMut(GamepadEvent)) {
-    let mut guard = SDL_CONTEXT.lock();
+    let mut guard = GAMEPAD_CONTEXT.lock();
     let Some(wrapper) = guard.as_mut() else { return };
     let ctx = wrapper.get_mut();
     while let Some(event) = ctx.pump.poll_event() {

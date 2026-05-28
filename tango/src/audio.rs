@@ -1,10 +1,9 @@
-//! Audio core: a Stream trait, a late-binding mux so the cpal output
-//! stream can outlive any one session, and the MGBAStream adapter that
-//! pulls samples out of an mgba thread and resamples to the host rate.
-//!
-//! Ported with minor cleanups from `tango/src/audio.rs`.
+//! Audio core: a Stream trait, a late-binding mux so the host
+//! output stream can outlive any one session, and the MGBAStream
+//! adapter that pulls samples out of an mgba thread and resamples
+//! to the host rate.
 
-pub mod cpal;
+pub mod sdl;
 
 pub const NUM_CHANNELS: usize = 2;
 pub const SAMPLES: usize = 512;
@@ -32,7 +31,7 @@ impl Drop for Binding {
 }
 
 /// A `Stream` whose underlying source can be swapped at runtime. The
-/// cpal output stream binds to this once at startup; sessions then bind
+/// host audio backend binds to this once at startup; sessions then bind
 /// their MGBAStream into it on open and drop the Binding on close.
 #[derive(Clone)]
 pub struct LateBinder {
@@ -89,8 +88,8 @@ impl Stream for LateBinder {
         let n = match &mut *s {
             None => {
                 // Silence when nothing's bound. Returning buf.len()
-                // means we consider the whole buffer "filled" so cpal
-                // doesn't pad-and-loop the last samples.
+                // means we consider the whole buffer "filled" so the
+                // backend doesn't pad-and-loop the last samples.
                 for v in buf.iter_mut() {
                     *v = [0, 0];
                 }

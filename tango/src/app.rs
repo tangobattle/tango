@@ -127,12 +127,12 @@ pub struct App {
     tab: Tab,
     scanners: Scanners,
     /// Cloned into every session so they can bind their MGBAStream
-    /// without owning the cpal backend. The cpal Backend lives in
+    /// without owning the audio backend. The sdl Backend lives in
     /// `_audio_backend` so the underlying stream keeps playing.
     audio_binder: audio::LateBinder,
     /// Kept alive for the program's lifetime; dropping it would tear
-    /// down the cpal output stream and the app would go silent.
-    _audio_backend: Option<audio::cpal::Backend>,
+    /// down the SDL audio stream and the app would go silent.
+    _audio_backend: Option<audio::sdl::Backend>,
 
     /// Owned game+save+assets for the current selection. Rebuilt only
     /// when game or save changes; per-frame view() borrows it.
@@ -233,20 +233,21 @@ impl App {
         }
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
-        // Spin up cpal once at startup with the LateBinder as the
-        // source. Sessions later bind their MGBAStream into the binder
-        // and the cpal stream keeps going across selections.
+        // Spin up the SDL audio backend once at startup with the
+        // LateBinder as the source. Sessions later bind their
+        // MGBAStream into the binder and the SDL stream keeps going
+        // across selections.
         let mut audio_binder = audio::LateBinder::new();
         audio_binder.set_volume(config.volume);
-        let audio_backend = match audio::cpal::Backend::new(audio_binder.clone()) {
+        let audio_backend = match audio::sdl::Backend::new(audio_binder.clone()) {
             Ok(b) => {
                 use audio::Backend;
                 audio_binder.set_sample_rate(b.sample_rate());
-                log::info!("audio: cpal backend up at {} Hz", b.sample_rate());
+                log::info!("audio: sdl backend up at {} Hz", b.sample_rate());
                 Some(b)
             }
             Err(e) => {
-                log::warn!("audio: cpal init failed, running silent: {e:?}");
+                log::warn!("audio: sdl init failed, running silent: {e:?}");
                 None
             }
         };
