@@ -120,11 +120,18 @@ pub struct State {
     /// (`Message::CloseSettings`). The emulator keeps running
     /// underneath; we just swap what `App::view` renders.
     pub show_settings: bool,
-    /// Replay-only: cogwheel-anchored options popover. Currently
-    /// hosts the playback-speed picker; future per-replay knobs
-    /// (filter overrides, audio toggle, etc.) live here too.
-    /// Closes when a setting is changed or the session is closed.
+    /// Ellipsis-anchored "more options" popover. The trigger lives
+    /// in every session type's controls strip; the contents vary
+    /// (replay gets the speed picker + Close; SP gets just
+    /// Settings + Close; PvP swaps Close for the red Forfeit
+    /// item). Closes when any item is picked, the session is
+    /// closed, or the trigger is toggled again.
     pub show_options_menu: bool,
+    /// PvP-only: the "are you sure?" modal that gates the
+    /// Forfeit item in the options menu. Forfeit tears the
+    /// session down mid-match (same as Close), so the confirm
+    /// keeps a stray click from costing the user a real game.
+    pub show_forfeit_confirm: bool,
     /// Latest GBA framebuffer rebuilt into an iced image handle.
     /// Refreshed in [`Message::UpdateFramebuffer`] (which the
     /// session subscription fires once per emulator vblank); the
@@ -149,6 +156,7 @@ impl Default for State {
             speed_up_engaged: false,
             show_settings: false,
             show_options_menu: false,
+            show_forfeit_confirm: false,
             current_handle: None,
         }
     }
@@ -183,8 +191,15 @@ pub enum Message {
     Seek(u32),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
-    /// Open/close the cogwheel-anchored options popover. Replay-only.
+    /// Open/close the ellipsis-anchored options popover.
     ToggleOptionsMenu,
+    /// Show the "really forfeit?" modal. PvP-only; picked from
+    /// the options menu's Forfeit item, which also dismisses
+    /// the popover.
+    OpenForfeitConfirm,
+    /// Dismiss the forfeit confirm without forfeiting (the
+    /// Cancel button + the modal backdrop both fire this).
+    CloseForfeitConfirm,
     /// Show/hide the opponent's reveal-setup side panel. PvP-only.
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel. PvP-only.
@@ -210,6 +225,10 @@ pub enum Message {
     /// `notify_one()`'d by both the frame callback and the PvP
     /// end-detection wires.
     UpdateFramebuffer,
+    /// Click-swallower for modal panel chrome — keeps presses
+    /// on the panel's inert regions from falling through to the
+    /// dismiss-on-press backdrop layer beneath it.
+    NoOp,
 }
 
 /// Atomic input event we feed to the mapping resolver. Carries
@@ -247,6 +266,7 @@ impl State {
                 self.active = None;
                 self.current_handle = None;
                 self.show_options_menu = false;
+                self.show_forfeit_confirm = false;
             }
             Message::Input(ev) => {
                 match ev {
@@ -309,6 +329,14 @@ impl State {
             Message::ToggleOptionsMenu => {
                 self.show_options_menu = !self.show_options_menu;
             }
+            Message::OpenForfeitConfirm => {
+                self.show_options_menu = false;
+                self.show_forfeit_confirm = true;
+            }
+            Message::CloseForfeitConfirm => {
+                self.show_forfeit_confirm = false;
+            }
+            Message::NoOp => {}
             Message::ToggleOpponentPanel => {
                 self.show_opponent_panel = !self.show_opponent_panel;
             }
@@ -329,6 +357,7 @@ impl State {
             }
             Message::OpenSettings => {
                 self.show_settings = true;
+                self.show_options_menu = false;
             }
             Message::CloseSettings => {
                 self.show_settings = false;
@@ -344,6 +373,7 @@ impl State {
                         self.active = None;
                         self.current_handle = None;
                         self.show_options_menu = false;
+                        self.show_forfeit_confirm = false;
                     } else {
                         let pixels = self.vbuf.lock().clone();
                         self.current_handle = Some(build_frame_handle(pixels, video_filter));
@@ -545,40 +575,39 @@ pub fn view<'a>(
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let ctrl_icon_btn_maybe =
-        |icon: Icon,
-         label: String,
-         msg: Option<Message>,
-         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
-         -> Element<'a, Message> {
-            let mut btn = iced::widget::button(icon.widget().size(CTRL_ICON))
-                .padding(CTRL_PAD)
-                .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-                .style(style);
-            if let Some(m) = msg {
-                btn = btn.on_press(m);
-            }
-            iced::widget::tooltip(
-                btn,
-                iced::widget::container(text(label).size(TEXT_CAPTION))
-                    .padding(6)
-                    .style(|theme: &iced::Theme| {
-                        let p = theme.extended_palette();
-                        iced::widget::container::Style {
-                            background: Some(iced::Background::Color(p.background.strong.color)),
-                            text_color: Some(p.background.strong.text),
-                            border: iced::Border {
-                                radius: 4.0.into(),
-                                ..Default::default()
-                            },
+    let ctrl_icon_btn_maybe = |icon: Icon,
+                               label: String,
+                               msg: Option<Message>,
+                               style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+     -> Element<'a, Message> {
+        let mut btn = iced::widget::button(icon.widget().size(CTRL_ICON))
+            .padding(CTRL_PAD)
+            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+            .style(style);
+        if let Some(m) = msg {
+            btn = btn.on_press(m);
+        }
+        iced::widget::tooltip(
+            btn,
+            iced::widget::container(text(label).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
                             ..Default::default()
-                        }
-                    }),
-                iced::widget::tooltip::Position::Top,
-            )
-            .gap(4)
-            .into()
-        };
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    };
     let ctrl_icon_btn_styled =
         |icon: Icon,
          label: String,
@@ -634,7 +663,14 @@ pub fn view<'a>(
         }
         _ => None,
     };
-    let close_btn = ctrl_icon_btn(Icon::X, t!(lang, "playback-close"), Message::Close);
+    // "More options" trigger for the unified popover. Ellipsis
+    // rather than a cogwheel so it doesn't visually duplicate the
+    // Settings item INSIDE the popover (which uses the cogwheel).
+    // Same widget across all session types — Replay puts a speed
+    // picker in the popover body, SP/PvP don't; all three surface
+    // Settings + a tear-down item (Close for SP/Replay, red
+    // Forfeit for PvP).
+    let options_btn = ctrl_icon_btn(Icon::Ellipsis, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
 
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
 
@@ -681,25 +717,21 @@ pub fn view<'a>(
                 .height(Fill)
                 .padding(widgets::PANE_PADDING)
                 .style(widgets::panel);
-            content_row = content_row.push(
-                container(pane).height(Fill).padding(widgets::PANE_PADDING),
-            );
+            content_row = content_row.push(container(pane).height(Fill).padding(widgets::PANE_PADDING));
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
     if let ActiveSession::PvP(s) = session {
         if state.show_opponent_panel && s.opponent_loaded.is_some() {
             let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel =
-                save_view::view(lang, opponent, &s.opponent_save_view, true, None, false).map(Message::OpponentSaveViewAction);
+            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false)
+                .map(Message::OpponentSaveViewAction);
             let pane = container(panel)
                 .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
                 .height(Fill)
                 .padding(widgets::PANE_PADDING)
                 .style(widgets::panel);
-            content_row = content_row.push(
-                container(pane).height(Fill).padding(widgets::PANE_PADDING),
-            );
+            content_row = content_row.push(container(pane).height(Fill).padding(widgets::PANE_PADDING));
         }
     }
     let emu_pane: Element<'a, Message> = container(stack![backdrop, Element::from(content_row)])
@@ -726,11 +758,6 @@ pub fn view<'a>(
         let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
             .round_boundaries(r.round_boundaries())
             .view();
-
-        // Cogwheel toggle for the options popover (speed, future
-        // per-replay knobs). YouTube-style — keeps the transport at
-        // a single row of glyphs while the menu is closed.
-        let options_btn = ctrl_icon_btn(Icon::Settings, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
 
         // Play/Pause is the transport's centerpiece — promote to
         // the primary-button style when paused (the affordance
@@ -805,14 +832,13 @@ pub fn view<'a>(
                     .size(14)
                     .font(iced::Font::MONOSPACE)
                     .style(widgets::muted_text_style),
-            )
-            .push(options_btn);
+            );
     } else {
         // No transport widgets for SP/PvP. Drop the self-setup
-        // toggle on the left (PvP-only) so it pairs visually
-        // with the right-anchored opponent toggle, then push a
-        // spacer so the rest of the strip (metrics, settings,
-        // opponent, close) hugs the right edge.
+        // toggle on the left (PvP-only) so it pairs visually with
+        // the right-anchored opponent toggle, then push a spacer
+        // so the rest of the strip (metrics, opponent, options)
+        // hugs the right edge.
         if let Some(t) = self_toggle {
             controls = controls.push(t);
         }
@@ -821,11 +847,7 @@ pub fn view<'a>(
     // PvP-only status readout: P1/P2, TPS, frame advantage, ping.
     // Mirrors the legacy bottom-bar metrics in
     // `tango/src/gui/session_view.rs`. Monospaced so values don't
-    // wiggle as they tick up. PvP also DOESN'T expose a manual
-    // close button — leaving a match is the in-game match-end
-    // hook's job (auto-close); the session view auto-tears down
-    // when `completion_token.is_complete()`.
-    let is_pvp = matches!(session, ActiveSession::PvP(_));
+    // wiggle as they tick up.
     if let ActiveSession::PvP(pvp) = session {
         let stats = pvp.round_stats();
         let ping_ms = pvp.latency_blocking().as_millis();
@@ -849,15 +871,15 @@ pub fn view<'a>(
         if let Some(s) = stats {
             metrics = metrics.push(
                 text(format!("skew {:+3}", s.skew))
-                .size(TEXT_BODY)
-                .font(iced::Font::MONOSPACE)
-                .style(widgets::muted_text_style),
+                    .size(TEXT_BODY)
+                    .font(iced::Font::MONOSPACE)
+                    .style(widgets::muted_text_style),
             );
             metrics = metrics.push(
                 text(format!("depth {:>3} (+{})", s.depth, s.input_delay))
-                .size(TEXT_BODY)
-                .font(iced::Font::MONOSPACE)
-                .style(widgets::muted_text_style),
+                    .size(TEXT_BODY)
+                    .font(iced::Font::MONOSPACE)
+                    .style(widgets::muted_text_style),
             );
         }
         metrics = metrics.push(
@@ -868,110 +890,214 @@ pub fn view<'a>(
         );
         controls = controls.push(metrics);
     }
-    // Settings shortcut — available in any non-replay session
-    // (both PvP and single-player). Replaces the legacy in-game
-    // pause menu; the App handler intercepts `OpenSettings`,
-    // switches tabs, and tears the session down (the session
-    // view replaces the main body while active, so we can't
-    // overlay settings in place).
-    let is_sp = matches!(session, ActiveSession::SinglePlayer(_));
-    if is_pvp || is_sp {
-        controls = controls.push(ctrl_icon_btn(
-            lucide_icons::Icon::Settings,
-            t!(lang, "tab-settings"),
-            Message::OpenSettings,
-        ));
-    }
+    // Opponent setup-reveal toggle (PvP-only) sits to the left of
+    // the options trigger so the ellipsis stays the rightmost
+    // item — the popover anchors above it.
     if let Some(toggle) = opponent_toggle {
         controls = controls.push(toggle);
     }
-    if !is_pvp {
-        controls = controls.push(close_btn);
-    } else {
-        // Silences the unused-binding warning when we skip the
-        // close button on PvP.
-        let _ = close_btn;
-    }
+    // Options ellipsis is the unified entry point to session-level
+    // commands (Settings, replay speed, Close / Forfeit). Always
+    // last so the popover lands above a consistent right-edge
+    // anchor regardless of session type.
+    controls = controls.push(options_btn);
     layout = layout
         .push(widgets::hud_scanline())
         .push(container(controls).width(Fill).style(widgets::hud_bar));
 
-    // Replay options popover. Built as a top Stack layer anchored
-    // above the HUD bar so it floats over the framebuffer without
-    // pushing the controls strip up. Only present while the
-    // cogwheel toggle is engaged on a replay session — the menu
-    // owns its own dismiss (changing a setting closes it; clicking
-    // the cogwheel again toggles it off).
-    let options_overlay: Option<Element<'a, Message>> = if state.show_options_menu && session.as_replay().is_some() {
-        let r = session.as_replay().unwrap();
-        let current = r.speed();
-        let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
-        let menu_row_style = |selected: bool| {
-            move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                use iced::widget::button::Status;
-                let p = theme.extended_palette();
-                let text = theme.palette().text;
-                let primary = theme.palette().primary;
-                let tint = |a: f32| iced::Background::Color(iced::Color { a, ..primary });
-                let bg = match status {
-                    Status::Hovered => Some(tint(if p.is_dark { 0.18 } else { 0.14 })),
-                    Status::Pressed => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
-                    _ if selected => Some(tint(if p.is_dark { 0.12 } else { 0.10 })),
-                    _ => None,
-                };
-                iced::widget::button::Style {
-                    background: bg,
-                    text_color: if selected { primary } else { text },
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
+    // Ellipsis-anchored options popover. Built as a top Stack
+    // layer anchored above the HUD bar so it floats over the
+    // framebuffer without pushing the controls strip up. The
+    // menu owns its own dismiss — picking any item closes it;
+    // clicking the trigger again toggles it off.
+    //
+    // Content varies by session type:
+    //   Replay → Settings, Speed picker, Close
+    //   SP     → Settings, Close
+    //   PvP    → Settings, (red) Forfeit
+    let options_overlay: Option<Element<'a, Message>> = if state.show_options_menu {
+        // Row item width. Wider than the historical 120px speed
+        // picker so "Forfeit" + its icon sit on one line without
+        // wrapping in any locale.
+        const ROW_WIDTH: f32 = 160.0;
+        // Total popover width = row + the panel's 6px-each-side
+        // padding. Pinned explicitly so a Fill-width child (the
+        // divider) can't propagate through the popover container
+        // and stretch the menu out to the full bottom-right pane.
+        const POPOVER_WIDTH: f32 = ROW_WIDTH + 12.0;
+        // Menu-row hover/press/selected tints. Accent drives both
+        // the selected-text color and the wash behind hover/press —
+        // pass `palette.primary` for normal rows, the Forfeit red
+        // for the destructive row. Hover/press alphas are pushed
+        // high enough (0.28 / 0.45 on dark) that the red wash on
+        // the panel plate actually reads as red, not as a slightly
+        // pink-tinted shadow.
+        fn menu_row_style(
+            theme: &iced::Theme,
+            status: iced::widget::button::Status,
+            selected: bool,
+            accent: iced::Color,
+        ) -> iced::widget::button::Style {
+            use iced::widget::button::Status;
+            let p = theme.extended_palette();
+            let text = theme.palette().text;
+            let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
+            let bg = match status {
+                Status::Hovered => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
+                Status::Pressed => Some(tint(if p.is_dark { 0.45 } else { 0.35 })),
+                _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
+                _ => None,
+            };
+            iced::widget::button::Style {
+                background: bg,
+                text_color: if selected { accent } else { text },
+                border: iced::Border {
+                    radius: 4.0.into(),
                     ..Default::default()
-                }
+                },
+                ..Default::default()
             }
-        };
-        let mut speed_col = column![].spacing(1);
-        for &v in opts {
-            let selected = (v - current).abs() < 1e-3;
-            let label = if (v - v.trunc()).abs() < 1e-3 {
-                format!("{}×", v as i32)
-            } else {
-                format!("{:.1}×", v)
+        }
+        // Build a "leading-icon + label" action row. `tint = None`
+        // uses the standard primary accent (hover/press wash only,
+        // label in normal text color); `Some(color)` swaps both the
+        // icon, the resting label color, AND the hover/press wash
+        // to the tint — used for Forfeit's danger red so the whole
+        // row reads as destructive before the user even hovers.
+        let action_row = |icon: Icon, label: String, msg: Message, tint: Option<iced::Color>| -> Element<'a, Message> {
+            let tinted_text_style = move |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(tint.unwrap_or_else(|| theme.palette().text)),
             };
-            let check: Element<'a, Message> = if selected {
-                Icon::Check.widget().size(14.0).into()
-            } else {
-                iced::widget::Space::new()
-                    .width(iced::Length::Fixed(14.0))
-                    .height(iced::Length::Fixed(14.0))
-                    .into()
-            };
-            let content = row![check, text(label).size(14)]
+            let icon_el: Element<'a, Message> = icon.widget().size(14.0).style(tinted_text_style).into();
+            let content = row![icon_el, text(label).size(14).style(tinted_text_style)]
                 .spacing(8)
                 .align_y(iced::Alignment::Center);
-            let btn = iced::widget::button(content)
+            iced::widget::button(content)
                 .padding([6, 10])
-                .width(iced::Length::Fixed(120.0))
-                .style(menu_row_style(selected))
-                .on_press(Message::SetSpeed(v));
-            speed_col = speed_col.push(btn);
-        }
-        let speed_section = column![
-            container(
+                .width(iced::Length::Fixed(ROW_WIDTH))
+                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                    let accent = tint.unwrap_or(theme.palette().primary);
+                    menu_row_style(theme, status, false, accent)
+                })
+                .on_press(msg)
+                .into()
+        };
+        // Thin divider between sections — text-tinted hairline so
+        // it reads as a separator rather than a hard line.
+        let divider = || -> Element<'a, Message> {
+            container(iced::widget::Space::new().width(Fill).height(iced::Length::Fixed(1.0)))
+                .width(Fill)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    let text = theme.palette().text;
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(iced::Color {
+                            a: if p.is_dark { 0.12 } else { 0.10 },
+                            ..text
+                        })),
+                        ..Default::default()
+                    }
+                })
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 4.0,
+                    bottom: 0.0,
+                    left: 4.0,
+                })
+                .into()
+        };
+
+        let mut sections: Vec<Element<'a, Message>> = Vec::new();
+
+        // Replay-only: speed picker section, anchored at the top.
+        // The Settings + Close pair below sits as plain menu items
+        // separated by a divider so Settings reads as a sibling of
+        // Close, not a header for the Speed section above.
+        if let Some(r) = session.as_replay() {
+            let current = r.speed();
+            let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
+            // Section header: gauge icon + "Speed" label, both
+            // muted so the header reads as a category divider
+            // instead of a clickable row.
+            let header_row = row![
+                Icon::Gauge.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
                 text(t!(lang, "playback-speed"))
                     .size(TEXT_CAPTION)
                     .style(widgets::muted_text_style),
-            )
-            .padding(iced::Padding {
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center);
+            let header = container(header_row).padding(iced::Padding {
                 top: 4.0,
                 right: 10.0,
-                bottom: 6.0,
+                bottom: 4.0,
                 left: 10.0,
-            }),
-            speed_col,
-        ]
-        .spacing(2);
-        let popover = container(speed_section).padding(6).style(widgets::panel);
+            });
+            let mut speed_col = column![header].spacing(1);
+            for &v in opts {
+                let selected = (v - current).abs() < 1e-3;
+                let label = if (v - v.trunc()).abs() < 1e-3 {
+                    format!("{}×", v as i32)
+                } else {
+                    format!("{:.1}×", v)
+                };
+                let check: Element<'a, Message> = if selected {
+                    Icon::Check.widget().size(14.0).into()
+                } else {
+                    iced::widget::Space::new()
+                        .width(iced::Length::Fixed(14.0))
+                        .height(iced::Length::Fixed(14.0))
+                        .into()
+                };
+                let content = row![check, text(label).size(14)]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center);
+                let btn = iced::widget::button(content)
+                    .padding([6, 10])
+                    .width(iced::Length::Fixed(ROW_WIDTH))
+                    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                        menu_row_style(theme, status, selected, theme.palette().primary)
+                    })
+                    .on_press(Message::SetSpeed(v));
+                speed_col = speed_col.push(btn);
+            }
+            sections.push(Element::from(speed_col));
+            sections.push(divider());
+        }
+
+        // Settings menu item. Cogwheel matches the trigger button —
+        // both refer to the same destination, so the icon doubles as
+        // a reinforcement instead of a new symbol.
+        sections.push(action_row(
+            Icon::Settings,
+            t!(lang, "tab-settings"),
+            Message::OpenSettings,
+            None,
+        ));
+
+        // Tear-down item. PvP gets the red Forfeit confirm gate;
+        // SP and Replay get a direct Close (no gate — neither path
+        // sacrifices game state on tear-down). Color matches
+        // `widgets::pvp_red_button` so the menu's destructive row,
+        // the confirm dialog's CTA, and the existing P1 toolbar
+        // accent all read as one family. No divider between
+        // Settings and the tear-down — they're sibling menu items.
+        let tear_down: Element<'a, Message> = match session {
+            ActiveSession::PvP(_) => action_row(
+                Icon::Flag,
+                t!(lang, "playback-forfeit"),
+                Message::OpenForfeitConfirm,
+                Some(iced::Color::from_rgb(0.85, 0.22, 0.28)),
+            ),
+            _ => action_row(Icon::X, t!(lang, "playback-close"), Message::Close, None),
+        };
+        sections.push(tear_down);
+
+        let body = column(sections).spacing(2);
+        let popover = container(body)
+            .padding(6)
+            .width(iced::Length::Fixed(POPOVER_WIDTH))
+            .style(widgets::panel);
         let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
         Some(
             container(popover)
@@ -991,8 +1117,67 @@ pub fn view<'a>(
         None
     };
 
+    // Forfeit confirmation modal (PvP-only). Centered panel with a
+    // dimmed click-to-dismiss backdrop — same shape as app.rs's
+    // in-session Settings modal so the two read as the same family
+    // of "this interrupts what you're doing" dialogs. Sits above
+    // the options popover in the stack so it covers the menu if
+    // the user somehow re-opened it.
+    let forfeit_overlay: Option<Element<'a, Message>> =
+        if state.show_forfeit_confirm && matches!(session, ActiveSession::PvP(_)) {
+            let title = text(t!(lang, "playback-forfeit-prompt")).size(TEXT_BODY + 4.0);
+            let body_text = text(t!(lang, "playback-forfeit-detail")).style(widgets::muted_text_style);
+            let cancel_btn = widgets::labeled_icon_button(
+                Icon::X,
+                t!(lang, "playback-cancel"),
+                Message::CloseForfeitConfirm,
+                [8.0, 14.0],
+                widgets::neutral,
+            );
+            let forfeit_btn = widgets::labeled_icon_button(
+                Icon::Flag,
+                t!(lang, "playback-forfeit"),
+                Message::Close,
+                [8.0, 14.0],
+                widgets::danger_button,
+            );
+            let buttons = row![horizontal_space(), cancel_btn, forfeit_btn]
+                .spacing(8)
+                .align_y(Alignment::Center);
+            let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
+                .width(iced::Length::Fixed(420.0))
+                .padding(20)
+                .style(widgets::panel);
+            // Swallow clicks on the panel's inert regions (title,
+            // body) so they don't fall through to the backdrop's
+            // dismiss-on-press handler. Buttons inside the panel
+            // still capture their own events.
+            let panel_swallow = iced::widget::mouse_area(panel).on_press(Message::NoOp);
+            let placement = container(panel_swallow)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center);
+            let backdrop = iced::widget::mouse_area(
+                container(iced::widget::Space::new().width(Fill).height(Fill))
+                    .width(Fill)
+                    .height(Fill)
+                    .style(|_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::CloseForfeitConfirm);
+            Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
+        } else {
+            None
+        };
+
     let mut stacked = stack![Element::from(layout)];
     if let Some(o) = options_overlay {
+        stacked = stacked.push(o);
+    }
+    if let Some(o) = forfeit_overlay {
         stacked = stacked.push(o);
     }
     stacked.into()
@@ -1192,9 +1377,7 @@ pub fn throttler_factory_for(throttler: config::NetplayThrottler) -> tango_pvp::
         // slowdown and speed-up. Clamp `min` to 0 here so the
         // surfaced strategies stay slowdown-only, matching the
         // historical asymmetric-EMA / linear-watchdog behavior.
-        config::NetplayThrottler::AsymmetricEma => {
-            Box::new(|| Box::new(Clamp::<Ema>::default().with_min(0.0)))
-        }
+        config::NetplayThrottler::AsymmetricEma => Box::new(|| Box::new(Clamp::<Ema>::default().with_min(0.0))),
         config::NetplayThrottler::LinearWatchdog => {
             Box::new(|| Box::new(Clamp::<Watchdog<Linear>>::default().with_min(0.0)))
         }
