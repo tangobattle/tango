@@ -80,7 +80,7 @@ pub struct InnerState {
     /// (seeds RNG, sets game tick to 0, advances shadow). `u32::MAX` in
     /// Fastforwarder mode (the per-game trap gates this branch on
     /// `is_replaying()` so the value is irrelevant there).
-    commit_tick: u32,
+    commit_frontier: u32,
     /// Tick at which the per-game stepper trap snapshots the state into
     /// [`captured_state`]. Captured *post-peek* (after `peek_input_pair` +
     /// `set_gpr(r4, ip.local.joyflags)`), so the saved state's r4 is the
@@ -103,7 +103,7 @@ pub struct InnerState {
 struct ReplayInit {
     match_type: (u8, u8),
     local_player_index: u8,
-    commit_tick: u32,
+    commit_frontier: u32,
     rng: SharedRng,
     shadow: SharedShadow,
     is_offerer: bool,
@@ -138,7 +138,7 @@ impl InnerState {
         let ReplayInit {
             match_type,
             local_player_index,
-            commit_tick,
+            commit_frontier,
             rng,
             shadow,
             is_offerer,
@@ -185,7 +185,7 @@ impl InnerState {
             output_pairs: vec![],
             apply_shadow_input,
             local_packet,
-            commit_tick,
+            commit_frontier,
             // Replay mode never runs the FF capture branch.
             capture_tick: u32::MAX,
             captured_state: None,
@@ -234,8 +234,8 @@ impl InnerState {
                 packet: last_local_packet,
             }),
             // FF mode bypasses the replay-mode first-commit hook (the trap
-            // branch is gated on `is_replaying()`), so `commit_tick` is unused.
-            commit_tick: u32::MAX,
+            // branch is gated on `is_replaying()`), so `commit_frontier` is unused.
+            commit_frontier: u32::MAX,
             capture_tick,
             captured_state: None,
             round_result: None,
@@ -275,14 +275,14 @@ impl InnerState {
         1 - self.local_player_index
     }
 
-    // ----- tick / commit_tick / capture_tick -----
+    // ----- tick / commit_frontier / capture_tick -----
 
     pub fn current_tick(&self) -> u32 {
         self.current_tick
     }
 
-    pub fn commit_tick(&self) -> u32 {
-        self.commit_tick
+    pub fn commit_frontier(&self) -> u32 {
+        self.commit_frontier
     }
 
     pub fn capture_tick(&self) -> u32 {
@@ -293,7 +293,7 @@ impl InnerState {
         // Replay-mode only: suppress increments before this round's first
         // commit. The game fires round_call_jump_table_ret during boot,
         // menu transitions, and inter-round animations; we mustn't let
-        // those bump current_tick past commit_tick (= 0) before the round
+        // those bump current_tick past commit_frontier (= 0) before the round
         // actually starts. In Fastforwarder mode, every increment counts.
         if let Some(replay) = self.replay.as_mut() {
             if !replay.has_committed_this_round {
@@ -659,7 +659,7 @@ impl State {
         match_type: (u8, u8),
         local_player_index: u8,
         rounds: Vec<Vec<PartialInputPair>>,
-        commit_tick: u32,
+        commit_frontier: u32,
         rng_seed: [u8; 16],
         is_offerer: bool,
         total_replay_ticks: u32,
@@ -676,7 +676,7 @@ impl State {
         let inner = InnerState::for_replay(ReplayInit {
             match_type,
             local_player_index,
-            commit_tick,
+            commit_frontier,
             rng,
             shadow,
             is_offerer,
@@ -744,7 +744,7 @@ impl State {
         let shadow = prev_replay.shadow.clone();
         let match_type = prev.match_type;
         let local_player_index = prev.local_player_index;
-        let commit_tick = prev.commit_tick;
+        let commit_frontier = prev.commit_frontier;
         let disable_bgm = prev.disable_bgm;
 
         let round_idx = checkpoint.current_round_index as usize;
@@ -762,7 +762,7 @@ impl State {
         let new_inner = InnerState::for_replay(ReplayInit {
             match_type,
             local_player_index,
-            commit_tick,
+            commit_frontier,
             rng,
             shadow,
             is_offerer,

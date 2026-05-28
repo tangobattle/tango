@@ -106,9 +106,9 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 // Replay-mode-only first-commit hook: seed RNG, snap game tick
                 // to 0, run the shadow-side first-commit advance. FF mode
-                // bypasses this entirely (commit_tick = u32::MAX there).
+                // bypasses this entirely (commit_frontier = u32::MAX there).
                 if state.is_replaying()
-                    && current_tick == state.commit_tick()
+                    && current_tick == state.commit_frontier()
                     && !state.has_committed_this_round()
                     && state.round_active()
                 {

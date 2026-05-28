@@ -162,9 +162,9 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let current_tick = state.current_tick();
 
                 // Replay-mode-only first-commit hook. FF mode bypasses this
-                // (commit_tick = u32::MAX there).
+                // (commit_frontier = u32::MAX there).
                 if state.is_replaying()
-                    && current_tick == state.commit_tick()
+                    && current_tick == state.commit_frontier()
                     && !state.has_committed_this_round()
                     && state.round_active()
                 {

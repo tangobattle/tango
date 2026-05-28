@@ -238,8 +238,8 @@ impl Round {
 
         let (committable, peeked) = self.input_queue.consume_and_peek_local();
         let last_committed_state = self.committed_state.take().expect("committed state");
-        let last_committed_tick = last_committed_state.tick;
-        let commit_tick = last_committed_tick + committable.len() as u32;
+        let prev_commit_frontier = last_committed_state.tick;
+        let commit_frontier = prev_commit_frontier + committable.len() as u32;
         self.last_rollback_depth = peeked.len() as u32;
 
         let predicted_joyflags = predicted_remote_joyflags(self.last_committed_remote_input.joyflags);
@@ -254,15 +254,15 @@ impl Round {
         } else {
             let shadow = self.shadow.clone();
             // The FF's post-peek state capture needs the trap to peek an
-            // input pair at `capture_tick` (= commit_tick). Committable holds
-            // K real pairs for ticks [last_committed_tick, commit_tick - 1];
+            // input pair at `capture_tick` (= commit_frontier). Committable holds
+            // K real pairs for ticks [prev_commit_frontier, commit_frontier - 1];
             // a single placeholder at index K lets the peek succeed at exit.
             // Its packet bytes don't matter — `apply_shadow_input` for the
             // placeholder tick still fires (in copy_input_data_entry, after
             // our capture), but the callback below gates shadow advancement
-            // on `tick < commit_tick`, so the placeholder produces no
+            // on `tick < commit_frontier`, so the placeholder produces no
             // shadow-side effect. The corresponding `output_pairs` entry is
-            // dropped by `commit_remote_inputs` since `tick >= commit_tick`.
+            // dropped by `commit_remote_inputs` since `tick >= commit_frontier`.
             let placeholder = Pair {
                 local: peeked.first().cloned().unwrap_or(PartialInput { joyflags: 0 }),
                 remote: PartialInput {
@@ -278,10 +278,10 @@ impl Round {
                 &last_committed_state.state,
                 input_pairs,
                 last_committed_state.tick,
-                commit_tick,
+                commit_frontier,
                 &last_committed_state.packet,
                 Box::new(move |tick, ip| {
-                    if tick < commit_tick {
+                    if tick < commit_frontier {
                         shadow.lock().apply_input(tick, ip)
                     } else {
                         Ok(filler_packet.clone())
@@ -291,7 +291,7 @@ impl Round {
             (result.state, result.output_pairs, result.round_result)
         };
 
-        self.commit_remote_inputs(&output_pairs, last_committed_tick, commit_tick, round_result);
+        self.commit_remote_inputs(&output_pairs, prev_commit_frontier, commit_frontier, round_result);
 
         // Display target. `frontier` is the netcode frontier (advances 1/wall-frame
         // via the post-tick hook regardless of where the live core is loaded), so
@@ -299,12 +299,12 @@ impl Round {
         let target = self.frontier.saturating_sub(self.presentation_delay);
 
         // Roll the settled checkpoint forward, *capped* at the last committed
-        // tick (`commit_tick - 1`). The seed must never absorb predicted
-        // packets — when commit_tick later catches up, the real packets at
+        // tick (`commit_frontier - 1`). The seed must never absorb predicted
+        // packets — when commit_frontier later catches up, the real packets at
         // those ticks differ from what predict_rx produced, leaving the seed
         // stale and snowballing the error every subsequent frame. The
         // speculative tail is re-simulated fresh below.
-        let settled_target = target.min(commit_tick.saturating_sub(1));
+        let settled_target = target.min(commit_frontier.saturating_sub(1));
         let rolled = self.roll_to(settled_target)?;
 
         let present_state = if target <= settled_target {
@@ -314,17 +314,17 @@ impl Round {
         } else {
             // Speculative tail: fresh sim from `new_committed_state` through the
             // peeked locals + a predicted remote, capturing the state at `target`.
-            // Range = `target - commit_tick + 1` ticks (= rollback_depth -
+            // Range = `target - commit_frontier + 1` ticks (= rollback_depth -
             // presentation_delay in steady state), which is what the live core
             // shows when the user sees beyond the commit frontier.
             let hooks = self.hooks;
             // Pre-apply `predict_rx` once so the seed already represents the
-            // packet at `commit_tick` — the callback then returns-then-predicts,
+            // packet at `commit_frontier` — the callback then returns-then-predicts,
             // i.e. on entry `predict_packet` always represents the *current*
             // tick's packet (cleaner invariant than predict-then-return).
             let mut predict_packet = self.last_committed_remote_input.packet.clone();
             hooks.predict_rx(&mut predict_packet);
-            let count = (target - commit_tick + 1) as usize;
+            let count = (target - commit_frontier + 1) as usize;
             let input_pairs: Vec<Pair<PartialInput, PartialInput>> = peeked[..count]
                 .iter()
                 .map(|local| Pair {
@@ -337,7 +337,7 @@ impl Round {
             let result = self.stepper.fastforward(
                 &new_committed_state.state,
                 input_pairs,
-                commit_tick,
+                commit_frontier,
                 target,
                 &new_committed_state.packet,
                 Box::new(move |_tick, _ip| {
@@ -354,7 +354,7 @@ impl Round {
         self.last_loaded_tick = target;
         self.update_fps_target(core);
 
-        self.finalize_round(round_result, commit_tick)
+        self.finalize_round(round_result, commit_frontier)
     }
 
     async fn send_and_queue_local_input(&mut self, joyflags: u16) -> anyhow::Result<()> {
@@ -435,7 +435,7 @@ impl Round {
         // Inputs for ticks [seed_tick, target] — inclusive: the per-game
         // stepper trap peeks an input pair at `capture_tick` before it
         // snapshots, so the queue must still hold `target`'s input or the
-        // capture is skipped and the FF spins forever. `target < commit_tick`
+        // capture is skipped and the FF spins forever. `target < commit_frontier`
         // guarantees `committed_inputs` holds it.
         let input_pairs: Vec<Pair<PartialInput, PartialInput>> = (seed_tick..=target)
             .map(|t| {
@@ -479,12 +479,12 @@ impl Round {
         &mut self,
         output_pairs: &[Pair<Input, Input>],
         start_tick: u32,
-        commit_tick: u32,
+        commit_frontier: u32,
         round_result: Option<crate::stepper::RoundResult>,
     ) {
         for (i, ip) in output_pairs.iter().enumerate() {
             let tick = start_tick + i as u32;
-            if tick >= commit_tick {
+            if tick >= commit_frontier {
                 break;
             }
 
@@ -550,12 +550,12 @@ impl Round {
     fn finalize_round(
         &mut self,
         round_result: Option<crate::stepper::RoundResult>,
-        commit_tick: u32,
+        commit_frontier: u32,
     ) -> anyhow::Result<Option<BattleOutcome>> {
         let Some(round_result) = round_result else {
             return Ok(None);
         };
-        if round_result.tick >= commit_tick {
+        if round_result.tick >= commit_frontier {
             return Ok(None);
         }
 
