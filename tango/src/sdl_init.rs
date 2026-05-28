@@ -14,6 +14,8 @@ use std::thread::ThreadId;
 use parking_lot::Mutex;
 use sdl3::Sdl;
 
+use crate::audio;
+
 struct SendSdl {
     sdl: Sdl,
     owner: ThreadId,
@@ -36,6 +38,10 @@ pub fn init() {
     // subsystem spins up its own polling thread when we don't have a
     // video subsystem hooked into the message loop.
     sdl3::hint::set("SDL_JOYSTICK_THREAD", "1");
+    // Nudge SDL toward our preferred audio buffer size for low
+    // playback latency. Advisory only — the driver can still pick a
+    // larger quantum.
+    sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", &audio::SAMPLES.to_string());
 
     let sdl = match sdl3::init() {
         Ok(s) => s,
