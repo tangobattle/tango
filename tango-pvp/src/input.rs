@@ -73,6 +73,13 @@ where
         self.remote_queue.len()
     }
 
+    /// Local inputs queued past the latest remote — the speculative window.
+    /// Invariant under `consume_and_peek_local` (which drains equal counts
+    /// from both sides), so callers can read it at any point in the frame.
+    pub fn speculative_depth(&self) -> usize {
+        self.local_queue.len().saturating_sub(self.remote_queue.len())
+    }
+
     pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<LocalInput, RemoteInput>>, Vec<LocalInput>) {
         let n = std::cmp::min(self.local_queue.len(), self.remote_queue.len());
         let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n))

@@ -113,14 +113,6 @@ pub struct Round {
     /// Active throttler strategy + its per-round state. Swappable at
     /// runtime via [`Round::set_throttler`].
     throttler: Box<dyn Throttler>,
-
-    // ---- Diagnostics ----
-    /// Speculative depth of the most recent frame: local inputs queued past
-    /// the commit frontier (= `peeked.len()` after this frame's
-    /// `consume_and_peek_local`). The number of frames a real remote packet
-    /// can force us to re-simulate when it arrives. Surfaced in the status
-    /// bar as "depth".
-    last_rollback_depth: u32,
 }
 
 impl Round {
@@ -178,8 +170,6 @@ impl Round {
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
             throttler: match_.build_throttler(),
-            // diagnostics
-            last_rollback_depth: 0,
         })
     }
 
@@ -245,7 +235,6 @@ impl Round {
         // `pending_commits` as joyflags-only — packets are derived on demand
         // by the settle below, not produced eagerly here.
         let (committable, peeked) = self.input_queue.consume_and_peek_local();
-        self.last_rollback_depth = peeked.len() as u32;
         self.commit_frontier += committable.len() as u32;
         self.pending_commits.extend(committable);
 
@@ -386,10 +375,11 @@ impl Round {
         self.last_remote_frame_advantage
     }
 
-    /// Speculative depth of the most recent FF run — the number of frames a
-    /// real remote packet can force us to roll back and re-simulate.
+    /// Speculative depth — local inputs queued past the latest remote, i.e.
+    /// the number of frames a real remote packet can force us to roll back
+    /// and re-simulate. Surfaced in the status bar as "depth".
     pub fn rollback_depth(&self) -> u32 {
-        self.last_rollback_depth
+        self.input_queue.speculative_depth() as u32
     }
 
     /// Shared input delay applied this match (`min` of the two peers'
