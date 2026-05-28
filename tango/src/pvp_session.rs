@@ -58,11 +58,6 @@ pub struct PvpSession {
     tps_counter: Arc<parking_lot::Mutex<crate::stats::Counter>>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
-    /// Display core in the two-core presentation-buffer model: renders the
-    /// live core's published `present_state` frames `presentation_delay`
-    /// behind. The live `_thread` runs headless (netcode only); this one
-    /// carries the video + audio the player sees.
-    _display_thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
     /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
     /// the session, which tears the network loop down cleanly.
@@ -330,42 +325,12 @@ impl PvpSession {
         let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
         vbuf.lock().fill(0);
 
-        // Which core is currently on screen + heard: the display core during a
-        // battle, the live core outside one (boot / interlude / comm-error
-        // screen, which the display core can't render). Set each live frame.
-        let showing_battle = Arc::new(AtomicBool::new(false));
-
-        // Two-core presentation-buffer model: stand up a display core that
-        // renders the live core's published present_state frames
-        // presentation_delay behind. The live core then runs headless (netcode
-        // + input only).
-        let display_thread = {
-            let mut dcore = mgba::core::Core::new_gba("tango")?;
-            dcore.enable_video_buffer();
-            dcore
-                .as_mut()
-                .load_rom(mgba::vfile::VFile::from_vec(local_rom.as_ref().clone()))?;
-            dcore
-                .as_mut()
-                .load_save(mgba::vfile::VFile::from_vec(local_save.to_sram_dump()))?;
-            local_hooks.patch(dcore.as_mut());
-            let mut dtraps = local_hooks.common_traps();
-            dtraps.extend(local_hooks.display_traps(inner_match.presentation()));
-            dcore.set_traps(dtraps);
-            let dthread = mgba::thread::Thread::new(dcore);
-            dthread.start()?;
-            dthread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
-            dthread
-        };
-
-        // DualMGBAStream plays whichever core is on screen (display during a
-        // battle, live outside it) and drains the other to pace it.
-        let audio_stream: Box<dyn crate::audio::Stream + Send> = Box::new(crate::audio::DualMGBAStream::new(
-            display_thread.handle(),
-            thread.handle(),
-            showing_battle.clone(),
-            audio_binder.sample_rate(),
-        ));
+        // Stage 1b: single-core PvP. The live mgba thread is the only core —
+        // it runs the netcode and renders straight to the UI. No separate
+        // display thread, no PresentationBuffer hand-off (the Round path still
+        // writes to it but no one reads it; that's pruned in Stage 1c).
+        let audio_stream: Box<dyn crate::audio::Stream + Send> =
+            Box::new(crate::audio::MGBAStream::new(thread.handle(), audio_binder.sample_rate()));
         let audio_binding = match audio_binder.bind(Some(audio_stream)) {
             Ok(b) => Some(b),
             Err(e) => {
@@ -409,73 +374,29 @@ impl PvpSession {
             }
         };
 
-        // Live core: the runahead + netcode host, and what's shown outside a
-        // battle. Feeds local input, marks TPS, drives completion. Each frame
-        // it learns whether the round path published a battle present_state (→
-        // display core is on screen) or not (→ boot / interlude / comm-error
-        // screen, where the display core can't follow, so the live core renders
-        // directly to the UI here).
+        // Single core: feeds local input from the user's atomic, marks TPS,
+        // pushes its rendered frame straight to the UI, drives completion. The
+        // display now follows the network frontier (no presentation_delay
+        // mitigation yet — that comes back in Stage 1c when the Round loads the
+        // FF's at-present_tick state instead of the at-frontier one).
         thread.set_frame_callback({
             let joyflags = joyflags.clone();
             let tps_counter = tps_counter.clone();
             let handle_completion = handle_completion.clone();
-            let buffer = inner_match.presentation();
-            let showing_battle = showing_battle.clone();
             let vbuf = vbuf.clone();
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 tps_counter.lock().mark();
-
-                let (battle, presenting) = {
-                    let mut buf = buffer.lock();
-                    (buf.take_battle_published(), buf.is_presenting())
-                };
-                showing_battle.store(battle, Ordering::Relaxed);
-                // During a battle the display core is what's shown, so the live
-                // core's rasterization is thrown away — skip it (it's the netcode
-                // host then, effectively a third headless core). Re-enable it
-                // outside a battle, where the live core is what's on screen.
-                // This is set for the *next* frame, so the battle→non-battle
-                // transition shows one stale frame before rendering resumes;
-                // battle state is sticky, so that's the only cost.
-                core.gba_mut().set_frameskip(if battle { i32::MAX } else { 0 });
-                // Outside a battle (but past the hidden boot), the live core
-                // is on screen — push its frame straight to the UI so the
-                // comm-error screen / interlude shows instead of the display
-                // core's frozen last battle frame.
-                if !battle && presenting {
+                {
                     let mut vbuf = vbuf.lock();
                     vbuf.copy_from_slice(video_buffer);
                     fix_vbuf_alpha(&mut vbuf);
-                    drop(vbuf);
-                    frame_notify.notify_one();
                 }
-
+                frame_notify.notify_one();
                 if handle_completion() {
                     thread_handle.pause();
                 }
-            }
-        });
-        // Display core: the clock that drives consumption. Its
-        // main_read_joyflags trap pops the next queued present_state in
-        // order; here we push the rendered (presentation_delay-behind) frame to
-        // the UI — but only while a battle is on screen (outside one the
-        // live core's frame_callback drives the UI instead).
-        display_thread.set_frame_callback({
-            let vbuf = vbuf.clone();
-            let frame_notify = frame_notify.clone();
-            let buffer = inner_match.presentation();
-            let showing_battle = showing_battle.clone();
-            move |_core, video_buffer, _thread_handle| {
-                if !showing_battle.load(Ordering::Relaxed) || !buffer.lock().is_presenting() {
-                    return;
-                }
-                let mut vbuf = vbuf.lock();
-                vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut vbuf);
-                drop(vbuf);
-                frame_notify.notify_one();
             }
         });
 
@@ -490,7 +411,6 @@ impl PvpSession {
             tps_counter,
             _audio_binding: audio_binding,
             _thread: thread,
-            _display_thread: display_thread,
             cancellation_token,
             latency_counter,
             _peer_conn: pre_match.peer_conn,
