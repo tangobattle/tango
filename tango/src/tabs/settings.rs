@@ -53,7 +53,6 @@ pub enum Message {
     UiScaleChanged(UiScaleChoice),
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
-    NetplayThrottlerChanged(config::NetplayThrottler),
     VolumeChanged(f32),
     /// User clicked "Update Now" on the About panel. App's
     /// settings handler calls `updater.finish_update()` which
@@ -100,7 +99,6 @@ pub enum ConfigChange {
     UiScale(f32),
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
-    NetplayThrottler(config::NetplayThrottler),
     Volume(f32),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
@@ -132,7 +130,6 @@ impl State {
             Message::UiScaleChanged(c) => Some(ConfigChange::UiScale(c.0)),
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
-            Message::NetplayThrottlerChanged(t) => Some(ConfigChange::NetplayThrottler(t)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
@@ -522,31 +519,14 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 }
 
 fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    const THROTTLE_OPTIONS: &[config::NetplayThrottler] = &[
-        config::NetplayThrottler::AsymmetricEma,
-        config::NetplayThrottler::LinearWatchdog,
-        config::NetplayThrottler::Power,
-    ];
-    column![
-        labeled::<Message>(
-            t!(lang, "settings-matchmaking-endpoint"),
-            text_input("", &config.matchmaking_endpoint)
-                .on_input(Message::MatchmakingEndpointChanged)
-                .padding(STANDARD_PADDING)
-                .width(Length::Fixed(480.0))
-                .style(widgets::chunky_text_input),
-        ),
-        labeled::<Message>(
-            t!(lang, "settings-netplay-throttler"),
-            pick_list(
-                THROTTLE_OPTIONS,
-                Some(config.netplay_throttler),
-                Message::NetplayThrottlerChanged,
-            )
+    column![labeled::<Message>(
+        t!(lang, "settings-matchmaking-endpoint"),
+        text_input("", &config.matchmaking_endpoint)
+            .on_input(Message::MatchmakingEndpointChanged)
             .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list),
-        ),
-    ]
+            .width(Length::Fixed(480.0))
+            .style(widgets::chunky_text_input),
+    ),]
     .spacing(14)
     .padding(widgets::PANE_PADDING)
     .into()

@@ -5,13 +5,8 @@ use parking_lot::Mutex as PlMutex;
 use tokio::sync::{watch, Mutex};
 
 use super::round::Round;
-use super::throttler::Throttler;
+use super::throttler::{Clamp, Ema, Throttler};
 use super::types::{MatchIdentity, ReplayConfig};
-
-/// Builds a fresh per-round throttler on demand. Owned by the Match so
-/// the round-start path can construct a new throttler for each round
-/// without the caller having to know which strategy is in use.
-pub type ThrottlerFactory = Box<dyn Fn() -> Box<dyn Throttler> + Send + Sync>;
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
@@ -37,10 +32,6 @@ pub struct Match {
     /// receive time to stamp each Input with the round it belongs to.
     peer_round_idx: AtomicU32,
     replay_writer: Arc<PlMutex<Option<crate::replay::Writer>>>,
-    /// Per-round throttler factory. Re-invoked at every `start_round`
-    /// so the active strategy can be swapped between rounds via
-    /// [`Self::set_throttler_factory`].
-    throttler_factory: PlMutex<ThrottlerFactory>,
     /// Shared input delay in frames: `min(local_frame_delay, peer_frame_delay)`.
     /// Both peers compute the same value, apply it symmetrically (local input
     /// ring + remote-queue prefill in the `Round`), and so each side's rollback
@@ -65,7 +56,6 @@ impl Match {
         shadow: crate::shadow::Shadow,
         identity: MatchIdentity,
         replay: ReplayConfig,
-        throttler_factory: ThrottlerFactory,
         input_delay: u32,
         presentation_delay: u32,
     ) -> Arc<Self> {
@@ -84,28 +74,13 @@ impl Match {
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(PlMutex::new(replay.writer)),
-            throttler_factory: PlMutex::new(throttler_factory),
             input_delay,
             presentation_delay,
         })
     }
 
-    /// Replace the throttler factory. The factory is used at every
-    /// future `start_round`; if `apply_to_current_round` is true and
-    /// a round is in flight, also swap the live round's throttler now
-    /// (resetting its accumulated state — the new strategy starts fresh).
-    pub async fn set_throttler_factory(&self, factory: ThrottlerFactory, apply_to_current_round: bool) {
-        let live_throttler = if apply_to_current_round { Some(factory()) } else { None };
-        *self.throttler_factory.lock() = factory;
-        if let Some(throttler) = live_throttler {
-            if let Some(round) = self.round_state.lock().await.as_mut() {
-                round.set_throttler(throttler);
-            }
-        }
-    }
-
     pub(super) fn build_throttler(&self) -> Box<dyn Throttler> {
-        (self.throttler_factory.lock())()
+        Box::new(Clamp::<Ema>::default().with_min(0.0))
     }
 
     pub(super) fn rom(&self) -> &[u8] {

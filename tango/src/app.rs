@@ -1434,22 +1434,6 @@ impl App {
                 self.config.volume = v;
                 self.audio_binder.set_volume(v);
             }
-            C::NetplayThrottler(t) => {
-                // Persist + propagate to the live match (if any) so the
-                // change takes effect immediately — both for future
-                // rounds (factory replaced) and for the current round
-                // (its throttler is swapped in-place, resetting state).
-                self.config.netplay_throttler = t;
-                if let Some(ActiveSession::PvP(pvp)) = &self.session.active {
-                    let match_handle = pvp.match_handle();
-                    let factory_now = session::throttler_factory_for(t);
-                    tokio::spawn(async move {
-                        if let Some(m) = match_handle.lock().await.clone() {
-                            m.set_throttler_factory(factory_now, true).await;
-                        }
-                    });
-                }
-            }
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);

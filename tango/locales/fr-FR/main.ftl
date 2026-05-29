@@ -212,7 +212,6 @@ input-key-select = Select
 input-key-speed-up = Avance rapide
 settings-enable-updater = Vérifier automatiquement les mises à jour
 settings-allow-prerelease-upgrades = Inclure les préversions lors de la vérification
-settings-netplay-throttler = Limiteur de synchronisation
 updater-current-version = Version actuelle: { $version }
 updater-latest-version = Dernière version: { $version }
 updater-loading = vérification…

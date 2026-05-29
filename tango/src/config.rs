@@ -66,32 +66,6 @@ impl std::fmt::Display for ThemeMode {
     }
 }
 
-/// Picks the live netplay throttler strategy (see
-/// `tango_pvp::battle::throttler`). Persisted in config; applied at the
-/// start of every new round, so a change in the settings panel takes
-/// effect at the next round boundary without a session restart.
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum NetplayThrottler {
-    /// Continuous EMA, asymmetric (gentle slowdown, snappy recovery).
-    /// Default.
-    #[default]
-    AsymmetricEma,
-    /// Idle-until-tripped deadband + linear engagement.
-    LinearWatchdog,
-    /// Power-law on instantaneous skew.
-    Power,
-}
-
-impl std::fmt::Display for NetplayThrottler {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            NetplayThrottler::AsymmetricEma => "Asymmetric EMA",
-            NetplayThrottler::LinearWatchdog => "Linear Watchdog",
-            NetplayThrottler::Power => "Power (legacy)",
-        })
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
@@ -187,9 +161,6 @@ pub struct Config {
     /// layout. Each mgba key can have multiple bindings.
     #[serde(default)]
     pub input_mapping: crate::input::Mapping,
-    /// Picks the netplay throttler strategy used at every new round.
-    #[serde(default)]
-    pub netplay_throttler: NetplayThrottler,
     /// Master output volume in `[0.0, 1.0]`. Multiplied into each
     /// audio sample by [`crate::audio::LateBinder`]; takes effect on
     /// the next buffer fill.
@@ -233,7 +204,6 @@ impl Default for Config {
             fullscreen: false,
             ui_scale: default_ui_scale(),
             input_mapping: crate::input::Mapping::default(),
-            netplay_throttler: NetplayThrottler::default(),
             volume: 1.0,
             frame_delay: default_frame_delay(),
         }

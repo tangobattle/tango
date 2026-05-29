@@ -110,8 +110,8 @@ pub struct Round {
     /// by ~τ (one-way delay) but in steady state advantage is constant so
     /// staleness doesn't matter.
     last_remote_frame_advantage: i16,
-    /// Active throttler strategy + its per-round state. Swappable at
-    /// runtime via [`Round::set_throttler`].
+    /// Throttler + its per-round state. Hardcoded to the asymmetric EMA
+    /// (see [`super::throttler`]); fresh instance per round.
     throttler: Box<dyn Throttler>,
 }
 
@@ -463,13 +463,6 @@ impl Round {
 
         self.settled_state = Some(result.state);
         Ok(result.round_result)
-    }
-
-    /// Swap the active throttler strategy. Mid-round-safe; the new
-    /// strategy starts from its default state (no carry-over of the
-    /// old one's smoothed skew / sustained counter / etc.).
-    pub fn set_throttler(&mut self, throttler: Box<dyn Throttler>) {
-        self.throttler = throttler;
     }
 
     fn update_fps_target(&mut self, mut core: mgba::core::CoreMutRef<'_>) {

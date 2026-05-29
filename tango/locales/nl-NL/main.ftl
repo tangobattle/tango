@@ -212,7 +212,6 @@ input-key-select = Select
 input-key-speed-up = Versnellen
 settings-enable-updater = Automatisch op app-updates controleren
 settings-allow-prerelease-upgrades = Prereleases meenemen bij update-controle
-settings-netplay-throttler = Tijdsynchronisatieregelaar
 updater-current-version = Huidige versie: { $version }
 updater-latest-version = Nieuwste versie: { $version }
 updater-loading = controleren…

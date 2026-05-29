@@ -113,7 +113,6 @@ impl PvpSession {
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
         local_loaded: Option<crate::selection::Loaded>,
-        throttler_factory: tango_pvp::battle::ThrottlerFactory,
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
@@ -257,7 +256,6 @@ impl PvpSession {
             shadow,
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
-            throttler_factory,
             input_delay,
             presentation_delay,
         );
@@ -451,14 +449,6 @@ impl PvpSession {
     /// whichever side finishes first kills the connection out
     /// from under the other and the other side's replay ends up
     /// truncated.
-    /// Hand the caller the shared `Match` slot so they can run their
-    /// own async block against it (e.g. live `set_throttler_factory`
-    /// from a settings change) without PvpSession having to mirror
-    /// each setter. Cheap Arc clone; locking is the caller's problem.
-    pub fn match_handle(&self) -> Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>> {
-        self.match_handle.clone()
-    }
-
     pub fn is_ended(&self) -> bool {
         if !self.completion_token.is_complete() {
             return false;

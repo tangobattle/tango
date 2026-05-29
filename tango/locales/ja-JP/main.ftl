@@ -217,7 +217,6 @@ settings-patch-repo = パッチリポジトリ
 settings-enable-patch-autoupdate = パッチを自動更新する
 settings-enable-updater = アプリの更新を自動チェック
 settings-allow-prerelease-upgrades = プレリリースも対象にする
-settings-netplay-throttler = 時間同期スロットル
 settings-window-size = ウィンドウサイズ
 settings-fullscreen = フルスクリーン
 settings-ui-scale = UI拡大率

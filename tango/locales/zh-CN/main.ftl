@@ -209,7 +209,6 @@ input-key-select = Select
 input-key-speed-up = 快进
 settings-enable-updater = 自动检查应用更新
 settings-allow-prerelease-upgrades = 检查更新时包含预发布版本
-settings-netplay-throttler = 时间同步策略
 updater-current-version = 当前版本: { $version }
 updater-latest-version = 最新版本: { $version }
 updater-loading = 检查中…

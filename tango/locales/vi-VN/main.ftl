@@ -209,7 +209,6 @@ input-key-select = Select
 input-key-speed-up = Tua nhanh
 settings-enable-updater = Tự động kiểm tra bản cập nhật ứng dụng
 settings-allow-prerelease-upgrades = Bao gồm bản thử nghiệm khi kiểm tra
-settings-netplay-throttler = Bộ điều tiết đồng bộ thời gian
 updater-current-version = Phiên bản hiện tại: { $version }
 updater-latest-version = Phiên bản mới nhất: { $version }
 updater-loading = đang kiểm tra…
