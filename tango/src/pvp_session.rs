@@ -11,10 +11,9 @@
 //! arrives, this is the same kind of session the UI tick loop
 //! already knows how to draw.
 
-use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub use tango_pvp::battle::EXPECTED_FPS;
 
@@ -50,12 +49,12 @@ pub struct PvpSession {
     /// Wall-clock time we first observed local completion. Used
     /// as the fallback deadline for `is_ended` so a crashed peer
     /// can't pin us forever.
-    local_completed_at: Arc<parking_lot::Mutex<Option<std::time::Instant>>>,
+    local_completed_at: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// Sliding-window timestamp counter marked once per emulator
     /// frame_callback — yields the true emulator TPS regardless
     /// of how often the UI polls. Equivalent to legacy
     /// `tango::stats::Counter` driven by the same callback site.
-    tps_counter: Arc<parking_lot::Mutex<crate::stats::Counter>>,
+    tps_counter: Arc<std::sync::Mutex<crate::stats::Counter>>,
     _audio_binding: Option<crate::audio::Binding>,
     _thread: mgba::thread::Thread,
     /// Drops fire-cancellation through the match background tasks
@@ -232,7 +231,7 @@ impl PvpSession {
         let peer_ended = Arc::new(AtomicBool::new(false));
         let peer_disconnected = Arc::new(AtomicBool::new(false));
         let local_eom_sent = Arc::new(AtomicBool::new(false));
-        let local_completed_at = Arc::new(parking_lot::Mutex::new(None::<std::time::Instant>));
+        let local_completed_at = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
         // Split each side's exchanged frame_delay into the shared input delay
         // (`min` of the two — reduces rollback depth for both peers, symmetric
         // so it's fair) and this side's leftover presentation delay (realized
@@ -320,8 +319,8 @@ impl PvpSession {
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
-        let tps_counter = Arc::new(parking_lot::Mutex::new(crate::stats::Counter::new(60)));
-        vbuf.lock().fill(0);
+        let tps_counter = Arc::new(std::sync::Mutex::new(crate::stats::Counter::new(60)));
+        vbuf.lock().unwrap().fill(0);
 
         // Single-core PvP: the live mgba thread is the only core — it runs the
         // netcode and renders straight to the UI. The `Round` loads the FF's
@@ -353,7 +352,7 @@ impl PvpSession {
                     return false;
                 }
                 if !local_eom_sent.swap(true, Ordering::AcqRel) {
-                    *local_completed_at.lock() = Some(std::time::Instant::now());
+                    *local_completed_at.lock().unwrap() = Some(std::time::Instant::now());
                     let sender = sender_for_eom.clone();
                     rt_handle.spawn(async move {
                         if let Err(e) = sender.lock().await.send_end_of_match().await {
@@ -385,9 +384,9 @@ impl PvpSession {
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
-                tps_counter.lock().mark();
+                tps_counter.lock().unwrap().mark();
                 {
-                    let mut vbuf = vbuf.lock();
+                    let mut vbuf = vbuf.lock().unwrap();
                     vbuf.copy_from_slice(video_buffer);
                     fix_vbuf_alpha(&mut vbuf);
                 }
@@ -471,7 +470,7 @@ impl PvpSession {
         if self.cancellation_token.is_cancelled() {
             return true;
         }
-        match *self.local_completed_at.lock() {
+        match *self.local_completed_at.lock().unwrap() {
             Some(t) => t.elapsed() >= PEER_END_GRACE,
             // Completion-token can flip before the frame_callback
             // observes it and stamps the deadline. Hold off
@@ -492,7 +491,7 @@ impl PvpSession {
     /// callback's interval samples. Independent of UI refresh
     /// rate. ZERO until the second sample lands.
     pub fn tps(&self) -> f32 {
-        let mean = self.tps_counter.lock().mean_duration();
+        let mean = self.tps_counter.lock().unwrap().mean_duration();
         if mean.is_zero() {
             0.0
         } else {
@@ -573,13 +572,13 @@ fn fix_vbuf_alpha(vbuf: &mut [u8]) {
 /// the live Receiver into it. Bounded to avoid hanging the
 /// PvP setup forever if something went off the rails.
 async fn drain_receiver(
-    slot: &Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    slot: &Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
 ) -> anyhow::Result<crate::net::Receiver> {
     const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
     const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
-        if let Some(r) = slot.lock().take() {
+        if let Some(r) = slot.lock().unwrap().take() {
             return Ok(r);
         }
         if tokio::time::Instant::now() >= deadline {

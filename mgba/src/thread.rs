@@ -13,7 +13,7 @@ impl<'a> InThreadHandle<'a> {
 }
 
 #[repr(transparent)]
-pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>);
+pub struct Thread(std::sync::Arc<std::sync::Mutex<Box<ThreadImpl>>>);
 
 struct ThreadImpl {
     core: core::Core,
@@ -44,7 +44,7 @@ unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
 
 pub struct AudioGuard<'a> {
     sync: sync::SyncMutRef<'a>,
-    thread: parking_lot::MutexGuard<'a, Box<ThreadImpl>>,
+    thread: std::sync::MutexGuard<'a, Box<ThreadImpl>>,
 }
 
 impl<'a> AudioGuard<'a> {
@@ -95,11 +95,11 @@ impl Thread {
         t.raw.logger.logger = logger_ptr as *mut _;
         t.raw.userData = &mut *t as *mut _ as *mut std::os::raw::c_void;
         t.raw.frameCallback = Some(c_frame_callback);
-        Thread(std::sync::Arc::new(parking_lot::Mutex::new(t)))
+        Thread(std::sync::Arc::new(std::sync::Mutex::new(t)))
     }
 
     pub fn set_frame_callback(&self, f: impl Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static) {
-        self.0.lock().frame_callback = Some(Box::new(f));
+        self.0.lock().unwrap().frame_callback = Some(Box::new(f));
     }
 
     pub fn handle(&self) -> Handle {
@@ -107,7 +107,7 @@ impl Thread {
     }
 
     pub fn start(&self) -> Result<(), crate::Error> {
-        if !unsafe { mgba_sys::mCoreThreadStart(&mut self.0.lock().raw) } {
+        if !unsafe { mgba_sys::mCoreThreadStart(&mut self.0.lock().unwrap().raw) } {
             return Err(crate::Error::CallFailed("mCoreThreadStart"));
         }
         Ok(())
@@ -125,7 +125,7 @@ impl Drop for ThreadImpl {
 
 #[derive(Clone)]
 pub struct Handle {
-    thread: std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>,
+    thread: std::sync::Arc<std::sync::Mutex<Box<ThreadImpl>>>,
 }
 
 unsafe extern "C" fn c_run_function(ptr: *mut mgba_sys::mCoreThread) {
@@ -140,22 +140,22 @@ unsafe extern "C" fn c_run_function(ptr: *mut mgba_sys::mCoreThread) {
 
 impl Handle {
     pub fn pause(&self) {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadPause(&mut thread.raw) }
     }
 
     pub fn unpause(&self) {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadUnpause(&mut thread.raw) }
     }
 
     pub fn is_paused(&self) -> bool {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadIsPaused(&mut thread.raw) }
     }
 
     pub fn run_on_core(&self, f: impl Fn(crate::core::CoreMutRef<'_>) + Send + Sync + 'static) {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         *thread.current_callback.borrow_mut() = Some(Box::new(f));
         unsafe { mgba_sys::mCoreThreadRunFunction(&mut thread.raw, Some(c_run_function)) }
     }
@@ -167,13 +167,13 @@ impl Handle {
     /// callback. `setKeys` is a single-word write to `keysActive`,
     /// safe to race with the emulator thread's KEYINPUT reads.
     pub fn set_keys(&self, keys: u32) {
-        let thread = self.thread.lock();
+        let thread = self.thread.lock().unwrap();
         let core_ptr = thread.raw.core;
         unsafe { (*core_ptr).setKeys.unwrap()(core_ptr, keys) }
     }
 
     pub fn lock_audio(&self) -> AudioGuard<'_> {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         let sync = sync::SyncMutRef {
             ptr: unsafe { &mut (*thread.raw.impl_).sync as *mut _ },
             _lifetime: std::marker::PhantomData,
@@ -185,17 +185,17 @@ impl Handle {
     }
 
     pub fn has_crashed(&self) -> bool {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadHasCrashed(&mut thread.raw) }
     }
 
     pub fn has_exited(&self) -> bool {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadHasExited(&mut thread.raw) }
     }
 
     pub fn end(&self) {
-        let mut thread = self.thread.lock();
+        let mut thread = self.thread.lock().unwrap();
         unsafe { mgba_sys::mCoreThreadEnd(&mut thread.raw) }
     }
 }

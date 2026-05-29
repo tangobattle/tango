@@ -24,7 +24,7 @@
 use std::collections::HashMap;
 use std::thread::ThreadId;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use sdl3::event::Event as SdlEvent;
 use sdl3::gamepad::{Button, Gamepad};
 use sdl3::sys::joystick::SDL_JoystickID;
@@ -95,7 +95,7 @@ static GAMEPAD_CONTEXT: Mutex<Option<SendContext>> = Mutex::new(None);
 /// no-ops — the app keeps running without gamepad support.
 pub fn init() {
     match sdl_init::with_sdl(build_context) {
-        Some(Ok(ctx)) => *GAMEPAD_CONTEXT.lock() = Some(SendContext::new(ctx)),
+        Some(Ok(ctx)) => *GAMEPAD_CONTEXT.lock().unwrap() = Some(SendContext::new(ctx)),
         Some(Err(e)) => log::warn!("sdl3 gamepad init failed: {e}"),
         None => log::warn!("sdl3 gamepad init skipped: sdl not initialized"),
     }
@@ -129,7 +129,7 @@ fn build_context(sdl: &sdl3::Sdl) -> Result<Context, String> {
 /// internally — callers only see the narrow [`GamepadEvent`]. No-op
 /// if [`init`] never succeeded.
 pub fn pump(mut on_event: impl FnMut(GamepadEvent)) {
-    let mut guard = GAMEPAD_CONTEXT.lock();
+    let mut guard = GAMEPAD_CONTEXT.lock().unwrap();
     let Some(wrapper) = guard.as_mut() else { return };
     let ctx = wrapper.get_mut();
     while let Some(event) = ctx.pump.poll_event() {

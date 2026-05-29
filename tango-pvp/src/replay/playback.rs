@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 
 use crate::hooks::Hooks;
 use crate::replay::Replay;
@@ -35,7 +35,7 @@ impl SnapshotStore {
     /// round-start snapshot exists yet for this round, or no mid-round
     /// snapshot has been taken within the prior `MID_ROUND_SNAPSHOT_INTERVAL`.
     pub fn snapshot_needed(&self, cp: &ReplayCheckpoint) -> bool {
-        let snaps = self.0.lock();
+        let snaps = self.0.lock().unwrap();
         let want_round_start = !cp.has_committed_this_round
             && !snaps.iter().any(|s| {
                 s.checkpoint.current_round_index == cp.current_round_index && !s.checkpoint.has_committed_this_round
@@ -49,7 +49,7 @@ impl SnapshotStore {
     }
 
     pub fn push(&self, snapshot: ReplaySnapshot) {
-        self.0.lock().push(snapshot);
+        self.0.lock().unwrap().push(snapshot);
     }
 
     /// Largest snapshot with `absolute_tick <= target`, if any. Used by
@@ -57,6 +57,7 @@ impl SnapshotStore {
     pub fn best_at_or_before(&self, target: u32) -> Option<ReplaySnapshot> {
         self.0
             .lock()
+            .unwrap()
             .iter()
             .filter(|s| s.checkpoint.absolute_tick <= target)
             .max_by_key(|s| s.checkpoint.absolute_tick)
@@ -69,6 +70,7 @@ impl SnapshotStore {
     pub fn best_in_range(&self, lo_exclusive: u32, hi_inclusive: u32) -> Option<ReplaySnapshot> {
         self.0
             .lock()
+            .unwrap()
             .iter()
             .filter(|s| s.checkpoint.absolute_tick > lo_exclusive && s.checkpoint.absolute_tick <= hi_inclusive)
             .max_by_key(|s| s.checkpoint.absolute_tick)
@@ -92,7 +94,7 @@ impl SnapshotStore {
         let Ok(state) = core.save_state() else {
             return;
         };
-        let Ok(shadow_snapshot) = shadow.lock().save_state() else {
+        let Ok(shadow_snapshot) = shadow.lock().unwrap().save_state() else {
             return;
         };
         self.push(ReplaySnapshot {
@@ -203,7 +205,7 @@ pub fn seek_on_core(
         // core + Round state; without restoring it, post-seek apply_input
         // calls would feed the stepper packets from the shadow's stale
         // pre-seek state.
-        shadow.lock().load_state(&snap.shadow_snapshot)?;
+        shadow.lock().unwrap().load_state(&snap.shadow_snapshot)?;
     }
 
     loop {

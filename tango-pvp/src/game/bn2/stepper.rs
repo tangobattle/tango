@@ -72,7 +72,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
-                let mut rng = rng.lock();
+                let mut rng = rng.lock().unwrap();
                 let non_shared_rng_state = pick_rng_state(&mut *rng, stepper_state.replay_is_offerer());
                 munger.set_rng_state(core, non_shared_rng_state);
                 munger.start_battle_from_comm_menu(core);
@@ -86,7 +86,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
-                let mut rng = rng.lock();
+                let mut rng = rng.lock().unwrap();
                 let shared_rng_seed = generate_rng_state(&mut *rng);
                 munger.set_rng_state(core, shared_rng_seed);
                 munger.select_battle_init_substate(core, 0x2c);
@@ -173,7 +173,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     // again here (used in-battle). Without this second seed in
                     // replay, the in-battle shared rng diverges from recording.
                     if let Some(rng) = state.replay_rng().cloned() {
-                        let shared_rng_state = generate_rng_state(&mut *rng.lock());
+                        let shared_rng_state = generate_rng_state(&mut *rng.lock().unwrap());
                         munger.set_rng_state(core, shared_rng_state);
                     }
                     // v0x18 replay stores joyflags only; seed local_packet

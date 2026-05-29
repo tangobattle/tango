@@ -39,7 +39,7 @@ impl Fastforwarder {
         core.as_mut().load_rom(rom_vf)?;
         hooks.patch(core.as_mut());
 
-        let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
+        let state = State(std::sync::Arc::new(std::sync::Mutex::new(None)));
 
         let mut traps = hooks.common_traps();
         traps.extend(hooks.stepper_traps(state.clone()));
@@ -72,7 +72,7 @@ impl Fastforwarder {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());
 
-        *self.state.0.lock() = Some(InnerState::for_fastforward(
+        *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
             input_pairs,
@@ -84,7 +84,7 @@ impl Fastforwarder {
 
         loop {
             {
-                let mut guard = self.state.0.lock();
+                let mut guard = self.state.0.lock().unwrap();
                 let inner = guard.as_mut().unwrap();
                 if inner.has_captured_state() {
                     return Ok(guard.take().expect("state").into_fastforward_result());
@@ -92,7 +92,7 @@ impl Fastforwarder {
                 let _ = inner.take_error();
             }
             self.core.as_mut().run_loop();
-            let mut guard = self.state.0.lock();
+            let mut guard = self.state.0.lock().unwrap();
             if let Some(err) = guard.as_mut().expect("state").take_error() {
                 guard.take();
                 return Err(anyhow::format_err!("replayer: {}", err));

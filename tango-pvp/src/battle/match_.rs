@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as SyncMutex};
 
-use parking_lot::Mutex as PlMutex;
 use tokio::sync::{watch, Mutex};
 
 use super::round::Round;
@@ -10,7 +9,7 @@ use super::types::{MatchIdentity, ReplayConfig};
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
-    shadow: Arc<PlMutex<crate::shadow::Shadow>>,
+    shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     rom: Vec<u8>,
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
@@ -31,7 +30,7 @@ pub struct Match {
     /// Count of `EndOfRound` packets received from the peer. Loaded at
     /// receive time to stamp each Input with the round it belongs to.
     peer_round_idx: AtomicU32,
-    replay_writer: Arc<PlMutex<Option<crate::replay::Writer>>>,
+    replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     /// Shared input delay in frames: `min(local_frame_delay, peer_frame_delay)`.
     /// Both peers compute the same value, apply it symmetrically (local input
     /// ring + remote-queue prefill in the `Round`), and so each side's rollback
@@ -61,7 +60,7 @@ impl Match {
     ) -> Arc<Self> {
         let (round_progress, _) = watch::channel(0);
         Arc::new(Self {
-            shadow: Arc::new(PlMutex::new(shadow)),
+            shadow: Arc::new(SyncMutex::new(shadow)),
             local_hooks,
             rom,
             sender: Arc::new(Mutex::new(sender)),
@@ -73,7 +72,7 @@ impl Match {
             round_progress,
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
-            replay_writer: Arc::new(PlMutex::new(replay.writer)),
+            replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             input_delay,
             presentation_delay,
         })
@@ -95,7 +94,7 @@ impl Match {
         self.identity.local_player_index
     }
 
-    pub(super) fn shadow_handle(&self) -> Arc<PlMutex<crate::shadow::Shadow>> {
+    pub(super) fn shadow_handle(&self) -> Arc<SyncMutex<crate::shadow::Shadow>> {
         self.shadow.clone()
     }
 
@@ -103,7 +102,7 @@ impl Match {
         self.sender.clone()
     }
 
-    pub(super) fn replay_writer_handle(&self) -> Arc<PlMutex<Option<crate::replay::Writer>>> {
+    pub(super) fn replay_writer_handle(&self) -> Arc<SyncMutex<Option<crate::replay::Writer>>> {
         self.replay_writer.clone()
     }
 
@@ -134,7 +133,7 @@ impl Match {
 
     /// Closes the replay file, if one is open.
     pub fn finish_replay(&self) -> anyhow::Result<()> {
-        let writer = self.replay_writer.lock().take();
+        let writer = self.replay_writer.lock().unwrap().take();
         let Some(writer) = writer else { return Ok(()) };
         writer.finish()?;
         Ok(())
@@ -158,7 +157,7 @@ impl Match {
         local_state: Box<mgba::state::State>,
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
-        self.shadow.lock().advance_until_first_committed_state()?;
+        self.shadow.lock().unwrap().advance_until_first_committed_state()?;
         round.set_first_settled_state(local_state, first_packet);
         self.bump_round_progress();
         Ok(())
@@ -177,7 +176,7 @@ impl Match {
             };
             log::info!("round ended at {:x}", round.frontier());
         }
-        self.shadow.lock().advance_until_round_end()?;
+        self.shadow.lock().unwrap().advance_until_round_end()?;
         // Bump BEFORE sending so a racing remote-Input arrival is compared
         // against the up-to-date local_round_idx.
         self.local_round_idx.fetch_add(1, Ordering::Release);
@@ -309,7 +308,7 @@ impl Match {
 
         // Mark a new round in the replay file. The body is a stream of
         // marker-prefixed records, so no count is needed up front.
-        if let Some(writer) = self.replay_writer.lock().as_mut() {
+        if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
             writer.start_round()?;
         }
 

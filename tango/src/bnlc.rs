@@ -13,7 +13,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 
 /// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6). The enum also
 /// carries the corresponding Steam app id.
@@ -95,7 +95,7 @@ impl Bnlc {
     /// Read a single file out of the cached shared `exe.dat`.
     /// Returns `None` on missing entry / IO error.
     pub fn read_shared_file(&self, path_in_zip: &str) -> Option<Vec<u8>> {
-        let mut za = self.shared.lock();
+        let mut za = self.shared.lock().unwrap();
         let mut entry = za
             .by_name(path_in_zip)
             .inspect_err(|e| log::warn!("bnlc {:?}: read {path_in_zip}: {e}", self.volume))

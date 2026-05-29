@@ -11,7 +11,7 @@
 
 use std::thread::ThreadId;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use sdl3::Sdl;
 
 use crate::audio;
@@ -52,7 +52,7 @@ pub fn init() {
             return;
         }
     };
-    *SDL.lock() = Some(SendSdl {
+    *SDL.lock().unwrap() = Some(SendSdl {
         sdl,
         owner: std::thread::current().id(),
     });
@@ -63,7 +63,7 @@ pub fn init() {
 /// than the one that ran [`init`] — sdl3's own checks would also
 /// catch this, but a clear panic message helps.
 pub fn with_sdl<R>(f: impl FnOnce(&Sdl) -> R) -> Option<R> {
-    let guard = SDL.lock();
+    let guard = SDL.lock().unwrap();
     let s = guard.as_ref()?;
     let cur = std::thread::current().id();
     assert_eq!(

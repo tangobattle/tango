@@ -707,7 +707,7 @@ impl App {
                         )
                         .await
                     },
-                    |result| Message::PvpSessionBuilt(std::sync::Arc::new(parking_lot::Mutex::new(Some(result)))),
+                    |result| Message::PvpSessionBuilt(std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
                 )
             }
             Message::Netplay(m) => {
@@ -734,7 +734,7 @@ impl App {
                 iced::Task::batch([task, self.resend_settings_if_lobby(), attention])
             }
             Message::PvpSessionBuilt(slot) => {
-                let Some(result) = slot.lock().take() else {
+                let Some(result) = slot.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
                 match result {
@@ -1224,8 +1224,8 @@ impl App {
         }
 
         let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();
-        let done_arc: std::sync::Arc<parking_lot::Mutex<Option<Result<std::path::PathBuf, String>>>> =
-            std::sync::Arc::new(parking_lot::Mutex::new(None));
+        let done_arc: std::sync::Arc<std::sync::Mutex<Option<Result<std::path::PathBuf, String>>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(None));
         let done_arc_thread = done_arc.clone();
         let output_for_thread = output_path.clone();
         // The ExportJob the tab module created in `ExportStart` already
@@ -1306,7 +1306,7 @@ impl App {
                 }
                 .map(|()| output_for_thread)
                 .map_err(|e| format!("{e}"));
-                *done_arc_thread.lock() = Some(result);
+                *done_arc_thread.lock().unwrap() = Some(result);
                 // `progress_tx` drops here, closing the channel, which
                 // signals the iced stream to read `done_arc` — which is
                 // now safely set above.
@@ -1340,7 +1340,7 @@ impl App {
                         None => {
                             // Channel closed — the task is done.
                             // Pull the result out of done_arc.
-                            let r = done.lock().take().unwrap_or_else(|| {
+                            let r = done.lock().unwrap().take().unwrap_or_else(|| {
                                 Err("export task ended without result".to_string())
                             });
                             Some((

@@ -21,7 +21,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 let Some(rng) = stepper_state.replay_rng().cloned() else {
                     return;
                 };
-                let mut rng = rng.lock();
+                let mut rng = rng.lock().unwrap();
                 let seed = generate_rng2_state(&mut *rng);
                 munger.set_rng1_state(core, seed);
                 munger.set_rng2_state(core, seed);
@@ -110,7 +110,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     && state.round_active()
                 {
                     if let Some(rng) = state.replay_rng().cloned() {
-                        let mut rng = rng.lock();
+                        let mut rng = rng.lock().unwrap();
                         let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
                         munger.set_rng1_state(core, rng1_state);
                         munger.set_rng2_state(core, rng2_state);

@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use sha2::{Digest, Sha256};
 use tango_pvp::stepper::BattleOutcome;
 

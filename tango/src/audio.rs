@@ -26,7 +26,7 @@ pub struct Binding {
 
 impl Drop for Binding {
     fn drop(&mut self) {
-        *self.binder.stream.lock() = None;
+        *self.binder.stream.lock().unwrap() = None;
     }
 }
 
@@ -36,7 +36,7 @@ impl Drop for Binding {
 #[derive(Clone)]
 pub struct LateBinder {
     sample_rate: u32,
-    stream: std::sync::Arc<parking_lot::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
+    stream: std::sync::Arc<std::sync::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
     /// User-facing master volume, stored as raw f32 bits in an atomic
     /// so the UI thread can mutate it while the audio thread reads it
     /// on each `fill`. Domain is [0.0, 1.0]; values outside clamp.
@@ -47,7 +47,7 @@ impl LateBinder {
     pub fn new() -> Self {
         Self {
             sample_rate: 0,
-            stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            stream: std::sync::Arc::new(std::sync::Mutex::new(None)),
             volume: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(1.0_f32.to_bits())),
         }
     }
@@ -73,7 +73,7 @@ impl LateBinder {
     }
 
     pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
-        let mut g = self.stream.lock();
+        let mut g = self.stream.lock().unwrap();
         if g.is_some() {
             return Err(BindingError::AlreadyBound);
         }
@@ -84,7 +84,7 @@ impl LateBinder {
 
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
-        let mut s = self.stream.lock();
+        let mut s = self.stream.lock().unwrap();
         let n = match &mut *s {
             None => {
                 // Silence when nothing's bound. Returning buf.len()

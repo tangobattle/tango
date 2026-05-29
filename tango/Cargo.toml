@@ -77,7 +77,6 @@ tango-gamedb = { path = "../tango-gamedb" }
 tango-dataview = { path = "../tango-dataview" }
 walkdir = "2"
 directories-next = "2"
-parking_lot = "0.12"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1"

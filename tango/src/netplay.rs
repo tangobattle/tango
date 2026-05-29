@@ -130,14 +130,14 @@ pub struct State {
     /// installs a fresh `(tx, rx)` pair; the subscription takes
     /// `rx` out on first poll. Stored as a once-take slot so the
     /// subscription's `fn(&D)` builder can consume without `&mut`.
-    lobby_event_rx_slot: Arc<parking_lot::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
+    lobby_event_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
     /// Receiver handed back from the lobby loop on cancel-exit.
     /// PvP handoff (`take_pre_match`) drains this into the
     /// PvpReceiver adapter; otherwise it just sits None. Reset to
     /// a fresh `Arc` on every session boundary so a dying loop
     /// from a previous session can't deposit a stale receiver
     /// into the next one.
-    post_lobby_receiver: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    post_lobby_receiver: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
     /// Settings packet. Both being `Some` means the lobby pane
@@ -204,8 +204,8 @@ impl Default for State {
             conn: None,
             cancel: CancellationToken::new(),
             session_id: 0,
-            lobby_event_rx_slot: Arc::new(parking_lot::Mutex::new(None)),
-            post_lobby_receiver: Arc::new(parking_lot::Mutex::new(None)),
+            lobby_event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
+            post_lobby_receiver: Arc::new(std::sync::Mutex::new(None)),
             lobby: LobbyState::default(),
             local_commit: None,
             remote_commitment: None,
@@ -337,7 +337,7 @@ pub enum Message {
 /// runtime needs `Message: Clone + Send`, and DataChannel /
 /// PeerConnection aren't Clone — this wrapper papers over that by
 /// taking the inner once on receipt and going None afterwards.
-pub type Slot<T> = Arc<parking_lot::Mutex<Option<T>>>;
+pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
 /// Which side of a direct-TCP connection the local instance is.
 /// Drives the offer/answer symmetry breaker the WebRTC path gets
@@ -412,8 +412,8 @@ impl State {
         self.cancel.cancel();
         self.cancel = CancellationToken::new();
         self.session_id = self.session_id.wrapping_add(1);
-        self.lobby_event_rx_slot = Arc::new(parking_lot::Mutex::new(None));
-        self.post_lobby_receiver = Arc::new(parking_lot::Mutex::new(None));
+        self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
         self.local_commit = None;
@@ -458,7 +458,7 @@ impl State {
                     // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
-                let Some(hello) = slot_rx.lock().take() else {
+                let Some(hello) = slot_rx.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
                 self.phase = Phase::Connecting {
@@ -474,7 +474,7 @@ impl State {
                     // Cancelled / superseded — late delivery, ignore.
                     _ => return iced::Task::none(),
                 };
-                let Some(payload) = slot_rx.lock().take() else {
+                let Some(payload) = slot_rx.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
                 self.phase = Phase::Negotiating { ident };
@@ -494,7 +494,7 @@ impl State {
                     Phase::Connecting { ident, .. } => ident.clone(),
                     _ => return iced::Task::none(),
                 };
-                let Some(out) = slot_rx.lock().take() else {
+                let Some(out) = slot_rx.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
                 let sender = out.sender.clone();
@@ -513,13 +513,13 @@ impl State {
                 // cancel) can no longer abort the loop mid-await
                 // and lose the receiver.
                 let (event_tx, event_rx) = futures::channel::mpsc::unbounded();
-                *self.lobby_event_rx_slot.lock() = Some(event_rx);
+                *self.lobby_event_rx_slot.lock().unwrap() = Some(event_rx);
                 let cancel = self.cancel.clone();
                 let post = self.post_lobby_receiver.clone();
                 let receiver = out.receiver;
                 tokio::spawn(async move {
                     let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
-                    *post.lock() = Some(receiver);
+                    *post.lock().unwrap() = Some(receiver);
                 });
                 self.phase = Phase::Lobby { ident };
                 iced::Task::none()
@@ -681,8 +681,8 @@ impl State {
                 self.cancel.cancel();
                 self.cancel = CancellationToken::new();
                 self.session_id = self.session_id.wrapping_add(1);
-                self.lobby_event_rx_slot = Arc::new(parking_lot::Mutex::new(None));
-                self.post_lobby_receiver = Arc::new(parking_lot::Mutex::new(None));
+                self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
+                self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
                 self.conn = None;
                 self.local_commit = None;
                 self.remote_commitment = None;
@@ -1000,7 +1000,7 @@ pub struct PreMatchData {
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
-    pub receiver_slot: Arc<parking_lot::Mutex<Option<crate::net::Receiver>>>,
+    pub receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     pub rng_seed: [u8; 16],
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,
@@ -1060,7 +1060,7 @@ pub fn subscription(state: &State) -> iced::Subscription<Message> {
 /// hash, so the Arc can change freely without re-keying.
 struct LobbyTag {
     session_id: u64,
-    event_rx_slot: Arc<parking_lot::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
+    event_rx_slot: Arc<std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Message>>>>,
 }
 
 impl std::hash::Hash for LobbyTag {
@@ -1080,7 +1080,7 @@ impl std::hash::Hash for LobbyTag {
 /// state, so dropping it is harmless.
 fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
     use futures::StreamExt;
-    let rx = tag.event_rx_slot.lock().take();
+    let rx = tag.event_rx_slot.lock().unwrap().take();
     match rx {
         Some(rx) => rx.left_stream(),
         // Re-key polled an already-consumed slot. Empty stream
@@ -1092,7 +1092,7 @@ fn build_lobby_stream(tag: &LobbyTag) -> impl futures::Stream<Item = Message> {
 }
 
 fn slot<T>(payload: T) -> Slot<T> {
-    Arc::new(parking_lot::Mutex::new(Some(payload)))
+    Arc::new(std::sync::Mutex::new(Some(payload)))
 }
 
 /// Distinct error variants for the async tasks so the message

@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
-
-use parking_lot::Mutex;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::input::{Input, Pair, PartialInput};
 
@@ -168,7 +166,7 @@ impl InnerState {
         // `apply_shadow_input` call into the Shadow handle.
         let apply_shadow_input: ApplyShadowInput = {
             let shadow = shadow.clone();
-            Box::new(move |tick, ip| shadow.lock().apply_input(tick, ip))
+            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
         };
 
         // send_count = 0 either way: fresh starts at tick 0 with empty
@@ -435,7 +433,7 @@ impl InnerState {
             needs_advance.then(|| replay.shadow.clone())
         });
         if let Some(shadow) = shadow_to_advance {
-            if let Err(e) = shadow.lock().advance_until_first_committed_state() {
+            if let Err(e) = shadow.lock().unwrap().advance_until_first_committed_state() {
                 self.error = Some(e);
             }
         }
@@ -505,7 +503,7 @@ impl InnerState {
             }
         });
         if let Some(shadow) = shadow_to_advance {
-            if let Err(e) = shadow.lock().advance_until_round_end() {
+            if let Err(e) = shadow.lock().unwrap().advance_until_round_end() {
                 self.error = Some(e);
             }
         }
@@ -697,8 +695,10 @@ impl State {
         State(Arc::new(Mutex::new(Some(inner))))
     }
 
-    pub fn lock_inner(&self) -> parking_lot::MappedMutexGuard<'_, InnerState> {
-        parking_lot::MutexGuard::map(self.0.lock(), |s| s.as_mut().unwrap())
+    pub fn lock_inner(&self) -> InnerStateGuard<'_> {
+        InnerStateGuard {
+            guard: self.0.lock().unwrap(),
+        }
     }
 
     /// Capture a checkpoint of replay-mode stepper state for later restore.
@@ -709,7 +709,7 @@ impl State {
         if !replay.round_active {
             return None;
         }
-        let rng_state = replay.rng.lock().clone();
+        let rng_state = replay.rng.lock().unwrap().clone();
         Some(ReplayCheckpoint {
             absolute_tick: replay.absolute_tick,
             current_round_index: replay.current_round_index,
@@ -731,7 +731,7 @@ impl State {
         checkpoint: &ReplayCheckpoint,
         rounds: &[Vec<PartialInputPair>],
     ) -> anyhow::Result<()> {
-        let mut guard = self.0.lock();
+        let mut guard = self.0.lock().unwrap();
         let prev = guard.as_mut().ok_or_else(|| anyhow::anyhow!("stepper state missing"))?;
         let prev_replay = prev
             .replay
@@ -785,5 +785,26 @@ impl State {
 
         *guard = Some(new_inner);
         Ok(())
+    }
+}
+
+/// MutexGuard wrapper that derefs straight to [`InnerState`]. The state is
+/// stored as `Mutex<Option<InnerState>>` so `restore_replay_checkpoint` can
+/// swap the whole inner; everyday callers don't care about the Option and
+/// expect a direct &mut InnerState.
+pub struct InnerStateGuard<'a> {
+    guard: MutexGuard<'a, Option<InnerState>>,
+}
+
+impl std::ops::Deref for InnerStateGuard<'_> {
+    type Target = InnerState;
+    fn deref(&self) -> &InnerState {
+        self.guard.as_ref().unwrap()
+    }
+}
+
+impl std::ops::DerefMut for InnerStateGuard<'_> {
+    fn deref_mut(&mut self) -> &mut InnerState {
+        self.guard.as_mut().unwrap()
     }
 }

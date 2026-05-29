@@ -6,7 +6,7 @@
 //! playhead to keep that store populated for seeks. Audio is bound via
 //! the shared [`crate::audio::LateBinder`].
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tango_pvp::replay::playback::SnapshotStore;
@@ -93,7 +93,7 @@ impl ReplaySession {
         // Wipe the shared framebuffer so the previous session's
         // last frame doesn't flash through before mgba writes its
         // first one.
-        vbuf.lock().fill(0);
+        vbuf.lock().unwrap().fill(0);
 
         let snapshots = SnapshotStore::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
@@ -115,7 +115,7 @@ impl ReplaySession {
             let shadow = shadow.clone();
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
-                let mut vbuf = vbuf.lock();
+                let mut vbuf = vbuf.lock().unwrap();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 // Wake the session subscription so iced rebuilds

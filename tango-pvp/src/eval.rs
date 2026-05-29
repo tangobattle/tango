@@ -20,7 +20,7 @@ pub async fn eval(
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
     let shadow = crate::shadow::Shadow::new_for_replay(rom, replay, hooks)?;
-    let shadow = std::sync::Arc::new(parking_lot::Mutex::new(shadow));
+    let shadow = std::sync::Arc::new(std::sync::Mutex::new(shadow));
 
     let stepper_state = crate::stepper::State::new(
         match_type,

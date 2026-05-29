@@ -7,7 +7,7 @@
 //! ride for one player. (The PVP / replay traps require a partner /
 //! recorded packets, neither of which apply here.)
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -51,14 +51,14 @@ impl SinglePlayerSession {
         // last frame doesn't flash through before mgba writes its
         // first one. The post-constructor `current_handle` clear
         // covers iced's side; this covers the source.
-        vbuf.lock().fill(0);
+        vbuf.lock().unwrap().fill(0);
 
         thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let joyflags = joyflags.clone();
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, _thread_handle| {
-                let mut vbuf = vbuf.lock();
+                let mut vbuf = vbuf.lock().unwrap();
                 vbuf.copy_from_slice(video_buffer);
                 fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));

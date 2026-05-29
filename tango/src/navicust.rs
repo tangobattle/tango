@@ -7,7 +7,7 @@
 
 use iced::advanced::graphics::text::cosmic_text;
 use iced::advanced::graphics::text::font_system as iced_font_system;
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use std::sync::LazyLock;
 use tango_dataview::{
     navicust::MaterializedNavicust,
@@ -180,7 +180,7 @@ fn rasterize_label(
 ) {
     let mut fs_lock = iced_font_system().write().expect("font system write lock");
     let font_system = fs_lock.raw();
-    let mut swash = SWASH_CACHE.lock();
+    let mut swash = SWASH_CACHE.lock().unwrap();
 
     let line_height = font_height * 1.2;
     let metrics = cosmic_text::Metrics::new(font_height, line_height);

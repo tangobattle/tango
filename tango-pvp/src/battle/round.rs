@@ -1,7 +1,6 @@
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as SyncMutex};
 
-use parking_lot::Mutex as PlMutex;
 use tokio::sync::Mutex;
 
 use crate::input::{Input, Pair, PairQueue, PartialInput};
@@ -35,14 +34,14 @@ pub struct Round {
     stepper: crate::stepper::Fastforwarder,
     /// Local shadow emulator — simulates the opponent's side from the
     /// joyflags we both put on the wire.
-    shadow: Arc<PlMutex<crate::shadow::Shadow>>,
+    shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     /// Handle to the live core's mgba thread. Held so the Round's `Drop` can
     /// reset its `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
     /// Outbound network input channel.
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     /// Replay sink (None when not recording).
-    replay_writer: Arc<PlMutex<Option<crate::replay::Writer>>>,
+    replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
 
     // ---- Tick tracking ----
     /// Netcode frontier: advances one per wall-frame via the post-tick hook
@@ -428,7 +427,7 @@ impl Round {
             seed_tick,
             target,
             &seed.packet,
-            Box::new(move |tick, ip| shadow.lock().apply_input(tick, ip)),
+            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip)),
         )?;
 
         // The FF's `output_pairs` cover ticks `[seed_tick, target − 1]` —
@@ -454,7 +453,7 @@ impl Round {
                     break;
                 }
             }
-            if let Some(writer) = self.replay_writer.lock().as_mut() {
+            if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
                 writer
                     .write_input(self.local_player_index, &self.pending_commits[i])
                     .expect("write input");

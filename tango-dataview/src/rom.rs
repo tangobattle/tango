@@ -275,7 +275,7 @@ pub fn unlz77(r: &mut impl std::io::Read) -> std::io::Result<Vec<u8>> {
 pub struct MemoryMapper {
     rom: Vec<u8>,
     wram: Vec<u8>,
-    unlz77_cache: parking_lot::Mutex<std::collections::HashMap<u32, Vec<u8>>>,
+    unlz77_cache: std::sync::Mutex<std::collections::HashMap<u32, Vec<u8>>>,
 }
 
 impl MemoryMapper {
@@ -283,7 +283,7 @@ impl MemoryMapper {
         Self {
             rom,
             wram,
-            unlz77_cache: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            unlz77_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -297,6 +297,7 @@ impl MemoryMapper {
             std::borrow::Cow::Owned(
                 self.unlz77_cache
                     .lock()
+                    .unwrap()
                     .entry(start)
                     .or_insert_with(|| unlz77(&mut &self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec())
                     .clone(),

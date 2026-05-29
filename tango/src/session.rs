@@ -95,7 +95,7 @@ pub struct State {
     /// `Arc<Mutex<Vec<u8>>>` allocation dance and lets the handler
     /// read straight off `State` without dispatching through
     /// `ActiveSession`.
-    pub vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
+    pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
     /// PvP-only: shows the opponent's save view in a side panel
     /// when they enabled reveal-setup. Defaults to visible when
@@ -144,7 +144,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             frame_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-            vbuf: std::sync::Arc::new(parking_lot::Mutex::new(vec![
+            vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
                 0u8;
                 (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                     as usize
@@ -375,7 +375,7 @@ impl State {
                         self.show_options_menu = false;
                         self.show_forfeit_confirm = false;
                     } else {
-                        let pixels = self.vbuf.lock().clone();
+                        let pixels = self.vbuf.lock().unwrap().clone();
                         self.current_handle = Some(build_frame_handle(pixels, video_filter));
                     }
                 }
@@ -458,10 +458,10 @@ fn build_frame_handle(pixels: Vec<u8>, video_filter: &str) -> iced::widget::imag
 fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::image::Handle> {
     use std::collections::HashMap;
     use std::sync::LazyLock;
-    static CACHE: LazyLock<parking_lot::Mutex<HashMap<usize, Option<iced::widget::image::Handle>>>> =
+    static CACHE: LazyLock<std::sync::Mutex<HashMap<usize, Option<iced::widget::image::Handle>>>> =
         LazyLock::new(Default::default);
     let key = game as *const _ as usize;
-    if let Some(cached) = CACHE.lock().get(&key).cloned() {
+    if let Some(cached) = CACHE.lock().unwrap().get(&key).cloned() {
         return cached;
     }
     let bg = game.background;
@@ -481,7 +481,7 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
             let (w, h) = rgba.dimensions();
             iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw())
         });
-    CACHE.lock().insert(key, handle.clone());
+    CACHE.lock().unwrap().insert(key, handle.clone());
     handle
 }
 
@@ -1192,7 +1192,7 @@ pub fn build_playback(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
+    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     path: &std::path::Path,
 ) -> anyhow::Result<replay_session::ReplaySession> {
     let f = std::fs::File::open(path)?;
@@ -1250,7 +1250,7 @@ pub async fn spawn_pvp(
     config: config::Config,
     audio_binder: audio::LateBinder,
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
+    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     local_game: crate::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
@@ -1375,7 +1375,7 @@ pub fn spawn_singleplayer(
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
-    vbuf: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
+    vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     loaded: &selection::Loaded,
 ) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
     let game = game::from_gamedb_entry(loaded.game)

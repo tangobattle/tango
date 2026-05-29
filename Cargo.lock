@@ -3351,7 +3351,6 @@ dependencies = [
  "log",
  "mgba-sys",
  "once_cell",
- "parking_lot",
  "thiserror 1.0.69",
 ]
 
@@ -5798,7 +5797,6 @@ dependencies = [
  "num-derive",
  "num-traits",
  "open",
- "parking_lot",
  "rand",
  "rand_pcg",
  "regex",
@@ -5842,7 +5840,6 @@ dependencies = [
  "ndarray",
  "num-derive",
  "num-traits",
- "parking_lot",
  "patricia_tree",
  "thiserror 1.0.69",
 ]
@@ -5878,7 +5875,6 @@ dependencies = [
  "image",
  "log",
  "mgba",
- "parking_lot",
  "prost",
  "prost-build",
  "rand",

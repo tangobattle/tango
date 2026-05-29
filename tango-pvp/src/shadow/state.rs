@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use parking_lot::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::round::{Round, RoundState};
 
@@ -56,11 +54,11 @@ impl State {
     }
 
     pub fn lock_rng(&self) -> MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
-        self.0.rng.lock()
+        self.0.rng.lock().unwrap()
     }
 
     pub fn lock_round_state(&self) -> MutexGuard<'_, RoundState> {
-        self.0.round_state.lock()
+        self.0.round_state.lock().unwrap()
     }
 
     /// Allocate a fresh [`Round`] for the new shadow round. Shadow shares the
@@ -68,7 +66,7 @@ impl State {
     /// `remote_player_index()` at the call site to return values from the
     /// peer's perspective.
     pub fn start_round(&self) {
-        let mut round_state = self.0.round_state.lock();
+        let mut round_state = self.0.round_state.lock().unwrap();
         let local_player_index = self.0.local_player_index;
         log::info!("starting shadow round: local_player_index = {}", local_player_index);
         round_state.round = Some(Round::new(local_player_index));
@@ -77,16 +75,16 @@ impl State {
 
     pub fn end_round(&self) {
         log::info!("shadow round ended");
-        let mut round_state = self.0.round_state.lock();
+        let mut round_state = self.0.round_state.lock().unwrap();
         round_state.round = None;
         round_state.result_is_in = false;
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
-        *self.0.error.lock() = Some(err);
+        *self.0.error.lock().unwrap() = Some(err);
     }
 
     pub fn set_applied_state(&self, state: Box<mgba::state::State>, tick: u32) {
-        *self.0.applied_state.lock() = Some(AppliedState { tick, state });
+        *self.0.applied_state.lock().unwrap() = Some(AppliedState { tick, state });
     }
 }

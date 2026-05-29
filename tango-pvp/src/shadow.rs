@@ -126,8 +126,8 @@ impl Shadow {
 
     pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {
         let mgba_state = self.core.as_mut().save_state()?;
-        let rng = self.state.0.rng.lock().clone();
-        let round_state = self.state.0.round_state.lock().clone();
+        let rng = self.state.0.rng.lock().unwrap().clone();
+        let round_state = self.state.0.round_state.lock().unwrap().clone();
         Ok(ShadowSnapshot {
             mgba_state,
             rng,
@@ -137,13 +137,13 @@ impl Shadow {
 
     pub fn load_state(&mut self, snapshot: &ShadowSnapshot) -> anyhow::Result<()> {
         self.core.as_mut().load_state(&snapshot.mgba_state)?;
-        *self.state.0.rng.lock() = snapshot.rng.clone();
-        *self.state.0.round_state.lock() = snapshot.round_state.clone();
+        *self.state.0.rng.lock().unwrap() = snapshot.rng.clone();
+        *self.state.0.round_state.lock().unwrap() = snapshot.round_state.clone();
         // applied_state and error are per-apply_input scratch; clear so the
         // next apply_input call doesn't pick up stale values that don't
         // correspond to the just-restored core state.
-        *self.state.0.applied_state.lock() = None;
-        *self.state.0.error.lock() = None;
+        *self.state.0.applied_state.lock().unwrap() = None;
+        *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }
 
@@ -154,7 +154,7 @@ impl Shadow {
         log::info!("advancing shadow until first committed state");
         loop {
             self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().take() {
+            if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
 
@@ -180,13 +180,13 @@ impl Shadow {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
             self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().take() {
+            if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
 
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
-                let applied_state = self.state.0.applied_state.lock().take().expect("applied state");
+                let applied_state = self.state.0.applied_state.lock().unwrap().take().expect("applied state");
 
                 self.core.as_mut().load_state(&applied_state.state).expect("load state");
                 return Ok(());
@@ -210,10 +210,10 @@ impl Shadow {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
             self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().take() {
+            if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            let Some(applied_state) = self.state.0.applied_state.lock().take() else {
+            let Some(applied_state) = self.state.0.applied_state.lock().unwrap().take() else {
                 continue;
             };
 

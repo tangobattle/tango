@@ -36,7 +36,7 @@ impl std::fmt::Debug for Canceller {
 #[derive(Default)]
 struct CancellerInner {
     cancelled: AtomicBool,
-    children: parking_lot::Mutex<Vec<Arc<parking_lot::Mutex<Option<std::process::Child>>>>>,
+    children: std::sync::Mutex<Vec<Arc<std::sync::Mutex<Option<std::process::Child>>>>>,
 }
 
 impl Canceller {
@@ -48,8 +48,8 @@ impl Canceller {
     /// it has registered. Safe to call from any thread, multiple times.
     pub fn kill(&self) {
         self.inner.cancelled.store(true, Ordering::Relaxed);
-        for slot in self.inner.children.lock().iter() {
-            if let Some(child) = slot.lock().as_mut() {
+        for slot in self.inner.children.lock().unwrap().iter() {
+            if let Some(child) = slot.lock().unwrap().as_mut() {
                 let _ = child.kill();
             }
         }
@@ -59,13 +59,13 @@ impl Canceller {
         self.inner.cancelled.load(Ordering::Relaxed)
     }
 
-    fn register(&self, child: std::process::Child) -> Arc<parking_lot::Mutex<Option<std::process::Child>>> {
-        let slot = Arc::new(parking_lot::Mutex::new(Some(child)));
-        self.inner.children.lock().push(slot.clone());
+    fn register(&self, child: std::process::Child) -> Arc<std::sync::Mutex<Option<std::process::Child>>> {
+        let slot = Arc::new(std::sync::Mutex::new(Some(child)));
+        self.inner.children.lock().unwrap().push(slot.clone());
         // Race guard: if kill() already fired before this child was
         // registered, kill it on arrival so it doesn't slip the net.
         if self.inner.cancelled.load(Ordering::Relaxed) {
-            if let Some(c) = slot.lock().as_mut() {
+            if let Some(c) = slot.lock().unwrap().as_mut() {
                 let _ = c.kill();
             }
         }
@@ -133,7 +133,7 @@ fn make_core_and_state(
     let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
     let shadow = crate::shadow::Shadow::new_for_replay(shadow_rom, replay, shadow_hooks)?;
-    let shadow = std::sync::Arc::new(parking_lot::Mutex::new(shadow));
+    let shadow = std::sync::Arc::new(std::sync::Mutex::new(shadow));
 
     let stepper_state = crate::stepper::State::new(
         match_type,
@@ -218,7 +218,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// the process. On Drop (early return / panic / cancel) the wrapper
 /// kills + reaps the child if it hasn't been waited for yet.
 struct FfmpegChild {
-    slot: Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    slot: Arc<std::sync::Mutex<Option<std::process::Child>>>,
     stdin: Option<std::process::ChildStdin>,
 }
 
@@ -242,7 +242,7 @@ impl FfmpegChild {
     /// process, `wait()` returns with a non-success status and we
     /// surface that as Err — no polling, no fixed cancel latency.
     fn wait(self) -> anyhow::Result<()> {
-        let taken = self.slot.lock().take();
+        let taken = self.slot.lock().unwrap().take();
         let mut child = taken.ok_or_else(|| anyhow::anyhow!("ffmpeg child already taken"))?;
         let status = child.wait()?;
         if !status.success() {
@@ -254,7 +254,7 @@ impl FfmpegChild {
 
 impl Drop for FfmpegChild {
     fn drop(&mut self) {
-        let taken = self.slot.lock().take();
+        let taken = self.slot.lock().unwrap().take();
         if let Some(mut child) = taken {
             let _ = child.kill();
             let _ = child.wait();
