@@ -193,6 +193,11 @@ pub enum Message {
     SetSpeed(f32),
     /// Open/close the ellipsis-anchored options popover.
     ToggleOptionsMenu,
+    /// User pressed Esc inside a session. Closes whichever overlay is on
+    /// top (settings modal, forfeit confirm, options popover) if any,
+    /// otherwise opens the options popover. Routed here rather than from
+    /// the InputCapture so the decision sees the current overlay state.
+    EscPressed,
     /// Show the "really forfeit?" modal. PvP-only; picked from
     /// the options menu's Forfeit item, which also dismisses
     /// the popover.
@@ -328,6 +333,15 @@ impl State {
             }
             Message::ToggleOptionsMenu => {
                 self.show_options_menu = !self.show_options_menu;
+            }
+            Message::EscPressed => {
+                if self.show_settings {
+                    self.show_settings = false;
+                } else if self.show_forfeit_confirm {
+                    self.show_forfeit_confirm = false;
+                } else {
+                    self.show_options_menu = !self.show_options_menu;
+                }
             }
             Message::OpenForfeitConfirm => {
                 self.show_options_menu = false;
