@@ -976,11 +976,7 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
             width: 2.0,
             color: border_color,
         },
-        text_color: Some(if is_disabled {
-            muted_color(theme)
-        } else {
-            text
-        }),
+        text_color: Some(if is_disabled { muted_color(theme) } else { text }),
     }
 }
 
@@ -1130,6 +1126,7 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
             let cy = h / 2.0;
             let color = muted_color(theme);
             let fun_font = iced::Font {
+                family: iced::font::Family::Name("Noto Sans"),
                 weight: iced::font::Weight::Black,
                 style: iced::font::Style::Italic,
                 ..iced::Font::default()
