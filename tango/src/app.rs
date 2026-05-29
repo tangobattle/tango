@@ -169,6 +169,13 @@ pub struct App {
     /// installer. UI lives in Settings → About; toggle is in
     /// Settings → Network.
     updater: updater::Updater,
+    /// Number of in-flight `rescan_off_thread` tasks. Drives the
+    /// per-tab Rescan button gate — `view` reads it to render a
+    /// disabled rescan button while a rescan worker is still busy.
+    /// A counter (not a bool) because rescans can overlap (e.g.
+    /// patch autoupdater fires its own rescan separately from the
+    /// user clicking the button).
+    rescans_in_flight: u32,
 }
 
 impl App {
@@ -303,6 +310,7 @@ impl App {
             session_started_at: None,
             patch_autoupdater,
             updater,
+            rescans_in_flight: 0,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -435,6 +443,37 @@ impl App {
         self.netplay
             .update(netplay::Message::SendLocalSettings(Box::new(settings)))
             .map(Message::Netplay)
+    }
+
+    /// Run a full `Scanners::rescan` on a tokio blocking worker so
+    /// the disk walk + TOML parse for patches (the slowest of the
+    /// four) doesn't stall iced's update loop. Returns a task that
+    /// emits `Message::Rescanned(followup)` once the worker is
+    /// done; the followup tells the handler which post-scan work to
+    /// chain (refresh `self.loaded`, warm stats, auto-pick a save).
+    ///
+    /// Bumps `rescans_in_flight` synchronously so the very next
+    /// `view` call sees the rescan as live and renders the per-tab
+    /// Rescan button disabled — without this, the button would
+    /// remain clickable until the spawned worker thread actually
+    /// gets scheduled.
+    fn rescan_off_thread(&mut self, followup: RescanFollowup) -> iced::Task<Message> {
+        self.rescans_in_flight += 1;
+        let scanners = self.scanners.clone();
+        let config = self.config.clone();
+        iced::Task::perform(
+            async move {
+                let _ = tokio::task::spawn_blocking(move || scanners.rescan(&config)).await;
+            },
+            move |()| Message::Rescanned(followup),
+        )
+    }
+
+    /// Whether any rescan worker spawned by [`rescan_off_thread`] is
+    /// still in flight. View functions read this to disable their
+    /// Rescan buttons.
+    pub fn is_rescanning(&self) -> bool {
+        self.rescans_in_flight > 0
     }
 
     /// If a netplay state change just flipped the compat verdict to
@@ -598,6 +637,34 @@ pub enum Message {
         size: iced::Size,
         maximized: bool,
     },
+    /// Fired when a backgrounded `Scanners::rescan` task completes.
+    /// `followup` tells the handler which post-scan work to do —
+    /// most paths just want `Refresh` (re-validate `self.loaded`),
+    /// the replays-tab rescan also warms the stats cache, and the
+    /// save-delete handler asks for a fresh "first save" pick now
+    /// that the scan results are in.
+    Rescanned(RescanFollowup),
+}
+
+/// Per-call-site cue for `Message::Rescanned`. Lets one handler
+/// arm cover every rescan we kick off without dispatching a
+/// distinct Message variant per call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RescanFollowup {
+    /// Just re-validate `self.loaded` against the fresh scan.
+    Refresh,
+    /// Refresh + warm the replays-tab stats cache (used after the
+    /// Replays-tab Rescan button).
+    RefreshAndReplayStats,
+    /// Refresh + if `local_save` is `None`, auto-pick the first
+    /// remaining save for the local game. Used by the save-delete
+    /// handler so the picker doesn't strand on an empty selection.
+    RefreshAndPickFirstSave,
+    /// Drop `self.loaded` first so `refresh_loaded` rebuilds it
+    /// from scratch (bypassing the same-key dedupe). Used after a
+    /// single-player session writes back to its SRAM — the save
+    /// path didn't change but the bytes did.
+    ForceRebuildLoaded,
 }
 
 impl App {
@@ -625,7 +692,7 @@ impl App {
                 let task = self.update_play(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
-            Message::Patches(m) => self.update_patches(m).map(Message::Patches),
+            Message::Patches(m) => self.update_patches(m),
             Message::DiscordTick => {
                 self.handle_discord_tick();
                 iced::Task::none()
@@ -650,9 +717,9 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
-            Message::Replays(m) => self.update_replays(m).map(Message::Replays),
+            Message::Replays(m) => self.update_replays(m),
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
-            Message::Welcome(m) => self.update_welcome(m).map(Message::Welcome),
+            Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => {
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
@@ -674,33 +741,28 @@ impl App {
                     .session
                     .update(m, &self.config.input_mapping, &self.config.video_filter)
                     .map(Message::Session);
-                if sp_closing {
-                    let saves_path = self.config.saves_path();
-                    self.scanners.saves.rescan(|| Some(save::scan_saves(&saves_path)));
-                    // Bypass refresh_loaded's same-key dedupe —
-                    // the path + game haven't changed, only the
-                    // bytes have.
-                    self.loaded = None;
-                    self.refresh_loaded();
-                }
+                // Rescan + reload run off-thread; the Rescanned
+                // followup forces a `loaded` rebuild past the
+                // same-key dedupe so the play tab's save view
+                // reflects the fresh on-disk SRAM.
+                let sp_rescan = if sp_closing {
+                    self.rescan_off_thread(RescanFollowup::ForceRebuildLoaded)
+                } else {
+                    iced::Task::none()
+                };
                 // PvP sessions write a `.tangoreplay` next to
                 // the saves dir on match end; once the session
                 // clears we want the new file to show up in the
-                // Replays tab without a manual rescan.
+                // Replays tab without a manual rescan. The
+                // `RefreshAndReplayStats` followup also warms the
+                // stats sidebar with the just-landed match.
                 let pvp_closed = was_pvp && self.session.active.is_none();
-                if pvp_closed {
-                    let replays_path = self.config.replays_path();
-                    self.scanners
-                        .replays
-                        .rescan(|| Some(replays::scan_replays(&replays_path)));
-                    // The freshly-finished match just landed on
-                    // disk — kick the stats worker so its sidebar
-                    // row gets duration / round / complete info
-                    // without waiting for app restart.
-                    iced::Task::batch([task, self.refresh_replay_stats().map(Message::Replays)])
+                let pvp_rescan = if pvp_closed {
+                    self.rescan_off_thread(RescanFollowup::RefreshAndReplayStats)
                 } else {
-                    task
-                }
+                    iced::Task::none()
+                };
+                iced::Task::batch([task, sp_rescan, pvp_rescan])
             }
             Message::Netplay(netplay::Message::MatchHandoffReady) => {
                 // Drain the lobby-side state into a PreMatchData
@@ -786,6 +848,37 @@ impl App {
                 // while spawn_pvp ran.
                 self.netplay.finish_handoff();
                 iced::Task::none()
+            }
+            Message::Rescanned(followup) => {
+                self.rescans_in_flight = self.rescans_in_flight.saturating_sub(1);
+                match followup {
+                RescanFollowup::Refresh => {
+                    self.refresh_loaded();
+                    iced::Task::none()
+                }
+                RescanFollowup::RefreshAndReplayStats => {
+                    self.refresh_loaded();
+                    self.refresh_replay_stats().map(Message::Replays)
+                }
+                RescanFollowup::RefreshAndPickFirstSave => {
+                    if self.play.local_save.is_none() {
+                        self.play.local_save = self.play.local_game.and_then(|g| {
+                            self.scanners
+                                .saves
+                                .read()
+                                .get(&g)
+                                .and_then(|v| v.first().map(|s| s.path.clone()))
+                        });
+                    }
+                    self.refresh_loaded();
+                    iced::Task::none()
+                }
+                RescanFollowup::ForceRebuildLoaded => {
+                    self.loaded = None;
+                    self.refresh_loaded();
+                    iced::Task::none()
+                }
+                }
             }
         }
     }
@@ -886,11 +979,7 @@ impl App {
                 self.apply_default_match_type();
                 iced::Task::none()
             }
-            E::Rescan => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
-                iced::Task::none()
-            }
+            E::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
             E::OpenPath(p) => {
                 if let Err(e) = open::that(&p) {
                     log::error!("open {}: {e}", p.display());
@@ -985,10 +1074,9 @@ impl App {
                     match duplicate_save(&src) {
                         Ok(dst) => {
                             log::info!("duplicated save: {}", dst.display());
-                            self.scanners.rescan(&self.config);
                             self.play.local_save = Some(dst);
-                            self.refresh_loaded();
                             self.persist_selection();
+                            return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
                         Err(e) => log::error!("duplicate save: {e}"),
                     }
@@ -1000,10 +1088,9 @@ impl App {
                     match rename_save(&src, &new_stem) {
                         Ok(dst) => {
                             log::info!("renamed save: {} → {}", src.display(), dst.display());
-                            self.scanners.rescan(&self.config);
                             self.play.local_save = Some(dst);
-                            self.refresh_loaded();
                             self.persist_selection();
+                            return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
                         Err(e) => log::error!("rename save: {e}"),
                     }
@@ -1017,16 +1104,13 @@ impl App {
                     } else {
                         log::info!("deleted save: {}", src.display());
                     }
-                    self.scanners.rescan(&self.config);
-                    self.play.local_save = self.play.local_game.and_then(|g| {
-                        self.scanners
-                            .saves
-                            .read()
-                            .get(&g)
-                            .and_then(|v| v.first().map(|s| s.path.clone()))
-                    });
-                    self.refresh_loaded();
+                    // Clear the selection now so the picker shows
+                    // "no save" while the rescan is in flight;
+                    // PickFirstSave restores the first remaining
+                    // entry once the scan finishes.
+                    self.play.local_save = None;
                     self.persist_selection();
+                    return self.rescan_off_thread(RescanFollowup::RefreshAndPickFirstSave);
                 }
                 iced::Task::none()
             }
@@ -1048,10 +1132,9 @@ impl App {
                                         game.family_and_variant(),
                                         dst.display()
                                     );
-                                    self.scanners.rescan(&self.config);
                                     self.play.local_save = Some(dst);
-                                    self.refresh_loaded();
                                     self.persist_selection();
+                                    return self.rescan_off_thread(RescanFollowup::Refresh);
                                 }
                                 Err(e) => log::error!("create save: {e}"),
                             }
@@ -1064,7 +1147,7 @@ impl App {
         }
     }
 
-    fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<tabs::patches::Message> {
+    fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<Message> {
         let Some(effect) = self.patches.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
@@ -1076,20 +1159,13 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::Rescan => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
-                iced::Task::none()
-            }
-            E::UpdateRescan => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
-                iced::Task::none()
-            }
+            E::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
+            E::UpdateRescan => self.rescan_off_thread(RescanFollowup::Refresh),
             E::StartUpdate { url, root } => iced::Task::perform(
                 async move { patch::update(url, root).await.map_err(|e| e.to_string()) },
                 tabs::patches::Message::UpdateFinished,
-            ),
+            )
+            .map(Message::Patches),
             E::ToggleFavorite(name) => {
                 if !self.config.favorite_patches.remove(&name) {
                     self.config.favorite_patches.insert(name);
@@ -1100,7 +1176,7 @@ impl App {
         }
     }
 
-    fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<tabs::replays::Message> {
+    fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<Message> {
         // Pure state mutations live in the tab module; only side
         // effects (clipboard, OS open, session host handoff,
         // file dialog, export task spawn) come back here as an
@@ -1132,13 +1208,11 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::Rescan => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
-                // User triggered a full rescan — re-validate the
-                // stats cache and warm it for any new replays.
-                self.refresh_replay_stats()
-            }
+            // User triggered a full rescan — re-validate the
+            // stats cache and warm it for any new replays
+            // (handled in the Rescanned handler via the
+            // `RefreshAndReplayStats` followup).
+            E::Rescan => self.rescan_off_thread(RescanFollowup::RefreshAndReplayStats),
             E::CopyText(s) => iced::clipboard::write(s),
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
@@ -1176,14 +1250,15 @@ impl App {
                         None => tabs::replays::Message::NoOp,
                     },
                 )
+                .map(Message::Replays)
             }
             E::StartExport {
                 replay,
                 output,
                 settings,
                 rounds,
-            } => self.spawn_replay_export(replay, output, settings, rounds),
-            E::SaveViewTask(t) => t,
+            } => self.spawn_replay_export(replay, output, settings, rounds).map(Message::Replays),
+            E::SaveViewTask(t) => t.map(Message::Replays),
         }
     }
 
@@ -1488,21 +1563,24 @@ impl App {
         iced::Task::none()
     }
 
-    fn update_welcome(&mut self, msg: tabs::welcome::Message) -> iced::Task<tabs::welcome::Message> {
+    fn update_welcome(&mut self, msg: tabs::welcome::Message) -> iced::Task<Message> {
         use tabs::welcome::Message as M;
         match msg {
             M::NicknameChanged(s) => {
                 self.welcome.nickname_draft = s;
+                iced::Task::none()
             }
             M::Continue => {
                 if let Some(nickname) = self.welcome.finalize_nickname() {
                     self.config.nickname = Some(nickname);
                     self.persist_config();
                 }
+                iced::Task::none()
             }
             M::LanguageSelected(l) => {
                 self.config.language = l;
                 self.persist_config();
+                iced::Task::none()
             }
             M::OpenRomsFolder => {
                 let p = self.config.roms_path();
@@ -1510,13 +1588,10 @@ impl App {
                 if let Err(e) = open::that(&p) {
                     log::error!("open roms folder: {e}");
                 }
+                iced::Task::none()
             }
-            M::RescanRoms => {
-                self.scanners.rescan(&self.config);
-                self.refresh_loaded();
-            }
+            M::RescanRoms => self.rescan_off_thread(RescanFollowup::Refresh),
         }
-        iced::Task::none()
     }
 
     pub fn view(&self) -> Element<'_, Message> {
@@ -1525,8 +1600,14 @@ impl App {
         // First-run gate: no main UI until the user picks a nickname.
         if self.config.nickname.is_none() {
             let roms_count = self.scanners.roms.read().len();
-            return tabs::welcome::view(lang, &self.welcome, roms_count, &self.config.roms_path())
-                .map(Message::Welcome);
+            return tabs::welcome::view(
+                lang,
+                &self.welcome,
+                roms_count,
+                &self.config.roms_path(),
+                self.is_rescanning(),
+            )
+            .map(Message::Welcome);
         }
 
         if self.session.is_active() {
@@ -1657,6 +1738,7 @@ impl App {
             .into();
         }
 
+        let rescanning = self.is_rescanning();
         let body: Element<'_, Message> = match self.tab {
             Tab::Play => self
                 .play
@@ -1669,15 +1751,16 @@ impl App {
                     &self.netplay.phase,
                     &self.netplay.lobby,
                     self.netplay.handoff_pending(),
+                    rescanning,
                 )
                 .map(Message::Play),
             Tab::Replays => self
                 .replays
-                .view(lang, &self.scanners, &self.config, &self.netplay.phase)
+                .view(lang, &self.scanners, &self.config, &self.netplay.phase, rescanning)
                 .map(Message::Replays),
             Tab::Patches => self
                 .patches
-                .view(lang, &self.scanners, &self.config)
+                .view(lang, &self.scanners, &self.config, rescanning)
                 .map(Message::Patches),
             Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
                 .map(Message::Settings),

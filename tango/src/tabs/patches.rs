@@ -146,6 +146,7 @@ impl PatchesState {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         config: &'a crate::config::Config,
+        rescanning: bool,
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
@@ -183,10 +184,10 @@ impl PatchesState {
                 update_msg,
                 STANDARD_PADDING,
             ))
-            .push(widgets::icon_button(
+            .push(widgets::icon_button_maybe(
                 Icon::RefreshCw,
                 t!(lang, "rescan"),
-                Message::Rescan,
+                (!rescanning).then_some(Message::Rescan),
                 STANDARD_PADDING,
             ));
 

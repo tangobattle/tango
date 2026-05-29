@@ -544,6 +544,7 @@ impl ReplaysState {
         scanners: &'a Scanners,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
+        rescanning: bool,
     ) -> Element<'a, Message> {
         // Replay playback spawns an emulator session that would
         // conflict with an active netplay session. Disable the
@@ -603,7 +604,12 @@ impl ReplaysState {
                     .style(widgets::chunky_text_input),
                 show_incomplete_toggle,
                 horizontal_space(),
-                widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING,),
+                widgets::icon_button_maybe(
+                    Icon::RefreshCw,
+                    t!(lang, "rescan"),
+                    (!rescanning).then_some(Message::Rescan),
+                    STANDARD_PADDING,
+                ),
             ]
             .spacing(8)
             .align_y(Alignment::Center),

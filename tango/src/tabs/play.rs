@@ -586,6 +586,7 @@ impl PlayState {
         netplay_phase: &'a crate::netplay::Phase,
         netplay_lobby: &'a crate::netplay::LobbyState,
         netplay_handoff_pending: bool,
+        rescanning: bool,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -628,7 +629,7 @@ impl PlayState {
         // another. The hud_scanline + bottom strip / lobby view
         // sit OUTSIDE that padding so they remain edge-to-edge
         // bottom bars.
-        let inner = column![self.selector_strip(lang, scanners, config), save_body,]
+        let inner = column![self.selector_strip(lang, scanners, config, rescanning), save_body,]
             .spacing(widgets::PANE_GAP)
             .padding(widgets::PANE_GAP)
             .height(Fill);
@@ -705,6 +706,7 @@ impl PlayState {
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         config: &'a config::Config,
+        rescanning: bool,
     ) -> Element<'a, Message> {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
@@ -860,7 +862,12 @@ impl PlayState {
             .into()
         };
 
-        let refresh = widgets::icon_button(Icon::RefreshCw, t!(lang, "rescan"), Message::Rescan, STANDARD_PADDING);
+        let refresh = widgets::icon_button_maybe(
+            Icon::RefreshCw,
+            t!(lang, "rescan"),
+            (!rescanning).then_some(Message::Rescan),
+            STANDARD_PADDING,
+        );
 
         let game_row = row![game, patch, version, refresh]
             .spacing(8)

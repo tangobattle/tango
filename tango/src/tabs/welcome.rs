@@ -54,6 +54,7 @@ pub fn view<'a>(
     state: &'a State,
     roms_count: usize,
     roms_path: &std::path::Path,
+    rescanning: bool,
 ) -> Element<'a, Message> {
     let has_roms = roms_count > 0;
 
@@ -103,10 +104,10 @@ pub fn view<'a>(
                 STANDARD_PADDING,
                 widgets::neutral,
             ),
-            widgets::labeled_icon_button(
+            widgets::labeled_icon_button_maybe(
                 Icon::RefreshCw,
                 t!(lang, "rescan"),
-                Message::RescanRoms,
+                (!rescanning).then_some(Message::RescanRoms),
                 STANDARD_PADDING,
                 widgets::neutral,
             ),

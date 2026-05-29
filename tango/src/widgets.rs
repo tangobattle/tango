@@ -300,11 +300,26 @@ pub fn labeled_icon_button<'a, M: Clone + 'a>(
     padding: [f32; 2],
     style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
 ) -> Element<'a, M> {
-    button(row![icon.widget(), text(label)].spacing(8).align_y(Alignment::Center))
+    labeled_icon_button_maybe(icon, label, Some(msg), padding, style)
+}
+
+/// `labeled_icon_button` with the on_press wrapped in an Option so
+/// callers can render a disabled (greyed-out, no on_press) variant
+/// without duplicating the chrome. Mirrors [`icon_button_maybe`].
+pub fn labeled_icon_button_maybe<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: String,
+    msg: Option<M>,
+    padding: [f32; 2],
+    style: impl Fn(&Theme, button::Status) -> button::Style + 'a,
+) -> Element<'a, M> {
+    let mut btn = button(row![icon.widget(), text(label)].spacing(8).align_y(Alignment::Center))
         .padding(padding)
-        .style(style)
-        .on_press(msg)
-        .into()
+        .style(style);
+    if let Some(m) = msg {
+        btn = btn.on_press(m);
+    }
+    btn.into()
 }
 
 /// Compact tab pill used by sub-navs (save_view's
