@@ -124,7 +124,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // u32::MAX in replay mode, so this never fires there.
                 if current_tick == state.capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.set_captured_state(core.save_state().expect("save captured state"));
+                    state.capture(core.save_state().expect("save captured state"));
                 }
             })
         }),

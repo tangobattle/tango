@@ -442,7 +442,7 @@ impl InnerState {
     /// Capture the FF's single state snapshot. Called by per-game stepper traps
     /// when `current_tick == capture_tick()` (post-peek, so r4 is set to the
     /// peeked input's local joyflags).
-    pub fn set_captured_state(&mut self, state: Box<mgba::state::State>) {
+    pub fn capture(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
