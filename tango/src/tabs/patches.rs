@@ -3,10 +3,10 @@ use crate::i18n::t;
 use crate::widgets;
 use crate::game;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::pick_list;
+use sweeten::widget::{button, column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 /// Gold tone used for filled favorite stars. Hardcoded (not from

@@ -2,7 +2,8 @@ use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::widgets::{muted_color, muted_text_style};
-use iced::widget::{column, container, image as iced_image, row, scrollable, stack, text, tooltip, Image, Space};
+use iced::widget::{container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
+use sweeten::widget::{button, column, row};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
 /// hover) is handled by tooltip/canvas widgets that manage their own
@@ -212,7 +213,7 @@ pub fn view<'a>(
         let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
             .spacing(6)
             .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(label).padding([4, 10]);
+        let mut btn = button(label).padding([4, 10]);
         if enabled {
             btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
         } else {

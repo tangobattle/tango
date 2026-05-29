@@ -21,8 +21,9 @@ use crate::{
 };
 use i18n::t;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{column, container, row};
+use iced::widget::container;
 use iced::{Alignment, Element, Fill, Theme};
+use sweeten::widget::{column, mouse_area, row};
 use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
@@ -1531,7 +1532,7 @@ impl App {
                 );
                 let heading = iced::widget::text(t!(lang, "tab-settings")).size(TEXT_HEADING);
                 let header = iced::widget::container(
-                    iced::widget::row![heading, iced::widget::space::horizontal(), close_btn]
+                    row![heading, iced::widget::space::horizontal(), close_btn]
                         .padding(iced::Padding {
                             top: 8.0,
                             right: 8.0,
@@ -1542,7 +1543,7 @@ impl App {
                 )
                 .width(Fill);
                 let modal_panel = iced::widget::container(
-                    iced::widget::column![header, body]
+                    column![header, body]
                         .spacing(0)
                         .width(Fill)
                         .height(Fill),
@@ -1554,7 +1555,7 @@ impl App {
                 // its inert regions (background, headings) get
                 // swallowed instead of falling through to the
                 // dismiss-on-press backdrop layer below.
-                let modal_panel_swallow = iced::widget::mouse_area(modal_panel).on_press(Message::NoOp);
+                let modal_panel_swallow = mouse_area(modal_panel).on_press(|_| Message::NoOp);
                 let placement = iced::widget::container(modal_panel_swallow)
                     .width(Fill)
                     .height(Fill)
@@ -1563,7 +1564,7 @@ impl App {
                 // Backdrop — dim wash that also dismisses the
                 // modal on click. Captures the press so it
                 // doesn't reach the session HUD beneath.
-                let backdrop = iced::widget::mouse_area(
+                let backdrop = mouse_area(
                     iced::widget::container(iced::widget::Space::new().width(Fill).height(Fill))
                         .width(Fill)
                         .height(Fill)
@@ -1572,7 +1573,7 @@ impl App {
                             ..Default::default()
                         }),
                 )
-                .on_press(Message::Session(session::Message::CloseSettings));
+                .on_press(|_| Message::Session(session::Message::CloseSettings));
                 iced::widget::stack![
                     Element::from(session_view),
                     Element::from(backdrop),

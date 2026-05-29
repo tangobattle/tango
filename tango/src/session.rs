@@ -21,9 +21,10 @@ use crate::selection;
 use crate::singleplayer_session;
 use crate::widgets;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{column, container, row, stack, text};
+use iced::widget::{container, stack, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
+use sweeten::widget::{button, column, mouse_area, row};
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -592,9 +593,9 @@ pub fn view<'a>(
     let ctrl_icon_btn_maybe = |icon: Icon,
                                label: String,
                                msg: Option<Message>,
-                               style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+                               style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
      -> Element<'a, Message> {
-        let mut btn = iced::widget::button(icon.widget().size(CTRL_ICON))
+        let mut btn = button(icon.widget().size(CTRL_ICON))
             .padding(CTRL_PAD)
             .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
             .style(style);
@@ -626,7 +627,7 @@ pub fn view<'a>(
         |icon: Icon,
          label: String,
          msg: Message,
-         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+         style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
          -> Element<'a, Message> { ctrl_icon_btn_maybe(icon, label, Some(msg), style) };
     let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
         ctrl_icon_btn_styled(icon, label, msg, widgets::neutral)
@@ -639,7 +640,7 @@ pub fn view<'a>(
     // disabled when the peer didn't enable reveal-setup.
     let self_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.local_loaded.is_some() => {
-            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+            let style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style =
                 if state.show_self_panel {
                     widgets::pvp_red_button
                 } else {
@@ -657,7 +658,7 @@ pub fn view<'a>(
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) => {
             let revealed = s.opponent_loaded.is_some();
-            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+            let style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style =
                 if state.show_opponent_panel && revealed {
                     widgets::pvp_blue_button
                 } else {
@@ -781,12 +782,12 @@ pub fn view<'a>(
         // as a perfect circle (square padding + huge radius) so
         // it reads as a console transport button instead of a
         // generic pill.
-        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
+        let base_style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style = if paused {
             widgets::primary_button
         } else {
             widgets::neutral
         };
-        let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let play_pause_style = move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
             let mut style = base_style(theme, status);
             style.border.radius = 999.0.into();
             style
@@ -796,7 +797,7 @@ pub fn view<'a>(
         // link bar (both pin their interactive children to the
         // same constant).
         let play_pause_btn = iced::widget::tooltip(
-            iced::widget::button(
+            button(
                 iced::widget::container(play_pause_icon.widget().size(18.0))
                     .width(iced::Length::Fixed(20.0))
                     .height(iced::Length::Fixed(20.0))
@@ -948,11 +949,11 @@ pub fn view<'a>(
         // pink-tinted shadow.
         fn menu_row_style(
             theme: &iced::Theme,
-            status: iced::widget::button::Status,
+            status: sweeten::widget::button::Status,
             selected: bool,
             accent: iced::Color,
-        ) -> iced::widget::button::Style {
-            use iced::widget::button::Status;
+        ) -> sweeten::widget::button::Style {
+            use sweeten::widget::button::Status;
             let p = theme.extended_palette();
             let text = theme.palette().text;
             let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
@@ -962,7 +963,7 @@ pub fn view<'a>(
                 _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
                 _ => None,
             };
-            iced::widget::button::Style {
+            sweeten::widget::button::Style {
                 background: bg,
                 text_color: if selected { accent } else { text },
                 border: iced::Border {
@@ -986,10 +987,10 @@ pub fn view<'a>(
             let content = row![icon_el, text(label).size(14).style(tinted_text_style)]
                 .spacing(8)
                 .align_y(iced::Alignment::Center);
-            iced::widget::button(content)
+            button(content)
                 .padding([6, 10])
                 .width(iced::Length::Fixed(ROW_WIDTH))
-                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                .style(move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
                     let accent = tint.unwrap_or(theme.palette().primary);
                     menu_row_style(theme, status, false, accent)
                 })
@@ -1066,10 +1067,10 @@ pub fn view<'a>(
                 let content = row![check, text(label).size(14)]
                     .spacing(8)
                     .align_y(iced::Alignment::Center);
-                let btn = iced::widget::button(content)
+                let btn = button(content)
                     .padding([6, 10])
                     .width(iced::Length::Fixed(ROW_WIDTH))
-                    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                    .style(move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
                         menu_row_style(theme, status, selected, theme.palette().primary)
                     })
                     .on_press(Message::SetSpeed(v));
@@ -1166,13 +1167,13 @@ pub fn view<'a>(
             // body) so they don't fall through to the backdrop's
             // dismiss-on-press handler. Buttons inside the panel
             // still capture their own events.
-            let panel_swallow = iced::widget::mouse_area(panel).on_press(Message::NoOp);
+            let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
             let placement = container(panel_swallow)
                 .width(Fill)
                 .height(Fill)
                 .align_x(iced::alignment::Horizontal::Center)
                 .align_y(iced::alignment::Vertical::Center);
-            let backdrop = iced::widget::mouse_area(
+            let backdrop = mouse_area(
                 container(iced::widget::Space::new().width(Fill).height(Fill))
                     .width(Fill)
                     .height(Fill)
@@ -1181,7 +1182,7 @@ pub fn view<'a>(
                         ..Default::default()
                     }),
             )
-            .on_press(Message::CloseForfeitConfirm);
+            .on_press(|_| Message::CloseForfeitConfirm);
             Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
         } else {
             None

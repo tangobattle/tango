@@ -3,10 +3,10 @@ use crate::i18n::t;
 use crate::widgets;
 use crate::{config, replays, save_view};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::pick_list;
+use sweeten::widget::{button, column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
@@ -596,7 +596,7 @@ impl ReplaysState {
                 pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
                     .padding(STANDARD_PADDING)
                     .style(widgets::chunky_pick_list),
-                iced::widget::text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
+                text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(220.0))
@@ -1254,8 +1254,8 @@ fn export_panel<'a>(
             widgets::primary_button,
         )
     } else {
-        iced::widget::button(
-            iced::widget::row![Icon::Upload.widget(), text(t!(lang, "replays-export-save-as")),]
+        button(
+            row![Icon::Upload.widget(), text(t!(lang, "replays-export-save-as")),]
                 .spacing(8)
                 .align_y(Alignment::Center),
         )

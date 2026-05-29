@@ -3,10 +3,10 @@ use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::widgets;
 use crate::{config, input};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
+use iced::widget::{container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::pick_list;
+use sweeten::widget::{button, column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -473,7 +473,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             text(t!(lang, "settings-window-size"))
                 .size(TEXT_CAPTION)
                 .style(widgets::muted_text_style),
-            iced::widget::row![
+            row![
                 window_size_picker,
                 iced::widget::checkbox(config.fullscreen)
                     .label(t!(lang, "settings-fullscreen"))

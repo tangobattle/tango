@@ -7,9 +7,10 @@
 //! `Icon::Foo` directly.
 
 use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
-use iced::widget::{button, container, row, text, tooltip};
+use iced::widget::{container, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
+use sweeten::widget::{button, row};
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
@@ -38,8 +39,22 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
 /// as a console widget, not a flat highlight). Hover gets a
 /// primary-tinted wash plus a left-edge accent stripe — a tiny
 /// "chevron" cue the eye can pick out before the click.
+// Collapse sweeten's keyboard-focus state onto the four moods
+// iced 0.14 ships so our style fns only enumerate the visuals
+// they actually paint. Focused+hovered tracks Hovered; focused-
+// only stays Active so a focus ring doesn't repaint the hover
+// treatment.
+pub(crate) fn collapse_button_focus(status: button::Status) -> button::Status {
+    match status {
+        button::Status::Focused { is_hovered: true } => button::Status::Hovered,
+        button::Status::Focused { is_hovered: false } => button::Status::Active,
+        other => other,
+    }
+}
+
 pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
+        let status = collapse_button_focus(status);
         let p = theme.extended_palette();
         let primary = theme.palette().primary;
         let bg = theme.palette().background;
@@ -117,6 +132,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
                 },
                 ..base
             },
+            button::Status::Focused { .. } => unreachable!(),
         }
     }
 }
@@ -129,6 +145,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
 /// darker for a tactile "I clicked that" snap. Hover brightens
 /// the plate and tints the border toward primary.
 pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
+    let status = collapse_button_focus(status);
     let p = theme.extended_palette();
     let bg = theme.palette().background;
     let text = theme.palette().text;
@@ -178,8 +195,9 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
             if p.is_dark { 0.25 } else { 0.08 },
             text,
         ),
-        // Disabled handled above by early return.
-        button::Status::Disabled => unreachable!(),
+        // Disabled handled above by early return; Focused
+        // collapsed into Active/Hovered by `collapse_button_focus`.
+        button::Status::Disabled | button::Status::Focused { .. } => unreachable!(),
         button::Status::Active => (
             mix(plate, iced::Color::WHITE, if p.is_dark { 0.05 } else { 0.10 }),
             plate,
@@ -221,6 +239,7 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
 /// background alpha so the user gets click feedback without the
 /// button looking like a CTA.
 pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
+    let status = collapse_button_focus(status);
     let text = theme.palette().text;
     let (bg, text_color) = match status {
         button::Status::Hovered => (iced::Background::Color(iced::Color { a: 0.08, ..text }), text),
@@ -232,6 +251,7 @@ pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
             iced::Color { a: 0.3, ..text },
         ),
         button::Status::Active => (iced::Background::Color(iced::Color::TRANSPARENT), text),
+        button::Status::Focused { .. } => unreachable!(),
     };
     button::Style {
         background: Some(bg),
@@ -363,6 +383,7 @@ fn tab_button_inner<'a, M: Clone + 'a>(
 /// the visual style.
 pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
+        let status = collapse_button_focus(status);
         let p = theme.extended_palette();
         let primary = theme.palette().primary;
         let (bg, text_color, glow_alpha, blur) = if active {
@@ -675,6 +696,7 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
 /// `danger_button` (red) read as the same widget family in
 /// different moods.
 fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color) -> button::Style {
+    let status = collapse_button_focus(status);
     // Disabled drops the accent entirely — no green/red glow, no
     // gradient, no shadow. Flat de-saturated plate + dim text reads
     // as "this is OFF" loud and clear instead of "this is just a
@@ -704,7 +726,7 @@ fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color) -> 
     let (top, bottom, glow_alpha, offset_y) = match status {
         button::Status::Hovered => (mix(lighter, iced::Color::WHITE, 0.10), accent, 0.65, 5.0),
         button::Status::Pressed => (darker, mix(darker, iced::Color::BLACK, 0.10), 0.25, 1.0),
-        button::Status::Disabled => unreachable!(),
+        button::Status::Disabled | button::Status::Focused { .. } => unreachable!(),
         button::Status::Active => (lighter, darker, 0.45, 4.0),
     };
     button::Style {
@@ -788,8 +810,11 @@ pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Styl
 /// (lighter top → darker bottom) so it reads as the same
 /// "physical widget" family as the buttons sitting next to it.
 /// Focus = thicker primary border; hover = tinted border.
-pub fn chunky_text_input(theme: &Theme, status: iced::widget::text_input::Status) -> iced::widget::text_input::Style {
-    use iced::widget::text_input::Status;
+pub fn chunky_text_input(
+    theme: &Theme,
+    status: sweeten::widget::text_input::Status,
+) -> sweeten::widget::text_input::Style {
+    use sweeten::widget::text_input::Status;
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
     let bg = theme.palette().background;
@@ -819,7 +844,7 @@ pub fn chunky_text_input(theme: &Theme, status: iced::widget::text_input::Status
                 .add_stop(1.0, plate_bottom),
         ))
     };
-    iced::widget::text_input::Style {
+    sweeten::widget::text_input::Style {
         background,
         border: iced::Border {
             radius: 8.0.into(),

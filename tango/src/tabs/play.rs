@@ -3,10 +3,10 @@ use crate::i18n::t;
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, text, text_input, Space};
+use iced::widget::{container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::pick_list;
+use sweeten::widget::{button, column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -943,7 +943,7 @@ impl PlayState {
                         widgets::primary_button,
                     )
                 } else {
-                    iced::widget::button(
+                    button(
                         row![Icon::Check.widget(), text(t!(lang, "save-new-confirm"))]
                             .spacing(8)
                             .align_y(Alignment::Center),
@@ -1070,7 +1070,7 @@ impl PlayState {
             ]
             .spacing(8)
             .align_y(Alignment::Center);
-            let mut btn = iced::widget::button(label)
+            let mut btn = button(label)
                 .padding(BOTTOM_CTA_PAD)
                 .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
@@ -1097,7 +1097,7 @@ impl PlayState {
         .width(Length::Fill)
         .into();
         let dice_button: Element<'a, Message> = iced::widget::tooltip(
-            iced::widget::button(Icon::Dice5.widget().size(BOTTOM_SIZE))
+            button(Icon::Dice5.widget().size(BOTTOM_SIZE))
                 .padding(BOTTOM_PAD)
                 .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
@@ -1825,7 +1825,7 @@ fn lobby_view<'a>(
         let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
             .spacing(8)
             .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(label_widget)
+        let mut btn = button(label_widget)
             .padding(READY_PAD)
             .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, ready_palette));
         if let Some(m) = ready_msg {
@@ -1857,7 +1857,7 @@ fn lobby_view<'a>(
         let inner = row![Icon::LogOut.widget(), text(t!(lang, "play-cancel"))]
             .spacing(8)
             .align_y(Alignment::Center);
-        let mut btn = iced::widget::button(inner)
+        let mut btn = button(inner)
             .padding(STANDARD_PADDING)
             .style(widgets::danger_button);
         if !handoff_pending {
@@ -1880,7 +1880,7 @@ fn lobby_view<'a>(
     // diagonal cut + VS badge from `widgets::vs_splitter` paints
     // through the middle. The splitter canvas (which also paints
     // the red/blue half tints) is layered *under* the row.
-    let sides_row = iced::widget::row![
+    let sides_row = row![
         side(
             t!(lang, "play-you"),
             Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
@@ -2003,6 +2003,7 @@ enum ReadyPalette {
 ///               button is now purely a status indicator with no
 ///               click target.
 fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
+    let status = widgets::collapse_button_focus(status);
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
     match palette {
@@ -2046,7 +2047,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
                     28.0,
                 ),
                 button::Status::Pressed => (darker, mix(darker, iced::Color::BLACK, 0.12), 0.35, 2.0, 14.0),
-                button::Status::Disabled => unreachable!("handled above"),
+                button::Status::Disabled | button::Status::Focused { .. } => unreachable!("handled above / collapsed"),
                 button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
             };
             button::Style {
