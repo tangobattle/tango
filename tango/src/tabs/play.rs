@@ -866,6 +866,13 @@ impl PlayState {
             .spacing(8)
             .align_y(Alignment::Center);
 
+        // Drop the patches read before the save_row block —
+        // `templates_for_selection` (called from save_action_buttons
+        // and the NewSave branch) re-reads `scanners.patches`, and
+        // `std::sync::RwLock` doesn't guarantee a same-thread nested
+        // read survives a queued writer.
+        drop(patches);
+
         let save_row: Element<'_, Message> = match &self.save_action {
             SaveAction::None => {
                 let actions = self.save_action_buttons(lang, scanners);

@@ -437,6 +437,34 @@ impl App {
             .map(Message::Netplay)
     }
 
+    /// If a netplay state change just flipped the compat verdict to
+    /// anything other than Compatible while we're still flagged
+    /// ready, fire an Uncommit so the local commit doesn't outlive
+    /// the agreement it was based on. Covers the cases the netplay
+    /// handlers don't catch — peer changing their game/patch/
+    /// match_type, or our own available_patches shrinking out from
+    /// under a previously-valid commit.
+    fn uncommit_if_incompat(&self) -> iced::Task<Message> {
+        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
+            return iced::Task::none();
+        }
+        if !self.netplay.lobby.local_ready {
+            return iced::Task::none();
+        }
+        let (Some(local), Some(remote)) = (
+            self.netplay.lobby.local.as_ref(),
+            self.netplay.lobby.remote.as_ref(),
+        ) else {
+            return iced::Task::none();
+        };
+        let patches = self.scanners.patches.read();
+        let verdict = netplay::compat::check(local, remote, &*patches);
+        if matches!(verdict, netplay::compat::Verdict::Compatible) {
+            return iced::Task::none();
+        }
+        iced::Task::done(Message::Netplay(netplay::Message::Uncommit))
+    }
+
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
     /// game_info from the Play tab's local selection, and the
@@ -732,7 +760,9 @@ impl App {
                 } else {
                     iced::Task::none()
                 };
-                iced::Task::batch([task, self.resend_settings_if_lobby(), attention])
+                let resend = self.resend_settings_if_lobby();
+                let uncommit = self.uncommit_if_incompat();
+                iced::Task::batch([task, resend, uncommit, attention])
             }
             Message::PvpSessionBuilt(slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {
