@@ -353,7 +353,14 @@ impl PlayState {
                 }
             }
             Message::LinkCodeChanged(s) => {
-                self.link_code = s;
+                // Direct-TCP commands (/host, /connect) need slashes,
+                // spaces, dots, colons, brackets — pass them through.
+                let filtered: String = if s.starts_with('/') {
+                    s
+                } else {
+                    s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect()
+                };
+                self.link_code = filtered.chars().take(100).collect();
                 None
             }
             Message::LinkCodeRandom => {
@@ -365,20 +372,16 @@ impl PlayState {
             }
             Message::FightPressed => {
                 // Bottom bar is netplay-only — Fight CTA is gated
-                // at the view layer to require a non-empty link
-                // code, so reaching this handler with an empty
-                // input is a stale message + safe to ignore.
-                let trimmed = self.link_code.trim();
-                if trimmed.is_empty() {
+                // at the view layer to require a submittable link
+                // code, so reaching this handler without one is a
+                // stale message + safe to ignore.
+                let Some(ident) = resolve_link_ident(self.link_code.trim()) else {
                     return None;
-                }
+                };
                 // Clear any leftover after-the-fact error from a prior
                 // attempt — the new attempt's outcome will replace it.
                 self.last_error = None;
-                Some(Effect::NetplayConnect(match parse_direct_command(trimmed) {
-                    Some(role) => crate::netplay::LinkIdent::Direct(role),
-                    None => crate::netplay::LinkIdent::Matchmaking(trimmed.to_string()),
-                }))
+                Some(Effect::NetplayConnect(ident))
             }
             Message::DismissError => {
                 self.last_error = None;
@@ -1070,7 +1073,7 @@ impl PlayState {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
-        let link_code_empty = self.link_code.trim().is_empty();
+        let can_submit = resolve_link_ident(self.link_code.trim()).is_some();
         let fight_button: Element<'a, Message> = {
             // Same chrome as the lobby's Ready button — both are
             // "commit to a match" CTAs. ready_button_style for
@@ -1088,7 +1091,7 @@ impl PlayState {
                 .padding(BOTTOM_CTA_PAD)
                 .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
-            if !link_code_empty {
+            if can_submit {
                 btn = btn.on_press(Message::FightPressed);
             }
             btn.into()
@@ -2256,6 +2259,20 @@ pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std:
     }
     std::fs::rename(src, &dst)?;
     Ok(dst)
+}
+
+/// Resolve a trimmed link-code input into a submittable
+/// [`LinkIdent`], or `None` if the input isn't submittable
+/// (empty, or a malformed `/`-prefixed direct command).
+fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
+    if input.is_empty() {
+        return None;
+    }
+    if input.starts_with('/') {
+        parse_direct_command(input).map(crate::netplay::LinkIdent::Direct)
+    } else {
+        Some(crate::netplay::LinkIdent::Matchmaking(input.to_string()))
+    }
 }
 
 /// Recognise the direct-TCP link-code commands the user can type
