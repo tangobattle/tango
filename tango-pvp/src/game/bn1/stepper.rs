@@ -22,6 +22,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             if stepper_state.is_replaying() && !stepper_state.has_committed_this_round() {
                 return;
             }
+            // FF has captured its state and the Fastforwarder is about to
+            // return. `run_loop`'s remaining cycle budget can still spill
+            // past the trap-fire point — don't let it advance the shadow
+            // again for the captured tick.
+            if stepper_state.has_captured_state() {
+                return;
+            }
 
             let ip = match stepper_state.pop_input_pair() {
                 Some(ip) => ip,

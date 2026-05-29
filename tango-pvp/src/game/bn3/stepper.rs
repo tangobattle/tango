@@ -24,6 +24,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             if stepper_state.is_round_ending() {
                 return;
             }
+            // FF has captured its state and the Fastforwarder is about to
+            // return. `run_loop`'s remaining cycle budget can still spill
+            // past the trap-fire point — don't let it advance the shadow
+            // again for the captured tick.
+            if stepper_state.has_captured_state() {
+                return;
+            }
 
             let Some(ip) = stepper_state.pop_input_pair() else {
                 let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];

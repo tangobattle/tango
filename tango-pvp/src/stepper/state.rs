@@ -459,8 +459,13 @@ impl InnerState {
     }
 
     /// True iff the FF state snapshot has been captured. The Fastforwarder
-    /// outer loop exits when this flips to true.
-    pub(super) fn has_captured_state(&self) -> bool {
+    /// outer loop exits when this flips to true. Per-game stepper traps
+    /// (`copy_input_data_entry` in particular) gate on this to skip work
+    /// after capture: `run_loop`'s cycle budget often spills past the
+    /// trap-fire point that captured the state, and any
+    /// `apply_shadow_input` call from that spill would double-advance the
+    /// shadow for the captured tick — the bug that desync'd BN4/5/EXE45.
+    pub fn has_captured_state(&self) -> bool {
         self.captured_state.is_some()
     }
 

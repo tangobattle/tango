@@ -154,6 +154,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if state.is_replaying() && !state.has_committed_this_round() {
                     return;
                 }
+                // FF has captured its state and the Fastforwarder is about to
+                // return. `run_loop`'s remaining cycle budget can still spill
+                // past the trap-fire point — don't let it advance the shadow
+                // again for the captured tick.
+                if state.has_captured_state() {
+                    return;
+                }
 
                 let current_tick = state.current_tick();
 
