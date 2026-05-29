@@ -10,7 +10,7 @@ pub struct FastforwardResult {
     /// joyflags, and snapshots from there — so loading this state into either
     /// the live core (immediate render) or another `fastforward` run (as the
     /// next base state) resumes with the right local-joyflags register.
-    pub state: crate::battle::CommittedState,
+    pub snapshot: crate::battle::Snapshot,
     pub round_result: Option<RoundResult>,
     pub output_pairs: Vec<Pair<Input, Input>>,
 }
@@ -86,7 +86,7 @@ impl Fastforwarder {
             {
                 let mut guard = self.state.0.lock().unwrap();
                 let inner = guard.as_mut().unwrap();
-                if inner.has_captured_state() {
+                if inner.has_captured_snapshot() {
                     return Ok(guard.take().expect("state").into_fastforward_result());
                 }
                 let _ = inner.take_error();

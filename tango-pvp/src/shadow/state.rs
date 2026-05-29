@@ -5,7 +5,7 @@ use super::round::{Round, RoundState};
 /// Snapshot of the shadow emulator at a specific tick, captured by per-game
 /// shadow traps and consumed by [`super::Shadow::apply_input`] /
 /// [`super::Shadow::advance_until_round_end`] to advance the visible primary.
-pub(super) struct AppliedState {
+pub(super) struct Snapshot {
     pub(super) tick: u32,
     pub(super) state: Box<mgba::state::State>,
 }
@@ -16,7 +16,7 @@ pub(super) struct InnerState {
     local_player_index: u8,
     pub(super) round_state: Mutex<RoundState>,
     pub(super) rng: Mutex<rand_pcg::Mcg128Xsl64>,
-    pub(super) applied_state: Mutex<Option<AppliedState>>,
+    pub(super) applied_snapshot: Mutex<Option<Snapshot>>,
     pub(super) error: Mutex<Option<anyhow::Error>>,
 }
 
@@ -36,7 +36,7 @@ impl State {
                 round: None,
                 result_is_in: false,
             }),
-            applied_state: Mutex::new(None),
+            applied_snapshot: Mutex::new(None),
             error: Mutex::new(None),
         }))
     }
@@ -85,6 +85,6 @@ impl State {
     }
 
     pub fn set_applied_state(&self, state: Box<mgba::state::State>, tick: u32) {
-        *self.0.applied_state.lock().unwrap() = Some(AppliedState { tick, state });
+        *self.0.applied_snapshot.lock().unwrap() = Some(Snapshot { tick, state });
     }
 }

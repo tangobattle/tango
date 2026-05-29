@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use crate::input::{Input, Pair, PairQueue, PartialInput};
 
 use super::throttler::Throttler;
-use super::types::{BattleOutcome, CommittedState};
+use super::types::{BattleOutcome, Snapshot};
 use super::EXPECTED_FPS;
 
 /// Per-round state for the live primary. Owns the input queue, the settled
@@ -98,7 +98,7 @@ pub struct Round {
     /// in the speculative regime a throwaway tail FF starts from it. Capped
     /// at `commit_frontier − 1`, so the seed only ever holds real, committed
     /// state.
-    settled_state: Option<CommittedState>,
+    settled_snapshot: Option<Snapshot>,
 
     // ---- Time sync / throttling ----
     /// Count of remote inputs received over the network this round. Equal
@@ -165,7 +165,7 @@ impl Round {
             commit_frontier: 0,
             last_committed_remote_input,
             pending_commits: std::collections::VecDeque::new(),
-            settled_state: None,
+            settled_snapshot: None,
             // time sync / throttling
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
@@ -210,7 +210,7 @@ impl Round {
         // Seed the settled checkpoint at the round's tick-0 state. `commit_frontier`
         // starts at 0 and `pending_commits` is empty; the chain grows from here
         // as `add_local_input_and_fastforward` drains the input_queue.
-        self.settled_state = Some(CommittedState {
+        self.settled_snapshot = Some(Snapshot {
             state: local_state,
             tick: 0,
             packet: first_packet.to_vec(),
@@ -266,7 +266,7 @@ impl Round {
             // packet to seed predict_rx from anyway, so we just hold the
             // initial state. Borrow the settled Box rather than cloning the
             // underlying ~400 KB state.
-            Cow::Borrowed(&self.settled_state.as_ref().unwrap().state)
+            Cow::Borrowed(&self.settled_snapshot.as_ref().unwrap().state)
         };
 
         core.load_state(&present_state).expect("load present state");
@@ -282,16 +282,15 @@ impl Round {
     /// `settled_state` or the shadow — the next frame's settle re-processes
     /// the committed portion with real packets.
     fn speculate_tail(&mut self, target: u32, peeked: &[PartialInput]) -> anyhow::Result<Box<mgba::state::State>> {
-        let seed = self.settled_state.as_ref().expect("settled state");
-        let seed_tick = seed.tick;
+        let settled_snapshot = self.settled_snapshot.as_ref().expect("settled state");
         debug_assert_eq!(
-            seed_tick,
+            settled_snapshot.tick,
             self.commit_frontier.saturating_sub(1),
             "speculative tail seed must sit at the settled cap"
         );
 
         let predicted_joyflags = predicted_remote_joyflags(self.last_committed_remote_input.joyflags);
-        let total = (target - seed_tick + 1) as usize;
+        let total = (target - settled_snapshot.tick + 1) as usize;
         let mut input_pairs: Vec<Pair<PartialInput, PartialInput>> = Vec::with_capacity(total);
 
         // First entry sits at the committed cap (`commit_frontier − 1`): real
@@ -320,18 +319,18 @@ impl Round {
         let mut predict_packet = self.last_committed_remote_input.packet.clone();
         hooks.predict_rx(&mut predict_packet);
         let result = self.stepper.fastforward(
-            &seed.state,
+            &settled_snapshot.state,
             input_pairs,
-            seed_tick,
+            settled_snapshot.tick,
             target,
-            &seed.packet,
+            &settled_snapshot.packet,
             Box::new(move |_tick, _ip| {
                 let out = predict_packet.clone();
                 hooks.predict_rx(&mut predict_packet);
                 Ok(out)
             }),
         )?;
-        Ok(result.state.state)
+        Ok(result.snapshot.state)
     }
 
     async fn send_and_queue_local_input(&mut self, joyflags: u16) -> anyhow::Result<()> {
@@ -401,7 +400,7 @@ impl Round {
     /// just-committed joyflags to the replay file. Holds (no-op) when `target`
     /// is at or behind the seed.
     fn settle_to(&mut self, target: u32) -> anyhow::Result<Option<crate::stepper::RoundResult>> {
-        let seed_tick = self.settled_state.as_ref().expect("settled state").tick;
+        let seed_tick = self.settled_snapshot.as_ref().expect("settled state").tick;
         if target <= seed_tick {
             // Hold: re-show the current checkpoint while the frontier climbs
             // to `presentation_delay` ticks past the round's start (the
@@ -409,7 +408,7 @@ impl Round {
             return Ok(None);
         }
 
-        let seed = self.settled_state.take().expect("settled state");
+        let seed = self.settled_snapshot.take().expect("settled state");
         // Inputs for ticks `[seed_tick, target]` — inclusive: the per-game
         // stepper trap peeks an input pair at `capture_tick` before it
         // snapshots, so `pending_commits` must still hold `target`'s entry or
@@ -463,7 +462,7 @@ impl Round {
             self.pending_commits.pop_front();
         }
 
-        self.settled_state = Some(result.state);
+        self.settled_snapshot = Some(result.snapshot);
         Ok(result.round_result)
     }
 
@@ -524,7 +523,7 @@ impl Round {
     }
 
     pub fn has_committed_state(&mut self) -> bool {
-        self.settled_state.is_some()
+        self.settled_snapshot.is_some()
     }
 
     pub fn add_local_input(&mut self, input: PartialInput) {

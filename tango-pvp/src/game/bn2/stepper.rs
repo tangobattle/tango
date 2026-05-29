@@ -28,7 +28,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             // return. `run_loop`'s remaining cycle budget can still spill
             // past the trap-fire point — don't let it advance the shadow
             // again for the captured tick.
-            if stepper_state.has_captured_state() {
+            if stepper_state.has_captured_snapshot() {
                 return;
             }
 

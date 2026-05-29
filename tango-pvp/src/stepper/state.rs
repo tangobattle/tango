@@ -86,7 +86,7 @@ pub struct InnerState {
     /// live core and for using as the next FF's base state. `u32::MAX` in
     /// replay mode so the capture never fires.
     capture_tick: u32,
-    captured_state: Option<crate::battle::CommittedState>,
+    captured_snapshot: Option<crate::battle::Snapshot>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
@@ -186,7 +186,7 @@ impl InnerState {
             commit_frontier,
             // Replay mode never runs the FF capture branch.
             capture_tick: u32::MAX,
-            captured_state: None,
+            captured_snapshot: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -235,7 +235,7 @@ impl InnerState {
             // branch is gated on `is_replaying()`), so `commit_frontier` is unused.
             commit_frontier: u32::MAX,
             capture_tick,
-            captured_state: None,
+            captured_snapshot: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -451,7 +451,7 @@ impl InnerState {
                 p.send_count, expected,
             );
         }
-        self.captured_state = Some(crate::battle::CommittedState {
+        self.captured_snapshot = Some(crate::battle::Snapshot {
             tick: self.current_tick,
             state,
             packet: p.packet,
@@ -465,15 +465,15 @@ impl InnerState {
     /// trap-fire point that captured the state, and any
     /// `apply_shadow_input` call from that spill would double-advance the
     /// shadow for the captured tick — the bug that desync'd BN4/5/EXE45.
-    pub fn has_captured_state(&self) -> bool {
-        self.captured_state.is_some()
+    pub fn has_captured_snapshot(&self) -> bool {
+        self.captured_snapshot.is_some()
     }
 
     /// Consumes self into a Fastforwarder result. Panics if the state hasn't
     /// been captured yet — callers must check [`Self::has_captured_state`] first.
     pub(super) fn into_fastforward_result(self) -> super::fastforwarder::FastforwardResult {
         super::fastforwarder::FastforwardResult {
-            state: self.captured_state.expect("captured state"),
+            snapshot: self.captured_snapshot.expect("captured snapshot"),
             round_result: self.round_result,
             output_pairs: self.output_pairs,
         }
@@ -611,7 +611,7 @@ impl InnerState {
         self.output_pairs = vec![];
         // Replay mode never sets captured_state, so resetting here is just
         // defensive; included for symmetry with the other per-round fields.
-        self.captured_state = None;
+        self.captured_snapshot = None;
         self.round_result = None;
         self.phase = RoundPhase::InProgress;
     }

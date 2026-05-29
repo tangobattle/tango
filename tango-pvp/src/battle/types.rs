@@ -25,7 +25,7 @@ pub struct ReplayConfig {
 /// link-cable packet at the moment of capture. Both Fastforwarder and replay
 /// use this.
 #[derive(Clone)]
-pub struct CommittedState {
+pub struct Snapshot {
     pub state: Box<mgba::state::State>,
     /// `game.current_tick` at the moment the snapshot was captured — i.e. the
     /// tick the game is *about to process next*, an exclusive upper bound of

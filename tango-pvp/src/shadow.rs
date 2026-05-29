@@ -142,7 +142,7 @@ impl Shadow {
         // applied_state and error are per-apply_input scratch; clear so the
         // next apply_input call doesn't pick up stale values that don't
         // correspond to the just-restored core state.
-        *self.state.0.applied_state.lock().unwrap() = None;
+        *self.state.0.applied_snapshot.lock().unwrap() = None;
         *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }
@@ -186,9 +186,19 @@ impl Shadow {
 
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
-                let applied_state = self.state.0.applied_state.lock().unwrap().take().expect("applied state");
+                let applied_snapshot = self
+                    .state
+                    .0
+                    .applied_snapshot
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("applied snapshot");
 
-                self.core.as_mut().load_state(&applied_state.state).expect("load state");
+                self.core
+                    .as_mut()
+                    .load_state(&applied_snapshot.state)
+                    .expect("load state");
                 return Ok(());
             }
         }
@@ -213,7 +223,7 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            let Some(applied_state) = self.state.0.applied_state.lock().unwrap().take() else {
+            let Some(applied_snapshot) = self.state.0.applied_snapshot.lock().unwrap().take() else {
                 continue;
             };
 
@@ -222,10 +232,13 @@ impl Shadow {
             // shadow trap layout, set_applied_state can fire after
             // current_tick has already advanced. The applied state is
             // still correct; we just don't assert here.
-            self.core.as_mut().load_state(&applied_state.state).expect("load state");
+            self.core
+                .as_mut()
+                .load_state(&applied_snapshot.state)
+                .expect("load state");
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
-            round.current_tick = applied_state.tick;
+            round.current_tick = applied_snapshot.tick;
             let _ = expected_tick;
             return Ok(pending_remote_packet);
         }
