@@ -3,9 +3,10 @@ use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::widgets;
 use crate::{config, input};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
+use sweeten::widget::pick_list;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]

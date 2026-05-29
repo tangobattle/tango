@@ -840,8 +840,16 @@ pub fn chunky_text_input(theme: &Theme, status: iced::widget::text_input::Status
 /// Chunky pick_list matching the button bevel. Same gradient
 /// plate + thicker border. Open state lights up the border in
 /// primary so the dropdown reads as "live".
-pub fn chunky_pick_list(theme: &Theme, status: iced::widget::pick_list::Status) -> iced::widget::pick_list::Style {
-    use iced::widget::pick_list::Status;
+///
+/// Typed against `sweeten::widget::pick_list`, not iced's stock
+/// one — we use sweeten so the game picker can `.disabled()`
+/// individual rows. The `Style`/`Status` types are structurally
+/// identical to iced's but are a distinct type.
+pub fn chunky_pick_list(
+    theme: &Theme,
+    status: sweeten::widget::pick_list::Status,
+) -> sweeten::widget::pick_list::Style {
+    use sweeten::widget::pick_list::Status;
     let p = theme.extended_palette();
     let primary = theme.palette().primary;
     let bg = theme.palette().background;
@@ -865,7 +873,7 @@ pub fn chunky_pick_list(theme: &Theme, status: iced::widget::pick_list::Status) 
         Status::Hovered => (iced::Color { a: 0.6, ..primary }, 1.0),
         Status::Opened { .. } => (primary, 2.0),
     };
-    iced::widget::pick_list::Style {
+    sweeten::widget::pick_list::Style {
         text_color: text,
         placeholder_color: muted_color(theme),
         handle_color: primary,

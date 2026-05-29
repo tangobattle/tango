@@ -3,9 +3,10 @@ use crate::i18n::t;
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
+use sweeten::widget::pick_list;
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -77,8 +78,8 @@ pub struct GameOption {
     pub game: rom::GameRef,
     pub display: String,
     /// `false` when no ROM for this game is in the scan results.
-    /// Still shown in the dropdown (so users know what's supported)
-    /// but `LocalGameSelected` ignores picks where this is false.
+    /// Drives sweeten's `.disabled()` closure on the picker so the
+    /// row renders greyed out and refuses clicks.
     pub available: bool,
 }
 
@@ -95,16 +96,7 @@ impl std::hash::Hash for GameOption {
 }
 impl std::fmt::Display for GameOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.available {
-            f.write_str(&self.display)
-        } else {
-            // Lucide "file-x" glyph as a prefix marker. cosmic-text
-            // falls back across loaded fonts for codepoints the
-            // primary face doesn't have, so the PUA codepoint
-            // resolves to the lucide font inside pick_list's
-            // single-text-color renderer.
-            write!(f, "{} {}", char::from(Icon::FileX), self.display)
-        }
+        f.write_str(&self.display)
     }
 }
 impl std::fmt::Debug for GameOption {
@@ -290,12 +282,6 @@ impl PlayState {
     ) -> Option<Effect> {
         match msg {
             Message::LocalGameSelected(g) => {
-                if !g.available {
-                    // Greyed-out entry in the dropdown — ignore the
-                    // pick. The "(no ROM)" suffix in the label tells
-                    // the user why it didn't take.
-                    return None;
-                }
                 self.local_game = Some(g.game);
                 self.local_patch = None;
                 self.local_patch_version = None;
@@ -723,17 +709,11 @@ impl PlayState {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
 
-        // Show every Battle Network game tango knows about, not
-        // Show every supported BN, not just the ROMs we have. iced
-        // 0.14's pick_list can't paint individual options in a
-        // different color — its menu uses one text color for the
-        // whole list — so we communicate "unavailable" via two
-        // signals instead: (a) sort available items to the top so
-        // there's a clear visual break, and (b) suffix unavailable
-        // entries with "(no ROM)" in their Display impl. The
-        // `LocalGameSelected` handler also refuses picks where
-        // `available` is false, so the suffix doubles as a click-
-        // through guard.
+        // Show every supported BN, not just the ROMs we have, so
+        // users can see what tango knows about. sweeten's
+        // `.disabled()` greys out the rows we don't have a ROM
+        // for; we also stable-sort available items to the top so
+        // the live games sit above the disabled block.
         let mut all_games: Vec<rom::GameRef> = tango_gamedb::GAMES.iter().copied().collect();
         game::sort_games(lang, &mut all_games);
 
@@ -745,8 +725,6 @@ impl PlayState {
                 available: roms.contains_key(g),
             })
             .collect();
-        // Stable sort: available first, otherwise preserve the
-        // locale-sorted order from `sort_games` above.
         game_options.sort_by_key(|o| !o.available);
 
         let selected_game = self
@@ -754,6 +732,7 @@ impl PlayState {
             .and_then(|g| game_options.iter().find(|opt| opt.game == g).cloned());
 
         let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
+            .disabled(|opts: &[GameOption]| opts.iter().map(|o| !o.available).collect())
             .placeholder(t!(lang, "play-no-game"))
             .padding(STANDARD_PADDING)
             .width(Length::FillPortion(3))

@@ -2,9 +2,10 @@ use crate::app::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEX
 use crate::i18n::{t, SUPPORTED_LANGS};
 use crate::tabs::settings::labeled;
 use crate::widgets;
-use iced::widget::{button, column, container, pick_list, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
+use sweeten::widget::pick_list;
 use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]

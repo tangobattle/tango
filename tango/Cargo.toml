@@ -18,6 +18,11 @@ embed-resource = "1"
 
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
+# Drop-in replacement widgets that extend iced 0.14's stock ones.
+# We use sweeten's `pick_list` for its `.disabled()` closure so the
+# ROM dropdown can grey out games we don't have a ROM for instead
+# of jamming a "file-x" glyph into the label string.
+sweeten = "0.14"
 # Used only for a tiny pre-iced adapter probe in `run_app`: we
 # enumerate Backends::PRIMARY and auto-fall-back to ANGLE on
 # Windows if no DX12/Vulkan adapter is present. Version pinned
