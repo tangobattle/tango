@@ -43,6 +43,11 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, match_type * 2);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x15, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, 0x01);
+        // [0x3e:0x40] is the halfword the in-game settings generator
+        // reads (LDRH at comm_menu_settings_entry+0x32 — 0x08134f20 in
+        // BRBE) as its match_type / range argument: 0 = normal stage
+        // range (0..0x44), 1 = extended (0..0x60).
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3e, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3f, -1, 0x00);
     }
 
