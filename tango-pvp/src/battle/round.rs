@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use parking_lot::Mutex as PlMutex;
@@ -251,20 +252,22 @@ impl Round {
         let settled_target = target.min(self.commit_frontier.saturating_sub(1));
         let round_result = self.settle_to(settled_target)?;
 
-        let present_state = if target > settled_target && self.commit_frontier > 0 {
+        let present_state: Cow<'_, Box<mgba::state::State>> = if target > settled_target && self.commit_frontier > 0 {
             // Speculative tail: throwaway FF from settled_state to target,
             // predicting every packet in `[settled_state.tick, target)`
             // (the leading tick at `commit_frontier − 1` is committed
             // joyflags-wise but uses a predicted packet too, since the
             // shadow can't advance through it twice — the next settle will
-            // re-process it with the real packet).
-            self.speculate_tail(target, &peeked)?
+            // re-process it with the real packet). The FF hands us a fresh
+            // Box<State>, owned.
+            Cow::Owned(self.speculate_tail(target, &peeked)?)
         } else {
             // Either settled (`target ≤ commit_frontier − 1`) — settled_state
             // IS the display — or pre-first-commit, where there's no real
             // packet to seed predict_rx from anyway, so we just hold the
-            // initial state.
-            self.settled_state.as_ref().unwrap().state.clone()
+            // initial state. Borrow the settled Box rather than cloning the
+            // underlying ~400 KB state.
+            Cow::Borrowed(&self.settled_state.as_ref().unwrap().state)
         };
 
         core.load_state(&present_state).expect("load present state");
