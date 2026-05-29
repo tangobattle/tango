@@ -42,6 +42,8 @@ pub fn init() {
     // playback latency. Advisory only — the driver can still pick a
     // larger quantum.
     sdl3::hint::set("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", &audio::SAMPLES.to_string());
+    sdl3::hint::set("SDL_APP_NAME", "Tango");
+    sdl3::hint::set("SDL_WINDOWS_INTRESOURCE_ICON", "1");
 
     let sdl = match sdl3::init() {
         Ok(s) => s,
