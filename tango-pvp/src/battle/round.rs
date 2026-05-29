@@ -113,6 +113,11 @@ pub struct Round {
     /// Throttler + its per-round state. Hardcoded to the asymmetric EMA
     /// (see [`super::throttler`]); fresh instance per round.
     throttler: Box<dyn Throttler>,
+    /// Wraps once per `add_local_input_and_fastforward` call. Used only by
+    /// the `tango_pvp::freeze_trace` log target to gate the per-frame state
+    /// snapshot to ~1/s so a long freeze leaves a readable trail rather than
+    /// 60-line/s spam.
+    freeze_trace_frame_counter: u32,
 }
 
 impl Round {
@@ -170,6 +175,7 @@ impl Round {
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
             throttler: match_.build_throttler(),
+            freeze_trace_frame_counter: 0,
         })
     }
 
@@ -207,6 +213,11 @@ impl Round {
     }
 
     pub fn set_first_settled_state(&mut self, local_state: Box<mgba::state::State>, first_packet: &[u8]) {
+        log::info!(
+            target: "tango_pvp::freeze_trace",
+            "round: first settled state recorded (frontier={}, packet_len={})",
+            self.frontier, first_packet.len(),
+        );
         // Seed the settled checkpoint at the round's tick-0 state. `commit_frontier`
         // starts at 0 and `pending_commits` is empty; the chain grows from here
         // as `add_local_input_and_fastforward` drains the input_queue.
@@ -235,13 +246,33 @@ impl Round {
         // `pending_commits` as joyflags-only — packets are derived on demand
         // by the settle below, not produced eagerly here.
         let (committable, peeked) = self.input_queue.consume_and_peek_local();
-        self.commit_frontier += committable.len() as u32;
+        let committable_count = committable.len() as u32;
+        self.commit_frontier += committable_count;
         self.pending_commits.extend(committable);
 
         // Display target. `frontier` is the netcode frontier (advances 1/wall-frame
         // via the post-tick hook regardless of where the live core is loaded), so
         // `frontier - presentation_delay` is what the user sees.
         let target = self.frontier.saturating_sub(self.presentation_delay);
+
+        // Per-frame freeze-trace: throttled (~1/s) snapshot of the state that
+        // drives `settle_to`. If `commit_frontier` flatlines while `frontier`
+        // climbs, the live core is reloading the same `settled_state` every
+        // frame — i.e. no remote inputs are reaching the queue.
+        self.freeze_trace_frame_counter = self.freeze_trace_frame_counter.wrapping_add(1);
+        if self.freeze_trace_frame_counter % 60 == 1 {
+            log::info!(
+                target: "tango_pvp::freeze_trace",
+                "fwd: frontier={} commit_frontier={} target={} settled_tick={} committable_this_frame={} pending={} peeked={}",
+                self.frontier,
+                self.commit_frontier,
+                target,
+                self.settled_state.as_ref().map(|s| s.tick as i64).unwrap_or(-1),
+                committable_count,
+                self.pending_commits.len(),
+                peeked.len(),
+            );
+        }
 
         // Settle the checkpoint forward, *capped* at the last committed tick
         // (`commit_frontier - 1`). The seed must never absorb predicted
@@ -403,12 +434,26 @@ impl Round {
     fn settle_to(&mut self, target: u32) -> anyhow::Result<Option<crate::stepper::RoundResult>> {
         let seed_tick = self.settled_state.as_ref().expect("settled state").tick;
         if target <= seed_tick {
+            // Throttled log via the same per-frame counter as `fwd:` so the
+            // two lines pair up at ~1/s when held.
+            if self.freeze_trace_frame_counter % 60 == 1 {
+                log::info!(
+                    target: "tango_pvp::freeze_trace",
+                    "settle_to: hold (target={} <= seed_tick={})",
+                    target, seed_tick,
+                );
+            }
             // Hold: re-show the current checkpoint while the frontier climbs
             // to `presentation_delay` ticks past the round's start (the
             // present can't move until then).
             return Ok(None);
         }
 
+        log::info!(
+            target: "tango_pvp::freeze_trace",
+            "settle_to: advance (seed_tick={} -> target={}, count={})",
+            seed_tick, target, target - seed_tick,
+        );
         let seed = self.settled_state.take().expect("settled state");
         // Inputs for ticks `[seed_tick, target]` — inclusive: the per-game
         // stepper trap peeks an input pair at `capture_tick` before it
@@ -523,7 +568,7 @@ impl Round {
         }
     }
 
-    pub fn has_committed_state(&mut self) -> bool {
+    pub fn has_settled_state(&mut self) -> bool {
         self.settled_state.is_some()
     }
 
