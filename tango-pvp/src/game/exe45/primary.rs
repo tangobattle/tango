@@ -99,7 +99,7 @@ pub(super) fn traps(
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
 
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
 
                     // rng1 is the local rng, it should not be synced.
@@ -137,7 +137,7 @@ pub(super) fn traps(
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     return;
                 }
                 round.advance_frontier();

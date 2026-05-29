@@ -115,7 +115,7 @@ pub(super) fn traps(
                 // started, last_loaded == 0 hasn't been set by any
                 // add_local_input_and_fastforward yet), and the game tick has
                 // nothing to compare against until we've loaded at least once.
-                if round.has_settled_state() {
+                if round.has_committed_state() {
                     let game_current_tick = munger.current_tick(core);
                     let expected = round.last_loaded_tick() + 1;
                     if game_current_tick != expected {
@@ -126,7 +126,7 @@ pub(super) fn traps(
                     }
                 }
 
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
 
                     // rng1 is the local rng, it should not be synced.
@@ -168,7 +168,7 @@ pub(super) fn traps(
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     return;
                 }
 

@@ -114,7 +114,7 @@ pub(super) fn traps(
                     return;
                 }
 
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     let mut rng = match_.lock_rng();
                     let shared_rng_state = generate_rng_state(&mut *rng);
                     munger.set_rng_state(core, shared_rng_state);
@@ -171,7 +171,7 @@ pub(super) fn traps(
                 let Some(match_) = guard.as_ref() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
-                if !round.has_settled_state() {
+                if !round.has_committed_state() {
                     return;
                 }
                 round.advance_frontier();

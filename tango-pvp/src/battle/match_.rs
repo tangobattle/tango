@@ -174,21 +174,12 @@ impl Match {
             let Some(round) = round_state.take() else {
                 return Ok(());
             };
-            log::info!(
-                target: "tango_pvp::freeze_trace",
-                "round: end_round (frontier=0x{:x})",
-                round.frontier(),
-            );
             log::info!("round ended at {:x}", round.frontier());
         }
         self.shadow.lock().unwrap().advance_until_round_end()?;
         // Bump BEFORE sending so a racing remote-Input arrival is compared
         // against the up-to-date local_round_idx.
-        let new_local = self.local_round_idx.fetch_add(1, Ordering::Release) + 1;
-        log::info!(
-            target: "tango_pvp::freeze_trace",
-            "round: local_round_idx now {}", new_local,
-        );
+        self.local_round_idx.fetch_add(1, Ordering::Release);
         let sender = self.sender.clone();
         crate::sync::block_on(async move { sender.lock().await.send_end_of_round().await })?;
         self.bump_round_progress();
@@ -205,45 +196,23 @@ impl Match {
     /// changes when the round isn't ready to accept inputs yet.
     pub async fn run(&self, mut receiver: Box<dyn crate::net::Receiver + Send + Sync>) -> anyhow::Result<()> {
         let mut progress = self.round_progress.subscribe();
-        let mut inputs_seen: u64 = 0;
-        let mut last_heartbeat = std::time::Instant::now();
-        log::info!(target: "tango_pvp::freeze_trace", "match.run: receive loop started");
         loop {
             match receiver.receive().await? {
                 crate::net::Event::Input(input) => {
-                    inputs_seen += 1;
                     // Tag at receive time so a held input that arrived
                     // before a later EndOfRound still attaches to its
                     // original round, not whichever round the peer is
                     // in by the time the deliver loop wakes up.
                     let peer_round = self.peer_round_idx.load(Ordering::Acquire);
-                    log::info!(
-                        target: "tango_pvp::freeze_trace",
-                        "match.run: Input received #{} (peer_round={}, joyflags=0x{:04x}, frame_advantage={})",
-                        inputs_seen, peer_round, input.joyflags, input.frame_advantage,
-                    );
                     self.deliver_remote_input(&mut progress, input, peer_round).await?;
                 }
                 crate::net::Event::EndOfRound => {
-                    let new_peer = self.peer_round_idx.fetch_add(1, Ordering::Release) + 1;
-                    log::info!(
-                        target: "tango_pvp::freeze_trace",
-                        "match.run: EndOfRound -> peer_round_idx now {}", new_peer,
-                    );
+                    self.peer_round_idx.fetch_add(1, Ordering::Release);
                     // Wake the deliver loop so any held inputs whose peer
                     // round now matches a future local round get re-checked,
                     // and stale-round drops happen promptly.
                     self.bump_round_progress();
                 }
-            }
-            // 1 Hz heartbeat so the trace shows the loop is still ticking
-            // even if no new events arrive between intervals.
-            if last_heartbeat.elapsed() >= std::time::Duration::from_secs(1) {
-                log::info!(
-                    target: "tango_pvp::freeze_trace",
-                    "match.run: heartbeat, inputs_seen={}", inputs_seen,
-                );
-                last_heartbeat = std::time::Instant::now();
             }
         }
     }
@@ -286,21 +255,11 @@ impl Match {
             // Tail-of-previous-round input that arrived after we already
             // ended round-N locally. The round it belonged to is gone;
             // discard rather than poisoning round-N+1's queue.
-            log::info!(
-                target: "tango_pvp::freeze_trace",
-                "attach: drop stale (peer_round={} < local_round={})",
-                peer_round, local_round,
-            );
             return Ok(true);
         }
         if peer_round > local_round {
             // Peer raced ahead into a future round; hold until our local
             // end_round catches up.
-            log::info!(
-                target: "tango_pvp::freeze_trace",
-                "attach: hold future (peer_round={} > local_round={})",
-                peer_round, local_round,
-            );
             return Ok(false);
         }
 
@@ -308,37 +267,17 @@ impl Match {
         let Some(round) = round_state.as_mut() else {
             // Either before the first round has started or between rounds —
             // wait for the next round to spin up before delivering the input.
-            log::info!(
-                target: "tango_pvp::freeze_trace",
-                "attach: hold (round_state is None, peer_round={} local_round={})",
-                peer_round, local_round,
-            );
             return Ok(false);
         };
-        if !round.has_settled_state() {
+        if !round.has_committed_state() {
             // Round started but hasn't reached its first commit.
-            log::info!(
-                target: "tango_pvp::freeze_trace",
-                "attach: hold (no settled_state yet, peer_round={} local_round={})",
-                peer_round, local_round,
-            );
             return Ok(false);
         }
 
         if !round.can_add_remote_input() {
-            log::warn!(
-                target: "tango_pvp::freeze_trace",
-                "attach: BUFFER OVERFLOW (peer_round={} local_round={})",
-                peer_round, local_round,
-            );
             anyhow::bail!("remote overflowed our input buffer");
         }
         round.add_remote_input(input.clone());
-        log::info!(
-            target: "tango_pvp::freeze_trace",
-            "attach: ok (joyflags=0x{:04x}, peer_round={})",
-            input.joyflags, peer_round,
-        );
         Ok(true)
     }
 
@@ -362,13 +301,6 @@ impl Match {
     /// so the network receive loop wakes up to (re-)evaluate.
     pub async fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
-        let local_round = self.local_round_idx.load(Ordering::Acquire);
-        let peer_round = self.peer_round_idx.load(Ordering::Acquire);
-        log::info!(
-            target: "tango_pvp::freeze_trace",
-            "round: start_round (local_round_idx={} peer_round_idx={} is_offerer={})",
-            local_round, peer_round, self.identity.is_offerer,
-        );
         log::info!(
             "starting round: local_player_index = {}",
             self.identity.local_player_index
