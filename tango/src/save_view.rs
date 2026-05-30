@@ -1548,7 +1548,8 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         .style(widgets::pane);
 
     // ----- Right pane: the part palette (styled as a selectable list) -----
-    let mut palette = column![].spacing(0).padding(0);
+    // Same inset + row spacing as the patches / replays lists.
+    let mut palette = column![].spacing(2).padding(8);
     for (row_idx, (id, name, description)) in sorted_navicust_parts(loaded, state.navicust_sort, &state.navicust_filter)
         .into_iter()
         .enumerate()
