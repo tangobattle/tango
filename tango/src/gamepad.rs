@@ -36,9 +36,10 @@ use crate::sdl_init;
 /// What `input_capture` / settings binding-capture care about. Keeps
 /// the surface narrow so we don't propagate `sdl3` types into the
 /// rest of the UI. Axis events are pre-normalized: SDL3's raw i16
-/// `[-32768, 32767]` reading is mapped to `f32` in `[-1, 1]`, with Y
-/// flipped so positive means "stick pushed up" (matches the default
-/// binding map; SDL3's raw joystick convention is the opposite).
+/// `[-32768, 32767]` reading is mapped to `f32` in `[-1, 1]`, in
+/// SDL3's own convention (stick-up is negative Y). The default
+/// binding map accounts for that via each axis binding's `AxisDir`,
+/// so the sign isn't massaged here.
 pub enum GamepadEvent {
     ButtonDown(Button),
     ButtonUp(Button),
