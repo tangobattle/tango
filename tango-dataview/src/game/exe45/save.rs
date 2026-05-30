@@ -59,6 +59,10 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut<'_> + '_>> {
+        Some(Box::new(ChipsViewMut { save: self }))
+    }
+
     fn view_navi(&self) -> Option<crate::save::NaviView<'_>> {
         Some(crate::save::NaviView::LinkNavi(Box::new(LinkNaviView { save: self })))
     }
@@ -117,6 +121,75 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
             id: raw.id() as usize,
             code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
+    }
+
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        if id >= super::NUM_PACK_CHIPS {
+            return None;
+        }
+        // counts-first record: buf[base + id*0xc + variant], variant = code position.
+        // Unused code slots are 0 padding; a real count never exceeds 99, so treat
+        // anything larger as "not owned".
+        self.save
+            .buf
+            .get(0x52c8 + id * 0xc + variant)
+            .map(|&b| if b <= 99 { b as usize } else { 0 })
+    }
+}
+
+pub struct ChipsViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: crate::save::Chip) -> bool {
+        if folder_index >= 1 || chip_index >= 30 {
+            return false;
+        }
+
+        let navi = LinkNaviView { save: self.save }.navi();
+        self.save.buf[0x7500
+            + navi * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&{
+                let mut raw = RawChip::default();
+                raw.set_id(chip.id as u16);
+                raw.set_code(chip.code as u16);
+                raw
+            }));
+
+        true
+    }
+
+    fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        if folder_index >= 1 || chip_index >= 30 {
+            return false;
+        }
+
+        // 0xffff code reads back as an invalid ChipCode, so `chip()` returns None.
+        let navi = LinkNaviView { save: self.save }.navi();
+        self.save.buf[0x7500
+            + navi * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .fill(0xff);
+
+        true
+    }
+
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        if id >= super::NUM_PACK_CHIPS {
+            return false;
+        }
+        if let Some(b) = self.save.buf.get_mut(0x52c8 + id * 0xc + variant) {
+            *b = count as u8;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        // exe45 has no anti-cheat shadow copy of the folder/pack.
     }
 }
 
