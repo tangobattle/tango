@@ -645,17 +645,42 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             }
         }
         ChipEdit::RemoveChip { slot } => {
-            // Removing a chip also strips its REG / TAG designation.
-            let mut ops = vec![Op::Clear { slot }];
-            let v = loaded.save.view_chips();
-            if v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten() == Some(slot) {
-                ops.push(Op::Regular { value: None });
-            }
-            if let Some([a, b]) = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten() {
-                if a == slot || b == slot {
-                    ops.push(Op::Tags(None));
-                }
-            }
+            // Remove the chip and shift everything below it up one so the
+            // folder has no gap (the freed slot ends up empty at the end).
+            // REG/TAG indexes are remapped to follow the shift, and
+            // cleared if they pointed at the removed chip.
+            let (chips, regular, tags) = {
+                let v = loaded.save.view_chips();
+                let chips: Vec<Option<Chip>> = (0..30).map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i))).collect();
+                let regular = v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten();
+                let tags = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten();
+                (chips, regular, tags)
+            };
+            let mut new_chips = chips;
+            new_chips.remove(slot);
+            new_chips.push(None);
+
+            let new_regular = match regular {
+                Some(r) if r == slot => None,
+                Some(r) if r > slot => Some(r - 1),
+                other => other,
+            };
+            let new_tags = match tags {
+                Some([a, b]) if a == slot || b == slot => None,
+                Some([a, b]) => Some([if a > slot { a - 1 } else { a }, if b > slot { b - 1 } else { b }]),
+                None => None,
+            };
+
+            let mut ops: Vec<Op> = new_chips
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| match c {
+                    Some(chip) => Op::Chip { slot: i, chip },
+                    None => Op::Clear { slot: i },
+                })
+                .collect();
+            ops.push(Op::Regular { value: new_regular });
+            ops.push(Op::Tags(new_tags));
             ops
         }
         ChipEdit::ClearFolder => {
@@ -1647,6 +1672,7 @@ impl App {
             C::Language(l) => self.config.language = l,
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
             C::StreamerMode(b) => self.config.streamer_mode = b,
+            C::EnableSaveEditor(b) => self.config.enable_save_editor = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::FrameDelay(v) => {
                 self.config.frame_delay =

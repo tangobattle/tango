@@ -402,13 +402,18 @@ impl PlayState {
                 }
                 if let Some(g) = self.local_game {
                     if patch_supports(self, scanners, g) {
-                        self.local_save = resolve_remembered_save(
-                            config,
-                            scanners,
-                            g,
-                            self.local_patch.as_deref(),
-                            self.local_patch_version.as_ref(),
-                        );
+                        // The current save is compatible (the patch supports
+                        // its variant), so keep it as-is. Only auto-pick a
+                        // remembered/first save when none is selected yet.
+                        if self.local_save.is_none() {
+                            self.local_save = resolve_remembered_save(
+                                config,
+                                scanners,
+                                g,
+                                self.local_patch.as_deref(),
+                                self.local_patch_version.as_ref(),
+                            );
+                        }
                     } else {
                         // The selected save's variant isn't supported by
                         // this patch — deselect it. The save list narrows
@@ -423,13 +428,18 @@ impl PlayState {
                 self.local_patch_version = Some(v);
                 if let Some(g) = self.local_game {
                     if patch_supports(self, scanners, g) {
-                        self.local_save = resolve_remembered_save(
-                            config,
-                            scanners,
-                            g,
-                            self.local_patch.as_deref(),
-                            self.local_patch_version.as_ref(),
-                        );
+                        // The current save is compatible (the patch supports
+                        // its variant), so keep it as-is. Only auto-pick a
+                        // remembered/first save when none is selected yet.
+                        if self.local_save.is_none() {
+                            self.local_save = resolve_remembered_save(
+                                config,
+                                scanners,
+                                g,
+                                self.local_patch.as_deref(),
+                                self.local_patch_version.as_ref(),
+                            );
+                        }
                     } else {
                         self.local_game = None;
                         self.local_save = None;
@@ -473,9 +483,10 @@ impl PlayState {
                     A::CancelEdit => Some(Effect::FolderEditCancel),
                     A::AddChip { chip_id, code } => Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code })),
                     A::RemoveChip { slot } => {
-                        // Drop the slot from the in-progress tag selection
-                        // too (the save's REG/TAG are cleared by the effect).
-                        self.save_view.untag_slot(slot);
+                        // Mirror the save-side compaction in the in-progress
+                        // tag selection (drop + shift), so the TAG toggles
+                        // stay aligned with the shifted chips.
+                        self.save_view.compact_tags(slot);
                         Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
                     }
                     A::ClearFolder => {
@@ -845,7 +856,7 @@ impl PlayState {
                 );
             }
         }
-        self.save_view(lang, loaded, streamer_mode, netplay_phase)
+        self.save_view(lang, loaded, streamer_mode, config, netplay_phase)
     }
 
     fn selector_strip<'a>(
@@ -1239,6 +1250,7 @@ impl PlayState {
         lang: &'a LanguageIdentifier,
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
+        config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         let Some(loaded) = loaded else {
@@ -1252,7 +1264,16 @@ impl PlayState {
         // so it can't fight with that lobby for the same
         // save/emulator slot.
         let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
-        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button, true, true).map(Message::SaveViewAction)
+        save_view::view(
+            lang,
+            loaded,
+            &self.save_view,
+            streamer_mode,
+            play_button,
+            true,
+            config.enable_save_editor,
+        )
+        .map(Message::SaveViewAction)
     }
 
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {

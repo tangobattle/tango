@@ -117,9 +117,15 @@ folder-edit-save = Save
 folder-edit-cancel = Cancel
 folder-edit-search = Search chips…
 folder-edit-folder = Folder ({ $count } / 30)
-folder-edit-library = All chips
+folder-edit-library = Library
 folder-edit-sort = Sort
 folder-edit-clear = Clear all
+folder-sort-id = ID
+folder-sort-name = ABCDE
+folder-sort-code = Code
+folder-sort-attack = Attack
+folder-sort-element = Element
+folder-sort-mb = MB
 
 # Navi pane
 navi-id = Navi ID
@@ -207,6 +213,9 @@ settings-nickname = Nickname
 settings-language = Language
 settings-data-path = Data path
 settings-streamer-mode = Streamer privacy mode
+settings-section-experimental = Experimental
+settings-enable-save-editor = Enable save editor
+settings-experimental-warning = Experimental features can break or corrupt your saves, may be changed or removed at any time, and may be missing checks that keep your saves legal for online play. Use them at your own risk.
 settings-section-about = About
 settings-section-input = Input
 settings-input-press-key = Press a key or button…

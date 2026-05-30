@@ -50,16 +50,37 @@ impl LibrarySort {
     ];
 }
 
-impl std::fmt::Display for LibrarySort {
+impl LibrarySort {
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            LibrarySort::Id => t!(lang, "folder-sort-id"),
+            LibrarySort::Name => t!(lang, "folder-sort-name"),
+            LibrarySort::Code => t!(lang, "folder-sort-code"),
+            LibrarySort::Attack => t!(lang, "folder-sort-attack"),
+            LibrarySort::Element => t!(lang, "folder-sort-element"),
+            LibrarySort::Mb => t!(lang, "folder-sort-mb"),
+        }
+    }
+}
+
+/// A `LibrarySort` paired with its localized label, for the sort
+/// pick_list — the picker renders options via `Display`, which can't
+/// reach the language, so the label is resolved up front.
+#[derive(Clone)]
+struct LibrarySortChoice {
+    sort: LibrarySort,
+    label: String,
+}
+
+impl PartialEq for LibrarySortChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.sort == other.sort
+    }
+}
+
+impl std::fmt::Display for LibrarySortChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            LibrarySort::Id => "ID",
-            LibrarySort::Name => "ABCDE",
-            LibrarySort::Code => "Code",
-            LibrarySort::Attack => "Attack",
-            LibrarySort::Element => "Element",
-            LibrarySort::Mb => "MB",
-        })
+        f.write_str(&self.label)
     }
 }
 
@@ -81,6 +102,11 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
     let mut rows: Vec<E> = Vec::new();
     for id in 0..assets.num_chips() {
         let Some(info) = assets.chip(id) else { continue };
+        // Only real, folder-legal chips — skip dummy data-table entries
+        // and unobtainable chips that aren't in the in-game Library.
+        if !info.is_legal() {
+            continue;
+        }
         let Some(name) = info.name() else { continue };
         let (atk, elem, mb) = (info.attack_power(), info.element(), info.mb());
         // One row per valid code (e.g. Cannon A / Cannon B / Cannon *).
@@ -239,11 +265,17 @@ impl State {
         }
     }
 
-    /// Drop `slot` from the in-progress tag selection — used when its
-    /// chip is removed, so the TAG toggle stops marking it. (The save's
-    /// tag pair is cleared separately by the removal effect.)
-    pub fn untag_slot(&mut self, slot: usize) {
-        self.editing_tags.retain(|&s| s != slot);
+    /// Remap the in-progress tag selection when `removed_slot`'s chip is
+    /// removed and the chips below it shift up one: drop that slot and
+    /// shift any higher selected slots down, mirroring the save-side
+    /// compaction.
+    pub fn compact_tags(&mut self, removed_slot: usize) {
+        self.editing_tags.retain(|&s| s != removed_slot);
+        for s in self.editing_tags.iter_mut() {
+            if *s > removed_slot {
+                *s -= 1;
+            }
+        }
     }
 
     /// Apply an `Action` to the state. `CopyTab` is left for the
@@ -509,6 +541,14 @@ fn tab_extras<'a>(
             // Edit mode: edits are staged live; Save writes them to the
             // .sav on disk, Cancel discards them. The group toggle /
             // copy don't apply here.
+            //
+            // Save is only allowed once the folder is full — a legal
+            // folder is 30 chips, so an incomplete one can't be written
+            // over the save. It's disabled otherwise.
+            let folder_full = loaded.save.view_chips().map_or(false, |v| {
+                let folder = v.equipped_folder_index();
+                (0..30).all(|i| v.chip(folder, i).is_some())
+            });
             Some(
                 row![
                     widgets::labeled_icon_button(
@@ -518,10 +558,10 @@ fn tab_extras<'a>(
                         [4.0, 10.0],
                         widgets::neutral,
                     ),
-                    widgets::labeled_icon_button(
+                    widgets::labeled_icon_button_maybe(
                         Icon::Check,
                         t!(lang, "folder-edit-save"),
-                        Action::SaveEdit,
+                        folder_full.then_some(Action::SaveEdit),
                         [4.0, 10.0],
                         widgets::primary_button,
                     ),
@@ -1074,11 +1114,17 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         .size(TEXT_BODY)
         .width(Fill)
         .style(widgets::chunky_text_input);
-    let sort_pick = pick_list(
-        LibrarySort::ALL.to_vec(),
-        Some(state.library_sort),
-        Action::LibrarySortChanged,
-    )
+    let sort_options: Vec<LibrarySortChoice> = LibrarySort::ALL
+        .iter()
+        .map(|&sort| LibrarySortChoice {
+            sort,
+            label: sort.label(lang),
+        })
+        .collect();
+    let sort_selected = sort_options.iter().find(|c| c.sort == state.library_sort).cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, |c: LibrarySortChoice| {
+        Action::LibrarySortChanged(c.sort)
+    })
     .padding([5, 10])
     .text_size(TEXT_BODY)
     .style(widgets::chunky_pick_list);
