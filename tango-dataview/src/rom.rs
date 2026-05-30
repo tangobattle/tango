@@ -22,18 +22,6 @@ pub trait Chip {
     fn mb(&self) -> u8;
     fn attack_power(&self) -> u32;
     fn library_sort_order(&self) -> Option<usize>;
-
-    /// Whether this is a real, folder-legal chip rather than a dummy /
-    /// unused data-table entry. The chip data tables include junk
-    /// entries (no name, no codes) and unobtainable chips that aren't in
-    /// the in-game Library. The default treats a chip as legal when it
-    /// has a name, at least one valid code, and a non-zero library sort
-    /// order — the Library is 1-indexed, so `0` means "not in the
-    /// Library". Games whose `library_sort_order` doesn't follow that
-    /// convention should override this.
-    fn is_legal(&self) -> bool {
-        self.name().is_some() && !self.codes().is_empty() && self.library_sort_order().map_or(true, |o| o != 0)
-    }
 }
 
 pub struct PatchCard56Effect {

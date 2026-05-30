@@ -84,12 +84,14 @@ impl std::fmt::Display for LibrarySortChoice {
     }
 }
 
-/// All selectable chips for `loaded` as `(id, name)`, in `sort` order.
-/// Skips chips with no name or no valid codes — those can't be placed
-/// in a folder. Ties fall back to id so the order is stable.
+/// The chips the player owns (their pack), as `(id, name, code)`, in
+/// `sort` order — one row per owned chip+code. Only chips+codes with a
+/// pack count > 0 are returned, so a folder can only be built from what
+/// the save legitimately holds. Ties fall back to id for a stable order.
 fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, String, tango_dataview::save::ChipCode)> {
     use tango_dataview::save::ChipCode;
     let assets = loaded.assets.as_ref();
+    let chips_view = loaded.save.view_chips();
     struct E {
         id: usize,
         name: String,
@@ -102,16 +104,24 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
     let mut rows: Vec<E> = Vec::new();
     for id in 0..assets.num_chips() {
         let Some(info) = assets.chip(id) else { continue };
-        // Only real, folder-legal chips — skip dummy data-table entries
-        // and unobtainable chips that aren't in the in-game Library.
-        if !info.is_legal() {
-            continue;
-        }
         let Some(name) = info.name() else { continue };
         let (atk, elem, mb) = (info.attack_power(), info.element(), info.mb());
-        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *).
-        for ch in info.codes() {
+        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *),
+        // but only for codes the player owns (pack count > 0). `variant`
+        // is the code's index within the chip's code list — the index the
+        // pack table is keyed by. Ids past the pack table (Program
+        // Advances, etc.) return `None` and are dropped. The editor only
+        // renders for games with a pack, so a missing count means "not
+        // owned", not "unsupported".
+        for (variant, ch) in info.codes().into_iter().enumerate() {
             let Some(code) = ChipCode::from_char(ch) else { continue };
+            let owned = chips_view
+                .as_ref()
+                .and_then(|v| v.pack_count(id, variant))
+                .map_or(false, |c| c > 0);
+            if !owned {
+                continue;
+            }
             rows.push(E {
                 id,
                 name: name.clone(),
@@ -1116,7 +1126,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb));
+        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, filled >= 30));
         shown += 1;
     }
     let filter_input = text_input(&t!(lang, "folder-edit-search"), &state.library_filter)
@@ -1141,7 +1151,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     .style(widgets::chunky_pick_list);
     let lib_header = container(
         row![
-            text(t!(lang, "folder-edit-library")).size(TEXT_BODY),
+            text(t!(lang, "folder-edit-pack")).size(TEXT_BODY),
             filter_input,
             text(t!(lang, "folder-edit-sort"))
                 .size(TEXT_CAPTION)
@@ -1365,6 +1375,7 @@ fn library_entry_row<'a>(
     code: tango_dataview::save::ChipCode,
     row_idx: usize,
     chips_have_mb: bool,
+    folder_full: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -1377,11 +1388,14 @@ fn library_entry_row<'a>(
 
     // Left arrow → add this chip+code into the folder (to its left). It
     // lives in the gutter left of the accent stripe (see edit_row_wrap).
-    let add: Element<'a, Action> = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
+    // Disabled once the folder is full (no empty slot to add into).
+    let mut add_btn = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
         .padding([3, 8])
-        .style(widgets::neutral)
-        .on_press(Action::AddChip { chip_id, code })
-        .into();
+        .style(widgets::neutral);
+    if !folder_full {
+        add_btn = add_btn.on_press(Action::AddChip { chip_id, code });
+    }
+    let add: Element<'a, Action> = add_btn.into();
     let code_cell = container(text(code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
         .width(Length::Fixed(22.0))
         .align_x(iced::alignment::Horizontal::Right);

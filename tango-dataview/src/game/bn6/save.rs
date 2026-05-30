@@ -315,7 +315,10 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        Some(self.save.buf[0x2230 + id * 0xc + variant] as usize)
+        if id >= super::NUM_PACK_CHIPS {
+            return None;
+        }
+        self.save.buf.get(0x2230 + id * 0xc + variant).map(|&b| b as usize)
     }
 }
 

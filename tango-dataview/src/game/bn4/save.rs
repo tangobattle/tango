@@ -278,6 +278,13 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
             code: num_traits::FromPrimitive::from_u16(raw.code())?,
         })
     }
+
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        if id >= super::NUM_PACK_CHIPS {
+            return None;
+        }
+        self.save.buf.get(0x26e4 + id * 0xc + variant).map(|&b| b as usize)
+    }
 }
 
 pub struct ChipsViewMut<'a> {
