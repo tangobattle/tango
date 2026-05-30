@@ -123,6 +123,22 @@ navi-style-unset = (no style)
 navicust-grid-size = Grid: { $cols } × { $rows }
 navicust-parts = Installed parts
 navicust-empty = (none installed)
+# Navicust editor
+navicust-edit = Edit
+navicust-edit-save = Save
+navicust-edit-cancel = Cancel
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count } parts
+navicust-edit-clear = Clear all
+navicust-edit-rotate = Rotate
+navicust-edit-compress = Compress
+navicust-edit-uncompress = Uncompress
+navicust-edit-parts = Parts
+navicust-edit-search = Search parts…
+navicust-edit-hint = Pick a part, then click the grid to place it. Scroll or Rotate to turn it; right-click to drop it. Click an installed part to pick it back up.
+navicust-sort-id = ID
+navicust-sort-name = ABCDE
+navicust-sort-color = Color
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = Standard chips (secondary)
 auto-battle-data-standard-chips = Standard chips
