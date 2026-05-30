@@ -257,17 +257,9 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         self.save.buf[0x2132] as usize
     }
 
-    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+    fn regular_chip_index(&self, folder_index: usize) -> Option<Option<usize>> {
         let idx = self.save.buf[0x214d + folder_index];
-        if idx >= 30 {
-            None
-        } else {
-            Some(idx as usize)
-        }
-    }
-
-    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
-        None
+        Some(if idx >= 30 { None } else { Some(idx as usize) })
     }
 
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {
@@ -319,16 +311,37 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         true
     }
 
-    fn set_tag_chip_indexes(&mut self, _folder_index: usize, _chip_indexes: Option<[usize; 2]>) -> bool {
-        false
-    }
-
-    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
+    fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
         if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
             return false;
         }
 
-        self.save.buf[0x214d + folder_index] = chip_index as u8;
+        // 0xff code reads back as an invalid ChipCode, so `chip()`
+        // returns None — i.e. an empty slot.
+        self.save.buf[0x262c
+            + folder_index * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .fill(0xff);
+
+        true
+    }
+
+    fn set_tag_chip_indexes(&mut self, _folder_index: usize, _chip_indexes: Option<[usize; 2]>) -> bool {
+        false
+    }
+
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: Option<usize>) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() {
+            return false;
+        }
+
+        // 0xff (out of the 0..30 range) reads back as "no regular".
+        let raw = match chip_index {
+            Some(i) if i < 30 => i as u8,
+            None => 0xff,
+            Some(_) => return false,
+        };
+        self.save.buf[0x214d + folder_index] = raw;
         true
     }
 

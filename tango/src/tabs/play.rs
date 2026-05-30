@@ -261,6 +261,26 @@ impl Default for PlayState {
 /// collaborators (scanners refresh + config persist, session host,
 /// netplay subsystem, clipboard, file system) comes back as an
 /// `Effect` for the caller to interpret.
+/// A single folder edit staged by the folder editor. Applied to the
+/// loaded save in memory by [`Effect::EditChips`]; not persisted to
+/// disk until the user hits Save ([`Effect::FolderEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum ChipEdit {
+    /// Add chip `chip_id` with `code` to the first empty folder slot.
+    AddChip {
+        chip_id: usize,
+        code: tango_dataview::save::ChipCode,
+    },
+    /// Empty `slot`.
+    RemoveChip { slot: usize },
+    /// Empty every folder slot (and clear REG/TAG).
+    ClearFolder,
+    /// Toggle `slot` as the folder's Regular chip (clear if already set).
+    ToggleRegular { slot: usize },
+    /// Set (or clear, with `None`) the folder's Tag chip pair.
+    SetTags(Option<[usize; 2]>),
+}
+
 #[derive(Debug)]
 pub enum Effect {
     /// Selection (game / save / patch / version) changed. App
@@ -312,6 +332,14 @@ pub enum Effect {
     /// snap on tab change) flow through without per-feature
     /// Effect variants.
     SaveViewTask(iced::Task<Message>),
+    /// Folder editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditChips(ChipEdit),
+    /// Folder editor: write the staged folder to the .sav on disk.
+    FolderEditCommit,
+    /// Folder editor: discard staged edits, reloading the on-disk
+    /// original.
+    FolderEditCancel,
 }
 
 impl PlayState {
@@ -410,9 +438,10 @@ impl PlayState {
                 Some(Effect::SelectionChanged)
             }
             Message::SaveViewAction(action) => {
+                use save_view::Action as A;
                 let sv_task = self.save_view.apply(&action);
                 match action {
-                    save_view::Action::CopyTab(tab) => {
+                    A::CopyTab(tab) => {
                         let opts = save_view::RenderOpts {
                             folder_grouped: self.save_view.folder_grouped,
                         };
@@ -420,14 +449,46 @@ impl PlayState {
                             .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
                             .map(Effect::CopyText)
                     }
-                    save_view::Action::CopyTabImage(tab) => loaded
+                    A::CopyTabImage(tab) => loaded
                         .and_then(|l| save_view::tab_as_image(tab, l))
                         .map(Effect::CopyImage),
-                    save_view::Action::PlayClicked => {
+                    A::PlayClicked => {
                         // Clear stale error from a prior attempt; the
                         // new launch's outcome takes its place.
                         self.last_error = None;
                         Some(Effect::StartSinglePlayer)
+                    }
+                    // ----- Folder editor -----
+                    // EnterEdit needs the read view to seed tag state +
+                    // build the per-slot chip pickers, so it touches
+                    // save_view state directly rather than emitting an
+                    // Effect.
+                    A::EnterEdit => {
+                        if let Some(l) = loaded {
+                            self.save_view.enter_edit(l);
+                        }
+                        None
+                    }
+                    A::SaveEdit => Some(Effect::FolderEditCommit),
+                    A::CancelEdit => Some(Effect::FolderEditCancel),
+                    A::AddChip { chip_id, code } => Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code })),
+                    A::RemoveChip { slot } => {
+                        // Drop the slot from the in-progress tag selection
+                        // too (the save's REG/TAG are cleared by the effect).
+                        self.save_view.untag_slot(slot);
+                        Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
+                    }
+                    A::ClearFolder => {
+                        self.save_view.editing_tags.clear();
+                        Some(Effect::EditChips(ChipEdit::ClearFolder))
+                    }
+                    A::ToggleRegular { slot } => Some(Effect::EditChips(ChipEdit::ToggleRegular { slot })),
+                    A::ToggleTag { slot } => {
+                        // `toggle_tag` updates the in-progress UI
+                        // selection and hands back the pair to commit
+                        // (Some([a,b]) at two, else None to clear).
+                        let pair = self.save_view.toggle_tag(slot);
+                        Some(Effect::EditChips(ChipEdit::SetTags(pair)))
                     }
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
@@ -1191,7 +1252,7 @@ impl PlayState {
         // so it can't fight with that lobby for the same
         // save/emulator slot.
         let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
-        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button, true).map(Message::SaveViewAction)
+        save_view::view(lang, loaded, &self.save_view, streamer_mode, play_button, true, true).map(Message::SaveViewAction)
     }
 
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {

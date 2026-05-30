@@ -793,7 +793,7 @@ pub fn view<'a>(
         if state.show_self_panel && s.local_loaded.is_some() {
             let me = s.local_loaded.as_ref().unwrap();
             let panel =
-                save_view::view(lang, me, &s.local_save_view, true, None, false).map(Message::SelfSaveViewAction);
+                save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
             let pane = container(panel)
                 .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
                 .height(Fill)
@@ -806,7 +806,7 @@ pub fn view<'a>(
     if let ActiveSession::PvP(s) = session {
         if state.show_opponent_panel && s.opponent_loaded.is_some() {
             let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false)
+            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
                 .map(Message::OpponentSaveViewAction);
             let pane = container(panel)
                 .width(iced::Length::Fixed(SETUP_PANE_WIDTH))

@@ -597,6 +597,104 @@ impl App {
             &patches_path,
             patch_meta,
         ));
+        // We just swapped in a freshly-built save, so any in-progress
+        // folder edit (which lived in the previous in-memory save) is
+        // gone — leave edit mode so the UI doesn't show stale state.
+        // The commit path takes the early-return above and never
+        // reaches here, so this only fires on a real selection change.
+        self.play.save_view.editing = false;
+        self.play.save_view.editing_tags.clear();
+        self.play.save_view.library_filter.clear();
+    }
+}
+
+/// Apply one staged [`tabs::play::ChipEdit`] to a loaded save's
+/// equipped folder, in memory. Resolves chip-id/code against the ROM
+/// assets first (so the immutable borrows drop before the mutable chip
+/// view is taken), then writes via [`ChipsViewMut`]. No disk I/O — the
+/// commit path serializes and writes separately.
+fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
+    use tabs::play::ChipEdit;
+    use tango_dataview::save::Chip;
+
+    let folder_idx = match loaded.save.view_chips() {
+        Some(v) => v.equipped_folder_index(),
+        None => return,
+    };
+
+    // Concrete write op, resolved while only immutable borrows are held.
+    enum Op {
+        Chip { slot: usize, chip: Chip },
+        Clear { slot: usize },
+        Regular { value: Option<usize> },
+        Tags(Option<[usize; 2]>),
+    }
+    let ops: Vec<Op> = match edit {
+        ChipEdit::AddChip { chip_id, code } => {
+            // Find the first empty slot; no-op if the folder is full.
+            let slot = loaded
+                .save
+                .view_chips()
+                .and_then(|v| (0..30).find(|&i| v.chip(folder_idx, i).is_none()));
+            match slot {
+                Some(slot) => vec![Op::Chip {
+                    slot,
+                    chip: Chip { id: chip_id, code },
+                }],
+                None => return,
+            }
+        }
+        ChipEdit::RemoveChip { slot } => {
+            // Removing a chip also strips its REG / TAG designation.
+            let mut ops = vec![Op::Clear { slot }];
+            let v = loaded.save.view_chips();
+            if v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten() == Some(slot) {
+                ops.push(Op::Regular { value: None });
+            }
+            if let Some([a, b]) = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten() {
+                if a == slot || b == slot {
+                    ops.push(Op::Tags(None));
+                }
+            }
+            ops
+        }
+        ChipEdit::ClearFolder => {
+            let mut ops: Vec<Op> = (0..30).map(|slot| Op::Clear { slot }).collect();
+            ops.push(Op::Regular { value: None });
+            ops.push(Op::Tags(None));
+            ops
+        }
+        ChipEdit::ToggleRegular { slot } => {
+            // Clicking the regular chip again clears it; otherwise set it.
+            let current = loaded
+                .save
+                .view_chips()
+                .and_then(|v| v.regular_chip_index(folder_idx))
+                .flatten();
+            vec![Op::Regular {
+                value: if current == Some(slot) { None } else { Some(slot) },
+            }]
+        }
+        ChipEdit::SetTags(pair) => vec![Op::Tags(pair)],
+    };
+
+    if let Some(mut chips) = loaded.save.view_chips_mut() {
+        for op in ops {
+            match op {
+                Op::Chip { slot, chip } => {
+                    chips.set_chip(folder_idx, slot, chip);
+                }
+                Op::Clear { slot } => {
+                    chips.clear_chip(folder_idx, slot);
+                }
+                Op::Regular { value } => {
+                    chips.set_regular_chip_index(folder_idx, value);
+                }
+                Op::Tags(pair) => {
+                    chips.set_tag_chip_indexes(folder_idx, pair);
+                }
+            }
+        }
     }
 }
 
@@ -1165,6 +1263,49 @@ impl App {
                         Err(e) => log::error!("create save: {e}"),
                     }
                 }
+                iced::Task::none()
+            }
+            E::EditChips(edit) => {
+                // Stage one edit into the in-memory loaded save. The UI
+                // reads `loaded.save` directly, so the change shows
+                // immediately; nothing is written to disk until Save.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    apply_chip_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
+            E::FolderEditCommit => {
+                if let Some(loaded) = self.loaded.as_mut() {
+                    if !loaded.save_path.as_os_str().is_empty() {
+                        // Finalize the anti-cheat mirror + checksum, then
+                        // write the SRAM dump back to the .sav.
+                        if let Some(mut chips) = loaded.save.view_chips_mut() {
+                            chips.rebuild_anticheat();
+                        }
+                        loaded.save.rebuild_checksum();
+                        let sram = loaded.save.to_sram_dump();
+                        let path = loaded.save_path.clone();
+                        match std::fs::write(&path, sram) {
+                            Ok(()) => {
+                                log::info!("saved edited folder: {}", path.display());
+                                // Reconcile the scanner cache with the new
+                                // on-disk bytes (the in-memory loaded is
+                                // already current, so refresh_loaded will
+                                // early-return and keep it).
+                                return self.rescan_off_thread(RescanFollowup::Refresh);
+                            }
+                            Err(e) => log::error!("save edited folder: {e}"),
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
+            E::FolderEditCancel => {
+                // Staged edits live only in the in-memory loaded save;
+                // the on-disk file and the scanner cache still hold the
+                // original. Drop and rebuild loaded to revert.
+                self.loaded = None;
+                self.refresh_loaded();
                 iced::Task::none()
             }
             E::SaveViewTask(t) => t.map(Message::Play),

@@ -159,6 +159,17 @@ impl std::fmt::Display for ChipCode {
     }
 }
 
+impl ChipCode {
+    /// Maps a code letter (`'A'..='Z'` or `'*'`) — as returned by
+    /// [`crate::rom::Chip::codes`] — to its [`ChipCode`]. The letter's
+    /// position in `A..Z*` is exactly the enum discriminant, so this is
+    /// a lookup + `FromPrimitive`. Returns `None` for any other char.
+    pub fn from_char(c: char) -> Option<ChipCode> {
+        let idx = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*".iter().position(|&b| b as char == c)?;
+        num_traits::FromPrimitive::from_usize(idx)
+    }
+}
+
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
 pub struct Chip {
     pub id: usize,
@@ -168,8 +179,18 @@ pub struct Chip {
 pub trait ChipsView<'a> {
     fn num_folders(&self) -> usize;
     fn equipped_folder_index(&self) -> usize;
-    fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
-    fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]>;
+    /// The folder's Regular chip slot. Outer `None` means the game has
+    /// no Regular chip feature; inner `None` means it has one but none
+    /// is currently set.
+    fn regular_chip_index(&self, _folder_index: usize) -> Option<Option<usize>> {
+        None
+    }
+    /// The folder's Tag chip pair. Outer `None` means the game has no
+    /// Tag chip feature; inner `None` means it has one but no pair is
+    /// currently set.
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<Option<[usize; 2]>> {
+        None
+    }
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
         let _ = id;
@@ -184,12 +205,20 @@ pub trait ChipsViewMut<'a> {
         false
     }
     fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: Chip) -> bool;
+    /// Empty a folder slot (so [`ChipsView::chip`] reads back `None`).
+    /// Defaults to unsupported; games with editable folders override it.
+    fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        let _ = (folder_index, chip_index);
+        false
+    }
     fn set_tag_chip_indexes(&mut self, folder_index: usize, chip_indexes: Option<[usize; 2]>) -> bool {
         let _ = folder_index;
         let _ = chip_indexes;
         false
     }
-    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
+    /// Set or clear the folder's Regular chip. `None` clears it (so
+    /// [`ChipsView::regular_chip_index`] reads back `Some(None)`).
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: Option<usize>) -> bool {
         let _ = folder_index;
         let _ = chip_index;
         false

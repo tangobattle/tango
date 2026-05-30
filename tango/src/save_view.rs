@@ -3,7 +3,7 @@ use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
-use sweeten::widget::{button, column, row};
+use sweeten::widget::{button, column, pick_list, row, text_input};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
 /// hover) is handled by tooltip/canvas widgets that manage their own
@@ -26,6 +26,87 @@ pub enum Tab {
 #[derive(Default, Clone, Copy)]
 pub struct RenderOpts {
     pub folder_grouped: bool,
+}
+
+/// Sort order for the editor's chip-library (right) pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibrarySort {
+    Id,
+    Name,
+    Code,
+    Attack,
+    Element,
+    Mb,
+}
+
+impl LibrarySort {
+    pub const ALL: [LibrarySort; 6] = [
+        LibrarySort::Id,
+        LibrarySort::Name,
+        LibrarySort::Code,
+        LibrarySort::Attack,
+        LibrarySort::Element,
+        LibrarySort::Mb,
+    ];
+}
+
+impl std::fmt::Display for LibrarySort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            LibrarySort::Id => "ID",
+            LibrarySort::Name => "ABCDE",
+            LibrarySort::Code => "Code",
+            LibrarySort::Attack => "Attack",
+            LibrarySort::Element => "Element",
+            LibrarySort::Mb => "MB",
+        })
+    }
+}
+
+/// All selectable chips for `loaded` as `(id, name)`, in `sort` order.
+/// Skips chips with no name or no valid codes — those can't be placed
+/// in a folder. Ties fall back to id so the order is stable.
+fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, String, tango_dataview::save::ChipCode)> {
+    use tango_dataview::save::ChipCode;
+    let assets = loaded.assets.as_ref();
+    struct E {
+        id: usize,
+        name: String,
+        code: ChipCode,
+        code_rank: u8,
+        atk: u32,
+        elem: usize,
+        mb: u8,
+    }
+    let mut rows: Vec<E> = Vec::new();
+    for id in 0..assets.num_chips() {
+        let Some(info) = assets.chip(id) else { continue };
+        let Some(name) = info.name() else { continue };
+        let (atk, elem, mb) = (info.attack_power(), info.element(), info.mb());
+        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *).
+        for ch in info.codes() {
+            let Some(code) = ChipCode::from_char(ch) else { continue };
+            rows.push(E {
+                id,
+                name: name.clone(),
+                code,
+                code_rank: code as u8,
+                atk,
+                elem,
+                mb,
+            });
+        }
+    }
+    // All ties fall back to (id, code) so the order stays stable.
+    match sort {
+        LibrarySort::Id => {}
+        LibrarySort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+        LibrarySort::Code => rows.sort_by(|a, b| a.code_rank.cmp(&b.code_rank).then(a.id.cmp(&b.id))),
+        LibrarySort::Attack => rows.sort_by(|a, b| a.atk.cmp(&b.atk).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+        LibrarySort::Element => rows.sort_by(|a, b| a.elem.cmp(&b.elem).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+        LibrarySort::Mb => rows.sort_by(|a, b| a.mb.cmp(&b.mb).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+    }
+    rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
@@ -86,6 +167,19 @@ pub struct State {
     pub active_tab: Option<Tab>,
     pub folder_grouped: bool,
     body_scroll_id: iced::widget::Id,
+    /// Folder editor: `true` once the user hits Edit on the Folder
+    /// tab. While set, the Folder body renders the editable layout
+    /// instead of the read-only chip list.
+    pub editing: bool,
+    /// In-progress tag-chip selection (≤2 raw slot indexes). Seeded
+    /// from the equipped folder's tag pair on entering edit mode; a
+    /// committed pair is written to the save only when exactly two are
+    /// selected (see [`State::toggle_tag`]).
+    pub editing_tags: Vec<usize>,
+    /// Filter text for the chip library (the editor's right-hand pane).
+    pub library_filter: String,
+    /// Sort order for the chip library pane.
+    pub library_sort: LibrarySort,
 }
 
 impl Default for State {
@@ -100,7 +194,56 @@ impl State {
             active_tab: None,
             folder_grouped: true,
             body_scroll_id: iced::widget::Id::unique(),
+            editing: false,
+            editing_tags: Vec::new(),
+            library_filter: String::new(),
+            library_sort: LibrarySort::Id,
         }
+    }
+
+    /// Enter folder edit mode. Seeds [`Self::editing_tags`] from the
+    /// equipped folder's current tag pair so the TAG toggles start in
+    /// the right state. Needs `loaded` (the read view), so the play tab
+    /// calls this rather than routing through [`Self::apply`].
+    pub fn enter_edit(&mut self, loaded: &Loaded) {
+        self.editing = true;
+        self.library_filter.clear();
+
+        // Seed the tag toggles from the equipped folder's tag pair, if
+        // the game has tag chips and a pair is set.
+        self.editing_tags = loaded
+            .save
+            .view_chips()
+            .and_then(|v| {
+                let folder = v.equipped_folder_index();
+                v.tag_chip_indexes(folder)
+            })
+            .flatten()
+            .map(|[a, b]| vec![a, b])
+            .unwrap_or_default();
+    }
+
+    /// Toggle `slot` in the in-progress tag selection (capped at two).
+    /// Returns the pair to commit to the save: `Some([a, b])` once two
+    /// slots are selected, else `None` (which clears the tag pairing —
+    /// a lone tag chip isn't a valid state in-game).
+    pub fn toggle_tag(&mut self, slot: usize) -> Option<[usize; 2]> {
+        if let Some(pos) = self.editing_tags.iter().position(|&s| s == slot) {
+            self.editing_tags.remove(pos);
+        } else if self.editing_tags.len() < 2 {
+            self.editing_tags.push(slot);
+        }
+        match self.editing_tags.as_slice() {
+            [a, b] => Some([*a, *b]),
+            _ => None,
+        }
+    }
+
+    /// Drop `slot` from the in-progress tag selection — used when its
+    /// chip is removed, so the TAG toggle stops marking it. (The save's
+    /// tag pair is cleared separately by the removal effect.)
+    pub fn untag_slot(&mut self, slot: usize) {
+        self.editing_tags.retain(|&s| s != slot);
     }
 
     /// Apply an `Action` to the state. `CopyTab` is left for the
@@ -122,7 +265,34 @@ impl State {
                 self.folder_grouped = *g;
                 iced::Task::none()
             }
-            Action::CopyTab(_) | Action::CopyTabImage(_) | Action::PlayClicked => iced::Task::none(),
+            // Save and Cancel both leave edit mode; the host runs the
+            // commit/discard side effect separately.
+            Action::SaveEdit | Action::CancelEdit => {
+                self.editing = false;
+                self.editing_tags.clear();
+                self.library_filter.clear();
+                iced::Task::none()
+            }
+            Action::LibraryFilterChanged(s) => {
+                self.library_filter = s.clone();
+                iced::Task::none()
+            }
+            Action::LibrarySortChanged(s) => {
+                self.library_sort = *s;
+                iced::Task::none()
+            }
+            // EnterEdit needs `&Loaded` (to seed tag state), and the
+            // mutation actions become host Effects — all are driven by
+            // the embedder (play tab), so they're no-ops here.
+            Action::EnterEdit
+            | Action::AddChip { .. }
+            | Action::RemoveChip { .. }
+            | Action::ClearFolder
+            | Action::ToggleRegular { .. }
+            | Action::ToggleTag { .. }
+            | Action::CopyTab(_)
+            | Action::CopyTabImage(_)
+            | Action::PlayClicked => iced::Task::none(),
         }
     }
 }
@@ -145,6 +315,42 @@ pub enum Action {
     /// other embedders (replay, opponent panel) pass `None` and
     /// the button isn't rendered.
     PlayClicked,
+    // ----- Folder editor (only emitted when `view`'s `editable` is set) -----
+    /// Enter folder edit mode. The play tab seeds tag state via
+    /// [`State::enter_edit`]; the rest is handled in [`State::apply`].
+    /// Edits are staged live in the loaded save but not written to disk
+    /// until [`Action::SaveEdit`].
+    EnterEdit,
+    /// Finish editing: commit the staged folder to the save file on
+    /// disk, then leave edit mode.
+    SaveEdit,
+    /// Discard all staged edits (reverts the loaded save to the
+    /// on-disk original) and leave edit mode.
+    CancelEdit,
+    /// Library pane: add this chip+code to the first empty folder slot.
+    AddChip {
+        chip_id: usize,
+        code: tango_dataview::save::ChipCode,
+    },
+    /// Folder pane: empty `slot`.
+    RemoveChip {
+        slot: usize,
+    },
+    /// Folder pane: empty every slot (and clear REG/TAG).
+    ClearFolder,
+    /// Toggle `slot` as the folder's Regular chip — set it, or clear it
+    /// if it's already the regular chip.
+    ToggleRegular {
+        slot: usize,
+    },
+    /// Toggle `slot`'s membership in the Tag chip pair.
+    ToggleTag {
+        slot: usize,
+    },
+    /// Library pane: the filter text changed.
+    LibraryFilterChanged(String),
+    /// Library pane: the sort order changed.
+    LibrarySortChanged(LibrarySort),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -157,6 +363,10 @@ pub enum Action {
 ///   * `Some(false)` — Play button rendered but disabled (e.g.
 ///     while a netplay lobby is active and singleplayer would
 ///     conflict with the open session).
+/// `editable`: when `true` (only the play tab passes this) and the
+/// loaded save supports it, the Folder tab gains an Edit button that
+/// flips its body into the in-place chip-deck editor. Replay /
+/// opponent panels pass `false`, so they never show the affordance.
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a Loaded,
@@ -164,6 +374,7 @@ pub fn view<'a>(
     streamer_mode: bool,
     play_button: Option<bool>,
     inline_actions: bool,
+    editable: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
     use iced::{Alignment, Fill};
@@ -176,6 +387,10 @@ pub fn view<'a>(
         .active_tab
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
+    // True while the folder editor is open. Suppresses the Play
+    // button (single-player would fight the open edit session) and
+    // selects the editable Folder body below.
+    let editing_session = editable && state.editing;
 
     // Tab strip: tabs left, extras+Play right. We split into two
     // rows so the tab list can wrap onto a second line without
@@ -204,11 +419,11 @@ pub fn view<'a>(
     let tabs_only = tabs_only.wrap();
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
     if inline_actions {
-        if let Some(extras) = tab_extras(lang, active, state, loaded) {
+        if let Some(extras) = tab_extras(lang, active, state, loaded, editable) {
             tail = tail.push(extras);
         }
     }
-    if let Some(enabled) = play_button {
+    if let Some(enabled) = play_button.filter(|_| !editing_session) {
         use lucide_icons::Icon;
         let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
             .spacing(6)
@@ -223,17 +438,31 @@ pub fn view<'a>(
     }
     let tab_row = row![
         container(tabs_only).width(Fill),
-        container(tail).height(Length::Fixed(TAB_STRIP_HEIGHT)).align_y(Alignment::Center),
+        container(tail)
+            .height(Length::Fixed(TAB_STRIP_HEIGHT))
+            .align_y(Alignment::Center),
     ]
     .spacing(8)
     .align_y(Alignment::Start);
+
+    let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
+
+    // The folder editor lays out two side-by-side panes, each with its
+    // own scrollbar, and wants the full available height — so it bypasses
+    // the shared Shrink-height body scrollable the read-only views use.
+    if editing_session && active == Tab::Folder {
+        let editor = render_folder_edit(lang, loaded, state);
+        return column![tab_pane, editor]
+            .spacing(widgets::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
 
     let opts = RenderOpts {
         folder_grouped: state.folder_grouped,
     };
     let body = render::<Action>(lang, active, loaded, opts);
-
-    let tab_pane = container(tab_row.padding([4, 8])).width(Fill).style(widgets::pane);
     // Body: each render_* returns one-or-more pane-styled
     // containers stacked into an Element. We wrap that whole
     // group in a Shrink-height scrollable so when its panes don't
@@ -255,6 +484,7 @@ fn tab_extras<'a>(
     tab: Tab,
     state: &'a State,
     loaded: &'a Loaded,
+    editable: bool,
 ) -> Option<Element<'a, Action>> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -275,8 +505,34 @@ fn tab_extras<'a>(
         )
     };
     match tab {
-        Tab::Folder => Some(
-            row![
+        Tab::Folder if state.editing => {
+            // Edit mode: edits are staged live; Save writes them to the
+            // .sav on disk, Cancel discards them. The group toggle /
+            // copy don't apply here.
+            Some(
+                row![
+                    widgets::labeled_icon_button(
+                        Icon::X,
+                        t!(lang, "folder-edit-cancel"),
+                        Action::CancelEdit,
+                        [4.0, 10.0],
+                        widgets::neutral,
+                    ),
+                    widgets::labeled_icon_button(
+                        Icon::Check,
+                        t!(lang, "folder-edit-save"),
+                        Action::SaveEdit,
+                        [4.0, 10.0],
+                        widgets::primary_button,
+                    ),
+                ]
+                .spacing(6)
+                .align_y(iced::Alignment::Center)
+                .into(),
+            )
+        }
+        Tab::Folder => {
+            let mut r = row![
                 iced::widget::checkbox(state.folder_grouped)
                     .label(t!(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
@@ -286,9 +542,21 @@ fn tab_extras<'a>(
                 copy_btn(Tab::Folder),
             ]
             .spacing(10)
-            .align_y(iced::Alignment::Center)
-            .into(),
-        ),
+            .align_y(iced::Alignment::Center);
+            // Only saves with a writable chip view (BN4/5/6) get the
+            // Edit affordance; `chips_editable` is the cached
+            // `view_chips_mut().is_some()` probe.
+            if editable && loaded.chips_editable {
+                r = r.push(widgets::labeled_icon_button(
+                    Icon::Pencil,
+                    t!(lang, "folder-edit"),
+                    Action::EnterEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                ));
+            }
+            Some(r.into())
+        }
         Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
         Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
         Tab::Navi => {
@@ -322,8 +590,10 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
         Tab::Folder => {
             let chips_view = loaded.save.view_chips()?;
             let folder_idx = chips_view.equipped_folder_index();
-            let regular_idx = chips_view.regular_chip_index(folder_idx);
-            let tag_idxs = chips_view.tag_chip_indexes(folder_idx);
+            // Read-only display treats "unsupported" and "unset" the
+            // same — flatten the outer Option away.
+            let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
+            let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
 
             let mut chips: Vec<Option<tango_dataview::save::Chip>> =
                 (0..30).map(|i| chips_view.chip(folder_idx, i)).collect();
@@ -600,17 +870,13 @@ fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Elem
         // No registered logo — render an empty cover.
         [] => Space::new().into(),
     };
-    container(
-        column![inner]
-            .width(Fill)
-            .align_x(Alignment::Center),
-    )
-    .width(Fill)
-    // Extra breathing room above/below the logo(s); standard
-    // horizontal inset.
-    .padding([crate::widgets::PANE_PADDING + 24.0, crate::widgets::PANE_PADDING])
-    .style(crate::widgets::pane)
-    .into()
+    container(column![inner].width(Fill).align_x(Alignment::Center))
+        .width(Fill)
+        // Extra breathing room above/below the logo(s); standard
+        // horizontal inset.
+        .padding([crate::widgets::PANE_PADDING + 24.0, crate::widgets::PANE_PADDING])
+        .style(crate::widgets::pane)
+        .into()
 }
 
 // ---------- Folder ----------
@@ -629,8 +895,10 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     };
     let assets = loaded.assets.as_ref();
     let folder_idx = chips_view.equipped_folder_index();
-    let regular_idx = chips_view.regular_chip_index(folder_idx);
-    let tag_idxs = chips_view.tag_chip_indexes(folder_idx);
+    // Read-only display treats "unsupported" and "unset" the same —
+    // flatten the outer Option away.
+    let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
+    let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
     let chips_have_mb = assets.chips_have_mb();
 
     // Pull the 30-chip folder.
@@ -732,6 +1000,366 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     container(body).width(Fill).style(crate::widgets::pane).into()
 }
 
+/// Editable folder view: the folder (left) beside the chip library
+/// (right). The left pane lists the 30 raw slots — each filled slot can
+/// be removed or marked REG/TAG; the right pane lists every selectable
+/// chip with a button per valid code that adds it to the first empty
+/// slot. Each pane scrolls independently.
+fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+    use crate::widgets;
+    let Some(chips_view) = loaded.save.view_chips() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let folder_idx = chips_view.equipped_folder_index();
+    // Outer Some = the game has the feature, so show its toggle.
+    let reg = chips_view.regular_chip_index(folder_idx);
+    let regular_supported = reg.is_some();
+    let regular_idx = reg.flatten();
+    let tag_supported = chips_view.tag_chip_indexes(folder_idx).is_some();
+
+    // ----- Left pane: the folder -----
+    let filled = (0..30).filter(|&i| chips_view.chip(folder_idx, i).is_some()).count();
+    let mut folder_list = column![].spacing(1).padding(0);
+    for slot in 0..30usize {
+        let chip = chips_view.chip(folder_idx, slot);
+        folder_list = folder_list.push(folder_slot_row(
+            loaded,
+            slot,
+            chip,
+            regular_idx == Some(slot),
+            regular_supported,
+            tag_supported,
+            state.editing_tags.contains(&slot),
+        ));
+    }
+    let clear_all = widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "folder-edit-clear"),
+        Action::ClearFolder,
+        [5.0, 10.0],
+        widgets::neutral,
+    );
+    let folder_header = container(
+        row![
+            text(t!(lang, "folder-edit-folder", count = filled as i64))
+                .size(TEXT_BODY)
+                .width(Fill),
+            clear_all,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let folder_pane = container(column![folder_header, scrollable(folder_list).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    // ----- Right pane: the chip library -----
+    let chips_have_mb = loaded.assets.chips_have_mb();
+    let filter = state.library_filter.to_lowercase();
+    let mut lib_list = column![].spacing(1).padding(0);
+    let mut shown = 0usize;
+    for (id, name, code) in sorted_library_entries(loaded, state.library_sort) {
+        if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
+            continue;
+        }
+        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb));
+        shown += 1;
+    }
+    let filter_input = text_input(&t!(lang, "folder-edit-search"), &state.library_filter)
+        .on_input(Action::LibraryFilterChanged)
+        .padding([5, 10])
+        .size(TEXT_BODY)
+        .width(Fill)
+        .style(widgets::chunky_text_input);
+    let sort_pick = pick_list(
+        LibrarySort::ALL.to_vec(),
+        Some(state.library_sort),
+        Action::LibrarySortChanged,
+    )
+    .padding([5, 10])
+    .text_size(TEXT_BODY)
+    .style(widgets::chunky_pick_list);
+    let lib_header = container(
+        row![
+            text(t!(lang, "folder-edit-library")).size(TEXT_BODY),
+            filter_input,
+            text(t!(lang, "folder-edit-sort"))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            sort_pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let library_pane = container(column![lib_header, scrollable(lib_list).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    row![folder_pane, library_pane]
+        .spacing(widgets::PANE_GAP)
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+/// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
+/// rows keep the same height as filled ones.
+fn chip_icon<'a>(loaded: &'a Loaded, chip_id: Option<usize>) -> Element<'a, Action> {
+    match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
+        Some(h) => Image::new(h)
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .filter_method(iced_image::FilterMethod::Nearest)
+            .content_fit(ContentFit::Contain)
+            .into(),
+        None => Space::new()
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .into(),
+    }
+}
+
+/// Wrap `inner` so hovering anywhere over it shows the chip's full image
+/// + description (the read-only list's chip popover). No-op when the
+/// chip has neither, or for an empty slot.
+fn with_chip_tooltip<'a>(
+    loaded: &'a Loaded,
+    chip_id: Option<usize>,
+    accent: Option<iced::Color>,
+    inner: Element<'a, Action>,
+) -> Element<'a, Action> {
+    let Some(id) = chip_id else { return inner };
+    let description = loaded.assets.chip(id).and_then(|i| i.description());
+    let image_handle = loaded.chip_images.get(id).cloned().flatten();
+    if description.is_none() && image_handle.is_none() {
+        return inner;
+    }
+    let mut tip = column![].spacing(6);
+    if let Some((w, h, h_handle)) = image_handle {
+        tip = tip.push(
+            Image::new(h_handle)
+                .width(Length::Fixed(w as f32 * 2.0))
+                .height(Length::Fixed(h as f32 * 2.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain),
+        );
+    }
+    if let Some(desc) = description {
+        tip = tip.push(text(desc).size(TEXT_CAPTION));
+    }
+    tooltip(
+        inner,
+        container(tip).padding(8).style(chip_tooltip_style(accent)),
+        tooltip::Position::FollowCursor,
+    )
+    .gap(8)
+    .into()
+}
+
+/// Wrap an editor row's content with the class-accent stripe + zebra
+/// background, matching the read-only chip list.
+fn edit_row_wrap<'a>(
+    inner: Element<'a, Action>,
+    accent: Option<iced::Color>,
+    row_idx: usize,
+    leading: Option<Element<'a, Action>>,
+) -> Element<'a, Action> {
+    let stripe: Element<'a, Action> = container(Space::new())
+        .width(Length::Fixed(6.0))
+        .height(Length::Fill)
+        .style(move |_t: &iced::Theme| container::Style {
+            background: accent.map(iced::Background::Color),
+            ..Default::default()
+        })
+        .into();
+    // `leading` (e.g. the library's add arrow) sits in the gutter to the
+    // left of the accent stripe.
+    let mut r = row![].height(Length::Shrink).align_y(Alignment::Center);
+    if let Some(lead) = leading {
+        r = r.push(container(lead).padding([0, 6]));
+    }
+    r = r.push(stripe).push(container(inner).width(Fill));
+    container(r).width(Fill).style(crate::widgets::zebra_row(row_idx)).into()
+}
+
+/// Element-icon / ATK / MB stat cells shared by both editor panes,
+/// matching the read-only chip list's columns. The MB cell collapses to
+/// nothing when the game doesn't use MB.
+fn chip_stat_cells<'a>(loaded: &'a Loaded, chip_id: usize, chips_have_mb: bool) -> [Element<'a, Action>; 3] {
+    let info = loaded.assets.chip(chip_id);
+    let element: Element<'a, Action> = info
+        .as_ref()
+        .map(|i| i.element())
+        .and_then(|id| loaded.element_icons.get(&id).cloned())
+        .map(|h| {
+            Image::new(h)
+                .width(Length::Fixed(28.0))
+                .height(Length::Fixed(28.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain)
+                .into()
+        })
+        .unwrap_or_else(|| Space::new().width(Length::Fixed(28.0)).into());
+    let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
+    let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
+    let atk: Element<'a, Action> =
+        container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
+            .width(Length::Fixed(46.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into();
+    let mb_cell: Element<'a, Action> = if chips_have_mb {
+        container(text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION))
+            .width(Length::Fixed(42.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
+    } else {
+        Space::new().into()
+    };
+    [element, atk, mb_cell]
+}
+
+/// One folder slot in the editor's left pane. Filled slots show the
+/// chip's full stats (element / code / ATK / MB, like the read-only
+/// list) plus Remove / REG / TAG controls (REG/TAG only where the game
+/// supports them); empty slots show a muted placeholder.
+fn folder_slot_row<'a>(
+    loaded: &'a Loaded,
+    slot: usize,
+    chip: Option<tango_dataview::save::Chip>,
+    is_regular: bool,
+    regular_supported: bool,
+    tag_supported: bool,
+    is_tag: bool,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    let assets = loaded.assets.as_ref();
+    let chips_have_mb = assets.chips_have_mb();
+    let chip_id = chip.as_ref().map(|c| c.id);
+    let info = chip_id.and_then(|id| assets.chip(id));
+    let accent = class_accent(
+        info.as_ref().map(|i| i.class()),
+        info.as_ref().map(|i| i.dark()).unwrap_or(false),
+    );
+
+    let mut inner = row![chip_icon(loaded, chip_id)].spacing(8).align_y(Alignment::Center);
+    match chip.as_ref() {
+        Some(c) => {
+            let name = info.as_ref().and_then(|i| i.name()).unwrap_or_else(|| "???".to_string());
+            let [element, atk, mb] = chip_stat_cells(loaded, c.id, chips_have_mb);
+            let code = container(text(c.code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+                .width(Length::Fixed(22.0))
+                .align_x(iced::alignment::Horizontal::Right);
+            inner = inner
+                .push(text(name).size(TEXT_BODY).width(Fill))
+                .push(element)
+                .push(code)
+                .push(atk)
+                .push(mb);
+            if regular_supported {
+                inner = inner.push(edit_toggle(
+                    "REG",
+                    is_regular,
+                    iced::Color::from_rgb8(0xff, 0x42, 0xa5),
+                    Action::ToggleRegular { slot },
+                ));
+            }
+            if tag_supported {
+                inner = inner.push(edit_toggle(
+                    "TAG",
+                    is_tag,
+                    iced::Color::from_rgb8(0x29, 0xa1, 0x21),
+                    Action::ToggleTag { slot },
+                ));
+            }
+            // Right arrow → remove this chip (back out to the library).
+            inner = inner.push(
+                button(Icon::ArrowRight.widget().size(TEXT_BODY))
+                    .padding([3, 8])
+                    .style(widgets::neutral)
+                    .on_press(Action::RemoveChip { slot }),
+            );
+        }
+        None => {
+            inner = inner.push(text("—").size(TEXT_BODY).style(muted_text_style).width(Fill));
+        }
+    }
+    with_chip_tooltip(
+        loaded,
+        chip_id,
+        accent,
+        edit_row_wrap(inner.padding([3, 12]).into(), accent, slot, None),
+    )
+}
+
+/// One chip in the editor's right pane (the library). Shows the chip's
+/// stats (element / ATK / MB, like the read-only list) with a button per
+/// valid code; clicking a code adds it to the folder.
+fn library_entry_row<'a>(
+    loaded: &'a Loaded,
+    chip_id: usize,
+    name: String,
+    code: tango_dataview::save::ChipCode,
+    row_idx: usize,
+    chips_have_mb: bool,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    let info = loaded.assets.chip(chip_id);
+    let accent = class_accent(
+        info.as_ref().map(|i| i.class()),
+        info.as_ref().map(|i| i.dark()).unwrap_or(false),
+    );
+    let [element, atk, mb] = chip_stat_cells(loaded, chip_id, chips_have_mb);
+
+    // Left arrow → add this chip+code into the folder (to its left). It
+    // lives in the gutter left of the accent stripe (see edit_row_wrap).
+    let add: Element<'a, Action> = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
+        .padding([3, 8])
+        .style(widgets::neutral)
+        .on_press(Action::AddChip { chip_id, code })
+        .into();
+    let code_cell = container(text(code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+        .width(Length::Fixed(22.0))
+        .align_x(iced::alignment::Horizontal::Right);
+
+    let inner = row![
+        chip_icon(loaded, Some(chip_id)),
+        text(name).size(TEXT_BODY).width(Fill),
+        element,
+        code_cell,
+        atk,
+        mb,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .padding([3, 12]);
+    with_chip_tooltip(
+        loaded,
+        Some(chip_id),
+        accent,
+        edit_row_wrap(inner.into(), accent, row_idx, Some(add)),
+    )
+}
+
+/// Small toggle button used for the REG and TAG columns in the folder
+/// editor: tinted in `on_color` when active, neutral (greyed) when not.
+fn edit_toggle<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Action) -> Element<'a, Action> {
+    let b = button(text(label).size(TEXT_CAPTION)).padding([4, 8]).on_press(msg);
+    if on {
+        b.style(move |theme: &iced::Theme, status| crate::widgets::tinted_button(theme, status, on_color))
+            .into()
+    } else {
+        b.style(crate::widgets::neutral).into()
+    }
+}
+
 // `code = None` skips the code badge (Auto Battle Data slots
 // have a chip id but no code). `show_count_cell` toggles the
 // leading "N×" column — on for the folder's grouped mode, off
@@ -754,7 +1382,8 @@ fn chip_row<M: 'static>(
     let is_empty_slot = chip_id.is_none();
 
     // Chip icon — in-game sprite at 28 px so it reads as a chip
-    // graphic rather than a row decoration.
+    // graphic rather than a row decoration. Empty slots reserve the
+    // same 28 px square so their rows match filled rows' height.
     let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
         Some(h) => Image::new(h)
             .width(Length::Fixed(28.0))
@@ -762,7 +1391,10 @@ fn chip_row<M: 'static>(
             .filter_method(iced_image::FilterMethod::Nearest)
             .content_fit(ContentFit::Contain)
             .into(),
-        None => Space::new().width(Length::Fixed(28.0)).into(),
+        None => Space::new()
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .into(),
     };
 
     // Element icon. Same 14→28 (2× native) scaling as the chip

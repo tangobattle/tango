@@ -710,7 +710,7 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
 /// across CTAs so `primary_button` (primary green) and
 /// `danger_button` (red) read as the same widget family in
 /// different moods.
-fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color) -> button::Style {
+pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color) -> button::Style {
     let status = collapse_button_focus(status);
     // Disabled drops the accent entirely — no green/red glow, no
     // gradient, no shadow. Flat de-saturated plate + dim text reads

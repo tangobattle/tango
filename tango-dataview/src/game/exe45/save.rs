@@ -102,14 +102,6 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         0
     }
 
-    fn regular_chip_index(&self, _folder_index: usize) -> Option<usize> {
-        None
-    }
-
-    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
-        None
-    }
-
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {
         if folder_index >= 1 || chip_index >= 30 {
             return None;

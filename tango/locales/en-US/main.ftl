@@ -112,6 +112,14 @@ navi-style = Style
 folder-group = Group by chip
 save-copy = Copy
 save-copy-image = Copy as image
+folder-edit = Edit
+folder-edit-save = Save
+folder-edit-cancel = Cancel
+folder-edit-search = Search chips…
+folder-edit-folder = Folder ({ $count } / 30)
+folder-edit-library = All chips
+folder-edit-sort = Sort
+folder-edit-clear = Clear all
 
 # Navi pane
 navi-id = Navi ID

@@ -151,17 +151,9 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
         self.save.buf[0x1882] as usize
     }
 
-    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+    fn regular_chip_index(&self, folder_index: usize) -> Option<Option<usize>> {
         let idx = self.save.buf[0x189d + folder_index];
-        if idx >= 30 {
-            None
-        } else {
-            Some(idx as usize)
-        }
-    }
-
-    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
-        None
+        Some(if idx >= 30 { None } else { Some(idx as usize) })
     }
 
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<crate::save::Chip> {

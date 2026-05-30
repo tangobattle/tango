@@ -24,6 +24,11 @@ pub struct Loaded {
     pub game: GameRef,
     pub save_path: std::path::PathBuf,
     pub save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+    /// Whether this save supports in-place folder editing — i.e.
+    /// `save.view_chips_mut().is_some()`. Cached at build time because
+    /// the probe needs `&mut save`, but the per-frame view only holds
+    /// `&Loaded`. Drives whether the Folder tab shows the Edit button.
+    pub chips_editable: bool,
     /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
@@ -68,7 +73,7 @@ impl Loaded {
         game: GameRef,
         rom: Vec<u8>,
         save_path: std::path::PathBuf,
-        save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         patches_path: &std::path::Path,
         patch: Option<(String, semver::Version, Arc<crate::patch::Version>)>,
     ) -> Self {
@@ -97,6 +102,11 @@ impl Loaded {
             }
             None => (rom, None),
         };
+
+        // Probe folder-editability once (needs `&mut save`); constructing
+        // the mutable chip view has no side effects, so this is a pure
+        // capability check we can cache on the immutable Loaded.
+        let chips_editable = save.view_chips_mut().is_some();
 
         let wram = save.as_raw_wram().into_owned();
         let charset_owned: Option<Vec<&str>> = applied_patch
@@ -171,6 +181,7 @@ impl Loaded {
             game,
             save_path,
             save,
+            chips_editable,
             patch: applied_patch,
             assets,
             chip_icons,
