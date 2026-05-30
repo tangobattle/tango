@@ -31,17 +31,12 @@ pub struct Match {
     /// receive time to stamp each Input with the round it belongs to.
     peer_round_idx: AtomicU32,
     replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
-    /// Shared input delay in frames: `min(local_frame_delay, peer_frame_delay)`.
-    /// Both peers compute the same value, apply it symmetrically (local input
-    /// ring + remote-queue prefill in the `Round`), and so each side's rollback
-    /// depth drops by this much. Part of the deterministic simulation — fixed
-    /// for the whole match.
-    input_delay: u32,
-    /// Local presentation delay in frames: `local_frame_delay − input_delay`.
-    /// The leftover of this side's requested delay that couldn't be cashed in as
-    /// shared input delay; realized purely locally by the `Round` rendering
-    /// `frontier − presentation_delay`. Never touches the netcode or the wire.
-    presentation_delay: u32,
+    /// This side's frame delay, in frames. Realized purely locally by the
+    /// `Round` rendering `frontier − frame_delay`; never touches the netcode or
+    /// the wire. Shared atomic so the owning `PvpSession` can live-adjust it
+    /// mid-match (footer slider) and every round reads the current value each
+    /// frame.
+    frame_delay: Arc<AtomicU32>,
 }
 
 impl Match {
@@ -55,8 +50,7 @@ impl Match {
         shadow: crate::shadow::Shadow,
         identity: MatchIdentity,
         replay: ReplayConfig,
-        input_delay: u32,
-        presentation_delay: u32,
+        frame_delay: Arc<AtomicU32>,
     ) -> Arc<Self> {
         let (round_progress, _) = watch::channel(0);
         Arc::new(Self {
@@ -73,8 +67,7 @@ impl Match {
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
-            input_delay,
-            presentation_delay,
+            frame_delay,
         })
     }
 
@@ -110,12 +103,8 @@ impl Match {
         self.primary_thread_handle.clone()
     }
 
-    pub(super) fn input_delay(&self) -> u32 {
-        self.input_delay
-    }
-
-    pub(super) fn presentation_delay(&self) -> u32 {
-        self.presentation_delay
+    pub(super) fn frame_delay(&self) -> Arc<AtomicU32> {
+        self.frame_delay.clone()
     }
 
     /// Picks the per-match local_player_index. Both peers must call this with

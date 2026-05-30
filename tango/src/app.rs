@@ -729,6 +729,13 @@ impl App {
             Message::Settings(m) => self.update_settings(m).map(Message::Settings),
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => {
+                // In-match frame-delay slider: persist the new value to config so
+                // the choice sticks for the next match (session.update applies it
+                // to the live session). Mirrors the lobby slider's persistence.
+                if let session::Message::SetFrameDelay(d) = &m {
+                    self.config.frame_delay = *d;
+                    self.persist_config();
+                }
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
                 // mgba's RW VFile). On Close, drop the session
@@ -1005,9 +1012,10 @@ impl App {
                 iced::Task::none()
             }
             E::SetFrameDelay(d) => {
-                // Lobby slider. Persisted to config and exchanged with the peer
-                // at match start (see `make_local_settings`); fixed for the
-                // match, so there's no live match to push it to here.
+                // Lobby slider. Persisted to config; it's this side's local
+                // frame delay (snapshotted into the match at start, not
+                // negotiated with the peer), so there's no live match to push it
+                // to here.
                 self.config.frame_delay = d;
                 self.persist_config();
                 iced::Task::none()
@@ -1499,6 +1507,10 @@ impl App {
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
+            C::FrameDelay(v) => {
+                self.config.frame_delay =
+                    v.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY)
+            }
             C::PatchRepo(s) => self.config.patch_repo = s,
             C::PatchAutoupdate(b) => {
                 self.config.enable_patch_autoupdate = b;

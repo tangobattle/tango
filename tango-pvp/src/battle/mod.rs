@@ -21,10 +21,9 @@ pub use types::{BattleOutcome, MatchIdentity, ReplayConfig, Snapshot};
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
-/// Inclusive bounds for a peer's requested `frame_delay`. The match splits each
-/// side's value into a shared input delay (`min` of the two, reduces rollback
-/// depth for both) and a local presentation delay (the remainder, hides the
-/// rest). The lobby slider and config clamp to this range; the floor of 2
-/// guarantees at least two frames of real rollback reduction on every match.
+/// Inclusive bounds for a side's `frame_delay`, which is realized purely as
+/// local frame delay (how far the display trails the netcode frontier).
+/// Each side picks its own; there's no negotiation. The lobby slider and config
+/// clamp to this range.
 pub const MIN_FRAME_DELAY: u32 = 2;
 pub const MAX_FRAME_DELAY: u32 = 10;

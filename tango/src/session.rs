@@ -192,6 +192,10 @@ pub enum Message {
     Seek(u32),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
+    /// PvP-only: footer frame-delay slider moved. Live-sets this side's local
+    /// frame delay on the running session; the App also persists it to
+    /// config. No peer coordination — it's purely a local display lag.
+    SetFrameDelay(u32),
     /// Open/close the ellipsis-anchored options popover.
     ToggleOptionsMenu,
     /// User pressed Esc inside a session. Closes whichever overlay is on
@@ -330,6 +334,14 @@ impl State {
                         // stay in sync — no speed control.
                     }
                     None => {}
+                }
+            }
+            Message::SetFrameDelay(d) => {
+                // Purely local frame delay — apply straight to the running
+                // PvP session. Config persistence happens in the App's
+                // `Message::Session` handler (it owns config).
+                if let Some(ActiveSession::PvP(s)) = self.active.as_ref() {
+                    s.set_frame_delay(d);
                 }
             }
             Message::ToggleOptionsMenu => {
@@ -498,6 +510,63 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
         });
     CACHE.lock().unwrap().insert(key, handle.clone());
     handle
+}
+
+/// Live frame-delay control for the PvP footer. Built to look identical to the
+/// lobby's frame-delay row — label + 160px slider + fixed-width numeric readout
+/// + the latency-driven "suggest" wand. Frame delay is purely local display lag,
+/// so dragging it mid-match takes effect on the next rendered frame with no peer
+/// coordination.
+fn frame_delay_control<'a>(
+    lang: &'a LanguageIdentifier,
+    pvp: &'a pvp_session::PvpSession,
+) -> Element<'a, Message> {
+    let fd = pvp.frame_delay();
+    let latency = pvp.latency_blocking();
+
+    let slider = iced::widget::slider(
+        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+        fd,
+        Message::SetFrameDelay,
+    )
+    .width(Length::Fixed(160.0));
+
+    // "Suggest" button — same legacy formula as the lobby (one-way frames + 1 -
+    // 2, clamped to the slider range). Disabled until the first ping reading
+    // lands (`latency_blocking` returns zero until then).
+    let suggest_msg = if latency.is_zero() {
+        None
+    } else {
+        let one_way_frames = (latency.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
+        let d = (one_way_frames + 1 - 2).clamp(
+            tango_pvp::battle::MIN_FRAME_DELAY as i32,
+            tango_pvp::battle::MAX_FRAME_DELAY as i32,
+        ) as u32;
+        Some(Message::SetFrameDelay(d))
+    };
+    let suggest = widgets::icon_button_maybe(
+        Icon::Wand,
+        t!(lang, "lobby-frame-delay-suggest"),
+        suggest_msg,
+        crate::app::STANDARD_PADDING,
+    );
+
+    row![
+        text(t!(lang, "settings-netplay-frame-delay"))
+            .size(TEXT_BODY)
+            .style(widgets::muted_text_style),
+        slider,
+        // Live value as a fixed-width monospaced numeral so the slider's
+        // position has a readable counterpart that doesn't jiggle layout.
+        text(format!("{}", fd))
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE)
+            .width(Length::Fixed(18.0)),
+        suggest,
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 /// Render the active session — framebuffer, header, and (for replays
@@ -857,6 +926,13 @@ pub fn view<'a>(
         if let Some(t) = self_toggle {
             controls = controls.push(t);
         }
+        // PvP-only: live frame-delay control on the left, built to look identical
+        // to the lobby's (label + slider + numeric readout + "suggest" wand).
+        // Frame delay here is purely local display lag, so it's safe to drag
+        // mid-match — no peer coordination.
+        if let ActiveSession::PvP(pvp) = session {
+            controls = controls.push(frame_delay_control(lang, pvp));
+        }
         controls = controls.push(horizontal_space());
     }
     // PvP-only status readout: P1/P2, TPS, frame advantage, ping.
@@ -891,7 +967,7 @@ pub fn view<'a>(
                     .style(widgets::muted_text_style),
             );
             metrics = metrics.push(
-                text(format!("depth {:>3} (+{})", s.depth, s.input_delay))
+                text(format!("depth {:>3}", s.depth))
                     .size(TEXT_BODY)
                     .font(iced::Font::MONOSPACE)
                     .style(widgets::muted_text_style),
@@ -1371,6 +1447,11 @@ pub async fn spawn_pvp(
         remote_game_impl,
         std::sync::Arc::new(remote_rom_bytes),
         pre_match,
+        // Presentation delay is purely local — read straight from config (clamped
+        // to the supported range), not negotiated with the peer.
+        config
+            .frame_delay
+            .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
         &config.replays_path(),
         &audio_binder,
         opponent_loaded,

@@ -172,9 +172,9 @@ pub struct Config {
     /// the next buffer fill.
     #[serde(default = "default_volume")]
     pub volume: f32,
-    /// Local presentation delay in frames for PvP — how far behind the live
-    /// netcode frontier the display core renders. Purely local (never on the
-    /// wire); live-adjustable mid-match.
+    /// Local frame delay in frames for PvP — how far behind the live
+    /// netcode frontier the display core renders. Purely local (not negotiated
+    /// with the peer); snapshotted into the match at start.
     #[serde(default = "default_frame_delay")]
     pub frame_delay: u32,
 }
@@ -303,9 +303,9 @@ impl Config {
             let _ = self.save();
         }
 
-        // frame_delay gained a minimum (the shared input-delay floor). Clamp any
-        // stale value below it so the lobby slider's handle, the displayed
-        // number, and the value exchanged with the peer all stay in range.
+        // Clamp any stale frame_delay into the supported frame-delay
+        // range so the lobby slider's handle and the displayed number stay in
+        // range.
         let clamped = self
             .frame_delay
             .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);

@@ -33,8 +33,8 @@ pub(super) fn traps(
 
             // Stamp the live core's *game* tick (not the netcode frontier),
             // since this trap fires during the game's in-tick processing where
-            // its game.current_tick == last_loaded_tick. With a presentation
-            // delay the two diverge by `presentation_delay`; stamping with
+            // its game.current_tick == last_loaded_tick. With a frame
+            // delay the two diverge by `frame_delay`; stamping with
             // `round.frontier()` here under-runs the rx tick field by D
             // and the game sees rx sequence numbers out of order.
             let game_tick = round.last_loaded_tick();

@@ -28,11 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 pub mod compat;
 
-/// Same protocol version the legacy app speaks (`tango/src/net/protocol.rs`).
-/// Bumped in lockstep with the signaling server's allowlist; keep
-/// this in sync or the server rejects the handshake with
-/// `AbortReason::ProtocolVersionTooOld` / `TooNew`.
-pub const PROTOCOL_VERSION: u32 = 0x42;
+pub const PROTOCOL_VERSION: u32 = 0x43;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.

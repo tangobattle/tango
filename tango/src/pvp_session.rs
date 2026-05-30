@@ -91,6 +91,10 @@ pub struct PvpSession {
     /// Active-tab / grouping state for the in-match self
     /// save-view panel. Mirror of [`opponent_save_view`].
     pub local_save_view: crate::save_view::State,
+    /// Live local frame delay, shared with the running `Match`.
+    /// The footer slider writes it via [`set_frame_delay`]; the netcode reads it
+    /// each rendered frame. Purely local — never negotiated or sent to the peer.
+    frame_delay: Arc<AtomicU32>,
 }
 
 impl PvpSession {
@@ -108,6 +112,10 @@ impl PvpSession {
         remote_game: &'static crate::game::Game,
         remote_rom: Arc<Vec<u8>>,
         pre_match: crate::netplay::PreMatchData,
+        // This side's frame delay — realized purely as local display lag (how
+        // far the display core trails the netcode frontier). Comes straight from
+        // local config; never negotiated with or sent to the peer.
+        frame_delay: u32,
         replays_path: &Path,
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
@@ -232,19 +240,11 @@ impl PvpSession {
         let peer_disconnected = Arc::new(AtomicBool::new(false));
         let local_eom_sent = Arc::new(AtomicBool::new(false));
         let local_completed_at = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
-        // Split each side's exchanged frame_delay into the shared input delay
-        // (`min` of the two — reduces rollback depth for both peers, symmetric
-        // so it's fair) and this side's leftover presentation delay (realized
-        // locally by the display core trailing the frontier). Both peers
-        // compute `min` over the same exchanged pair, so input_delay matches on
-        // both sides — required for the deterministic simulation. Read from the
-        // *sent* settings (not live config) so a slider nudge after the lobby
-        // exchange can't desync the two sides.
-        let local_frame_delay = pre_match.local_settings.frame_delay;
-        let remote_frame_delay = pre_match.remote_settings.frame_delay;
-        let input_delay = local_frame_delay.min(remote_frame_delay);
-        let presentation_delay = local_frame_delay - input_delay;
-
+        // `frame_delay` (this side's frame delay) is realized entirely
+        // locally by the display core trailing the netcode frontier; it's not
+        // part of the deterministic simulation and never crosses the wire. Shared
+        // as an atomic so the footer slider can live-adjust it mid-match.
+        let frame_delay = Arc::new(AtomicU32::new(frame_delay));
         let inner_match = tango_pvp::battle::Match::new(
             local_rom.as_ref().clone(),
             local_hooks,
@@ -255,8 +255,7 @@ impl PvpSession {
             shadow,
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
-            input_delay,
-            presentation_delay,
+            frame_delay.clone(),
         );
         *match_handle.try_lock().unwrap() = Some(inner_match.clone());
 
@@ -325,7 +324,7 @@ impl PvpSession {
         // Single-core PvP: the live mgba thread is the only core — it runs the
         // netcode and renders straight to the UI. The `Round` loads the FF's
         // computed `present_state` into it each frame, so the live core's game
-        // tick lags `current_tick` by `presentation_delay`.
+        // tick lags `current_tick` by `frame_delay`.
         let audio_stream: Box<dyn crate::audio::Stream + Send> =
             Box::new(crate::audio::MGBAStream::new(thread.handle(), audio_binder.sample_rate()));
         let audio_binding = match audio_binder.bind(Some(audio_stream)) {
@@ -373,7 +372,7 @@ impl PvpSession {
 
         // Single core: feeds local input from the user's atomic, marks TPS,
         // pushes its rendered frame straight to the UI, drives completion. The
-        // display now follows the network frontier (no presentation_delay
+        // display now follows the network frontier (no frame_delay
         // mitigation yet — that comes back in Stage 1c when the Round loads the
         // FF's at-present_tick state instead of the at-frontier one).
         thread.set_frame_callback({
@@ -418,11 +417,31 @@ impl PvpSession {
             opponent_save_view: crate::save_view::State::new(),
             local_loaded,
             local_save_view: crate::save_view::State::new(),
+            frame_delay,
         })
     }
 
     pub fn game(&self) -> &'static crate::game::Game {
         self.local_game
+    }
+
+    /// Current local frame delay — drives the footer slider's
+    /// displayed value.
+    pub fn frame_delay(&self) -> u32 {
+        self.frame_delay.load(Ordering::Relaxed)
+    }
+
+    /// Live-set the local frame delay. Purely local: takes effect
+    /// on the next rendered frame, no peer coordination. Clamped to the supported
+    /// range as a guard against an out-of-range caller.
+    pub fn set_frame_delay(&self, frame_delay: u32) {
+        self.frame_delay.store(
+            frame_delay.clamp(
+                tango_pvp::battle::MIN_FRAME_DELAY,
+                tango_pvp::battle::MAX_FRAME_DELAY,
+            ),
+            Ordering::Relaxed,
+        );
     }
 
     /// Overwrite the joyflag bitmap (same shape as singleplayer's
@@ -518,7 +537,6 @@ impl PvpSession {
             local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
             depth: round.rollback_depth(),
-            input_delay: round.input_delay(),
         })
     }
 }
@@ -538,9 +556,6 @@ pub struct RoundStats {
     /// input the live core ran on prediction this frame, and thus how far a
     /// real remote packet can force a re-simulation.
     pub depth: u32,
-    /// Shared input delay for the match (`min` of the two peers' frame_delay).
-    /// Constant; shown next to `depth` as the rollback already shaved off.
-    pub input_delay: u32,
 }
 
 impl std::fmt::Debug for PvpSession {
