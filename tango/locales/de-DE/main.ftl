@@ -66,7 +66,6 @@ save-tab-navi = Navi
 save-tab-folder = Ordner
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data
-save-cover-description = Das Register wurde absichtlich leer gelassen.
 auto-battle-data-secondary-standard-chips = Standard Chips (sekundär)
 auto-battle-data-standard-chips = Standard Chips
 auto-battle-data-mega-chips = Mega Chips

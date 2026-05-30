@@ -66,7 +66,6 @@ save-tab-navi = Navi
 save-tab-folder = Map
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data
-save-cover-description = Dit tabblad is met opzet leeg gelaten.
 auto-battle-data-secondary-standard-chips = Standaard chips (secundair)
 auto-battle-data-standard-chips = Standaard chips
 auto-battle-data-mega-chips = Mega chips

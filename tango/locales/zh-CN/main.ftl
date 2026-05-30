@@ -66,7 +66,6 @@ save-tab-navi = 领航员
 save-tab-folder = 芯片夹
 save-tab-patch-cards = 改造卡
 save-tab-auto-battle-data = ABD
-save-cover-description = 此画面有意留为空白。
 auto-battle-data-secondary-standard-chips = 普通芯片（二次）
 auto-battle-data-standard-chips = 普通芯片
 auto-battle-data-mega-chips = 高级芯片

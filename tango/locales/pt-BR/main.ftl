@@ -66,7 +66,6 @@ save-tab-navi = Navi
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data
-save-cover-description = Esta aba foi intencionalmente deixada em branco.
 auto-battle-data-secondary-standard-chips = Standard chips (secundários)
 auto-battle-data-standard-chips = Standard chips
 auto-battle-data-mega-chips = Mega chips

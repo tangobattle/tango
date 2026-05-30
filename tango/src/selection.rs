@@ -35,6 +35,13 @@ pub struct Loaded {
     /// Precomputed NaviCust grid image for the Navicust variant. None
     /// for LinkNavi games or when no navicust_layout is published.
     pub navicust_render: Option<NavicustRender>,
+    /// Logos for the Cover tab, as `(width, height, handle)`. The
+    /// loaded game's own variant comes first; any sibling variants in
+    /// the family follow (so families with two logos — Gregar/Falzar
+    /// etc. — can fan both out). Empty when the game has no per-game
+    /// `Game` registration. Built once here so the per-frame view()
+    /// just clones the handles.
+    pub logos: Vec<(u32, u32, iced_image::Handle)>,
 }
 
 /// Cached NaviCust image plus everything needed to translate a pointer
@@ -138,6 +145,28 @@ impl Loaded {
         // Render the NaviCust grid once per save+game.
         let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref(), game);
 
+        // Logos for the Cover tab. The loaded variant goes first; its
+        // family siblings (the other color version, where one exists)
+        // follow so the Cover tab can fan both out. The per-game
+        // `LazyImage` caches the PNG decode; `to_rgba8` + `from_rgba`
+        // run once here so the per-frame view() just clones handles.
+        let (family, variant) = game.family_and_variant();
+        let mut logo_order: Vec<GameRef> = vec![game];
+        for g in crate::game::games_in_family(family) {
+            if g.family_and_variant().1 != variant {
+                logo_order.push(g);
+            }
+        }
+        let logos: Vec<(u32, u32, iced_image::Handle)> = logo_order
+            .into_iter()
+            .filter_map(|g| crate::game::from_gamedb_entry(g))
+            .map(|gi| {
+                let img = gi.logo_image.to_rgba8();
+                let (w, h) = img.dimensions();
+                (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
+            })
+            .collect();
+
         Self {
             game,
             save_path,
@@ -149,6 +178,7 @@ impl Loaded {
             element_icons,
             navi_emblems,
             navicust_render,
+            logos,
         }
     }
 

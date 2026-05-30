@@ -104,7 +104,6 @@ save-tab-navi = ナビ
 save-tab-folder = フォルダ
 save-tab-patch-cards = パッチカード
 save-tab-auto-battle-data = オートバトルデータ
-save-cover-description = このタブは意図的に空白にしてあります。
 
 # Navi pane
 navi-style = スタイル

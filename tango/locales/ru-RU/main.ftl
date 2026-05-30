@@ -66,7 +66,6 @@ save-tab-navi = Нави
 save-tab-folder = Папка
 save-tab-patch-cards = Мод карты
 save-tab-auto-battle-data = Данные автобоя
-save-cover-description = Эта вкладка намеренно оставлена пустой.
 auto-battle-data-secondary-standard-chips = Стандартные чипы (второстепенные)
 auto-battle-data-standard-chips = Стандартные чипы
 auto-battle-data-mega-chips = Мега чипы
