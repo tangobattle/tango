@@ -64,8 +64,7 @@ impl LateBinder {
     /// (single atomic store) — safe to call from the UI thread.
     pub fn set_volume(&self, v: f32) {
         let v = v.clamp(0.0, 1.0);
-        self.volume
-            .store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        self.volume.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
     }
 
     fn read_volume(&self) -> f32 {
@@ -85,18 +84,16 @@ impl LateBinder {
 impl Stream for LateBinder {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut s = self.stream.lock().unwrap();
-        let n = match &mut *s {
-            None => {
-                // Silence when nothing's bound. Returning buf.len()
-                // means we consider the whole buffer "filled" so the
-                // backend doesn't pad-and-loop the last samples.
-                for v in buf.iter_mut() {
-                    *v = [0, 0];
-                }
-                buf.len()
+
+        let Some(stream) = &mut *s else {
+            for v in buf.iter_mut() {
+                *v = [0, 0];
             }
-            Some(stream) => stream.fill(buf),
+            return buf.len();
         };
+
+        let n = stream.fill(buf);
+
         // Master volume gain. Skip the multiply at unity so the
         // common case is free.
         let v = self.read_volume();
