@@ -1,5 +1,7 @@
 use bitvec::view::BitView;
 
+use crate::save::ChipsView as _;
+
 pub const SAVE_SIZE: usize = 0x57b0;
 pub const GAME_NAME_OFFSET: usize = 0x1e00;
 pub const CHECKSUM_OFFSET: usize = 0x1dd8;
@@ -114,6 +116,10 @@ impl crate::save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_chips_mut(&mut self) -> Option<Box<dyn crate::save::ChipsViewMut<'_> + '_>> {
+        Some(Box::new(ChipsViewMut { save: self }))
+    }
+
     fn view_navi(&self) -> Option<crate::save::NaviView<'_>> {
         Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
@@ -171,6 +177,86 @@ impl<'a> crate::save::ChipsView<'a> for ChipsView<'a> {
             id: raw.id as usize,
             code: num_traits::FromPrimitive::from_u16(raw.code)?,
         })
+    }
+
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        if id >= super::NUM_PACK_CHIPS {
+            return None;
+        }
+        // counts-first record: buf[base + id*0x12 + variant], variant = code position.
+        // Unused code slots hold 0xff padding; a real count never exceeds 99, so
+        // treat anything larger as "not owned".
+        self.save
+            .buf
+            .get(0x1f60 + id * 0x12 + variant)
+            .map(|&b| if b <= 99 { b as usize } else { 0 })
+    }
+}
+
+pub struct ChipsViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: crate::save::Chip) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        self.save.buf[0x1410
+            + folder_index * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&RawChip {
+                id: chip.id as u16,
+                code: chip.code as u16,
+            }));
+
+        true
+    }
+
+    fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        // 0xffff code reads back as an invalid ChipCode, so `chip()` returns None.
+        self.save.buf[0x1410
+            + folder_index * (30 * std::mem::size_of::<RawChip>())
+            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .fill(0xff);
+
+        true
+    }
+
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: Option<usize>) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() {
+            return false;
+        }
+
+        // 0xff (out of the 0..30 range) reads back as "no regular".
+        let raw = match chip_index {
+            Some(i) if i < 30 => i as u8,
+            None => 0xff,
+            Some(_) => return false,
+        };
+        self.save.buf[0x189d + folder_index] = raw;
+        true
+    }
+
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        if id >= super::NUM_PACK_CHIPS {
+            return false;
+        }
+        if let Some(b) = self.save.buf.get_mut(0x1f60 + id * 0x12 + variant) {
+            *b = count as u8;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        // BN3 has no anti-cheat shadow copy (introduced in BN4).
     }
 }
 

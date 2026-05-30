@@ -83,6 +83,10 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_chips_mut(&mut self) -> Option<Box<dyn save::ChipsViewMut<'_> + '_>> {
+        Some(Box::new(ChipsViewMut { save: self }))
+    }
+
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Borrowed(&self.buf)
     }
@@ -133,5 +137,66 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             id: raw.id as usize,
             code: num_traits::FromPrimitive::from_u8(raw.code)?,
         })
+    }
+
+    fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
+        if id >= super::NUM_PACK_CHIPS {
+            return None;
+        }
+        // counts-first record: buf[base + id*0x10 + variant], variant = code position.
+        // Unused code slots hold 0xff padding; a real count never exceeds 99, so
+        // treat anything larger as "not owned".
+        self.save
+            .buf
+            .get(0x04a0 + id * 0x10 + variant)
+            .map(|&b| if b <= 99 { b as usize } else { 0 })
+    }
+}
+
+pub struct ChipsViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: save::Chip) -> bool {
+        if folder_index >= 1 || chip_index >= 30 {
+            return false;
+        }
+
+        self.save.buf[0x01c0 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .copy_from_slice(bytemuck::bytes_of(&RawChip {
+                id: chip.id as u8,
+                code: chip.code as u8,
+            }));
+
+        true
+    }
+
+    fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        if folder_index >= 1 || chip_index >= 30 {
+            return false;
+        }
+
+        // 0xff code reads back as an invalid ChipCode, so `chip()` returns None.
+        self.save.buf[0x01c0 + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+            .fill(0xff);
+
+        true
+    }
+
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        if id >= super::NUM_PACK_CHIPS {
+            return false;
+        }
+        if let Some(b) = self.save.buf.get_mut(0x04a0 + id * 0x10 + variant) {
+            *b = count as u8;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        // BN1 has no anti-cheat shadow copy (introduced in BN4).
     }
 }
