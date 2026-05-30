@@ -24,11 +24,11 @@
 use std::collections::HashMap;
 use std::thread::ThreadId;
 
-use std::sync::Mutex;
 use sdl3::event::Event as SdlEvent;
 use sdl3::gamepad::{Button, Gamepad};
 use sdl3::sys::joystick::SDL_JoystickID;
 use sdl3::{EventPump, GamepadSubsystem};
+use std::sync::Mutex;
 
 use crate::input::GamepadAxis;
 use crate::sdl_init;
@@ -150,13 +150,13 @@ pub fn pump(mut on_event: impl FnMut(GamepadEvent)) {
                     A::LeftY => GamepadAxis::LeftStickY,
                     A::RightX => GamepadAxis::RightStickX,
                     A::RightY => GamepadAxis::RightStickY,
-                    _ => continue,
+                    A::TriggerLeft => GamepadAxis::TriggerLeft,
+                    A::TriggerRight => GamepadAxis::TriggerRight,
                 };
-                let mut v = (value as f32 / 32767.0).clamp(-1.0, 1.0);
-                if matches!(axis, GamepadAxis::LeftStickY | GamepadAxis::RightStickY) {
-                    v = -v;
-                }
-                on_event(GamepadEvent::AxisMotion { axis, value: v });
+                on_event(GamepadEvent::AxisMotion {
+                    axis,
+                    value: (value as f32 / 0x7FFF as f32).clamp(-1.0, 1.0),
+                });
             }
             SdlEvent::ControllerDeviceAdded { which, .. } => {
                 let id = SDL_JoystickID(which);

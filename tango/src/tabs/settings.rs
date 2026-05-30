@@ -246,18 +246,17 @@ pub fn view<'a>(
                 crate::input_capture::Input::Keyboard(_) => None,
                 crate::input_capture::Input::Gamepad(ev) => match *ev {
                     crate::gamepad::GamepadEvent::ButtonDown(b) => {
-                        input::GamepadButton::from_sdl3(b).map(input::PhysicalInput::Button)
+                        Some(input::PhysicalInput::Button(input::GamepadButton::from_sdl3(b)))
                     }
-                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
-                        (value.abs() > input::AXIS_THRESHOLD).then(|| input::PhysicalInput::Axis {
+                    crate::gamepad::GamepadEvent::AxisMotion { axis, value } => (value.abs() > input::AXIS_THRESHOLD)
+                        .then(|| input::PhysicalInput::Axis {
                             axis,
                             dir: if value > 0.0 {
                                 input::AxisDir::Positive
                             } else {
                                 input::AxisDir::Negative
                             },
-                        })
-                    }
+                        }),
                     _ => None,
                 },
             };
@@ -442,7 +441,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
     // Match the current windowed size against the preset list so
     // the picker shows a selected value when it lines up exactly.
     // No match (custom drag-resized size) renders as blank.
-    let current_size = config.last_window_size.map(|(w, h)| ResolutionChoice { width: w, height: h });
+    let current_size = config
+        .last_window_size
+        .map(|(w, h)| ResolutionChoice { width: w, height: h });
     let selected_resolution = current_size.and_then(|cur| resolution_options.iter().find(|o| **o == cur).copied());
     // Disable the window-size picker while fullscreen is on:
     // picking a sub-monitor size while fullscreen is meaningless
@@ -450,9 +451,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
     // shared disabled-dropdown placeholder so it reads as the
     // same control family as the live picker.
     let window_size_picker: Element<'a, Message> = if config.fullscreen {
-        let label = selected_resolution
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| "—".into());
+        let label = selected_resolution.map(|r| r.to_string()).unwrap_or_else(|| "—".into());
         widgets::disabled_pick_list(label).into()
     } else {
         pick_list(resolution_options, selected_resolution, Message::ResolutionChanged)
@@ -588,12 +587,16 @@ fn settings_input<'a>(
         };
         let mut chips = row![].spacing(6).align_y(iced::Alignment::Center);
         for (i, b) in bindings.iter().enumerate() {
-            chips = chips.push(binding_chip(b, k, i));
+            chips = chips.push(binding_chip(lang, b, k, i));
         }
+        // Wrap chips onto new lines when a key has more bindings
+        // than fit on one row. The Fill container bounds the wrap
+        // width (sweeten's `Wrapping` is Shrink by default) and
+        // pushes the Add/cancel action to the right edge — same
+        // pattern as the save_view tab strip.
         let row_inner = row![
             container(text(label).size(TEXT_BODY)).width(Length::Fixed(140.0)),
-            chips,
-            horizontal_space(),
+            container(chips.wrap()).width(Fill),
             action,
         ]
         .spacing(10)
@@ -634,8 +637,13 @@ fn settings_input<'a>(
     .into()
 }
 
-fn binding_chip<'a>(binding: &input::PhysicalInput, key: input::MappedKey, idx: usize) -> Element<'a, Message> {
-    let (kind, label) = input::describe(binding);
+fn binding_chip<'a>(
+    lang: &'a LanguageIdentifier,
+    binding: &input::PhysicalInput,
+    key: input::MappedKey,
+    idx: usize,
+) -> Element<'a, Message> {
+    let (kind, label) = input::describe(lang, binding);
     let kind_glyph = match kind {
         input::DescribeKind::Keyboard => Icon::Keyboard,
         input::DescribeKind::Gamepad => Icon::Gamepad2,
@@ -724,14 +732,18 @@ fn settings_about<'a>(
     let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
-    column![emblem, body, updater_section(lang, updater_status, config.enable_updater)]
-        .spacing(12)
-        // Symmetric inner padding so the emblem doesn't rub
-        // the nav scanline at the top, the updater section
-        // breathes at the page end, and link text doesn't slam
-        // the left edge.
-        .padding(widgets::PANE_PADDING)
-        .into()
+    column![
+        emblem,
+        body,
+        updater_section(lang, updater_status, config.enable_updater)
+    ]
+    .spacing(12)
+    // Symmetric inner padding so the emblem doesn't rub
+    // the nav scanline at the top, the updater section
+    // breathes at the page end, and link text doesn't slam
+    // the left edge.
+    .padding(widgets::PANE_PADDING)
+    .into()
 }
 
 /// Bottom-of-About updater status panel. Current version
@@ -792,11 +804,10 @@ fn updater_section<'a>(
     // The "latest version" readout only makes sense when the updater is on; with
     // it disabled we never fetch a release, so show just the current version and
     // drop the latest-version line.
-    let mut version_row = row![
-        text(t!(lang, "updater-current-version", version = format!("v{current}"))).size(TEXT_CAPTION),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
+    let mut version_row =
+        row![text(t!(lang, "updater-current-version", version = format!("v{current}"))).size(TEXT_CAPTION),]
+            .spacing(8)
+            .align_y(Alignment::Center);
     if enable_updater {
         version_row = version_row.push(horizontal_space());
         version_row =

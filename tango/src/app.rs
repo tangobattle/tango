@@ -20,8 +20,8 @@ use crate::{
     session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
-use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::container;
+use iced::widget::space::horizontal as horizontal_space;
 use iced::{Alignment, Element, Fill, Theme};
 use sweeten::widget::{column, mouse_area, row};
 use tabs::patches::PatchesState;
@@ -500,10 +500,8 @@ impl App {
         if !self.netplay.lobby.local_ready {
             return iced::Task::none();
         }
-        let (Some(local), Some(remote)) = (
-            self.netplay.lobby.local.as_ref(),
-            self.netplay.lobby.remote.as_ref(),
-        ) else {
+        let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
+        else {
             return iced::Task::none();
         };
         let patches = self.scanners.patches.read();
@@ -862,36 +860,37 @@ impl App {
             Message::Rescanned(followup) => {
                 self.rescans_in_flight = self.rescans_in_flight.saturating_sub(1);
                 match followup {
-                RescanFollowup::Refresh => {
-                    self.refresh_loaded();
-                    iced::Task::none()
-                }
-                RescanFollowup::RefreshAndReplayStats => {
-                    self.refresh_loaded();
-                    self.refresh_replay_stats().map(Message::Replays)
-                }
-                RescanFollowup::RefreshAndPickFirstSave => {
-                    // Land on the next available save anywhere in the
-                    // family (a sibling color variant is fine), not just
-                    // the deleted save's own game, and fix `local_game`
-                    // to whatever that save resolves to.
-                    if self.play.local_save.is_none() {
-                        if let Some(family) = self.play.local_family {
-                            if let Some((game, path)) = tabs::play::first_available_family_save(&self.scanners, family)
-                            {
-                                self.play.local_game = Some(game);
-                                self.play.local_save = Some(path);
+                    RescanFollowup::Refresh => {
+                        self.refresh_loaded();
+                        iced::Task::none()
+                    }
+                    RescanFollowup::RefreshAndReplayStats => {
+                        self.refresh_loaded();
+                        self.refresh_replay_stats().map(Message::Replays)
+                    }
+                    RescanFollowup::RefreshAndPickFirstSave => {
+                        // Land on the next available save anywhere in the
+                        // family (a sibling color variant is fine), not just
+                        // the deleted save's own game, and fix `local_game`
+                        // to whatever that save resolves to.
+                        if self.play.local_save.is_none() {
+                            if let Some(family) = self.play.local_family {
+                                if let Some((game, path)) =
+                                    tabs::play::first_available_family_save(&self.scanners, family)
+                                {
+                                    self.play.local_game = Some(game);
+                                    self.play.local_save = Some(path);
+                                }
                             }
                         }
+                        self.refresh_loaded();
+                        iced::Task::none()
                     }
-                    self.refresh_loaded();
-                    iced::Task::none()
-                }
-                RescanFollowup::ForceRebuildLoaded => {
-                    self.loaded = None;
-                    self.refresh_loaded();
-                    iced::Task::none()
-                }
+                    RescanFollowup::ForceRebuildLoaded => {
+                        self.loaded = None;
+                        self.refresh_loaded();
+                        iced::Task::none()
+                    }
                 }
             }
         }
@@ -1136,7 +1135,11 @@ impl App {
                 if let Some(template) = tabs::play::creation_template(game, &template, &self.play, &self.scanners) {
                     match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
                         Ok(dst) => {
-                            log::info!("created new save for {:?}: {}", game.family_and_variant(), dst.display());
+                            log::info!(
+                                "created new save for {:?}: {}",
+                                game.family_and_variant(),
+                                dst.display()
+                            );
                             // Templates are only offered for patch-supported
                             // variants, so the patch normally still applies;
                             // drop it only if it somehow doesn't support the
@@ -1270,7 +1273,9 @@ impl App {
                 output,
                 settings,
                 rounds,
-            } => self.spawn_replay_export(replay, output, settings, rounds).map(Message::Replays),
+            } => self
+                .spawn_replay_export(replay, output, settings, rounds)
+                .map(Message::Replays),
             E::SaveViewTask(t) => t.map(Message::Replays),
         }
     }
@@ -1514,8 +1519,7 @@ impl App {
                 } else {
                     iced::window::Mode::Windowed
                 };
-                return iced::window::latest()
-                    .and_then(move |id| iced::window::set_mode(id, mode));
+                return iced::window::latest().and_then(move |id| iced::window::set_mode(id, mode));
             }
             C::UiScale(s) => self.config.ui_scale = s,
             C::Resolution(w, h) => {
@@ -1666,15 +1670,10 @@ impl App {
                         .align_y(iced::Alignment::Center),
                 )
                 .width(Fill);
-                let modal_panel = iced::widget::container(
-                    column![header, body]
-                        .spacing(0)
-                        .width(Fill)
-                        .height(Fill),
-                )
-                .width(iced::Length::Fixed(820.0))
-                .height(iced::Length::Fixed(560.0))
-                .style(widgets::panel);
+                let modal_panel = iced::widget::container(column![header, body].spacing(0).width(Fill).height(Fill))
+                    .width(iced::Length::Fixed(820.0))
+                    .height(iced::Length::Fixed(560.0))
+                    .style(widgets::panel);
                 // Wrap the panel in a mouse_area so clicks on
                 // its inert regions (background, headings) get
                 // swallowed instead of falling through to the
@@ -1736,10 +1735,14 @@ impl App {
                         _ => None,
                     },
                     crate::input_capture::Input::Gamepad(ev) => match *ev {
-                        crate::gamepad::GamepadEvent::ButtonDown(b) => crate::input::GamepadButton::from_sdl3(b)
-                            .map(|button| session::InputEvent::Button { button, pressed: true }),
-                        crate::gamepad::GamepadEvent::ButtonUp(b) => crate::input::GamepadButton::from_sdl3(b)
-                            .map(|button| session::InputEvent::Button { button, pressed: false }),
+                        crate::gamepad::GamepadEvent::ButtonDown(b) => Some(session::InputEvent::Button {
+                            button: crate::input::GamepadButton::from_sdl3(b),
+                            pressed: true,
+                        }),
+                        crate::gamepad::GamepadEvent::ButtonUp(b) => Some(session::InputEvent::Button {
+                            button: crate::input::GamepadButton::from_sdl3(b),
+                            pressed: false,
+                        }),
                         crate::gamepad::GamepadEvent::AxisMotion { axis, value } => {
                             Some(session::InputEvent::Axis { axis, value })
                         }

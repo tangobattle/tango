@@ -11,8 +11,8 @@
 
 use std::thread::ThreadId;
 
-use std::sync::{Mutex, MutexGuard};
 use sdl3::Sdl;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::audio;
 

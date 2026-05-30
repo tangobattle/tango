@@ -215,14 +215,14 @@ pub enum AxisDir {
     Negative,
 }
 
-/// Subset of SDL3 gamepad buttons we expose for binding. We don't
-/// expose every button SDL3 reports — just the standard Xbox/PS
-/// layout, since rebinding to esoteric paddle/touchpad buttons
-/// isn't useful here. `LeftTrigger` / `RightTrigger` are retained
-/// for on-disk config back-compat with the previous gilrs-era
-/// builds but never fire from SDL3 — SDL3 only reports triggers
-/// as axes (`TriggerLeft` / `TriggerRight`). Rebind triggers as
-/// axes if needed.
+/// SDL3 gamepad buttons we expose for binding — the full set SDL3
+/// can report, mapped 1:1 from [`sdl3::gamepad::Button`] in
+/// [`Self::from_sdl3`]. Beyond the standard Xbox/PS
+/// face/shoulder/d-pad layout this covers the extras on fancier
+/// pads: the `Misc*` share/capture-style buttons, the four back
+/// paddles, and the touchpad click. Triggers aren't buttons here —
+/// SDL3 reports them as axes, so bind them through
+/// [`GamepadAxis::TriggerLeft`] / [`GamepadAxis::TriggerRight`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamepadButton {
@@ -237,18 +237,27 @@ pub enum GamepadButton {
     RightThumb,
     LeftShoulder,
     RightShoulder,
-    LeftTrigger, // legacy digital trigger pull (gilrs-era); SDL3 reports as axis
-    RightTrigger,
     DPadUp,
     DPadDown,
     DPadLeft,
     DPadRight,
+    Misc1,
+    Misc2,
+    Misc3,
+    Misc4,
+    Misc5,
+    Misc6,
+    RightPaddle1,
+    LeftPaddle1,
+    RightPaddle2,
+    LeftPaddle2,
+    Touchpad,
 }
 
 impl GamepadButton {
-    pub fn from_sdl3(b: sdl3::gamepad::Button) -> Option<Self> {
+    pub fn from_sdl3(b: sdl3::gamepad::Button) -> Self {
         use sdl3::gamepad::Button as B;
-        Some(match b {
+        match b {
             B::South => Self::South,
             B::East => Self::East,
             B::West => Self::West,
@@ -264,29 +273,51 @@ impl GamepadButton {
             B::DPadDown => Self::DPadDown,
             B::DPadLeft => Self::DPadLeft,
             B::DPadRight => Self::DPadRight,
-            _ => return None,
-        })
+            B::Misc1 => Self::Misc1,
+            B::Misc2 => Self::Misc2,
+            B::Misc3 => Self::Misc3,
+            B::Misc4 => Self::Misc4,
+            B::Misc5 => Self::Misc5,
+            B::Misc6 => Self::Misc6,
+            B::RightPaddle1 => Self::RightPaddle1,
+            B::LeftPaddle1 => Self::LeftPaddle1,
+            B::RightPaddle2 => Self::RightPaddle2,
+            B::LeftPaddle2 => Self::LeftPaddle2,
+            B::Touchpad => Self::Touchpad,
+        }
     }
 
-    pub fn label(&self) -> &'static str {
+    /// Fluent key for this button's display label, resolved against
+    /// the active locale by [`describe`]. (`Button` itself can't be
+    /// localized in isolation — it doesn't carry a `lang`.)
+    pub fn label_key(&self) -> &'static str {
         match self {
-            Self::South => "Button A",
-            Self::East => "Button B",
-            Self::West => "Button X",
-            Self::North => "Button Y",
-            Self::Select => "Select",
-            Self::Start => "Start",
-            Self::Mode => "Guide",
-            Self::LeftThumb => "Left Stick",
-            Self::RightThumb => "Right Stick",
-            Self::LeftShoulder => "LB",
-            Self::RightShoulder => "RB",
-            Self::LeftTrigger => "LT",
-            Self::RightTrigger => "RT",
-            Self::DPadUp => "D-Pad Up",
-            Self::DPadDown => "D-Pad Down",
-            Self::DPadLeft => "D-Pad Left",
-            Self::DPadRight => "D-Pad Right",
+            Self::South => "input-gamepad-south",
+            Self::East => "input-gamepad-east",
+            Self::West => "input-gamepad-west",
+            Self::North => "input-gamepad-north",
+            Self::Select => "input-gamepad-select",
+            Self::Start => "input-gamepad-start",
+            Self::Mode => "input-gamepad-mode",
+            Self::LeftThumb => "input-gamepad-left-thumb",
+            Self::RightThumb => "input-gamepad-right-thumb",
+            Self::LeftShoulder => "input-gamepad-left-shoulder",
+            Self::RightShoulder => "input-gamepad-right-shoulder",
+            Self::DPadUp => "input-gamepad-dpad-up",
+            Self::DPadDown => "input-gamepad-dpad-down",
+            Self::DPadLeft => "input-gamepad-dpad-left",
+            Self::DPadRight => "input-gamepad-dpad-right",
+            Self::Misc1 => "input-gamepad-misc1",
+            Self::Misc2 => "input-gamepad-misc2",
+            Self::Misc3 => "input-gamepad-misc3",
+            Self::Misc4 => "input-gamepad-misc4",
+            Self::Misc5 => "input-gamepad-misc5",
+            Self::Misc6 => "input-gamepad-misc6",
+            Self::RightPaddle1 => "input-gamepad-right-paddle1",
+            Self::LeftPaddle1 => "input-gamepad-left-paddle1",
+            Self::RightPaddle2 => "input-gamepad-right-paddle2",
+            Self::LeftPaddle2 => "input-gamepad-left-paddle2",
+            Self::Touchpad => "input-gamepad-touchpad",
         }
     }
 }
@@ -298,6 +329,24 @@ pub enum GamepadAxis {
     LeftStickY,
     RightStickX,
     RightStickY,
+    TriggerLeft,
+    TriggerRight,
+}
+
+impl GamepadAxis {
+    /// Fluent key for this axis's display label, resolved against
+    /// the active locale by [`describe`]. The `+`/`−` direction
+    /// sign is prepended separately by the caller.
+    pub fn label_key(&self) -> &'static str {
+        match self {
+            Self::LeftStickX => "input-gamepad-axis-left-stick-x",
+            Self::LeftStickY => "input-gamepad-axis-left-stick-y",
+            Self::RightStickX => "input-gamepad-axis-right-stick-x",
+            Self::RightStickY => "input-gamepad-axis-right-stick-y",
+            Self::TriggerLeft => "input-gamepad-axis-trigger-left",
+            Self::TriggerRight => "input-gamepad-axis-trigger-right",
+        }
+    }
 }
 
 /// Per-mgba-key list of `PhysicalInput`. Each key can have
@@ -332,12 +381,12 @@ impl Default for Mapping {
             up: vec![
                 key(Code::ArrowUp),
                 btn(GamepadButton::DPadUp),
-                axis(GamepadAxis::LeftStickY, AxisDir::Positive),
+                axis(GamepadAxis::LeftStickY, AxisDir::Negative),
             ],
             down: vec![
                 key(Code::ArrowDown),
                 btn(GamepadButton::DPadDown),
-                axis(GamepadAxis::LeftStickY, AxisDir::Negative),
+                axis(GamepadAxis::LeftStickY, AxisDir::Positive),
             ],
             left: vec![
                 key(Code::ArrowLeft),
@@ -505,22 +554,19 @@ pub enum DescribeKind {
 }
 
 /// Pretty-print a binding for the settings UI. Returns the source
-/// kind (for the chip's Lucide glyph) and a plain-text label.
-pub fn describe(p: &PhysicalInput) -> (DescribeKind, String) {
+/// kind (for the chip's Lucide glyph) and a label. Gamepad button
+/// names are localized via the active locale; keyboard key names
+/// are physical [`Code`] identifiers and stay as-is.
+pub fn describe(lang: &unic_langid::LanguageIdentifier, p: &PhysicalInput) -> (DescribeKind, String) {
     match p {
         PhysicalInput::Key(c) => (DescribeKind::Keyboard, physical_to_string(&c.0)),
-        PhysicalInput::Button(b) => (DescribeKind::Gamepad, b.label().to_string()),
+        PhysicalInput::Button(b) => (DescribeKind::Gamepad, crate::i18n::t(lang, b.label_key())),
         PhysicalInput::Axis { axis, dir } => {
             let sign = match dir {
                 AxisDir::Positive => "+",
                 AxisDir::Negative => "−",
             };
-            let name = match axis {
-                GamepadAxis::LeftStickX => "Left Stick X",
-                GamepadAxis::LeftStickY => "Left Stick Y",
-                GamepadAxis::RightStickX => "Right Stick X",
-                GamepadAxis::RightStickY => "Right Stick Y",
-            };
+            let name = crate::i18n::t(lang, axis.label_key());
             (DescribeKind::Gamepad, format!("{sign}{name}"))
         }
     }
