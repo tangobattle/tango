@@ -1087,7 +1087,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         t!(lang, "folder-edit-clear"),
         Action::ClearFolder,
         [5.0, 10.0],
-        widgets::neutral,
+        widgets::danger_button,
     );
     // "Folder" label, then a smaller count that turns red while the
     // folder is short of the 30 chips a legal folder needs.
