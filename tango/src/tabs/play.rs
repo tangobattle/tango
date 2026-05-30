@@ -13,7 +13,7 @@ use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    LocalGameSelected(GameOption),
+    LocalFamilySelected(FamilyOption),
     LocalSaveSelected(SaveOption),
     LocalPatchSelected(PatchOption),
     LocalPatchVersionSelected(semver::Version),
@@ -58,7 +58,9 @@ pub enum Message {
     SaveActionCancel,
     SaveNewStart,
     SaveNewDraftChanged(String),
-    SaveNewTemplateSelected(String),
+    /// (target variant, template name) — a template option fixes both,
+    /// since the family's variants each ship their own templates.
+    SaveNewTemplateSelected(rom::GameRef, String),
     SaveNewConfirm,
     /// User clicked × on the inline error banner; clears
     /// `PlayState::last_error`.
@@ -71,41 +73,42 @@ pub enum Message {
     Noop,
 }
 
-// ---------- Game / Save pick_list options ----------
+// ---------- Family / Save pick_list options ----------
 
 #[derive(Clone)]
-pub struct GameOption {
-    pub game: rom::GameRef,
+pub struct FamilyOption {
+    /// Region-specific gamedb family string (e.g. `"bn3"`).
+    pub family: &'static str,
     pub display: String,
-    /// `false` when no ROM for this game is in the scan results.
-    /// Drives sweeten's `.disabled()` closure on the picker so the
-    /// row renders greyed out and refuses clicks.
+    /// `false` when no game in this family has a ROM in the scan
+    /// results. Drives sweeten's `.disabled()` closure on the picker so
+    /// the row renders greyed out and refuses clicks.
     pub available: bool,
 }
 
-impl PartialEq for GameOption {
+impl PartialEq for FamilyOption {
     fn eq(&self, o: &Self) -> bool {
-        self.game == o.game
+        self.family == o.family
     }
 }
-impl Eq for GameOption {}
-impl std::hash::Hash for GameOption {
+impl Eq for FamilyOption {}
+impl std::hash::Hash for FamilyOption {
     fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
-        self.game.hash(s);
+        self.family.hash(s);
     }
 }
-impl std::fmt::Display for GameOption {
+impl std::fmt::Display for FamilyOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
 }
-impl std::fmt::Debug for GameOption {
+impl std::fmt::Debug for FamilyOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct SaveOption {
     pub path: std::path::PathBuf,
     /// Pre-computed display label: the save's path relative to the
@@ -113,10 +116,32 @@ pub struct SaveOption {
     /// in the picker). Built when the option list is constructed
     /// because `Display::fmt` doesn't get the saves root as input.
     pub display: String,
+    /// The concrete game this save resolves to *within its family*
+    /// (White/Blue picked from the save's own contents). Selecting the
+    /// save sets `local_game` to this.
+    pub game: rom::GameRef,
+    /// `false` when `game`'s ROM isn't owned — the row greys out and
+    /// can't be selected.
+    pub available: bool,
+}
+
+// Identity is the path: a save is the same option regardless of which
+// game/availability the family aggregation tagged it with, so picker
+// selection-matching and de-dup stay path-based.
+impl PartialEq for SaveOption {
+    fn eq(&self, o: &Self) -> bool {
+        self.path == o.path
+    }
+}
+impl Eq for SaveOption {}
+impl std::hash::Hash for SaveOption {
+    fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
+        self.path.hash(s);
+    }
 }
 
 impl SaveOption {
-    pub fn new(saves_path: &std::path::Path, path: std::path::PathBuf) -> Self {
+    pub fn new(saves_path: &std::path::Path, path: std::path::PathBuf, game: rom::GameRef, available: bool) -> Self {
         let display = path
             .strip_prefix(saves_path)
             .ok()
@@ -128,7 +153,12 @@ impl SaveOption {
             })
             .or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| path.display().to_string());
-        Self { path, display }
+        Self {
+            path,
+            display,
+            game,
+            available,
+        }
     }
 }
 
@@ -156,6 +186,10 @@ impl std::fmt::Display for PatchOption {
 // ---------- Play tab state ----------
 
 pub struct PlayState {
+    /// Selected game *family* (region-specific gamedb family string).
+    /// The family picker drives the intermingled save list; the concrete
+    /// `local_game` below is resolved from whichever save is chosen.
+    pub local_family: Option<&'static str>,
     pub local_game: Option<rom::GameRef>,
     pub local_save: Option<std::path::PathBuf>,
     pub local_patch: Option<String>,
@@ -186,13 +220,16 @@ pub enum SaveAction {
     ConfirmDelete,
     /// Creating a new save. `template` is the template name (empty
     /// string is the default unnamed template); `draft` is the user's
-    /// chosen filename.
-    /// `template == None` until the user explicitly picks one
-    /// (auto-selected when only one template is available). The
-    /// Confirm button is disabled in the None state — there's no
-    /// "default" template to fall back on.
+    /// chosen filename. `game` is the concrete variant the save is
+    /// created for — chosen together with the template, since within a
+    /// family the same template name exists per color (White/Blue), and
+    /// the new file must carry the right variant signature.
+    /// `template`/`game` stay `None` until the user picks (auto-selected
+    /// when only one option exists). The Confirm button is disabled in
+    /// that state — there's no "default" template to fall back on.
     NewSave {
         draft: String,
+        game: Option<rom::GameRef>,
         template: Option<String>,
         /// The auto-generated default we last wrote into `draft`. While
         /// the user hasn't typed over it, switching templates regenerates
@@ -205,6 +242,7 @@ pub enum SaveAction {
 impl Default for PlayState {
     fn default() -> Self {
         Self {
+            local_family: None,
             local_game: None,
             local_save: None,
             local_patch: None,
@@ -262,7 +300,14 @@ pub enum Effect {
     SaveDelete,
     /// Create a fresh save in the saves dir from a bundled
     /// template.
-    SaveNew { name: String, template: String },
+    SaveNew {
+        name: String,
+        template: String,
+        /// The concrete variant to create the save for (a family can
+        /// have several owned-ROM variants). The handler looks up this
+        /// game's template and sets `local_game` to it.
+        game: rom::GameRef,
+    },
     /// Task returned from save_view::State::apply. Generic pipe
     /// so save_view-internal side effects (e.g. the scroll-to-top
     /// snap on tab change) flow through without per-feature
@@ -281,15 +326,38 @@ impl PlayState {
         loaded: Option<&selection::Loaded>,
     ) -> Option<Effect> {
         match msg {
-            Message::LocalGameSelected(g) => {
-                self.local_game = Some(g.game);
+            Message::LocalFamilySelected(f) => {
+                self.local_family = Some(f.family);
                 self.local_patch = None;
                 self.local_patch_version = None;
-                self.local_save = resolve_remembered_save(config, scanners, g.game, None, None);
+                // Auto-land on the family's remembered (or first
+                // available) save, which also fixes the concrete game.
+                match resolve_family_save(config, scanners, f.family, None, None) {
+                    Some((game, path)) => {
+                        self.local_game = Some(game);
+                        self.local_save = Some(path);
+                    }
+                    None => {
+                        self.local_game = None;
+                        self.local_save = None;
+                    }
+                }
                 Some(Effect::SelectionChanged)
             }
             Message::LocalSaveSelected(s) => {
+                // The save carries the concrete game it resolves to;
+                // selecting it dynamically switches `local_game`. Keep the
+                // patch if it still supports the new variant (so picking a
+                // compatible save under a pre-selected patch sticks); only
+                // drop it when the variant is genuinely unsupported.
+                let game = s.game;
+                self.local_game = Some(game);
+                self.local_family = Some(game.family_and_variant().0);
                 self.local_save = Some(s.path);
+                if !patch_supports(self, scanners, game) {
+                    self.local_patch = None;
+                    self.local_patch_version = None;
+                }
                 Some(Effect::SelectionChanged)
             }
             Message::LocalPatchSelected(p) => {
@@ -306,26 +374,39 @@ impl PlayState {
                     self.local_patch_version = v;
                 }
                 if let Some(g) = self.local_game {
-                    self.local_save = resolve_remembered_save(
-                        config,
-                        scanners,
-                        g,
-                        self.local_patch.as_deref(),
-                        self.local_patch_version.as_ref(),
-                    );
+                    if patch_supports(self, scanners, g) {
+                        self.local_save = resolve_remembered_save(
+                            config,
+                            scanners,
+                            g,
+                            self.local_patch.as_deref(),
+                            self.local_patch_version.as_ref(),
+                        );
+                    } else {
+                        // The selected save's variant isn't supported by
+                        // this patch — deselect it. The save list narrows
+                        // to compatible variants for the user to re-pick.
+                        self.local_game = None;
+                        self.local_save = None;
+                    }
                 }
                 Some(Effect::SelectionChanged)
             }
             Message::LocalPatchVersionSelected(v) => {
                 self.local_patch_version = Some(v);
                 if let Some(g) = self.local_game {
-                    self.local_save = resolve_remembered_save(
-                        config,
-                        scanners,
-                        g,
-                        self.local_patch.as_deref(),
-                        self.local_patch_version.as_ref(),
-                    );
+                    if patch_supports(self, scanners, g) {
+                        self.local_save = resolve_remembered_save(
+                            config,
+                            scanners,
+                            g,
+                            self.local_patch.as_deref(),
+                            self.local_patch_version.as_ref(),
+                        );
+                    } else {
+                        self.local_game = None;
+                        self.local_save = None;
+                    }
                 }
                 Some(Effect::SelectionChanged)
             }
@@ -444,29 +525,35 @@ impl PlayState {
             }
             Message::SaveNewStart => {
                 let saves_dir = config.saves_path();
-                // Auto-select if only one template is offered;
-                // otherwise leave None so the user has to pick
-                // explicitly (Confirm stays disabled until they do).
-                let template = templates_for_selection(self, scanners).and_then(|tmpls| {
-                    if tmpls.len() == 1 {
-                        tmpls.keys().next().cloned()
-                    } else {
-                        None
-                    }
-                });
-                let draft = if let Some(game) = self.local_game {
-                    disambiguate_save_name(
-                        &saves_dir,
-                        &suggest_save_name(&config.language, game, template.as_deref()),
-                    )
+                // Candidate (variant, template) options span every
+                // owned-ROM variant in the family — so you can bootstrap
+                // the first save of an empty family, and a dual-ROM owner
+                // can pick which color to create. Auto-select only when
+                // there's exactly one option; otherwise force an explicit
+                // pick (Confirm stays disabled until they do).
+                let options = creation_template_options(&config.language, self, scanners);
+                let (game, template) = if options.len() == 1 {
+                    (Some(options[0].game), Some(options[0].raw.clone()))
                 } else {
-                    // No game selected ⇒ can_new was false ⇒ unreachable
-                    // in practice, but keep a sane fallback.
-                    "new save".to_string()
+                    (None, None)
+                };
+                let draft = match game {
+                    Some(g) => disambiguate_save_name(
+                        &saves_dir,
+                        &suggest_save_name(&config.language, g, template.as_deref()),
+                    ),
+                    // No single default yet — seed the field from the
+                    // first creation variant (game name only) so it isn't
+                    // empty while the user picks a template.
+                    None => creation_games(self, scanners)
+                        .first()
+                        .map(|g| disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, *g, None)))
+                        .unwrap_or_else(|| "new save".to_string()),
                 };
                 self.save_action = SaveAction::NewSave {
                     auto_default: Some(draft.clone()),
                     draft,
+                    game,
                     template,
                 };
                 None
@@ -483,23 +570,23 @@ impl PlayState {
                 }
                 None
             }
-            Message::SaveNewTemplateSelected(name) => {
+            Message::SaveNewTemplateSelected(sel_game, name) => {
                 if let SaveAction::NewSave {
                     draft,
+                    game,
                     template,
                     auto_default,
                 } = &mut self.save_action
                 {
+                    *game = Some(sel_game);
                     *template = Some(name);
                     if auto_default.as_deref() == Some(draft.as_str()) {
-                        if let Some(game) = self.local_game {
-                            let new_draft = disambiguate_save_name(
-                                &config.saves_path(),
-                                &suggest_save_name(&config.language, game, template.as_deref()),
-                            );
-                            *draft = new_draft.clone();
-                            *auto_default = Some(new_draft);
-                        }
+                        let new_draft = disambiguate_save_name(
+                            &config.saves_path(),
+                            &suggest_save_name(&config.language, sel_game, template.as_deref()),
+                        );
+                        *draft = new_draft.clone();
+                        *auto_default = Some(new_draft);
                     }
                 }
                 None
@@ -507,19 +594,21 @@ impl PlayState {
             Message::SaveNewConfirm => {
                 let SaveAction::NewSave {
                     draft,
+                    game: Some(game),
                     template: Some(template),
                     ..
                 } = &self.save_action
                 else {
                     return None;
                 };
+                let game = *game;
                 let name = draft.trim().to_string();
                 let template = template.clone();
                 self.save_action = SaveAction::None;
                 if name.is_empty() {
                     None
                 } else {
-                    Some(Effect::SaveNew { name, template })
+                    Some(Effect::SaveNew { name, template, game })
                 }
             }
         }
@@ -689,9 +778,11 @@ impl PlayState {
                 Some((t!(lang, "save-open-folder"), roms_path)),
             );
         }
-        // Game selected but no save files for it.
-        if let Some(game) = self.local_game {
-            let has_saves = scanners.saves.read().get(&game).map(|v| !v.is_empty()).unwrap_or(false);
+        // Family selected but no save files anywhere in it.
+        if let Some(family) = self.local_family {
+            let saves = scanners.saves.read();
+            let has_saves =
+                game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
             if !has_saves && self.local_save.is_none() {
                 let saves_path = config.saves_path();
                 return empty_state_card(
@@ -714,46 +805,79 @@ impl PlayState {
         let roms = scanners.roms.read();
         let saves = scanners.saves.read();
 
-        // Show every supported BN, not just the ROMs we have, so
-        // users can see what tango knows about. sweeten's
-        // `.disabled()` greys out the rows we don't have a ROM
-        // for; we also stable-sort available items to the top so
-        // the live games sit above the disabled block.
-        let mut all_games: Vec<rom::GameRef> = tango_gamedb::GAMES.iter().copied().collect();
-        game::sort_games(lang, &mut all_games);
-
-        let mut game_options: Vec<GameOption> = all_games
+        // Show every supported family, not just the ones we have a ROM
+        // for, so users can see what tango knows about. sweeten's
+        // `.disabled()` greys out families with no owned ROM; we
+        // stable-sort available families to the top (then own-region
+        // first, then by family string) so the live ones lead.
+        let mut families: Vec<&'static str> = Vec::new();
+        for g in tango_gamedb::GAMES.iter() {
+            let fam = g.family_and_variant().0;
+            if !families.contains(&fam) {
+                families.push(fam);
+            }
+        }
+        let mut family_options: Vec<FamilyOption> = families
             .iter()
-            .map(|g| GameOption {
-                game: *g,
-                display: game::display_name(lang, *g),
-                available: roms.contains_key(g),
+            .map(|fam| FamilyOption {
+                family: fam,
+                display: game::family_display_name(lang, fam),
+                available: game::games_in_family(fam).any(|g| roms.contains_key(&g)),
             })
             .collect();
-        game_options.sort_by_key(|o| !o.available);
+        family_options.sort_by(|a, b| {
+            (!a.available)
+                .cmp(&(!b.available))
+                .then_with(|| {
+                    let ar = !game::family_matches_language(lang, a.family);
+                    let br = !game::family_matches_language(lang, b.family);
+                    ar.cmp(&br)
+                })
+                .then_with(|| a.family.cmp(b.family))
+        });
 
-        let selected_game = self
-            .local_game
-            .and_then(|g| game_options.iter().find(|opt| opt.game == g).cloned());
+        let selected_family = self
+            .local_family
+            .and_then(|fam| family_options.iter().find(|opt| opt.family == fam).cloned());
 
-        let game = pick_list(game_options, selected_game, Message::LocalGameSelected)
-            .disabled(|opts: &[GameOption]| opts.iter().map(|o| !o.available).collect())
+        let game = pick_list(family_options, selected_family, Message::LocalFamilySelected)
+            .disabled(|opts: &[FamilyOption]| opts.iter().map(|o| !o.available).collect())
             .placeholder(t!(lang, "play-no-game"))
             .padding(STANDARD_PADDING)
             .width(Length::FillPortion(3))
             .style(widgets::chunky_pick_list);
 
         let saves_path = config.saves_path();
-        let mut save_options: Vec<SaveOption> = self
-            .local_game
-            .and_then(|g| saves.get(&g))
-            .map(|saves| {
-                saves
-                    .iter()
-                    .map(|s| SaveOption::new(&saves_path, s.path.clone()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        // When a patch+version is selected, hide saves whose variant the
+        // patch doesn't support — you can't bring them into a patched
+        // match. Owned set so the patches guard drops before the family
+        // loop (and before the later patch read). The picker only offers
+        // patches that support the *current* variant, so the selected
+        // save itself is never filtered out.
+        let patch_supported = patch_supported_games(self, scanners);
+        // Intermingle every save across the selected family's color
+        // variants. Each save is tagged with the concrete game it
+        // resolves to and whether that game's ROM is owned (so the row
+        // can grey out). A path appears under exactly one variant within
+        // a family, but de-dup defensively.
+        let mut save_options: Vec<SaveOption> = Vec::new();
+        if let Some(family) = self.local_family {
+            let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+            for g in game::games_in_family(family) {
+                // Drop saves of variants the selected patch can't run.
+                if patch_supported.as_ref().map(|s| !s.contains(&g)).unwrap_or(false) {
+                    continue;
+                }
+                let available = roms.contains_key(&g);
+                if let Some(saves_for_game) = saves.get(&g) {
+                    for s in saves_for_game {
+                        if seen.insert(s.path.clone()) {
+                            save_options.push(SaveOption::new(&saves_path, s.path.clone(), g, available));
+                        }
+                    }
+                }
+            }
+        }
         // Folder-first recursive sort: at the first differing path
         // component, whichever side still has components after it
         // (i.e. is "inside a folder at this level") wins. Files at
@@ -781,6 +905,7 @@ impl PlayState {
             .and_then(|p| save_options.iter().find(|s| &s.path == p).cloned());
 
         let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
+            .disabled(|opts: &[SaveOption]| opts.iter().map(|o| !o.available).collect())
             .placeholder(t!(lang, "play-no-save"))
             .padding(STANDARD_PADDING)
             .width(Length::Fill)
@@ -788,14 +913,18 @@ impl PlayState {
 
         let no_patch_label = t!(lang, "play-no-patch");
         let patches = scanners.patches.read();
+        // Show every patch that targets *any* variant in the selected
+        // family — not just the currently-resolved variant — so the list
+        // is stable across save switches. Picking a patch the current
+        // save can't run deselects that save (see LocalPatchSelected).
+        let family_games: Vec<rom::GameRef> =
+            self.local_family.map(|f| game::games_in_family(f).collect()).unwrap_or_default();
         let mut compatible_names: Vec<String> = patches
             .iter()
             .filter(|(_, p)| {
-                if let Some(game) = self.local_game {
-                    p.versions.values().any(|v| v.supported_games.contains(&game))
-                } else {
-                    false
-                }
+                p.versions
+                    .values()
+                    .any(|v| family_games.iter().any(|g| v.supported_games.contains(g)))
             })
             .map(|(n, _)| n.clone())
             .collect();
@@ -876,12 +1005,15 @@ impl PlayState {
             .spacing(8)
             .align_y(Alignment::Center);
 
-        // Drop the patches read before the save_row block —
-        // `templates_for_selection` (called from save_action_buttons
-        // and the NewSave branch) re-reads `scanners.patches`, and
-        // `std::sync::RwLock` doesn't guarantee a same-thread nested
-        // read survives a queued writer.
+        // Drop every scanner read held above before the save_row block —
+        // `creation_games`/`templates_for_game` (called from
+        // save_action_buttons and the NewSave branch) re-read
+        // `scanners.roms` and `scanners.patches`, and `std::sync::RwLock`
+        // doesn't guarantee a same-thread nested read survives a queued
+        // writer. Nothing below this point uses these guards directly.
         drop(patches);
+        drop(saves);
+        drop(roms);
 
         let save_row: Element<'_, Message> = match &self.save_action {
             SaveAction::None => {
@@ -933,24 +1065,20 @@ impl PlayState {
             .spacing(8)
             .align_y(Alignment::Center)
             .into(),
-            SaveAction::NewSave { draft, template, .. } => {
-                // Real template names from disk — no synthesized
-                // "(default)" entry. Each option carries the raw
-                // name plus a locale-aware display label so the
-                // user sees "MegaMan.EXE" / "Saito" etc instead of
-                // the bare filename suffix.
-                let family = self.local_game.map(|g| g.family_and_variant().0).unwrap_or_default();
-                let options: Vec<SaveTemplateOption> = templates_for_selection(self, scanners)
-                    .map(|t| {
-                        t.keys()
-                            .map(|name| SaveTemplateOption::new(lang, family, name))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let selected = template
-                    .as_ref()
-                    .and_then(|t| options.iter().find(|o| &o.raw == t).cloned());
-                let can_confirm = template.is_some() && !draft.trim().is_empty();
+            SaveAction::NewSave {
+                draft, game, template, ..
+            } => {
+                // One option per (owned-ROM variant × template). Each
+                // carries the raw name plus a locale-aware label; when the
+                // family has more than one owned variant the label is
+                // prefixed with the game name ("White – Heat Guts") so the
+                // user picks color + template in one go.
+                let options = creation_template_options(lang, self, scanners);
+                let selected = match (game, template) {
+                    (Some(g), Some(t)) => options.iter().find(|o| o.game == *g && &o.raw == t).cloned(),
+                    _ => None,
+                };
+                let can_confirm = game.is_some() && template.is_some() && !draft.trim().is_empty();
                 let confirm_btn = if can_confirm {
                     widgets::labeled_icon_button(
                         Icon::Check,
@@ -970,7 +1098,7 @@ impl PlayState {
                     .into()
                 };
                 row![
-                    pick_list(options, selected, |o| { Message::SaveNewTemplateSelected(o.raw) })
+                    pick_list(options, selected, |o| Message::SaveNewTemplateSelected(o.game, o.raw))
                         .placeholder(t!(lang, "save-template-pick"))
                         .padding(STANDARD_PADDING)
                         .width(Length::Fixed(180.0))
@@ -1018,9 +1146,19 @@ impl PlayState {
                 widgets::danger_button,
             )
         };
-        // "New save" is enabled only when the active patch+version ships
-        // a save template for the selected game.
-        let can_new = templates_for_selection(self, scanners).is_some();
+        // "New save" is enabled whenever the selected family has an
+        // owned-ROM variant that ships (bundled or patch) save templates
+        // — independent of whether a save is currently selected, so the
+        // first save of an empty family can still be created.
+        let can_new = creation_games(self, scanners).iter().any(|g| {
+            templates_for_game(
+                *g,
+                self.local_patch.as_deref(),
+                self.local_patch_version.as_ref(),
+                scanners,
+            )
+            .is_some()
+        });
         row![
             mk(Icon::FilePlus, t!(lang, "save-new"), Message::SaveNewStart, can_new),
             mk(
@@ -1174,6 +1312,58 @@ fn resolve_remembered_save(
     remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
 }
 
+/// First owned-ROM save across every game in `family`, path-sorted.
+/// Used as the family auto-pick fallback (and by the App's post-delete
+/// auto-pick). Returns the concrete game alongside the path so callers
+/// can set `local_game` without re-sniffing the save.
+pub fn first_available_family_save(scanners: &Scanners, family: &str) -> Option<(rom::GameRef, std::path::PathBuf)> {
+    let roms = scanners.roms.read();
+    let saves = scanners.saves.read();
+    let mut candidates: Vec<(rom::GameRef, std::path::PathBuf)> = Vec::new();
+    for g in game::games_in_family(family) {
+        if !roms.contains_key(&g) {
+            continue;
+        }
+        if let Some(v) = saves.get(&g) {
+            for s in v {
+                candidates.push((g, s.path.clone()));
+            }
+        }
+    }
+    candidates.sort_by(|a, b| a.1.cmp(&b.1));
+    candidates.into_iter().next()
+}
+
+/// Pick the (game, save) to land on after a *family* selection. Prefers
+/// the remembered save of any owned-ROM game in the family (so the prior
+/// per-(game, patch, version) choice sticks); otherwise the first
+/// available save. Grayed (un-owned) saves are never auto-selected.
+fn resolve_family_save(
+    config: &config::Config,
+    scanners: &Scanners,
+    family: &str,
+    patch_name: Option<&str>,
+    patch_version: Option<&semver::Version>,
+) -> Option<(rom::GameRef, std::path::PathBuf)> {
+    {
+        let roms = scanners.roms.read();
+        let saves = scanners.saves.read();
+        for g in game::games_in_family(family) {
+            if !roms.contains_key(&g) {
+                continue;
+            }
+            let key = config::save_memory_key(g, patch_name, patch_version);
+            if let Some(rel) = config.last_save_per_game_per_patch.get(&key) {
+                let abs = config.data_relative_to_absolute(rel);
+                if saves.get(&g).map(|v| v.iter().any(|s| s.path == abs)).unwrap_or(false) {
+                    return Some((g, abs));
+                }
+            }
+        }
+    }
+    first_available_family_save(scanners, family)
+}
+
 /// Localized "<game-variant> <template-display>" (or just "<game-variant>"
 /// when no template is chosen yet), with filesystem-unsafe characters
 /// stripped so it can be dropped straight into the new-save text field.
@@ -1184,8 +1374,8 @@ fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef,
     let family = game.family_and_variant().0;
     let name = match template {
         Some(raw) => {
-            let display = SaveTemplateOption::new(lang, family, raw).display;
-            format!("{game_name} - {display}")
+            let label = template_label(lang, family, raw);
+            format!("{game_name} - {label}")
         }
         None => game_name,
     };
@@ -1218,28 +1408,62 @@ fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
     draft
 }
 
-/// template-for-game) are missing. The returned map is the templates
-/// keyed by template name (empty string = default).
-pub fn templates_for_selection_public(
-    state: &PlayState,
-    scanners: &Scanners,
-) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
-    templates_for_selection(state, scanners)
+/// The set of games the currently-selected patch+version supports, or
+/// None when no patch (or no version) is selected — meaning "don't
+/// filter". Shared by the save list and the new-save template list so
+/// both hide the same patch-incompatible variants.
+fn patch_supported_games(state: &PlayState, scanners: &Scanners) -> Option<std::collections::HashSet<rom::GameRef>> {
+    let name = state.local_patch.as_ref()?;
+    let version = state.local_patch_version.as_ref()?;
+    scanners
+        .patches
+        .read()
+        .get(name)
+        .and_then(|p| p.versions.get(version))
+        .map(|v| v.supported_games.clone())
 }
 
-fn templates_for_selection<'a>(
-    state: &PlayState,
-    scanners: &'a Scanners,
+/// Whether the currently-selected patch+version supports `game`. True
+/// when no patch (or no version) is selected — there's nothing for the
+/// save to be incompatible with.
+pub fn patch_supports(state: &PlayState, scanners: &Scanners, game: rom::GameRef) -> bool {
+    patch_supported_games(state, scanners)
+        .map(|s| s.contains(&game))
+        .unwrap_or(true)
+}
+
+/// Owned-ROM games in the selected family, ascending variant order —
+/// the candidate targets for creating a new save. Empty when no family
+/// is selected or no ROM is owned. Independent of `local_game`, so the
+/// new-save flow works even before any save exists in the family. When a
+/// patch is selected, variants it doesn't support are dropped (so their
+/// templates don't show), mirroring the save-list filter.
+fn creation_games(state: &PlayState, scanners: &Scanners) -> Vec<rom::GameRef> {
+    let Some(family) = state.local_family else {
+        return Vec::new();
+    };
+    let roms = scanners.roms.read();
+    let patch_supported = patch_supported_games(state, scanners);
+    game::games_in_family(family)
+        .filter(|g| roms.contains_key(g))
+        .filter(|g| patch_supported.as_ref().map(|s| s.contains(g)).unwrap_or(true))
+        .collect()
+}
+
+/// Save templates for one specific game (patch-provided override the
+/// bundled ones), keyed by template name (empty string = default).
+/// None when that game ships no templates.
+fn templates_for_game(
+    game: rom::GameRef,
+    patch_name: Option<&str>,
+    patch_version: Option<&semver::Version>,
+    scanners: &Scanners,
 ) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
-    let game = state.local_game?;
     // IndexMap (not BTreeMap) so templates iterate in declaration order
     // — patch-provided first, then the game's bundled order — instead
     // of alphabetically by raw key.
     let mut out = indexmap::IndexMap::new();
-
-    // Patch-provided templates first (so a patch can override the
-    // bundled default), then fall back to the built-in for this game.
-    if let (Some(patch_name), Some(version)) = (state.local_patch.as_ref(), state.local_patch_version.as_ref()) {
+    if let (Some(patch_name), Some(version)) = (patch_name, patch_version) {
         let patches = scanners.patches.read();
         if let Some(patch) = patches.get(patch_name) {
             if let Some(v) = patch.versions.get(version) {
@@ -1264,6 +1488,53 @@ fn templates_for_selection<'a>(
     } else {
         Some(out)
     }
+}
+
+/// Picker entries for the new-save dialog: every (owned-ROM variant ×
+/// template) across the selected family. Each label is prefixed with the
+/// short variant tag (e.g. "Blue – Heat Guts") in all cases.
+fn creation_template_options(
+    lang: &unic_langid::LanguageIdentifier,
+    state: &PlayState,
+    scanners: &Scanners,
+) -> Vec<SaveTemplateOption> {
+    let games = creation_games(state, scanners);
+    let mut out = Vec::new();
+    for g in games {
+        if let Some(tmpls) = templates_for_game(
+            g,
+            state.local_patch.as_deref(),
+            state.local_patch_version.as_ref(),
+            scanners,
+        ) {
+            for name in tmpls.keys() {
+                out.push(SaveTemplateOption::new(lang, g, name));
+            }
+        }
+    }
+    out
+}
+
+/// Resolve the actual template `Save` for a (game, template-name) pick —
+/// used by the App's SaveNew handler to materialize the file. Falls back
+/// to the default/first template if the exact name vanished.
+pub fn creation_template(
+    game: rom::GameRef,
+    template_name: &str,
+    state: &PlayState,
+    scanners: &Scanners,
+) -> Option<Box<dyn tango_dataview::save::Save + Send + Sync>> {
+    let tmpls = templates_for_game(
+        game,
+        state.local_patch.as_deref(),
+        state.local_patch_version.as_ref(),
+        scanners,
+    )?;
+    tmpls
+        .get(template_name)
+        .or_else(|| tmpls.get(""))
+        .or_else(|| tmpls.values().next())
+        .map(|s| s.clone_box())
 }
 
 /// Write a template's SRAM to `saves_dir/<name>.sav`. The filename is
@@ -1934,50 +2205,64 @@ fn lobby_view<'a>(
     .into()
 }
 
-/// One entry in the "new save" template pick_list. Carries the
-/// raw template name (whatever was scanned off disk) plus a
-/// display label resolved via `game-<family>.save-<name>` so the
-/// user sees "MegaMan.EXE" / "Saito" / "Brother" instead of the
-/// bare filename suffix.
+/// Bare localized template label (e.g. "Heat Guts"), without any
+/// variant prefix. Empty `raw` is the unnamed default-template file that
+/// patches ship as `<rom>_<rev>.sav`; the `.save-megaman` attr usually
+/// carries the right label for it.
+fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> String {
+    let key_suffix = if raw.is_empty() { "megaman" } else { raw };
+    // Dynamic key (one per family × template name) — bypass the
+    // literal-only macro and hit the Fluent loader directly.
+    use fluent_templates::Loader;
+    crate::i18n::LOCALES
+        .try_lookup(lang, &format!("game-{family}.save-{key_suffix}"))
+        .unwrap_or_else(|| {
+            if raw.is_empty() {
+                t!(lang, "save-template-default")
+            } else {
+                raw.to_string()
+            }
+        })
+}
+
+/// One entry in the "new save" template pick_list: a concrete variant
+/// plus a raw template name, with a display label resolved via
+/// `game-<family>.save-<name>` (prefixed with the game name when the
+/// family has more than one owned variant).
 #[derive(Clone)]
 struct SaveTemplateOption {
+    /// The concrete variant this template creates a save for.
+    game: rom::GameRef,
     raw: String,
     display: String,
 }
 
 impl SaveTemplateOption {
-    fn new(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> Self {
-        // Empty `raw` is the unnamed default-template file that
-        // patches ship as `<rom>_<rev>.sav`. Patches' .save-megaman
-        // attr usually carries the right label for that.
-        let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-        // Dynamic key (one per family × template name) — bypass the
-        // literal-only macro and hit the Fluent loader directly.
-        use fluent_templates::Loader;
-        let display = crate::i18n::LOCALES
-            .try_lookup(lang, &format!("game-{family}.save-{key_suffix}"))
-            .unwrap_or_else(|| {
-                if raw.is_empty() {
-                    t!(lang, "save-template-default")
-                } else {
-                    raw.to_string()
-                }
-            });
+    fn new(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, raw: &str) -> Self {
+        let label = template_label(lang, game.family_and_variant().0, raw);
+        // Always prefix with the short variant tag (e.g. "Blue – Heat
+        // Guts"), even for single-owned-variant or single-variant
+        // families, so the picker reads consistently.
+        let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
         Self {
+            game,
             raw: raw.to_string(),
             display,
         }
     }
 }
 
+// Identity is (variant, template name) — the two together pick a unique
+// creation target.
 impl PartialEq for SaveTemplateOption {
     fn eq(&self, other: &Self) -> bool {
-        self.raw == other.raw
+        self.game == other.game && self.raw == other.raw
     }
 }
 impl Eq for SaveTemplateOption {}
 impl std::hash::Hash for SaveTemplateOption {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.game.hash(h);
         self.raw.hash(h);
     }
 }

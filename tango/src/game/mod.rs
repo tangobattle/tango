@@ -137,6 +137,19 @@ pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> Stri
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
+/// Short *variant* tag (e.g. "White", "Blue Moon") via
+/// `game-<family>.variant-<variant>-short` — the bare color/team name
+/// without the series title, for disambiguating saves/templates within
+/// a family. Falls back to the family short tag (e.g. "BN1") for
+/// single-variant families that don't define a per-variant short, so the
+/// label stays concise in every case.
+pub fn variant_short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
+    let (family, variant) = game.family_and_variant();
+    LOCALES
+        .try_lookup(lang, &format!("game-{family}.variant-{variant}-short"))
+        .unwrap_or_else(|| short_name(lang, game))
+}
+
 /// Localized match-type label for a (mode, subtype) pair (e.g.
 /// "Single" / "Triple" / "Lightweight"). Falls back to "M.S" for
 /// pairs the locale doesn't name.
@@ -151,15 +164,38 @@ pub fn match_type_name(
         .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }
 
-pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [GameRef]) {
-    games.sort_by_key(|g| {
-        (
-            if region_to_language(g.region()).matches(lang, true, true) {
-                0
-            } else {
-                1
-            },
-            g.family_and_variant(),
-        )
-    });
+/// All gamedb games belonging to a family (e.g. "bn3" → US White + US
+/// Blue). The family string is region-specific (`exe3` JP vs `bn3` US
+/// are distinct families), so the members differ only by color variant.
+pub fn games_in_family(family: &str) -> impl Iterator<Item = GameRef> + '_ {
+    tango_gamedb::GAMES
+        .iter()
+        .copied()
+        .filter(move |g| g.family_and_variant().0 == family)
+}
+
+/// Best-effort family display name (e.g. "Mega Man Battle Network 3").
+/// The `game-<family>` Fluent base value is the family name; falls back
+/// to the raw family string. Mirrors the lookup `lobby_view` already
+/// uses for the opponent's game label.
+pub fn family_display_name(lang: &unic_langid::LanguageIdentifier, family: &str) -> String {
+    LOCALES
+        .try_lookup(lang, &format!("game-{family}"))
+        .unwrap_or_else(|| family.to_string())
+}
+
+/// Resolve a (possibly persisted) family string to its `&'static`
+/// gamedb form, or None if no game uses it. Lets restored config —
+/// owned `String`s — drive the `&'static str` family state.
+pub fn family_static(family: &str) -> Option<&'static str> {
+    tango_gamedb::GAMES
+        .iter()
+        .map(|g| g.family_and_variant().0)
+        .find(|f| *f == family)
+}
+
+/// Does any game in `family` match the UI language's region? Used to
+/// sort the family picker so the user's own-region families lead.
+pub fn family_matches_language(lang: &unic_langid::LanguageIdentifier, family: &str) -> bool {
+    games_in_family(family).any(|g| region_to_language(g.region()).matches(lang, true, true))
 }

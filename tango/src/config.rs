@@ -117,6 +117,12 @@ pub struct Config {
     pub allow_prerelease_upgrades: bool,
 
     pub last_game: Option<(String, u8)>,
+    /// Last selected game *family* (region-specific gamedb family string,
+    /// e.g. `"bn3"`). The family drives the picker; the concrete game is
+    /// re-derived from the chosen save. Persisted separately from
+    /// `last_game` so a family selected with no owned ROM still restores.
+    #[serde(default)]
+    pub last_family: Option<String>,
     pub last_patch: Option<String>,
     pub last_patch_version: Option<semver::Version>,
     /// Per-game-per-patch memory of the most recent save selection.
@@ -195,6 +201,7 @@ impl Default for Config {
             enable_updater: true,
             allow_prerelease_upgrades: false,
             last_game: None,
+            last_family: None,
             last_patch: None,
             last_patch_version: None,
             last_save_per_game_per_patch: std::collections::BTreeMap::new(),

@@ -196,10 +196,19 @@ impl App {
         // Restore the last play selection from config, but only the bits
         // that still resolve against the current scanners.
         let mut play = PlayState::default();
+        // Restore the selected family (drives the picker even when no
+        // owned-ROM game resolves under it); falls back to the family of
+        // `last_game` for configs written before `last_family` existed.
+        play.local_family = config
+            .last_family
+            .as_deref()
+            .and_then(game::family_static)
+            .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f)));
         if let Some((family, variant)) = config.last_game.as_ref() {
             if let Some(game) = tango_gamedb::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
                     play.local_game = Some(game);
+                    play.local_family = Some(game.family_and_variant().0);
                     if let Some(n) = config.last_patch.as_ref() {
                         if let Some(p) = scanners.patches.read().get(n) {
                             let v = config.last_patch_version.as_ref().and_then(|v| {
@@ -372,6 +381,7 @@ impl App {
     /// version) key, so switching back to any prior combination
     /// restores its save.
     fn persist_selection(&mut self) {
+        self.config.last_family = self.play.local_family.map(|f| f.to_string());
         self.config.last_game = self
             .play
             .local_game
@@ -861,14 +871,18 @@ impl App {
                     self.refresh_replay_stats().map(Message::Replays)
                 }
                 RescanFollowup::RefreshAndPickFirstSave => {
+                    // Land on the next available save anywhere in the
+                    // family (a sibling color variant is fine), not just
+                    // the deleted save's own game, and fix `local_game`
+                    // to whatever that save resolves to.
                     if self.play.local_save.is_none() {
-                        self.play.local_save = self.play.local_game.and_then(|g| {
-                            self.scanners
-                                .saves
-                                .read()
-                                .get(&g)
-                                .and_then(|v| v.first().map(|s| s.path.clone()))
-                        });
+                        if let Some(family) = self.play.local_family {
+                            if let Some((game, path)) = tabs::play::first_available_family_save(&self.scanners, family)
+                            {
+                                self.play.local_game = Some(game);
+                                self.play.local_save = Some(path);
+                            }
+                        }
                     }
                     self.refresh_loaded();
                     iced::Task::none()
@@ -1114,31 +1128,30 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::SaveNew { name, template } => {
-                if let Some(game) = self.play.local_game {
-                    if let Some(templates) = tabs::play::templates_for_selection_public(&self.play, &self.scanners) {
-                        // Use the chosen template name; fall back
-                        // to default ("") then first available.
-                        let chosen = templates
-                            .get(template.as_str())
-                            .or_else(|| templates.get(""))
-                            .or_else(|| templates.values().next())
-                            .map(|s| s.clone_box());
-                        if let Some(template) = chosen {
-                            match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
-                                Ok(dst) => {
-                                    log::info!(
-                                        "created new save for {:?}: {}",
-                                        game.family_and_variant(),
-                                        dst.display()
-                                    );
-                                    self.play.local_save = Some(dst);
-                                    self.persist_selection();
-                                    return self.rescan_off_thread(RescanFollowup::Refresh);
-                                }
-                                Err(e) => log::error!("create save: {e}"),
+            E::SaveNew { name, template, game } => {
+                // The new save is created for `game` (the variant the
+                // user picked), which may differ from the currently
+                // selected one — so adopt it as `local_game` too, keeping
+                // game/save consistent for `refresh_loaded`.
+                if let Some(template) = tabs::play::creation_template(game, &template, &self.play, &self.scanners) {
+                    match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
+                        Ok(dst) => {
+                            log::info!("created new save for {:?}: {}", game.family_and_variant(), dst.display());
+                            // Templates are only offered for patch-supported
+                            // variants, so the patch normally still applies;
+                            // drop it only if it somehow doesn't support the
+                            // created variant.
+                            if !tabs::play::patch_supports(&self.play, &self.scanners, game) {
+                                self.play.local_patch = None;
+                                self.play.local_patch_version = None;
                             }
+                            self.play.local_game = Some(game);
+                            self.play.local_family = Some(game.family_and_variant().0);
+                            self.play.local_save = Some(dst);
+                            self.persist_selection();
+                            return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
+                        Err(e) => log::error!("create save: {e}"),
                     }
                 }
                 iced::Task::none()
