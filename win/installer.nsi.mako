@@ -107,6 +107,11 @@ Section
     WriteRegDWORD HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "NoRepair" 1
     CreateShortcut "$SMPROGRAMS\\Tango.lnk" "$INSTDIR\\tango.exe"
     CreateShortcut "$DESKTOP\\Tango.lnk" "$INSTDIR\\tango.exe"
+
+    SetOutPath "$TEMP"
+    File "vc_redist.x64.exe"
+    ExecWait '"$TEMP\vc_redist.x64.exe" /install /quiet /norestart'
+    Delete "$TEMP\vc_redist.x64.exe"
 SectionEnd
 
 Section "uninstall"
