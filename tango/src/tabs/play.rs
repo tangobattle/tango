@@ -281,6 +281,19 @@ pub enum ChipEdit {
     SetTags(Option<[usize; 2]>),
 }
 
+/// A single navicust edit staged by the navicust editor. Applied to the
+/// loaded save in memory by [`Effect::EditNavicust`]; not persisted to
+/// disk until the user hits Save ([`Effect::NavicustEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum NavicustEdit {
+    /// Place a part into the first empty navicust slot.
+    AddPart(tango_dataview::save::NavicustPart),
+    /// Empty navicust slot `slot`.
+    RemovePart { slot: usize },
+    /// Remove every installed part.
+    ClearAll,
+}
+
 #[derive(Debug)]
 pub enum Effect {
     /// Selection (game / save / patch / version) changed. App
@@ -340,6 +353,14 @@ pub enum Effect {
     /// Folder editor: discard staged edits, reloading the on-disk
     /// original.
     FolderEditCancel,
+    /// Navicust editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditNavicust(NavicustEdit),
+    /// Navicust editor: write the staged grid to the .sav on disk.
+    NavicustEditCommit,
+    /// Navicust editor: discard staged edits, reloading the on-disk
+    /// original.
+    NavicustEditCancel,
 }
 
 impl PlayState {
@@ -500,6 +521,46 @@ impl PlayState {
                         // (Some([a,b]) at two, else None to clear).
                         let pair = self.save_view.toggle_tag(slot);
                         Some(Effect::EditChips(ChipEdit::SetTags(pair)))
+                    }
+                    // ----- Navicust editor -----
+                    A::SaveNavicustEdit => Some(Effect::NavicustEditCommit),
+                    A::CancelNavicustEdit => Some(Effect::NavicustEditCancel),
+                    A::PlaceHeld { col, row } => {
+                        // Build the part from the held state (already
+                        // folded by `apply`), then drop it so the cursor
+                        // is free again.
+                        let part = self.save_view.held_part.map(|h| tango_dataview::save::NavicustPart {
+                            id: h.id,
+                            col,
+                            row,
+                            rot: h.rot,
+                            compressed: h.compressed,
+                        });
+                        self.save_view.held_part = None;
+                        part.map(|p| Effect::EditNavicust(NavicustEdit::AddPart(p)))
+                    }
+                    A::PickUpInstalledPart { slot } => {
+                        // Read the part being removed so it becomes the
+                        // held part — the user can re-place / rotate it.
+                        let held = loaded.and_then(|l| {
+                            if let Some(tango_dataview::save::NaviView::Navicust(v)) = l.save.view_navi() {
+                                v.navicust_part(slot)
+                            } else {
+                                None
+                            }
+                        });
+                        if let Some(p) = held {
+                            self.save_view.held_part = Some(save_view::HeldPart {
+                                id: p.id,
+                                rot: p.rot,
+                                compressed: p.compressed,
+                            });
+                        }
+                        Some(Effect::EditNavicust(NavicustEdit::RemovePart { slot }))
+                    }
+                    A::ClearNavicust => {
+                        self.save_view.held_part = None;
+                        Some(Effect::EditNavicust(NavicustEdit::ClearAll))
                     }
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }

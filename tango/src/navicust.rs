@@ -28,7 +28,7 @@ const BG_FILL_COLOR: [u8; 4] = [0x20, 0x20, 0x20, 0xff];
 const BORDER_STROKE_COLOR: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
 
 /// Solid color (filled square) + plus/stroke color, matching the egui app.
-fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
+pub fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
     match color {
         NavicustPartColor::Red => ([0xde, 0x10, 0x00, 0xff], [0xbd, 0x00, 0x00, 0xff]),
         NavicustPartColor::Pink => ([0xde, 0x8c, 0xc6, 0xff], [0xbd, 0x6b, 0xa5, 0xff]),
@@ -75,6 +75,10 @@ fn family_for_locale(lang: &unic_langid::LanguageIdentifier) -> &'static str {
 /// label is rasterized at display resolution so its glyphs are
 /// pixel-crisp instead of being a re-scaled high-res blur. Pass
 /// `None` (clipboard / export path) to keep the full native size.
+/// Rasterize a navicust to an RGBA image via the shared [`paint`] routine
+/// (tiny-skia backend), then resize to `target_w` and bake the BN3 style
+/// label on top. This is the clipboard / export path; live display goes
+/// through the same [`paint`] routine with an iced-canvas backend.
 pub fn render(
     materialized: &MaterializedNavicust,
     layout: &NavicustLayout,
@@ -83,68 +87,39 @@ pub fn render(
     lang: &unic_langid::LanguageIdentifier,
     target_w: Option<u32>,
 ) -> image::RgbaImage {
-    let body = render_grid(materialized, layout, view, assets);
+    let model = build_model(materialized, layout, view, assets);
+    let g = geometry(model.cols, model.rows);
+    let mut pixmap = tiny_skia::Pixmap::new(g.total_w.round() as u32, g.total_h.round() as u32).unwrap();
+    paint(&mut SkiaPainter { pixmap: &mut pixmap }, &model, None);
+    let native = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
 
-    let style_name: Option<String> = view.style().and_then(|sid| assets.style(sid).and_then(|s| s.name()));
-    let (color_bar, tiles_w_native) = if let Some(style_id) = view.style() {
-        let extra_color = assets.style(style_id).and_then(|s| s.extra_ncp_color());
-        let tiles = render_color_bar_bn3(extra_color);
-        let mut bar = image::RgbaImage::new(body.width(), tiles.height());
-        let bar_w = bar.width();
-        image::imageops::overlay(&mut bar, &tiles, (bar_w - tiles.width()) as i64, 0);
-        (bar, tiles.width())
-    } else {
-        (render_color_bar_bn456(body.width(), view, assets), 0)
-    };
-
-    let bar_h_native = color_bar.height();
-    let bar_w_native = color_bar.width();
-    let total_w = body.width() + PADDING_H * 2;
-    let total_h = body.height() + PADDING_V * 3 + bar_h_native;
-    let mut native = image::RgbaImage::new(total_w, total_h);
-    for px in native.pixels_mut() {
-        *px = layout.background;
-    }
-    image::imageops::overlay(&mut native, &color_bar, PADDING_H as i64, PADDING_V as i64);
-    image::imageops::overlay(
-        &mut native,
-        &body,
-        PADDING_H as i64,
-        (PADDING_V + bar_h_native + PADDING_V) as i64,
-    );
-
-    // Resize the (label-free) composite to display size if a target
-    // was requested. Nearest matches the iced image widget's pixel-art
-    // look and keeps the grid borders sharp. The label, when present,
-    // is baked AFTER this so its glyphs are rasterized at the final
-    // display resolution (cosmic-text rasterizes at the exact font
-    // size we ask for, so no scaling fuzz).
+    // Resize the (label-free) composite to display size if a target was
+    // requested. Nearest keeps the grid borders sharp. The BN3 label is
+    // baked AFTER, at display resolution, so its glyphs stay crisp.
     let (mut out, scale) = match target_w {
         Some(w) if w < native.width() => {
             let scale = w as f32 / native.width() as f32;
-            let new_w = w;
             let new_h = (native.height() as f32 * scale).round() as u32;
             (
-                image::imageops::resize(&native, new_w, new_h, image::imageops::FilterType::Nearest),
+                image::imageops::resize(&native, w, new_h, image::imageops::FilterType::Nearest),
                 scale,
             )
         }
         _ => (native, 1.0),
     };
 
-    if let Some(name) = style_name {
-        // Label sits in the gap between the bar's left edge and the
-        // right-flush tile stripe, padded inward by `label_pad`.
+    if let Some(name) = view.style().and_then(|sid| assets.style(sid).and_then(|s| s.name())) {
+        // The BN3 bar's right-flush tile stripe is four SQUARE_SIZE/4
+        // tiles plus the border; the label fills the gap to its left.
+        let tiles_w_native = SQUARE_SIZE + BORDER_WIDTH;
         let label_pad = BORDER_WIDTH + 4.0;
-        let max_label_w_native = bar_w_native as f32 - tiles_w_native as f32 - label_pad * 2.0;
+        let max_label_w_native = g.body_w - tiles_w_native - label_pad * 2.0;
         if max_label_w_native > 0.0 {
             let label_x0 = ((PADDING_H as f32 + label_pad) * scale).round() as i64;
             let bar_y = (PADDING_V as f32 * scale).round() as i64;
-            let bar_h = (bar_h_native as f32 * scale).round() as u32;
+            let bar_h = (g.bar_h * scale).round() as u32;
             let max_label_w = (max_label_w_native * scale).round() as u32;
-            // Noto Sans line height ≈ 1.36 × em — 0.72 × bar height
-            // leaves a hair of vertical margin while keeping the
-            // label readable.
+            // 0.72 × bar height leaves a hair of vertical margin.
             let font_height = bar_h as f32 * 0.72;
             rasterize_label(
                 &mut out,
@@ -239,347 +214,345 @@ fn rasterize_label(
     });
 }
 
-/// BN3-style color bar: White / Pink / Yellow / (extra from style).
-/// Returns only the tile stripe; the wrapper in `render` pads
-/// it to body width and overlays the style label on the left.
-fn render_color_bar_bn3(extra: Option<NavicustPartColor>) -> image::RgbaImage {
-    const TILE_WIDTH: f32 = SQUARE_SIZE / 4.0;
-    let mut pixmap = tiny_skia::Pixmap::new(
-        (TILE_WIDTH * 4.0 + BORDER_WIDTH) as u32,
-        (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
-    )
-    .unwrap();
+const OOB_SHADE: [u8; 4] = [0x00, 0x00, 0x00, 0x80];
+const GHOST_LEGAL: [u8; 4] = [0x33, 0xd9, 0x4d, 0xff];
+const GHOST_ILLEGAL: [u8; 4] = [0xe6, 0x2e, 0x2e, 0xff];
 
-    let bg_paint = solid_paint(BG_FILL_COLOR);
-    let border_paint = solid_paint(BORDER_STROKE_COLOR);
-    let stroke = tiny_skia::Stroke {
-        line_cap: tiny_skia::LineCap::Square,
-        width: BORDER_WIDTH,
-        ..Default::default()
-    };
-
-    let path = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0).unwrap());
-        pb.finish().unwrap()
-    };
-
-    let root = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
-
-    let tiles = [
-        Some(NavicustPartColor::White),
-        Some(NavicustPartColor::Pink),
-        Some(NavicustPartColor::Yellow),
-        extra,
-    ];
-    for (i, color) in tiles.into_iter().enumerate() {
-        let transform = root.pre_translate(i as f32 * TILE_WIDTH, 0.0);
-        let paint = if let Some(color) = color {
-            let (_, plus) = part_colors(color);
-            solid_paint(plus)
-        } else {
-            bg_paint.clone()
-        };
-        pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, transform, None);
-        pixmap.stroke_path(&path, &border_paint, &stroke, transform, None);
-    }
-
-    // Wrapper in `render` will pad this to body width + bake
-    // the style label.
-    image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
+/// Resolved style for one installed part (so drawing never reaches back
+/// into the ROM assets).
+#[derive(Clone, Copy)]
+pub struct PartStyle {
+    pub solid: [u8; 4],
+    pub plus: [u8; 4],
+    pub is_solid: bool,
 }
 
-/// BN4/5/6 color bar: up to 4 non-bug colors on the left, optional bug
-/// colors on the right (separated by a gap).
-fn render_color_bar_bn456(body_width: u32, view: &dyn NavicustView, assets: &dyn Assets) -> image::RgbaImage {
-    const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
-    let mut colors: Vec<NavicustPartColor> = Vec::new();
-    for i in 0..view.count() {
-        let Some(ncp) = view.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(ncp.id) else {
-            continue;
-        };
-        let Some(c) = info.color() else { continue };
-        if !colors.contains(&c) {
-            colors.push(c);
-        }
-    }
-
-    let tile_count = std::cmp::max(4, colors.len()) as u32;
-    let mut pixmap = tiny_skia::Pixmap::new(
-        TILE_WIDTH as u32 * tile_count + BORDER_WIDTH as u32 * 2,
-        (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
-    )
-    .unwrap();
-
-    let bg_paint = solid_paint(BG_FILL_COLOR);
-    let border_paint = solid_paint(BORDER_STROKE_COLOR);
-    let stroke = tiny_skia::Stroke {
-        line_cap: tiny_skia::LineCap::Square,
-        width: BORDER_WIDTH,
-        ..Default::default()
-    };
-
-    let nonbug = &colors[..colors.len().min(4)];
-    let bug = colors.get(4..).unwrap_or(&[]);
-
-    let root = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
-
-    let outline = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0).unwrap());
-        pb.finish().unwrap()
-    };
-    let inner = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(
-            tiny_skia::Rect::from_xywh(
-                BORDER_WIDTH / 2.0,
-                BORDER_WIDTH / 2.0,
-                TILE_WIDTH - BORDER_WIDTH,
-                SQUARE_SIZE / 2.0 - BORDER_WIDTH,
-            )
-            .unwrap(),
-        );
-        pb.finish().unwrap()
-    };
-
-    for i in 0..4 {
-        let transform = root.pre_translate(i as f32 * TILE_WIDTH, 0.0);
-        let paint = if let Some(c) = nonbug.get(i) {
-            let (_, plus) = part_colors(c.clone());
-            solid_paint(plus)
-        } else {
-            bg_paint.clone()
-        };
-        pixmap.fill_path(&inner, &paint, tiny_skia::FillRule::Winding, transform, None);
-        pixmap.stroke_path(&outline, &border_paint, &stroke, transform, None);
-    }
-    for (i, c) in bug.iter().enumerate() {
-        let transform = root.pre_translate((i + 4) as f32 * TILE_WIDTH + BORDER_WIDTH, 0.0);
-        let (_, plus) = part_colors(c.clone());
-        let paint = solid_paint(plus);
-        pixmap.fill_path(&inner, &paint, tiny_skia::FillRule::Winding, transform, None);
-    }
-
-    let bar = image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
-    pad_left(bar, body_width)
+/// Resolved color-bar contents. `Bn3` carries the style's extra color
+/// (the fixed White/Pink/Yellow tiles are implicit); `Bn456` carries the
+/// distinct part colors in order (first ≤4 outlined, the rest "bug").
+#[derive(Clone)]
+pub enum ColorBar {
+    Bn3 { extra: Option<[u8; 4]> },
+    Bn456 { colors: Vec<[u8; 4]> },
 }
 
-/// Pad an image to `target_w` by extending transparently on the left so
-/// the bar's tiles align flush-right against the grid's right edge.
-fn pad_left(img: image::RgbaImage, target_w: u32) -> image::RgbaImage {
-    if img.width() >= target_w {
-        return img;
-    }
-    let mut out = image::RgbaImage::new(target_w, img.height());
-    let offset = (target_w - img.width()) as i64;
-    image::imageops::overlay(&mut out, &img, offset, 0);
-    out
+/// Everything the shared [`paint`] routine needs, pre-resolved into owned
+/// data so it can be held by a canvas widget or fed to the image backend.
+#[derive(Clone)]
+pub struct GridModel {
+    pub cols: usize,
+    pub rows: usize,
+    pub command_line: usize,
+    pub has_out_of_bounds: bool,
+    pub background: [u8; 4],
+    /// Row-major occupancy (`row * cols + col`): the part slot per cell.
+    pub occupancy: Vec<Option<usize>>,
+    /// Per-slot resolved style.
+    pub part_styles: Vec<Option<PartStyle>>,
+    pub bar: ColorBar,
 }
 
-pub fn render_grid(
+/// A held part previewed under the cursor (editor only).
+pub struct Ghost {
+    /// Absolute grid cells `(col, row)` the part would cover.
+    pub cells: Vec<(usize, usize)>,
+    pub solid: [u8; 4],
+    pub is_solid: bool,
+    pub legal: bool,
+}
+
+/// Native-coordinate layout of the composed navicust image.
+pub struct Geometry {
+    pub total_w: f32,
+    pub total_h: f32,
+    pub bar_h: f32,
+    pub body_w: f32,
+    pub body_origin_x: f32,
+    pub body_origin_y: f32,
+}
+
+pub fn geometry(cols: usize, rows: usize) -> Geometry {
+    let body_w = cols as f32 * SQUARE_SIZE + BORDER_WIDTH;
+    let body_h = rows as f32 * SQUARE_SIZE + BORDER_WIDTH;
+    let bar_h = SQUARE_SIZE / 2.0 + BORDER_WIDTH;
+    Geometry {
+        total_w: body_w + PADDING_H as f32 * 2.0,
+        total_h: body_h + PADDING_V as f32 * 3.0 + bar_h,
+        bar_h,
+        body_w,
+        body_origin_x: PADDING_H as f32,
+        body_origin_y: PADDING_V as f32 + bar_h + PADDING_V as f32,
+    }
+}
+
+/// A backend the shared navicust drawing routine targets. One impl wraps
+/// a tiny-skia pixmap (the clipboard/image path); another wraps an iced
+/// canvas frame (live display). All coords are native pixels.
+pub trait GridPainter {
+    fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]);
+    fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32);
+    fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32);
+}
+
+/// Resolve a navicust view + ROM assets into a [`GridModel`]. `materialized`
+/// is supplied by the caller so it can pass the WRAM cache (read-only view)
+/// or a freshly recomputed grid (live editor).
+pub fn build_model(
     materialized: &MaterializedNavicust,
     layout: &NavicustLayout,
     view: &dyn NavicustView,
     assets: &dyn Assets,
-) -> image::RgbaImage {
-    let (height, width) = materialized.dim();
-    let mut pixmap = tiny_skia::Pixmap::new(
-        (width as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
-        (height as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
-    )
-    .unwrap();
+) -> GridModel {
+    let (rows, cols) = materialized.dim();
+    let occupancy: Vec<Option<usize>> = materialized.iter().copied().collect();
 
-    let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
-
-    let bg_fill_paint = solid_paint(BG_FILL_COLOR);
-    let border_stroke_paint = solid_paint(BORDER_STROKE_COLOR);
-    let stroke = tiny_skia::Stroke {
-        line_cap: tiny_skia::LineCap::Square,
-        width: BORDER_WIDTH,
-        ..Default::default()
-    };
-
-    let square_path = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, SQUARE_SIZE, SQUARE_SIZE).unwrap());
-        pb.finish().unwrap()
-    };
-
-    let plus_path = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.move_to(SQUARE_SIZE / 2.0, 0.0);
-        pb.line_to(SQUARE_SIZE / 2.0, SQUARE_SIZE);
-        pb.move_to(0.0, SQUARE_SIZE / 2.0);
-        pb.line_to(SQUARE_SIZE, SQUARE_SIZE / 2.0);
-        pb.finish().unwrap()
-    };
-
-    let command_line_path = {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.move_to(0.0, 0.0);
-        pb.line_to(SQUARE_SIZE * width as f32, 0.0);
-        pb.finish().unwrap()
-    };
-
-    struct Neighbor {
-        offset: [isize; 2],
-        border_path: tiny_skia::Path,
+    let mut part_styles: Vec<Option<PartStyle>> = vec![None; view.count()];
+    for i in 0..view.count() {
+        let Some(part) = view.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else { continue };
+        let Some(c) = info.color() else { continue };
+        let (solid, plus) = part_colors(c);
+        part_styles[i] = Some(PartStyle {
+            solid,
+            plus,
+            is_solid: info.is_solid(),
+        });
     }
 
-    let neighbors = [
-        Neighbor {
-            offset: [0, -1],
-            border_path: line_path(0.0, 0.0, SQUARE_SIZE, 0.0),
-        },
-        Neighbor {
-            offset: [-1, 0],
-            border_path: line_path(0.0, 0.0, 0.0, SQUARE_SIZE),
-        },
-        Neighbor {
-            offset: [0, 1],
-            border_path: line_path(0.0, SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE),
-        },
-        Neighbor {
-            offset: [1, 0],
-            border_path: line_path(SQUARE_SIZE, 0.0, SQUARE_SIZE, SQUARE_SIZE),
-        },
-    ];
+    let bar = if let Some(sid) = view.style() {
+        ColorBar::Bn3 {
+            extra: assets.style(sid).and_then(|s| s.extra_ncp_color()).map(|c| part_colors(c).1),
+        }
+    } else {
+        let mut colors: Vec<[u8; 4]> = Vec::new();
+        for i in 0..view.count() {
+            let Some(ncp) = view.navicust_part(i) else { continue };
+            let Some(info) = assets.navicust_part(ncp.id) else { continue };
+            let Some(c) = info.color() else { continue };
+            let plus = part_colors(c).1;
+            if !colors.contains(&plus) {
+                colors.push(plus);
+            }
+        }
+        ColorBar::Bn456 { colors }
+    };
 
-    // Pass 1: background squares (skipping the four oob corners when applicable).
-    for y in 0..width {
-        for x in 0..height {
-            if layout.has_out_of_bounds
-                && ((x == 0 && y == 0)
-                    || (x == 0 && y == height - 1)
-                    || (x == width - 1 && y == 0)
-                    || (x == width - 1 && y == height - 1))
-            {
+    GridModel {
+        cols,
+        rows,
+        command_line: layout.command_line,
+        has_out_of_bounds: layout.has_out_of_bounds,
+        background: layout.background.0,
+        occupancy,
+        part_styles,
+        bar,
+    }
+}
+
+/// Draw the whole navicust (background + color bar + grid body + optional
+/// ghost) through `p`. The BN3 style label is NOT drawn here — the image
+/// path bakes it after resize, and the canvas overlays it as text.
+pub fn paint<P: GridPainter>(p: &mut P, m: &GridModel, ghost: Option<&Ghost>) {
+    let g = geometry(m.cols, m.rows);
+    p.fill_rect(0.0, 0.0, g.total_w, g.total_h, m.background);
+    paint_color_bar(p, m, &g);
+    paint_body(p, m, &g);
+    if let Some(gh) = ghost {
+        paint_ghost(p, &g, gh);
+    }
+}
+
+fn paint_color_bar<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
+    let top = PADDING_V as f32 + BORDER_WIDTH / 2.0;
+    match &m.bar {
+        ColorBar::Bn3 { extra } => {
+            const TILE: f32 = SQUARE_SIZE / 4.0;
+            let bar_inner_w = TILE * 4.0 + BORDER_WIDTH;
+            let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
+            let tiles = [
+                Some(part_colors(NavicustPartColor::White).1),
+                Some(part_colors(NavicustPartColor::Pink).1),
+                Some(part_colors(NavicustPartColor::Yellow).1),
+                *extra,
+            ];
+            for (i, tile) in tiles.iter().enumerate() {
+                let x = left + i as f32 * TILE;
+                p.fill_rect(x, top, TILE, SQUARE_SIZE / 2.0, tile.unwrap_or(BG_FILL_COLOR));
+                p.stroke_rect(x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
+            }
+        }
+        ColorBar::Bn456 { colors } => {
+            const TILE: f32 = SQUARE_SIZE * 3.0 / 4.0;
+            let tile_count = std::cmp::max(4, colors.len()) as f32;
+            let bar_inner_w = TILE * tile_count + BORDER_WIDTH * 2.0;
+            let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
+            let inner_w = TILE - BORDER_WIDTH;
+            let inner_h = SQUARE_SIZE / 2.0 - BORDER_WIDTH;
+            // First up-to-4: filled inner + outline.
+            for i in 0..4 {
+                let x = left + i as f32 * TILE;
+                let fill = colors.get(i).copied().unwrap_or(BG_FILL_COLOR);
+                p.fill_rect(x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, fill);
+                p.stroke_rect(x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
+            }
+            // Remaining "bug" colors: filled inner, no outline, after a gap.
+            for (j, c) in colors.iter().skip(4).enumerate() {
+                let x = left + (j as f32 + 4.0) * TILE + BORDER_WIDTH;
+                p.fill_rect(x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, *c);
+            }
+        }
+    }
+}
+
+fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
+    let bx = g.body_origin_x + BORDER_WIDTH / 2.0;
+    let by = g.body_origin_y + BORDER_WIDTH / 2.0;
+    let (cols, rows) = (m.cols, m.rows);
+    let occ = |col: usize, row: usize| m.occupancy.get(row * cols + col).copied().flatten();
+    let cell_xy = |col: usize, row: usize| (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
+    let is_corner = |col: usize, row: usize| {
+        m.has_out_of_bounds && (col == 0 || col == cols - 1) && (row == 0 || row == rows - 1)
+    };
+
+    // Pass 1: background squares.
+    for row in 0..rows {
+        for col in 0..cols {
+            if is_corner(col, row) {
                 continue;
             }
-            let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
-            pixmap.fill_path(
-                &square_path,
-                &bg_fill_paint,
-                tiny_skia::FillRule::Winding,
-                transform,
-                None,
-            );
-            pixmap.stroke_path(&square_path, &border_stroke_paint, &stroke, transform, None);
+            let (x, y) = cell_xy(col, row);
+            p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, BG_FILL_COLOR);
+            p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, BORDER_STROKE_COLOR, BORDER_WIDTH);
         }
     }
 
     // Pass 2: filled part squares.
-    for (i, ncp_i) in materialized.iter().enumerate() {
-        let x = i % width;
-        let y = i / width;
-        let Some(ncp_i) = ncp_i else { continue };
-        let Some(ncp) = view.navicust_part(*ncp_i) else {
-            continue;
-        };
-        let Some(info) = assets.navicust_part(ncp.id) else {
-            continue;
-        };
-        let Some(color) = info.color() else { continue };
-
-        let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
-        let (solid_color, plus_color) = part_colors(color);
-        let fill_paint = solid_paint(solid_color);
-        let stroke_paint = solid_paint(plus_color);
-
-        pixmap.fill_path(&square_path, &fill_paint, tiny_skia::FillRule::Winding, transform, None);
-        pixmap.stroke_path(&square_path, &stroke_paint, &stroke, transform, None);
-        if !info.is_solid() {
-            pixmap.stroke_path(&plus_path, &stroke_paint, &stroke, transform, None);
-        }
-    }
-
-    // Pass 3: borders between different parts.
-    for (i, ncp_i) in materialized.iter().enumerate() {
-        let Some(ncp_i) = *ncp_i else { continue };
-        let x = i % width;
-        let y = i / width;
-        let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
-        for n in neighbors.iter() {
-            let nx = x as isize + n.offset[0];
-            let ny = y as isize + n.offset[1];
-            let mut should_stroke = nx < 0 || nx >= width as isize || ny < 0 || ny >= height as isize;
-            if !should_stroke
-                && materialized[[ny as usize, nx as usize]]
-                    .map(|v| v != ncp_i)
-                    .unwrap_or(true)
-            {
-                should_stroke = true;
-            }
-            if should_stroke {
-                pixmap.stroke_path(&n.border_path, &border_stroke_paint, &stroke, transform, None);
+    for row in 0..rows {
+        for col in 0..cols {
+            let Some(slot) = occ(col, row) else { continue };
+            let Some(style) = m.part_styles.get(slot).and_then(|s| *s) else {
+                continue;
+            };
+            let (x, y) = cell_xy(col, row);
+            p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, style.solid);
+            p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, style.plus, BORDER_WIDTH);
+            if !style.is_solid {
+                p.stroke_line(x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, style.plus, BORDER_WIDTH);
+                p.stroke_line(x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, style.plus, BORDER_WIDTH);
             }
         }
     }
 
-    // Pass 4: command line markers.
-    let command_line_top = layout.command_line as f32 * SQUARE_SIZE;
-    pixmap.stroke_path(
-        &command_line_path,
-        &border_stroke_paint,
-        &stroke,
-        root_transform.pre_translate(0.0, command_line_top + SQUARE_SIZE * 1.0 / 4.0),
-        None,
-    );
-    pixmap.stroke_path(
-        &command_line_path,
-        &border_stroke_paint,
-        &stroke,
-        root_transform.pre_translate(0.0, command_line_top + SQUARE_SIZE * 3.0 / 4.0),
-        None,
-    );
-
-    // Pass 5: out-of-bounds shading (the four 1x1 corner blocks + the
-    // outer band, half-alpha black).
-    if layout.has_out_of_bounds {
-        let path = {
-            let mut pb = tiny_skia::PathBuilder::new();
-            let w = SQUARE_SIZE + BORDER_WIDTH;
-            let h = (height - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
-            // left
-            pb.push_rect(
-                tiny_skia::Rect::from_xywh(-BORDER_WIDTH / 2.0, SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h).unwrap(),
-            );
-            // right
-            pb.push_rect(
-                tiny_skia::Rect::from_xywh(
-                    (width - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                    SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                    w,
-                    h,
-                )
-                .unwrap(),
-            );
-            // top
-            pb.push_rect(
-                tiny_skia::Rect::from_xywh(SQUARE_SIZE - BORDER_WIDTH / 2.0, -BORDER_WIDTH / 2.0, h, w).unwrap(),
-            );
-            // bottom
-            pb.push_rect(
-                tiny_skia::Rect::from_xywh(
-                    SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                    (height - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
-                    h,
-                    w,
-                )
-                .unwrap(),
-            );
-            pb.finish().unwrap()
-        };
-        let mut oob_paint = tiny_skia::Paint::default();
-        oob_paint.set_color_rgba8(0x00, 0x00, 0x00, 0x80);
-        pixmap.fill_path(&path, &oob_paint, tiny_skia::FillRule::Winding, root_transform, None);
+    // Pass 3: borders between distinct parts.
+    for row in 0..rows {
+        for col in 0..cols {
+            let Some(slot) = occ(col, row) else { continue };
+            let (x, y) = cell_xy(col, row);
+            let edges = [
+                ((0i32, -1i32), (x, y, x + SQUARE_SIZE, y)),                          // top
+                ((-1, 0), (x, y, x, y + SQUARE_SIZE)),                                // left
+                ((0, 1), (x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE)),      // bottom
+                ((1, 0), (x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE)),      // right
+            ];
+            for ((dx, dy), (x1, y1, x2, y2)) in edges {
+                let ncol = col as i32 + dx;
+                let nrow = row as i32 + dy;
+                let different = ncol < 0
+                    || nrow < 0
+                    || ncol >= cols as i32
+                    || nrow >= rows as i32
+                    || occ(ncol as usize, nrow as usize) != Some(slot);
+                if different {
+                    p.stroke_line(x1, y1, x2, y2, BORDER_STROKE_COLOR, BORDER_WIDTH);
+                }
+            }
+        }
     }
 
-    let w = pixmap.width();
-    let h = pixmap.height();
-    image::ImageBuffer::from_raw(w, h, pixmap.take()).unwrap()
+    // Pass 4: command-line markers.
+    let cl = by + m.command_line as f32 * SQUARE_SIZE;
+    for frac in [0.25_f32, 0.75] {
+        let ly = cl + SQUARE_SIZE * frac;
+        p.stroke_line(bx, ly, bx + cols as f32 * SQUARE_SIZE, ly, BORDER_STROKE_COLOR, BORDER_WIDTH);
+    }
+
+    // Pass 5: out-of-bounds shading (the outer band, half-alpha black).
+    if m.has_out_of_bounds {
+        let band_w = SQUARE_SIZE + BORDER_WIDTH;
+        let band_h = (rows as f32 - 2.0) * SQUARE_SIZE + BORDER_WIDTH;
+        p.fill_rect(bx - BORDER_WIDTH / 2.0, by + SQUARE_SIZE - BORDER_WIDTH / 2.0, band_w, band_h, OOB_SHADE);
+        p.fill_rect(
+            bx + (cols as f32 - 1.0) * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            by + SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            band_w,
+            band_h,
+            OOB_SHADE,
+        );
+        p.fill_rect(bx + SQUARE_SIZE - BORDER_WIDTH / 2.0, by - BORDER_WIDTH / 2.0, band_h, band_w, OOB_SHADE);
+        p.fill_rect(
+            bx + SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            by + (rows as f32 - 1.0) * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            band_h,
+            band_w,
+            OOB_SHADE,
+        );
+    }
+}
+
+fn paint_ghost<P: GridPainter>(p: &mut P, g: &Geometry, gh: &Ghost) {
+    let bx = g.body_origin_x + BORDER_WIDTH / 2.0;
+    let by = g.body_origin_y + BORDER_WIDTH / 2.0;
+    let tint = [gh.solid[0], gh.solid[1], gh.solid[2], 0x80];
+    let outline = if gh.legal { GHOST_LEGAL } else { GHOST_ILLEGAL };
+    for &(col, row) in &gh.cells {
+        let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
+        p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, tint);
+        p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, outline, BORDER_WIDTH);
+        if !gh.is_solid {
+            p.stroke_line(x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+            p.stroke_line(x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, outline, BORDER_WIDTH);
+        }
+    }
+}
+
+/// tiny-skia backend (clipboard / export path).
+struct SkiaPainter<'a> {
+    pixmap: &'a mut tiny_skia::Pixmap,
+}
+
+fn grid_stroke(width: f32) -> tiny_skia::Stroke {
+    tiny_skia::Stroke {
+        line_cap: tiny_skia::LineCap::Square,
+        width,
+        ..Default::default()
+    }
+}
+
+impl GridPainter for SkiaPainter<'_> {
+    fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
+        let Some(rect) = tiny_skia::Rect::from_xywh(x, y, w, h) else { return };
+        let path = tiny_skia::PathBuilder::from_rect(rect);
+        self.pixmap.fill_path(
+            &path,
+            &solid_paint(color),
+            tiny_skia::FillRule::Winding,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+
+    fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32) {
+        let Some(rect) = tiny_skia::Rect::from_xywh(x, y, w, h) else { return };
+        let path = tiny_skia::PathBuilder::from_rect(rect);
+        self.pixmap
+            .stroke_path(&path, &solid_paint(color), &grid_stroke(width), tiny_skia::Transform::identity(), None);
+    }
+
+    fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32) {
+        let path = line_path(x1, y1, x2, y2);
+        self.pixmap
+            .stroke_path(&path, &solid_paint(color), &grid_stroke(width), tiny_skia::Transform::identity(), None);
+    }
 }
 
 fn solid_paint(rgba: [u8; 4]) -> tiny_skia::Paint<'static> {
@@ -593,4 +566,51 @@ fn line_path(x1: f32, y1: f32, x2: f32, y2: f32) -> tiny_skia::Path {
     pb.move_to(x1, y1);
     pb.line_to(x2, y2);
     pb.finish().unwrap()
+}
+
+/// A small standalone thumbnail of one part's shape — the whole grid-sized
+/// bitmap (uncropped, so every part's thumbnail is the same n×n block size
+/// and lines up in the palette), with filled cells in the part's solid
+/// color and a plus-color outline + separators, on a transparent
+/// background. Rendered at an integer block size and shown 1:1, so the 1px
+/// lines never warp. Returns `None` for an empty bitmap.
+pub fn render_part_thumb(
+    bitmap: &tango_dataview::rom::NavicustBitmap,
+    color: NavicustPartColor,
+    is_solid: bool,
+) -> Option<image::RgbaImage> {
+    const PX: u32 = 8;
+    let (h, w) = bitmap.dim();
+    if !(0..h).any(|y| (0..w).any(|x| bitmap[[y, x]])) {
+        return None;
+    }
+    let (solid, plus) = part_colors(color);
+    let mut img = image::RgbaImage::new(w as u32 * PX, h as u32 * PX);
+    for y in 0..h {
+        for x in 0..w {
+            if !bitmap[[y, x]] {
+                continue;
+            }
+            let ox = x as u32 * PX;
+            let oy = y as u32 * PX;
+            // Draw each block's top + left edge unconditionally — those
+            // become the 1px lines *between* blocks — and the bottom/right
+            // edges only on the part's outer boundary. This keeps every
+            // line (separators, outline, and cross) a uniform 1px with no
+            // doubled-up internal borders.
+            let down = y + 1 < h && bitmap[[y + 1, x]];
+            let right = x + 1 < w && bitmap[[y, x + 1]];
+            for dy in 0..PX {
+                for dx in 0..PX {
+                    let edge = dy == 0 || dx == 0 || (dy == PX - 1 && !down) || (dx == PX - 1 && !right);
+                    // Non-solid (plus) parts get the center cross so they
+                    // read distinctly; 1px, matching the borders.
+                    let cross = !is_solid && (dx == PX / 2 || dy == PX / 2);
+                    let c = if edge || cross { plus } else { solid };
+                    img.put_pixel(ox + dx, oy + dy, image::Rgba(c));
+                }
+            }
+        }
+    }
+    Some(img)
 }

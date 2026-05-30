@@ -605,6 +605,10 @@ impl App {
         self.play.save_view.editing = false;
         self.play.save_view.editing_tags.clear();
         self.play.save_view.library_filter.clear();
+        // Likewise drop any in-progress navicust edit.
+        self.play.save_view.navicust_editing = false;
+        self.play.save_view.held_part = None;
+        self.play.save_view.navicust_filter.clear();
     }
 }
 
@@ -717,6 +721,65 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
                 }
                 Op::Tags(pair) => {
                     chips.set_tag_chip_indexes(folder_idx, pair);
+                }
+            }
+        }
+    }
+}
+
+/// Apply one staged [`tabs::play::NavicustEdit`] to a loaded save's
+/// navicust, in memory. Like [`apply_chip_edit`], this only touches the
+/// part slots; the materialized WRAM grid cache is rebuilt later, at
+/// commit ([`NavicustEditCommit`]). No disk I/O. A no-op on saves whose
+/// navi view isn't the (writable) Navicust variant.
+fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::NavicustEdit) {
+    use tabs::play::NavicustEdit;
+    use tango_dataview::save::{NaviViewMut, NavicustPart};
+
+    // Resolve any reads (empty-slot search, slot count) under an
+    // immutable borrow first, so it's dropped before the mutable view.
+    enum Op {
+        Set { slot: usize, part: NavicustPart },
+        Clear { slot: usize },
+    }
+    let ops: Vec<Op> = match edit {
+        NavicustEdit::AddPart(part) => {
+            // First empty slot; no-op if every slot is full or the part is
+            // already at its per-part copy cap.
+            let slot = match loaded.save.view_navi() {
+                Some(tango_dataview::save::NaviView::Navicust(v)) => {
+                    let copies =
+                        (0..v.count()).filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id)).count();
+                    if copies >= crate::navicust_editor::MAX_COPIES_PER_PART {
+                        return;
+                    }
+                    (0..v.count()).find(|&i| v.navicust_part(i).is_none())
+                }
+                _ => None,
+            };
+            match slot {
+                Some(slot) => vec![Op::Set { slot, part }],
+                None => return,
+            }
+        }
+        NavicustEdit::RemovePart { slot } => vec![Op::Clear { slot }],
+        NavicustEdit::ClearAll => {
+            let count = match loaded.save.view_navi() {
+                Some(tango_dataview::save::NaviView::Navicust(v)) => v.count(),
+                _ => return,
+            };
+            (0..count).map(|slot| Op::Clear { slot }).collect()
+        }
+    };
+
+    if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
+        for op in ops {
+            match op {
+                Op::Set { slot, part } => {
+                    nc.set_navicust_part(slot, Some(part));
+                }
+                Op::Clear { slot } => {
+                    nc.set_navicust_part(slot, None);
                 }
             }
         }
@@ -1329,6 +1392,53 @@ impl App {
                 // Staged edits live only in the in-memory loaded save;
                 // the on-disk file and the scanner cache still hold the
                 // original. Drop and rebuild loaded to revert.
+                self.loaded = None;
+                self.refresh_loaded();
+                iced::Task::none()
+            }
+            E::EditNavicust(edit) => {
+                // Stage one navicust edit into the in-memory loaded save;
+                // the UI reads `loaded.save` directly so it shows live.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    apply_navicust_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
+            E::NavicustEditCommit => {
+                if let Some(loaded) = self.loaded.as_mut() {
+                    if !loaded.save_path.as_os_str().is_empty() {
+                        // Rebuild the materialized WRAM grid cache from the
+                        // edited part slots (disjoint field borrows: assets
+                        // is separate from save), then checksum + write.
+                        // Navicust lives outside the chip anti-cheat mirror,
+                        // so no anticheat rebuild is needed here.
+                        let assets = loaded.assets.as_ref();
+                        if let Some(tango_dataview::save::NaviViewMut::Navicust(mut nc)) =
+                            loaded.save.view_navi_mut()
+                        {
+                            nc.rebuild_materialized(assets);
+                        }
+                        loaded.save.rebuild_checksum();
+                        // Refresh the baked read-only grid image from the
+                        // now-updated save — the commit keeps the in-memory
+                        // Loaded (refresh_loaded early-returns), so without
+                        // this the Navi view shows the pre-edit grid until
+                        // the next reselection.
+                        loaded.rebuild_navicust_render();
+                        let sram = loaded.save.to_sram_dump();
+                        let path = loaded.save_path.clone();
+                        match std::fs::write(&path, sram) {
+                            Ok(()) => {
+                                log::info!("saved edited navicust: {}", path.display());
+                                return self.rescan_off_thread(RescanFollowup::Refresh);
+                            }
+                            Err(e) => log::error!("save edited navicust: {e}"),
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
+            E::NavicustEditCancel => {
                 self.loaded = None;
                 self.refresh_loaded();
                 iced::Task::none()

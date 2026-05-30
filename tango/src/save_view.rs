@@ -145,6 +145,125 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
+/// A part picked up from the palette: its id plus the orientation +
+/// compression it'll be dropped with. Lives in the save-view state
+/// because the palette (which sets it) and the editor canvas (which
+/// draws its ghost) are separate widgets.
+#[derive(Debug, Clone, Copy)]
+pub struct HeldPart {
+    pub id: usize,
+    pub rot: u8,
+    pub compressed: bool,
+}
+
+/// Sort order for the navicust editor's palette pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavicustSort {
+    Id,
+    Name,
+    Color,
+}
+
+impl NavicustSort {
+    pub const ALL: [NavicustSort; 3] = [NavicustSort::Id, NavicustSort::Name, NavicustSort::Color];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            NavicustSort::Id => t!(lang, "navicust-sort-id"),
+            NavicustSort::Name => t!(lang, "navicust-sort-name"),
+            NavicustSort::Color => t!(lang, "navicust-sort-color"),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct NavicustSortChoice {
+    sort: NavicustSort,
+    label: String,
+}
+impl PartialEq for NavicustSortChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.sort == other.sort
+    }
+}
+impl std::fmt::Display for NavicustSortChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// Stable color ordering for the palette's Color sort.
+fn ncp_color_rank(color: &Option<NavicustPartColor>) -> u8 {
+    use NavicustPartColor as N;
+    match color {
+        Some(N::White) => 0,
+        Some(N::Yellow) => 1,
+        Some(N::Pink) => 2,
+        Some(N::Red) => 3,
+        Some(N::Blue) => 4,
+        Some(N::Green) => 5,
+        Some(N::Orange) => 6,
+        Some(N::Purple) => 7,
+        Some(N::Gray) => 8,
+        None => 9,
+    }
+}
+
+/// Every navicust part the ROM defines, as `(id, name, description)`,
+/// filtered by `filter` (case-insensitive name match) and in `sort`
+/// order. Color/solidity are used for the Color sort but the palette
+/// reads the rest (shape, color) from the baked thumbnails. Ties fall
+/// back to id for a stable order.
+fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> Vec<(usize, String, Option<String>)> {
+    let assets = loaded.assets.as_ref();
+    let filter = filter.to_lowercase();
+    struct E {
+        id: usize,
+        name: String,
+        desc: Option<String>,
+        color_rank: u8,
+    }
+    let mut rows: Vec<E> = Vec::new();
+    // Cap how many variants of a given part type (by name) appear, so the
+    // list stays tidy when a ROM carries many near-duplicate color/junk
+    // variants of one part.
+    let mut per_type: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for id in 0..assets.num_navicust_parts() {
+        let Some(info) = assets.navicust_part(id) else { continue };
+        // Skip unused/padding slots: a real part has a color and a
+        // non-empty shape. Placeholder entries have an all-zero bitmap.
+        // Match the (compressed) shape the palette thumbnail shows.
+        let Some(color) = info.color() else { continue };
+        if !info.compressed_bitmap().iter().any(|&set| set) {
+            continue;
+        }
+        let Some(name) = info.name() else { continue };
+        if name.trim().is_empty() {
+            continue;
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
+            continue;
+        }
+        let count = per_type.entry(name.clone()).or_insert(0);
+        if *count >= 9 {
+            continue;
+        }
+        *count += 1;
+        rows.push(E {
+            id,
+            name,
+            desc: info.description(),
+            color_rank: ncp_color_rank(&Some(color)),
+        });
+    }
+    match sort {
+        NavicustSort::Id => {}
+        NavicustSort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id))),
+        NavicustSort::Color => rows.sort_by(|a, b| a.color_rank.cmp(&b.color_rank).then(a.id.cmp(&b.id))),
+    }
+    rows.into_iter().map(|e| (e.id, e.name, e.desc)).collect()
+}
+
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
     if streamer_mode {
@@ -216,6 +335,17 @@ pub struct State {
     pub library_filter: String,
     /// Sort order for the chip library pane.
     pub library_sort: LibrarySort,
+    /// Navicust editor: `true` once the user hits Edit on the Navi tab.
+    /// While set, the Navi body renders the interactive grid + palette
+    /// instead of the read-only display.
+    pub navicust_editing: bool,
+    /// The part currently picked up from the palette (id + orientation
+    /// + compression), drawn as a ghost under the cursor until placed.
+    pub held_part: Option<HeldPart>,
+    /// Filter text for the navicust palette (the editor's right pane).
+    pub navicust_filter: String,
+    /// Sort order for the navicust palette pane.
+    pub navicust_sort: NavicustSort,
 }
 
 impl Default for State {
@@ -234,6 +364,10 @@ impl State {
             editing_tags: Vec::new(),
             library_filter: String::new(),
             library_sort: LibrarySort::Id,
+            navicust_editing: false,
+            held_part: None,
+            navicust_filter: String::new(),
+            navicust_sort: NavicustSort::Id,
         }
     }
 
@@ -323,6 +457,58 @@ impl State {
                 self.library_sort = *s;
                 iced::Task::none()
             }
+            // ----- Navicust editor: state-local folds -----
+            Action::EnterNavicustEdit => {
+                self.navicust_editing = true;
+                self.held_part = None;
+                self.navicust_filter.clear();
+                iced::Task::none()
+            }
+            Action::SaveNavicustEdit | Action::CancelNavicustEdit => {
+                self.navicust_editing = false;
+                self.held_part = None;
+                self.navicust_filter.clear();
+                iced::Task::none()
+            }
+            Action::PickUpPalettePart { id } => {
+                // Toggle: clicking the already-held part deselects it.
+                // Otherwise pick it up in its compressed (smaller) shape —
+                // the form parts are usually placed in.
+                if self.held_part.map_or(false, |h| h.id == *id) {
+                    self.held_part = None;
+                } else {
+                    self.held_part = Some(HeldPart {
+                        id: *id,
+                        rot: 0,
+                        compressed: true,
+                    });
+                }
+                iced::Task::none()
+            }
+            Action::RotateHeld => {
+                if let Some(h) = self.held_part.as_mut() {
+                    h.rot = (h.rot + 1) % 4;
+                }
+                iced::Task::none()
+            }
+            Action::ToggleHeldCompressed => {
+                if let Some(h) = self.held_part.as_mut() {
+                    h.compressed = !h.compressed;
+                }
+                iced::Task::none()
+            }
+            Action::ClearHeld => {
+                self.held_part = None;
+                iced::Task::none()
+            }
+            Action::NavicustFilterChanged(s) => {
+                self.navicust_filter = s.clone();
+                iced::Task::none()
+            }
+            Action::NavicustSortChanged(s) => {
+                self.navicust_sort = *s;
+                iced::Task::none()
+            }
             // EnterEdit needs `&Loaded` (to seed tag state), and the
             // mutation actions become host Effects — all are driven by
             // the embedder (play tab), so they're no-ops here.
@@ -332,6 +518,9 @@ impl State {
             | Action::ClearFolder
             | Action::ToggleRegular { .. }
             | Action::ToggleTag { .. }
+            | Action::PlaceHeld { .. }
+            | Action::PickUpInstalledPart { .. }
+            | Action::ClearNavicust
             | Action::CopyTab(_)
             | Action::CopyTabImage(_)
             | Action::PlayClicked => iced::Task::none(),
@@ -393,6 +582,32 @@ pub enum Action {
     LibraryFilterChanged(String),
     /// Library pane: the sort order changed.
     LibrarySortChanged(LibrarySort),
+    // ----- Navicust editor (only emitted when `editable` is set) -----
+    /// Enter navicust edit mode (Navi tab).
+    EnterNavicustEdit,
+    /// Commit the staged navicust to the .sav on disk, then leave edit mode.
+    SaveNavicustEdit,
+    /// Discard staged navicust edits (reload the on-disk original) and
+    /// leave edit mode.
+    CancelNavicustEdit,
+    /// Palette: pick up part `id` (held at rotation 0, compressed).
+    PickUpPalettePart { id: usize },
+    /// Rotate the held part 90° clockwise.
+    RotateHeld,
+    /// Toggle the held part between its uncompressed and compressed shape.
+    ToggleHeldCompressed,
+    /// Drop the held part without placing it.
+    ClearHeld,
+    /// Place the held part with its center on grid cell `(col, row)`.
+    PlaceHeld { col: u8, row: u8 },
+    /// Pick an installed part back up — it's removed and becomes held.
+    PickUpInstalledPart { slot: usize },
+    /// Remove every installed part.
+    ClearNavicust,
+    /// Palette: the filter text changed.
+    NavicustFilterChanged(String),
+    /// Palette: the sort order changed.
+    NavicustSortChanged(NavicustSort),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -429,10 +644,12 @@ pub fn view<'a>(
         .active_tab
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
-    // True while the folder editor is open. Suppresses the Play
-    // button (single-player would fight the open edit session) and
-    // selects the editable Folder body below.
-    let editing_session = editable && state.editing;
+    // True while one of the in-place editors is open. Suppresses the
+    // Play button (single-player would fight the open edit session) and
+    // selects the editable body below.
+    let folder_editing = editable && state.editing;
+    let navicust_editing = editable && state.navicust_editing;
+    let editing_session = folder_editing || navicust_editing;
 
     // Tab strip: tabs left, extras+Play right. We split into two
     // rows so the tab list can wrap onto a second line without
@@ -492,8 +709,16 @@ pub fn view<'a>(
     // The folder editor lays out two side-by-side panes, each with its
     // own scrollbar, and wants the full available height — so it bypasses
     // the shared Shrink-height body scrollable the read-only views use.
-    if editing_session && active == Tab::Folder {
+    if folder_editing && active == Tab::Folder {
         let editor = render_folder_edit(lang, loaded, state);
+        return column![tab_pane, editor]
+            .spacing(widgets::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
+    if navicust_editing && active == Tab::Navi {
+        let editor = render_navicust_edit(lang, loaded, state);
         return column![tab_pane, editor]
             .spacing(widgets::PANE_GAP)
             .width(Fill)
@@ -609,6 +834,32 @@ fn tab_extras<'a>(
         }
         Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
         Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
+        Tab::Navi if state.navicust_editing => {
+            // Edit mode: edits stage live; Save writes them to the .sav,
+            // Cancel discards them. Any navicust layout (even empty) is
+            // valid to write, so Save is always enabled.
+            Some(
+                row![
+                    widgets::labeled_icon_button(
+                        Icon::X,
+                        t!(lang, "navicust-edit-cancel"),
+                        Action::CancelNavicustEdit,
+                        [4.0, 10.0],
+                        widgets::neutral,
+                    ),
+                    widgets::labeled_icon_button(
+                        Icon::Check,
+                        t!(lang, "navicust-edit-save"),
+                        Action::SaveNavicustEdit,
+                        [4.0, 10.0],
+                        widgets::primary_button,
+                    ),
+                ]
+                .spacing(6)
+                .align_y(iced::Alignment::Center)
+                .into(),
+            )
+        }
         Tab::Navi => {
             // Copy-as-image only emits anything for Navicust saves
             // (LinkNavi has no grid to render). Hide the button
@@ -623,6 +874,16 @@ fn tab_extras<'a>(
                 tail = tail.push(copy_img_btn(Tab::Navi));
             }
             tail = tail.push(copy_btn(Tab::Navi));
+            // Only BN4/5/6 (writable navicust) get the Edit affordance.
+            if editable && loaded.navicust_editable && has_navicust {
+                tail = tail.push(widgets::labeled_icon_button(
+                    Icon::Pencil,
+                    t!(lang, "navicust-edit"),
+                    Action::EnterNavicustEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                ));
+            }
             Some(tail.into())
         }
         _ => None,
@@ -1169,6 +1430,205 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         .style(widgets::pane);
 
     row![folder_pane, library_pane]
+        .spacing(widgets::PANE_GAP)
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+/// The navicust editor: an interactive grid (left) + a part palette
+/// (right). Mirrors [`render_folder_edit`]'s two-pane layout. The grid is
+/// drawn live by [`crate::navicust_editor::EditorGrid`], which shares the
+/// decoration-drawing routine ([`crate::navicust::paint`]) with the
+/// read-only viewer and the clipboard image, and ghosts the held part.
+fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+    use crate::widgets;
+    let Some(tango_dataview::save::NaviView::Navicust(v)) = loaded.save.view_navi() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let assets = loaded.assets.as_ref();
+    let size = v.size();
+    let (cols, rows) = (size[0], size[1]);
+    // BN4/5/6 (the only editable navicust games) always publish a layout.
+    let Some(layout) = assets.navicust_layout() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+
+    // Live grid recomputed from the part slots (NOT the WRAM cache), so
+    // staged edits show immediately. `materialize` takes `[rows, cols]`.
+    let materialized = tango_dataview::navicust::materialize(v.as_ref(), [rows, cols], assets);
+    let model = crate::navicust::build_model(&materialized, &layout, v.as_ref(), assets);
+    let installed = (0..v.count()).filter(|&i| v.navicust_part(i).is_some()).count();
+
+    // Held-part ghost data, resolved from the ROM.
+    let held = state.held_part.and_then(|hp| {
+        let info = assets.navicust_part(hp.id)?;
+        let color = info.color()?;
+        let bitmap = if hp.compressed {
+            info.compressed_bitmap()
+        } else {
+            info.uncompressed_bitmap()
+        };
+        Some(crate::navicust_editor::Held {
+            cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
+            solid: crate::navicust::part_colors(color).0,
+            is_solid: info.is_solid(),
+        })
+    });
+
+    let canvas_el: Element<'a, Action> = crate::navicust_editor::EditorGrid::new(model, held).view();
+
+    // Installed copies per part id — palette entries for parts already at
+    // the per-part cap are shown disabled (not selectable).
+    let mut installed_counts: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for i in 0..v.count() {
+        if let Some(p) = v.navicust_part(i) {
+            *installed_counts.entry(p.id).or_insert(0) += 1;
+        }
+    }
+
+    // ----- Left pane: grid + rotate/compress controls -----
+    let clear_all = widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "navicust-edit-clear"),
+        Action::ClearNavicust,
+        [5.0, 10.0],
+        widgets::danger_button,
+    );
+    let count = text(t!(lang, "navicust-edit-count", count = installed as i64))
+        .size(TEXT_CAPTION)
+        .style(muted_text_style);
+    let grid_header = container(
+        row![
+            text(t!(lang, "navicust-edit-grid")).size(TEXT_BODY),
+            count,
+            Space::new().width(Fill),
+            clear_all,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+
+    let held_opt = state.held_part;
+    let rotate_btn = widgets::labeled_icon_button_maybe(
+        lucide_icons::Icon::RotateCw,
+        t!(lang, "navicust-edit-rotate"),
+        held_opt.map(|_| Action::RotateHeld),
+        [4.0, 10.0],
+        widgets::neutral,
+    );
+    // The button names the action it performs. Parts are held compressed
+    // by default, so the default action is "Uncompress" (expand); only a
+    // held, already-uncompressed part shows "Compress" (shrink).
+    let (compress_icon, compress_label) = if held_opt.map_or(false, |h| !h.compressed) {
+        (lucide_icons::Icon::Shrink, t!(lang, "navicust-edit-compress"))
+    } else {
+        (lucide_icons::Icon::Expand, t!(lang, "navicust-edit-uncompress"))
+    };
+    let compress_btn = widgets::labeled_icon_button_maybe(
+        compress_icon,
+        compress_label,
+        held_opt.map(|_| Action::ToggleHeldCompressed),
+        [4.0, 10.0],
+        widgets::neutral,
+    );
+    let controls = row![rotate_btn, compress_btn].spacing(6).align_y(Alignment::Center);
+    let hint = text(t!(lang, "navicust-edit-hint"))
+        .size(TEXT_CAPTION)
+        .style(muted_text_style);
+    let grid_body = column![container(canvas_el).center_x(Fill), controls, hint]
+        .spacing(8)
+        .align_x(Alignment::Center)
+        .padding([4, 8]);
+    let grid_pane = container(column![grid_header, scrollable(grid_body).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    // ----- Right pane: the part palette (styled as a selectable list) -----
+    let mut palette = column![].spacing(0).padding(0);
+    for (row_idx, (id, name, description)) in sorted_navicust_parts(loaded, state.navicust_sort, &state.navicust_filter)
+        .into_iter()
+        .enumerate()
+    {
+        // Parts already at the per-part copy cap are greyed out + not
+        // selectable.
+        let at_cap =
+            installed_counts.get(&id).copied().unwrap_or(0) >= crate::navicust_editor::MAX_COPIES_PER_PART;
+        // Shape thumbnail (baked at load), fit into a fixed box so rows
+        // align regardless of footprint. Dimmed when at the cap.
+        let icon_el: Element<'a, Action> = match loaded.navicust_part_icons.get(id).and_then(|o| o.as_ref()) {
+            // Shown at the baked pixel size (1:1) so the 1px lines stay
+            // crisp; every part shares the same n×n grid so rows align.
+            Some((w, h, handle)) => Image::new(handle.clone())
+                .width(Length::Fixed(*w as f32))
+                .height(Length::Fixed(*h as f32))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::None)
+                .opacity(if at_cap { 0.35 } else { 1.0 })
+                .into(),
+            None => Space::new().width(Length::Fixed(40.0)).height(Length::Fixed(40.0)).into(),
+        };
+        let name_text = if at_cap {
+            text(name).size(TEXT_BODY).style(muted_text_style)
+        } else {
+            text(name).size(TEXT_BODY)
+        };
+        let mut info_col = column![name_text].spacing(1);
+        if let Some(desc) = description.filter(|d| !d.trim().is_empty()) {
+            info_col = info_col.push(text(desc).size(TEXT_CAPTION).style(muted_text_style));
+        }
+        let content = row![icon_el, info_col].spacing(8).align_y(Alignment::Center);
+        let selected = held_opt.map_or(false, |h| h.id == id);
+        let mut btn = button(content)
+            .padding([6, 10])
+            .width(Fill)
+            .style(widgets::list_item(selected, row_idx));
+        if !at_cap {
+            btn = btn.on_press(Action::PickUpPalettePart { id });
+        }
+        palette = palette.push(btn);
+    }
+    let filter_input = text_input(&t!(lang, "navicust-edit-search"), &state.navicust_filter)
+        .on_input(Action::NavicustFilterChanged)
+        .padding([5, 10])
+        .size(TEXT_BODY)
+        .width(Fill)
+        .style(widgets::chunky_text_input);
+    let sort_options: Vec<NavicustSortChoice> = NavicustSort::ALL
+        .iter()
+        .map(|&sort| NavicustSortChoice {
+            sort,
+            label: sort.label(lang),
+        })
+        .collect();
+    let sort_selected = sort_options.iter().find(|c| c.sort == state.navicust_sort).cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, |c: NavicustSortChoice| {
+        Action::NavicustSortChanged(c.sort)
+    })
+    .padding([5, 10])
+    .text_size(TEXT_BODY)
+    .style(widgets::chunky_pick_list);
+    let palette_header = container(
+        row![
+            text(t!(lang, "navicust-edit-parts")).size(TEXT_BODY),
+            filter_input,
+            text(t!(lang, "folder-edit-sort")).size(TEXT_CAPTION).style(muted_text_style),
+            sort_pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let palette_pane = container(column![palette_header, scrollable(palette).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    row![grid_pane, palette_pane]
         .spacing(widgets::PANE_GAP)
         .width(Fill)
         .height(Fill)

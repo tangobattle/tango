@@ -10,6 +10,7 @@ mod i18n;
 mod input;
 mod input_capture;
 mod navicust;
+mod navicust_editor;
 mod net;
 mod netplay;
 mod patch;

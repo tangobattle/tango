@@ -550,34 +550,40 @@ pub struct NavicustViewMut<'a> {
 }
 
 impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
-    fn set_navicust_part(&mut self, i: usize, part: crate::save::NavicustPart) -> bool {
-        if part.id >= super::NUM_NAVICUST_PARTS {
-            return false;
-        }
+    fn set_navicust_part(&mut self, i: usize, part: Option<crate::save::NavicustPart>) -> bool {
         if i >= (NavicustView { save: self.save }).count() {
             return false;
         }
-
+        let raw = match part {
+            Some(part) => {
+                if part.id >= super::NUM_NAVICUST_PARTS {
+                    return false;
+                }
+                RawNavicustPart {
+                    id: part.id as u8,
+                    col: part.col,
+                    row: part.row,
+                    rot: part.rot,
+                    compressed: if part.compressed { 1 } else { 0 },
+                    ..Default::default()
+                }
+            }
+            // An all-zero part (id 0) reads back as an empty slot.
+            None => RawNavicustPart::default(),
+        };
         self.save.buf[0x4190 + i * std::mem::size_of::<RawNavicustPart>()..][..std::mem::size_of::<RawNavicustPart>()]
-            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
-                id: part.id as u8,
-                col: part.col,
-                row: part.row,
-                rot: part.rot,
-                compressed: if part.compressed { 1 } else { 0 },
-                ..Default::default()
-            }));
+            .copy_from_slice(bytemuck::bytes_of(&raw));
 
         true
     }
 
     fn clear_materialized(&mut self) {
-        self.save.buf[0x4d48..][..0x44].copy_from_slice(&[0; 0x44]);
+        self.save.buf[0x414c..][..0x44].copy_from_slice(&[0; 0x44]);
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
         let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, [7, 7], assets);
-        self.save.buf[0x4d48..][..0x44].copy_from_slice(
+        self.save.buf[0x414c..][..0x44].copy_from_slice(
             &materialized
                 .into_iter()
                 .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)

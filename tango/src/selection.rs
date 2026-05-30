@@ -29,6 +29,11 @@ pub struct Loaded {
     /// the probe needs `&mut save`, but the per-frame view only holds
     /// `&Loaded`. Drives whether the Folder tab shows the Edit button.
     pub chips_editable: bool,
+    /// Whether this save supports in-place navicust editing — i.e.
+    /// `save.view_navi_mut()` yields the `Navicust` variant (BN4/5/6).
+    /// Cached at build time (the probe needs `&mut save`); drives
+    /// whether the Navi tab shows the Edit button.
+    pub navicust_editable: bool,
     /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
@@ -40,6 +45,11 @@ pub struct Loaded {
     /// Precomputed NaviCust grid image for the Navicust variant. None
     /// for LinkNavi games or when no navicust_layout is published.
     pub navicust_render: Option<NavicustRender>,
+    /// Per-part shape thumbnails (compressed footprint, in the part's
+    /// color) for the navicust editor palette, as `(width, height,
+    /// handle)`. Indexed by part id; `None` = no shape / no color. Baked
+    /// once here so the per-frame palette just clones handles.
+    pub navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>>,
     /// Logos for the Cover tab, as `(width, height, handle)`. The
     /// loaded game's own variant comes first; any sibling variants in
     /// the family follow (so families with two logos — Gregar/Falzar
@@ -107,6 +117,13 @@ impl Loaded {
         // the mutable chip view has no side effects, so this is a pure
         // capability check we can cache on the immutable Loaded.
         let chips_editable = save.view_chips_mut().is_some();
+        // Navicust editability: only the `Navicust` navi variant (BN4/5/6)
+        // is writable. LinkNavi games and read-only-navicust BN3 stay
+        // off. Same pure-capability probe pattern as `chips_editable`.
+        let navicust_editable = matches!(
+            save.view_navi_mut(),
+            Some(tango_dataview::save::NaviViewMut::Navicust(_))
+        );
 
         let wram = save.as_raw_wram().into_owned();
         let charset_owned: Option<Vec<&str>> = applied_patch
@@ -155,6 +172,19 @@ impl Loaded {
         // Render the NaviCust grid once per save+game.
         let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref(), game);
 
+        // Bake a shape thumbnail per navicust part for the editor palette.
+        let mut navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>> =
+            Vec::with_capacity(assets.num_navicust_parts());
+        for id in 0..assets.num_navicust_parts() {
+            let icon = assets.navicust_part(id).and_then(|info| {
+                let color = info.color()?;
+                let img = crate::navicust::render_part_thumb(&info.compressed_bitmap(), color, info.is_solid())?;
+                let (w, h) = (img.width(), img.height());
+                Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
+            });
+            navicust_part_icons.push(icon);
+        }
+
         // Logos for the Cover tab. The loaded variant goes first; its
         // family siblings (the other color version, where one exists)
         // follow so the Cover tab can fan both out. The per-game
@@ -182,6 +212,7 @@ impl Loaded {
             save_path,
             save,
             chips_editable,
+            navicust_editable,
             patch: applied_patch,
             assets,
             chip_icons,
@@ -189,8 +220,18 @@ impl Loaded {
             element_icons,
             navi_emblems,
             navicust_render,
+            navicust_part_icons,
             logos,
         }
+    }
+
+    /// Recompute the baked NaviCust grid image from the current
+    /// in-memory save. The navicust editor commits edits into
+    /// `self.save` (and rebuilds the materialized WRAM cache) without
+    /// triggering a full `Loaded` rebuild, so the cached image would
+    /// otherwise stay stale until the next reselection.
+    pub fn rebuild_navicust_render(&mut self) {
+        self.navicust_render = build_navicust_render(self.save.as_ref(), self.assets.as_ref(), self.game);
     }
 
     /// Build a Loaded for the local side of a replay — used by the

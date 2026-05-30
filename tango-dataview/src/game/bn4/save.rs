@@ -422,23 +422,29 @@ pub struct NavicustViewMut<'a> {
     save: &'a mut Save,
 }
 impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
-    fn set_navicust_part(&mut self, i: usize, part: crate::save::NavicustPart) -> bool {
-        if part.id >= super::NUM_NAVICUST_PARTS {
-            return false;
-        }
+    fn set_navicust_part(&mut self, i: usize, part: Option<crate::save::NavicustPart>) -> bool {
         if i >= (NavicustView { save: self.save }).count() {
             return false;
         }
-
+        let raw = match part {
+            Some(part) => {
+                if part.id >= super::NUM_NAVICUST_PARTS {
+                    return false;
+                }
+                RawNavicustPart {
+                    id: part.id as u8,
+                    col: part.col,
+                    row: part.row,
+                    rot: part.rot,
+                    compressed: if part.compressed { 1 } else { 0 },
+                    ..Default::default()
+                }
+            }
+            // An all-zero part (id 0) reads back as an empty slot.
+            None => RawNavicustPart::default(),
+        };
         self.save.buf[0x4564 + i * std::mem::size_of::<RawNavicustPart>()..][..std::mem::size_of::<RawNavicustPart>()]
-            .copy_from_slice(bytemuck::bytes_of(&RawNavicustPart {
-                id: part.id as u8,
-                col: part.col,
-                row: part.row,
-                rot: part.rot,
-                compressed: if part.compressed { 1 } else { 0 },
-                ..Default::default()
-            }));
+            .copy_from_slice(bytemuck::bytes_of(&raw));
 
         true
     }

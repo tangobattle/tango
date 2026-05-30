@@ -302,7 +302,9 @@ pub trait NavicustViewMut<'a> {
         false
     }
 
-    fn set_navicust_part(&mut self, i: usize, part: NavicustPart) -> bool;
+    /// Write slot `i`. `None` empties the slot. Returns `false` (no
+    /// write) if `i` is out of range or the part id is invalid.
+    fn set_navicust_part(&mut self, i: usize, part: Option<NavicustPart>) -> bool;
     fn clear_materialized(&mut self);
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
