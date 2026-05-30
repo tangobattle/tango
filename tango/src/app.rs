@@ -762,7 +762,27 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
                 None => return,
             }
         }
-        NavicustEdit::RemovePart { slot } => vec![Op::Clear { slot }],
+        NavicustEdit::RemovePart { slot } => {
+            // Drop the part and shift everything after it up one slot, so
+            // the placement order (which drives the color bar) has no gap.
+            let parts: Vec<Option<NavicustPart>> = match loaded.save.view_navi() {
+                Some(tango_dataview::save::NaviView::Navicust(v)) => (0..v.count()).map(|i| v.navicust_part(i)).collect(),
+                _ => return,
+            };
+            let mut parts = parts;
+            if slot < parts.len() {
+                parts.remove(slot);
+                parts.push(None);
+            }
+            parts
+                .into_iter()
+                .enumerate()
+                .map(|(i, p)| match p {
+                    Some(part) => Op::Set { slot: i, part },
+                    None => Op::Clear { slot: i },
+                })
+                .collect()
+        }
         NavicustEdit::ClearAll => {
             let count = match loaded.save.view_navi() {
                 Some(tango_dataview::save::NaviView::Navicust(v)) => v.count(),
