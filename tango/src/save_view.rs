@@ -1079,14 +1079,25 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         [5.0, 10.0],
         widgets::neutral,
     );
+    // "Folder" label, then a smaller count that turns red while the
+    // folder is short of the 30 chips a legal folder needs.
+    let count = text(t!(lang, "folder-edit-count", count = filled as i64))
+        .size(TEXT_CAPTION)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(if filled < 30 {
+                theme.palette().danger
+            } else {
+                muted_color(theme)
+            }),
+        });
     let folder_header = container(
         row![
-            text(t!(lang, "folder-edit-folder", count = filled as i64))
-                .size(TEXT_BODY)
-                .width(Fill),
+            text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
+            count,
+            Space::new().width(Fill),
             clear_all,
         ]
-        .spacing(10)
+        .spacing(8)
         .align_y(Alignment::Center),
     )
     .width(Fill)
