@@ -124,15 +124,15 @@ pub struct State {
     /// Ellipsis-anchored "more options" popover. The trigger lives
     /// in every session type's controls strip; the contents vary
     /// (replay gets the speed picker + Close; SP gets just
-    /// Settings + Close; PvP swaps Close for the red Forfeit
+    /// Settings + Close; PvP swaps Close for the red Disconnect
     /// item). Closes when any item is picked, the session is
     /// closed, or the trigger is toggled again.
     pub show_options_menu: bool,
     /// PvP-only: the "are you sure?" modal that gates the
-    /// Forfeit item in the options menu. Forfeit tears the
+    /// Disconnect item in the options menu. Disconnect tears the
     /// session down mid-match (same as Close), so the confirm
     /// keeps a stray click from costing the user a real game.
-    pub show_forfeit_confirm: bool,
+    pub show_disconnect_confirm: bool,
     /// Latest GBA framebuffer rebuilt into an iced image handle.
     /// Refreshed in [`Message::UpdateFramebuffer`] (which the
     /// session subscription fires once per emulator vblank); the
@@ -157,7 +157,7 @@ impl Default for State {
             speed_up_engaged: false,
             show_settings: false,
             show_options_menu: false,
-            show_forfeit_confirm: false,
+            show_disconnect_confirm: false,
             current_handle: None,
         }
     }
@@ -199,17 +199,17 @@ pub enum Message {
     /// Open/close the ellipsis-anchored options popover.
     ToggleOptionsMenu,
     /// User pressed Esc inside a session. Closes whichever overlay is on
-    /// top (settings modal, forfeit confirm, options popover) if any,
+    /// top (settings modal, disconnect confirm, options popover) if any,
     /// otherwise opens the options popover. Routed here rather than from
     /// the InputCapture so the decision sees the current overlay state.
     EscPressed,
-    /// Show the "really forfeit?" modal. PvP-only; picked from
-    /// the options menu's Forfeit item, which also dismisses
+    /// Show the "really disconnect?" modal. PvP-only; picked from
+    /// the options menu's Disconnect item, which also dismisses
     /// the popover.
-    OpenForfeitConfirm,
-    /// Dismiss the forfeit confirm without forfeiting (the
+    OpenDisconnectConfirm,
+    /// Dismiss the disconnect confirm without disconnecting (the
     /// Cancel button + the modal backdrop both fire this).
-    CloseForfeitConfirm,
+    CloseDisconnectConfirm,
     /// Show/hide the opponent's reveal-setup side panel. PvP-only.
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel. PvP-only.
@@ -276,7 +276,7 @@ impl State {
                 self.active = None;
                 self.current_handle = None;
                 self.show_options_menu = false;
-                self.show_forfeit_confirm = false;
+                self.show_disconnect_confirm = false;
             }
             Message::Input(ev) => {
                 match ev {
@@ -350,18 +350,18 @@ impl State {
             Message::EscPressed => {
                 if self.show_settings {
                     self.show_settings = false;
-                } else if self.show_forfeit_confirm {
-                    self.show_forfeit_confirm = false;
+                } else if self.show_disconnect_confirm {
+                    self.show_disconnect_confirm = false;
                 } else {
                     self.show_options_menu = !self.show_options_menu;
                 }
             }
-            Message::OpenForfeitConfirm => {
+            Message::OpenDisconnectConfirm => {
                 self.show_options_menu = false;
-                self.show_forfeit_confirm = true;
+                self.show_disconnect_confirm = true;
             }
-            Message::CloseForfeitConfirm => {
-                self.show_forfeit_confirm = false;
+            Message::CloseDisconnectConfirm => {
+                self.show_disconnect_confirm = false;
             }
             Message::NoOp => {}
             Message::ToggleOpponentPanel => {
@@ -400,7 +400,7 @@ impl State {
                         self.active = None;
                         self.current_handle = None;
                         self.show_options_menu = false;
-                        self.show_forfeit_confirm = false;
+                        self.show_disconnect_confirm = false;
                     } else {
                         let pixels = self.vbuf.lock().unwrap().clone();
                         self.current_handle = Some(build_frame_handle(pixels, video_filter));
@@ -517,10 +517,7 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 /// + the latency-driven "suggest" wand. Frame delay is purely local display lag,
 /// so dragging it mid-match takes effect on the next rendered frame with no peer
 /// coordination.
-fn frame_delay_control<'a>(
-    lang: &'a LanguageIdentifier,
-    pvp: &'a pvp_session::PvpSession,
-) -> Element<'a, Message> {
+fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
     let latency = pvp.latency_blocking();
 
@@ -659,39 +656,40 @@ pub fn view<'a>(
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let ctrl_icon_btn_maybe = |icon: Icon,
-                               label: String,
-                               msg: Option<Message>,
-                               style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
-     -> Element<'a, Message> {
-        let mut btn = button(icon.widget().size(CTRL_ICON))
-            .padding(CTRL_PAD)
-            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-            .style(style);
-        if let Some(m) = msg {
-            btn = btn.on_press(m);
-        }
-        iced::widget::tooltip(
-            btn,
-            iced::widget::container(text(label).size(TEXT_CAPTION))
-                .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
+    let ctrl_icon_btn_maybe =
+        |icon: Icon,
+         label: String,
+         msg: Option<Message>,
+         style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
+         -> Element<'a, Message> {
+            let mut btn = button(icon.widget().size(CTRL_ICON))
+                .padding(CTRL_PAD)
+                .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+                .style(style);
+            if let Some(m) = msg {
+                btn = btn.on_press(m);
+            }
+            iced::widget::tooltip(
+                btn,
+                iced::widget::container(text(label).size(TEXT_CAPTION))
+                    .padding(6)
+                    .style(|theme: &iced::Theme| {
+                        let p = theme.extended_palette();
+                        iced::widget::container::Style {
+                            background: Some(iced::Background::Color(p.background.strong.color)),
+                            text_color: Some(p.background.strong.text),
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4)
-        .into()
-    };
+                        }
+                    }),
+                iced::widget::tooltip::Position::Top,
+            )
+            .gap(4)
+            .into()
+        };
     let ctrl_icon_btn_styled =
         |icon: Icon,
          label: String,
@@ -753,7 +751,7 @@ pub fn view<'a>(
     // Same widget across all session types — Replay puts a speed
     // picker in the popover body, SP/PvP don't; all three surface
     // Settings + a tear-down item (Close for SP/Replay, red
-    // Forfeit for PvP).
+    // Disconnect for PvP).
     let options_btn = ctrl_icon_btn(Icon::Ellipsis, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
 
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
@@ -851,7 +849,8 @@ pub fn view<'a>(
         // as a perfect circle (square padding + huge radius) so
         // it reads as a console transport button instead of a
         // generic pill.
-        let base_style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style = if paused {
+        let base_style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style = if paused
+        {
             widgets::primary_button
         } else {
             widgets::neutral
@@ -988,7 +987,7 @@ pub fn view<'a>(
         controls = controls.push(toggle);
     }
     // Options ellipsis is the unified entry point to session-level
-    // commands (Settings, replay speed, Close / Forfeit). Always
+    // commands (Settings, replay speed, Close / Disconnect). Always
     // last so the popover lands above a consistent right-edge
     // anchor regardless of session type.
     controls = controls.push(options_btn);
@@ -1005,10 +1004,10 @@ pub fn view<'a>(
     // Content varies by session type:
     //   Replay → Settings, Speed picker, Close
     //   SP     → Settings, Close
-    //   PvP    → Settings, (red) Forfeit
+    //   PvP    → Settings, (red) Disconnect
     let options_overlay: Option<Element<'a, Message>> = if state.show_options_menu {
         // Row item width. Wider than the historical 120px speed
-        // picker so "Forfeit" + its icon sit on one line without
+        // picker so "Disconnect" + its icon sit on one line without
         // wrapping in any locale.
         const ROW_WIDTH: f32 = 160.0;
         // Total popover width = row + the panel's 6px-each-side
@@ -1018,7 +1017,7 @@ pub fn view<'a>(
         const POPOVER_WIDTH: f32 = ROW_WIDTH + 12.0;
         // Menu-row hover/press/selected tints. Accent drives both
         // the selected-text color and the wash behind hover/press —
-        // pass `palette.primary` for normal rows, the Forfeit red
+        // pass `palette.primary` for normal rows, the Disconnect red
         // for the destructive row. Hover/press alphas are pushed
         // high enough (0.28 / 0.45 on dark) that the red wash on
         // the panel plate actually reads as red, not as a slightly
@@ -1053,7 +1052,7 @@ pub fn view<'a>(
         // uses the standard primary accent (hover/press wash only,
         // label in normal text color); `Some(color)` swaps both the
         // icon, the resting label color, AND the hover/press wash
-        // to the tint — used for Forfeit's danger red so the whole
+        // to the tint — used for Disconnect's danger red so the whole
         // row reads as destructive before the user even hovers.
         let action_row = |icon: Icon, label: String, msg: Message, tint: Option<iced::Color>| -> Element<'a, Message> {
             let tinted_text_style = move |theme: &iced::Theme| iced::widget::text::Style {
@@ -1166,7 +1165,7 @@ pub fn view<'a>(
             None,
         ));
 
-        // Tear-down item. PvP gets the red Forfeit confirm gate;
+        // Tear-down item. PvP gets the red Disconnect confirm gate;
         // SP and Replay get a direct Close (no gate — neither path
         // sacrifices game state on tear-down). Color matches
         // `widgets::pvp_red_button` so the menu's destructive row,
@@ -1175,9 +1174,9 @@ pub fn view<'a>(
         // Settings and the tear-down — they're sibling menu items.
         let tear_down: Element<'a, Message> = match session {
             ActiveSession::PvP(_) => action_row(
-                Icon::Flag,
-                t!(lang, "playback-forfeit"),
-                Message::OpenForfeitConfirm,
+                Icon::Unplug,
+                t!(lang, "playback-disconnect"),
+                Message::OpenDisconnectConfirm,
                 Some(iced::Color::from_rgb(0.85, 0.22, 0.28)),
             ),
             _ => action_row(Icon::X, t!(lang, "playback-close"), Message::Close, None),
@@ -1208,31 +1207,31 @@ pub fn view<'a>(
         None
     };
 
-    // Forfeit confirmation modal (PvP-only). Centered panel with a
+    // Disconnect confirmation modal (PvP-only). Centered panel with a
     // dimmed click-to-dismiss backdrop — same shape as app.rs's
     // in-session Settings modal so the two read as the same family
     // of "this interrupts what you're doing" dialogs. Sits above
     // the options popover in the stack so it covers the menu if
     // the user somehow re-opened it.
-    let forfeit_overlay: Option<Element<'a, Message>> =
-        if state.show_forfeit_confirm && matches!(session, ActiveSession::PvP(_)) {
-            let title = text(t!(lang, "playback-forfeit-prompt")).size(TEXT_BODY + 4.0);
-            let body_text = text(t!(lang, "playback-forfeit-detail")).style(widgets::muted_text_style);
+    let disconnect_overlay: Option<Element<'a, Message>> =
+        if state.show_disconnect_confirm && matches!(session, ActiveSession::PvP(_)) {
+            let title = text(t!(lang, "playback-disconnect-prompt")).size(TEXT_BODY + 4.0);
+            let body_text = text(t!(lang, "playback-disconnect-detail")).style(widgets::muted_text_style);
             let cancel_btn = widgets::labeled_icon_button(
                 Icon::X,
                 t!(lang, "playback-cancel"),
-                Message::CloseForfeitConfirm,
+                Message::CloseDisconnectConfirm,
                 [8.0, 14.0],
                 widgets::neutral,
             );
-            let forfeit_btn = widgets::labeled_icon_button(
-                Icon::Flag,
-                t!(lang, "playback-forfeit"),
+            let disconnect_btn = widgets::labeled_icon_button(
+                Icon::Unplug,
+                t!(lang, "playback-disconnect"),
                 Message::Close,
                 [8.0, 14.0],
                 widgets::danger_button,
             );
-            let buttons = row![horizontal_space(), cancel_btn, forfeit_btn]
+            let buttons = row![horizontal_space(), cancel_btn, disconnect_btn]
                 .spacing(8)
                 .align_y(Alignment::Center);
             let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
@@ -1258,7 +1257,7 @@ pub fn view<'a>(
                         ..Default::default()
                     }),
             )
-            .on_press(|_| Message::CloseForfeitConfirm);
+            .on_press(|_| Message::CloseDisconnectConfirm);
             Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
         } else {
             None
@@ -1268,7 +1267,7 @@ pub fn view<'a>(
     if let Some(o) = options_overlay {
         stacked = stacked.push(o);
     }
-    if let Some(o) = forfeit_overlay {
+    if let Some(o) = disconnect_overlay {
         stacked = stacked.push(o);
     }
     stacked.into()
