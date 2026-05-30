@@ -784,6 +784,14 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
             }
         }
     }
+
+    // Rebuild the materialized grid + color bar in the in-memory save so
+    // the editor (which renders the color bar straight from the save) shows
+    // the change live. Disjoint field borrows: assets vs save.
+    let assets = loaded.assets.as_ref();
+    if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
+        nc.rebuild_materialized(assets);
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]

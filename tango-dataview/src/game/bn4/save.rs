@@ -385,6 +385,13 @@ struct RawNavicustPart {
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x8);
 
+/// The navicust color bar: 6 bytes holding the distinct part colors in
+/// placement order (color encoding shared with `rom::navicust_part_color`),
+/// 0-padded. Sits before the shiftable region, so the save shift doesn't
+/// move it.
+const NAVICUST_COLOR_BAR_OFFSET: usize = 0x190;
+const NAVICUST_COLOR_BAR_LEN: usize = 6;
+
 impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
     fn size(&self) -> [usize; 2] {
         [5, 5]
@@ -415,6 +422,13 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
 
     fn materialized(&self) -> crate::navicust::MaterializedNavicust {
         crate::navicust::materialized_from_wram(&self.save.buf[0x4540..][..(5 * 5)], [5, 5])
+    }
+
+    fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>> {
+        self.save.buf[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN]
+            .iter()
+            .map(|&b| super::rom::navicust_part_color(b))
+            .collect()
     }
 }
 
@@ -451,6 +465,7 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
 
     fn clear_materialized(&mut self) {
         self.save.buf[0x4540..][..0x24].copy_from_slice(&[0; 0x24]);
+        self.save.buf[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].copy_from_slice(&[0; NAVICUST_COLOR_BAR_LEN]);
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
@@ -462,7 +477,15 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
                 .chain(std::iter::repeat(0))
                 .take(0x24)
                 .collect::<Vec<_>>(),
-        )
+        );
+
+        // Rebuild the color bar: distinct part colors in placement order.
+        let bar = crate::navicust::materialize_color_bar(&NavicustView { save: self.save }, assets);
+        let mut bytes = [0u8; NAVICUST_COLOR_BAR_LEN];
+        for (slot, color) in bar.iter().flatten().enumerate().take(NAVICUST_COLOR_BAR_LEN) {
+            bytes[slot] = crate::navicust::color_to_raw(color, super::rom::navicust_part_color);
+        }
+        self.save.buf[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].copy_from_slice(&bytes);
     }
 }
 pub struct PatchCard4sView<'a> {

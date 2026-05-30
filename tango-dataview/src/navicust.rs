@@ -38,6 +38,39 @@ pub fn materialized_from_wram(buf: &[u8], size: [usize; 2]) -> MaterializedNavic
     ndarray::Array2::from_shape_vec(size, buf.iter().map(|v| v.checked_sub(1).map(|v| v as usize)).collect()).unwrap()
 }
 
+/// The navicust "color bar": the distinct colors of the installed parts,
+/// in the order the parts are placed (slot order). The game stores (and
+/// draws) this at a fixed save offset; it isn't derived at runtime, so
+/// the editor must rebuild it when parts change. Returned as
+/// `Vec<Option<_>>` to mirror the stored slots (a read of an arbitrary
+/// save can have `None` gaps).
+pub fn materialize_color_bar(
+    navicust_view: &dyn crate::save::NavicustView,
+    assets: &dyn crate::rom::Assets,
+) -> Vec<Option<crate::rom::NavicustPartColor>> {
+    let mut colors: Vec<crate::rom::NavicustPartColor> = Vec::new();
+    for i in 0..navicust_view.count() {
+        let Some(ncp) = navicust_view.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(ncp.id) else { continue };
+        let Some(c) = info.color() else { continue };
+        if !colors.contains(&c) {
+            colors.push(c);
+        }
+    }
+    colors.into_iter().map(Some).collect()
+}
+
+/// Inverse of a byte→color decode (each game's `rom::navicust_part_color`):
+/// the raw byte that maps to `color`, or 0 if none. Lets the save layer
+/// reuse the ROM's color decoding for writing the color bar instead of
+/// duplicating the mapping.
+pub fn color_to_raw(
+    color: &crate::rom::NavicustPartColor,
+    from_raw: impl Fn(u8) -> Option<crate::rom::NavicustPartColor>,
+) -> u8 {
+    (1u8..=0xff).find(|&b| from_raw(b).as_ref() == Some(color)).unwrap_or(0)
+}
+
 pub fn materialize(
     navicust_view: &dyn crate::save::NavicustView,
     max_size: [usize; 2],

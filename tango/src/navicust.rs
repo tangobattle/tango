@@ -324,16 +324,15 @@ pub fn build_model(
             extra: assets.style(sid).and_then(|s| s.extra_ncp_color()).map(|c| part_colors(c).1),
         }
     } else {
-        let mut colors: Vec<[u8; 4]> = Vec::new();
-        for i in 0..view.count() {
-            let Some(ncp) = view.navicust_part(i) else { continue };
-            let Some(info) = assets.navicust_part(ncp.id) else { continue };
-            let Some(c) = info.color() else { continue };
-            let plus = part_colors(c).1;
-            if !colors.contains(&plus) {
-                colors.push(plus);
-            }
-        }
+        // Render the color bar straight from the save (its stored bytes),
+        // not by recomputing it here — so it matches the in-game bar
+        // exactly. The editor keeps the stored bar current as parts change.
+        let colors = view
+            .navicust_color_bar()
+            .into_iter()
+            .flatten()
+            .map(|c| part_colors(c).1)
+            .collect();
         ColorBar::Bn456 { colors }
     };
 

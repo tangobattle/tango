@@ -357,6 +357,21 @@ struct RawNavicustPart {
 }
 const _: () = assert!(std::mem::size_of::<RawNavicustPart>() == 0x10);
 
+/// Decode a raw navicust-part color byte. Shared with the save layer
+/// (the color bar uses the same encoding).
+pub fn navicust_part_color(raw: u8) -> Option<crate::rom::NavicustPartColor> {
+    use crate::rom::NavicustPartColor as C;
+    Some(match raw {
+        1 => C::White,
+        2 => C::Yellow,
+        3 => C::Pink,
+        4 => C::Red,
+        5 => C::Blue,
+        6 => C::Green,
+        _ => return None,
+    })
+}
+
 impl<'a> NavicustPart<'a> {
     fn raw(&'a self) -> RawNavicustPart {
         bytemuck::pod_read_unaligned(
@@ -416,18 +431,7 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn color(&self) -> Option<crate::rom::NavicustPartColor> {
-        let raw = self.raw();
-        Some(match raw.color {
-            1 => crate::rom::NavicustPartColor::White,
-            2 => crate::rom::NavicustPartColor::Yellow,
-            3 => crate::rom::NavicustPartColor::Pink,
-            4 => crate::rom::NavicustPartColor::Red,
-            5 => crate::rom::NavicustPartColor::Blue,
-            6 => crate::rom::NavicustPartColor::Green,
-            _ => {
-                return None;
-            }
-        })
+        navicust_part_color(self.raw().color)
     }
 
     fn is_solid(&self) -> bool {
