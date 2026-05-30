@@ -3,7 +3,7 @@
 //! thread-local check inside `Sdl::new`), so we run [`init`] once
 //! from the iced/winit main thread and stash the handle in a
 //! `Send`-newtype'd global. Callers grab subsystems (audio,
-//! gamepad, event pump, ...) via [`with_sdl`] — all of which
+//! gamepad, event pump, ...) via [`sdl`] — all of which
 //! must also run on the main thread.
 //!
 //! Lives in its own module so audio + gamepad don't both try to
@@ -11,7 +11,7 @@
 
 use std::thread::ThreadId;
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use sdl3::Sdl;
 
 use crate::audio;
@@ -21,18 +21,18 @@ struct SendSdl {
     owner: ThreadId,
 }
 
-/// SAFETY: [`with_sdl`] panics if accessed from any thread other
-/// than the one that constructed the [`SendSdl`], so the `!Send`
-/// `Sdl` is only ever touched on its owning thread despite the
-/// wrapper itself being `Send`-able into the global `Mutex`.
+/// SAFETY: [`sdl`] panics if accessed from any thread other than
+/// the one that constructed the [`SendSdl`], so the `!Send` `Sdl`
+/// is only ever touched on its owning thread despite the wrapper
+/// itself being `Send`-able into the global `Mutex`.
 unsafe impl Send for SendSdl {}
 
 static SDL: Mutex<Option<SendSdl>> = Mutex::new(None);
 
 /// Initialize SDL3 once at startup on the main thread. Failures
-/// are logged and turn [`with_sdl`] into a `None`-returning
-/// no-op — callers that depend on SDL (audio, gamepad) fall back
-/// to silent / unavailable modes without taking the app down.
+/// are logged and turn [`sdl`] into a `None`-returning no-op —
+/// callers that depend on SDL (audio, gamepad) fall back to
+/// silent / unavailable modes without taking the app down.
 pub fn init() {
     // Per the SDL3 gamepad example: needed on Windows so the joystick
     // subsystem spins up its own polling thread when we don't have a
@@ -58,18 +58,40 @@ pub fn init() {
     });
 }
 
-/// Run `f` with a borrow of the global `Sdl`. Returns `None` if
-/// [`init`] never succeeded. Panics if called from a thread other
-/// than the one that ran [`init`] — sdl3's own checks would also
-/// catch this, but a clear panic message helps.
-pub fn with_sdl<R>(f: impl FnOnce(&Sdl) -> R) -> Option<R> {
+/// RAII borrow of the global [`Sdl`], returned by [`sdl`]. Deref
+/// to reach the subsystems: `sdl.audio()`, `sdl.gamepad()`,
+/// `sdl.event_pump()`, ...
+///
+/// Holds a `MutexGuard`, which makes `SdlGuard` `!Send` for free —
+/// so a borrow of the `Sdl` can't be smuggled off the thread it
+/// was taken on (the same thread [`init`] ran on). Hold it only as
+/// briefly as you need: it keeps the global mutex locked, and
+/// calling [`sdl`] again while one is alive deadlocks.
+pub struct SdlGuard {
+    guard: MutexGuard<'static, Option<SendSdl>>,
+}
+
+impl std::ops::Deref for SdlGuard {
+    type Target = Sdl;
+    fn deref(&self) -> &Sdl {
+        // `sdl` only builds a guard when the global is `Some`, and
+        // we hold the lock for the guard's whole life, so it can't
+        // have been cleared out from under us.
+        &self.guard.as_ref().unwrap().sdl
+    }
+}
+
+/// Borrow the global [`Sdl`]. Returns `None` if [`init`] never
+/// succeeded. Panics if called from a thread other than the one
+/// that ran [`init`] — sdl3's own checks would also catch this,
+/// but a clear panic message helps.
+pub fn sdl() -> Option<SdlGuard> {
     let guard = SDL.lock().unwrap();
-    let s = guard.as_ref()?;
+    let owner = guard.as_ref()?.owner;
     let cur = std::thread::current().id();
     assert_eq!(
-        cur, s.owner,
-        "sdl context accessed from thread {cur:?} but was initialized on {:?}",
-        s.owner,
+        cur, owner,
+        "sdl context accessed from thread {cur:?} but was initialized on {owner:?}",
     );
-    Some(f(&s.sdl))
+    Some(SdlGuard { guard })
 }

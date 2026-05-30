@@ -94,10 +94,13 @@ static GAMEPAD_CONTEXT: Mutex<Option<SendContext>> = Mutex::new(None);
 /// Failures are logged and turn subsequent [`pump`] calls into
 /// no-ops — the app keeps running without gamepad support.
 pub fn init() {
-    match sdl_init::with_sdl(build_context) {
-        Some(Ok(ctx)) => *GAMEPAD_CONTEXT.lock().unwrap() = Some(SendContext::new(ctx)),
-        Some(Err(e)) => log::warn!("sdl3 gamepad init failed: {e}"),
-        None => log::warn!("sdl3 gamepad init skipped: sdl not initialized"),
+    let Some(sdl) = sdl_init::sdl() else {
+        log::warn!("sdl3 gamepad init skipped: sdl not initialized");
+        return;
+    };
+    match build_context(&sdl) {
+        Ok(ctx) => *GAMEPAD_CONTEXT.lock().unwrap() = Some(SendContext::new(ctx)),
+        Err(e) => log::warn!("sdl3 gamepad init failed: {e}"),
     }
 }
 

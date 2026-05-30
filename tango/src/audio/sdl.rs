@@ -68,18 +68,16 @@ impl Backend {
             stream: Box::new(stream),
             buf: Vec::new(),
         };
-        let stream_with_cb = sdl_init::with_sdl(|sdl| -> anyhow::Result<_> {
-            let audio = sdl
-                .audio()
-                .map_err(|e| anyhow::anyhow!("sdl audio subsystem: {e}"))?;
-            let s = audio
-                .open_playback_stream(&spec, callback)
-                .map_err(|e| anyhow::anyhow!("sdl open_playback_stream: {e}"))?;
-            s.resume()
-                .map_err(|e| anyhow::anyhow!("sdl resume: {e}"))?;
-            Ok(s)
-        })
-        .ok_or_else(|| anyhow::anyhow!("sdl not initialized"))??;
+        let sdl = sdl_init::sdl().ok_or_else(|| anyhow::anyhow!("sdl not initialized"))?;
+        let audio = sdl
+            .audio()
+            .map_err(|e| anyhow::anyhow!("sdl audio subsystem: {e}"))?;
+        let stream_with_cb = audio
+            .open_playback_stream(&spec, callback)
+            .map_err(|e| anyhow::anyhow!("sdl open_playback_stream: {e}"))?;
+        stream_with_cb
+            .resume()
+            .map_err(|e| anyhow::anyhow!("sdl resume: {e}"))?;
 
         log::info!("sdl audio: stream up at {TARGET_SAMPLE_RATE} Hz / {TARGET_CHANNELS}ch i16");
         Ok(Self {
