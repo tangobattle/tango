@@ -54,3 +54,16 @@ pub fn theme_for(config: &config::Config) -> Theme {
         ),
     }
 }
+
+/// The markdown widget's style for the given theme. iced's
+/// `markdown::Style::from(theme)` only derives colors — it leaves the body
+/// font at `Font::DEFAULT` (the system sans-serif) and code at the system
+/// monospace, ignoring the app's bundled Noto faces. Pin them to our fonts
+/// so READMEs / the About panel match the rest of the UI.
+pub fn markdown_style(theme: &Theme) -> iced::widget::markdown::Style {
+    let mut style = iced::widget::markdown::Style::from(theme);
+    style.font = crate::app::DEFAULT_FONT;
+    style.inline_code_font = crate::app::MONOSPACE_FONT;
+    style.code_block_font = crate::app::MONOSPACE_FONT;
+    style
+}

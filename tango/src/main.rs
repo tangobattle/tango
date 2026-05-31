@@ -314,6 +314,6 @@ fn run_app() -> iced::Result {
         // faces, so we can default to the Latin Noto Sans and let
         // CJK / emoji glyphs come from the JP / SC / TC / Emoji
         // fonts above.
-        .default_font(iced::Font::with_name("Noto Sans"))
+        .default_font(app::DEFAULT_FONT)
         .run()
 }

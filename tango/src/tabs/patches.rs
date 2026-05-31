@@ -393,7 +393,7 @@ impl PatchesState {
                 text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
             } else {
                 let theme = crate::theme::theme_for(config);
-                let style = iced::widget::markdown::Style::from(&theme);
+                let style = crate::theme::markdown_style(&theme);
                 iced::widget::markdown::view(
                     &self.readme_items,
                     iced::widget::markdown::Settings::with_text_size(TEXT_BODY, style),

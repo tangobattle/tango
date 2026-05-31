@@ -59,6 +59,14 @@ pub const TEXT_HEADING: f32 = 15.0;
 pub const TEXT_BODY: f32 = 13.0;
 pub const TEXT_CAPTION: f32 = 11.0;
 
+/// The app's registered UI fonts (see `default_font` / the `.font(...)`
+/// calls in `main`). Most widgets inherit the default font for free, but a
+/// few build their own text styles and must name it explicitly — notably
+/// the markdown widget, whose `Style` otherwise defaults to the system
+/// sans-serif / monospace instead of our bundled Noto faces.
+pub const DEFAULT_FONT: iced::Font = iced::Font::with_name("Noto Sans");
+pub const MONOSPACE_FONT: iced::Font = iced::Font::with_name("Noto Sans Mono");
+
 /// Push an RGBA image to the OS clipboard. iced's clipboard API
 /// only handles text, so we drop down to `arboard` on a tokio
 /// background task — both because it can block briefly and

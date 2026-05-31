@@ -838,7 +838,7 @@ fn settings_about<'a>(
     // by hand. `Settings::from(&Theme)` defaults to text-size 16,
     // so wrap to also pin the app's body text size.
     let theme = crate::theme::theme_for(config);
-    let style = markdown::Style::from(&theme);
+    let style = crate::theme::markdown_style(&theme);
     let settings = markdown::Settings::with_text_size(TEXT_BODY, style);
     let body: Element<'a, Message> = markdown::view(about.content().items(), settings).map(Message::OpenUrl);
 
