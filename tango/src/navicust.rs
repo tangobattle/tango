@@ -9,8 +9,8 @@ use iced::advanced::graphics::text::cosmic_text;
 use iced::advanced::graphics::text::font_system as iced_font_system;
 use iced::{Color, Point, Size};
 use iced_graphics::geometry::{self, LineCap, Path, Stroke};
-use std::sync::Mutex;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use tango_dataview::{
     navicust::MaterializedNavicust,
     rom::{Assets, NavicustLayout, NavicustPartColor},
@@ -231,15 +231,6 @@ pub struct PartStyle {
     pub is_solid: bool,
 }
 
-/// Resolved color-bar contents. `Bn3` carries the style's extra color
-/// (the fixed White/Pink/Yellow tiles are implicit); `Bn456` carries the
-/// distinct part colors in order (first ≤4 outlined, the rest "bug").
-#[derive(Clone)]
-pub enum ColorBar {
-    Bn3 { extra: Option<[u8; 4]> },
-    Bn456 { colors: Vec<[u8; 4]> },
-}
-
 /// Everything the shared [`paint`] routine needs, pre-resolved into owned
 /// data so it can be held by a canvas widget or fed to the image backend.
 #[derive(Clone)]
@@ -253,7 +244,8 @@ pub struct GridModel {
     pub occupancy: Vec<Option<usize>>,
     /// Per-slot resolved style.
     pub part_styles: Vec<Option<PartStyle>>,
-    pub bar: ColorBar,
+    pub is_bn3: bool,
+    pub bar: Vec<Option<[u8; 4]>>,
 }
 
 /// A held part previewed under the cursor (editor only).
@@ -305,7 +297,15 @@ pub fn geometry(cols: usize, rows: usize) -> Geometry {
 // Both the window renderer and the standalone tiny-skia renderer expose the
 // same `geometry::Frame`, so one set of helpers serves both.
 
-fn fill_rect<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, s: f32, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
+fn fill_rect<R: geometry::Renderer>(
+    frame: &mut geometry::Frame<R>,
+    s: f32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: [u8; 4],
+) {
     frame.fill_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), to_color(color));
 }
 
@@ -322,7 +322,10 @@ fn stroke_rect<R: geometry::Renderer>(
     let path = Path::rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s));
     frame.stroke(
         &path,
-        Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+        Stroke::default()
+            .with_color(to_color(color))
+            .with_width(width * s)
+            .with_line_cap(LineCap::Square),
     );
 }
 
@@ -339,7 +342,10 @@ fn stroke_line<R: geometry::Renderer>(
     let path = Path::line(Point::new(x1 * s, y1 * s), Point::new(x2 * s, y2 * s));
     frame.stroke(
         &path,
-        Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+        Stroke::default()
+            .with_color(to_color(color))
+            .with_width(width * s)
+            .with_line_cap(LineCap::Square),
     );
 }
 
@@ -361,7 +367,11 @@ fn fill_round_rect<R: geometry::Renderer>(
         return;
     }
     let path = Path::new(|b| {
-        b.rounded_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), iced::border::Radius::from(radius * s));
+        b.rounded_rectangle(
+            Point::new(x * s, y * s),
+            Size::new(w * s, h * s),
+            iced::border::Radius::from(radius * s),
+        );
     });
     frame.fill(&path, to_color(color));
 }
@@ -381,7 +391,9 @@ pub fn build_model(
     let mut part_styles: Vec<Option<PartStyle>> = vec![None; view.count()];
     for i in 0..view.count() {
         let Some(part) = view.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(part.id) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
         let Some(c) = info.color() else { continue };
         let (solid, plus) = part_colors(c);
         part_styles[i] = Some(PartStyle {
@@ -391,23 +403,6 @@ pub fn build_model(
         });
     }
 
-    let bar = if let Some(sid) = view.style() {
-        ColorBar::Bn3 {
-            extra: assets.style(sid).and_then(|s| s.extra_ncp_color()).map(|c| part_colors(c).1),
-        }
-    } else {
-        // Render the color bar straight from the save (its stored bytes),
-        // not by recomputing it here — so it matches the in-game bar
-        // exactly. The editor keeps the stored bar current as parts change.
-        let colors = view
-            .navicust_color_bar()
-            .into_iter()
-            .flatten()
-            .map(|c| part_colors(c).1)
-            .collect();
-        ColorBar::Bn456 { colors }
-    };
-
     GridModel {
         cols,
         rows,
@@ -416,7 +411,12 @@ pub fn build_model(
         background: layout.background.0,
         occupancy,
         part_styles,
-        bar,
+        is_bn3: view.style().is_some(),
+        bar: view
+            .navicust_color_bar()
+            .into_iter()
+            .map(|c| c.map(|c| part_colors(c).1))
+            .collect(),
     }
 }
 
@@ -442,42 +442,78 @@ pub fn paint<R: geometry::Renderer>(
 
 fn paint_color_bar<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridModel, g: &Geometry, scale: f32) {
     let top = PADDING_V as f32 + BORDER_WIDTH / 2.0;
-    match &m.bar {
-        ColorBar::Bn3 { extra } => {
-            const TILE: f32 = SQUARE_SIZE / 4.0;
-            let bar_inner_w = TILE * 4.0 + BORDER_WIDTH;
-            let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
-            let tiles = [
-                Some(part_colors(NavicustPartColor::White).1),
-                Some(part_colors(NavicustPartColor::Pink).1),
-                Some(part_colors(NavicustPartColor::Yellow).1),
-                *extra,
-            ];
-            for (i, tile) in tiles.iter().enumerate() {
-                let x = left + i as f32 * TILE;
-                fill_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, tile.unwrap_or(BG_FILL_COLOR));
-                stroke_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
-            }
+    if m.is_bn3 {
+        const TILE: f32 = SQUARE_SIZE / 4.0;
+        let bar_inner_w = TILE * 4.0 + BORDER_WIDTH;
+        let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
+        for (i, tile) in m.bar.iter().enumerate() {
+            let x = left + i as f32 * TILE;
+            fill_rect(
+                frame,
+                scale,
+                x,
+                top,
+                TILE,
+                SQUARE_SIZE / 2.0,
+                tile.unwrap_or(BG_FILL_COLOR),
+            );
+            stroke_rect(
+                frame,
+                scale,
+                x,
+                top,
+                TILE,
+                SQUARE_SIZE / 2.0,
+                BORDER_STROKE_COLOR,
+                BORDER_WIDTH,
+            );
         }
-        ColorBar::Bn456 { colors } => {
-            const TILE: f32 = SQUARE_SIZE * 3.0 / 4.0;
-            let tile_count = std::cmp::max(4, colors.len()) as f32;
-            let bar_inner_w = TILE * tile_count + BORDER_WIDTH * 2.0;
-            let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
-            let inner_w = TILE - BORDER_WIDTH;
-            let inner_h = SQUARE_SIZE / 2.0 - BORDER_WIDTH;
-            // First up-to-4: filled inner + outline.
-            for i in 0..4 {
-                let x = left + i as f32 * TILE;
-                let fill = colors.get(i).copied().unwrap_or(BG_FILL_COLOR);
-                fill_rect(frame, scale, x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, fill);
-                stroke_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
-            }
-            // Remaining "bug" colors: filled inner, no outline, after a gap.
-            for (j, c) in colors.iter().skip(4).enumerate() {
-                let x = left + (j as f32 + 4.0) * TILE + BORDER_WIDTH;
-                fill_rect(frame, scale, x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, *c);
-            }
+    } else {
+        const TILE: f32 = SQUARE_SIZE * 3.0 / 4.0;
+        let tile_count = std::cmp::max(4, m.bar.len()) as f32;
+        let bar_inner_w = TILE * tile_count + BORDER_WIDTH * 2.0;
+        let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
+        let inner_w = TILE - BORDER_WIDTH;
+        let inner_h = SQUARE_SIZE / 2.0 - BORDER_WIDTH;
+        // First up-to-4: filled inner + outline.
+        for i in 0..4 {
+            let x = left + i as f32 * TILE;
+            let fill = m.bar.get(i).copied().flatten().unwrap_or(BG_FILL_COLOR);
+            fill_rect(
+                frame,
+                scale,
+                x + BORDER_WIDTH / 2.0,
+                top + BORDER_WIDTH / 2.0,
+                inner_w,
+                inner_h,
+                fill,
+            );
+            stroke_rect(
+                frame,
+                scale,
+                x,
+                top,
+                TILE,
+                SQUARE_SIZE / 2.0,
+                BORDER_STROKE_COLOR,
+                BORDER_WIDTH,
+            );
+        }
+        // Remaining "bug" colors: filled inner, no outline, after a gap.
+        for (j, c) in m.bar.iter().skip(4).enumerate() {
+            let Some(c) = c else {
+                continue;
+            };
+            let x = left + (j as f32 + 4.0) * TILE + BORDER_WIDTH;
+            fill_rect(
+                frame,
+                scale,
+                x + BORDER_WIDTH / 2.0,
+                top + BORDER_WIDTH / 2.0,
+                inner_w,
+                inner_h,
+                *c,
+            );
         }
     }
 }
@@ -536,22 +572,52 @@ pub fn for_each_part_edge(
         // Top / left are drawn by every cell: a separator toward an own
         // neighbour, else the outer boundary.
         match adj(c, r - 1) {
-            Adj::Own => f(PartMark::Edge { col, row, side: Side::Top, separator: true }),
-            Adj::Outside => f(PartMark::Edge { col, row, side: Side::Top, separator: false }),
+            Adj::Own => f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Top,
+                separator: true,
+            }),
+            Adj::Outside => f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Top,
+                separator: false,
+            }),
             Adj::Skip => {}
         }
         match adj(c - 1, r) {
-            Adj::Own => f(PartMark::Edge { col, row, side: Side::Left, separator: true }),
-            Adj::Outside => f(PartMark::Edge { col, row, side: Side::Left, separator: false }),
+            Adj::Own => f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Left,
+                separator: true,
+            }),
+            Adj::Outside => f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Left,
+                separator: false,
+            }),
             Adj::Skip => {}
         }
         // Bottom / right only on the outer boundary — an own-neighbour
         // separator there is the neighbour's top / left, already emitted.
         if let Adj::Outside = adj(c, r + 1) {
-            f(PartMark::Edge { col, row, side: Side::Bottom, separator: false });
+            f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Bottom,
+                separator: false,
+            });
         }
         if let Adj::Outside = adj(c + 1, r) {
-            f(PartMark::Edge { col, row, side: Side::Right, separator: false });
+            f(PartMark::Edge {
+                col,
+                row,
+                side: Side::Right,
+                separator: false,
+            });
         }
         if !is_solid {
             f(PartMark::Cross { col, row });
@@ -565,9 +631,8 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
     let (cols, rows) = (m.cols, m.rows);
     let occ = |col: usize, row: usize| m.occupancy.get(row * cols + col).copied().flatten();
     let cell_xy = |col: usize, row: usize| (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
-    let is_corner = |col: usize, row: usize| {
-        m.has_out_of_bounds && (col == 0 || col == cols - 1) && (row == 0 || row == rows - 1)
-    };
+    let is_corner =
+        |col: usize, row: usize| m.has_out_of_bounds && (col == 0 || col == cols - 1) && (row == 0 || row == rows - 1);
 
     // Pass 1: background squares.
     for row in 0..rows {
@@ -577,7 +642,16 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
             }
             let (x, y) = cell_xy(col, row);
             fill_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, BG_FILL_COLOR);
-            stroke_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, BORDER_STROKE_COLOR, BORDER_WIDTH);
+            stroke_rect(
+                frame,
+                scale,
+                x,
+                y,
+                SQUARE_SIZE,
+                SQUARE_SIZE,
+                BORDER_STROKE_COLOR,
+                BORDER_WIDTH,
+            );
         }
     }
 
@@ -621,8 +695,26 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
                 }
                 PartMark::Cross { col, row } => {
                     let (x, y) = cell_xy(col, row);
-                    stroke_line(frame, scale, x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, style.plus, BORDER_WIDTH);
-                    stroke_line(frame, scale, x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, style.plus, BORDER_WIDTH);
+                    stroke_line(
+                        frame,
+                        scale,
+                        x + SQUARE_SIZE / 2.0,
+                        y,
+                        x + SQUARE_SIZE / 2.0,
+                        y + SQUARE_SIZE,
+                        style.plus,
+                        BORDER_WIDTH,
+                    );
+                    stroke_line(
+                        frame,
+                        scale,
+                        x,
+                        y + SQUARE_SIZE / 2.0,
+                        x + SQUARE_SIZE,
+                        y + SQUARE_SIZE / 2.0,
+                        style.plus,
+                        BORDER_WIDTH,
+                    );
                 }
             },
         );
@@ -634,10 +726,10 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
             let Some(slot) = occ(col, row) else { continue };
             let (x, y) = cell_xy(col, row);
             let edges = [
-                ((0i32, -1i32), (x, y, x + SQUARE_SIZE, y)),                          // top
-                ((-1, 0), (x, y, x, y + SQUARE_SIZE)),                                // left
-                ((0, 1), (x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE)),      // bottom
-                ((1, 0), (x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE)),      // right
+                ((0i32, -1i32), (x, y, x + SQUARE_SIZE, y)),                      // top
+                ((-1, 0), (x, y, x, y + SQUARE_SIZE)),                            // left
+                ((0, 1), (x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE)), // bottom
+                ((1, 0), (x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE)), // right
             ];
             for ((dx, dy), (x1, y1, x2, y2)) in edges {
                 let ncol = col as i32 + dx;
@@ -658,14 +750,31 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
     let cl = by + m.command_line as f32 * SQUARE_SIZE;
     for frac in [0.25_f32, 0.75] {
         let ly = cl + SQUARE_SIZE * frac;
-        stroke_line(frame, scale, bx, ly, bx + cols as f32 * SQUARE_SIZE, ly, BORDER_STROKE_COLOR, BORDER_WIDTH);
+        stroke_line(
+            frame,
+            scale,
+            bx,
+            ly,
+            bx + cols as f32 * SQUARE_SIZE,
+            ly,
+            BORDER_STROKE_COLOR,
+            BORDER_WIDTH,
+        );
     }
 
     // Pass 5: out-of-bounds shading (the outer band, half-alpha black).
     if m.has_out_of_bounds {
         let band_w = SQUARE_SIZE + BORDER_WIDTH;
         let band_h = (rows as f32 - 2.0) * SQUARE_SIZE + BORDER_WIDTH;
-        fill_rect(frame, scale, bx - BORDER_WIDTH / 2.0, by + SQUARE_SIZE - BORDER_WIDTH / 2.0, band_w, band_h, OOB_SHADE);
+        fill_rect(
+            frame,
+            scale,
+            bx - BORDER_WIDTH / 2.0,
+            by + SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            band_w,
+            band_h,
+            OOB_SHADE,
+        );
         fill_rect(
             frame,
             scale,
@@ -675,7 +784,15 @@ fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridMod
             band_h,
             OOB_SHADE,
         );
-        fill_rect(frame, scale, bx + SQUARE_SIZE - BORDER_WIDTH / 2.0, by - BORDER_WIDTH / 2.0, band_h, band_w, OOB_SHADE);
+        fill_rect(
+            frame,
+            scale,
+            bx + SQUARE_SIZE - BORDER_WIDTH / 2.0,
+            by - BORDER_WIDTH / 2.0,
+            band_h,
+            band_w,
+            OOB_SHADE,
+        );
         fill_rect(
             frame,
             scale,
@@ -736,7 +853,12 @@ fn paint_ghost<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, g: &Geomet
     };
     let mut boundary: Vec<(f32, f32, f32, f32)> = Vec::new();
     for_each_part_edge(&gh.cells, gh.is_solid, adj, |mark| match mark {
-        PartMark::Edge { col, row, side, separator } => {
+        PartMark::Edge {
+            col,
+            row,
+            side,
+            separator,
+        } => {
             let (x, y) = cell_xy(col, row);
             let line = match side {
                 Side::Top => (x, y, x + SQUARE_SIZE, y),
@@ -752,8 +874,26 @@ fn paint_ghost<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, g: &Geomet
         }
         PartMark::Cross { col, row } => {
             let (x, y) = cell_xy(col, row);
-            stroke_line(frame, scale, x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, plus, BORDER_WIDTH);
-            stroke_line(frame, scale, x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, plus, BORDER_WIDTH);
+            stroke_line(
+                frame,
+                scale,
+                x + SQUARE_SIZE / 2.0,
+                y,
+                x + SQUARE_SIZE / 2.0,
+                y + SQUARE_SIZE,
+                plus,
+                BORDER_WIDTH,
+            );
+            stroke_line(
+                frame,
+                scale,
+                x,
+                y + SQUARE_SIZE / 2.0,
+                x + SQUARE_SIZE,
+                y + SQUARE_SIZE / 2.0,
+                plus,
+                BORDER_WIDTH,
+            );
         }
     });
     for (x1, y1, x2, y2) in boundary {
@@ -886,4 +1026,3 @@ pub fn rotate_bitmap(bitmap: &tango_dataview::rom::NavicustBitmap, rot: u8) -> t
     }
     out
 }
-

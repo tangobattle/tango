@@ -592,7 +592,8 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
 
     fn clear_materialized(&mut self) {
         self.save.buf[0x414c..][..0x44].copy_from_slice(&[0; 0x44]);
-        self.save.buf[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].copy_from_slice(&[0; NAVICUST_COLOR_BAR_LEN]);
+        self.save.buf[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN]
+            .copy_from_slice(&[0; NAVICUST_COLOR_BAR_LEN]);
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {

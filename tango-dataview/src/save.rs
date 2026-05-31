@@ -292,15 +292,13 @@ pub trait NavicustView<'a> {
     fn style(&self) -> Option<usize> {
         None
     }
+    fn ex_code(&self) -> Option<usize> {
+        None
+    }
     fn size(&self) -> [usize; 2];
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
     fn materialized(&self) -> crate::navicust::MaterializedNavicust;
-    /// The stored color bar: one slot per color (in the game's fixed
-    /// order), `Some` when a part of that color is installed, `None` for
-    /// a gap. Empty when the game has no color bar.
-    fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>> {
-        Vec::new()
-    }
+    fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>>;
 }
 
 pub trait NavicustViewMut<'a> {

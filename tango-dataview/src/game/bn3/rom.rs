@@ -419,6 +419,22 @@ struct RawStyle {
     type_and_element: [u8; 1],
 }
 
+pub(super) fn extra_ncp_color(id: u8) -> Option<crate::rom::NavicustPartColor> {
+    let raw = bytemuck::cast::<_, RawStyle>(id as u8);
+    Some(match raw.typ() {
+        1 => crate::rom::NavicustPartColor::Red,
+        2 => crate::rom::NavicustPartColor::Blue,
+        3 => crate::rom::NavicustPartColor::Green,
+        4 => crate::rom::NavicustPartColor::Blue,
+        5 => crate::rom::NavicustPartColor::Green,
+        6 => crate::rom::NavicustPartColor::Red,
+        7 => crate::rom::NavicustPartColor::Gray,
+        _ => {
+            return None;
+        }
+    })
+}
+
 impl<'a> crate::rom::Style for Style<'a> {
     fn name(&self) -> Option<String> {
         let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
@@ -447,21 +463,89 @@ impl<'a> crate::rom::Style for Style<'a> {
     }
 
     fn extra_ncp_color(&self) -> Option<crate::rom::NavicustPartColor> {
-        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
-        Some(match raw.typ() {
-            1 => crate::rom::NavicustPartColor::Red,
-            2 => crate::rom::NavicustPartColor::Blue,
-            3 => crate::rom::NavicustPartColor::Green,
-            4 => crate::rom::NavicustPartColor::Blue,
-            5 => crate::rom::NavicustPartColor::Green,
-            6 => crate::rom::NavicustPartColor::Red,
-            7 => crate::rom::NavicustPartColor::Gray,
-            _ => {
-                return None;
-            }
-        })
+        extra_ncp_color(self.id as u8)
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ability {
+    MaxHP(u16),
+    SuperArmor,
+    BreakBuster,
+    BreakCharge,
+    ShadowShoes,
+    FloatShoes,
+    AirShoes,
+    UnderShirt,
+    Block,
+    Shield,
+    Reflect,
+    AntiDamage,
+    MegaFolder(u8),
+    GigaFolder(u8),
+    FastGauge,
+    SneakRun,
+    Humor,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bug {
+    Custom(u8),
+    PoisonStep,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExCode {
+    pub code: u8,
+    pub ability: Ability,
+    pub bug: Option<Bug>,
+}
+
+impl ExCode {
+    pub fn from_code(code: u8) -> Option<&'static ExCode> {
+        EX_CODES.iter().find(|e| e.code == code)
+    }
+}
+
+#[rustfmt::skip]
+pub static EX_CODES: &[ExCode] = &[
+    ExCode { code: 0x1e, ability: Ability::MaxHP(100),     bug: None },
+    ExCode { code: 0x1f, ability: Ability::MaxHP(150),     bug: None },
+    ExCode { code: 0x20, ability: Ability::MaxHP(200),     bug: None },
+    ExCode { code: 0x21, ability: Ability::MaxHP(250),     bug: None },
+    ExCode { code: 0x22, ability: Ability::MaxHP(300),     bug: None },
+    ExCode { code: 0x23, ability: Ability::MaxHP(350),     bug: None },
+    ExCode { code: 0x24, ability: Ability::MaxHP(400),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x25, ability: Ability::MaxHP(450),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x26, ability: Ability::MaxHP(500),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x27, ability: Ability::MaxHP(550),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x28, ability: Ability::MaxHP(600),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x29, ability: Ability::MaxHP(650),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2a, ability: Ability::MaxHP(700),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2b, ability: Ability::SuperArmor,     bug: None },
+    ExCode { code: 0x2c, ability: Ability::BreakBuster,    bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2d, ability: Ability::BreakCharge,    bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x2e, ability: Ability::ShadowShoes,    bug: None },
+    ExCode { code: 0x2f, ability: Ability::FloatShoes,     bug: None },
+    ExCode { code: 0x30, ability: Ability::AirShoes,       bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x31, ability: Ability::UnderShirt,     bug: None },
+    ExCode { code: 0x32, ability: Ability::Block,          bug: None },
+    ExCode { code: 0x33, ability: Ability::Shield,         bug: None },
+    ExCode { code: 0x34, ability: Ability::Reflect,        bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x35, ability: Ability::AntiDamage,     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x36, ability: Ability::MegaFolder(1),  bug: None },
+    ExCode { code: 0x37, ability: Ability::MegaFolder(2),  bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x38, ability: Ability::FastGauge,      bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x39, ability: Ability::SneakRun,       bug: None },
+    ExCode { code: 0x3a, ability: Ability::Humor,          bug: None },
+    ExCode { code: 0x3b, ability: Ability::MaxHP(800),     bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x3c, ability: Ability::MaxHP(900),     bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x3d, ability: Ability::MaxHP(1000),    bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x3e, ability: Ability::MegaFolder(3),  bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x3f, ability: Ability::MegaFolder(4),  bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x40, ability: Ability::MegaFolder(5),  bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x41, ability: Ability::GigaFolder(1),  bug: Some(Bug::PoisonStep) },
+];
 
 impl crate::rom::Assets for Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {

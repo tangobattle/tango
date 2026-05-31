@@ -1,6 +1,6 @@
 use bitvec::view::BitView;
 
-use crate::save::ChipsView as _;
+use crate::{game::bn3::rom::extra_ncp_color, save::ChipsView as _};
 
 pub const SAVE_SIZE: usize = 0x57b0;
 pub const GAME_NAME_OFFSET: usize = 0x1e00;
@@ -285,6 +285,10 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
         Some((self.save.buf[0x1881] & 0x3f) as usize)
     }
 
+    fn ex_code(&self) -> Option<usize> {
+        Some(self.save.buf[0x1270] as usize)
+    }
+
     fn navicust_part(&self, i: usize) -> Option<crate::save::NavicustPart> {
         if i >= self.count() {
             return None;
@@ -310,5 +314,14 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
 
     fn materialized(&self) -> crate::navicust::MaterializedNavicust {
         crate::navicust::materialized_from_wram(&self.save.buf[0x1d90..][..(5 * 5)], [5, 5])
+    }
+
+    fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>> {
+        vec![
+            Some(crate::rom::NavicustPartColor::White),
+            Some(crate::rom::NavicustPartColor::Pink),
+            Some(crate::rom::NavicustPartColor::Yellow),
+            extra_ncp_color(self.style().unwrap() as u8),
+        ]
     }
 }
