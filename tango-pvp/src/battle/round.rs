@@ -234,19 +234,30 @@ impl Round {
             // joyflags-wise but uses a predicted packet too, since the
             // shadow can't advance through it twice — the next settle will
             // re-process it with the real packet). The FF hands us a fresh
-            // Box<State>, owned.
+            // Box<State>, owned, sitting exactly at `target`.
+            self.last_loaded_tick = target;
             Cow::Owned(self.speculate_tail(target, &peeked)?)
         } else {
             // Either settled (`target ≤ commit_frontier − 1`) — settled_state
             // IS the display — or pre-first-commit, where there's no real
             // packet to seed predict_rx from anyway, so we just hold the
-            // initial state. Borrow the settled Box rather than cloning the
+            // settled state. Borrow the settled Box rather than cloning the
             // underlying ~400 KB state.
+            //
+            // The held state sits at the settled snapshot's tick, which is
+            // *not* always `target`: at round start the wall-clock frontier can
+            // push `target` past tick 0 before the first remote input bumps
+            // `commit_frontier` off 0 (the `commit_frontier > 0` guard above
+            // forces us here), and a live frame_delay increase can pull `target`
+            // back behind the settled cap. `last_loaded_tick` must track the
+            // tick actually loaded — not `target` — or the per-game
+            // `round_post_increment_tick` trap panics ("expected game tick = N
+            // but game tick = N-1").
+            self.last_loaded_tick = self.settled_snapshot.as_ref().unwrap().tick;
             Cow::Borrowed(&self.settled_snapshot.as_ref().unwrap().state)
         };
 
         core.load_state(&present_state).expect("load present state");
-        self.last_loaded_tick = target;
         self.update_fps_target(core);
 
         self.finalize_round(round_result, self.commit_frontier)
