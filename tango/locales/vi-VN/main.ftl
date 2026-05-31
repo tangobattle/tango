@@ -151,6 +151,23 @@ navi-style-unset = (không có style)
 navicust-grid-size = Lưới: { $cols } × { $rows }
 navicust-parts = Bộ phận đã lắp
 navicust-empty = (chưa lắp gì)
+
+# Navicust editor
+navicust-edit = Sửa
+navicust-edit-save = Lưu
+navicust-edit-cancel = Hủy
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count } bộ phận
+navicust-edit-clear = Xóa tất cả
+navicust-edit-rotate = Xoay
+navicust-edit-compress = Nén
+navicust-edit-uncompress = Bỏ nén
+navicust-edit-parts = Bộ phận
+navicust-edit-search = Tìm bộ phận…
+navicust-edit-hint = Chọn một bộ phận, rồi nhấp vào lưới để đặt. Cuộn chuột hoặc Xoay để xoay; nhấp chuột phải để bỏ. Nhấp vào bộ phận đã lắp để nhặt lại.
+navicust-sort-id = ID
+navicust-sort-name = Tên
+navicust-sort-color = Màu
 save-empty = Save này không có dữ liệu cho mục này.
 play-no-selection = Chọn một game và save để xem.
 replays-filter-all-games = Tất cả game

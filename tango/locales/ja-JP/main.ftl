@@ -120,6 +120,23 @@ navicust-grid-size = グリッド: { $cols } × { $rows }
 navicust-parts = 設定済みパーツ
 navicust-empty = （未設定）
 
+# Navicust editor
+navicust-edit = 編集
+navicust-edit-save = 保存
+navicust-edit-cancel = キャンセル
+navicust-edit-grid = ナビカスタマイザー
+navicust-edit-count = { $count } パーツ
+navicust-edit-clear = すべてクリア
+navicust-edit-rotate = 回転
+navicust-edit-compress = 圧縮
+navicust-edit-uncompress = 解凍
+navicust-edit-parts = パーツ
+navicust-edit-search = パーツを検索…
+navicust-edit-hint = パーツを選び、グリッドをクリックして配置します。スクロールまたは回転で向きを変え、右クリックで手放します。設置済みのパーツをクリックすると取り戻せます。
+navicust-sort-id = ID
+navicust-sort-name = 名前
+navicust-sort-color = 色
+
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = スタンダードチップ（補助）
 auto-battle-data-standard-chips = スタンダードチップ

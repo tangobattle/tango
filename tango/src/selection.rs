@@ -301,52 +301,28 @@ fn build_navicust_render(
     let materialized = view.materialized();
 
     // Mirrors the constants inside navicust.rs's tiny-skia render.
-    //
-    // HiDPI strategy: render the source at 2× the visual display
-    // width, then tell the iced widget to paint at 1× (display
-    // width logical pixels). On a 2x DPI display iced's surface is
-    // 2× device pixels per logical pixel, so the 2× source maps
-    // 1:1 to device pixels — pixel-perfect cosmic-text rasterization.
-    // On a 1x display iced linear-downsamples 2:1; the colored
-    // tiles look fine and text is only mildly softer than rendered-
-    // at-display-size.
     const PADDING_H: f32 = crate::navicust::PADDING_H as f32;
     const PADDING_V: f32 = crate::navicust::PADDING_V as f32;
     const SQUARE_SIZE: f32 = crate::navicust::SQUARE_SIZE;
     const BORDER_WIDTH: f32 = crate::navicust::BORDER_WIDTH;
-    /// Visual width the iced widget paints the navicust at (in
-    /// logical pixels). The Handle behind it is 2× this so HiDPI
-    /// stays crisp.
-    pub const DISPLAY_TARGET_W: u32 = 280;
-    const OVERSAMPLE: u32 = 2;
     let (rows, cols) = materialized.dim();
 
     let lang = crate::game::region_to_language(game.region());
-    let mut img = crate::navicust::render(
-        &materialized,
-        &layout,
-        view.as_ref(),
-        assets,
-        &lang,
-        Some(DISPLAY_TARGET_W * OVERSAMPLE),
-    );
-    // Round the image corners to match the pane's `radius: 4.0` (so the
-    // image looks like a screen sitting inside the pane rather than a
-    // square sticker pasted onto it). 4 display px × 2× oversample = 8
-    // handle px.
-    mask_rounded_corners(&mut img, 4 * OVERSAMPLE);
+    // Render at native resolution; the iced widget paints it at the same
+    // display width as the interactive editor, so iced scales the high-res
+    // source down — keeping it crisp on HiDPI.
+    let mut img = crate::navicust::render(&materialized, &layout, view.as_ref(), assets, &lang, None);
     let (handle_w, handle_h) = (img.width(), img.height());
 
-    // Geometry in DISPLAY (logical) coords — the overlay sits on
-    // top of the iced widget at its 1× size, so divide by
-    // OVERSAMPLE to get back to display units. `display_scale`
-    // accounts for grids that fit under the cap natively
-    // (scale = 1.0 case there).
     let body_w_native = cols as f32 * SQUARE_SIZE + BORDER_WIDTH;
     let total_w_native = body_w_native + PADDING_H * 2.0;
-    let display_w = handle_w as f32 / OVERSAMPLE as f32;
-    let display_h = handle_h as f32 / OVERSAMPLE as f32;
-    let display_scale = display_w / total_w_native;
+    // Same display width as `EditorGrid` (capped at native so small grids
+    // aren't upscaled), so the viewer and editor are the same size.
+    let display_scale = (crate::navicust_editor::DISPLAY_W / total_w_native).min(1.0);
+    let display_w = handle_w as f32 * display_scale;
+    let display_h = handle_h as f32 * display_scale;
+    // Round corners to ~4 display px (the pane's radius).
+    mask_rounded_corners(&mut img, (4.0 / display_scale).round().max(1.0) as u32);
     let color_bar_h = (SQUARE_SIZE / 2.0 + BORDER_WIDTH).round();
     let body_origin_x = (PADDING_H + BORDER_WIDTH / 2.0) * display_scale;
     let body_origin_y = (PADDING_V + color_bar_h + PADDING_V + BORDER_WIDTH / 2.0) * display_scale;

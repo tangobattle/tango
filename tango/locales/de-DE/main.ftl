@@ -151,6 +151,26 @@ navi-style-unset = (kein Stil)
 navicust-grid-size = Raster: { $cols } × { $rows }
 navicust-parts = Installierte Teile
 navicust-empty = (keine installiert)
+
+# Navicust editor
+navicust-edit = Bearbeiten
+navicust-edit-save = Speichern
+navicust-edit-cancel = Abbrechen
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } Teil
+   *[other] { $count } Teile
+}
+navicust-edit-clear = Alle löschen
+navicust-edit-rotate = Drehen
+navicust-edit-compress = Komprimieren
+navicust-edit-uncompress = Dekomprimieren
+navicust-edit-parts = Teile
+navicust-edit-search = Teile suchen…
+navicust-edit-hint = Wähle ein Teil und klicke ins Raster, um es zu platzieren. Mit Scrollen oder Drehen drehst du es; Rechtsklick legt es ab. Klicke ein platziertes Teil an, um es wieder aufzunehmen.
+navicust-sort-id = ID
+navicust-sort-name = Name
+navicust-sort-color = Farbe
 save-empty = Dieser Speicherstand hat keine Daten für diese Ansicht.
 play-no-selection = Wähle ein Spiel und einen Speicherstand zur Prüfung aus.
 replays-filter-all-games = Alle Spiele

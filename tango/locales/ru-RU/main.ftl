@@ -151,6 +151,27 @@ navi-style-unset = (без стиля)
 navicust-grid-size = Сетка: { $cols } × { $rows }
 navicust-parts = Установленные детали
 navicust-empty = (ничего не установлено)
+
+# Navicust editor
+navicust-edit = Изменить
+navicust-edit-save = Сохранить
+navicust-edit-cancel = Отмена
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } деталь
+    [few] { $count } детали
+   *[other] { $count } деталей
+}
+navicust-edit-clear = Очистить всё
+navicust-edit-rotate = Повернуть
+navicust-edit-compress = Сжать
+navicust-edit-uncompress = Разжать
+navicust-edit-parts = Детали
+navicust-edit-search = Поиск деталей…
+navicust-edit-hint = Выберите деталь и щёлкните по сетке, чтобы разместить её. Прокрутка или «Повернуть» — повернуть; правый клик — отпустить. Щёлкните по установленной детали, чтобы взять её снова.
+navicust-sort-id = ID
+navicust-sort-name = Название
+navicust-sort-color = Цвет
 save-empty = В этом сохранении нет данных для этого вида.
 play-no-selection = Выберите игру и сохранение для просмотра.
 replays-filter-all-games = Все игры

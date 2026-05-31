@@ -151,6 +151,26 @@ navi-style-unset = (sin estilo)
 navicust-grid-size = Cuadrícula: { $cols } × { $rows }
 navicust-parts = Piezas instaladas
 navicust-empty = (ninguna instalada)
+
+# Navicust editor
+navicust-edit = Editar
+navicust-edit-save = Guardar
+navicust-edit-cancel = Cancelar
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } pieza
+   *[other] { $count } piezas
+}
+navicust-edit-clear = Borrar todo
+navicust-edit-rotate = Rotar
+navicust-edit-compress = Comprimir
+navicust-edit-uncompress = Descomprimir
+navicust-edit-parts = Piezas
+navicust-edit-search = Buscar piezas…
+navicust-edit-hint = Elige una pieza y haz clic en la cuadrícula para colocarla. Usa la rueda o Rotar para girarla; haz clic derecho para soltarla. Haz clic en una pieza colocada para volver a tomarla.
+navicust-sort-id = ID
+navicust-sort-name = Nombre
+navicust-sort-color = Color
 save-empty = Este guardado no tiene datos para esta vista.
 play-no-selection = Elige un juego y un guardado para inspeccionar.
 replays-filter-all-games = Todos los juegos

@@ -151,6 +151,26 @@ navi-style-unset = (sem estilo)
 navicust-grid-size = Grade: { $cols } × { $rows }
 navicust-parts = Peças instaladas
 navicust-empty = (nenhuma instalada)
+
+# Navicust editor
+navicust-edit = Editar
+navicust-edit-save = Salvar
+navicust-edit-cancel = Cancelar
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } peça
+   *[other] { $count } peças
+}
+navicust-edit-clear = Limpar tudo
+navicust-edit-rotate = Girar
+navicust-edit-compress = Comprimir
+navicust-edit-uncompress = Descomprimir
+navicust-edit-parts = Peças
+navicust-edit-search = Buscar peças…
+navicust-edit-hint = Escolha uma peça e clique na grade para colocá-la. Use a rolagem ou Girar para girá-la; clique com o botão direito para soltá-la. Clique numa peça instalada para pegá-la de volta.
+navicust-sort-id = ID
+navicust-sort-name = Nome
+navicust-sort-color = Cor
 save-empty = Este save não tem dados para esta visualização.
 play-no-selection = Selecione um jogo e um save para inspecionar.
 replays-filter-all-games = Todos os jogos

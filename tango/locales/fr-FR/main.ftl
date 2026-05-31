@@ -151,6 +151,26 @@ navi-style-unset = (aucun style)
 navicust-grid-size = Grille: { $cols } × { $rows }
 navicust-parts = Pièces installées
 navicust-empty = (aucune installée)
+
+# Navicust editor
+navicust-edit = Modifier
+navicust-edit-save = Enregistrer
+navicust-edit-cancel = Annuler
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } pièce
+   *[other] { $count } pièces
+}
+navicust-edit-clear = Tout effacer
+navicust-edit-rotate = Pivoter
+navicust-edit-compress = Compresser
+navicust-edit-uncompress = Décompresser
+navicust-edit-parts = Pièces
+navicust-edit-search = Rechercher des pièces…
+navicust-edit-hint = Choisis une pièce, puis clique sur la grille pour la placer. Utilise la molette ou Pivoter pour la tourner ; clic droit pour la lâcher. Clique sur une pièce installée pour la reprendre.
+navicust-sort-id = ID
+navicust-sort-name = Nom
+navicust-sort-color = Couleur
 save-empty = Cette sauvegarde n'a pas de données pour cette vue.
 play-no-selection = Choisissez un jeu et une sauvegarde à inspecter.
 replays-filter-all-games = Tous les jeux

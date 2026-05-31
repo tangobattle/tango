@@ -140,7 +140,10 @@ navicust-edit = Edit
 navicust-edit-save = Save
 navicust-edit-cancel = Cancel
 navicust-edit-grid = NaviCust
-navicust-edit-count = { $count } parts
+navicust-edit-count = { $count ->
+    [one] 1 part
+   *[other] { $count } parts
+}
 navicust-edit-clear = Clear all
 navicust-edit-rotate = Rotate
 navicust-edit-compress = Compress

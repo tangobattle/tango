@@ -816,7 +816,7 @@ fn tab_extras<'a>(
                     .style(crate::widgets::chunky_checkbox),
                 copy_btn(Tab::Folder),
             ]
-            .spacing(10)
+            .spacing(6)
             .align_y(iced::Alignment::Center);
             // Only saves with a writable chip view (BN4/5/6) get the
             // Edit affordance; `chips_editable` is the cached
@@ -1472,7 +1472,6 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         Some(crate::navicust_editor::Held {
             cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
             solid: crate::navicust::part_colors(color).0,
-            is_solid: info.is_solid(),
         })
     });
 
@@ -2397,7 +2396,21 @@ fn render_navicust<M: 'static>(
                 overlay_col = overlay_col.push(cell_row);
             }
 
-            let stacked = stack![image, overlay_col]
+            // Top layer: outline the block under the cursor. It never
+            // captures events, so the tooltip layer beneath still fires.
+            let hover: Element<'static, M> = crate::navicust_editor::HoverOutline {
+                cols: g_cols,
+                rows: g_rows,
+                origin_x: body_x,
+                origin_y: body_y,
+                cell: cell_size,
+                width: dw,
+                height: dh,
+                occupancy: nc.cell_part_idx.clone(),
+            }
+            .view::<M>();
+
+            let stacked = stack![image, overlay_col, hover]
                 .width(Length::Fixed(dw))
                 .height(Length::Fixed(dh));
             // Flush against the pane — no shadow, no extra padding.

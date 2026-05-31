@@ -151,6 +151,26 @@ navi-style-unset = (geen stijl)
 navicust-grid-size = Raster: { $cols } × { $rows }
 navicust-parts = Geïnstalleerde onderdelen
 navicust-empty = (geen geïnstalleerd)
+
+# Navicust editor
+navicust-edit = Bewerken
+navicust-edit-save = Opslaan
+navicust-edit-cancel = Annuleren
+navicust-edit-grid = NaviCust
+navicust-edit-count = { $count ->
+    [one] { $count } onderdeel
+   *[other] { $count } onderdelen
+}
+navicust-edit-clear = Alles wissen
+navicust-edit-rotate = Draaien
+navicust-edit-compress = Comprimeren
+navicust-edit-uncompress = Decomprimeren
+navicust-edit-parts = Onderdelen
+navicust-edit-search = Onderdelen zoeken…
+navicust-edit-hint = Kies een onderdeel en klik op het raster om het te plaatsen. Scrol of gebruik Draaien om het te draaien; rechterklik om het los te laten. Klik op een geplaatst onderdeel om het weer op te pakken.
+navicust-sort-id = ID
+navicust-sort-name = Naam
+navicust-sort-color = Kleur
 save-empty = Deze save heeft geen gegevens voor deze weergave.
 play-no-selection = Kies een spel en save om te bekijken.
 replays-filter-all-games = Alle spellen

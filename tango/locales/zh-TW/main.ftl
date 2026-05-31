@@ -149,8 +149,25 @@ save-copy-image = 複製為圖片
 navi-id = Navi ID
 navi-style-unset = （無風格）
 navicust-grid-size = 格子: { $cols } × { $rows }
-navicust-parts = 已裝部件
+navicust-parts = 零件
 navicust-empty = （未裝）
+
+# Navicust editor
+navicust-edit = 編輯
+navicust-edit-save = 儲存
+navicust-edit-cancel = 取消
+navicust-edit-grid = 領航員改造
+navicust-edit-count = { $count } 個零件
+navicust-edit-clear = 全部清除
+navicust-edit-rotate = 旋轉
+navicust-edit-compress = 壓縮
+navicust-edit-uncompress = 解壓
+navicust-edit-parts = 零件
+navicust-edit-search = 搜尋零件…
+navicust-edit-hint = 選擇一個零件，然後點擊網格放置。滾動或點擊「旋轉」來轉動；右鍵放下。點擊已放置的零件可重新拿起。
+navicust-sort-id = ID
+navicust-sort-name = 名稱
+navicust-sort-color = 顏色
 save-empty = 此存檔沒有該檢視的資料。
 play-no-selection = 請選擇要查看的遊戲與存檔。
 replays-filter-all-games = 全部遊戲

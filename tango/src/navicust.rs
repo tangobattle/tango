@@ -21,8 +21,12 @@ use tango_dataview::{
 static SWASH_CACHE: LazyLock<Mutex<cosmic_text::SwashCache>> =
     LazyLock::new(|| Mutex::new(cosmic_text::SwashCache::new()));
 
-pub const BORDER_WIDTH: f32 = 6.0;
-pub const SQUARE_SIZE: f32 = 60.0;
+// Native render units. The editor draws vector at a display scale, so
+// these only set the baked image's resolution (viewer + clipboard); kept
+// high so the viewer stays crisp at the editor's display size. Their
+// ratios match the original (BORDER = SQUARE_SIZE/10).
+pub const BORDER_WIDTH: f32 = 12.0;
+pub const SQUARE_SIZE: f32 = 120.0;
 
 const BG_FILL_COLOR: [u8; 4] = [0x20, 0x20, 0x20, 0xff];
 const BORDER_STROKE_COLOR: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
@@ -42,8 +46,8 @@ pub fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
     }
 }
 
-pub const PADDING_H: u32 = 20;
-pub const PADDING_V: u32 = 20;
+pub const PADDING_H: u32 = 40;
+pub const PADDING_V: u32 = 40;
 
 /// Map a BCP-47 language id to the Noto font family name we want
 /// cosmic-text to prefer when rasterizing the BN3 style label.
@@ -254,10 +258,13 @@ pub struct GridModel {
 
 /// A held part previewed under the cursor (editor only).
 pub struct Ghost {
-    /// Absolute grid cells `(col, row)` the part would cover.
+    /// In-bounds grid cells `(col, row)` the part covers — these get filled.
     pub cells: Vec<(usize, usize)>,
+    /// The part's full footprint as signed grid coords (extends off-grid
+    /// when the part clips offscreen). An edge is outlined only when its
+    /// neighbor isn't in this set, so clipped (offscreen) edges stay open.
+    pub footprint: Vec<(isize, isize)>,
     pub solid: [u8; 4],
-    pub is_solid: bool,
     pub legal: bool,
 }
 
@@ -503,13 +510,39 @@ fn paint_ghost<P: GridPainter>(p: &mut P, g: &Geometry, gh: &Ghost) {
     let by = g.body_origin_y + BORDER_WIDTH / 2.0;
     let tint = [gh.solid[0], gh.solid[1], gh.solid[2], 0x80];
     let outline = if gh.legal { GHOST_LEGAL } else { GHOST_ILLEGAL };
+    // Fill every cell the part covers.
     for &(col, row) in &gh.cells {
         let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
         p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, tint);
-        p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, outline, BORDER_WIDTH);
-        if !gh.is_solid {
-            p.stroke_line(x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, outline, BORDER_WIDTH);
-            p.stroke_line(x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, outline, BORDER_WIDTH);
+    }
+    // Stroke each block's top + left edges (giving single lines *between*
+    // the part's blocks plus the top/left outer boundary) and the
+    // bottom/right edges only on the outer boundary. Edges whose neighbor
+    // is an off-grid footprint cell are skipped, so a part clipping
+    // offscreen stays open at the clipped edge rather than boxed in.
+    let footprint: std::collections::HashSet<(isize, isize)> = gh.footprint.iter().copied().collect();
+    let cells: std::collections::HashSet<(isize, isize)> =
+        gh.cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
+    let in_fp = |c: isize, r: isize| footprint.contains(&(c, r));
+    let in_cells = |c: isize, r: isize| cells.contains(&(c, r));
+    for &(col, row) in &gh.cells {
+        let (ci, ri) = (col as isize, row as isize);
+        let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
+        // top / left: outer boundary or internal separator, but not a
+        // clipped (off-grid footprint) neighbor.
+        if !in_fp(ci, ri - 1) || in_cells(ci, ri - 1) {
+            p.stroke_line(x, y, x + SQUARE_SIZE, y, outline, BORDER_WIDTH);
+        }
+        if !in_fp(ci - 1, ri) || in_cells(ci - 1, ri) {
+            p.stroke_line(x, y, x, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+        }
+        // bottom / right: outer boundary only (internal separators are
+        // drawn by the neighbor's top/left; clipped neighbors are skipped).
+        if !in_fp(ci, ri + 1) {
+            p.stroke_line(x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+        }
+        if !in_fp(ci + 1, ri) {
+            p.stroke_line(x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
         }
     }
 }

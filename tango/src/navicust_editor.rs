@@ -53,6 +53,54 @@ impl GridPainter for FramePainter<'_> {
     }
 }
 
+/// Outline the outer boundary of the part occupying `slot` (all its
+/// cells) in white, in display coordinates — the hover highlight shared
+/// by the editor and the read-only viewer.
+fn draw_part_outline(
+    frame: &mut Frame,
+    occupancy: &[Option<usize>],
+    cols: usize,
+    rows: usize,
+    origin_x: f32,
+    origin_y: f32,
+    cell: f32,
+    slot: usize,
+) {
+    let stroke = Stroke::default()
+        .with_color(Color::WHITE)
+        .with_width((cell * 0.12).max(2.0))
+        .with_line_cap(LineCap::Square);
+    let occ = |c: isize, r: isize| -> Option<usize> {
+        if c < 0 || r < 0 || c >= cols as isize || r >= rows as isize {
+            None
+        } else {
+            occupancy.get(r as usize * cols + c as usize).copied().flatten()
+        }
+    };
+    for row in 0..rows {
+        for col in 0..cols {
+            if occ(col as isize, row as isize) != Some(slot) {
+                continue;
+            }
+            let x = origin_x + col as f32 * cell;
+            let y = origin_y + row as f32 * cell;
+            let same = |dc: isize, dr: isize| occ(col as isize + dc, row as isize + dr) == Some(slot);
+            if !same(0, -1) {
+                frame.stroke(&Path::line(Point::new(x, y), Point::new(x + cell, y)), stroke.clone());
+            }
+            if !same(0, 1) {
+                frame.stroke(&Path::line(Point::new(x, y + cell), Point::new(x + cell, y + cell)), stroke.clone());
+            }
+            if !same(-1, 0) {
+                frame.stroke(&Path::line(Point::new(x, y), Point::new(x, y + cell)), stroke.clone());
+            }
+            if !same(1, 0) {
+                frame.stroke(&Path::line(Point::new(x + cell, y), Point::new(x + cell, y + cell)), stroke.clone());
+            }
+        }
+    }
+}
+
 /// Visual width the grid is painted at, in logical pixels.
 pub const DISPLAY_W: f32 = 360.0;
 
@@ -66,7 +114,6 @@ pub struct Held {
     /// offsets `navicust::materialize` applies (see [`rotated_offsets`]).
     pub cells: Vec<(isize, isize)>,
     pub solid: [u8; 4],
-    pub is_solid: bool,
 }
 
 /// Interactive editor grid. Draws the full grid (via the shared routine)
@@ -126,6 +173,12 @@ impl EditorGrid {
             && (row == 0 || row == self.model.rows - 1)
     }
 
+    /// Whether `(col, row)` is in the out-of-bounds outer ring (BN6).
+    fn is_oob(&self, col: usize, row: usize) -> bool {
+        self.model.has_out_of_bounds
+            && (col == 0 || col == self.model.cols - 1 || row == 0 || row == self.model.rows - 1)
+    }
+
     fn occ(&self, col: usize, row: usize) -> Option<usize> {
         self.model.occupancy.get(row * self.model.cols + col).copied().flatten()
     }
@@ -134,10 +187,12 @@ impl EditorGrid {
     fn ghost(&self, col: usize, row: usize) -> Option<navicust::Ghost> {
         let held = self.held.as_ref()?;
         let mut cells = Vec::with_capacity(held.cells.len());
+        let mut footprint = Vec::with_capacity(held.cells.len());
         let mut legal = true;
         for &(dy, dx) in &held.cells {
             let cy = row as isize + dy;
             let cx = col as isize + dx;
+            footprint.push((cx, cy));
             if cx < 0 || cy < 0 || cx >= self.model.cols as isize || cy >= self.model.rows as isize {
                 legal = false;
                 continue;
@@ -148,10 +203,15 @@ impl EditorGrid {
             }
             cells.push((cx, cy));
         }
+        // A part may overhang the out-of-bounds ring, but not sit entirely
+        // in it — at least one cell must be inside the playable area.
+        if self.model.has_out_of_bounds && !cells.iter().any(|&(c, r)| !self.is_oob(c, r)) {
+            legal = false;
+        }
         Some(navicust::Ghost {
             cells,
+            footprint,
             solid: held.solid,
-            is_solid: held.is_solid,
             legal,
         })
     }
@@ -175,6 +235,23 @@ impl canvas::Program<Msg> for EditorGrid {
             &self.model,
             ghost.as_ref(),
         );
+        // When not holding a part, outline the block under the cursor.
+        if self.held.is_none() {
+            if let Some((col, row)) = state.hovered {
+                if let Some(slot) = self.occ(col, row) {
+                    draw_part_outline(
+                        &mut frame,
+                        &self.model.occupancy,
+                        self.model.cols,
+                        self.model.rows,
+                        self.origin_x,
+                        self.origin_y,
+                        self.cell,
+                        slot,
+                    );
+                }
+            }
+        }
         vec![frame.into_geometry()]
     }
 
@@ -241,6 +318,108 @@ impl canvas::Program<Msg> for EditorGrid {
         } else {
             mouse::Interaction::default()
         }
+    }
+}
+
+/// A transparent overlay for the read-only viewer that outlines the whole
+/// part (block) under the cursor. Generic over the host message type and
+/// never captures events, so the tooltip layer beneath it still works.
+pub struct HoverOutline {
+    pub cols: usize,
+    pub rows: usize,
+    pub origin_x: f32,
+    pub origin_y: f32,
+    pub cell: f32,
+    pub width: f32,
+    pub height: f32,
+    /// Row-major occupancy (`row * cols + col`): the part slot per cell.
+    pub occupancy: Vec<Option<usize>>,
+}
+
+#[derive(Default)]
+pub struct HoverState {
+    hovered: Option<(usize, usize)>,
+}
+
+impl HoverOutline {
+    pub fn view<M: 'static>(self) -> Element<'static, M> {
+        let (w, h) = (self.width, self.height);
+        Canvas::new(self).width(Length::Fixed(w)).height(Length::Fixed(h)).into()
+    }
+
+    fn cell_at(&self, p: Point) -> Option<(usize, usize)> {
+        let x = p.x - self.origin_x;
+        let y = p.y - self.origin_y;
+        if x < 0.0 || y < 0.0 {
+            return None;
+        }
+        let col = (x / self.cell) as usize;
+        let row = (y / self.cell) as usize;
+        (col < self.cols && row < self.rows).then_some((col, row))
+    }
+
+    fn occ(&self, col: isize, row: isize) -> Option<usize> {
+        if col < 0 || row < 0 || col >= self.cols as isize || row >= self.rows as isize {
+            return None;
+        }
+        self.occupancy.get(row as usize * self.cols + col as usize).copied().flatten()
+    }
+}
+
+impl<M> canvas::Program<M> for HoverOutline {
+    type State = HoverState;
+
+    fn draw(
+        &self,
+        state: &HoverState,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        if let Some((hc, hr)) = state.hovered {
+            if let Some(slot) = self.occ(hc as isize, hr as isize) {
+                draw_part_outline(
+                    &mut frame,
+                    &self.occupancy,
+                    self.cols,
+                    self.rows,
+                    self.origin_x,
+                    self.origin_y,
+                    self.cell,
+                    slot,
+                );
+            }
+        }
+        vec![frame.into_geometry()]
+    }
+
+    fn update(
+        &self,
+        state: &mut HoverState,
+        event: &iced::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<Action<M>> {
+        match event {
+            iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                let cell = cursor.position_in(bounds).and_then(|p| self.cell_at(p));
+                if cell != state.hovered {
+                    state.hovered = cell;
+                    // Redraw to move the outline; don't capture — the
+                    // tooltip layer beneath still needs the event.
+                    return Some(Action::request_redraw());
+                }
+            }
+            iced::Event::Mouse(mouse::Event::CursorLeft) => {
+                if state.hovered.take().is_some() {
+                    return Some(Action::request_redraw());
+                }
+            }
+            _ => {}
+        }
+        None
     }
 }
 
