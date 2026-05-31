@@ -52,6 +52,10 @@ pub(crate) fn collapse_button_focus(status: button::Status) -> button::Status {
     }
 }
 
+/// Selectable list/palette row. Square corners + a zebra base so a
+/// scrollable list reads as a flush table rather than a stack of
+/// separated pills; selected rows get a lit gradient plate, hovered
+/// rows a faint primary wash.
 pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status: button::Status| {
         let status = collapse_button_focus(status);
@@ -79,7 +83,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
                 ))),
                 text_color: iced::Color::WHITE,
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 0.0.into(),
                     width: 1.0,
                     color: mix(primary, iced::Color::WHITE, 0.35),
                 },
@@ -110,7 +114,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
             background: stripe,
             text_color: text,
             border: iced::Border {
-                radius: 6.0.into(),
+                radius: 0.0.into(),
                 width: 0.0,
                 color: iced::Color::TRANSPARENT,
             },
@@ -126,7 +130,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
             button::Status::Hovered => button::Style {
                 background: Some(iced::Background::Color(mix(bg, primary, 0.15))),
                 border: iced::Border {
-                    radius: 6.0.into(),
+                    radius: 0.0.into(),
                     width: 1.0,
                     color: iced::Color { a: 0.6, ..primary },
                 },

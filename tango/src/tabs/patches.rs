@@ -212,7 +212,7 @@ impl PatchesState {
             fb.cmp(&fa).then_with(|| a.cmp(b))
         });
 
-        let mut list = column![].spacing(2).padding(8);
+        let mut list = column![].spacing(2).padding([8, 0]);
         for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
             let is_fav = config.favorite_patches.contains(*name);

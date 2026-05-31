@@ -1961,8 +1961,9 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     let held_opt = edit.held_part;
 
     // ----- Part palette (shown below the grid, like the read-only view) -----
-    // Same inset + row spacing as the patches / replays lists.
-    let mut palette = column![].spacing(2).padding(8).width(Fill);
+    // Rows run flush to the pane sides (no side inset); shares only its
+    // row spacing with the patches / replays lists.
+    let mut palette = column![].spacing(2).padding(0).width(Fill);
     for (row_idx, (id, name, description)) in sorted_navicust_parts(loaded, state.navicust_sort, &edit.navicust_filter)
         .into_iter()
         .enumerate()
@@ -2341,18 +2342,13 @@ fn library_entry_row<'a>(
     .align_y(Alignment::Center);
 
     // The whole row is the add control: clicking anywhere drops this
-    // chip+code into the folder. `list_item` paints the zebra base +
-    // hover highlight (one background, one hover), so we don't route
-    // through `edit_row_wrap` here — instead we keep just the class-accent
-    // stripe to the left of the clickable body. Disabled once the folder
-    // is full (no empty slot to add into). ChipCode is Copy.
-    let mut body = button(inner)
-        .width(Fill)
-        .padding([3, 12])
-        .style(widgets::list_item(false, row_idx));
-    if !folder_full {
-        body = body.on_press(Action::AddChip { chip_id, code });
-    }
+    // chip+code into the folder. The class-accent stripe rides inside the
+    // button as its leading column (flush left — the button carries no
+    // padding of its own), so `list_item`'s zebra base paints the full
+    // width behind it and the gutter stays tinted even when a chip has no
+    // accent. Same composition as `edit_row_wrap` / `card_wrap`, so the
+    // library row isn't a bespoke wrapper. Disabled once the folder is
+    // full (no empty slot to add into). ChipCode is Copy.
     let stripe: Element<'a, Action> = container(Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
@@ -2361,10 +2357,14 @@ fn library_entry_row<'a>(
             ..Default::default()
         })
         .into();
-    let row_with_stripe = row![stripe, body]
+    let content = row![stripe, container(inner).width(Fill).padding([3, 12])]
         .height(Length::Shrink)
         .align_y(Alignment::Center);
-    with_chip_tooltip(loaded, Some(chip_id), accent, row_with_stripe.into())
+    let mut body = button(content).width(Fill).padding(0).style(widgets::list_item(false, row_idx));
+    if !folder_full {
+        body = body.on_press(Action::AddChip { chip_id, code });
+    }
+    with_chip_tooltip(loaded, Some(chip_id), accent, body.into())
 }
 
 /// Small toggle button used for the REG and TAG columns in the folder

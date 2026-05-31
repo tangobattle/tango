@@ -654,7 +654,7 @@ impl ReplaysState {
             })
             .collect();
 
-        let mut list = column![].spacing(2).padding(8);
+        let mut list = column![].spacing(2).padding([8, 0]);
         for (idx, r) in filtered.iter().enumerate() {
             let md = &r.metadata;
             let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
