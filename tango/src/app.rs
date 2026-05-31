@@ -618,8 +618,9 @@ impl App {
 /// Apply one staged [`tabs::play::ChipEdit`] to a loaded save's
 /// equipped folder, in memory. Resolves chip-id/code against the ROM
 /// assets first (so the immutable borrows drop before the mutable chip
-/// view is taken), then writes via [`ChipsViewMut`]. No disk I/O — the
-/// commit path serializes and writes separately.
+/// view is taken), then writes via [`ChipsViewMut`] and rebuilds the
+/// anti-cheat folder/library mirror so it stays in sync with the edit.
+/// No disk I/O — the commit path only checksums and writes.
 fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
     use tabs::play::ChipEdit;
     use tango_dataview::save::Chip;
@@ -729,14 +730,18 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
                 }
             }
         }
+        // Keep the anti-cheat folder/library mirror in sync with the edit, so
+        // commit only has to checksum + write (see SaveEditCommit).
+        chips.rebuild_anticheat();
     }
 }
 
 /// Apply one staged [`tabs::play::NavicustEdit`] to a loaded save's
-/// navicust, in memory. Like [`apply_chip_edit`], this only touches the
-/// part slots; the materialized WRAM grid cache is rebuilt later, at
-/// commit (`SaveEditCommit`). No disk I/O. A no-op on saves whose
-/// navi view isn't the (writable) Navicust variant.
+/// navicust, in memory. Writes the part slots, then rebuilds the
+/// materialized WRAM grid cache so it stays in sync with the edit (and
+/// the editor's live color-bar preview reflects it). No disk I/O — the
+/// commit path only checksums and writes. A no-op on saves whose navi
+/// view isn't the (writable) Navicust variant.
 fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::NavicustEdit) {
     use tabs::play::NavicustEdit;
     use tango_dataview::save::{NaviViewMut, NavicustPart};
@@ -824,10 +829,11 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
 
 /// Apply one staged [`tabs::play::PatchCard56Edit`] to a loaded save's
 /// registered patch-card list, in memory. Reads the current list under an
-/// immutable borrow, computes the new list, then rewrites the slots via
-/// [`PatchCard56sViewMut`]. No disk I/O — the commit path finalizes the
-/// anti-cheat mirror + checksum and writes separately. A no-op on saves
-/// whose patch-card view isn't the (writable) PatchCard56s variant.
+/// immutable borrow, computes the new list, rewrites the slots via
+/// [`PatchCard56sViewMut`], then rebuilds the anti-cheat mirror so it
+/// stays in sync with the edit. No disk I/O — the commit path only
+/// checksums and writes. A no-op on saves whose patch-card view isn't the
+/// (writable) PatchCard56s variant.
 fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard56Edit) {
     use tabs::play::PatchCard56Edit;
     use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
@@ -888,6 +894,9 @@ fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::Pat
             v.set_patch_card(slot, card.clone());
         }
         v.set_count(new_cards.len());
+        // Keep the anti-cheat mirror in sync with the edit, so commit only
+        // has to checksum + write (see SaveEditCommit).
+        v.rebuild_anticheat();
     }
 }
 
@@ -897,9 +906,10 @@ const NUM_PATCH_CARD4_SLOTS: usize = 6;
 /// Apply one staged [`tabs::play::PatchCard4Edit`] to a loaded save's BN4
 /// patch cards, in memory. BN4 is slot-based: every card belongs to one
 /// fixed catalog slot, so adding routes the card to its own `slot()`
-/// (replacing whatever was there). No MB budget, no list shifting. No disk
-/// I/O — the commit path finalizes the anti-cheat mirror + checksum. A
-/// no-op on saves whose patch-card view isn't the PatchCard4s variant.
+/// (replacing whatever was there). No MB budget, no list shifting. After
+/// writing it rebuilds the anti-cheat mirror so it stays in sync with the
+/// edit. No disk I/O — the commit path only checksums and writes. A no-op
+/// on saves whose patch-card view isn't the PatchCard4s variant.
 fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard4Edit) {
     use tabs::play::PatchCard4Edit;
     use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
@@ -953,6 +963,9 @@ fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::play::Patc
                 }
             }
         }
+        // Keep the anti-cheat mirror in sync with the edit, so commit only
+        // has to checksum + write (see SaveEditCommit).
+        v.rebuild_anticheat();
     }
 }
 
@@ -1611,38 +1624,12 @@ impl App {
             E::SaveEditCommit => {
                 if let Some(loaded) = self.loaded.as_mut() {
                     if !loaded.save_path.as_os_str().is_empty() {
-                        // One Save commits every tab's staged edits. Finalize
-                        // each view this game actually has, then checksum +
-                        // write once. Folder + patch-card libraries live in
-                        // the anti-cheat mirror; navicust has its own WRAM
-                        // grid cache (+ a baked read-only render to refresh).
-                        if let Some(mut chips) = loaded.save.view_chips_mut() {
-                            chips.rebuild_anticheat();
-                        }
-                        {
-                            // Disjoint field borrows: assets vs. save.
-                            let assets = loaded.assets.as_ref();
-                            if let Some(tango_dataview::save::NaviViewMut::Navicust(mut nc)) =
-                                loaded.save.view_navi_mut()
-                            {
-                                nc.rebuild_materialized(assets);
-                            }
-                            // Auto-battle data: the deck is derived from use
-                            // counts; rebuild its materialized WRAM cache so
-                            // the committed save matches the staged counts.
-                            if let Some(mut abd) = loaded.save.view_auto_battle_data_mut() {
-                                abd.rebuild_materialized(assets);
-                            }
-                        }
-                        match loaded.save.view_patch_cards_mut() {
-                            Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(mut v)) => {
-                                v.rebuild_anticheat();
-                            }
-                            Some(tango_dataview::save::PatchCardsViewMut::PatchCard4s(mut v)) => {
-                                v.rebuild_anticheat();
-                            }
-                            None => {}
-                        }
+                        // Every staged edit already keeps its view's derived
+                        // caches in sync as it's applied — the anti-cheat
+                        // folder/patch-card mirror (chips, patch cards) and
+                        // the materialized WRAM caches (navicust, auto-battle
+                        // data). So commit only has to recompute the whole-SRAM
+                        // checksum and write once.
                         loaded.save.rebuild_checksum();
                         // Refresh the baked Navi-view image from the updated
                         // save (commit keeps the in-memory Loaded, so without
