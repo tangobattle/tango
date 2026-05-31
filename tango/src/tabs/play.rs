@@ -597,7 +597,7 @@ impl PlayState {
                         });
                         part.map(|p| Effect::EditNavicust(NavicustEdit::AddPart(p)))
                     }
-                    A::PickUpInstalledPart { slot } => {
+                    A::PickUpInstalledPart { slot, col, row } => {
                         // Read the part being removed so it becomes the
                         // held part — the user can re-place / rotate it.
                         let held = loaded.and_then(|l| {
@@ -608,10 +608,15 @@ impl PlayState {
                             }
                         });
                         if let (Some(p), Some(e)) = (held, self.save_view.editing.as_mut()) {
+                            // Grab the part at the clicked cell: store that
+                            // cell's offset from the part's center anchor
+                            // so it stays under the cursor while dragging.
                             e.held_part = Some(save_view::HeldPart {
                                 id: p.id,
                                 rot: p.rot,
                                 compressed: p.compressed,
+                                grab_row: row as i8 - p.row as i8,
+                                grab_col: col as i8 - p.col as i8,
                             });
                             // Keep the picker entry in sync so picking is
                             // consistent: the part now shows this rotation

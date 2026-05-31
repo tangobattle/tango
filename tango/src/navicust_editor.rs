@@ -195,6 +195,10 @@ pub struct Held {
     /// Set bitmap cells as `(dy, dx)` offsets from the grid center — the
     /// offsets `navicust::materialize` applies (see [`rotated_offsets`]).
     pub cells: Vec<(isize, isize)>,
+    /// The grabbed cell's `(dy, dx)` offset from the part's center anchor.
+    /// The part is anchored so this cell sits under the hovered cell (the
+    /// center snaps there when it's `(0, 0)` — a palette pick-up).
+    pub grab: (isize, isize),
     pub solid: [u8; 4],
     /// The part's "plus" (cross/border) color, drawn on non-solid parts.
     pub plus: [u8; 4],
@@ -269,15 +273,25 @@ impl EditorGrid {
         self.model.occupancy.get(row * self.model.cols + col).copied().flatten()
     }
 
-    /// Build the ghost for the held part anchored at `(col, row)`.
+    /// Build the ghost for the held part with the grabbed cell under
+    /// `(col, row)`. The center anchor that `materialize` stores is the
+    /// hovered cell minus the grab offset; `PlaceHeld` carries that anchor.
+    fn anchor(&self, col: usize, row: usize) -> Option<(isize, isize)> {
+        let (gy, gx) = self.held.as_ref()?.grab;
+        Some((col as isize - gx, row as isize - gy))
+    }
+
+    /// Build the ghost for the held part with its grabbed cell at `(col, row)`.
     fn ghost(&self, col: usize, row: usize) -> Option<navicust::Ghost> {
         let held = self.held.as_ref()?;
+        let (acol, arow) = self.anchor(col, row)?;
         let mut cells = Vec::with_capacity(held.cells.len());
         let mut footprint = Vec::with_capacity(held.cells.len());
-        let mut legal = true;
+        // The center anchor is stored as `u8`, so it must be representable.
+        let mut legal = acol >= 0 && arow >= 0;
         for &(dy, dx) in &held.cells {
-            let cy = row as isize + dy;
-            let cx = col as isize + dx;
+            let cy = arow + dy;
+            let cx = acol + dx;
             footprint.push((cx, cy));
             if cx < 0 || cy < 0 || cx >= self.model.cols as isize || cy >= self.model.rows as isize {
                 legal = false;
@@ -369,17 +383,29 @@ impl canvas::Program<Msg> for EditorGrid {
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some((col, row)) = inside.and_then(|p| self.cell_at(p)) {
                     if self.held.is_some() {
+                        // `PlaceHeld` stores the part's center anchor, which
+                        // the grab offset shifts off the hovered cell. The
+                        // legal ghost guarantees the anchor is non-negative.
                         if self.ghost(col, row).map(|g| g.legal).unwrap_or(false) {
-                            return Some(
-                                Action::publish(Msg::PlaceHeld {
-                                    col: col as u8,
-                                    row: row as u8,
-                                })
-                                .and_capture(),
-                            );
+                            if let Some((acol, arow)) = self.anchor(col, row) {
+                                return Some(
+                                    Action::publish(Msg::PlaceHeld {
+                                        col: acol as u8,
+                                        row: arow as u8,
+                                    })
+                                    .and_capture(),
+                                );
+                            }
                         }
                     } else if let Some(slot) = self.occ(col, row) {
-                        return Some(Action::publish(Msg::PickUpInstalledPart { slot }).and_capture());
+                        return Some(
+                            Action::publish(Msg::PickUpInstalledPart {
+                                slot,
+                                col: col as u8,
+                                row: row as u8,
+                            })
+                            .and_capture(),
+                        );
                     }
                 }
             }

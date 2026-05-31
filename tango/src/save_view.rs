@@ -173,6 +173,25 @@ pub struct HeldPart {
     pub id: usize,
     pub rot: u8,
     pub compressed: bool,
+    /// Where on the part it was grabbed: the offset (in the *current*
+    /// orientation) of the grabbed cell from the part's center anchor,
+    /// as `(row, col)`. Keeps that cell under the cursor as it's dragged
+    /// instead of snapping the center there. `(0, 0)` for palette
+    /// pick-ups (no meaningful grab point).
+    pub grab_row: i8,
+    pub grab_col: i8,
+}
+
+impl HeldPart {
+    /// Rotate the grab point 90° clockwise to track [`Self::rot`] being
+    /// advanced — keeps the grabbed cell under the cursor through a
+    /// rotate. Mirrors the clockwise cell map in
+    /// [`crate::navicust_editor::rotated_offsets`]: `(dy, dx) -> (dx, -dy)`.
+    fn rotate_grab_cw(&mut self) {
+        let (r, c) = (self.grab_row, self.grab_col);
+        self.grab_row = c;
+        self.grab_col = -r;
+    }
 }
 
 /// Sort order for the navicust editor's palette pane.
@@ -656,6 +675,8 @@ impl State {
                             id: *id,
                             rot,
                             compressed,
+                            grab_row: 0,
+                            grab_col: 0,
                         });
                     }
                 }
@@ -667,6 +688,7 @@ impl State {
                 if let Some(e) = self.editing.as_mut() {
                     if let Some(mut h) = e.held_part {
                         h.rot = (h.rot + 1) % 4;
+                        h.rotate_grab_cw();
                         e.held_part = Some(h);
                         e.part_orient.insert(h.id, (h.rot, h.compressed));
                     }
@@ -681,6 +703,7 @@ impl State {
                     if let Some(h) = e.held_part.as_mut() {
                         if h.id == *id {
                             h.rot = rot;
+                            h.rotate_grab_cw();
                         }
                     }
                 }
@@ -694,6 +717,10 @@ impl State {
                     if let Some(h) = e.held_part.as_mut() {
                         if h.id == *id {
                             h.compressed = compressed;
+                            // The shape changes entirely, so the old grab
+                            // point no longer maps to a cell — re-center.
+                            h.grab_row = 0;
+                            h.grab_col = 0;
                         }
                     }
                 }
@@ -845,8 +872,12 @@ pub enum Action {
         row: u8,
     },
     /// Pick an installed part back up — it's removed and becomes held.
+    /// `(col, row)` is the cell that was clicked, so the part can be
+    /// grabbed at that point rather than re-centered on the cursor.
     PickUpInstalledPart {
         slot: usize,
+        col: u8,
+        row: u8,
     },
     /// Remove every installed part.
     ClearNavicust,
@@ -1865,6 +1896,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         let (solid, plus) = crate::navicust::part_colors(color);
         Some(crate::navicust_editor::Held {
             cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
+            grab: (hp.grab_row as isize, hp.grab_col as isize),
             solid,
             plus,
             is_solid: info.is_solid(),
