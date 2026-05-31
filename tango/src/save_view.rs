@@ -214,39 +214,84 @@ impl std::fmt::Display for NavicustSortChoice {
 /// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
 /// past this is blocked, and a freshly added card lands disabled if it
 /// wouldn't fit — so a committed save never exceeds the in-game limit.
-pub const MAX_PATCH_CARD_MB: u32 = 80;
+pub const MAX_PATCH_CARD56_MB: u32 = 80;
 
-/// Sort order for the patch-card editor's library pane.
+/// Sort order for the BN5/BN6 patch-card editor's library pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PatchCardSort {
+pub enum PatchCard56Sort {
     Id,
     Name,
     Mb,
 }
 
-impl PatchCardSort {
-    pub const ALL: [PatchCardSort; 3] = [PatchCardSort::Id, PatchCardSort::Name, PatchCardSort::Mb];
+impl PatchCard56Sort {
+    pub const ALL: [PatchCard56Sort; 3] = [PatchCard56Sort::Id, PatchCard56Sort::Name, PatchCard56Sort::Mb];
 
     fn label(self, lang: &LanguageIdentifier) -> String {
         match self {
-            PatchCardSort::Id => t!(lang, "patch-card-sort-id"),
-            PatchCardSort::Name => t!(lang, "patch-card-sort-name"),
-            PatchCardSort::Mb => t!(lang, "patch-card-sort-mb"),
+            PatchCard56Sort::Id => t!(lang, "patch-card-sort-id"),
+            PatchCard56Sort::Name => t!(lang, "patch-card-sort-name"),
+            PatchCard56Sort::Mb => t!(lang, "patch-card-sort-mb"),
         }
     }
 }
 
 #[derive(Clone)]
-struct PatchCardSortChoice {
-    sort: PatchCardSort,
+struct PatchCard56SortChoice {
+    sort: PatchCard56Sort,
     label: String,
 }
-impl PartialEq for PatchCardSortChoice {
+impl PartialEq for PatchCard56SortChoice {
     fn eq(&self, other: &Self) -> bool {
         self.sort == other.sort
     }
 }
-impl std::fmt::Display for PatchCardSortChoice {
+impl std::fmt::Display for PatchCard56SortChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// A choice in a BN4 slot's card dropdown: the card id (`None` clears the
+/// slot) plus a pre-resolved label. The label folds the card's effect into
+/// the name (`"Max HP Up — Max HP+100"`), since within one slot several
+/// cards share a name and only the effect tells them apart. `Display`
+/// renders the label; equality is by id so the picker can match the
+/// currently-installed card.
+#[derive(Clone)]
+struct PatchCard4Choice {
+    id: Option<usize>,
+    label: String,
+}
+
+impl PatchCard4Choice {
+    fn none(lang: &LanguageIdentifier) -> Self {
+        Self {
+            id: None,
+            label: t!(lang, "patch-card4-none"),
+        }
+    }
+
+    fn card(loaded: &Loaded, id: usize) -> Self {
+        let info = loaded.assets.patch_card4(id);
+        let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}"));
+        // 3-digit catalog number prefix (also disambiguates same-named
+        // cards in the dropdown); then the effect to tell them apart.
+        let label = match info.as_ref().and_then(|c| c.effect()) {
+            Some(effect) => format!("{id:03} {name} — {effect}"),
+            None => format!("{id:03} {name}"),
+        };
+        Self { id: Some(id), label }
+    }
+}
+
+impl PartialEq for PatchCard4Choice {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl std::fmt::Display for PatchCard4Choice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
@@ -442,8 +487,9 @@ pub struct State {
     pub library_sort: LibrarySort,
     /// Sort order for the navicust palette pane (persistent preference).
     pub navicust_sort: NavicustSort,
-    /// Sort order for the patch-card library pane (persistent preference).
-    pub patch_card_sort: PatchCardSort,
+    /// Sort order for the BN5/BN6 patch-card library pane (persistent
+    /// preference).
+    pub patch_card56_sort: PatchCard56Sort,
     /// Sort order for the auto-battle-data chip library pane (persistent
     /// preference).
     pub auto_battle_data_sort: AutoBattleDataSort,
@@ -471,8 +517,8 @@ pub struct EditState {
     pub part_orient: std::collections::HashMap<usize, (u8, bool)>,
     /// Navicust editor: palette filter text.
     pub navicust_filter: String,
-    /// Patch-card editor: library filter text.
-    pub patch_card_filter: String,
+    /// BN5/BN6 patch-card editor: library filter text.
+    pub patch_card56_filter: String,
     /// Auto-battle-data editor: chip library filter text.
     pub auto_battle_data_filter: String,
 }
@@ -501,7 +547,7 @@ impl State {
             editing: None,
             library_sort: LibrarySort::Id,
             navicust_sort: NavicustSort::Id,
-            patch_card_sort: PatchCardSort::Id,
+            patch_card56_sort: PatchCard56Sort::Id,
             auto_battle_data_sort: AutoBattleDataSort::Id,
         }
     }
@@ -669,15 +715,15 @@ impl State {
                 self.navicust_sort = *s;
                 iced::Task::none()
             }
-            // ----- Patch-card editor: state-local folds -----
-            Action::PatchCardFilterChanged(s) => {
+            // ----- BN5/BN6 patch-card editor: state-local folds -----
+            Action::PatchCard56FilterChanged(s) => {
                 if let Some(e) = self.editing.as_mut() {
-                    e.patch_card_filter = s.clone();
+                    e.patch_card56_filter = s.clone();
                 }
                 iced::Task::none()
             }
-            Action::PatchCardSortChanged(s) => {
-                self.patch_card_sort = *s;
+            Action::PatchCard56SortChanged(s) => {
+                self.patch_card56_sort = *s;
                 iced::Task::none()
             }
             // ----- Auto-battle-data editor: state-local folds -----
@@ -703,10 +749,14 @@ impl State {
             | Action::PlaceHeld { .. }
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
-            | Action::AddPatchCard { .. }
-            | Action::RemovePatchCard { .. }
-            | Action::TogglePatchCard { .. }
-            | Action::ClearPatchCards
+            | Action::AddPatchCard56 { .. }
+            | Action::RemovePatchCard56 { .. }
+            | Action::TogglePatchCard56 { .. }
+            | Action::ClearPatchCard56s
+            | Action::AddPatchCard4 { .. }
+            | Action::RemovePatchCard4 { .. }
+            | Action::TogglePatchCard4 { .. }
+            | Action::ClearPatchCard4s
             | Action::SetChipUseCount { .. }
             | Action::SetSecondaryChipUseCount { .. }
             | Action::ClearAutoBattleData
@@ -804,27 +854,43 @@ pub enum Action {
     NavicustFilterChanged(String),
     /// Palette: the sort order changed.
     NavicustSortChanged(NavicustSort),
-    // ----- Patch-card editor (only emitted when `editable` is set) -----
+    // ----- BN5/BN6 patch-card editor (only emitted when `editable` is set) -----
     /// Library pane: register patch card `id` (appended to the list,
     /// enabled).
-    AddPatchCard {
+    AddPatchCard56 {
         id: usize,
     },
     /// List pane: unregister the patch card in `slot`.
-    RemovePatchCard {
+    RemovePatchCard56 {
         slot: usize,
     },
     /// List pane: toggle the patch card in `slot` between enabled and
     /// disabled.
-    TogglePatchCard {
+    TogglePatchCard56 {
         slot: usize,
     },
     /// List pane: unregister every patch card.
-    ClearPatchCards,
+    ClearPatchCard56s,
     /// Library pane: the filter text changed.
-    PatchCardFilterChanged(String),
+    PatchCard56FilterChanged(String),
     /// Library pane: the sort order changed.
-    PatchCardSortChanged(PatchCardSort),
+    PatchCard56SortChanged(PatchCard56Sort),
+    // ----- BN4 patch-card editor (only emitted when `editable` is set) -----
+    /// A slot's dropdown picked card `id` — install it into its own catalog
+    /// slot, enabled (replacing whatever card occupied that slot).
+    AddPatchCard4 {
+        id: usize,
+    },
+    /// A slot's dropdown picked "None" — clear catalog slot `slot`.
+    RemovePatchCard4 {
+        slot: usize,
+    },
+    /// Toggle slot `slot`'s card between enabled and disabled.
+    TogglePatchCard4 {
+        slot: usize,
+    },
+    /// Clear every slot.
+    ClearPatchCard4s,
     // ----- Auto Battle Data editor (only emitted when `editable` is set) -----
     /// Library pane: set chip `id`'s primary use count (the count that
     /// drives the materialized deck for every section).
@@ -1105,7 +1171,8 @@ fn tab_extras<'a>(
             let mut tail = row![copy_btn(Tab::PatchCards)]
                 .spacing(6)
                 .align_y(iced::Alignment::Center);
-            // Only BN5/BN6 (writable PatchCard56s) get the Edit affordance.
+            // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are both writable
+            // (each via its own editor); the Edit affordance covers both.
             if editable && loaded.patch_cards_editable {
                 tail = tail.push(widgets::labeled_icon_button(
                     Icon::Pencil,
@@ -2005,7 +2072,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
         grid_inner = grid_inner.push(parts);
     }
-    let grid_pane = container(column![grid_header, grid_inner])
+    let grid_pane = container(column![grid_header, scrollable(grid_inner).height(Fill).width(Fill)])
         .width(Fill)
         .height(Fill)
         .style(widgets::pane);
@@ -2209,9 +2276,9 @@ fn folder_slot_row<'a>(
                     Action::ToggleTag { slot },
                 ));
             }
-            // Right arrow → remove this chip (back out to the library).
+            // ✕ → remove this chip (back out to the library).
             inner = inner.push(
-                button(Icon::ArrowRight.widget().size(TEXT_BODY))
+                button(Icon::X.widget().size(TEXT_BODY))
                     .padding([3, 8])
                     .style(widgets::neutral)
                     .on_press(Action::RemoveChip { slot }),
@@ -2229,9 +2296,10 @@ fn folder_slot_row<'a>(
     )
 }
 
-/// One chip in the editor's right pane (the library). Shows the chip's
-/// stats (element / ATK / MB, like the read-only list) with a button per
-/// valid code; clicking a code adds it to the folder.
+/// One chip+code in the editor's right pane (the library / palette).
+/// Shows the chip's stats (element / code / ATK / MB, like the read-only
+/// list). The whole row is a click-to-add button that drops this
+/// chip+code into the folder; it's disabled once the folder is full.
 fn library_entry_row<'a>(
     loaded: &'a Loaded,
     chip_id: usize,
@@ -2242,7 +2310,6 @@ fn library_entry_row<'a>(
     folder_full: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
-    use lucide_icons::Icon;
     let info = loaded.assets.chip(chip_id);
     let accent = class_accent(
         info.as_ref().map(|i| i.class()),
@@ -2250,16 +2317,6 @@ fn library_entry_row<'a>(
     );
     let [element, atk, mb] = chip_stat_cells(loaded, chip_id, chips_have_mb);
 
-    // Left arrow → add this chip+code into the folder (to its left). It
-    // lives in the gutter left of the accent stripe (see edit_row_wrap).
-    // Disabled once the folder is full (no empty slot to add into).
-    let mut add_btn = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
-        .padding([3, 8])
-        .style(widgets::neutral);
-    if !folder_full {
-        add_btn = add_btn.on_press(Action::AddChip { chip_id, code });
-    }
-    let add: Element<'a, Action> = add_btn.into();
     let code_cell = container(text(code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
         .width(Length::Fixed(22.0))
         .align_x(iced::alignment::Horizontal::Right);
@@ -2273,14 +2330,33 @@ fn library_entry_row<'a>(
         mb,
     ]
     .spacing(8)
-    .align_y(Alignment::Center)
-    .padding([3, 12]);
-    with_chip_tooltip(
-        loaded,
-        Some(chip_id),
-        accent,
-        edit_row_wrap(inner.into(), accent, row_idx, Some(add)),
-    )
+    .align_y(Alignment::Center);
+
+    // The whole row is the add control: clicking anywhere drops this
+    // chip+code into the folder. `list_item` paints the zebra base +
+    // hover highlight (one background, one hover), so we don't route
+    // through `edit_row_wrap` here — instead we keep just the class-accent
+    // stripe to the left of the clickable body. Disabled once the folder
+    // is full (no empty slot to add into). ChipCode is Copy.
+    let mut body = button(inner)
+        .width(Fill)
+        .padding([3, 12])
+        .style(widgets::list_item(false, row_idx));
+    if !folder_full {
+        body = body.on_press(Action::AddChip { chip_id, code });
+    }
+    let stripe: Element<'a, Action> = container(Space::new())
+        .width(Length::Fixed(6.0))
+        .height(Length::Fill)
+        .style(move |_t: &iced::Theme| container::Style {
+            background: accent.map(iced::Background::Color),
+            ..Default::default()
+        })
+        .into();
+    let row_with_stripe = row![stripe, body]
+        .height(Length::Shrink)
+        .align_y(Alignment::Center);
+    with_chip_tooltip(loaded, Some(chip_id), accent, row_with_stripe.into())
 }
 
 /// Small toggle button used for the REG and TAG columns in the folder
@@ -2938,11 +3014,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                 let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
                 let effects: Vec<_> = info.as_ref().map(|c| c.effects()).unwrap_or_default();
 
-                let name_text = if card.enabled {
-                    text(name).size(TEXT_BODY)
-                } else {
-                    text(name).size(TEXT_BODY).style(muted_text_style)
-                };
+                let name_text = patch_card_name(name, card.enabled);
                 let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style),].spacing(2);
 
                 let mut ability_col = column![].spacing(2);
@@ -2968,42 +3040,70 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
             }
         }
         tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
-            for i in 0..6 {
-                let card = v.patch_card(i);
-                let info = card.as_ref().and_then(|c| assets.patch_card4(c.id));
-                let label = match (card.as_ref(), info.as_ref()) {
-                    (Some(c), Some(i)) if c.enabled => i.name().unwrap_or_else(|| format!("#{}", c.id)),
-                    _ => "—".to_string(),
+            // Mirror the BN4 editor's slot form: a slot badge + the card's
+            // "name — effect" line, with the bug (if any) in purple beneath.
+            for (slot, slot_label) in PATCH_CARD4_SLOT_LABELS.iter().enumerate() {
+                let badge: Element<'static, M> =
+                    container(text(*slot_label).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+                        .width(Length::Fixed(34.0))
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .into();
+                let cell: Element<'static, M> = match v.patch_card(slot) {
+                    Some(card) => {
+                        let info = assets.patch_card4(card.id);
+                        let name = info
+                            .as_ref()
+                            .and_then(|i| i.name())
+                            .unwrap_or_else(|| format!("#{}", card.id));
+                        let effect = info.as_ref().and_then(|i| i.effect());
+                        // 3-digit catalog number, then the "name — effect"
+                        // line (name struck + everything muted when off).
+                        let number = text(format!("{:03}", card.id))
+                            .size(TEXT_BODY)
+                            .font(iced::Font::MONOSPACE)
+                            .style(muted_text_style);
+                        let label = patch_card_name(
+                            if let Some(effect) = effect {
+                                format!("{name} — {effect}")
+                            } else {
+                                name
+                            },
+                            card.enabled,
+                        );
+                        let mut col = column![row![badge, number, container(label).width(Length::Fill)]
+                            .spacing(8)
+                            .align_y(Alignment::Center)]
+                        .spacing(2);
+                        if let Some(bug) = info.as_ref().and_then(|i| i.bug()) {
+                            col = col.push(
+                                row![
+                                    Space::new().width(Length::Fixed(44.0)),
+                                    text(bug)
+                                        .size(TEXT_BODY)
+                                        .color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)),
+                                ]
+                                .spacing(0),
+                            );
+                        }
+                        col.into()
+                    }
+                    None => row![
+                        badge,
+                        text(t!(lang, "patch-card4-none"))
+                            .size(TEXT_BODY)
+                            .style(muted_text_style)
+                            .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .into(),
                 };
-                let effect = info.as_ref().and_then(|i| i.effect());
-                let bug = info.as_ref().and_then(|i| i.bug());
-
-                let mut details_col = column![].spacing(2);
-                if let Some(e) = effect {
-                    details_col = details_col.push(
-                        text(e)
-                            .size(TEXT_CAPTION)
-                            .color(iced::Color::from_rgb8(0xff, 0xbd, 0x18)),
-                    );
-                }
-                if let Some(b) = bug {
-                    details_col = details_col.push(
-                        text(b)
-                            .size(TEXT_CAPTION)
-                            .color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)),
-                    );
-                }
-
-                let row = row![
-                    text(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
-                        .size(TEXT_CAPTION)
-                        .width(Length::Fixed(22.0)),
-                    text(label).size(TEXT_BODY).width(Length::Fill),
-                    details_col,
-                ]
-                .spacing(8)
-                .align_y(Alignment::Start);
-                list = list.push(container(row).padding([6, 10]).style(crate::widgets::zebra_row(i)));
+                list = list.push(
+                    container(cell)
+                        .width(Fill)
+                        .padding([8, 10])
+                        .style(crate::widgets::zebra_row(slot)),
+                );
             }
         }
     }
@@ -3014,7 +3114,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
 /// Every PatchCard56 the ROM defines, as `(id, name, mb)`, in `sort`
 /// order. The caller applies the name filter and excludes ids already in
 /// the registered list. Ties fall back to id for a stable order.
-fn sorted_patch_card_library(loaded: &Loaded, sort: PatchCardSort) -> Vec<(usize, String, u8)> {
+fn sorted_patch_card56_library(loaded: &Loaded, sort: PatchCard56Sort) -> Vec<(usize, String, u8)> {
     let assets = loaded.assets.as_ref();
     let mut rows: Vec<(usize, String, u8)> = Vec::new();
     for id in 0..assets.num_patch_card56s() {
@@ -3023,11 +3123,25 @@ fn sorted_patch_card_library(loaded: &Loaded, sort: PatchCardSort) -> Vec<(usize
         rows.push((id, name, info.mb()));
     }
     match sort {
-        PatchCardSort::Id => {}
-        PatchCardSort::Name => rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0))),
-        PatchCardSort::Mb => rows.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0))),
+        PatchCard56Sort::Id => {}
+        PatchCard56Sort::Name => rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0))),
+        PatchCard56Sort::Mb => rows.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0))),
     }
     rows
+}
+
+/// A patch-card name as an Element. Built as rich text so a disabled card's
+/// name can be struck through (and muted) to read as inactive at a glance —
+/// iced's strikethrough lives on rich-text spans. `on_link_click(never)`
+/// pins the span's link type; these spans are never links.
+fn patch_card_name<'a, M: 'a>(name: String, enabled: bool) -> Element<'a, M> {
+    let mut el = iced::widget::rich_text([iced::widget::text::Span::new(name).strikethrough(!enabled)])
+        .on_link_click(iced::never)
+        .size(TEXT_BODY);
+    if !enabled {
+        el = el.style(muted_text_style);
+    }
+    el.into()
 }
 
 /// The viewer-style cells for a patch card: `[name+MB, abilities, bugs]`,
@@ -3036,13 +3150,9 @@ fn sorted_patch_card_library(loaded: &Loaded, sort: PatchCardSort) -> Vec<(usize
 /// a vertical stack of [`effect_badge`]s). Greyed when `enabled` is false.
 /// Callers wrap these with a leading cell (index / add button) and, for the
 /// registered list, trailing edit controls.
-fn patch_card_cells<'a>(loaded: &Loaded, name: &str, mb: u8, enabled: bool, id: usize) -> [Element<'a, Action>; 3] {
+fn patch_card56_cells<'a>(loaded: &Loaded, name: &str, mb: u8, enabled: bool, id: usize) -> [Element<'a, Action>; 3] {
     let effects = loaded.assets.patch_card56(id).map(|c| c.effects()).unwrap_or_default();
-    let name_text = if enabled {
-        text(name.to_string()).size(TEXT_BODY)
-    } else {
-        text(name.to_string()).size(TEXT_BODY).style(muted_text_style)
-    };
+    let name_text = patch_card_name(name.to_string(), enabled);
     let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style)].spacing(2);
     let mut ability_col = column![].spacing(2);
     for e in effects.iter().filter(|e| e.is_ability) {
@@ -3061,11 +3171,11 @@ fn patch_card_cells<'a>(loaded: &Loaded, name: &str, mb: u8, enabled: bool, id: 
 }
 
 /// One registered patch card, laid out like a [`render_patch_cards`] row
-/// (index · name+MB · abilities · bugs) with an enable toggle and a remove
-/// (→) button appended. The name dims while the card is disabled.
+/// (index · name+MB · abilities · bugs) with an enable toggle and an ✕
+/// remove button appended. The name dims while the card is disabled.
 /// `can_enable` is whether enabling this (currently disabled) card would
 /// still fit the MB budget; it gates the ON toggle.
-fn patch_card_list_row<'a>(
+fn patch_card56_list_row<'a>(
     loaded: &'a Loaded,
     slot: usize,
     card: tango_dataview::save::PatchCard,
@@ -3079,18 +3189,18 @@ fn patch_card_list_row<'a>(
         .and_then(|c| c.name())
         .unwrap_or_else(|| format!("#{}", card.id));
     let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-    let [name_cell, ability_cell, bug_cell] = patch_card_cells(loaded, &name, mb, card.enabled, card.id);
+    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, card.id);
 
     // Green "ON" toggle (matches the folder editor's TAG tint), then the
-    // remove arrow that backs the card out to the library. The toggle is
-    // disabled when the card is off and enabling it would exceed the MB
-    // budget (an already-on card can always be turned off).
-    let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard { slot });
+    // ✕ that backs the card out to the library. The toggle is disabled
+    // when the card is off and enabling it would exceed the MB budget (an
+    // already-on card can always be turned off).
+    let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard56 { slot });
     let toggle = edit_toggle_maybe("ON", card.enabled, iced::Color::from_rgb8(0x29, 0xa1, 0x21), toggle_msg);
-    let remove = button(Icon::ArrowRight.widget().size(TEXT_BODY))
+    let remove = button(Icon::X.widget().size(TEXT_BODY))
         .padding([3, 8])
         .style(widgets::neutral)
-        .on_press(Action::RemovePatchCard { slot });
+        .on_press(Action::RemovePatchCard56 { slot });
 
     let row = row![
         text(format!("{:>2}", slot + 1))
@@ -3110,11 +3220,12 @@ fn patch_card_list_row<'a>(
         .into()
 }
 
-/// One library card, laid out like a [`render_patch_cards`] row (an add
-/// (←) button in place of the index · name+MB · abilities · bugs). Effects
-/// show enabled, since adding a card enables it when it fits. The add
-/// button is disabled when the list is full.
-fn patch_card_library_row<'a>(
+/// One library card, laid out like a [`render_patch_cards`] row (index ·
+/// name+MB · abilities · bugs). The whole row is a click-to-add button
+/// (the palette affordance) that registers the card; effects show
+/// enabled, since adding a card enables it when it fits. Disabled
+/// (unclickable) when the list is full.
+fn patch_card56_library_row<'a>(
     loaded: &'a Loaded,
     id: usize,
     name: String,
@@ -3122,32 +3233,47 @@ fn patch_card_library_row<'a>(
     row_idx: usize,
     list_full: bool,
 ) -> Element<'a, Action> {
-    use crate::widgets;
-    use lucide_icons::Icon;
-    let mut add_btn = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
-        .padding([3, 8])
-        .style(widgets::neutral);
-    if !list_full {
-        add_btn = add_btn.on_press(Action::AddPatchCard { id });
-    }
-    let add: Element<'a, Action> = add_btn.into();
-    let [name_cell, ability_cell, bug_cell] = patch_card_cells(loaded, &name, mb, true, id);
+    let [name_cell, ability_cell, bug_cell] = patch_card56_cells(loaded, &name, mb, true, id);
 
-    let row = row![add, name_cell, ability_cell, bug_cell]
+    let row = row![name_cell, ability_cell, bug_cell]
         .spacing(8)
         .align_y(Alignment::Start);
-    container(row)
+    // The entire row is the add control: clicking anywhere registers the
+    // card. `list_item` paints the zebra base + hover highlight, so it
+    // doubles as the palette's "click me" affordance.
+    let mut b = button(row)
+        .width(Fill)
         .padding([6, 10])
-        .style(crate::widgets::zebra_row(row_idx))
-        .into()
+        .style(crate::widgets::list_item(false, row_idx));
+    if !list_full {
+        b = b.on_press(Action::AddPatchCard56 { id });
+    }
+    b.into()
 }
 
-/// The patch-card editor: a two-pane layout (registered list left, card
-/// library right) whose rows match the read-only viewer (index · name+MB
-/// stacked · ability column · bug column), with edit controls appended —
-/// an enable toggle + remove on the list, an add button on the library.
-/// Edits stage live in the loaded save and are written to disk only on Save.
+/// Dispatch the Patch Cards tab's editor to the right implementation:
+/// BN5/BN6 (PatchCard56s) is a variable MB-budgeted list; BN4
+/// (PatchCard4s) is six fixed catalog slots. They're wholly separate
+/// editors — the only thing they share is the tab.
 fn render_patch_cards_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
+    match loaded.save.view_patch_cards() {
+        Some(tango_dataview::save::PatchCardsView::PatchCard56s(_)) => render_patch_card56s_edit(lang, loaded, state),
+        Some(tango_dataview::save::PatchCardsView::PatchCard4s(_)) => render_patch_card4s_edit(lang, loaded, state),
+        None => placeholder(t!(lang, "save-empty")),
+    }
+}
+
+/// The BN5/BN6 patch-card editor: a two-pane layout (registered list left,
+/// card library right) whose rows match the read-only viewer (index ·
+/// name+MB stacked · ability column · bug column), with edit controls
+/// appended — an enable toggle + remove on the list, an add button on the
+/// library. Edits stage live in the loaded save and are written to disk
+/// only on Save.
+fn render_patch_card56s_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a Loaded,
     state: &'a State,
@@ -3181,13 +3307,13 @@ fn render_patch_cards_edit<'a>(
     for (slot, card) in &cards {
         // A disabled card can be enabled only if it still fits the budget;
         // an enabled card can always be turned off.
-        let can_enable = enabled_mb + card_mb(card.id) <= MAX_PATCH_CARD_MB;
-        list_col = list_col.push(patch_card_list_row(loaded, *slot, card.clone(), can_enable));
+        let can_enable = enabled_mb + card_mb(card.id) <= MAX_PATCH_CARD56_MB;
+        list_col = list_col.push(patch_card56_list_row(loaded, *slot, card.clone(), can_enable));
     }
     let clear_all = widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),
-        Action::ClearPatchCards,
+        Action::ClearPatchCard56s,
         [5.0, 10.0],
         widgets::danger_button,
     );
@@ -3196,7 +3322,7 @@ fn render_patch_cards_edit<'a>(
     let mb_text = text(t!(lang, "patch-card-edit-mb", mb = enabled_mb as i64))
         .size(TEXT_CAPTION)
         .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if enabled_mb > MAX_PATCH_CARD_MB {
+            color: Some(if enabled_mb > MAX_PATCH_CARD56_MB {
                 theme.palette().danger
             } else {
                 muted_color(theme)
@@ -3223,36 +3349,36 @@ fn render_patch_cards_edit<'a>(
         .style(widgets::pane);
 
     // ----- Right pane: the card library -----
-    let filter = edit.patch_card_filter.to_lowercase();
+    let filter = edit.patch_card56_filter.to_lowercase();
     let list_full = count >= max;
     let mut lib_col = column![].spacing(3).padding(0);
     let mut shown = 0usize;
-    for (id, name, mb) in sorted_patch_card_library(loaded, state.patch_card_sort) {
+    for (id, name, mb) in sorted_patch_card56_library(loaded, state.patch_card56_sort) {
         if in_list.contains(&id) {
             continue;
         }
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        lib_col = lib_col.push(patch_card_library_row(loaded, id, name, mb, shown, list_full));
+        lib_col = lib_col.push(patch_card56_library_row(loaded, id, name, mb, shown, list_full));
         shown += 1;
     }
-    let filter_input = text_input(&t!(lang, "patch-card-edit-search"), &edit.patch_card_filter)
-        .on_input(Action::PatchCardFilterChanged)
+    let filter_input = text_input(&t!(lang, "patch-card-edit-search"), &edit.patch_card56_filter)
+        .on_input(Action::PatchCard56FilterChanged)
         .padding([5, 10])
         .size(TEXT_BODY)
         .width(Fill)
         .style(widgets::chunky_text_input);
-    let sort_options: Vec<PatchCardSortChoice> = PatchCardSort::ALL
+    let sort_options: Vec<PatchCard56SortChoice> = PatchCard56Sort::ALL
         .iter()
-        .map(|&sort| PatchCardSortChoice {
+        .map(|&sort| PatchCard56SortChoice {
             sort,
             label: sort.label(lang),
         })
         .collect();
-    let sort_selected = sort_options.iter().find(|c| c.sort == state.patch_card_sort).cloned();
-    let sort_pick = pick_list(sort_options, sort_selected, |c: PatchCardSortChoice| {
-        Action::PatchCardSortChanged(c.sort)
+    let sort_selected = sort_options.iter().find(|c| c.sort == state.patch_card56_sort).cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, |c: PatchCard56SortChoice| {
+        Action::PatchCard56SortChanged(c.sort)
     })
     .padding([5, 10])
     .text_size(TEXT_BODY)
@@ -3279,6 +3405,154 @@ fn render_patch_cards_edit<'a>(
         .spacing(widgets::PANE_GAP)
         .width(Fill)
         .height(Fill)
+        .into()
+}
+
+// ---------- BN4 patch cards ----------
+
+/// BN4 catalog-slot labels (the "0A"–"0F" the game shows). A BN4 patch
+/// card belongs to exactly one of these six slots, and a slot holds at most
+/// one card — so the editor is a per-slot picker, not the BN5/BN6 list.
+const PATCH_CARD4_SLOT_LABELS: [&str; 6] = ["0A", "0B", "0C", "0D", "0E", "0F"];
+
+/// One slot's row in the BN4 editor: the slot label, a dropdown of every
+/// card that belongs to this slot (plus "None" to empty it), an ON/off
+/// toggle for the installed card, and — since a card's downside isn't in
+/// the dropdown label — its bug line in purple underneath.
+fn patch_card4_slot_row<'a>(
+    loaded: &'a Loaded,
+    slot: usize,
+    installed: Option<tango_dataview::save::PatchCard>,
+    choices: Vec<PatchCard4Choice>,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    let badge = container(
+        text(PATCH_CARD4_SLOT_LABELS[slot])
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE),
+    )
+    .width(Length::Fixed(34.0))
+    .align_x(iced::alignment::Horizontal::Center);
+
+    let selected_id = installed.as_ref().map(|c| c.id);
+    let selected = choices.iter().find(|c| c.id == selected_id).cloned();
+    let picker = pick_list(choices, selected, move |c: PatchCard4Choice| match c.id {
+        Some(id) => Action::AddPatchCard4 { id },
+        None => Action::RemovePatchCard4 { slot },
+    })
+    .width(Fill)
+    .padding([5, 10])
+    .text_size(TEXT_BODY)
+    .style(widgets::chunky_pick_list);
+
+    // The ON toggle shows on every row (so the column stays aligned); an
+    // empty slot has nothing to enable, so it renders disabled (greyed,
+    // unclickable). Green matches the other editors' "on" tint.
+    let toggle = edit_toggle_maybe(
+        "ON",
+        installed.as_ref().is_some_and(|c| c.enabled),
+        iced::Color::from_rgb8(0x29, 0xa1, 0x21),
+        installed.as_ref().map(|_| Action::TogglePatchCard4 { slot }),
+    );
+    let top = row![badge, picker, toggle].spacing(10).align_y(Alignment::Center);
+
+    let mut cell = column![top].spacing(2);
+    // Bug line for the installed card, aligned under the dropdown (past the
+    // slot badge). The effect is already in the dropdown label; the bug is
+    // the downside the user should still see at a glance.
+    if let Some(bug) = installed
+        .as_ref()
+        .and_then(|c| loaded.assets.patch_card4(c.id))
+        .and_then(|i| i.bug())
+    {
+        cell = cell.push(
+            row![
+                Space::new().width(Length::Fixed(44.0)),
+                text(bug)
+                    .size(TEXT_BODY)
+                    .color(iced::Color::from_rgb8(0xb5, 0x5a, 0xde)),
+            ]
+            .spacing(0),
+        );
+    }
+    container(cell)
+        .width(Fill)
+        .padding([8, 10])
+        .style(crate::widgets::zebra_row(slot))
+        .into()
+}
+
+/// The BN4 patch-card editor: the six catalog slots (0A–0F) as a single
+/// form. Each slot has a dropdown of the cards that belong to it (plus
+/// "None"), so the model is "pick one card per slot" — matching the in-game
+/// Mod Card screen — rather than the BN5/BN6 collection-from-a-library.
+/// There's no MB budget. Edits stage live in the loaded save and are
+/// written to disk only on Save.
+fn render_patch_card4s_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    // Only reached while editing, so the EditState is present.
+    if state.editing.is_none() {
+        return placeholder(t!(lang, "save-empty"));
+    }
+    let Some(tango_dataview::save::PatchCardsView::PatchCard4s(v)) = loaded.save.view_patch_cards() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let assets = loaded.assets.as_ref();
+
+    // Bucket every card id by the slot it belongs to (one pass), so each
+    // slot's dropdown lists only its own cards.
+    let mut by_slot: [Vec<usize>; PATCH_CARD4_SLOT_LABELS.len()] = std::array::from_fn(|_| Vec::new());
+    for id in 0..assets.num_patch_card4s() {
+        if let Some(info) = assets.patch_card4(id) {
+            let s = info.slot() as usize;
+            if let Some(bucket) = by_slot.get_mut(s) {
+                bucket.push(id);
+            }
+        }
+    }
+
+    let mut rows = column![].spacing(3).padding(0);
+    let mut filled = 0usize;
+    for (slot, ids) in by_slot.iter().enumerate() {
+        let installed = v.patch_card(slot);
+        if installed.is_some() {
+            filled += 1;
+        }
+        let mut choices = vec![PatchCard4Choice::none(lang)];
+        choices.extend(ids.iter().map(|&id| PatchCard4Choice::card(loaded, id)));
+        rows = rows.push(patch_card4_slot_row(loaded, slot, installed, choices));
+    }
+
+    let clear_all = widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "save-edit-clear"),
+        Action::ClearPatchCard4s,
+        [5.0, 10.0],
+        widgets::danger_button,
+    );
+    let header = container(
+        row![
+            text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),
+            text(t!(lang, "patch-card-edit-count", count = filled as i64))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            clear_all,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+
+    container(column![header, scrollable(rows).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane)
         .into()
 }
 

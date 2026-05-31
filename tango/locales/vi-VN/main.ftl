@@ -196,6 +196,7 @@ patch-card-edit-mb = { $mb }MB / 80MB
 patch-card-sort-id = ID
 patch-card-sort-name = Tên
 patch-card-sort-mb = MB
+patch-card4-none = Không
 save-empty = Save này không có dữ liệu cho mục này.
 play-no-selection = Chọn một game và save để xem.
 replays-filter-all-games = Tất cả game

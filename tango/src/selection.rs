@@ -35,10 +35,10 @@ pub struct Loaded {
     /// whether the Navi tab shows the Edit button.
     pub navicust_editable: bool,
     /// Whether this save supports in-place patch-card editing — i.e.
-    /// `save.view_patch_cards_mut()` yields the `PatchCard56s` variant
-    /// (BN5/BN6). Cached at build time (the probe needs `&mut save`);
-    /// drives whether the Patch Cards tab shows the Edit button. BN4's
-    /// PatchCard4s is read-only here.
+    /// `save.view_patch_cards_mut().is_some()`. True for BN4 (PatchCard4s,
+    /// slot-based) and BN5/BN6 (PatchCard56s, list-based); each gets its own
+    /// editor. Cached at build time (the probe needs `&mut save`); drives
+    /// whether the Patch Cards tab shows the Edit button.
     pub patch_cards_editable: bool,
     /// Whether this save supports in-place auto-battle-data editing — i.e.
     /// `save.view_auto_battle_data_mut().is_some()` (BN4/BN5). Cached at
@@ -135,12 +135,10 @@ impl Loaded {
             save.view_navi_mut(),
             Some(tango_dataview::save::NaviViewMut::Navicust(_))
         );
-        // Patch-card editability: only the BN5/BN6 `PatchCard56s` variant is
-        // writable through this editor. Same pure-capability probe pattern.
-        let patch_cards_editable = matches!(
-            save.view_patch_cards_mut(),
-            Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(_))
-        );
+        // Patch-card editability: both BN4 (PatchCard4s) and BN5/BN6
+        // (PatchCard56s) are writable, each through its own editor. Same
+        // pure-capability probe pattern as the others.
+        let patch_cards_editable = save.view_patch_cards_mut().is_some();
         // Auto-battle-data editability: BN4/BN5 expose a writable view.
         // Same pure-capability probe pattern as the others.
         let auto_battle_data_editable = save.view_auto_battle_data_mut().is_some();

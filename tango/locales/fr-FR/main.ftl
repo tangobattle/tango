@@ -205,6 +205,7 @@ patch-card-edit-mb = { $mb }MB / 80MB
 patch-card-sort-id = ID
 patch-card-sort-name = Nom
 patch-card-sort-mb = MB
+patch-card4-none = Aucune
 save-empty = Cette sauvegarde n'a pas de données pour cette vue.
 play-no-selection = Choisissez un jeu et une sauvegarde à inspecter.
 replays-filter-all-games = Tous les jeux

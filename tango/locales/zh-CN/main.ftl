@@ -196,6 +196,7 @@ patch-card-edit-mb = { $mb }MB / 80MB
 patch-card-sort-id = ID
 patch-card-sort-name = 名称
 patch-card-sort-mb = MB
+patch-card4-none = 无
 save-empty = 此存档没有该视图的数据。
 play-no-selection = 请选择要查看的游戏与存档。
 replays-filter-all-games = 全部游戏

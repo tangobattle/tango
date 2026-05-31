@@ -294,11 +294,11 @@ pub enum NavicustEdit {
     ClearAll,
 }
 
-/// A single patch-card edit staged by the patch-card editor. Applied to
-/// the loaded save in memory by [`Effect::EditPatchCards`]; not persisted
-/// to disk until the user hits Save ([`Effect::SaveEditCommit`]).
+/// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
+/// loaded save in memory by [`Effect::EditPatchCard56s`]; not persisted to
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
 #[derive(Debug, Clone)]
-pub enum PatchCardEdit {
+pub enum PatchCard56Edit {
     /// Register patch card `id` (append to the list, enabled).
     AddCard { id: usize },
     /// Unregister the patch card in `slot` (shift the rest up).
@@ -306,6 +306,23 @@ pub enum PatchCardEdit {
     /// Toggle the patch card in `slot` between enabled and disabled.
     ToggleCard { slot: usize },
     /// Unregister every patch card.
+    ClearAll,
+}
+
+/// A single BN4 patch-card edit staged by the editor. Applied to the loaded
+/// save in memory by [`Effect::EditPatchCard4s`]; not persisted to disk
+/// until the user hits Save ([`Effect::SaveEditCommit`]). BN4 is slot-based:
+/// every card belongs to one fixed catalog slot (0A–0F), so adding a card
+/// installs it into its own slot (replacing whatever was there).
+#[derive(Debug, Clone)]
+pub enum PatchCard4Edit {
+    /// Install patch card `id` into its own catalog slot, enabled.
+    AddCard { id: usize },
+    /// Clear catalog slot `slot`.
+    RemoveCard { slot: usize },
+    /// Toggle slot `slot`'s card between enabled and disabled.
+    ToggleCard { slot: usize },
+    /// Clear every slot.
     ClearAll,
 }
 
@@ -382,9 +399,12 @@ pub enum Effect {
     /// Navicust editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
     EditNavicust(NavicustEdit),
-    /// Patch-card editor: stage one edit into the loaded save in memory
+    /// BN5/BN6 patch-card editor: stage one edit into the loaded save in
+    /// memory (UI updates live; nothing hits disk yet).
+    EditPatchCard56s(PatchCard56Edit),
+    /// BN4 patch-card editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
-    EditPatchCards(PatchCardEdit),
+    EditPatchCard4s(PatchCard4Edit),
     /// Auto-battle-data editor: stage one edit into the loaded save in
     /// memory (UI updates live; nothing hits disk yet).
     EditAutoBattleData(AutoBattleDataEdit),
@@ -606,11 +626,16 @@ impl PlayState {
                         }
                         Some(Effect::EditNavicust(NavicustEdit::ClearAll))
                     }
-                    // ----- Patch-card editor -----
-                    A::AddPatchCard { id } => Some(Effect::EditPatchCards(PatchCardEdit::AddCard { id })),
-                    A::RemovePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::RemoveCard { slot })),
-                    A::TogglePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::ToggleCard { slot })),
-                    A::ClearPatchCards => Some(Effect::EditPatchCards(PatchCardEdit::ClearAll)),
+                    // ----- BN5/BN6 patch-card editor -----
+                    A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
+                    A::RemovePatchCard56 { slot } => Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot })),
+                    A::TogglePatchCard56 { slot } => Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot })),
+                    A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
+                    // ----- BN4 patch-card editor -----
+                    A::AddPatchCard4 { id } => Some(Effect::EditPatchCard4s(PatchCard4Edit::AddCard { id })),
+                    A::RemovePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::RemoveCard { slot })),
+                    A::TogglePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::ToggleCard { slot })),
+                    A::ClearPatchCard4s => Some(Effect::EditPatchCard4s(PatchCard4Edit::ClearAll)),
                     // ----- Auto Battle Data editor -----
                     A::SetChipUseCount { id, count } => {
                         Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount { id, count }))

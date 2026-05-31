@@ -809,14 +809,14 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
     }
 }
 
-/// Apply one staged [`tabs::play::PatchCardEdit`] to a loaded save's
+/// Apply one staged [`tabs::play::PatchCard56Edit`] to a loaded save's
 /// registered patch-card list, in memory. Reads the current list under an
 /// immutable borrow, computes the new list, then rewrites the slots via
 /// [`PatchCard56sViewMut`]. No disk I/O — the commit path finalizes the
 /// anti-cheat mirror + checksum and writes separately. A no-op on saves
 /// whose patch-card view isn't the (writable) PatchCard56s variant.
-fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCardEdit) {
-    use tabs::play::PatchCardEdit;
+fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard56Edit) {
+    use tabs::play::PatchCard56Edit;
     use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
 
     let cards: Vec<PatchCard> = match loaded.save.view_patch_cards() {
@@ -827,13 +827,13 @@ fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::Patch
     // game's own card count is the list cap.
     let max = loaded.assets.num_patch_card56s();
     // Total MB of the currently-enabled cards, used to keep the enabled set
-    // within the in-game budget (see `MAX_PATCH_CARD_MB`).
+    // within the in-game budget (see `MAX_PATCH_CARD56_MB`).
     let card_mb = |id: usize| loaded.assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
     let enabled_mb = |list: &[PatchCard]| -> u32 { list.iter().filter(|c| c.enabled).map(|c| card_mb(c.id)).sum() };
 
     let mut new_cards = cards.clone();
     match edit {
-        PatchCardEdit::AddCard { id } => {
+        PatchCard56Edit::AddCard { id } => {
             // No-op if the list is full or the card is already registered.
             if new_cards.len() >= max || new_cards.iter().any(|c| c.id == id) {
                 return;
@@ -841,28 +841,28 @@ fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::Patch
             // Register it; enable it only if it still fits the MB budget,
             // otherwise it lands disabled (the user can free up room and
             // enable it later).
-            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::MAX_PATCH_CARD_MB;
+            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::MAX_PATCH_CARD56_MB;
             new_cards.push(PatchCard { id, enabled });
         }
-        PatchCardEdit::RemoveCard { slot } => {
+        PatchCard56Edit::RemoveCard { slot } => {
             if slot >= new_cards.len() {
                 return;
             }
             new_cards.remove(slot);
         }
-        PatchCardEdit::ToggleCard { slot } => {
+        PatchCard56Edit::ToggleCard { slot } => {
             let Some(card) = new_cards.get(slot) else { return };
             if card.enabled {
                 new_cards[slot].enabled = false;
             } else {
                 // Enabling: refuse if it would exceed the MB budget.
-                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::MAX_PATCH_CARD_MB {
+                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::MAX_PATCH_CARD56_MB {
                     return;
                 }
                 new_cards[slot].enabled = true;
             }
         }
-        PatchCardEdit::ClearAll => new_cards.clear(),
+        PatchCard56Edit::ClearAll => new_cards.clear(),
     }
 
     if let Some(PatchCardsViewMut::PatchCard56s(mut v)) = loaded.save.view_patch_cards_mut() {
@@ -875,6 +875,71 @@ fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::Patch
             v.set_patch_card(slot, card.clone());
         }
         v.set_count(new_cards.len());
+    }
+}
+
+/// Number of BN4 patch-card catalog slots (0A–0F).
+const NUM_PATCH_CARD4_SLOTS: usize = 6;
+
+/// Apply one staged [`tabs::play::PatchCard4Edit`] to a loaded save's BN4
+/// patch cards, in memory. BN4 is slot-based: every card belongs to one
+/// fixed catalog slot, so adding routes the card to its own `slot()`
+/// (replacing whatever was there). No MB budget, no list shifting. No disk
+/// I/O — the commit path finalizes the anti-cheat mirror + checksum. A
+/// no-op on saves whose patch-card view isn't the PatchCard4s variant.
+fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard4Edit) {
+    use tabs::play::PatchCard4Edit;
+    use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
+
+    // Resolve the slot/card to write under immutable borrows first, so they
+    // drop before the mutable patch-card view is taken.
+    enum Op {
+        Set { slot: usize, card: Option<PatchCard> },
+        ClearAll,
+    }
+    let op = match edit {
+        PatchCard4Edit::AddCard { id } => {
+            // Route the card to its own catalog slot.
+            let slot = loaded.assets.patch_card4(id).map(|c| c.slot() as usize);
+            match slot {
+                Some(slot) if slot < NUM_PATCH_CARD4_SLOTS => Op::Set {
+                    slot,
+                    card: Some(PatchCard { id, enabled: true }),
+                },
+                _ => return,
+            }
+        }
+        PatchCard4Edit::RemoveCard { slot } => Op::Set { slot, card: None },
+        PatchCard4Edit::ToggleCard { slot } => {
+            let current = match loaded.save.view_patch_cards() {
+                Some(PatchCardsView::PatchCard4s(v)) => v.patch_card(slot),
+                _ => None,
+            };
+            match current {
+                Some(c) => Op::Set {
+                    slot,
+                    card: Some(PatchCard {
+                        id: c.id,
+                        enabled: !c.enabled,
+                    }),
+                },
+                None => return,
+            }
+        }
+        PatchCard4Edit::ClearAll => Op::ClearAll,
+    };
+
+    if let Some(PatchCardsViewMut::PatchCard4s(mut v)) = loaded.save.view_patch_cards_mut() {
+        match op {
+            Op::Set { slot, card } => {
+                v.set_patch_card(slot, card);
+            }
+            Op::ClearAll => {
+                for slot in 0..NUM_PATCH_CARD4_SLOTS {
+                    v.set_patch_card(slot, None);
+                }
+            }
+        }
     }
 }
 
@@ -1506,11 +1571,19 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::EditPatchCards(edit) => {
-                // Stage one patch-card edit into the in-memory loaded save;
+            E::EditPatchCard56s(edit) => {
+                // Stage one BN5/BN6 patch-card edit into the in-memory loaded
+                // save; the UI reads `loaded.save` directly so it shows live.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    apply_patch_card56_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
+            E::EditPatchCard4s(edit) => {
+                // Stage one BN4 patch-card edit into the in-memory loaded save;
                 // the UI reads `loaded.save` directly so it shows live.
                 if let Some(loaded) = self.loaded.as_mut() {
-                    apply_patch_card_edit(loaded, edit);
+                    apply_patch_card4_edit(loaded, edit);
                 }
                 iced::Task::none()
             }
@@ -1548,10 +1621,14 @@ impl App {
                                 abd.rebuild_materialized(assets);
                             }
                         }
-                        if let Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(mut v)) =
-                            loaded.save.view_patch_cards_mut()
-                        {
-                            v.rebuild_anticheat();
+                        match loaded.save.view_patch_cards_mut() {
+                            Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(mut v)) => {
+                                v.rebuild_anticheat();
+                            }
+                            Some(tango_dataview::save::PatchCardsViewMut::PatchCard4s(mut v)) => {
+                                v.rebuild_anticheat();
+                            }
+                            None => {}
                         }
                         loaded.save.rebuild_checksum();
                         // Refresh the baked Navi-view image from the updated

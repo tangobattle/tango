@@ -205,6 +205,7 @@ patch-card-edit-mb = { $mb }MB / 80MB
 patch-card-sort-id = ID
 patch-card-sort-name = Naam
 patch-card-sort-mb = MB
+patch-card4-none = Geen
 save-empty = Deze save heeft geen gegevens voor deze weergave.
 play-no-selection = Kies een spel en save om te bekijken.
 replays-filter-all-games = Alle spellen
