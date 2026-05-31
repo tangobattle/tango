@@ -1197,7 +1197,7 @@ pub fn view<'a>(
                 .align_y(iced::alignment::Vertical::Bottom)
                 .padding(iced::Padding {
                     top: 0.0,
-                    right: 16.0,
+                    right: 8.0,
                     bottom: lift,
                     left: 0.0,
                 })
