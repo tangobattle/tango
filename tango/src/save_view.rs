@@ -252,6 +252,55 @@ impl std::fmt::Display for PatchCardSortChoice {
     }
 }
 
+/// Sort order for the auto-battle-data editor's chip library pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoBattleDataSort {
+    Id,
+    Name,
+    Used,
+}
+
+impl AutoBattleDataSort {
+    pub const ALL: [AutoBattleDataSort; 3] = [
+        AutoBattleDataSort::Id,
+        AutoBattleDataSort::Name,
+        AutoBattleDataSort::Used,
+    ];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            AutoBattleDataSort::Id => t!(lang, "folder-sort-id"),
+            AutoBattleDataSort::Name => t!(lang, "folder-sort-name"),
+            AutoBattleDataSort::Used => t!(lang, "auto-battle-data-edit-used"),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AutoBattleDataSortChoice {
+    sort: AutoBattleDataSort,
+    label: String,
+}
+impl PartialEq for AutoBattleDataSortChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.sort == other.sort
+    }
+}
+impl std::fmt::Display for AutoBattleDataSortChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// Width of each use-count column (caption + numeric field) in the Auto
+/// Battle Data editor's library, so the Used / Sec. fields line up as
+/// columns across rows (and a non-standard chip's missing Sec. field can
+/// reserve the same gap).
+const ABD_COUNT_COL_W: f32 = 104.0;
+/// Use counts are stored as `u16` in the save, so the numeric fields
+/// clamp entries to this ceiling.
+const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
+
 /// Stable color ordering for the palette's Color sort.
 fn ncp_color_rank(color: &Option<NavicustPartColor>) -> u8 {
     use NavicustPartColor as N;
@@ -395,6 +444,9 @@ pub struct State {
     pub navicust_sort: NavicustSort,
     /// Sort order for the patch-card library pane (persistent preference).
     pub patch_card_sort: PatchCardSort,
+    /// Sort order for the auto-battle-data chip library pane (persistent
+    /// preference).
+    pub auto_battle_data_sort: AutoBattleDataSort,
 }
 
 /// Everything an in-progress save edit needs that's thrown away when the
@@ -421,6 +473,8 @@ pub struct EditState {
     pub navicust_filter: String,
     /// Patch-card editor: library filter text.
     pub patch_card_filter: String,
+    /// Auto-battle-data editor: chip library filter text.
+    pub auto_battle_data_filter: String,
 }
 
 impl EditState {
@@ -448,6 +502,7 @@ impl State {
             library_sort: LibrarySort::Id,
             navicust_sort: NavicustSort::Id,
             patch_card_sort: PatchCardSort::Id,
+            auto_battle_data_sort: AutoBattleDataSort::Id,
         }
     }
 
@@ -551,7 +606,11 @@ impl State {
                         e.held_part = None;
                     } else {
                         let (rot, compressed) = e.orient_of(*id);
-                        e.held_part = Some(HeldPart { id: *id, rot, compressed });
+                        e.held_part = Some(HeldPart {
+                            id: *id,
+                            rot,
+                            compressed,
+                        });
                     }
                 }
                 iced::Task::none()
@@ -621,6 +680,17 @@ impl State {
                 self.patch_card_sort = *s;
                 iced::Task::none()
             }
+            // ----- Auto-battle-data editor: state-local folds -----
+            Action::AutoBattleDataFilterChanged(s) => {
+                if let Some(e) = self.editing.as_mut() {
+                    e.auto_battle_data_filter = s.clone();
+                }
+                iced::Task::none()
+            }
+            Action::AutoBattleDataSortChanged(s) => {
+                self.auto_battle_data_sort = *s;
+                iced::Task::none()
+            }
             // EnterEdit needs `&Loaded` (to seed tag state), and the
             // mutation actions become host Effects — all are driven by
             // the embedder (play tab), so they're no-ops here.
@@ -637,6 +707,9 @@ impl State {
             | Action::RemovePatchCard { .. }
             | Action::TogglePatchCard { .. }
             | Action::ClearPatchCards
+            | Action::SetChipUseCount { .. }
+            | Action::SetSecondaryChipUseCount { .. }
+            | Action::ClearAutoBattleData
             | Action::CopyTab(_)
             | Action::CopyTabImage(_)
             | Action::PlayClicked => iced::Task::none(),
@@ -752,6 +825,25 @@ pub enum Action {
     PatchCardFilterChanged(String),
     /// Library pane: the sort order changed.
     PatchCardSortChanged(PatchCardSort),
+    // ----- Auto Battle Data editor (only emitted when `editable` is set) -----
+    /// Library pane: set chip `id`'s primary use count (the count that
+    /// drives the materialized deck for every section).
+    SetChipUseCount {
+        id: usize,
+        count: usize,
+    },
+    /// Library pane: set chip `id`'s secondary use count (drives the
+    /// secondary-standard section — only meaningful for Standard chips).
+    SetSecondaryChipUseCount {
+        id: usize,
+        count: usize,
+    },
+    /// Deck pane: zero every chip's use counts, emptying the deck.
+    ClearAutoBattleData,
+    /// Library pane: the filter text changed.
+    AutoBattleDataFilterChanged(String),
+    /// Library pane: the sort order changed.
+    AutoBattleDataSortChanged(AutoBattleDataSort),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -798,6 +890,7 @@ pub fn view<'a>(
     let folder_editing = editing_session && loaded.chips_editable;
     let navicust_editing = editing_session && loaded.navicust_editable;
     let patch_cards_editing = editing_session && loaded.patch_cards_editable;
+    let auto_battle_data_editing = editing_session && loaded.auto_battle_data_editable;
 
     // Tab strip: tabs left, extras+Play right. We split into two
     // rows so the tab list can wrap onto a second line without
@@ -876,6 +969,25 @@ pub fn view<'a>(
     if patch_cards_editing && active == Tab::PatchCards {
         let editor = render_patch_cards_edit(lang, loaded, state);
         return column![tab_pane, editor]
+            .spacing(widgets::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
+    if auto_battle_data_editing && active == Tab::AutoBattleData {
+        let editor = render_auto_battle_data_edit(lang, loaded, state);
+        return column![tab_pane, editor]
+            .spacing(widgets::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
+
+    // The Cover tab is a single full-height pane (logo banner), so it skips
+    // the shrink-height body scrollable the other read-only views use.
+    if active == Tab::Cover {
+        let cover = render_cover::<Action>(lang, loaded);
+        return column![tab_pane, cover]
             .spacing(widgets::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1005,7 +1117,22 @@ fn tab_extras<'a>(
             }
             Some(tail.into())
         }
-        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
+        Tab::AutoBattleData => {
+            let mut tail = row![copy_btn(Tab::AutoBattleData)]
+                .spacing(6)
+                .align_y(iced::Alignment::Center);
+            // Only BN4/BN5 (writable auto-battle data) get the Edit affordance.
+            if editable && loaded.auto_battle_data_editable {
+                tail = tail.push(widgets::labeled_icon_button(
+                    Icon::Pencil,
+                    t!(lang, "save-edit"),
+                    Action::EnterEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                ));
+            }
+            Some(tail.into())
+        }
         Tab::Navi => {
             // Copy-as-image only emits anything for Navicust saves
             // (LinkNavi has no grid to render). Hide the button
@@ -1329,9 +1456,12 @@ fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Elem
     };
     container(column![inner].width(Fill).align_x(Alignment::Center))
         .width(Fill)
+        // Fill the tab body's height, with the logo(s) centered vertically.
+        .height(Fill)
+        .align_y(iced::alignment::Vertical::Center)
         // Extra breathing room above/below the logo(s); standard
         // horizontal inset.
-        .padding([crate::widgets::PANE_PADDING + 24.0, crate::widgets::PANE_PADDING])
+        .padding([crate::widgets::PANE_PADDING + 24.0, crate::widgets::PANE_PADDING + 24.0])
         .style(crate::widgets::pane)
         .into()
 }
@@ -1570,7 +1700,6 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     .style(widgets::chunky_pick_list);
     let lib_header = container(
         row![
-            text(t!(lang, "folder-edit-pack")).size(TEXT_BODY),
             filter_input,
             text(t!(lang, "save-edit-sort"))
                 .size(TEXT_CAPTION)
@@ -1653,6 +1782,9 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     let materialized = tango_dataview::navicust::materialize(v.as_ref(), [rows, cols], assets);
     let model = crate::navicust::build_model(&materialized, &layout, v.as_ref(), assets);
     let installed = (0..v.count()).filter(|&i| v.navicust_part(i).is_some()).count();
+    // Cell → installed-part slot, captured before `model` is moved into the
+    // grid, to drive the per-cell hover popover overlay below.
+    let occupancy = model.occupancy.clone();
 
     // Held-part ghost data, resolved from the ROM.
     let held = edit.held_part.and_then(|hp| {
@@ -1663,13 +1795,68 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         } else {
             info.uncompressed_bitmap()
         };
+        let (solid, plus) = crate::navicust::part_colors(color);
         Some(crate::navicust_editor::Held {
             cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
-            solid: crate::navicust::part_colors(color).0,
+            solid,
+            plus,
+            is_solid: info.is_solid(),
         })
     });
 
+    // Editor grid geometry (must match `EditorGrid::new`) so the hover
+    // popover overlay's cells line up with the painted squares.
+    let g = crate::navicust::geometry(cols, rows);
+    let scale = (crate::navicust_editor::DISPLAY_W / g.total_w).min(1.0);
+    let cell = crate::navicust::SQUARE_SIZE * scale;
+    let origin_x = (g.body_origin_x + crate::navicust::BORDER_WIDTH / 2.0) * scale;
+    let origin_y = (g.body_origin_y + crate::navicust::BORDER_WIDTH / 2.0) * scale;
+    let grid_w = g.total_w * scale;
+    let grid_h = g.total_h * scale;
+
     let canvas_el: Element<'a, Action> = crate::navicust_editor::EditorGrid::new(model, held).view();
+
+    // Per-cell hover popover (part name + description), mirroring the
+    // read-only viewer: a fixed grid of cell-sized spaces with each covered
+    // cell tooltip-wrapped. Stacked *over* the canvas: the cells report
+    // `Interaction::None`, so iced's Stack doesn't levitate the cursor away
+    // from the canvas beneath (its clicks / scroll / ghost still work, and
+    // its Pointer/Crosshair cursor still wins), while the tooltips get the
+    // real cursor and fire. Beneath the canvas they wouldn't — the canvas's
+    // non-None interaction levitates the cursor off any lower layer.
+    let mut overlay_col = column![Space::new().height(Length::Fixed(origin_y))];
+    for r in 0..rows {
+        let mut cell_row = row![Space::new().width(Length::Fixed(origin_x))];
+        for c in 0..cols {
+            let info = occupancy
+                .get(r * cols + c)
+                .copied()
+                .flatten()
+                .and_then(|slot| v.navicust_part(slot))
+                .and_then(|p| assets.navicust_part(p.id));
+            let cell_el: Element<'a, Action> = if let Some(info) = info {
+                let name = info.name().unwrap_or_else(|| "?".to_string());
+                let mut tip_col = column![text(name).size(TEXT_BODY)].spacing(2);
+                if let Some(desc) = info.description() {
+                    tip_col = tip_col.push(text(desc).size(TEXT_CAPTION));
+                }
+                let tip = container(tip_col).padding(8).style(tooltip_style);
+                let space = Space::new().width(Length::Fixed(cell)).height(Length::Fixed(cell));
+                tooltip(space, tip, tooltip::Position::FollowCursor).gap(12).into()
+            } else {
+                Space::new()
+                    .width(Length::Fixed(cell))
+                    .height(Length::Fixed(cell))
+                    .into()
+            };
+            cell_row = cell_row.push(cell_el);
+        }
+        overlay_col = overlay_col.push(cell_row);
+    }
+    let canvas_el: Element<'a, Action> = stack![canvas_el, overlay_col]
+        .width(Length::Fixed(grid_w))
+        .height(Length::Fixed(grid_h))
+        .into();
 
     // Installed copies per part id — palette entries for parts already at
     // the per-part cap are shown disabled (not selectable).
@@ -1722,7 +1909,10 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         // at the baked pixel size (1:1) so the 1px lines stay crisp; every
         // part shares the same n×n grid so rows align. Dimmed when at cap.
         let icon_el: Element<'a, Action> = part_thumb(loaded, id, rot, compressed, at_cap).unwrap_or_else(|| {
-            Space::new().width(Length::Fixed(40.0)).height(Length::Fixed(40.0)).into()
+            Space::new()
+                .width(Length::Fixed(40.0))
+                .height(Length::Fixed(40.0))
+                .into()
         });
         let name_text = if at_cap {
             text(name).size(TEXT_BODY).style(muted_text_style)
@@ -1793,7 +1983,6 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     .style(widgets::chunky_pick_list);
     let parts_header = container(
         row![
-            text(t!(lang, "navicust-edit-parts")).size(TEXT_BODY),
             filter_input,
             text(t!(lang, "save-edit-sort"))
                 .size(TEXT_CAPTION)
@@ -1861,8 +2050,18 @@ fn with_chip_tooltip<'a>(
     inner: Element<'a, Action>,
 ) -> Element<'a, Action> {
     let Some(id) = chip_id else { return inner };
-    let description = loaded.assets.chip(id).and_then(|i| i.description());
-    let image_handle = loaded.chip_images.get(id).cloned().flatten();
+    let info = loaded.assets.chip(id);
+    let description = info.as_ref().and_then(|i| i.description());
+    // Program advances have no meaningful standalone artwork, so their
+    // popover is description-only.
+    let is_pa = info
+        .as_ref()
+        .map_or(false, |i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
+    let image_handle = if is_pa {
+        None
+    } else {
+        loaded.chip_images.get(id).cloned().flatten()
+    };
     if description.is_none() && image_handle.is_none() {
         return inner;
     }
@@ -2093,7 +2292,12 @@ fn edit_toggle<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Ac
 /// Like [`edit_toggle`], but a `None` message renders the toggle disabled
 /// (greyed, unclickable) — used for the patch-card ON toggle when enabling
 /// the card would blow the MB budget.
-fn edit_toggle_maybe<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Option<Action>) -> Element<'a, Action> {
+fn edit_toggle_maybe<'a>(
+    label: &'static str,
+    on: bool,
+    on_color: iced::Color,
+    msg: Option<Action>,
+) -> Element<'a, Action> {
     let mut b = button(text(label).size(TEXT_CAPTION)).padding([4, 8]);
     if let Some(msg) = msg {
         b = b.on_press(msg);
@@ -2259,7 +2463,12 @@ fn chip_row<M: 'static>(
         return card;
     };
     let description = loaded.assets.chip(id).and_then(|info| info.description());
-    let image_handle = loaded.chip_images.get(id).cloned().flatten();
+    // Program advances show description only — no standalone chip image.
+    let image_handle = if chip_class == Some(tango_dataview::rom::ChipClass::ProgramAdvance) {
+        None
+    } else {
+        loaded.chip_images.get(id).cloned().flatten()
+    };
     if description.is_none() && image_handle.is_none() {
         return card;
     }
@@ -2552,7 +2761,9 @@ fn navicust_installed_parts<M: 'static>(
     let mut any = false;
     for i in 0..v.count() {
         let Some(part) = v.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(part.id) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
         let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
         let description = info.description();
         let is_solid = info.is_solid();
@@ -2875,12 +3086,7 @@ fn patch_card_list_row<'a>(
     // disabled when the card is off and enabling it would exceed the MB
     // budget (an already-on card can always be turned off).
     let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard { slot });
-    let toggle = edit_toggle_maybe(
-        "ON",
-        card.enabled,
-        iced::Color::from_rgb8(0x29, 0xa1, 0x21),
-        toggle_msg,
-    );
+    let toggle = edit_toggle_maybe("ON", card.enabled, iced::Color::from_rgb8(0x29, 0xa1, 0x21), toggle_msg);
     let remove = button(Icon::ArrowRight.widget().size(TEXT_BODY))
         .padding([3, 8])
         .style(widgets::neutral)
@@ -2898,7 +3104,10 @@ fn patch_card_list_row<'a>(
     ]
     .spacing(8)
     .align_y(Alignment::Start);
-    container(row).padding([6, 10]).style(crate::widgets::zebra_row(slot)).into()
+    container(row)
+        .padding([6, 10])
+        .style(crate::widgets::zebra_row(slot))
+        .into()
 }
 
 /// One library card, laid out like a [`render_patch_cards`] row (an add
@@ -2927,7 +3136,10 @@ fn patch_card_library_row<'a>(
     let row = row![add, name_cell, ability_cell, bug_cell]
         .spacing(8)
         .align_y(Alignment::Start);
-    container(row).padding([6, 10]).style(crate::widgets::zebra_row(row_idx)).into()
+    container(row)
+        .padding([6, 10])
+        .style(crate::widgets::zebra_row(row_idx))
+        .into()
 }
 
 /// The patch-card editor: a two-pane layout (registered list left, card
@@ -2935,7 +3147,11 @@ fn patch_card_library_row<'a>(
 /// stacked · ability column · bug column), with edit controls appended —
 /// an enable toggle + remove on the list, an add button on the library.
 /// Edits stage live in the loaded save and are written to disk only on Save.
-fn render_patch_cards_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+fn render_patch_cards_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
     use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
@@ -2951,10 +3167,15 @@ fn render_patch_cards_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded,
     // MB of each card (0 for the "no card" id / unknown), so the budget
     // and per-row gating are computed from one source.
     let card_mb = |id: usize| loaded.assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
-    let cards: Vec<(usize, tango_dataview::save::PatchCard)> =
-        (0..count).filter_map(|slot| v.patch_card(slot).map(|c| (slot, c))).collect();
+    let cards: Vec<(usize, tango_dataview::save::PatchCard)> = (0..count)
+        .filter_map(|slot| v.patch_card(slot).map(|c| (slot, c)))
+        .collect();
     let in_list: std::collections::HashSet<usize> = cards.iter().map(|(_, c)| c.id).collect();
-    let enabled_mb: u32 = cards.iter().filter(|(_, c)| c.enabled).map(|(_, c)| card_mb(c.id)).sum();
+    let enabled_mb: u32 = cards
+        .iter()
+        .filter(|(_, c)| c.enabled)
+        .map(|(_, c)| card_mb(c.id))
+        .sum();
 
     let mut list_col = column![].spacing(3).padding(0);
     for (slot, card) in &cards {
@@ -3038,7 +3259,6 @@ fn render_patch_cards_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded,
     .style(widgets::chunky_pick_list);
     let lib_header = container(
         row![
-            text(t!(lang, "patch-card-edit-library")).size(TEXT_BODY),
             filter_input,
             text(t!(lang, "save-edit-sort"))
                 .size(TEXT_CAPTION)
@@ -3064,57 +3284,360 @@ fn render_patch_cards_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded,
 
 // ---------- Auto Battle Data ----------
 
+/// The six materialized deck sections, in display order, as `(title,
+/// slots)`. The deck is derived from per-chip use counts, so this is the
+/// read model shared by the read-only viewer and the editor's live
+/// preview; `combos` is always empty (the game reserves those slots).
+fn abd_sections(
+    lang: &LanguageIdentifier,
+    mat: &tango_dataview::auto_battle_data::MaterializedAutoBattleData,
+) -> Vec<(String, Vec<Option<usize>>)> {
+    vec![
+        (
+            t!(lang, "auto-battle-data-secondary-standard-chips"),
+            mat.secondary_standard_chips().to_vec(),
+        ),
+        (
+            t!(lang, "auto-battle-data-standard-chips"),
+            mat.standard_chips().to_vec(),
+        ),
+        (t!(lang, "auto-battle-data-mega-chips"), mat.mega_chips().to_vec()),
+        (t!(lang, "auto-battle-data-giga-chip"), vec![mat.giga_chip()]),
+        (t!(lang, "auto-battle-data-combos"), mat.combos().to_vec()),
+        (
+            t!(lang, "auto-battle-data-program-advance"),
+            vec![mat.program_advance()],
+        ),
+    ]
+}
+
+/// One deck section's chip rows (title row + a `chip_row` per slot),
+/// shared by the read-only viewer and the editor's live preview. ABD
+/// slots have no chip code and no REG/TAG indicators, so `code=None` and
+/// a default-zeroed badge struct; hover preview comes for free from
+/// `chip_row`. `is_first` stays false — the title sits above the chips,
+/// so no chip row touches a rounded top corner.
+fn abd_section_rows<M: 'static>(
+    loaded: &Loaded,
+    title: String,
+    slots: &[Option<usize>],
+    chips_have_mb: bool,
+) -> Element<'static, M> {
+    let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
+    let mut col = column![title_el, Space::new().height(4)].spacing(1);
+    let empty_badges = GroupedChip::default();
+    let last_idx = slots.len().saturating_sub(1);
+    for (idx, id) in slots.iter().enumerate() {
+        col = col.push(chip_row(
+            loaded,
+            *id,
+            None,
+            &empty_badges,
+            false,
+            chips_have_mb,
+            idx,
+            false,
+            idx == last_idx,
+        ));
+    }
+    col.into()
+}
+
 fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Element<'static, M> {
     let Some(view) = loaded.save.view_auto_battle_data() else {
         return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
     let mat = view.materialized();
-
     let chips_have_mb = assets.chips_have_mb();
 
-    // ABD slots have no chip code and no REG/TAG indicators, so
-    // pass `code=None` and a default-zeroed badge struct. Hover
-    // preview comes for free from chip_row. Each section becomes
-    // its own pane so the outer scrollable in `view` shows them
-    // as distinct demarcated regions.
-    let section = |title: String, slots: &[Option<usize>]| -> Element<'static, M> {
-        let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
-        let mut col = column![title_el, Space::new().height(4)].spacing(1);
-        let empty_badges = GroupedChip::default();
-        let last_idx = slots.len().saturating_sub(1);
-        for (idx, id) in slots.iter().enumerate() {
-            // is_first stays false — the title row sits above the chips,
-            // so no chip row touches the pane's rounded top corners.
-            col = col.push(chip_row(
-                loaded,
-                *id,
-                None,
-                &empty_badges,
-                false,
-                chips_have_mb,
-                idx,
-                false,
-                idx == last_idx,
-            ));
+    // Each section becomes its own pane so the outer scrollable in `view`
+    // shows them as distinct demarcated regions.
+    let mut col = column![].spacing(crate::widgets::PANE_GAP).width(Fill);
+    for (title, slots) in abd_sections(lang, &mat) {
+        let rows = abd_section_rows::<M>(loaded, title, &slots, chips_have_mb);
+        col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
+    }
+    col.into()
+}
+
+/// The chips offered by the auto-battle-data editor's library, as chip
+/// ids: program advances (always available to the deck) plus every other
+/// chip the player actually holds in their pack. Filtered by `filter`
+/// (case-insensitive name match) and in `sort` order. Ties fall back to
+/// id for a stable order. Stable sorts (Id / Name) keep a row in place
+/// while its count fields are edited; Used reorders as counts change.
+fn sorted_auto_battle_data_chips(loaded: &Loaded, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
+    use tango_dataview::rom::ChipClass as CC;
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_auto_battle_data();
+    let chips_view = loaded.save.view_chips();
+    let filter = filter.to_lowercase();
+    struct E {
+        id: usize,
+        name: String,
+        used: usize,
+    }
+    let mut rows: Vec<E> = Vec::new();
+    for id in 0..assets.num_chips() {
+        let Some(info) = assets.chip(id) else { continue };
+        let class = info.class();
+        let is_pa = class == CC::ProgramAdvance;
+        if !is_pa && !matches!(class, CC::Standard | CC::Mega | CC::Giga) {
+            continue;
         }
-        container(col).width(Fill).style(crate::widgets::pane).into()
+        let Some(name) = info.name() else { continue };
+        if name.trim().is_empty() {
+            continue;
+        }
+        // Program advances are always offered; every other chip must be
+        // in the player's pack (some code variant owned), matching the
+        // library editor's notion of "owned".
+        if !is_pa {
+            let in_pack = (0..info.codes().len()).any(|variant| {
+                chips_view
+                    .as_ref()
+                    .and_then(|v| v.pack_count(id, variant))
+                    .map_or(false, |c| c > 0)
+            });
+            if !in_pack {
+                continue;
+            }
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
+            continue;
+        }
+        let used = view.as_ref().and_then(|v| v.chip_use_count(id)).unwrap_or(0);
+        rows.push(E { id, name, used });
+    }
+    match sort {
+        AutoBattleDataSort::Id => {}
+        AutoBattleDataSort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id))),
+        AutoBattleDataSort::Used => rows.sort_by(|a, b| b.used.cmp(&a.used).then(a.id.cmp(&b.id))),
+    }
+    rows.into_iter().map(|e| e.id).collect()
+}
+
+/// A fixed-width numeric field for a use count: shows `value`, and emits
+/// `make(parsed)` on every edit (digits only, clamped to the u16 the save
+/// stores). The field copies its value string, so it can be a temporary —
+/// no draft state needed; the source of truth is the save.
+fn abd_count_input<'a>(value: usize, make: impl Fn(usize) -> Action + 'a) -> Element<'a, Action> {
+    let s = value.to_string();
+    text_input("0", &s)
+        .on_input(move |t| {
+            let digits: String = t.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
+            make(digits.parse::<usize>().unwrap_or(0).min(MAX_ABD_USE_COUNT))
+        })
+        .width(Length::Fixed(54.0))
+        .padding([4, 8])
+        .size(TEXT_BODY)
+        .style(crate::widgets::chunky_text_input)
+        .into()
+}
+
+/// A use-count column: a muted caption + [`abd_count_input`], boxed to
+/// `ABD_COUNT_COL_W` so the Used / Sec. fields line up across rows.
+fn abd_count_cell<'a>(label: String, value: usize, make: impl Fn(usize) -> Action + 'a) -> Element<'a, Action> {
+    container(
+        row![
+            text(label).size(TEXT_CAPTION).style(muted_text_style),
+            abd_count_input(value, make),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .width(Length::Fixed(ABD_COUNT_COL_W))
+    .align_x(iced::alignment::Horizontal::Right)
+    .into()
+}
+
+/// One chip in the auto-battle-data editor's library, laid out like the
+/// read-only chip list (icon · name · element · ATK · MB) with editable
+/// Used (and, for Standard chips, Sec.) use-count fields appended. A
+/// non-standard chip reserves the Sec. column's width so the Used column
+/// stays aligned.
+fn abd_library_row<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    id: usize,
+    used: usize,
+    secondary: Option<usize>,
+    chips_have_mb: bool,
+    row_idx: usize,
+) -> Element<'a, Action> {
+    let info = loaded.assets.chip(id);
+    let name = info.as_ref().and_then(|i| i.name()).unwrap_or_else(|| format!("#{id}"));
+    let accent = class_accent(
+        info.as_ref().map(|i| i.class()),
+        info.as_ref().map(|i| i.dark()).unwrap_or(false),
+    );
+    let [element, atk, mb] = chip_stat_cells(loaded, id, chips_have_mb);
+
+    let used_cell = abd_count_cell(t!(lang, "auto-battle-data-edit-used"), used, move |n| {
+        Action::SetChipUseCount { id, count: n }
+    });
+    let sec_cell: Element<'a, Action> = match secondary {
+        Some(sec) => abd_count_cell(t!(lang, "auto-battle-data-edit-secondary"), sec, move |n| {
+            Action::SetSecondaryChipUseCount { id, count: n }
+        }),
+        None => Space::new().width(Length::Fixed(ABD_COUNT_COL_W)).into(),
     };
 
-    column![
-        section(
-            t!(lang, "auto-battle-data-secondary-standard-chips"),
-            mat.secondary_standard_chips(),
-        ),
-        section(t!(lang, "auto-battle-data-standard-chips"), mat.standard_chips(),),
-        section(t!(lang, "auto-battle-data-mega-chips"), mat.mega_chips()),
-        section(t!(lang, "auto-battle-data-giga-chip"), &[mat.giga_chip()]),
-        section(t!(lang, "auto-battle-data-combos"), mat.combos()),
-        section(t!(lang, "auto-battle-data-program-advance"), &[mat.program_advance()],),
+    let inner = row![
+        chip_icon(loaded, Some(id)),
+        text(name).size(TEXT_BODY).width(Fill),
+        element,
+        atk,
+        mb,
+        used_cell,
+        sec_cell,
     ]
-    .spacing(crate::widgets::PANE_GAP)
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .padding([3, 12]);
+    with_chip_tooltip(
+        loaded,
+        Some(id),
+        accent,
+        edit_row_wrap(inner.into(), accent, row_idx, None),
+    )
+}
+
+/// The auto-battle-data editor: a two-pane layout (live deck preview left,
+/// chip library right). The deck is derived from per-chip use counts, so
+/// the library's Used / Sec. fields are what you actually edit; each edit
+/// restages the counts and rebuilds the materialized deck, so the left
+/// preview updates live. Edits stage in the loaded save and are written to
+/// disk only on Save.
+fn render_auto_battle_data_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    // Only reached while editing, so the EditState is present.
+    let Some(edit) = state.editing.as_ref() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let Some(view) = loaded.save.view_auto_battle_data() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let assets = loaded.assets.as_ref();
+    let chips_have_mb = assets.chips_have_mb();
+    let mat = view.materialized();
+
+    // ----- Left pane: the live materialized deck -----
+    let mut deck = column![].spacing(1).padding(0);
+    for (title, slots) in abd_sections(lang, &mat) {
+        deck = deck.push(abd_section_rows::<Action>(loaded, title, &slots, chips_have_mb));
+    }
+    // Distinct chips currently contributing to the deck (slots repeat the
+    // top chips, so a raw slot count would overstate it).
+    let distinct = mat
+        .as_slice()
+        .iter()
+        .flatten()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    let clear_all = widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "save-edit-clear"),
+        Action::ClearAutoBattleData,
+        [5.0, 10.0],
+        widgets::danger_button,
+    );
+    let count = text(t!(lang, "auto-battle-data-edit-count", count = distinct as i64))
+        .size(TEXT_CAPTION)
+        .style(muted_text_style);
+    let deck_header = container(
+        row![
+            text(t!(lang, "save-tab-auto-battle-data")).size(TEXT_BODY),
+            count,
+            Space::new().width(Fill),
+            clear_all,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
     .width(Fill)
-    .into()
+    .padding([8, 12]);
+    let deck_pane = container(column![deck_header, scrollable(deck).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    // ----- Right pane: the chip library with editable use counts -----
+    let mut lib = column![].spacing(1).padding(0);
+    for (row_idx, id) in
+        sorted_auto_battle_data_chips(loaded, state.auto_battle_data_sort, &edit.auto_battle_data_filter)
+            .into_iter()
+            .enumerate()
+    {
+        // Secondary use count only feeds the secondary-standard section, so
+        // only Standard chips get a Sec. field.
+        let is_standard = assets
+            .chip(id)
+            .map(|i| matches!(i.class(), tango_dataview::rom::ChipClass::Standard))
+            .unwrap_or(false);
+        let used = view.chip_use_count(id).unwrap_or(0);
+        let secondary = is_standard.then(|| view.secondary_chip_use_count(id).unwrap_or(0));
+        lib = lib.push(abd_library_row(
+            lang,
+            loaded,
+            id,
+            used,
+            secondary,
+            chips_have_mb,
+            row_idx,
+        ));
+    }
+    let filter_input = text_input(&t!(lang, "folder-edit-search"), &edit.auto_battle_data_filter)
+        .on_input(Action::AutoBattleDataFilterChanged)
+        .padding([5, 10])
+        .size(TEXT_BODY)
+        .width(Fill)
+        .style(widgets::chunky_text_input);
+    let sort_options: Vec<AutoBattleDataSortChoice> = AutoBattleDataSort::ALL
+        .iter()
+        .map(|&sort| AutoBattleDataSortChoice {
+            sort,
+            label: sort.label(lang),
+        })
+        .collect();
+    let sort_selected = sort_options
+        .iter()
+        .find(|c| c.sort == state.auto_battle_data_sort)
+        .cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, |c: AutoBattleDataSortChoice| {
+        Action::AutoBattleDataSortChanged(c.sort)
+    })
+    .padding([5, 10])
+    .text_size(TEXT_BODY)
+    .style(widgets::chunky_pick_list);
+    let lib_header = container(
+        row![
+            filter_input,
+            text(t!(lang, "save-edit-sort"))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            sort_pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let library_pane = container(column![lib_header, scrollable(lib).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    row![deck_pane, library_pane]
+        .spacing(widgets::PANE_GAP)
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {

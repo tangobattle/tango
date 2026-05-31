@@ -127,9 +127,14 @@ save-edit-cancel = キャンセル
 folder-edit-search = チップを検索…
 folder-edit-folder = フォルダ
 folder-edit-count = { $count } / 30
-folder-edit-pack = パック
 save-edit-sort = 並べ替え
 save-edit-clear = すべてクリア
+folder-sort-id = ID
+folder-sort-name = 名前
+folder-sort-code = コード
+folder-sort-attack = 攻撃力
+folder-sort-element = 属性
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = ナビカスタマイザー
@@ -137,11 +142,18 @@ navicust-edit-count = { $count } パーツ
 navicust-edit-rotate = 回転
 navicust-edit-compress = 圧縮
 navicust-edit-uncompress = 解凍
-navicust-edit-parts = パーツ
 navicust-edit-search = パーツを検索…
 navicust-sort-id = ID
 navicust-sort-name = 名前
 navicust-sort-color = 色
+
+# Patch card editor
+patch-card-edit-search = カードを検索…
+patch-card-edit-count = { $count } 枚
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = 名前
+patch-card-sort-mb = MB
 
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = スタンダードチップ（補助）
@@ -150,6 +162,11 @@ auto-battle-data-mega-chips = メガチップ
 auto-battle-data-giga-chip = ギガチップ
 auto-battle-data-combos = コンボ
 auto-battle-data-program-advance = プログラムアドバンス
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = 使用回数
+auto-battle-data-edit-secondary = 補助
+auto-battle-data-edit-count = { $count } 枚
 
 # Common
 save-empty = このセーブにはこのビューのデータがありません。
@@ -219,6 +236,9 @@ settings-nickname = ニックネーム
 settings-language = 言語
 settings-data-path = データパス
 settings-streamer-mode = 配信プライバシーモード
+settings-section-experimental = 実験的機能
+settings-enable-save-editor = セーブエディターを有効にする
+settings-experimental-warning = 実験的機能はセーブデータを破損させたり使用できなくする可能性があり、予告なく変更・削除されることがあります。また、オンライン対戦でセーブを正規の状態に保つためのチェックが省かれている場合があります。自己責任でご利用ください。
 settings-section-about = アプリ情報
 settings-section-input = 入力
 settings-input-press-key = キーまたはボタンを押してください…
@@ -268,6 +288,8 @@ input-gamepad-axis-right-stick-y = 右スティック Y
 input-gamepad-axis-trigger-left = 左トリガー
 input-gamepad-axis-trigger-right = 右トリガー
 settings-theme = テーマ
+settings-theme-dark = ダーク
+settings-theme-light = ライト
 settings-matchmaking-endpoint = マッチメイキングエンドポイント
 settings-patch-repo = パッチリポジトリ
 settings-enable-patch-autoupdate = パッチを自動更新する

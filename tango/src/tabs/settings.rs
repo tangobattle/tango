@@ -9,6 +9,38 @@ use lucide_icons::Icon;
 use sweeten::widget::{button, column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
+/// A [`config::ThemeMode`] paired with its localized label, for the theme
+/// pick_list — the picker renders options via `Display`, which can't reach
+/// the language, so the label is resolved up front (mirrors
+/// [`crate::i18n::LanguageChoice`]).
+#[derive(Clone)]
+struct ThemeChoice {
+    mode: config::ThemeMode,
+    label: String,
+}
+
+impl ThemeChoice {
+    fn new(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Self {
+        let label = match mode {
+            config::ThemeMode::Dark => t!(lang, "settings-theme-dark"),
+            config::ThemeMode::Light => t!(lang, "settings-theme-light"),
+        };
+        Self { mode, label }
+    }
+}
+
+impl PartialEq for ThemeChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.mode == other.mode
+    }
+}
+
+impl std::fmt::Display for ThemeChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     #[default]
@@ -321,16 +353,16 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list)
         },),
-        labeled::<Message>(
-            t!(lang, "settings-theme"),
-            pick_list(
-                vec![config::ThemeMode::Dark, config::ThemeMode::Light],
-                Some(config.theme),
-                Message::ThemeChanged,
-            )
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list),
-        ),
+        labeled::<Message>(t!(lang, "settings-theme"), {
+            let options = vec![
+                ThemeChoice::new(lang, config::ThemeMode::Dark),
+                ThemeChoice::new(lang, config::ThemeMode::Light),
+            ];
+            let selected = options.iter().find(|c| c.mode == config.theme).cloned();
+            pick_list(options, selected, |c: ThemeChoice| Message::ThemeChanged(c.mode))
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_pick_list)
+        }),
         iced::widget::checkbox(config.streamer_mode)
             .label(t!(lang, "settings-streamer-mode"))
             .on_toggle(Message::ToggleStreamerMode)

@@ -309,6 +309,22 @@ pub enum PatchCardEdit {
     ClearAll,
 }
 
+/// A single auto-battle-data edit staged by the editor. Applied to the
+/// loaded save in memory by [`Effect::EditAutoBattleData`]; not persisted
+/// to disk until the user hits Save ([`Effect::SaveEditCommit`]). The deck
+/// is derived from per-chip use counts, so these set those counts; the
+/// applier rebuilds the materialized deck after each so the preview shows
+/// the change live.
+#[derive(Debug, Clone)]
+pub enum AutoBattleDataEdit {
+    /// Set chip `id`'s primary use count.
+    SetUseCount { id: usize, count: usize },
+    /// Set chip `id`'s secondary use count (Standard chips only).
+    SetSecondaryUseCount { id: usize, count: usize },
+    /// Zero every chip's use counts, emptying the deck.
+    ClearAll,
+}
+
 #[derive(Debug)]
 pub enum Effect {
     /// Selection (game / save / patch / version) changed. App
@@ -369,8 +385,11 @@ pub enum Effect {
     /// Patch-card editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
     EditPatchCards(PatchCardEdit),
+    /// Auto-battle-data editor: stage one edit into the loaded save in
+    /// memory (UI updates live; nothing hits disk yet).
+    EditAutoBattleData(AutoBattleDataEdit),
     /// Global save editor: write every staged edit (folder + navicust +
-    /// patch cards) to the .sav on disk in one shot.
+    /// patch cards + auto battle data) to the .sav on disk in one shot.
     SaveEditCommit,
     /// Global save editor: discard all staged edits, reloading the on-disk
     /// original.
@@ -592,6 +611,14 @@ impl PlayState {
                     A::RemovePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::RemoveCard { slot })),
                     A::TogglePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::ToggleCard { slot })),
                     A::ClearPatchCards => Some(Effect::EditPatchCards(PatchCardEdit::ClearAll)),
+                    // ----- Auto Battle Data editor -----
+                    A::SetChipUseCount { id, count } => {
+                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount { id, count }))
+                    }
+                    A::SetSecondaryChipUseCount { id, count } => Some(Effect::EditAutoBattleData(
+                        AutoBattleDataEdit::SetSecondaryUseCount { id, count },
+                    )),
+                    A::ClearAutoBattleData => Some(Effect::EditAutoBattleData(AutoBattleDataEdit::ClearAll)),
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }

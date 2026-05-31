@@ -265,6 +265,11 @@ pub struct Ghost {
     /// neighbor isn't in this set, so clipped (offscreen) edges stay open.
     pub footprint: Vec<(isize, isize)>,
     pub solid: [u8; 4],
+    /// The part's "plus" (border/cross) color, used to draw the cross lines
+    /// on non-solid parts — same as [`PartStyle::plus`].
+    pub plus: [u8; 4],
+    /// Whether the part is solid; non-solid parts get the plus/cross lines.
+    pub is_solid: bool,
     pub legal: bool,
 }
 
@@ -292,18 +297,73 @@ pub fn geometry(cols: usize, rows: usize) -> Geometry {
     }
 }
 
-/// A backend the shared navicust drawing routine targets. One impl wraps
-/// a tiny-skia pixmap (the clipboard/image path); another wraps an iced
-/// canvas frame (live display). All coords are native pixels.
-pub trait GridPainter {
-    fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]);
-    fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32);
-    fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32);
-    /// Fill a rectangle whose corners are rounded by `radius` (native
-    /// units). `radius <= 0` is a plain rectangle. Used for the outer
-    /// background so the editor's grid gets the same rounded corners the
-    /// baked viewer image gets via `mask_rounded_corners`.
-    fn fill_round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [u8; 4]);
+// Drawing primitives: thin wrappers over the iced canvas `Frame` so the
+// shared paint routine reads in native coords + `[u8; 4]` colours. `s` is the
+// display scale, applied to both coordinates and stroke widths (iced's frame
+// transform wouldn't scale stroke width, so we scale here): the live editor
+// passes its display factor, the baked image passes 1.0 (see `rasterize`).
+// Both the window renderer and the standalone tiny-skia renderer expose the
+// same `geometry::Frame`, so one set of helpers serves both.
+
+fn fill_rect<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, s: f32, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
+    frame.fill_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), to_color(color));
+}
+
+fn stroke_rect<R: geometry::Renderer>(
+    frame: &mut geometry::Frame<R>,
+    s: f32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: [u8; 4],
+    width: f32,
+) {
+    let path = Path::rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s));
+    frame.stroke(
+        &path,
+        Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+    );
+}
+
+fn stroke_line<R: geometry::Renderer>(
+    frame: &mut geometry::Frame<R>,
+    s: f32,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    color: [u8; 4],
+    width: f32,
+) {
+    let path = Path::line(Point::new(x1 * s, y1 * s), Point::new(x2 * s, y2 * s));
+    frame.stroke(
+        &path,
+        Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+    );
+}
+
+/// Fill a rectangle whose corners are rounded by `radius` (native units).
+/// `radius <= 0` is a plain rectangle. Used for the outer background so the
+/// editor's grid gets the same rounded corners the baked viewer image gets.
+fn fill_round_rect<R: geometry::Renderer>(
+    frame: &mut geometry::Frame<R>,
+    s: f32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    color: [u8; 4],
+) {
+    if radius <= 0.0 {
+        fill_rect(frame, s, x, y, w, h, color);
+        return;
+    }
+    let path = Path::new(|b| {
+        b.rounded_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), iced::border::Radius::from(radius * s));
+    });
+    frame.fill(&path, to_color(color));
 }
 
 /// Resolve a navicust view + ROM assets into a [`GridModel`]. `materialized`
@@ -361,19 +421,26 @@ pub fn build_model(
 }
 
 /// Draw the whole navicust (background + color bar + grid body + optional
-/// ghost) through `p`. The BN3 style label is NOT drawn here — the image
-/// path bakes it after resize, and the canvas overlays it as text.
-pub fn paint<P: GridPainter>(p: &mut P, m: &GridModel, ghost: Option<&Ghost>, bg_radius: f32) {
+/// ghost) onto `frame`, in native coords (the caller scales the frame). The
+/// BN3 style label is NOT drawn here — the image path bakes it after resize,
+/// and the canvas overlays it as text.
+pub fn paint<R: geometry::Renderer>(
+    frame: &mut geometry::Frame<R>,
+    m: &GridModel,
+    ghost: Option<&Ghost>,
+    bg_radius: f32,
+    scale: f32,
+) {
     let g = geometry(m.cols, m.rows);
-    p.fill_round_rect(0.0, 0.0, g.total_w, g.total_h, bg_radius, m.background);
-    paint_color_bar(p, m, &g);
-    paint_body(p, m, &g);
+    fill_round_rect(frame, scale, 0.0, 0.0, g.total_w, g.total_h, bg_radius, m.background);
+    paint_color_bar(frame, m, &g, scale);
+    paint_body(frame, m, &g, scale);
     if let Some(gh) = ghost {
-        paint_ghost(p, &g, gh);
+        paint_ghost(frame, &g, gh, scale);
     }
 }
 
-fn paint_color_bar<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
+fn paint_color_bar<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridModel, g: &Geometry, scale: f32) {
     let top = PADDING_V as f32 + BORDER_WIDTH / 2.0;
     match &m.bar {
         ColorBar::Bn3 { extra } => {
@@ -388,8 +455,8 @@ fn paint_color_bar<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
             ];
             for (i, tile) in tiles.iter().enumerate() {
                 let x = left + i as f32 * TILE;
-                p.fill_rect(x, top, TILE, SQUARE_SIZE / 2.0, tile.unwrap_or(BG_FILL_COLOR));
-                p.stroke_rect(x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
+                fill_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, tile.unwrap_or(BG_FILL_COLOR));
+                stroke_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
             }
         }
         ColorBar::Bn456 { colors } => {
@@ -403,19 +470,96 @@ fn paint_color_bar<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
             for i in 0..4 {
                 let x = left + i as f32 * TILE;
                 let fill = colors.get(i).copied().unwrap_or(BG_FILL_COLOR);
-                p.fill_rect(x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, fill);
-                p.stroke_rect(x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
+                fill_rect(frame, scale, x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, fill);
+                stroke_rect(frame, scale, x, top, TILE, SQUARE_SIZE / 2.0, BORDER_STROKE_COLOR, BORDER_WIDTH);
             }
             // Remaining "bug" colors: filled inner, no outline, after a gap.
             for (j, c) in colors.iter().skip(4).enumerate() {
                 let x = left + (j as f32 + 4.0) * TILE + BORDER_WIDTH;
-                p.fill_rect(x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, *c);
+                fill_rect(frame, scale, x + BORDER_WIDTH / 2.0, top + BORDER_WIDTH / 2.0, inner_w, inner_h, *c);
             }
         }
     }
 }
 
-fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
+/// Which side of a cell an edge sits on.
+#[derive(Clone, Copy)]
+pub enum Side {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// A neighbouring cell's relationship to a part, as seen by
+/// [`for_each_part_edge`].
+pub enum Adj {
+    /// Part of the same piece — the shared edge is an internal separator.
+    Own,
+    /// Empty / a different piece / off the board — an outer-boundary edge.
+    Outside,
+    /// Leave this edge open (e.g. a clipped, off-grid ghost cell).
+    Skip,
+}
+
+/// One thing to draw for a part's shape, yielded by [`for_each_part_edge`].
+pub enum PartMark {
+    /// The `side` edge of cell `(col, row)`: `separator` is true for a line
+    /// shared with another of the part's own cells, false for an outer edge.
+    Edge {
+        col: usize,
+        row: usize,
+        side: Side,
+        separator: bool,
+    },
+    /// The centre cross of non-solid cell `(col, row)` (a vertical + a
+    /// horizontal line through the middle).
+    Cross { col: usize, row: usize },
+}
+
+/// Walk the edges + centre crosses that make up one part's footprint, so
+/// every renderer — grid body, ghost, palette thumbnail, baked icon —
+/// shares the shape logic and differs only in how it strokes a line.
+///
+/// `f` is invoked for each [`PartMark`] to draw. Each internal separator is
+/// emitted once (as the lower / right cell's top / left edge). `adj(c, r)`
+/// classifies the signed neighbour cell `(c, r)` as [`Adj::Own`],
+/// [`Adj::Outside`], or [`Adj::Skip`].
+pub fn for_each_part_edge(
+    cells: &[(usize, usize)],
+    is_solid: bool,
+    adj: impl Fn(isize, isize) -> Adj,
+    mut f: impl FnMut(PartMark),
+) {
+    for &(col, row) in cells {
+        let (c, r) = (col as isize, row as isize);
+        // Top / left are drawn by every cell: a separator toward an own
+        // neighbour, else the outer boundary.
+        match adj(c, r - 1) {
+            Adj::Own => f(PartMark::Edge { col, row, side: Side::Top, separator: true }),
+            Adj::Outside => f(PartMark::Edge { col, row, side: Side::Top, separator: false }),
+            Adj::Skip => {}
+        }
+        match adj(c - 1, r) {
+            Adj::Own => f(PartMark::Edge { col, row, side: Side::Left, separator: true }),
+            Adj::Outside => f(PartMark::Edge { col, row, side: Side::Left, separator: false }),
+            Adj::Skip => {}
+        }
+        // Bottom / right only on the outer boundary — an own-neighbour
+        // separator there is the neighbour's top / left, already emitted.
+        if let Adj::Outside = adj(c, r + 1) {
+            f(PartMark::Edge { col, row, side: Side::Bottom, separator: false });
+        }
+        if let Adj::Outside = adj(c + 1, r) {
+            f(PartMark::Edge { col, row, side: Side::Right, separator: false });
+        }
+        if !is_solid {
+            f(PartMark::Cross { col, row });
+        }
+    }
+}
+
+fn paint_body<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &GridModel, g: &Geometry, scale: f32) {
     let bx = g.body_origin_x + BORDER_WIDTH / 2.0;
     let by = g.body_origin_y + BORDER_WIDTH / 2.0;
     let (cols, rows) = (m.cols, m.rows);
@@ -432,26 +576,56 @@ fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
                 continue;
             }
             let (x, y) = cell_xy(col, row);
-            p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, BG_FILL_COLOR);
-            p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, BORDER_STROKE_COLOR, BORDER_WIDTH);
+            fill_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, BG_FILL_COLOR);
+            stroke_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, BORDER_STROKE_COLOR, BORDER_WIDTH);
         }
     }
 
-    // Pass 2: filled part squares.
+    // Pass 2: fill each part's squares, then its plus borders + cross via the
+    // shared edge walk. Separators and outer edges are both the part's plus
+    // colour here; Pass 3 overlays the dark border between distinct parts (so
+    // outer edges end up dark, internal separators stay plus — as before).
+    // Grouped by part so the walk can tell own cells from neighbours.
+    let mut by_slot: std::collections::HashMap<usize, Vec<(usize, usize)>> = std::collections::HashMap::new();
     for row in 0..rows {
         for col in 0..cols {
-            let Some(slot) = occ(col, row) else { continue };
-            let Some(style) = m.part_styles.get(slot).and_then(|s| *s) else {
-                continue;
-            };
-            let (x, y) = cell_xy(col, row);
-            p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, style.solid);
-            p.stroke_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, style.plus, BORDER_WIDTH);
-            if !style.is_solid {
-                p.stroke_line(x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, style.plus, BORDER_WIDTH);
-                p.stroke_line(x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, style.plus, BORDER_WIDTH);
+            if let Some(slot) = occ(col, row) {
+                by_slot.entry(slot).or_default().push((col, row));
             }
         }
+    }
+    for (slot, part_cells) in &by_slot {
+        let Some(style) = m.part_styles.get(*slot).and_then(|s| *s) else {
+            continue;
+        };
+        for &(col, row) in part_cells {
+            let (x, y) = cell_xy(col, row);
+            fill_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, style.solid);
+        }
+        let own: std::collections::HashSet<(isize, isize)> =
+            part_cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
+        for_each_part_edge(
+            part_cells,
+            style.is_solid,
+            |c, r| if own.contains(&(c, r)) { Adj::Own } else { Adj::Outside },
+            |mark| match mark {
+                PartMark::Edge { col, row, side, .. } => {
+                    let (x, y) = cell_xy(col, row);
+                    let (x1, y1, x2, y2) = match side {
+                        Side::Top => (x, y, x + SQUARE_SIZE, y),
+                        Side::Bottom => (x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE),
+                        Side::Left => (x, y, x, y + SQUARE_SIZE),
+                        Side::Right => (x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE),
+                    };
+                    stroke_line(frame, scale, x1, y1, x2, y2, style.plus, BORDER_WIDTH);
+                }
+                PartMark::Cross { col, row } => {
+                    let (x, y) = cell_xy(col, row);
+                    stroke_line(frame, scale, x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, style.plus, BORDER_WIDTH);
+                    stroke_line(frame, scale, x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, style.plus, BORDER_WIDTH);
+                }
+            },
+        );
     }
 
     // Pass 3: borders between distinct parts.
@@ -474,7 +648,7 @@ fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
                     || nrow >= rows as i32
                     || occ(ncol as usize, nrow as usize) != Some(slot);
                 if different {
-                    p.stroke_line(x1, y1, x2, y2, BORDER_STROKE_COLOR, BORDER_WIDTH);
+                    stroke_line(frame, scale, x1, y1, x2, y2, BORDER_STROKE_COLOR, BORDER_WIDTH);
                 }
             }
         }
@@ -484,23 +658,27 @@ fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
     let cl = by + m.command_line as f32 * SQUARE_SIZE;
     for frac in [0.25_f32, 0.75] {
         let ly = cl + SQUARE_SIZE * frac;
-        p.stroke_line(bx, ly, bx + cols as f32 * SQUARE_SIZE, ly, BORDER_STROKE_COLOR, BORDER_WIDTH);
+        stroke_line(frame, scale, bx, ly, bx + cols as f32 * SQUARE_SIZE, ly, BORDER_STROKE_COLOR, BORDER_WIDTH);
     }
 
     // Pass 5: out-of-bounds shading (the outer band, half-alpha black).
     if m.has_out_of_bounds {
         let band_w = SQUARE_SIZE + BORDER_WIDTH;
         let band_h = (rows as f32 - 2.0) * SQUARE_SIZE + BORDER_WIDTH;
-        p.fill_rect(bx - BORDER_WIDTH / 2.0, by + SQUARE_SIZE - BORDER_WIDTH / 2.0, band_w, band_h, OOB_SHADE);
-        p.fill_rect(
+        fill_rect(frame, scale, bx - BORDER_WIDTH / 2.0, by + SQUARE_SIZE - BORDER_WIDTH / 2.0, band_w, band_h, OOB_SHADE);
+        fill_rect(
+            frame,
+            scale,
             bx + (cols as f32 - 1.0) * SQUARE_SIZE - BORDER_WIDTH / 2.0,
             by + SQUARE_SIZE - BORDER_WIDTH / 2.0,
             band_w,
             band_h,
             OOB_SHADE,
         );
-        p.fill_rect(bx + SQUARE_SIZE - BORDER_WIDTH / 2.0, by - BORDER_WIDTH / 2.0, band_h, band_w, OOB_SHADE);
-        p.fill_rect(
+        fill_rect(frame, scale, bx + SQUARE_SIZE - BORDER_WIDTH / 2.0, by - BORDER_WIDTH / 2.0, band_h, band_w, OOB_SHADE);
+        fill_rect(
+            frame,
+            scale,
             bx + SQUARE_SIZE - BORDER_WIDTH / 2.0,
             by + (rows as f32 - 1.0) * SQUARE_SIZE - BORDER_WIDTH / 2.0,
             band_h,
@@ -510,95 +688,81 @@ fn paint_body<P: GridPainter>(p: &mut P, m: &GridModel, g: &Geometry) {
     }
 }
 
-fn paint_ghost<P: GridPainter>(p: &mut P, g: &Geometry, gh: &Ghost) {
+fn paint_ghost<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, g: &Geometry, gh: &Ghost, scale: f32) {
     let bx = g.body_origin_x + BORDER_WIDTH / 2.0;
     let by = g.body_origin_y + BORDER_WIDTH / 2.0;
     let tint = [gh.solid[0], gh.solid[1], gh.solid[2], 0x80];
     let outline = if gh.legal { GHOST_LEGAL } else { GHOST_ILLEGAL };
-    // Fill every cell the part covers.
-    for &(col, row) in &gh.cells {
-        let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
-        p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, tint);
-    }
-    // Outline only the part's outer boundary — no separators between its
-    // own blocks. An edge is stroked when its neighbour isn't part of the
-    // piece; edges toward a clipped (off-grid) part cell are in the
-    // footprint, so they stay open instead of boxing in a piece that runs
-    // offscreen.
+    // The plus lines are drawn opaque, but at the colour they'd composite to
+    // if drawn at the fill's alpha over the cell background — i.e. the same
+    // "50% over background" the translucent fill lands on. Stroking opaque
+    // plus over the translucent fill would be full-intensity (too bright);
+    // stroking translucent plus over it would double-composite (muddy). This
+    // pre-blend gives the right colour with neither artefact.
+    let a = 0x80 as f32 / 255.0;
+    let blend = |c: u8, b: u8| (c as f32 * a + b as f32 * (1.0 - a)).round() as u8;
+    let plus = [
+        blend(gh.plus[0], BG_FILL_COLOR[0]),
+        blend(gh.plus[1], BG_FILL_COLOR[1]),
+        blend(gh.plus[2], BG_FILL_COLOR[2]),
+        0xff,
+    ];
+    let cell_xy = |col: usize, row: usize| (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
+    let cells: std::collections::HashSet<(isize, isize)> =
+        gh.cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
     let footprint: std::collections::HashSet<(isize, isize)> = gh.footprint.iter().copied().collect();
-    let in_fp = |c: isize, r: isize| footprint.contains(&(c, r));
+
+    // Translucent fill first.
     for &(col, row) in &gh.cells {
-        let (ci, ri) = (col as isize, row as isize);
-        let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
-        if !in_fp(ci, ri - 1) {
-            p.stroke_line(x, y, x + SQUARE_SIZE, y, outline, BORDER_WIDTH);
+        let (x, y) = cell_xy(col, row);
+        fill_rect(frame, scale, x, y, SQUARE_SIZE, SQUARE_SIZE, tint);
+    }
+
+    // Walk the part's edges + crosses (same shape logic as a placed part).
+    // Separators (between the part's own cells) and the centre cross go down
+    // now in the pre-blended `plus` (see above). Outer-boundary edges are
+    // buffered and stroked last so the legality outline sits on top of the
+    // plus lines at shared corners. A neighbour that's in the footprint but
+    // off-grid is a clipped edge — Skip, left open so a piece running
+    // offscreen isn't boxed in.
+    let adj = |c: isize, r: isize| {
+        if cells.contains(&(c, r)) {
+            Adj::Own
+        } else if footprint.contains(&(c, r)) {
+            Adj::Skip
+        } else {
+            Adj::Outside
         }
-        if !in_fp(ci, ri + 1) {
-            p.stroke_line(x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+    };
+    let mut boundary: Vec<(f32, f32, f32, f32)> = Vec::new();
+    for_each_part_edge(&gh.cells, gh.is_solid, adj, |mark| match mark {
+        PartMark::Edge { col, row, side, separator } => {
+            let (x, y) = cell_xy(col, row);
+            let line = match side {
+                Side::Top => (x, y, x + SQUARE_SIZE, y),
+                Side::Bottom => (x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE),
+                Side::Left => (x, y, x, y + SQUARE_SIZE),
+                Side::Right => (x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE),
+            };
+            if separator {
+                stroke_line(frame, scale, line.0, line.1, line.2, line.3, plus, BORDER_WIDTH);
+            } else {
+                boundary.push(line);
+            }
         }
-        if !in_fp(ci - 1, ri) {
-            p.stroke_line(x, y, x, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+        PartMark::Cross { col, row } => {
+            let (x, y) = cell_xy(col, row);
+            stroke_line(frame, scale, x + SQUARE_SIZE / 2.0, y, x + SQUARE_SIZE / 2.0, y + SQUARE_SIZE, plus, BORDER_WIDTH);
+            stroke_line(frame, scale, x, y + SQUARE_SIZE / 2.0, x + SQUARE_SIZE, y + SQUARE_SIZE / 2.0, plus, BORDER_WIDTH);
         }
-        if !in_fp(ci + 1, ri) {
-            p.stroke_line(x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
-        }
+    });
+    for (x1, y1, x2, y2) in boundary {
+        stroke_line(frame, scale, x1, y1, x2, y2, outline, BORDER_WIDTH);
     }
 }
 
 fn to_color(c: [u8; 4]) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
-}
-
-/// The one [`GridPainter`] backend: it records into an iced canvas
-/// [`geometry::Frame`]. Generic over the geometry renderer so the SAME
-/// code serves both the live editor (the window's renderer) and the baked
-/// image (a standalone [`iced_tiny_skia::Renderer`], see [`rasterize`]).
-/// `scale` maps the routine's native coordinates onto the target size.
-pub(crate) struct FramePainter<'a, R: geometry::Renderer> {
-    pub frame: &'a mut geometry::Frame<R>,
-    pub scale: f32,
-}
-
-impl<R: geometry::Renderer> GridPainter for FramePainter<'_, R> {
-    fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
-        let s = self.scale;
-        self.frame
-            .fill_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), to_color(color));
-    }
-
-    fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32) {
-        let s = self.scale;
-        let path = Path::rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s));
-        self.frame.stroke(
-            &path,
-            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
-        );
-    }
-
-    fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32) {
-        let s = self.scale;
-        let path = Path::line(Point::new(x1 * s, y1 * s), Point::new(x2 * s, y2 * s));
-        self.frame.stroke(
-            &path,
-            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
-        );
-    }
-
-    fn fill_round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [u8; 4]) {
-        let s = self.scale;
-        if radius <= 0.0 {
-            self.fill_rect(x, y, w, h, color);
-            return;
-        }
-        let path = Path::new(|b| {
-            b.rounded_rectangle(
-                Point::new(x * s, y * s),
-                Size::new(w * s, h * s),
-                iced::border::Radius::from(radius * s),
-            );
-        });
-        self.frame.fill(&path, to_color(color));
-    }
 }
 
 /// Rasterize `model` to an RGBA image by drawing it through the shared
@@ -613,8 +777,9 @@ fn rasterize(model: &GridModel) -> image::RgbaImage {
 
     let mut renderer = iced_tiny_skia::Renderer::new(iced::Font::DEFAULT, iced::Pixels(16.0));
     {
+        // 1:1 (native coords == pixels), so the draw scale is 1.0.
         let mut frame = geometry::Frame::new(&renderer, Size::new(w as f32, h as f32));
-        paint(&mut FramePainter { frame: &mut frame, scale: 1.0 }, model, None, 0.0);
+        paint(&mut frame, model, None, 0.0, 1.0);
         let geom = frame.into_geometry();
         <iced_tiny_skia::Renderer as geometry::Renderer>::draw_geometry(&mut renderer, geom);
     }
@@ -653,37 +818,49 @@ pub fn render_part_thumb(
 ) -> Option<image::RgbaImage> {
     const PX: u32 = 8;
     let (h, w) = bitmap.dim();
-    if !(0..h).any(|y| (0..w).any(|x| bitmap[[y, x]])) {
+    let cells: Vec<(usize, usize)> = (0..h)
+        .flat_map(|y| (0..w).map(move |x| (x, y)))
+        .filter(|&(x, y)| bitmap[[y, x]])
+        .collect();
+    if cells.is_empty() {
         return None;
     }
     let (solid, plus) = part_colors(color);
     let mut img = image::RgbaImage::new(w as u32 * PX, h as u32 * PX);
-    for y in 0..h {
-        for x in 0..w {
-            if !bitmap[[y, x]] {
-                continue;
-            }
-            let ox = x as u32 * PX;
-            let oy = y as u32 * PX;
-            // Draw each block's top + left edge unconditionally — those
-            // become the 1px lines *between* blocks — and the bottom/right
-            // edges only on the part's outer boundary. This keeps every
-            // line (separators, outline, and cross) a uniform 1px with no
-            // doubled-up internal borders.
-            let down = y + 1 < h && bitmap[[y + 1, x]];
-            let right = x + 1 < w && bitmap[[y, x + 1]];
-            for dy in 0..PX {
-                for dx in 0..PX {
-                    let edge = dy == 0 || dx == 0 || (dy == PX - 1 && !down) || (dx == PX - 1 && !right);
-                    // Non-solid (plus) parts get the center cross so they
-                    // read distinctly; 1px, matching the borders.
-                    let cross = !is_solid && (dx == PX / 2 || dy == PX / 2);
-                    let c = if edge || cross { plus } else { solid };
-                    img.put_pixel(ox + dx, oy + dy, image::Rgba(c));
-                }
+    // Solid bodies first.
+    for &(cx, cy) in &cells {
+        for dy in 0..PX {
+            for dx in 0..PX {
+                img.put_pixel(cx as u32 * PX + dx, cy as u32 * PX + dy, image::Rgba(solid));
             }
         }
     }
+    // Plus edges + cross via the shared shape walk — uniform 1px lines:
+    // top/left of every cell (the separators between blocks) and bottom/right
+    // only on the outer boundary, with no doubled-up internal borders. Same
+    // model the live `PartThumb` canvas draws.
+    let own: std::collections::HashSet<(isize, isize)> = cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
+    for_each_part_edge(
+        &cells,
+        is_solid,
+        |c, r| if own.contains(&(c, r)) { Adj::Own } else { Adj::Outside },
+        |mark| match mark {
+            PartMark::Edge { col, row, side, .. } => {
+                let (ox, oy) = (col as u32 * PX, row as u32 * PX);
+                match side {
+                    Side::Top => (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy, image::Rgba(plus))),
+                    Side::Bottom => (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy + PX - 1, image::Rgba(plus))),
+                    Side::Left => (0..PX).for_each(|dy| img.put_pixel(ox, oy + dy, image::Rgba(plus))),
+                    Side::Right => (0..PX).for_each(|dy| img.put_pixel(ox + PX - 1, oy + dy, image::Rgba(plus))),
+                }
+            }
+            PartMark::Cross { col, row } => {
+                let (ox, oy) = (col as u32 * PX, row as u32 * PX);
+                (0..PX).for_each(|dy| img.put_pixel(ox + PX / 2, oy + dy, image::Rgba(plus)));
+                (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy + PX / 2, image::Rgba(plus)));
+            }
+        },
+    );
     Some(img)
 }
 

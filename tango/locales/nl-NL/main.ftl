@@ -37,6 +37,8 @@ patches-details-license = Licentie:
 patches-details-source = Website:
 patches-details-games = Ondersteunde spellen:
 settings-theme = Thema
+settings-theme-dark = Donker
+settings-theme-light = Licht
     .light = Licht
     .dark = Donker
     .system = Gebruik systeeminstellingen
@@ -49,6 +51,9 @@ settings-video-filter = Videofilter
 settings-language = Taal
 settings-nickname = Gebruikersnaam
 settings-streamer-mode = Streamer privacymodus
+settings-section-experimental = Experimenteel
+settings-enable-save-editor = Save-editor inschakelen
+settings-experimental-warning = Experimentele functies kunnen je saves beschadigen of corrupt maken, kunnen op elk moment worden gewijzigd of verwijderd, en missen mogelijk controles die je saves geldig houden voor online spelen. Gebruik op eigen risico.
     .tooltip = Het inschakelen van deze modus zal een extra "Cover" tabblad toevoegen aan de save viewer die alle informatie over uw huidige savebestand verbergt.
 settings-matchmaking-endpoint = Eindpunt matchmaking
 settings-patch-repo = Patches repository
@@ -72,6 +77,14 @@ auto-battle-data-mega-chips = Mega chips
 auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combo's
 auto-battle-data-program-advance = Program advance
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Gebruikt
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } chip
+   *[other] { $count } chips
+}
 welcome-open-folder = Map openen
 welcome-continue = Ik ben klaar!
 discord-presence-looking = Op zoek naar een spel
@@ -159,9 +172,14 @@ save-edit-cancel = Annuleren
 folder-edit-search = Chips zoeken…
 folder-edit-folder = Map
 folder-edit-count = { $count } / 30
-folder-edit-pack = Pakket
 save-edit-sort = Sorteren
 save-edit-clear = Alles wissen
+folder-sort-id = ID
+folder-sort-name = Naam
+folder-sort-code = Code
+folder-sort-attack = Aanval
+folder-sort-element = Element
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -172,11 +190,21 @@ navicust-edit-count = { $count ->
 navicust-edit-rotate = Draaien
 navicust-edit-compress = Comprimeren
 navicust-edit-uncompress = Decomprimeren
-navicust-edit-parts = Onderdelen
 navicust-edit-search = Onderdelen zoeken…
 navicust-sort-id = ID
 navicust-sort-name = Naam
 navicust-sort-color = Kleur
+
+# Patch card editor
+patch-card-edit-search = Kaarten zoeken…
+patch-card-edit-count = { $count ->
+    [one] { $count } kaart
+   *[other] { $count } kaarten
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Naam
+patch-card-sort-mb = MB
 save-empty = Deze save heeft geen gegevens voor deze weergave.
 play-no-selection = Kies een spel en save om te bekijken.
 replays-filter-all-games = Alle spellen

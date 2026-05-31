@@ -878,6 +878,50 @@ fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::Patch
     }
 }
 
+/// Apply one staged [`tabs::play::AutoBattleDataEdit`] to a loaded save's
+/// auto-battle data, in memory. The deck is derived from per-chip use
+/// counts, so each edit sets a count (or zeroes them all) and then
+/// rebuilds the materialized WRAM deck so the editor's live preview — which
+/// reads the materialized cache — reflects the change. No disk I/O; the
+/// commit path checksums and writes. A no-op on saves without a writable
+/// auto-battle-data view (only BN4/BN5 have one).
+fn apply_auto_battle_data_edit(loaded: &mut selection::Loaded, edit: tabs::play::AutoBattleDataEdit) {
+    use tabs::play::AutoBattleDataEdit;
+
+    match edit {
+        AutoBattleDataEdit::SetUseCount { id, count } => {
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                v.set_chip_use_count(id, count);
+            }
+        }
+        AutoBattleDataEdit::SetSecondaryUseCount { id, count } => {
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                v.set_secondary_chip_use_count(id, count);
+            }
+        }
+        AutoBattleDataEdit::ClearAll => {
+            // Zero every chip's counts so the rebuilt deck is empty —
+            // clearing only the materialized cache would be undone by the
+            // next edit's rebuild (which reads the still-nonzero counts).
+            let num_chips = loaded.assets.num_chips();
+            if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+                for id in 0..num_chips {
+                    v.set_chip_use_count(id, 0);
+                    v.set_secondary_chip_use_count(id, 0);
+                }
+            }
+        }
+    }
+
+    // Rebuild the materialized deck from the updated counts so the editor's
+    // preview (which reads the materialized cache) shows the change live.
+    // Disjoint field borrows: assets vs save.
+    let assets = loaded.assets.as_ref();
+    if let Some(mut v) = loaded.save.view_auto_battle_data_mut() {
+        v.rebuild_materialized(assets);
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     #[default]
@@ -1470,6 +1514,14 @@ impl App {
                 }
                 iced::Task::none()
             }
+            E::EditAutoBattleData(edit) => {
+                // Stage one auto-battle-data edit into the in-memory loaded
+                // save; the UI reads `loaded.save` directly so it shows live.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    apply_auto_battle_data_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
             E::SaveEditCommit => {
                 if let Some(loaded) = self.loaded.as_mut() {
                     if !loaded.save_path.as_os_str().is_empty() {
@@ -1488,6 +1540,12 @@ impl App {
                                 loaded.save.view_navi_mut()
                             {
                                 nc.rebuild_materialized(assets);
+                            }
+                            // Auto-battle data: the deck is derived from use
+                            // counts; rebuild its materialized WRAM cache so
+                            // the committed save matches the staged counts.
+                            if let Some(mut abd) = loaded.save.view_auto_battle_data_mut() {
+                                abd.rebuild_materialized(assets);
                             }
                         }
                         if let Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(mut v)) =

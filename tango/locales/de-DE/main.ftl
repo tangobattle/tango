@@ -37,6 +37,8 @@ patches-details-license = Lizenz:
 patches-details-source = Webseite:
 patches-details-games = Unterstützte Spiele:
 settings-theme = Theme
+settings-theme-dark = Dunkel
+settings-theme-light = Hell
     .light = Hell
     .dark = Dunkel
     .system = Systemeinstellung befolgen
@@ -49,6 +51,9 @@ settings-video-filter = Video-Filter
 settings-language = Sprache
 settings-nickname = Nickname
 settings-streamer-mode = Streamer Privatsphäre-Modus
+settings-section-experimental = Experimentell
+settings-enable-save-editor = Speicherstand-Editor aktivieren
+settings-experimental-warning = Experimentelle Funktionen können deine Speicherstände beschädigen oder unbrauchbar machen, können jederzeit geändert oder entfernt werden und es fehlen ihnen unter Umständen Prüfungen, die deine Speicherstände für das Online-Spiel zulässig halten. Nutzung auf eigene Gefahr.
     .tooltip = Bei Aktivierung des Modus, wird der Speicheranzeige ein zusätzliches Abdeckungsfenster hinzugefügt, die alle Informationen über Ihre aktuelle Speicherdatei verbirgt.
 settings-matchmaking-endpoint = Matchmaking-Endpunkt
 settings-patch-repo = Patch-Repository
@@ -72,6 +77,14 @@ auto-battle-data-mega-chips = Mega Chips
 auto-battle-data-giga-chip = Giga Chip
 auto-battle-data-combos = Kombos
 auto-battle-data-program-advance = Program Advance
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Verwendet
+auto-battle-data-edit-secondary = Sek.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } Chip
+   *[other] { $count } Chips
+}
 welcome-open-folder = Ordner öffnen
 welcome-continue = Ich bin fertig!
 discord-presence-looking = Suche nach einem Kampf
@@ -159,9 +172,14 @@ save-edit-cancel = Abbrechen
 folder-edit-search = Chips suchen …
 folder-edit-folder = Ordner
 folder-edit-count = { $count } / 30
-folder-edit-pack = Paket
 save-edit-sort = Sortieren
 save-edit-clear = Alle löschen
+folder-sort-id = ID
+folder-sort-name = Name
+folder-sort-code = Code
+folder-sort-attack = Angriff
+folder-sort-element = Element
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -172,11 +190,21 @@ navicust-edit-count = { $count ->
 navicust-edit-rotate = Drehen
 navicust-edit-compress = Komprimieren
 navicust-edit-uncompress = Dekomprimieren
-navicust-edit-parts = Teile
 navicust-edit-search = Teile suchen…
 navicust-sort-id = ID
 navicust-sort-name = Name
 navicust-sort-color = Farbe
+
+# Patch card editor
+patch-card-edit-search = Karten suchen …
+patch-card-edit-count = { $count ->
+    [one] { $count } Karte
+   *[other] { $count } Karten
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Name
+patch-card-sort-mb = MB
 save-empty = Dieser Speicherstand hat keine Daten für diese Ansicht.
 play-no-selection = Wähle ein Spiel und einen Speicherstand zur Prüfung aus.
 replays-filter-all-games = Alle Spiele

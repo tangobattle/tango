@@ -12,7 +12,7 @@ use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::Action;
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-use crate::navicust::{self, FramePainter, GridModel};
+use crate::navicust::{self, GridModel};
 use crate::save_view::Action as Msg;
 
 fn to_color(c: [u8; 4]) -> Color {
@@ -134,30 +134,46 @@ impl<M> canvas::Program<M> for PartThumb {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let set = |c: usize, r: usize| self.cells.iter().any(|&(cc, rr)| cc == c && rr == r);
         let solid = to_color(self.solid);
         let plus = to_color(self.plus);
+        // Solid bodies first.
         for &(c, r) in &self.cells {
-            let ox = c as f32 * THUMB_PX;
-            let oy = r as f32 * THUMB_PX;
-            // Solid body, then plus-coloured edges — top/left always (the
-            // 1px separators between the part's own blocks) and bottom/right
-            // only on the outer boundary — plus the centre cross for
-            // non-solid parts. Mirrors `navicust::render_part_thumb`.
-            frame.fill_rectangle(Point::new(ox, oy), Size::new(THUMB_PX, THUMB_PX), solid);
-            frame.fill_rectangle(Point::new(ox, oy), Size::new(THUMB_PX, 1.0), plus);
-            frame.fill_rectangle(Point::new(ox, oy), Size::new(1.0, THUMB_PX), plus);
-            if r + 1 >= self.n || !set(c, r + 1) {
-                frame.fill_rectangle(Point::new(ox, oy + THUMB_PX - 1.0), Size::new(THUMB_PX, 1.0), plus);
-            }
-            if c + 1 >= self.n || !set(c + 1, r) {
-                frame.fill_rectangle(Point::new(ox + THUMB_PX - 1.0, oy), Size::new(1.0, THUMB_PX), plus);
-            }
-            if !self.is_solid {
-                frame.fill_rectangle(Point::new(ox + THUMB_PX / 2.0, oy), Size::new(1.0, THUMB_PX), plus);
-                frame.fill_rectangle(Point::new(ox, oy + THUMB_PX / 2.0), Size::new(THUMB_PX, 1.0), plus);
-            }
+            frame.fill_rectangle(
+                Point::new(c as f32 * THUMB_PX, r as f32 * THUMB_PX),
+                Size::new(THUMB_PX, THUMB_PX),
+                solid,
+            );
         }
+        // Plus edges + cross via the shared shape walk — crisp 1px inset
+        // lines (top/left of every cell, bottom/right only on the outer
+        // boundary), matching the baked palette icons. Separators and outer
+        // edges are both plus here.
+        let own: std::collections::HashSet<(isize, isize)> =
+            self.cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
+        navicust::for_each_part_edge(
+            &self.cells,
+            self.is_solid,
+            |c, r| if own.contains(&(c, r)) { navicust::Adj::Own } else { navicust::Adj::Outside },
+            |mark| match mark {
+                navicust::PartMark::Edge { col, row, side, .. } => {
+                    let ox = col as f32 * THUMB_PX;
+                    let oy = row as f32 * THUMB_PX;
+                    let (x, y, w, h) = match side {
+                        navicust::Side::Top => (ox, oy, THUMB_PX, 1.0),
+                        navicust::Side::Bottom => (ox, oy + THUMB_PX - 1.0, THUMB_PX, 1.0),
+                        navicust::Side::Left => (ox, oy, 1.0, THUMB_PX),
+                        navicust::Side::Right => (ox + THUMB_PX - 1.0, oy, 1.0, THUMB_PX),
+                    };
+                    frame.fill_rectangle(Point::new(x, y), Size::new(w, h), plus);
+                }
+                navicust::PartMark::Cross { col, row } => {
+                    let ox = col as f32 * THUMB_PX;
+                    let oy = row as f32 * THUMB_PX;
+                    frame.fill_rectangle(Point::new(ox + THUMB_PX / 2.0, oy), Size::new(1.0, THUMB_PX), plus);
+                    frame.fill_rectangle(Point::new(ox, oy + THUMB_PX / 2.0), Size::new(THUMB_PX, 1.0), plus);
+                }
+            },
+        );
         vec![frame.into_geometry()]
     }
 }
@@ -180,6 +196,10 @@ pub struct Held {
     /// offsets `navicust::materialize` applies (see [`rotated_offsets`]).
     pub cells: Vec<(isize, isize)>,
     pub solid: [u8; 4],
+    /// The part's "plus" (cross/border) color, drawn on non-solid parts.
+    pub plus: [u8; 4],
+    /// Whether the part is solid; non-solid parts get the plus/cross lines.
+    pub is_solid: bool,
 }
 
 /// Interactive editor grid. Draws the full grid (via the shared routine)
@@ -278,6 +298,8 @@ impl EditorGrid {
             cells,
             footprint,
             solid: held.solid,
+            plus: held.plus,
+            is_solid: held.is_solid,
             legal,
         })
     }
@@ -296,15 +318,13 @@ impl canvas::Program<Msg> for EditorGrid {
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let ghost = state.hovered.and_then(|(col, row)| self.ghost(col, row));
-        // `paint` works in native units; the painter scales to display, so
-        // pass the radius in native units to land on `CORNER_RADIUS_DISPLAY`.
-        let bg_radius = CORNER_RADIUS_DISPLAY / self.scale;
-        navicust::paint(
-            &mut FramePainter { frame: &mut frame, scale: self.scale },
-            &self.model,
-            ghost.as_ref(),
-            bg_radius,
-        );
+        // `paint` works in native units and scales each draw by `scale`;
+        // pass the radius in native units so it lands on
+        // `CORNER_RADIUS_DISPLAY`. The hover outline below is in display
+        // coords, drawn unscaled.
+        let scale = self.scale;
+        let bg_radius = CORNER_RADIUS_DISPLAY / scale;
+        navicust::paint(&mut frame, &self.model, ghost.as_ref(), bg_radius, scale);
         // When not holding a part, outline the block under the cursor.
         if self.held.is_none() {
             if let Some((col, row)) = state.hovered {

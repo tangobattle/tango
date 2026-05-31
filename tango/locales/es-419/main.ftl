@@ -37,6 +37,8 @@ patches-details-license = Licencia:
 patches-details-source = Sitio web:
 patches-details-games = Juegos compatibles:
 settings-theme = Tema
+settings-theme-dark = Oscuro
+settings-theme-light = Claro
     .light = Claro
     .dark = Oscuro
     .system = Seguir la configuración del sistema
@@ -49,6 +51,9 @@ settings-video-filter = Filtro de vídeo
 settings-language = Lenguaje
 settings-nickname = Apodo
 settings-streamer-mode = Modo de privacidad del streamer
+settings-section-experimental = Experimental
+settings-enable-save-editor = Habilitar editor de guardados
+settings-experimental-warning = Las funciones experimentales pueden dañar o corromper tus guardados, pueden cambiar o eliminarse en cualquier momento y pueden carecer de comprobaciones que mantengan tus guardados válidos para el juego en línea. Úsalas bajo tu propio riesgo.
     .tooltip = Si activas este modo, se añadirá una pestaña adicional de "Cubierta" al visor de guardado que oculta toda la información sobre tu archivo de guardado actual.
 settings-matchmaking-endpoint = Salida de emparejamiento
 settings-patch-repo = Repositorio de parches
@@ -72,6 +77,14 @@ auto-battle-data-mega-chips = Mega chips
 auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combos
 auto-battle-data-program-advance = Program advance
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Usos
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } chip
+   *[other] { $count } chips
+}
 welcome-open-folder = Abrir carpeta
 welcome-continue = ¡Estoy listo/a!
 discord-presence-looking = Buscando pelea
@@ -159,9 +172,14 @@ save-edit-cancel = Cancelar
 folder-edit-search = Buscar chips…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / 30
-folder-edit-pack = Paquete
 save-edit-sort = Ordenar
 save-edit-clear = Borrar todo
+folder-sort-id = ID
+folder-sort-name = Nombre
+folder-sort-code = Código
+folder-sort-attack = Ataque
+folder-sort-element = Elemento
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -172,11 +190,21 @@ navicust-edit-count = { $count ->
 navicust-edit-rotate = Rotar
 navicust-edit-compress = Comprimir
 navicust-edit-uncompress = Descomprimir
-navicust-edit-parts = Piezas
 navicust-edit-search = Buscar piezas…
 navicust-sort-id = ID
 navicust-sort-name = Nombre
 navicust-sort-color = Color
+
+# Patch card editor
+patch-card-edit-search = Buscar tarjetas…
+patch-card-edit-count = { $count ->
+    [one] { $count } tarjeta
+   *[other] { $count } tarjetas
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Nombre
+patch-card-sort-mb = MB
 save-empty = Este guardado no tiene datos para esta vista.
 play-no-selection = Elige un juego y un guardado para inspeccionar.
 replays-filter-all-games = Todos los juegos

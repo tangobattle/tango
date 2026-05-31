@@ -37,6 +37,8 @@ patches-details-license = Лицензия:
 patches-details-source = Сайт:
 patches-details-games = Поддерживаемые игры:
 settings-theme = Тема оформления
+settings-theme-dark = Тёмная
+settings-theme-light = Светлая
     .light = Светлая
     .dark = Темная
     .system = Следовать настройкам системы
@@ -49,6 +51,9 @@ settings-video-filter = Видео фильтр
 settings-language = Язык
 settings-nickname = Ник
 settings-streamer-mode = Режим приватности стримера
+settings-section-experimental = Экспериментальное
+settings-enable-save-editor = Включить редактор сохранений
+settings-experimental-warning = Экспериментальные функции могут повредить ваши сохранения или сделать их непригодными, могут быть изменены или удалены в любой момент и могут не иметь проверок, обеспечивающих допустимость сохранений для онлайн-игры. Используйте на свой страх и риск.
     .tooltip = Включение этого режима добавит дополнительную вкладку "Обложение" в окно сохранения, которая скрывает всю информацию о вашем текущем файле сохранения.
 settings-matchmaking-endpoint = Точка окончания матча
 settings-patch-repo = Репозитория Патчей
@@ -72,6 +77,15 @@ auto-battle-data-mega-chips = Мега чипы
 auto-battle-data-giga-chip = Гига чип
 auto-battle-data-combos = Комбо
 auto-battle-data-program-advance = Продвинутые программы
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Использовано
+auto-battle-data-edit-secondary = Втор.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } чип
+    [few] { $count } чипа
+   *[other] { $count } чипов
+}
 welcome-open-folder = Открыть папку
 welcome-continue = Я Готов!
 discord-presence-looking = Поиск матча
@@ -159,9 +173,14 @@ save-edit-cancel = Отмена
 folder-edit-search = Поиск чипов…
 folder-edit-folder = Папка
 folder-edit-count = { $count } / 30
-folder-edit-pack = Набор
 save-edit-sort = Сортировка
 save-edit-clear = Очистить всё
+folder-sort-id = ID
+folder-sort-name = Название
+folder-sort-code = Код
+folder-sort-attack = Атака
+folder-sort-element = Элемент
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -173,11 +192,22 @@ navicust-edit-count = { $count ->
 navicust-edit-rotate = Повернуть
 navicust-edit-compress = Сжать
 navicust-edit-uncompress = Разжать
-navicust-edit-parts = Детали
 navicust-edit-search = Поиск деталей…
 navicust-sort-id = ID
 navicust-sort-name = Название
 navicust-sort-color = Цвет
+
+# Patch card editor
+patch-card-edit-search = Поиск карт…
+patch-card-edit-count = { $count ->
+    [one] { $count } карта
+    [few] { $count } карты
+   *[other] { $count } карт
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Название
+patch-card-sort-mb = MB
 save-empty = В этом сохранении нет данных для этого вида.
 play-no-selection = Выберите игру и сохранение для просмотра.
 replays-filter-all-games = Все игры

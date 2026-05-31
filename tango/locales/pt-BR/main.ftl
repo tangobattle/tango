@@ -37,6 +37,8 @@ patches-details-license = Licença:
 patches-details-source = Website:
 patches-details-games = Jogos compatíveis:
 settings-theme = Tema
+settings-theme-dark = Escuro
+settings-theme-light = Claro
     .light = Claro
     .dark = Escuro
     .system = Usar as configurações do sistema
@@ -49,6 +51,9 @@ settings-video-filter = Filtro de vídeo
 settings-language = Idioma
 settings-nickname = Apelido
 settings-streamer-mode = Modo de privacidade do streamer
+settings-section-experimental = Experimental
+settings-enable-save-editor = Ativar editor de saves
+settings-experimental-warning = Recursos experimentais podem quebrar ou corromper seus saves, podem ser alterados ou removidos a qualquer momento e podem não ter verificações que mantêm seus saves válidos para o jogo online. Use por sua conta e risco.
     .tooltip = Ativar este modo adicionará uma guia de "Capa" adicional ao visualizador de save que oculta todas as informações sobre seu arquivo de save atual.
 settings-matchmaking-endpoint = Endpoint do matchmaking
 settings-patch-repo = Repositório de patches
@@ -72,6 +77,14 @@ auto-battle-data-mega-chips = Mega chips
 auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combos
 auto-battle-data-program-advance = Program advance
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Usos
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count = { $count ->
+    [one] { $count } chip
+   *[other] { $count } chips
+}
 welcome-open-folder = Abrir pasta
 welcome-continue = Terminei!
 discord-presence-looking = Procurando Partida
@@ -159,9 +172,14 @@ save-edit-cancel = Cancelar
 folder-edit-search = Buscar chips…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / 30
-folder-edit-pack = Pacote
 save-edit-sort = Ordenar
 save-edit-clear = Limpar tudo
+folder-sort-id = ID
+folder-sort-name = Nome
+folder-sort-code = Código
+folder-sort-attack = Ataque
+folder-sort-element = Elemento
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -172,11 +190,21 @@ navicust-edit-count = { $count ->
 navicust-edit-rotate = Girar
 navicust-edit-compress = Comprimir
 navicust-edit-uncompress = Descomprimir
-navicust-edit-parts = Peças
 navicust-edit-search = Buscar peças…
 navicust-sort-id = ID
 navicust-sort-name = Nome
 navicust-sort-color = Cor
+
+# Patch card editor
+patch-card-edit-search = Buscar cartas…
+patch-card-edit-count = { $count ->
+    [one] { $count } carta
+   *[other] { $count } cartas
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Nome
+patch-card-sort-mb = MB
 save-empty = Este save não tem dados para esta visualização.
 play-no-selection = Selecione um jogo e um save para inspecionar.
 replays-filter-all-games = Todos os jogos

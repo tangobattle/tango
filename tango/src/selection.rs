@@ -40,6 +40,11 @@ pub struct Loaded {
     /// drives whether the Patch Cards tab shows the Edit button. BN4's
     /// PatchCard4s is read-only here.
     pub patch_cards_editable: bool,
+    /// Whether this save supports in-place auto-battle-data editing — i.e.
+    /// `save.view_auto_battle_data_mut().is_some()` (BN4/BN5). Cached at
+    /// build time (the probe needs `&mut save`); drives whether the Auto
+    /// Battle Data tab shows the Edit button.
+    pub auto_battle_data_editable: bool,
     /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
@@ -136,6 +141,9 @@ impl Loaded {
             save.view_patch_cards_mut(),
             Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(_))
         );
+        // Auto-battle-data editability: BN4/BN5 expose a writable view.
+        // Same pure-capability probe pattern as the others.
+        let auto_battle_data_editable = save.view_auto_battle_data_mut().is_some();
 
         let wram = save.as_raw_wram().into_owned();
         let charset_owned: Option<Vec<&str>> = applied_patch
@@ -226,6 +234,7 @@ impl Loaded {
             chips_editable,
             navicust_editable,
             patch_cards_editable,
+            auto_battle_data_editable,
             patch: applied_patch,
             assets,
             chip_icons,

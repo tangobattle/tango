@@ -37,6 +37,8 @@ patches-details-license = 許可證:
 patches-details-source = 網站:
 patches-details-games = 支持遊戲:
 settings-theme = 色彩主題
+settings-theme-dark = 深色
+settings-theme-light = 淺色
     .light = 淺色
     .dark = 深色
     .system = 遵循系統設置
@@ -49,6 +51,9 @@ settings-video-filter = 圖形過濾器
 settings-language = 語言
 settings-nickname = 暱稱
 settings-streamer-mode = 直播隱私模式
+settings-section-experimental = 實驗性
+settings-enable-save-editor = 啟用存檔編輯器
+settings-experimental-warning = 實驗性功能可能會損壞或破壞你的存檔，隨時可能被變更或移除，並且可能缺少使存檔在連線對戰中保持合法的檢查。使用風險自負。
     .tooltip = 啓用此模式將爲保存查看器添加一個額外的「封面」選項卡，該選項卡隱藏有關當前保存文件的所有信息。
 settings-matchmaking-endpoint = 配對服務器端點
 settings-patch-repo = 補丁倉庫
@@ -72,6 +77,11 @@ auto-battle-data-mega-chips = 高級晶片
 auto-battle-data-giga-chip = 究極晶片
 auto-battle-data-combos = 組合
 auto-battle-data-program-advance = 程式強化
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = 使用次數
+auto-battle-data-edit-secondary = 二次
+auto-battle-data-edit-count = { $count } 個晶片
 welcome-open-folder = 打開文件夾
 welcome-continue = 已完成！
 discord-presence-looking = 尋找對戰中
@@ -159,9 +169,14 @@ save-edit-cancel = 取消
 folder-edit-search = 搜尋晶片…
 folder-edit-folder = 晶片夾
 folder-edit-count = { $count } / 30
-folder-edit-pack = 卡包
 save-edit-sort = 排序
 save-edit-clear = 全部清除
+folder-sort-id = ID
+folder-sort-name = 名稱
+folder-sort-code = 代碼
+folder-sort-attack = 攻擊力
+folder-sort-element = 屬性
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = 領航員改造
@@ -169,11 +184,18 @@ navicust-edit-count = { $count } 個零件
 navicust-edit-rotate = 旋轉
 navicust-edit-compress = 壓縮
 navicust-edit-uncompress = 解壓
-navicust-edit-parts = 零件
 navicust-edit-search = 搜尋零件…
 navicust-sort-id = ID
 navicust-sort-name = 名稱
 navicust-sort-color = 顏色
+
+# Patch card editor
+patch-card-edit-search = 搜尋改造卡…
+patch-card-edit-count = { $count } 張卡
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = 名稱
+patch-card-sort-mb = MB
 save-empty = 此存檔沒有該檢視的資料。
 play-no-selection = 請選擇要查看的遊戲與存檔。
 replays-filter-all-games = 全部遊戲

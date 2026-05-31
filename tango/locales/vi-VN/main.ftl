@@ -37,6 +37,8 @@ patches-details-license = Giấy phép:
 patches-details-source = Website:
 patches-details-games = Các game được hỗ trợ:
 settings-theme = Giao diện
+settings-theme-dark = Tối
+settings-theme-light = Sáng
     .light = Sáng
     .dark = Tối
     .system = Theo thiết lập hệ thống
@@ -49,6 +51,9 @@ settings-video-filter = Bộ lọc ảnh
 settings-language = Ngôn ngữ
 settings-nickname = Nickname
 settings-streamer-mode = Chế độ riêng tư
+settings-section-experimental = Thử nghiệm
+settings-enable-save-editor = Bật trình chỉnh sửa save
+settings-experimental-warning = Các tính năng thử nghiệm có thể làm hỏng save của bạn, có thể bị thay đổi hoặc gỡ bỏ bất cứ lúc nào, và có thể thiếu các kiểm tra giúp save hợp lệ khi chơi mạng. Hãy tự chịu rủi ro khi sử dụng.
     .tooltip = Bật chế độ này để che đi tất cả thông tin setup của bạn.
 settings-matchmaking-endpoint = Điểm cuối tạo trận đấu
 settings-patch-repo = Kho lưu trữ bản vá
@@ -72,6 +77,11 @@ auto-battle-data-mega-chips = Mega chips
 auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combo
 auto-battle-data-program-advance = Program advance
+
+# Auto Battle Data editor
+auto-battle-data-edit-used = Đã dùng
+auto-battle-data-edit-secondary = Phụ
+auto-battle-data-edit-count = { $count } chip
 welcome-open-folder = Mở thư mục
 welcome-continue = Đã xong!
 discord-presence-looking = Đang tìm trận
@@ -159,9 +169,14 @@ save-edit-cancel = Hủy
 folder-edit-search = Tìm chip…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / 30
-folder-edit-pack = Gói
 save-edit-sort = Sắp xếp
 save-edit-clear = Xóa tất cả
+folder-sort-id = ID
+folder-sort-name = Tên
+folder-sort-code = Mã
+folder-sort-attack = Tấn công
+folder-sort-element = Hệ
+folder-sort-mb = MB
 
 # Navicust editor
 navicust-edit-grid = NaviCust
@@ -169,11 +184,18 @@ navicust-edit-count = { $count } bộ phận
 navicust-edit-rotate = Xoay
 navicust-edit-compress = Nén
 navicust-edit-uncompress = Bỏ nén
-navicust-edit-parts = Bộ phận
 navicust-edit-search = Tìm bộ phận…
 navicust-sort-id = ID
 navicust-sort-name = Tên
 navicust-sort-color = Màu
+
+# Patch card editor
+patch-card-edit-search = Tìm thẻ…
+patch-card-edit-count = { $count } thẻ
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = Tên
+patch-card-sort-mb = MB
 save-empty = Save này không có dữ liệu cho mục này.
 play-no-selection = Chọn một game và save để xem.
 replays-filter-all-games = Tất cả game
