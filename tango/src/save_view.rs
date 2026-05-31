@@ -2008,10 +2008,18 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         } else {
             (lucide_icons::Icon::Shrink, t!(lang, "navicust-edit-compress"))
         };
-        let compress_btn = widgets::icon_button(
+        // A part whose compressed and uncompressed shapes are identical can't
+        // be (de)compressed — render the button disabled rather than letting
+        // it toggle a flag with no visible effect.
+        let compressible = loaded
+            .assets
+            .navicust_part(id)
+            .map(|info| info.compressed_bitmap() != info.uncompressed_bitmap())
+            .unwrap_or(false);
+        let compress_btn = widgets::icon_button_maybe(
             compress_icon,
             compress_label,
-            Action::ToggleCompressPart { id },
+            compressible.then_some(Action::ToggleCompressPart { id }),
             [6.0, 8.0],
         );
         let controls = column![rotate_btn, compress_btn].spacing(4).align_x(Alignment::Center);
