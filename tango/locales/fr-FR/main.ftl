@@ -147,6 +147,7 @@ patch-card-edit-mb = { $mb }MB / 80MB
 patch-card-sort-id = ID
 patch-card-sort-name = ABCDE
 patch-card-sort-mb = MB
+patch-card4-none = None
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = Standard chips (secondary)
 auto-battle-data-standard-chips = Standard chips
