@@ -108,7 +108,6 @@ save-edit-cancel = Cancel
 folder-edit-search = Search chips…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / 30
-folder-edit-pack = Pack
 save-edit-sort = Sort
 save-edit-clear = Clear all
 folder-sort-id = ID
@@ -133,13 +132,11 @@ navicust-edit-count =
 navicust-edit-rotate = Rotate
 navicust-edit-compress = Compress
 navicust-edit-uncompress = Uncompress
-navicust-edit-parts = Parts
 navicust-edit-search = Search parts…
 navicust-sort-id = ID
 navicust-sort-name = ABCDE
 navicust-sort-color = Color
 # Patch card editor
-patch-card-edit-library = Library
 patch-card-edit-search = Search cards…
 patch-card-edit-count =
     { $count ->
@@ -157,6 +154,14 @@ auto-battle-data-mega-chips = Mega chips
 auto-battle-data-giga-chip = Giga chip
 auto-battle-data-combos = Combos
 auto-battle-data-program-advance = Program advance
+# Auto Battle Data editor
+auto-battle-data-edit-used = Used
+auto-battle-data-edit-secondary = Sec.
+auto-battle-data-edit-count =
+    { $count ->
+        [one] 1 chip
+       *[other] { $count } chips
+    }
 # Common
 save-empty = This save has no data for this view.
 play-no-selection = Select a game and a save to inspect.
@@ -278,6 +283,8 @@ input-gamepad-axis-right-stick-y = Right Stick Y
 input-gamepad-axis-trigger-left = Left Trigger
 input-gamepad-axis-trigger-right = Right Trigger
 settings-theme = Theme
+settings-theme-dark = Dark
+settings-theme-light = Light
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-patch-repo = Patches repository
 settings-enable-patch-autoupdate = Automatically update patches in the background
