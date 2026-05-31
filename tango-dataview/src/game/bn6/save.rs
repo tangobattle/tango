@@ -207,6 +207,78 @@ impl crate::save::Save for Save {
         )))
     }
 
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
+        let (mega_limit, giga_limit, reg_memory) = match self.view_navi().unwrap() {
+            crate::save::NaviView::Navicust(navicust) => {
+                let mut mega: isize = 5;
+                let mut giga: usize = 1;
+
+                if let Some(layout) = assets.navicust_layout() {
+                    let grid = navicust.materialized();
+                    if layout.command_line < grid.nrows() {
+                        let mut seen = std::collections::HashSet::new();
+                        for &cell in grid.row(layout.command_line).iter() {
+                            let Some(slot) = cell else { continue };
+                            if !seen.insert(slot) {
+                                continue; // a part spans several command-line cells; count once
+                            }
+                            let Some(part) = navicust.navicust_part(slot) else {
+                                continue;
+                            };
+                            match part.id >> 2 {
+                                4 | 29 => mega += 1, // MegFldr1 / FldrPak1
+                                5 | 30 => mega += 2, // MegFldr2 / FldrPak2
+                                6 => giga += 1,      // GigFldr1
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                if let Some(pc) = self.view_patch_cards() {
+                    let crate::save::PatchCardsView::PatchCard56s(pc) = pc else {
+                        unreachable!();
+                    };
+                    for slot in 0..pc.count() {
+                        let Some(card) = pc.patch_card(slot) else { continue };
+                        if !card.enabled {
+                            continue;
+                        }
+                        let Some(info) = assets.patch_card56(card.id) else {
+                            continue;
+                        };
+                        for effect in info.effects() {
+                            match effect.id {
+                                0x12 => mega += effect.parameter as isize,
+                                0x13 => mega -= effect.parameter as isize,
+                                0x14 => giga += effect.parameter as usize,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                (mega.max(0) as usize, giga, self.buf[self.navi_stats_offset(0) + 0x09])
+            }
+            crate::save::NaviView::LinkNavi(ln) => {
+                let off = self.navi_stats_offset(ln.navi());
+                (
+                    self.buf[off + 0x0b] as usize,
+                    self.buf[off + 0x0c] as usize,
+                    self.buf[off + 0x09],
+                )
+            }
+        };
+
+        Some(crate::save::FolderLimits {
+            mega_limit,
+            giga_limit,
+            reg_memory: Some(reg_memory),
+            tag_memory: Some(60),
+            max_copies: |chip| 6usize.saturating_sub(chip.mb() as usize / 10).clamp(1, 5),
+        })
+    }
+
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {
         match self.game_info.region {
             Region::US => self.as_us_wram(),

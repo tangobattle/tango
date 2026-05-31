@@ -234,6 +234,7 @@ impl std::fmt::Display for NavicustSortChoice {
 /// past this is blocked, and a freshly added card lands disabled if it
 /// wouldn't fit — so a committed save never exceeds the in-game limit.
 pub const MAX_PATCH_CARD56_MB: u32 = 80;
+pub const MAX_FOLDER_CHIPS: usize = 30;
 
 /// Sort order for the BN5/BN6 patch-card editor's library pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1139,15 +1140,18 @@ fn tab_extras<'a>(
 
     // One global edit mode for the whole save: while it's on, every tab
     // shows the same Save / Cancel, and they commit / discard the edits on
-    // *all* tabs at once. Save is gated on a legal 30-chip folder (an
-    // incomplete folder can't be written over the save) when chips are
-    // editable; navicust / patch-card layouts are always valid to write.
+    // *all* tabs at once. Save is gated on a legal folder when chips are
+    // editable — a full 30 chips with no folder-limit violations (an
+    // incomplete or over-limit folder can't be written over the save);
+    // navicust / patch-card layouts are always valid to write.
     if editable && state.editing.is_some() {
-        let can_save = !loaded.chips_editable
-            || loaded.save.view_chips().map_or(true, |v| {
+        let can_save = !loaded.chips_editable || {
+            let full = loaded.save.view_chips().map_or(true, |v| {
                 let folder = v.equipped_folder_index();
                 (0..30).all(|i| v.chip(folder, i).is_some())
             });
+            full && folder_limits_satisfied(loaded)
+        };
         return Some(
             row![
                 widgets::labeled_icon_button(
@@ -1685,11 +1689,121 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     container(body).width(Fill).style(crate::widgets::pane).into()
 }
 
+/// Mega/Giga class usage and per-chip copies in one folder, used to honor
+/// the equipped navi's [`tango_dataview::save::FolderLimits`] in both the
+/// editor UI (greying out un-addable library chips) and the apply path
+/// ([`crate::app`]'s `apply_chip_edit`). Built by scanning the folder's 30
+/// slots; cheap enough to rebuild per edit / per frame.
+pub struct FolderUsage {
+    pub mega: usize,
+    pub giga: usize,
+    /// Copies installed per chip id (codes collapsed — the copy cap is
+    /// per chip, not per code).
+    pub copies: std::collections::HashMap<usize, usize>,
+}
+
+impl FolderUsage {
+    /// Tally the equipped folder's 30 slots.
+    pub fn scan(loaded: &Loaded, folder_idx: usize) -> Self {
+        use tango_dataview::rom::ChipClass;
+        let assets = loaded.assets.as_ref();
+        let mut mega = 0;
+        let mut giga = 0;
+        let mut copies: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        if let Some(view) = loaded.save.view_chips() {
+            for slot in 0..30 {
+                let Some(c) = view.chip(folder_idx, slot) else { continue };
+                *copies.entry(c.id).or_insert(0) += 1;
+                match assets.chip(c.id).map(|i| i.class()) {
+                    Some(ChipClass::Mega) => mega += 1,
+                    Some(ChipClass::Giga) => giga += 1,
+                    _ => {}
+                }
+            }
+        }
+        Self { mega, giga, copies }
+    }
+
+    /// Whether one more copy of `chip_id` fits under `limits` — the
+    /// per-chip copy cap plus the mega/giga class cap. The folder-full
+    /// (30-slot) check is separate. Unknown chips aren't blocked.
+    pub fn can_add(&self, loaded: &Loaded, chip_id: usize, limits: &tango_dataview::save::FolderLimits) -> bool {
+        use tango_dataview::rom::ChipClass;
+        let Some(info) = loaded.assets.chip(chip_id) else {
+            return true;
+        };
+        if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
+            return false;
+        }
+        match info.class() {
+            ChipClass::Mega => self.mega < limits.mega_limit,
+            ChipClass::Giga => self.giga < limits.giga_limit,
+            _ => true,
+        }
+    }
+}
+
+/// Whether the equipped folder satisfies the navi's
+/// [`tango_dataview::save::FolderLimits`] — the mega/giga class caps, the
+/// per-chip copy cap, and Regular/Tag memory. `true` when the game defines
+/// no limits. Gates Save: the folder pane blocks *adding* a violation, but
+/// cross-tab edits can still leave an already-built folder illegal (e.g.
+/// pulling a MegFldr part on the Navi tab lowers the mega cap under the
+/// chips already in the folder), and a save edited elsewhere may arrive
+/// over a limit.
+pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
+    let Some(view) = loaded.save.view_chips() else {
+        return true;
+    };
+    let folder_idx = view.equipped_folder_index();
+    let Some(limits) = loaded.save.folder_limits(loaded.assets.as_ref()) else {
+        return true;
+    };
+    let usage = FolderUsage::scan(loaded, folder_idx);
+    // Mega/Giga class caps.
+    if usage.mega > limits.mega_limit || usage.giga > limits.giga_limit {
+        return false;
+    }
+    // Per-chip copy cap.
+    for (&id, &count) in &usage.copies {
+        if let Some(chip) = loaded.assets.chip(id) {
+            if count > (limits.max_copies)(chip.as_ref()) {
+                return false;
+            }
+        }
+    }
+    let mb_of = |slot: usize| {
+        view.chip(folder_idx, slot)
+            .and_then(|c| loaded.assets.chip(c.id))
+            .map_or(0u32, |c| c.mb() as u32)
+    };
+    // The Regular chip must fit Regular memory.
+    if let Some(cap) = limits.reg_memory {
+        if let Some(Some(reg)) = view.regular_chip_index(folder_idx) {
+            if mb_of(reg) > cap as u32 {
+                return false;
+            }
+        }
+    }
+    // The Tag pair's combined MB must fit Tag memory.
+    if let Some(budget) = limits.tag_memory {
+        if let Some(Some([a, b])) = view.tag_chip_indexes(folder_idx) {
+            if mb_of(a) + mb_of(b) > budget {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Editable folder view: the folder (left) beside the chip library
 /// (right). The left pane lists the 30 raw slots — each filled slot can
 /// be removed or marked REG/TAG; the right pane lists every selectable
 /// chip with a button per valid code that adds it to the first empty
-/// slot. Each pane scrolls independently.
+/// slot. Each pane scrolls independently. The equipped navi's
+/// [`tango_dataview::save::FolderLimits`] (mega/giga caps, per-chip copy
+/// cap, Regular/Tag memory) are surfaced in the folder header and enforced
+/// by greying out library chips / REG / TAG toggles that would break them.
 fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
     use crate::widgets;
     // Only reached while editing, so the EditState is present.
@@ -1706,19 +1820,61 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     let regular_idx = reg.flatten();
     let tag_supported = chips_view.tag_chip_indexes(folder_idx).is_some();
 
+    // Folder-construction limits for the equipped navi (mega/giga class
+    // caps, per-chip copy cap, Regular/Tag memory budgets). `None` for
+    // games that don't define them — those stay unrestricted.
+    let assets = loaded.assets.as_ref();
+    let limits = loaded.save.folder_limits(assets);
+    let usage = FolderUsage::scan(loaded, folder_idx);
+    // If exactly one Tag chip is picked, a second can only join if the
+    // pair's combined MB fits Tag memory; capture the partner's MB so each
+    // slot can test its own addition.
+    let tag_partner_mb: Option<u32> = match edit.tags.as_slice() {
+        [only] => chips_view
+            .chip(folder_idx, *only)
+            .and_then(|c| assets.chip(c.id))
+            .map(|c| c.mb() as u32),
+        _ => None,
+    };
+
     // ----- Left pane: the folder -----
     let filled = (0..30).filter(|&i| chips_view.chip(folder_idx, i).is_some()).count();
     let mut folder_list = column![].spacing(1).padding(0);
     for slot in 0..30usize {
         let chip = chips_view.chip(folder_idx, slot);
+        let is_regular = regular_idx == Some(slot);
+        let is_tag = edit.tags.contains(&slot);
+        // This slot's chip MB, for the Regular / Tag memory gates.
+        let this_mb = chip.as_ref().and_then(|c| assets.chip(c.id)).map(|c| c.mb());
+        // A chip can be made Regular only if its MB fits Regular memory;
+        // clearing the current Regular is always allowed.
+        let reg_allowed = match limits.as_ref().and_then(|l| l.reg_memory) {
+            Some(cap) => is_regular || this_mb.map_or(true, |mb| mb <= cap),
+            None => true,
+        };
+        // It can join the Tag pair only if it fits Tag memory on its own
+        // (a chip bigger than the whole budget can never be tagged) and,
+        // once a partner is picked, the pair's combined MB still fits.
+        // Deselecting is always allowed.
+        let tag_allowed = match limits.as_ref().and_then(|l| l.tag_memory) {
+            Some(budget) => {
+                is_tag || {
+                    let this = this_mb.map(|m| m as u32).unwrap_or(0);
+                    this <= budget && tag_partner_mb.map_or(true, |partner| partner + this <= budget)
+                }
+            }
+            None => true,
+        };
         folder_list = folder_list.push(folder_slot_row(
             loaded,
             slot,
             chip,
-            regular_idx == Some(slot),
+            is_regular,
             regular_supported,
             tag_supported,
-            edit.tags.contains(&slot),
+            is_tag,
+            reg_allowed,
+            tag_allowed,
         ));
     }
     let clear_all = widgets::labeled_icon_button(
@@ -1733,24 +1889,75 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     let count = text(t!(lang, "folder-edit-count", count = filled as i64))
         .size(TEXT_CAPTION)
         .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if filled < 30 {
+            color: Some(if filled < MAX_FOLDER_CHIPS {
                 theme.palette().danger
             } else {
                 muted_color(theme)
             }),
         });
-    let folder_header = container(
-        row![
-            text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
-            count,
-            Space::new().width(Fill),
-            clear_all,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding([8, 12]);
+    let header_row = row![
+        text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
+        count,
+        Space::new().width(Fill),
+        clear_all,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+    // Second line (only for navis with folder limits): mega/giga usage vs
+    // their caps (red when over) plus the Regular/Tag memory budgets.
+    let stats_row = limits.as_ref().map(|l| {
+        let mega_over = usage.mega > l.mega_limit;
+        let giga_over = usage.giga > l.giga_limit;
+        let mega = text(t!(
+            lang,
+            "folder-edit-mega",
+            used = usage.mega as i64,
+            limit = l.mega_limit as i64
+        ))
+        .size(TEXT_CAPTION)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(if mega_over {
+                theme.palette().danger
+            } else {
+                muted_color(theme)
+            }),
+        });
+        let giga = text(t!(
+            lang,
+            "folder-edit-giga",
+            used = usage.giga as i64,
+            limit = l.giga_limit as i64
+        ))
+        .size(TEXT_CAPTION)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(if giga_over {
+                theme.palette().danger
+            } else {
+                muted_color(theme)
+            }),
+        });
+        let mut r = row![mega, giga].spacing(12).align_y(Alignment::Center);
+        if let Some(reg) = l.reg_memory {
+            r = r.push(
+                text(t!(lang, "folder-edit-reg-memory", mb = reg as i64))
+                    .size(TEXT_CAPTION)
+                    .style(muted_text_style),
+            );
+        }
+        if let Some(tag) = l.tag_memory {
+            r = r.push(
+                text(t!(lang, "folder-edit-tag-memory", mb = tag as i64))
+                    .size(TEXT_CAPTION)
+                    .style(muted_text_style),
+            );
+        }
+        r
+    });
+    let mut header_col = column![header_row].spacing(4);
+    if let Some(stats_row) = stats_row {
+        header_col = header_col.push(stats_row);
+    }
+    let folder_header = container(header_col).width(Fill).padding([8, 12]);
     let folder_pane = container(column![folder_header, scrollable(folder_list).height(Fill).width(Fill)])
         .width(Fill)
         .height(Fill)
@@ -1765,15 +1972,10 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        lib_list = lib_list.push(library_entry_row(
-            loaded,
-            id,
-            name,
-            code,
-            shown,
-            chips_have_mb,
-            filled >= 30,
-        ));
+        // Disabled when the folder is full or adding this chip would break
+        // the navi's mega/giga/copy limits.
+        let addable = filled < MAX_FOLDER_CHIPS && limits.as_ref().map_or(true, |l| usage.can_add(loaded, id, l));
+        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, addable));
         shown += 1;
     }
     let filter_input = text_input(&t!(lang, "folder-edit-search"), &edit.library_filter)
@@ -2272,6 +2474,8 @@ fn folder_slot_row<'a>(
     regular_supported: bool,
     tag_supported: bool,
     is_tag: bool,
+    reg_allowed: bool,
+    tag_allowed: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -2302,19 +2506,22 @@ fn folder_slot_row<'a>(
                 .push(atk)
                 .push(mb);
             if regular_supported {
-                inner = inner.push(edit_toggle(
+                // Greyed out (no message) when the chip's MB won't fit
+                // Regular memory; see render_folder_edit.
+                inner = inner.push(edit_toggle_maybe(
                     "REG",
                     is_regular,
                     iced::Color::from_rgb8(0xff, 0x42, 0xa5),
-                    Action::ToggleRegular { slot },
+                    reg_allowed.then_some(Action::ToggleRegular { slot }),
                 ));
             }
             if tag_supported {
-                inner = inner.push(edit_toggle(
+                // Greyed out when joining the Tag pair would bust Tag memory.
+                inner = inner.push(edit_toggle_maybe(
                     "TAG",
                     is_tag,
                     iced::Color::from_rgb8(0x29, 0xa1, 0x21),
-                    Action::ToggleTag { slot },
+                    tag_allowed.then_some(Action::ToggleTag { slot }),
                 ));
             }
             // ✕ → remove this chip (back out to the library).
@@ -2340,7 +2547,8 @@ fn folder_slot_row<'a>(
 /// One chip+code in the editor's right pane (the library / palette).
 /// Shows the chip's stats (element / code / ATK / MB, like the read-only
 /// list). The whole row is a click-to-add button that drops this
-/// chip+code into the folder; it's disabled once the folder is full.
+/// chip+code into the folder; it's disabled (`addable == false`) when the
+/// folder is full or adding the chip would break the navi's folder limits.
 fn library_entry_row<'a>(
     loaded: &'a Loaded,
     chip_id: usize,
@@ -2348,7 +2556,7 @@ fn library_entry_row<'a>(
     code: tango_dataview::save::ChipCode,
     row_idx: usize,
     chips_have_mb: bool,
-    folder_full: bool,
+    addable: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
     let info = loaded.assets.chip(chip_id);
@@ -2379,8 +2587,8 @@ fn library_entry_row<'a>(
     // padding of its own), so `list_item`'s zebra base paints the full
     // width behind it and the gutter stays tinted even when a chip has no
     // accent. Same composition as `edit_row_wrap` / `card_wrap`, so the
-    // library row isn't a bespoke wrapper. Disabled once the folder is
-    // full (no empty slot to add into). ChipCode is Copy.
+    // library row isn't a bespoke wrapper. Disabled when not addable (no
+    // empty slot, or it would break the navi's folder limits). ChipCode is Copy.
     let stripe: Element<'a, Action> = container(Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
@@ -2392,22 +2600,44 @@ fn library_entry_row<'a>(
     let content = row![stripe, container(inner).width(Fill).padding([3, 12])]
         .height(Length::Shrink)
         .align_y(Alignment::Center);
-    let mut body = button(content).width(Fill).padding(0).style(widgets::list_item(false, row_idx));
-    if !folder_full {
+    let mut body = button(content)
+        .width(Fill)
+        .padding(0)
+        .style(widgets::list_item(false, row_idx));
+    if addable {
         body = body.on_press(Action::AddChip { chip_id, code });
     }
-    with_chip_tooltip(loaded, Some(chip_id), accent, body.into())
+    // Un-addable chips (folder full, or adding would break a folder limit)
+    // read as disabled: a translucent wash in the pane's background colour
+    // over the whole non-pressable row. The Stack takes the button's size,
+    // so the wash covers it exactly.
+    let row_el: Element<'a, Action> = if addable {
+        body.into()
+    } else {
+        stack![
+            body,
+            container(Space::new())
+                .width(Fill)
+                .height(Fill)
+                .style(|theme: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color {
+                        a: 0.6,
+                        ..theme.palette().background
+                    })),
+                    ..Default::default()
+                }),
+        ]
+        .into()
+    };
+    with_chip_tooltip(loaded, Some(chip_id), accent, row_el)
 }
 
-/// Small toggle button used for the REG and TAG columns in the folder
-/// editor: tinted in `on_color` when active, neutral (greyed) when not.
-fn edit_toggle<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Action) -> Element<'a, Action> {
-    edit_toggle_maybe(label, on, on_color, Some(msg))
-}
-
-/// Like [`edit_toggle`], but a `None` message renders the toggle disabled
-/// (greyed, unclickable) — used for the patch-card ON toggle when enabling
-/// the card would blow the MB budget.
+/// Small toggle button used for the REG / TAG columns in the folder editor
+/// and the patch-card ON column: tinted in `on_color` when active, neutral
+/// (greyed) when not. A `None` message renders it disabled (greyed,
+/// unclickable) — for the folder REG/TAG toggles when the chip's MB won't
+/// fit Regular/Tag memory, or the patch-card toggle when enabling would
+/// blow the MB budget.
 fn edit_toggle_maybe<'a>(
     label: &'static str,
     on: bool,

@@ -21,6 +21,17 @@ pub enum PatchCardsViewMut<'a> {
     PatchCard56s(Box<dyn PatchCard56sViewMut<'a> + 'a>),
 }
 
+pub struct FolderLimits {
+    pub mega_limit: usize,
+    pub giga_limit: usize,
+    /// Regular Memory capacity, or `None` if the game has no Regular chip.
+    pub reg_memory: Option<u8>,
+    /// Combined-MB budget for the Tag pair, or `None` if no Tag chips.
+    pub tag_memory: Option<u32>,
+    /// Max copies of one chip given its MB.
+    pub max_copies: fn(&dyn crate::rom::Chip) -> usize,
+}
+
 pub trait Save
 where
     Self: SaveClone,
@@ -51,6 +62,11 @@ where
     }
 
     fn view_navi_mut(&mut self) -> Option<NaviViewMut<'_>> {
+        None
+    }
+
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
+        let _ = assets;
         None
     }
 
