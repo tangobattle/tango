@@ -792,8 +792,8 @@ pub fn view<'a>(
     if let ActiveSession::PvP(s) = session {
         if state.show_self_panel && s.local_loaded.is_some() {
             let me = s.local_loaded.as_ref().unwrap();
-            let panel =
-                save_view::view(lang, me, &s.local_save_view, true, None, false, false).map(Message::SelfSaveViewAction);
+            let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
+                .map(Message::SelfSaveViewAction);
             let pane = container(panel)
                 .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
                 .height(Fill)
@@ -827,7 +827,7 @@ pub fn view<'a>(
     // thin strip with just the opponent-panel toggle (PvP only)
     // and the close button. Either way the close lives here so
     // there's no separate header eating vertical space.
-    let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 16]);
+    let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
     if let Some(r) = session.as_replay() {
         let total = r.total_ticks().max(1);
         let cur = r.current_tick().min(total);

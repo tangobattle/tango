@@ -650,7 +650,9 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // cleared if they pointed at the removed chip.
             let (chips, regular, tags) = {
                 let v = loaded.save.view_chips();
-                let chips: Vec<Option<Chip>> = (0..30).map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i))).collect();
+                let chips: Vec<Option<Chip>> = (0..30)
+                    .map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i)))
+                    .collect();
                 let regular = v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten();
                 let tags = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten();
                 (chips, regular, tags)
@@ -743,8 +745,9 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
             // already at its per-part copy cap.
             let slot = match loaded.save.view_navi() {
                 Some(tango_dataview::save::NaviView::Navicust(v)) => {
-                    let copies =
-                        (0..v.count()).filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id)).count();
+                    let copies = (0..v.count())
+                        .filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id))
+                        .count();
                     if copies >= crate::navicust_editor::MAX_COPIES_PER_PART {
                         return;
                     }
@@ -761,7 +764,9 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
             // Drop the part and shift everything after it up one slot, so
             // the placement order (which drives the color bar) has no gap.
             let parts: Vec<Option<NavicustPart>> = match loaded.save.view_navi() {
-                Some(tango_dataview::save::NaviView::Navicust(v)) => (0..v.count()).map(|i| v.navicust_part(i)).collect(),
+                Some(tango_dataview::save::NaviView::Navicust(v)) => {
+                    (0..v.count()).map(|i| v.navicust_part(i)).collect()
+                }
                 _ => return,
             };
             let mut parts = parts;
@@ -2358,7 +2363,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
         ]
         .spacing(8)
         .align_y(Alignment::Center)
-        .padding([10, 16]),
+        .padding([10, 8]),
     )
     .width(Fill)
     .style(widgets::hud_bar)

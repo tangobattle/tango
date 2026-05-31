@@ -628,8 +628,12 @@ impl PlayState {
                     }
                     // ----- BN5/BN6 patch-card editor -----
                     A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
-                    A::RemovePatchCard56 { slot } => Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot })),
-                    A::TogglePatchCard56 { slot } => Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot })),
+                    A::RemovePatchCard56 { slot } => {
+                        Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot }))
+                    }
+                    A::TogglePatchCard56 { slot } => {
+                        Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot }))
+                    }
                     A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
                     // ----- BN4 patch-card editor -----
                     A::AddPatchCard4 { id } => Some(Effect::EditPatchCard4s(PatchCard4Edit::AddCard { id })),
@@ -638,11 +642,17 @@ impl PlayState {
                     A::ClearPatchCard4s => Some(Effect::EditPatchCard4s(PatchCard4Edit::ClearAll)),
                     // ----- Auto Battle Data editor -----
                     A::SetChipUseCount { id, count } => {
-                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount { id, count }))
+                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount {
+                            id,
+                            count,
+                        }))
                     }
-                    A::SetSecondaryChipUseCount { id, count } => Some(Effect::EditAutoBattleData(
-                        AutoBattleDataEdit::SetSecondaryUseCount { id, count },
-                    )),
+                    A::SetSecondaryChipUseCount { id, count } => {
+                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetSecondaryUseCount {
+                            id,
+                            count,
+                        }))
+                    }
                     A::ClearAutoBattleData => Some(Effect::EditAutoBattleData(AutoBattleDataEdit::ClearAll)),
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
@@ -752,10 +762,9 @@ impl PlayState {
                     (None, None)
                 };
                 let draft = match game {
-                    Some(g) => disambiguate_save_name(
-                        &saves_dir,
-                        &suggest_save_name(&config.language, g, template.as_deref()),
-                    ),
+                    Some(g) => {
+                        disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, g, template.as_deref()))
+                    }
                     // No single default yet — seed the field from the
                     // first creation variant (game name only) so it isn't
                     // empty while the user picks a template.
@@ -1124,8 +1133,10 @@ impl PlayState {
         // family — not just the currently-resolved variant — so the list
         // is stable across save switches. Picking a patch the current
         // save can't run deselects that save (see LocalPatchSelected).
-        let family_games: Vec<rom::GameRef> =
-            self.local_family.map(|f| game::games_in_family(f).collect()).unwrap_or_default();
+        let family_games: Vec<rom::GameRef> = self
+            .local_family
+            .map(|f| game::games_in_family(f).collect())
+            .unwrap_or_default();
         let mut compatible_names: Vec<String> = patches
             .iter()
             .filter(|(_, p)| {
@@ -1497,7 +1508,7 @@ impl PlayState {
             row![link_input, dice_button, fight_button]
                 .spacing(10)
                 .align_y(Alignment::Center)
-                .padding([10, 16]),
+                .padding([10, 8]),
         )
         .width(Fill)
         .style(widgets::hud_bar)
@@ -2362,9 +2373,7 @@ fn lobby_view<'a>(
         let inner = row![Icon::LogOut.widget(), text(t!(lang, "play-cancel"))]
             .spacing(8)
             .align_y(Alignment::Center);
-        let mut btn = button(inner)
-            .padding(STANDARD_PADDING)
-            .style(widgets::danger_button);
+        let mut btn = button(inner).padding(STANDARD_PADDING).style(widgets::danger_button);
         if !handoff_pending {
             btn = btn.on_press(Message::NetplayDisconnect);
         }
@@ -2626,9 +2635,7 @@ fn error_banner<'a>(lang: &'a LanguageIdentifier, err: &'a str) -> Element<'a, M
     container(
         row![
             Icon::AlertTriangle.widget(),
-            text(err.to_string())
-                .size(TEXT_BODY)
-                .style(widgets::danger_text_style),
+            text(err.to_string()).size(TEXT_BODY).style(widgets::danger_text_style),
             iced::widget::space::horizontal(),
             widgets::icon_button(
                 Icon::X,
