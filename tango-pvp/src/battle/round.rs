@@ -215,9 +215,7 @@ impl Round {
         // via the post-tick hook regardless of where the live core is loaded), so
         // `frontier - frame_delay` is what the user sees. Re-read each frame
         // so a mid-match footer-slider change takes effect on the next render.
-        let target = self
-            .frontier
-            .saturating_sub(self.frame_delay.load(Ordering::Relaxed));
+        let target = self.frontier.saturating_sub(self.frame_delay.load(Ordering::Relaxed));
 
         // Settle the checkpoint forward, *capped* at the last committed tick
         // (`commit_frontier - 1`). The seed must never absorb predicted
@@ -227,7 +225,7 @@ impl Round {
         let settled_target = target.min(self.commit_frontier.saturating_sub(1));
         let round_result = self.settle_to(settled_target)?;
 
-        let present_state: Cow<'_, Box<mgba::state::State>> = if target > settled_target && self.commit_frontier > 0 {
+        let (last_loaded_tick, present_state) = if target > settled_target && self.commit_frontier > 0 {
             // Speculative tail: throwaway FF from settled_state to target,
             // predicting every packet in `[settled_state.tick, target)`
             // (the leading tick at `commit_frontier − 1` is committed
@@ -235,8 +233,7 @@ impl Round {
             // shadow can't advance through it twice — the next settle will
             // re-process it with the real packet). The FF hands us a fresh
             // Box<State>, owned, sitting exactly at `target`.
-            self.last_loaded_tick = target;
-            Cow::Owned(self.speculate_tail(target, &peeked)?)
+            (target, Cow::Owned(self.speculate_tail(target, &peeked)?))
         } else {
             // Either settled (`target ≤ commit_frontier − 1`) — settled_state
             // IS the display — or pre-first-commit, where there's no real
@@ -253,9 +250,10 @@ impl Round {
             // tick actually loaded — not `target` — or the per-game
             // `round_post_increment_tick` trap panics ("expected game tick = N
             // but game tick = N-1").
-            self.last_loaded_tick = self.settled_snapshot.as_ref().unwrap().tick;
-            Cow::Borrowed(&self.settled_snapshot.as_ref().unwrap().state)
+            let snapshot = self.settled_snapshot.as_ref().unwrap();
+            (snapshot.tick, Cow::Borrowed(&snapshot.state))
         };
+        self.last_loaded_tick = last_loaded_tick;
 
         core.load_state(&present_state).expect("load present state");
         self.update_fps_target(core);
