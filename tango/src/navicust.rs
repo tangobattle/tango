@@ -7,6 +7,8 @@
 
 use iced::advanced::graphics::text::cosmic_text;
 use iced::advanced::graphics::text::font_system as iced_font_system;
+use iced::{Color, Point, Size};
+use iced_graphics::geometry::{self, LineCap, Path, Stroke};
 use std::sync::Mutex;
 use std::sync::LazyLock;
 use tango_dataview::{
@@ -93,9 +95,7 @@ pub fn render(
 ) -> image::RgbaImage {
     let model = build_model(materialized, layout, view, assets);
     let g = geometry(model.cols, model.rows);
-    let mut pixmap = tiny_skia::Pixmap::new(g.total_w.round() as u32, g.total_h.round() as u32).unwrap();
-    paint(&mut SkiaPainter { pixmap: &mut pixmap }, &model, None);
-    let native = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
+    let native = rasterize(&model);
 
     // Resize the (label-free) composite to display size if a target was
     // requested. Nearest keeps the grid borders sharp. The BN3 label is
@@ -299,6 +299,11 @@ pub trait GridPainter {
     fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]);
     fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32);
     fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32);
+    /// Fill a rectangle whose corners are rounded by `radius` (native
+    /// units). `radius <= 0` is a plain rectangle. Used for the outer
+    /// background so the editor's grid gets the same rounded corners the
+    /// baked viewer image gets via `mask_rounded_corners`.
+    fn fill_round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [u8; 4]);
 }
 
 /// Resolve a navicust view + ROM assets into a [`GridModel`]. `materialized`
@@ -358,9 +363,9 @@ pub fn build_model(
 /// Draw the whole navicust (background + color bar + grid body + optional
 /// ghost) through `p`. The BN3 style label is NOT drawn here — the image
 /// path bakes it after resize, and the canvas overlays it as text.
-pub fn paint<P: GridPainter>(p: &mut P, m: &GridModel, ghost: Option<&Ghost>) {
+pub fn paint<P: GridPainter>(p: &mut P, m: &GridModel, ghost: Option<&Ghost>, bg_radius: f32) {
     let g = geometry(m.cols, m.rows);
-    p.fill_rect(0.0, 0.0, g.total_w, g.total_h, m.background);
+    p.fill_round_rect(0.0, 0.0, g.total_w, g.total_h, bg_radius, m.background);
     paint_color_bar(p, m, &g);
     paint_body(p, m, &g);
     if let Some(gh) = ghost {
@@ -515,31 +520,24 @@ fn paint_ghost<P: GridPainter>(p: &mut P, g: &Geometry, gh: &Ghost) {
         let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
         p.fill_rect(x, y, SQUARE_SIZE, SQUARE_SIZE, tint);
     }
-    // Stroke each block's top + left edges (giving single lines *between*
-    // the part's blocks plus the top/left outer boundary) and the
-    // bottom/right edges only on the outer boundary. Edges whose neighbor
-    // is an off-grid footprint cell are skipped, so a part clipping
-    // offscreen stays open at the clipped edge rather than boxed in.
+    // Outline only the part's outer boundary — no separators between its
+    // own blocks. An edge is stroked when its neighbour isn't part of the
+    // piece; edges toward a clipped (off-grid) part cell are in the
+    // footprint, so they stay open instead of boxing in a piece that runs
+    // offscreen.
     let footprint: std::collections::HashSet<(isize, isize)> = gh.footprint.iter().copied().collect();
-    let cells: std::collections::HashSet<(isize, isize)> =
-        gh.cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
     let in_fp = |c: isize, r: isize| footprint.contains(&(c, r));
-    let in_cells = |c: isize, r: isize| cells.contains(&(c, r));
     for &(col, row) in &gh.cells {
         let (ci, ri) = (col as isize, row as isize);
         let (x, y) = (bx + col as f32 * SQUARE_SIZE, by + row as f32 * SQUARE_SIZE);
-        // top / left: outer boundary or internal separator, but not a
-        // clipped (off-grid footprint) neighbor.
-        if !in_fp(ci, ri - 1) || in_cells(ci, ri - 1) {
+        if !in_fp(ci, ri - 1) {
             p.stroke_line(x, y, x + SQUARE_SIZE, y, outline, BORDER_WIDTH);
         }
-        if !in_fp(ci - 1, ri) || in_cells(ci - 1, ri) {
-            p.stroke_line(x, y, x, y + SQUARE_SIZE, outline, BORDER_WIDTH);
-        }
-        // bottom / right: outer boundary only (internal separators are
-        // drawn by the neighbor's top/left; clipped neighbors are skipped).
         if !in_fp(ci, ri + 1) {
             p.stroke_line(x, y + SQUARE_SIZE, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
+        }
+        if !in_fp(ci - 1, ri) {
+            p.stroke_line(x, y, x, y + SQUARE_SIZE, outline, BORDER_WIDTH);
         }
         if !in_fp(ci + 1, ri) {
             p.stroke_line(x + SQUARE_SIZE, y, x + SQUARE_SIZE, y + SQUARE_SIZE, outline, BORDER_WIDTH);
@@ -547,57 +545,99 @@ fn paint_ghost<P: GridPainter>(p: &mut P, g: &Geometry, gh: &Ghost) {
     }
 }
 
-/// tiny-skia backend (clipboard / export path).
-struct SkiaPainter<'a> {
-    pixmap: &'a mut tiny_skia::Pixmap,
+fn to_color(c: [u8; 4]) -> Color {
+    Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
 }
 
-fn grid_stroke(width: f32) -> tiny_skia::Stroke {
-    tiny_skia::Stroke {
-        line_cap: tiny_skia::LineCap::Square,
-        width,
-        ..Default::default()
-    }
+/// The one [`GridPainter`] backend: it records into an iced canvas
+/// [`geometry::Frame`]. Generic over the geometry renderer so the SAME
+/// code serves both the live editor (the window's renderer) and the baked
+/// image (a standalone [`iced_tiny_skia::Renderer`], see [`rasterize`]).
+/// `scale` maps the routine's native coordinates onto the target size.
+pub(crate) struct FramePainter<'a, R: geometry::Renderer> {
+    pub frame: &'a mut geometry::Frame<R>,
+    pub scale: f32,
 }
 
-impl GridPainter for SkiaPainter<'_> {
+impl<R: geometry::Renderer> GridPainter for FramePainter<'_, R> {
     fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
-        let Some(rect) = tiny_skia::Rect::from_xywh(x, y, w, h) else { return };
-        let path = tiny_skia::PathBuilder::from_rect(rect);
-        self.pixmap.fill_path(
-            &path,
-            &solid_paint(color),
-            tiny_skia::FillRule::Winding,
-            tiny_skia::Transform::identity(),
-            None,
-        );
+        let s = self.scale;
+        self.frame
+            .fill_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), to_color(color));
     }
 
     fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32) {
-        let Some(rect) = tiny_skia::Rect::from_xywh(x, y, w, h) else { return };
-        let path = tiny_skia::PathBuilder::from_rect(rect);
-        self.pixmap
-            .stroke_path(&path, &solid_paint(color), &grid_stroke(width), tiny_skia::Transform::identity(), None);
+        let s = self.scale;
+        let path = Path::rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s));
+        self.frame.stroke(
+            &path,
+            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+        );
     }
 
     fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32) {
-        let path = line_path(x1, y1, x2, y2);
-        self.pixmap
-            .stroke_path(&path, &solid_paint(color), &grid_stroke(width), tiny_skia::Transform::identity(), None);
+        let s = self.scale;
+        let path = Path::line(Point::new(x1 * s, y1 * s), Point::new(x2 * s, y2 * s));
+        self.frame.stroke(
+            &path,
+            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
+        );
+    }
+
+    fn fill_round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [u8; 4]) {
+        let s = self.scale;
+        if radius <= 0.0 {
+            self.fill_rect(x, y, w, h, color);
+            return;
+        }
+        let path = Path::new(|b| {
+            b.rounded_rectangle(
+                Point::new(x * s, y * s),
+                Size::new(w * s, h * s),
+                iced::border::Radius::from(radius * s),
+            );
+        });
+        self.frame.fill(&path, to_color(color));
     }
 }
 
-fn solid_paint(rgba: [u8; 4]) -> tiny_skia::Paint<'static> {
-    let mut p = tiny_skia::Paint::default();
-    p.set_color_rgba8(rgba[0], rgba[1], rgba[2], rgba[3]);
-    p
-}
+/// Rasterize `model` to an RGBA image by drawing it through the shared
+/// [`paint`] routine onto a standalone [`iced_tiny_skia::Renderer`] — the
+/// exact same canvas pipeline the live editor uses, just rendered to a
+/// pixmap instead of the window. No text is drawn here (the BN3 style
+/// label is baked separately, after), so the default font is irrelevant.
+fn rasterize(model: &GridModel) -> image::RgbaImage {
+    let g = geometry(model.cols, model.rows);
+    let w = g.total_w.round().max(1.0) as u32;
+    let h = g.total_h.round().max(1.0) as u32;
 
-fn line_path(x1: f32, y1: f32, x2: f32, y2: f32) -> tiny_skia::Path {
-    let mut pb = tiny_skia::PathBuilder::new();
-    pb.move_to(x1, y1);
-    pb.line_to(x2, y2);
-    pb.finish().unwrap()
+    let mut renderer = iced_tiny_skia::Renderer::new(iced::Font::DEFAULT, iced::Pixels(16.0));
+    {
+        let mut frame = geometry::Frame::new(&renderer, Size::new(w as f32, h as f32));
+        paint(&mut FramePainter { frame: &mut frame, scale: 1.0 }, model, None, 0.0);
+        let geom = frame.into_geometry();
+        <iced_tiny_skia::Renderer as geometry::Renderer>::draw_geometry(&mut renderer, geom);
+    }
+
+    let mut pixmap = tiny_skia::Pixmap::new(w, h).expect("navicust pixmap alloc");
+    let mut mask = tiny_skia::Mask::new(w, h).expect("navicust mask alloc");
+    let viewport = iced::advanced::graphics::Viewport::with_physical_size(Size::new(w, h), 1.0);
+    let full = iced::Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: w as f32,
+        height: h as f32,
+    };
+    renderer.draw(&mut pixmap.as_mut(), &mut mask, &viewport, &[full], Color::TRANSPARENT);
+
+    // iced_tiny_skia writes its surface as BGRA (`into_color` swaps R/B),
+    // so swap them back to get the RGBA `image` expects — the same fix-up
+    // iced's own offscreen `screenshot` does.
+    let mut rgba = pixmap.data().to_vec();
+    for px in rgba.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    image::RgbaImage::from_raw(w, h, rgba).expect("navicust rgba")
 }
 
 /// A small standalone thumbnail of one part's shape — the whole grid-sized
@@ -646,3 +686,27 @@ pub fn render_part_thumb(
     }
     Some(img)
 }
+
+/// `bitmap` rotated clockwise `rot` quarter turns. Grids are square
+/// (5×5 / 7×7), so a quarter turn preserves the dimensions. Matches the
+/// `(by, bx) -> (bx, n-1-by)` mapping used by
+/// [`crate::navicust_editor::rotated_offsets`] and `navicust::rotate90`.
+pub fn rotate_bitmap(bitmap: &tango_dataview::rom::NavicustBitmap, rot: u8) -> tango_dataview::rom::NavicustBitmap {
+    // Square grids only, so a quarter turn is an in-shape permutation —
+    // clone the source each step and reassign cells (avoids naming the
+    // ndarray crate, which isn't a direct dependency of this crate).
+    let mut out = bitmap.clone();
+    for _ in 0..(rot % 4) {
+        let src = out.clone();
+        let (h, w) = src.dim();
+        debug_assert_eq!(h, w);
+        let n = h;
+        for y in 0..n {
+            for x in 0..n {
+                out[[x, n - 1 - y]] = src[[y, x]];
+            }
+        }
+    }
+    out
+}
+

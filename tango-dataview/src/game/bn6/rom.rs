@@ -767,7 +767,8 @@ impl crate::rom::Assets for Assets {
     }
 
     fn patch_card56(&self, id: usize) -> Option<Box<dyn crate::rom::PatchCard56 + '_>> {
-        if id >= self.num_patch_card56s() {
+        // id 0 is the "no card" placeholder, not a real patch card.
+        if id == 0 || id >= self.num_patch_card56s() {
             return None;
         }
         Some(Box::new(PatchCard56 { id, assets: self }))

@@ -152,22 +152,28 @@ navicust-grid-size = Cuadrícula: { $cols } × { $rows }
 navicust-parts = Piezas instaladas
 navicust-empty = (ninguna instalada)
 
+# Folder editor
+save-edit = Editar
+save-edit-save = Guardar
+save-edit-cancel = Cancelar
+folder-edit-search = Buscar chips…
+folder-edit-folder = Folder
+folder-edit-count = { $count } / 30
+folder-edit-pack = Paquete
+save-edit-sort = Ordenar
+save-edit-clear = Borrar todo
+
 # Navicust editor
-navicust-edit = Editar
-navicust-edit-save = Guardar
-navicust-edit-cancel = Cancelar
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] { $count } pieza
    *[other] { $count } piezas
 }
-navicust-edit-clear = Borrar todo
 navicust-edit-rotate = Rotar
 navicust-edit-compress = Comprimir
 navicust-edit-uncompress = Descomprimir
 navicust-edit-parts = Piezas
 navicust-edit-search = Buscar piezas…
-navicust-edit-hint = Elige una pieza y haz clic en la cuadrícula para colocarla. Usa la rueda o Rotar para girarla; haz clic derecho para soltarla. Haz clic en una pieza colocada para volver a tomarla.
 navicust-sort-id = ID
 navicust-sort-name = Nombre
 navicust-sort-color = Color

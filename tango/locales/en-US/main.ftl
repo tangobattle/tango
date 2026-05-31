@@ -112,15 +112,15 @@ navi-style = Style
 folder-group = Group by chip
 save-copy = Copy
 save-copy-image = Copy as image
-folder-edit = Edit
-folder-edit-save = Save
-folder-edit-cancel = Cancel
+save-edit = Edit
+save-edit-save = Save
+save-edit-cancel = Cancel
 folder-edit-search = Search chips…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / 30
 folder-edit-pack = Pack
-folder-edit-sort = Sort
-folder-edit-clear = Clear all
+save-edit-sort = Sort
+save-edit-clear = Clear all
 folder-sort-id = ID
 folder-sort-name = ABCDE
 folder-sort-code = Code
@@ -136,24 +136,31 @@ navicust-parts = Installed parts
 navicust-empty = (none installed)
 
 # Navicust editor
-navicust-edit = Edit
-navicust-edit-save = Save
-navicust-edit-cancel = Cancel
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] 1 part
    *[other] { $count } parts
 }
-navicust-edit-clear = Clear all
 navicust-edit-rotate = Rotate
 navicust-edit-compress = Compress
 navicust-edit-uncompress = Uncompress
 navicust-edit-parts = Parts
 navicust-edit-search = Search parts…
-navicust-edit-hint = Pick a part, then click the grid to place it. Scroll or Rotate to turn it; right-click to drop it. Click an installed part to pick it back up.
 navicust-sort-id = ID
 navicust-sort-name = ABCDE
 navicust-sort-color = Color
+
+# Patch card editor
+patch-card-edit-library = Library
+patch-card-edit-search = Search cards…
+patch-card-edit-count = { $count ->
+    [one] 1 card
+   *[other] { $count } cards
+}
+patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-sort-id = ID
+patch-card-sort-name = ABCDE
+patch-card-sort-mb = MB
 
 # Auto Battle Data pane
 auto-battle-data-secondary-standard-chips = Standard chips (secondary)

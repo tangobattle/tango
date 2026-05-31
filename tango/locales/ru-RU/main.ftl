@@ -152,23 +152,29 @@ navicust-grid-size = Сетка: { $cols } × { $rows }
 navicust-parts = Установленные детали
 navicust-empty = (ничего не установлено)
 
+# Folder editor
+save-edit = Изменить
+save-edit-save = Сохранить
+save-edit-cancel = Отмена
+folder-edit-search = Поиск чипов…
+folder-edit-folder = Папка
+folder-edit-count = { $count } / 30
+folder-edit-pack = Набор
+save-edit-sort = Сортировка
+save-edit-clear = Очистить всё
+
 # Navicust editor
-navicust-edit = Изменить
-navicust-edit-save = Сохранить
-navicust-edit-cancel = Отмена
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] { $count } деталь
     [few] { $count } детали
    *[other] { $count } деталей
 }
-navicust-edit-clear = Очистить всё
 navicust-edit-rotate = Повернуть
 navicust-edit-compress = Сжать
 navicust-edit-uncompress = Разжать
 navicust-edit-parts = Детали
 navicust-edit-search = Поиск деталей…
-navicust-edit-hint = Выберите деталь и щёлкните по сетке, чтобы разместить её. Прокрутка или «Повернуть» — повернуть; правый клик — отпустить. Щёлкните по установленной детали, чтобы взять её снова.
 navicust-sort-id = ID
 navicust-sort-name = Название
 navicust-sort-color = Цвет

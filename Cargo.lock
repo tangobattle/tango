@@ -5804,6 +5804,8 @@ dependencies = [
  "futures",
  "hqx",
  "iced",
+ "iced_graphics",
+ "iced_tiny_skia",
  "image",
  "indexmap",
  "itertools 0.13.0",

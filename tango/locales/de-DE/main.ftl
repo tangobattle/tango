@@ -152,22 +152,28 @@ navicust-grid-size = Raster: { $cols } × { $rows }
 navicust-parts = Installierte Teile
 navicust-empty = (keine installiert)
 
+# Folder editor
+save-edit = Bearbeiten
+save-edit-save = Speichern
+save-edit-cancel = Abbrechen
+folder-edit-search = Chips suchen …
+folder-edit-folder = Ordner
+folder-edit-count = { $count } / 30
+folder-edit-pack = Paket
+save-edit-sort = Sortieren
+save-edit-clear = Alle löschen
+
 # Navicust editor
-navicust-edit = Bearbeiten
-navicust-edit-save = Speichern
-navicust-edit-cancel = Abbrechen
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] { $count } Teil
    *[other] { $count } Teile
 }
-navicust-edit-clear = Alle löschen
 navicust-edit-rotate = Drehen
 navicust-edit-compress = Komprimieren
 navicust-edit-uncompress = Dekomprimieren
 navicust-edit-parts = Teile
 navicust-edit-search = Teile suchen…
-navicust-edit-hint = Wähle ein Teil und klicke ins Raster, um es zu platzieren. Mit Scrollen oder Drehen drehst du es; Rechtsklick legt es ab. Klicke ein platziertes Teil an, um es wieder aufzunehmen.
 navicust-sort-id = ID
 navicust-sort-name = Name
 navicust-sort-color = Farbe

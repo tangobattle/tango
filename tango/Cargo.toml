@@ -34,6 +34,12 @@ sweeten = "0.14"
 wgpu = { version = "27", default-features = false }
 image = "0.25"
 tiny-skia = "0.11"
+# Direct handles to iced's graphics layer + software renderer so the baked
+# NaviCust image (viewer / clipboard) is rasterized through the SAME canvas
+# drawing routine as the live editor — one render path, no hand-rolled
+# tiny-skia. Pinned to iced 0.14's versions (unified via Cargo.lock).
+iced_graphics = { version = "0.14", features = ["geometry"] }
+iced_tiny_skia = { version = "0.14", features = ["geometry"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

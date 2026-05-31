@@ -34,6 +34,12 @@ pub struct Loaded {
     /// Cached at build time (the probe needs `&mut save`); drives
     /// whether the Navi tab shows the Edit button.
     pub navicust_editable: bool,
+    /// Whether this save supports in-place patch-card editing — i.e.
+    /// `save.view_patch_cards_mut()` yields the `PatchCard56s` variant
+    /// (BN5/BN6). Cached at build time (the probe needs `&mut save`);
+    /// drives whether the Patch Cards tab shows the Edit button. BN4's
+    /// PatchCard4s is read-only here.
+    pub patch_cards_editable: bool,
     /// Patch+version baked into this Loaded, if any. `None` = raw ROM.
     pub patch: Option<AppliedPatch>,
     pub assets: Box<dyn tango_dataview::rom::Assets + Send + Sync>,
@@ -124,6 +130,12 @@ impl Loaded {
             save.view_navi_mut(),
             Some(tango_dataview::save::NaviViewMut::Navicust(_))
         );
+        // Patch-card editability: only the BN5/BN6 `PatchCard56s` variant is
+        // writable through this editor. Same pure-capability probe pattern.
+        let patch_cards_editable = matches!(
+            save.view_patch_cards_mut(),
+            Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(_))
+        );
 
         let wram = save.as_raw_wram().into_owned();
         let charset_owned: Option<Vec<&str>> = applied_patch
@@ -213,6 +225,7 @@ impl Loaded {
             save,
             chips_editable,
             navicust_editable,
+            patch_cards_editable,
             patch: applied_patch,
             assets,
             chip_icons,

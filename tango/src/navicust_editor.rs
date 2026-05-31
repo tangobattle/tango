@@ -12,45 +12,11 @@ use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::Action;
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-use crate::navicust::{self, GridModel, GridPainter};
+use crate::navicust::{self, FramePainter, GridModel};
 use crate::save_view::Action as Msg;
 
 fn to_color(c: [u8; 4]) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
-}
-
-/// [`GridPainter`] backend that draws onto an iced canvas `Frame`. All
-/// coordinates from the shared routine are native; `scale` maps them to
-/// the widget's display size.
-struct FramePainter<'a> {
-    frame: &'a mut Frame,
-    scale: f32,
-}
-
-impl GridPainter for FramePainter<'_> {
-    fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4]) {
-        let s = self.scale;
-        self.frame
-            .fill_rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s), to_color(color));
-    }
-
-    fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [u8; 4], width: f32) {
-        let s = self.scale;
-        let path = Path::rectangle(Point::new(x * s, y * s), Size::new(w * s, h * s));
-        self.frame.stroke(
-            &path,
-            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
-        );
-    }
-
-    fn stroke_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [u8; 4], width: f32) {
-        let s = self.scale;
-        let path = Path::line(Point::new(x1 * s, y1 * s), Point::new(x2 * s, y2 * s));
-        self.frame.stroke(
-            &path,
-            Stroke::default().with_color(to_color(color)).with_width(width * s).with_line_cap(LineCap::Square),
-        );
-    }
 }
 
 /// Outline the outer boundary of the part occupying `slot` (all its
@@ -101,8 +67,108 @@ fn draw_part_outline(
     }
 }
 
+/// Per-cell pixel size of a palette thumbnail — matches
+/// [`crate::navicust::render_part_thumb`]'s `PX`, so the baked
+/// (default-orientation) palette icons and these live (re-oriented) ones
+/// share a size and line up in the list.
+const THUMB_PX: f32 = 8.0;
+
+/// A small live thumbnail of one part's shape at a chosen orientation,
+/// drawn the same way as the baked palette icons but as a canvas — so the
+/// palette can show a rotated / uncompressed shape without re-baking an
+/// image (and minting a fresh texture id) every frame. Emits no messages,
+/// so it composes inside the pick-up button beneath it.
+pub struct PartThumb {
+    /// Set cells `(col, row)` within the n×n grid.
+    cells: Vec<(usize, usize)>,
+    n: usize,
+    solid: [u8; 4],
+    plus: [u8; 4],
+    is_solid: bool,
+}
+
+impl PartThumb {
+    /// Build from an already-rotated bitmap. `dim` fades it (the at-cap
+    /// look, matching the baked icon's reduced opacity). `None` if empty.
+    pub fn new(
+        bitmap: &tango_dataview::rom::NavicustBitmap,
+        color: tango_dataview::rom::NavicustPartColor,
+        is_solid: bool,
+        dim: bool,
+    ) -> Option<Self> {
+        let (h, w) = bitmap.dim();
+        let mut cells = Vec::new();
+        for r in 0..h {
+            for c in 0..w {
+                if bitmap[[r, c]] {
+                    cells.push((c, r));
+                }
+            }
+        }
+        if cells.is_empty() {
+            return None;
+        }
+        let (mut solid, mut plus) = navicust::part_colors(color);
+        if dim {
+            solid[3] = (solid[3] as f32 * 0.35) as u8;
+            plus[3] = (plus[3] as f32 * 0.35) as u8;
+        }
+        Some(PartThumb { cells, n: h, solid, plus, is_solid })
+    }
+
+    pub fn view<M: 'static>(self) -> Element<'static, M> {
+        let side = self.n as f32 * THUMB_PX;
+        Canvas::new(self).width(Length::Fixed(side)).height(Length::Fixed(side)).into()
+    }
+}
+
+impl<M> canvas::Program<M> for PartThumb {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let set = |c: usize, r: usize| self.cells.iter().any(|&(cc, rr)| cc == c && rr == r);
+        let solid = to_color(self.solid);
+        let plus = to_color(self.plus);
+        for &(c, r) in &self.cells {
+            let ox = c as f32 * THUMB_PX;
+            let oy = r as f32 * THUMB_PX;
+            // Solid body, then plus-coloured edges — top/left always (the
+            // 1px separators between the part's own blocks) and bottom/right
+            // only on the outer boundary — plus the centre cross for
+            // non-solid parts. Mirrors `navicust::render_part_thumb`.
+            frame.fill_rectangle(Point::new(ox, oy), Size::new(THUMB_PX, THUMB_PX), solid);
+            frame.fill_rectangle(Point::new(ox, oy), Size::new(THUMB_PX, 1.0), plus);
+            frame.fill_rectangle(Point::new(ox, oy), Size::new(1.0, THUMB_PX), plus);
+            if r + 1 >= self.n || !set(c, r + 1) {
+                frame.fill_rectangle(Point::new(ox, oy + THUMB_PX - 1.0), Size::new(THUMB_PX, 1.0), plus);
+            }
+            if c + 1 >= self.n || !set(c + 1, r) {
+                frame.fill_rectangle(Point::new(ox + THUMB_PX - 1.0, oy), Size::new(1.0, THUMB_PX), plus);
+            }
+            if !self.is_solid {
+                frame.fill_rectangle(Point::new(ox + THUMB_PX / 2.0, oy), Size::new(1.0, THUMB_PX), plus);
+                frame.fill_rectangle(Point::new(ox, oy + THUMB_PX / 2.0), Size::new(THUMB_PX, 1.0), plus);
+            }
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
 /// Visual width the grid is painted at, in logical pixels.
 pub const DISPLAY_W: f32 = 360.0;
+
+/// Corner-rounding of the editor grid, in display pixels — matches the
+/// radius the read-only viewer image is masked to (see
+/// `selection::build_navicust_render`).
+const CORNER_RADIUS_DISPLAY: f32 = 4.0;
 
 /// Maximum number of copies of one part (by id) allowed on the grid.
 pub const MAX_COPIES_PER_PART: usize = 9;
@@ -230,10 +296,14 @@ impl canvas::Program<Msg> for EditorGrid {
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let ghost = state.hovered.and_then(|(col, row)| self.ghost(col, row));
+        // `paint` works in native units; the painter scales to display, so
+        // pass the radius in native units to land on `CORNER_RADIUS_DISPLAY`.
+        let bg_radius = CORNER_RADIUS_DISPLAY / self.scale;
         navicust::paint(
             &mut FramePainter { frame: &mut frame, scale: self.scale },
             &self.model,
             ghost.as_ref(),
+            bg_radius,
         );
         // When not holding a part, outline the block under the cursor.
         if self.held.is_none() {

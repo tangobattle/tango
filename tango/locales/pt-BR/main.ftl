@@ -152,22 +152,28 @@ navicust-grid-size = Grade: { $cols } × { $rows }
 navicust-parts = Peças instaladas
 navicust-empty = (nenhuma instalada)
 
+# Folder editor
+save-edit = Editar
+save-edit-save = Salvar
+save-edit-cancel = Cancelar
+folder-edit-search = Buscar chips…
+folder-edit-folder = Folder
+folder-edit-count = { $count } / 30
+folder-edit-pack = Pacote
+save-edit-sort = Ordenar
+save-edit-clear = Limpar tudo
+
 # Navicust editor
-navicust-edit = Editar
-navicust-edit-save = Salvar
-navicust-edit-cancel = Cancelar
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] { $count } peça
    *[other] { $count } peças
 }
-navicust-edit-clear = Limpar tudo
 navicust-edit-rotate = Girar
 navicust-edit-compress = Comprimir
 navicust-edit-uncompress = Descomprimir
 navicust-edit-parts = Peças
 navicust-edit-search = Buscar peças…
-navicust-edit-hint = Escolha uma peça e clique na grade para colocá-la. Use a rolagem ou Girar para girá-la; clique com o botão direito para soltá-la. Clique numa peça instalada para pegá-la de volta.
 navicust-sort-id = ID
 navicust-sort-name = Nome
 navicust-sort-color = Cor

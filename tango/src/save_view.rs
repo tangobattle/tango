@@ -136,11 +136,30 @@ fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, Str
     // All ties fall back to (id, code) so the order stays stable.
     match sort {
         LibrarySort::Id => {}
-        LibrarySort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+        LibrarySort::Name => rows.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then(a.id.cmp(&b.id))
+                .then(a.code_rank.cmp(&b.code_rank))
+        }),
         LibrarySort::Code => rows.sort_by(|a, b| a.code_rank.cmp(&b.code_rank).then(a.id.cmp(&b.id))),
-        LibrarySort::Attack => rows.sort_by(|a, b| a.atk.cmp(&b.atk).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
-        LibrarySort::Element => rows.sort_by(|a, b| a.elem.cmp(&b.elem).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
-        LibrarySort::Mb => rows.sort_by(|a, b| a.mb.cmp(&b.mb).then(a.id.cmp(&b.id)).then(a.code_rank.cmp(&b.code_rank))),
+        LibrarySort::Attack => rows.sort_by(|a, b| {
+            a.atk
+                .cmp(&b.atk)
+                .then(a.id.cmp(&b.id))
+                .then(a.code_rank.cmp(&b.code_rank))
+        }),
+        LibrarySort::Element => rows.sort_by(|a, b| {
+            a.elem
+                .cmp(&b.elem)
+                .then(a.id.cmp(&b.id))
+                .then(a.code_rank.cmp(&b.code_rank))
+        }),
+        LibrarySort::Mb => rows.sort_by(|a, b| {
+            a.mb.cmp(&b.mb)
+                .then(a.id.cmp(&b.id))
+                .then(a.code_rank.cmp(&b.code_rank))
+        }),
     }
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
@@ -187,6 +206,47 @@ impl PartialEq for NavicustSortChoice {
     }
 }
 impl std::fmt::Display for NavicustSortChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
+/// past this is blocked, and a freshly added card lands disabled if it
+/// wouldn't fit — so a committed save never exceeds the in-game limit.
+pub const MAX_PATCH_CARD_MB: u32 = 80;
+
+/// Sort order for the patch-card editor's library pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchCardSort {
+    Id,
+    Name,
+    Mb,
+}
+
+impl PatchCardSort {
+    pub const ALL: [PatchCardSort; 3] = [PatchCardSort::Id, PatchCardSort::Name, PatchCardSort::Mb];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            PatchCardSort::Id => t!(lang, "patch-card-sort-id"),
+            PatchCardSort::Name => t!(lang, "patch-card-sort-name"),
+            PatchCardSort::Mb => t!(lang, "patch-card-sort-mb"),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PatchCardSortChoice {
+    sort: PatchCardSort,
+    label: String,
+}
+impl PartialEq for PatchCardSortChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.sort == other.sort
+    }
+}
+impl std::fmt::Display for PatchCardSortChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
@@ -322,30 +382,54 @@ pub struct State {
     pub active_tab: Option<Tab>,
     pub folder_grouped: bool,
     body_scroll_id: iced::widget::Id,
-    /// Folder editor: `true` once the user hits Edit on the Folder
-    /// tab. While set, the Folder body renders the editable layout
-    /// instead of the read-only chip list.
-    pub editing: bool,
-    /// In-progress tag-chip selection (≤2 raw slot indexes). Seeded
-    /// from the equipped folder's tag pair on entering edit mode; a
-    /// committed pair is written to the save only when exactly two are
-    /// selected (see [`State::toggle_tag`]).
-    pub editing_tags: Vec<usize>,
-    /// Filter text for the chip library (the editor's right-hand pane).
-    pub library_filter: String,
-    /// Sort order for the chip library pane.
+    /// The in-progress save edit, or `None` when not editing. It's one
+    /// global toggle for the whole save: while `Some`, every editable tab
+    /// shows its editor, and one Save / Cancel commits / discards them all.
+    /// Bundling every editor's scratch state here means leaving edit mode
+    /// (or swapping saves) is a single `editing = None`.
+    pub editing: Option<EditState>,
+    /// Sort order for the chip library pane. A persistent UI preference
+    /// (kept across edit sessions), so it lives outside [`EditState`].
     pub library_sort: LibrarySort,
-    /// Navicust editor: `true` once the user hits Edit on the Navi tab.
-    /// While set, the Navi body renders the interactive grid + palette
-    /// instead of the read-only display.
-    pub navicust_editing: bool,
-    /// The part currently picked up from the palette (id + orientation
-    /// + compression), drawn as a ghost under the cursor until placed.
-    pub held_part: Option<HeldPart>,
-    /// Filter text for the navicust palette (the editor's right pane).
-    pub navicust_filter: String,
-    /// Sort order for the navicust palette pane.
+    /// Sort order for the navicust palette pane (persistent preference).
     pub navicust_sort: NavicustSort,
+    /// Sort order for the patch-card library pane (persistent preference).
+    pub patch_card_sort: PatchCardSort,
+}
+
+/// Everything an in-progress save edit needs that's thrown away when the
+/// edit ends. Held as [`State::editing`]'s `Option` payload so one
+/// assignment clears it all.
+#[derive(Clone, Default)]
+pub struct EditState {
+    /// Folder editor: in-progress tag-chip selection (≤2 raw slot
+    /// indexes). Seeded from the equipped folder's tag pair on entering
+    /// edit mode; a committed pair is written to the save only when
+    /// exactly two are selected (see [`State::toggle_tag`]).
+    pub tags: Vec<usize>,
+    /// Folder editor: chip library filter text.
+    pub library_filter: String,
+    /// Navicust editor: the part currently picked up from the palette
+    /// (id + orientation + compression), drawn as a ghost under the cursor.
+    pub held_part: Option<HeldPart>,
+    /// Navicust editor: per-part picker orientation (`id -> (rot,
+    /// compressed)`). Each palette row's rotate / (de)compress buttons edit
+    /// this; picking a part up keeps it in sync, so a part is always picked
+    /// up in the orientation shown. Missing id = default (rot 0, compressed).
+    pub part_orient: std::collections::HashMap<usize, (u8, bool)>,
+    /// Navicust editor: palette filter text.
+    pub navicust_filter: String,
+    /// Patch-card editor: library filter text.
+    pub patch_card_filter: String,
+}
+
+impl EditState {
+    /// The orientation a palette part is shown / picked up in: an explicit
+    /// per-part override, else the default (rotation 0, compressed — the
+    /// smaller shape parts are usually placed in).
+    pub fn orient_of(&self, id: usize) -> (u8, bool) {
+        self.part_orient.get(&id).copied().unwrap_or((0, true))
+    }
 }
 
 impl Default for State {
@@ -360,28 +444,25 @@ impl State {
             active_tab: None,
             folder_grouped: true,
             body_scroll_id: iced::widget::Id::unique(),
-            editing: false,
-            editing_tags: Vec::new(),
-            library_filter: String::new(),
+            editing: None,
             library_sort: LibrarySort::Id,
-            navicust_editing: false,
-            held_part: None,
-            navicust_filter: String::new(),
             navicust_sort: NavicustSort::Id,
+            patch_card_sort: PatchCardSort::Id,
         }
     }
 
-    /// Enter folder edit mode. Seeds [`Self::editing_tags`] from the
-    /// equipped folder's current tag pair so the TAG toggles start in
-    /// the right state. Needs `loaded` (the read view), so the play tab
-    /// calls this rather than routing through [`Self::apply`].
+    /// Enter the global save edit mode. It's a single toggle for the whole
+    /// save: every editable tab (Folder, Navi, Patch Cards) shows its
+    /// editor while set, and one Save / Cancel commits / discards them all.
+    /// Seeds the tag toggles from the equipped folder's current tag pair so
+    /// they start in the right state. Needs `loaded` (the read view), so
+    /// the play tab calls this rather than routing through [`Self::apply`].
     pub fn enter_edit(&mut self, loaded: &Loaded) {
-        self.editing = true;
-        self.library_filter.clear();
-
+        // A fresh EditState — every editor opens with clean scratch state.
+        let mut edit = EditState::default();
         // Seed the tag toggles from the equipped folder's tag pair, if
         // the game has tag chips and a pair is set.
-        self.editing_tags = loaded
+        edit.tags = loaded
             .save
             .view_chips()
             .and_then(|v| {
@@ -391,6 +472,7 @@ impl State {
             .flatten()
             .map(|[a, b]| vec![a, b])
             .unwrap_or_default();
+        self.editing = Some(edit);
     }
 
     /// Toggle `slot` in the in-progress tag selection (capped at two).
@@ -398,12 +480,13 @@ impl State {
     /// slots are selected, else `None` (which clears the tag pairing —
     /// a lone tag chip isn't a valid state in-game).
     pub fn toggle_tag(&mut self, slot: usize) -> Option<[usize; 2]> {
-        if let Some(pos) = self.editing_tags.iter().position(|&s| s == slot) {
-            self.editing_tags.remove(pos);
-        } else if self.editing_tags.len() < 2 {
-            self.editing_tags.push(slot);
+        let Some(edit) = self.editing.as_mut() else { return None };
+        if let Some(pos) = edit.tags.iter().position(|&s| s == slot) {
+            edit.tags.remove(pos);
+        } else if edit.tags.len() < 2 {
+            edit.tags.push(slot);
         }
-        match self.editing_tags.as_slice() {
+        match edit.tags.as_slice() {
             [a, b] => Some([*a, *b]),
             _ => None,
         }
@@ -414,8 +497,9 @@ impl State {
     /// shift any higher selected slots down, mirroring the save-side
     /// compaction.
     pub fn compact_tags(&mut self, removed_slot: usize) {
-        self.editing_tags.retain(|&s| s != removed_slot);
-        for s in self.editing_tags.iter_mut() {
+        let Some(edit) = self.editing.as_mut() else { return };
+        edit.tags.retain(|&s| s != removed_slot);
+        for s in edit.tags.iter_mut() {
             if *s > removed_slot {
                 *s -= 1;
             }
@@ -441,16 +525,17 @@ impl State {
                 self.folder_grouped = *g;
                 iced::Task::none()
             }
-            // Save and Cancel both leave edit mode; the host runs the
-            // commit/discard side effect separately.
+            // Save and Cancel both leave the global edit mode; the host
+            // runs the commit/discard side effect (covering every tab).
+            // Dropping the whole EditState clears every editor's scratch.
             Action::SaveEdit | Action::CancelEdit => {
-                self.editing = false;
-                self.editing_tags.clear();
-                self.library_filter.clear();
+                self.editing = None;
                 iced::Task::none()
             }
             Action::LibraryFilterChanged(s) => {
-                self.library_filter = s.clone();
+                if let Some(e) = self.editing.as_mut() {
+                    e.library_filter = s.clone();
+                }
                 iced::Task::none()
             }
             Action::LibrarySortChanged(s) => {
@@ -458,55 +543,82 @@ impl State {
                 iced::Task::none()
             }
             // ----- Navicust editor: state-local folds -----
-            Action::EnterNavicustEdit => {
-                self.navicust_editing = true;
-                self.held_part = None;
-                self.navicust_filter.clear();
-                iced::Task::none()
-            }
-            Action::SaveNavicustEdit | Action::CancelNavicustEdit => {
-                self.navicust_editing = false;
-                self.held_part = None;
-                self.navicust_filter.clear();
-                iced::Task::none()
-            }
             Action::PickUpPalettePart { id } => {
-                // Toggle: clicking the already-held part deselects it.
-                // Otherwise pick it up in its compressed (smaller) shape —
-                // the form parts are usually placed in.
-                if self.held_part.map_or(false, |h| h.id == *id) {
-                    self.held_part = None;
-                } else {
-                    self.held_part = Some(HeldPart {
-                        id: *id,
-                        rot: 0,
-                        compressed: true,
-                    });
+                if let Some(e) = self.editing.as_mut() {
+                    // Toggle: clicking the held part deselects it; otherwise
+                    // pick it up in the orientation set in the picker.
+                    if e.held_part.map_or(false, |h| h.id == *id) {
+                        e.held_part = None;
+                    } else {
+                        let (rot, compressed) = e.orient_of(*id);
+                        e.held_part = Some(HeldPart { id: *id, rot, compressed });
+                    }
                 }
                 iced::Task::none()
             }
             Action::RotateHeld => {
-                if let Some(h) = self.held_part.as_mut() {
-                    h.rot = (h.rot + 1) % 4;
+                // Scroll-wheel rotate over the grid: rotates the held part
+                // and the picker entry together (so they stay in sync).
+                if let Some(e) = self.editing.as_mut() {
+                    if let Some(mut h) = e.held_part {
+                        h.rot = (h.rot + 1) % 4;
+                        e.held_part = Some(h);
+                        e.part_orient.insert(h.id, (h.rot, h.compressed));
+                    }
                 }
                 iced::Task::none()
             }
-            Action::ToggleHeldCompressed => {
-                if let Some(h) = self.held_part.as_mut() {
-                    h.compressed = !h.compressed;
+            Action::RotatePart { id } => {
+                if let Some(e) = self.editing.as_mut() {
+                    let (rot, compressed) = e.orient_of(*id);
+                    let rot = (rot + 1) % 4;
+                    e.part_orient.insert(*id, (rot, compressed));
+                    if let Some(h) = e.held_part.as_mut() {
+                        if h.id == *id {
+                            h.rot = rot;
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
+            Action::ToggleCompressPart { id } => {
+                if let Some(e) = self.editing.as_mut() {
+                    let (rot, compressed) = e.orient_of(*id);
+                    let compressed = !compressed;
+                    e.part_orient.insert(*id, (rot, compressed));
+                    if let Some(h) = e.held_part.as_mut() {
+                        if h.id == *id {
+                            h.compressed = compressed;
+                        }
+                    }
                 }
                 iced::Task::none()
             }
             Action::ClearHeld => {
-                self.held_part = None;
+                if let Some(e) = self.editing.as_mut() {
+                    e.held_part = None;
+                }
                 iced::Task::none()
             }
             Action::NavicustFilterChanged(s) => {
-                self.navicust_filter = s.clone();
+                if let Some(e) = self.editing.as_mut() {
+                    e.navicust_filter = s.clone();
+                }
                 iced::Task::none()
             }
             Action::NavicustSortChanged(s) => {
                 self.navicust_sort = *s;
+                iced::Task::none()
+            }
+            // ----- Patch-card editor: state-local folds -----
+            Action::PatchCardFilterChanged(s) => {
+                if let Some(e) = self.editing.as_mut() {
+                    e.patch_card_filter = s.clone();
+                }
+                iced::Task::none()
+            }
+            Action::PatchCardSortChanged(s) => {
+                self.patch_card_sort = *s;
                 iced::Task::none()
             }
             // EnterEdit needs `&Loaded` (to seed tag state), and the
@@ -521,6 +633,10 @@ impl State {
             | Action::PlaceHeld { .. }
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
+            | Action::AddPatchCard { .. }
+            | Action::RemovePatchCard { .. }
+            | Action::TogglePatchCard { .. }
+            | Action::ClearPatchCards
             | Action::CopyTab(_)
             | Action::CopyTabImage(_)
             | Action::PlayClicked => iced::Task::none(),
@@ -583,31 +699,59 @@ pub enum Action {
     /// Library pane: the sort order changed.
     LibrarySortChanged(LibrarySort),
     // ----- Navicust editor (only emitted when `editable` is set) -----
-    /// Enter navicust edit mode (Navi tab).
-    EnterNavicustEdit,
-    /// Commit the staged navicust to the .sav on disk, then leave edit mode.
-    SaveNavicustEdit,
-    /// Discard staged navicust edits (reload the on-disk original) and
-    /// leave edit mode.
-    CancelNavicustEdit,
-    /// Palette: pick up part `id` (held at rotation 0, compressed).
-    PickUpPalettePart { id: usize },
-    /// Rotate the held part 90° clockwise.
+    /// Palette: pick up part `id` in the orientation shown in the picker.
+    PickUpPalettePart {
+        id: usize,
+    },
+    /// Rotate the held part 90° clockwise (grid scroll-wheel).
     RotateHeld,
-    /// Toggle the held part between its uncompressed and compressed shape.
-    ToggleHeldCompressed,
+    /// Palette: rotate this part's picker entry 90° clockwise.
+    RotatePart {
+        id: usize,
+    },
+    /// Palette: toggle this part's picker entry between its compressed
+    /// and uncompressed shape.
+    ToggleCompressPart {
+        id: usize,
+    },
     /// Drop the held part without placing it.
     ClearHeld,
     /// Place the held part with its center on grid cell `(col, row)`.
-    PlaceHeld { col: u8, row: u8 },
+    PlaceHeld {
+        col: u8,
+        row: u8,
+    },
     /// Pick an installed part back up — it's removed and becomes held.
-    PickUpInstalledPart { slot: usize },
+    PickUpInstalledPart {
+        slot: usize,
+    },
     /// Remove every installed part.
     ClearNavicust,
     /// Palette: the filter text changed.
     NavicustFilterChanged(String),
     /// Palette: the sort order changed.
     NavicustSortChanged(NavicustSort),
+    // ----- Patch-card editor (only emitted when `editable` is set) -----
+    /// Library pane: register patch card `id` (appended to the list,
+    /// enabled).
+    AddPatchCard {
+        id: usize,
+    },
+    /// List pane: unregister the patch card in `slot`.
+    RemovePatchCard {
+        slot: usize,
+    },
+    /// List pane: toggle the patch card in `slot` between enabled and
+    /// disabled.
+    TogglePatchCard {
+        slot: usize,
+    },
+    /// List pane: unregister every patch card.
+    ClearPatchCards,
+    /// Library pane: the filter text changed.
+    PatchCardFilterChanged(String),
+    /// Library pane: the sort order changed.
+    PatchCardSortChanged(PatchCardSort),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -647,9 +791,13 @@ pub fn view<'a>(
     // True while one of the in-place editors is open. Suppresses the
     // Play button (single-player would fight the open edit session) and
     // selects the editable body below.
-    let folder_editing = editable && state.editing;
-    let navicust_editing = editable && state.navicust_editing;
-    let editing_session = folder_editing || navicust_editing;
+    // One global edit toggle: while set, every editable tab shows its
+    // editor (gated by that feature's editability), and one Save / Cancel
+    // commits / discards them all.
+    let editing_session = editable && state.editing.is_some();
+    let folder_editing = editing_session && loaded.chips_editable;
+    let navicust_editing = editing_session && loaded.navicust_editable;
+    let patch_cards_editing = editing_session && loaded.patch_cards_editable;
 
     // Tab strip: tabs left, extras+Play right. We split into two
     // rows so the tab list can wrap onto a second line without
@@ -725,6 +873,14 @@ pub fn view<'a>(
             .height(Fill)
             .into();
     }
+    if patch_cards_editing && active == Tab::PatchCards {
+        let editor = render_patch_cards_edit(lang, loaded, state);
+        return column![tab_pane, editor]
+            .spacing(widgets::PANE_GAP)
+            .width(Fill)
+            .height(Fill)
+            .into();
+    }
 
     let opts = RenderOpts {
         folder_grouped: state.folder_grouped,
@@ -771,41 +927,42 @@ fn tab_extras<'a>(
             [4.0, 10.0],
         )
     };
-    match tab {
-        Tab::Folder if state.editing => {
-            // Edit mode: edits are staged live; Save writes them to the
-            // .sav on disk, Cancel discards them. The group toggle /
-            // copy don't apply here.
-            //
-            // Save is only allowed once the folder is full — a legal
-            // folder is 30 chips, so an incomplete one can't be written
-            // over the save. It's disabled otherwise.
-            let folder_full = loaded.save.view_chips().map_or(false, |v| {
+
+    // One global edit mode for the whole save: while it's on, every tab
+    // shows the same Save / Cancel, and they commit / discard the edits on
+    // *all* tabs at once. Save is gated on a legal 30-chip folder (an
+    // incomplete folder can't be written over the save) when chips are
+    // editable; navicust / patch-card layouts are always valid to write.
+    if editable && state.editing.is_some() {
+        let can_save = !loaded.chips_editable
+            || loaded.save.view_chips().map_or(true, |v| {
                 let folder = v.equipped_folder_index();
                 (0..30).all(|i| v.chip(folder, i).is_some())
             });
-            Some(
-                row![
-                    widgets::labeled_icon_button(
-                        Icon::X,
-                        t!(lang, "folder-edit-cancel"),
-                        Action::CancelEdit,
-                        [4.0, 10.0],
-                        widgets::neutral,
-                    ),
-                    widgets::labeled_icon_button_maybe(
-                        Icon::Check,
-                        t!(lang, "folder-edit-save"),
-                        folder_full.then_some(Action::SaveEdit),
-                        [4.0, 10.0],
-                        widgets::primary_button,
-                    ),
-                ]
-                .spacing(6)
-                .align_y(iced::Alignment::Center)
-                .into(),
-            )
-        }
+        return Some(
+            row![
+                widgets::labeled_icon_button(
+                    Icon::X,
+                    t!(lang, "save-edit-cancel"),
+                    Action::CancelEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                ),
+                widgets::labeled_icon_button_maybe(
+                    Icon::Check,
+                    t!(lang, "save-edit-save"),
+                    can_save.then_some(Action::SaveEdit),
+                    [4.0, 10.0],
+                    widgets::primary_button,
+                ),
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center)
+            .into(),
+        );
+    }
+
+    match tab {
         Tab::Folder => {
             let mut r = row![
                 iced::widget::checkbox(state.folder_grouped)
@@ -824,7 +981,7 @@ fn tab_extras<'a>(
             if editable && loaded.chips_editable {
                 r = r.push(widgets::labeled_icon_button(
                     Icon::Pencil,
-                    t!(lang, "folder-edit"),
+                    t!(lang, "save-edit"),
                     Action::EnterEdit,
                     [4.0, 10.0],
                     widgets::neutral,
@@ -832,34 +989,23 @@ fn tab_extras<'a>(
             }
             Some(r.into())
         }
-        Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
-        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
-        Tab::Navi if state.navicust_editing => {
-            // Edit mode: edits stage live; Save writes them to the .sav,
-            // Cancel discards them. Any navicust layout (even empty) is
-            // valid to write, so Save is always enabled.
-            Some(
-                row![
-                    widgets::labeled_icon_button(
-                        Icon::X,
-                        t!(lang, "navicust-edit-cancel"),
-                        Action::CancelNavicustEdit,
-                        [4.0, 10.0],
-                        widgets::neutral,
-                    ),
-                    widgets::labeled_icon_button(
-                        Icon::Check,
-                        t!(lang, "navicust-edit-save"),
-                        Action::SaveNavicustEdit,
-                        [4.0, 10.0],
-                        widgets::primary_button,
-                    ),
-                ]
+        Tab::PatchCards => {
+            let mut tail = row![copy_btn(Tab::PatchCards)]
                 .spacing(6)
-                .align_y(iced::Alignment::Center)
-                .into(),
-            )
+                .align_y(iced::Alignment::Center);
+            // Only BN5/BN6 (writable PatchCard56s) get the Edit affordance.
+            if editable && loaded.patch_cards_editable {
+                tail = tail.push(widgets::labeled_icon_button(
+                    Icon::Pencil,
+                    t!(lang, "save-edit"),
+                    Action::EnterEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                ));
+            }
+            Some(tail.into())
         }
+        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
         Tab::Navi => {
             // Copy-as-image only emits anything for Navicust saves
             // (LinkNavi has no grid to render). Hide the button
@@ -878,8 +1024,8 @@ fn tab_extras<'a>(
             if editable && loaded.navicust_editable && has_navicust {
                 tail = tail.push(widgets::labeled_icon_button(
                     Icon::Pencil,
-                    t!(lang, "navicust-edit"),
-                    Action::EnterNavicustEdit,
+                    t!(lang, "save-edit"),
+                    Action::EnterEdit,
                     [4.0, 10.0],
                     widgets::neutral,
                 ));
@@ -1318,6 +1464,10 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
 /// slot. Each pane scrolls independently.
 fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
     use crate::widgets;
+    // Only reached while editing, so the EditState is present.
+    let Some(edit) = state.editing.as_ref() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
     let Some(chips_view) = loaded.save.view_chips() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -1340,12 +1490,12 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             regular_idx == Some(slot),
             regular_supported,
             tag_supported,
-            state.editing_tags.contains(&slot),
+            edit.tags.contains(&slot),
         ));
     }
     let clear_all = widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
-        t!(lang, "folder-edit-clear"),
+        t!(lang, "save-edit-clear"),
         Action::ClearFolder,
         [5.0, 10.0],
         widgets::danger_button,
@@ -1380,17 +1530,25 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
 
     // ----- Right pane: the chip library -----
     let chips_have_mb = loaded.assets.chips_have_mb();
-    let filter = state.library_filter.to_lowercase();
+    let filter = edit.library_filter.to_lowercase();
     let mut lib_list = column![].spacing(1).padding(0);
     let mut shown = 0usize;
     for (id, name, code) in sorted_library_entries(loaded, state.library_sort) {
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, filled >= 30));
+        lib_list = lib_list.push(library_entry_row(
+            loaded,
+            id,
+            name,
+            code,
+            shown,
+            chips_have_mb,
+            filled >= 30,
+        ));
         shown += 1;
     }
-    let filter_input = text_input(&t!(lang, "folder-edit-search"), &state.library_filter)
+    let filter_input = text_input(&t!(lang, "folder-edit-search"), &edit.library_filter)
         .on_input(Action::LibraryFilterChanged)
         .padding([5, 10])
         .size(TEXT_BODY)
@@ -1414,7 +1572,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         row![
             text(t!(lang, "folder-edit-pack")).size(TEXT_BODY),
             filter_input,
-            text(t!(lang, "folder-edit-sort"))
+            text(t!(lang, "save-edit-sort"))
                 .size(TEXT_CAPTION)
                 .style(muted_text_style),
             sort_pick,
@@ -1436,13 +1594,49 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         .into()
 }
 
+/// The palette thumbnail for part `id` at orientation `(rot, compressed)`.
+/// The default orientation reuses the icon baked once at load; a rotated /
+/// uncompressed shape is drawn live by a small canvas ([`PartThumb`]) so
+/// we never re-bake an image (which would mint a fresh texture id every
+/// frame). `dim` fades it for at-cap rows. `None` for an empty shape.
+fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim: bool) -> Option<Element<'a, Action>> {
+    if rot == 0 && compressed {
+        let (w, h, handle) = loaded.navicust_part_icons.get(id)?.as_ref()?;
+        return Some(
+            Image::new(handle.clone())
+                .width(Length::Fixed(*w as f32))
+                .height(Length::Fixed(*h as f32))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::None)
+                .opacity(if dim { 0.35 } else { 1.0 })
+                .into(),
+        );
+    }
+    let info = loaded.assets.navicust_part(id)?;
+    let color = info.color()?;
+    let bitmap = if compressed {
+        info.compressed_bitmap()
+    } else {
+        info.uncompressed_bitmap()
+    };
+    let rotated = crate::navicust::rotate_bitmap(&bitmap, rot);
+    crate::navicust_editor::PartThumb::new(&rotated, color, info.is_solid(), dim).map(|t| t.view())
+}
+
 /// The navicust editor: an interactive grid (left) + a part palette
-/// (right). Mirrors [`render_folder_edit`]'s two-pane layout. The grid is
-/// drawn live by [`crate::navicust_editor::EditorGrid`], which shares the
-/// decoration-drawing routine ([`crate::navicust::paint`]) with the
-/// read-only viewer and the clipboard image, and ghosts the held part.
+/// (right), mirroring [`render_folder_edit`]'s two-pane layout — the grid
+/// pane shrinks to the grid so the palette gets the rest of the width. The
+/// grid is drawn live by [`crate::navicust_editor::EditorGrid`], which
+/// shares the decoration-drawing routine ([`crate::navicust::paint`]) with
+/// the read-only viewer and the clipboard image, and ghosts the held part.
+/// Each palette row carries its own rotate / (de)compress buttons that set
+/// the orientation the part is picked up in.
 fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
     use crate::widgets;
+    // Only reached while editing, so the EditState is present.
+    let Some(edit) = state.editing.as_ref() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
     let Some(tango_dataview::save::NaviView::Navicust(v)) = loaded.save.view_navi() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -1461,7 +1655,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     let installed = (0..v.count()).filter(|&i| v.navicust_part(i).is_some()).count();
 
     // Held-part ghost data, resolved from the ROM.
-    let held = state.held_part.and_then(|hp| {
+    let held = edit.held_part.and_then(|hp| {
         let info = assets.navicust_part(hp.id)?;
         let color = info.color()?;
         let bitmap = if hp.compressed {
@@ -1489,7 +1683,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     // ----- Left pane: grid + rotate/compress controls -----
     let clear_all = widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
-        t!(lang, "navicust-edit-clear"),
+        t!(lang, "save-edit-clear"),
         Action::ClearNavicust,
         [5.0, 10.0],
         widgets::danger_button,
@@ -1510,67 +1704,26 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     .width(Fill)
     .padding([8, 12]);
 
-    let held_opt = state.held_part;
-    let rotate_btn = widgets::labeled_icon_button_maybe(
-        lucide_icons::Icon::RotateCw,
-        t!(lang, "navicust-edit-rotate"),
-        held_opt.map(|_| Action::RotateHeld),
-        [4.0, 10.0],
-        widgets::neutral,
-    );
-    // The button names the action it performs. Parts are held compressed
-    // by default, so the default action is "Uncompress" (expand); only a
-    // held, already-uncompressed part shows "Compress" (shrink).
-    let (compress_icon, compress_label) = if held_opt.map_or(false, |h| !h.compressed) {
-        (lucide_icons::Icon::Shrink, t!(lang, "navicust-edit-compress"))
-    } else {
-        (lucide_icons::Icon::Expand, t!(lang, "navicust-edit-uncompress"))
-    };
-    let compress_btn = widgets::labeled_icon_button_maybe(
-        compress_icon,
-        compress_label,
-        held_opt.map(|_| Action::ToggleHeldCompressed),
-        [4.0, 10.0],
-        widgets::neutral,
-    );
-    let controls = row![rotate_btn, compress_btn].spacing(6).align_y(Alignment::Center);
-    let hint = text(t!(lang, "navicust-edit-hint"))
-        .size(TEXT_CAPTION)
-        .style(muted_text_style);
-    let grid_body = column![container(canvas_el).center_x(Fill), controls, hint]
-        .spacing(8)
-        .align_x(Alignment::Center)
-        .padding([4, 8]);
-    let grid_pane = container(column![grid_header, scrollable(grid_body).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    let held_opt = edit.held_part;
 
-    // ----- Right pane: the part palette (styled as a selectable list) -----
+    // ----- Part palette (shown below the grid, like the read-only view) -----
     // Same inset + row spacing as the patches / replays lists.
-    let mut palette = column![].spacing(2).padding(8);
-    for (row_idx, (id, name, description)) in sorted_navicust_parts(loaded, state.navicust_sort, &state.navicust_filter)
+    let mut palette = column![].spacing(2).padding(8).width(Fill);
+    for (row_idx, (id, name, description)) in sorted_navicust_parts(loaded, state.navicust_sort, &edit.navicust_filter)
         .into_iter()
         .enumerate()
     {
         // Parts already at the per-part copy cap are greyed out + not
         // selectable.
-        let at_cap =
-            installed_counts.get(&id).copied().unwrap_or(0) >= crate::navicust_editor::MAX_COPIES_PER_PART;
-        // Shape thumbnail (baked at load), fit into a fixed box so rows
-        // align regardless of footprint. Dimmed when at the cap.
-        let icon_el: Element<'a, Action> = match loaded.navicust_part_icons.get(id).and_then(|o| o.as_ref()) {
-            // Shown at the baked pixel size (1:1) so the 1px lines stay
-            // crisp; every part shares the same n×n grid so rows align.
-            Some((w, h, handle)) => Image::new(handle.clone())
-                .width(Length::Fixed(*w as f32))
-                .height(Length::Fixed(*h as f32))
-                .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::None)
-                .opacity(if at_cap { 0.35 } else { 1.0 })
-                .into(),
-            None => Space::new().width(Length::Fixed(40.0)).height(Length::Fixed(40.0)).into(),
-        };
+        let at_cap = installed_counts.get(&id).copied().unwrap_or(0) >= crate::navicust_editor::MAX_COPIES_PER_PART;
+        // Orientation shown in (and picked up from) the picker.
+        let (rot, compressed) = edit.orient_of(id);
+        // Shape thumbnail at the part's current picker orientation, shown
+        // at the baked pixel size (1:1) so the 1px lines stay crisp; every
+        // part shares the same n×n grid so rows align. Dimmed when at cap.
+        let icon_el: Element<'a, Action> = part_thumb(loaded, id, rot, compressed, at_cap).unwrap_or_else(|| {
+            Space::new().width(Length::Fixed(40.0)).height(Length::Fixed(40.0)).into()
+        });
         let name_text = if at_cap {
             text(name).size(TEXT_BODY).style(muted_text_style)
         } else {
@@ -1580,18 +1733,45 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         if let Some(desc) = description.filter(|d| !d.trim().is_empty()) {
             info_col = info_col.push(text(desc).size(TEXT_CAPTION).style(muted_text_style));
         }
-        let content = row![icon_el, info_col].spacing(8).align_y(Alignment::Center);
+        // Per-part orientation controls: rotate, and (de)compress. They
+        // edit this part's picker entry — including the thumbnail beside
+        // them and the orientation it's picked up in. The compress button
+        // names the action it performs (Uncompress when compressed, else
+        // Compress). They're nested inside the row's pick-up button (iced
+        // forwards clicks to these inner buttons first), so they live on the
+        // menu item itself rather than floating beside it.
+        let rotate_btn = widgets::icon_button(
+            lucide_icons::Icon::RotateCw,
+            t!(lang, "navicust-edit-rotate"),
+            Action::RotatePart { id },
+            [6.0, 8.0],
+        );
+        let (compress_icon, compress_label) = if compressed {
+            (lucide_icons::Icon::Expand, t!(lang, "navicust-edit-uncompress"))
+        } else {
+            (lucide_icons::Icon::Shrink, t!(lang, "navicust-edit-compress"))
+        };
+        let compress_btn = widgets::icon_button(
+            compress_icon,
+            compress_label,
+            Action::ToggleCompressPart { id },
+            [6.0, 8.0],
+        );
+        let controls = column![rotate_btn, compress_btn].spacing(4).align_x(Alignment::Center);
+        let content = row![icon_el, info_col, Space::new().width(Fill), controls]
+            .spacing(8)
+            .align_y(Alignment::Center);
         let selected = held_opt.map_or(false, |h| h.id == id);
-        let mut btn = button(content)
+        let mut pick = button(content)
             .padding([6, 10])
             .width(Fill)
             .style(widgets::list_item(selected, row_idx));
         if !at_cap {
-            btn = btn.on_press(Action::PickUpPalettePart { id });
+            pick = pick.on_press(Action::PickUpPalettePart { id });
         }
-        palette = palette.push(btn);
+        palette = palette.push(pick);
     }
-    let filter_input = text_input(&t!(lang, "navicust-edit-search"), &state.navicust_filter)
+    let filter_input = text_input(&t!(lang, "navicust-edit-search"), &edit.navicust_filter)
         .on_input(Action::NavicustFilterChanged)
         .padding([5, 10])
         .size(TEXT_BODY)
@@ -1611,11 +1791,13 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     .padding([5, 10])
     .text_size(TEXT_BODY)
     .style(widgets::chunky_pick_list);
-    let palette_header = container(
+    let parts_header = container(
         row![
             text(t!(lang, "navicust-edit-parts")).size(TEXT_BODY),
             filter_input,
-            text(t!(lang, "folder-edit-sort")).size(TEXT_CAPTION).style(muted_text_style),
+            text(t!(lang, "save-edit-sort"))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
             sort_pick,
         ]
         .spacing(10)
@@ -1623,7 +1805,24 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     )
     .width(Fill)
     .padding([8, 12]);
-    let palette_pane = container(column![palette_header, scrollable(palette).height(Fill).width(Fill)])
+
+    // Left pane: mirrors the read-only Navi view — the grid with the
+    // installed ("picked") parts listed below it — and fills/expands to
+    // its half of the tab, with the grid + parts centered inside.
+    let mut grid_inner = column![container(canvas_el).center_x(Fill)]
+        .spacing(8)
+        .align_x(Alignment::Center)
+        .padding([4, 8]);
+    if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
+        grid_inner = grid_inner.push(parts);
+    }
+    let grid_pane = container(column![grid_header, grid_inner])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    // Right pane: the editing palette, filling the remaining width.
+    let palette_pane = container(column![parts_header, scrollable(palette).height(Fill).width(Fill)])
         .width(Fill)
         .height(Fill)
         .style(widgets::pane);
@@ -1712,7 +1911,10 @@ fn edit_row_wrap<'a>(
         r = r.push(container(lead).padding([0, 6]));
     }
     r = r.push(stripe).push(container(inner).width(Fill));
-    container(r).width(Fill).style(crate::widgets::zebra_row(row_idx)).into()
+    container(r)
+        .width(Fill)
+        .style(crate::widgets::zebra_row(row_idx))
+        .into()
 }
 
 /// Element-icon / ATK / MB stat cells shared by both editor panes,
@@ -1778,7 +1980,10 @@ fn folder_slot_row<'a>(
     let mut inner = row![chip_icon(loaded, chip_id)].spacing(8).align_y(Alignment::Center);
     match chip.as_ref() {
         Some(c) => {
-            let name = info.as_ref().and_then(|i| i.name()).unwrap_or_else(|| "???".to_string());
+            let name = info
+                .as_ref()
+                .and_then(|i| i.name())
+                .unwrap_or_else(|| "???".to_string());
             let [element, atk, mb] = chip_stat_cells(loaded, c.id, chips_have_mb);
             let code = container(text(c.code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
                 .width(Length::Fixed(22.0))
@@ -1882,7 +2087,17 @@ fn library_entry_row<'a>(
 /// Small toggle button used for the REG and TAG columns in the folder
 /// editor: tinted in `on_color` when active, neutral (greyed) when not.
 fn edit_toggle<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Action) -> Element<'a, Action> {
-    let b = button(text(label).size(TEXT_CAPTION)).padding([4, 8]).on_press(msg);
+    edit_toggle_maybe(label, on, on_color, Some(msg))
+}
+
+/// Like [`edit_toggle`], but a `None` message renders the toggle disabled
+/// (greyed, unclickable) — used for the patch-card ON toggle when enabling
+/// the card would blow the MB budget.
+fn edit_toggle_maybe<'a>(label: &'static str, on: bool, on_color: iced::Color, msg: Option<Action>) -> Element<'a, Action> {
+    let mut b = button(text(label).size(TEXT_CAPTION)).padding([4, 8]);
+    if let Some(msg) = msg {
+        b = b.on_press(msg);
+    }
     if on {
         b.style(move |theme: &iced::Theme, status| crate::widgets::tinted_button(theme, status, on_color))
             .into()
@@ -2322,6 +2537,52 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
     }
 }
 
+/// The installed-parts badge strip shown under the grid: two columns
+/// (solid parts | plus parts), each badge colored by its NCP color with a
+/// description tooltip. Reads the live view, so it reflects staged edits.
+/// `None` when nothing is installed. Shared by the read-only Navi view and
+/// the editor's grid pane.
+fn navicust_installed_parts<M: 'static>(
+    loaded: &Loaded,
+    v: &dyn tango_dataview::save::NavicustView,
+) -> Option<Element<'static, M>> {
+    let assets = loaded.assets.as_ref();
+    let mut solid_col = column![].spacing(4);
+    let mut plus_col = column![].spacing(4);
+    let mut any = false;
+    for i in 0..v.count() {
+        let Some(part) = v.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else { continue };
+        let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+        let description = info.description();
+        let is_solid = info.is_solid();
+        let (solid_color, plus_color) = info.color().map(ncp_colors).unwrap_or((
+            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
+            iced::Color::from_rgb8(0x88, 0x88, 0x88),
+        ));
+        let bg = if is_solid { solid_color } else { plus_color };
+        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0]);
+        let badge_el: Element<'static, M> = if let Some(desc) = description {
+            tooltip(
+                badge_el,
+                container(text(desc).size(TEXT_CAPTION)).padding(8).style(tooltip_style),
+                tooltip::Position::FollowCursor,
+            )
+            .gap(8)
+            .into()
+        } else {
+            badge_el
+        };
+        any = true;
+        if is_solid {
+            solid_col = solid_col.push(badge_el);
+        } else {
+            plus_col = plus_col.push(badge_el);
+        }
+    }
+    any.then(|| row![solid_col, plus_col].spacing(12).into())
+}
+
 fn render_navicust<M: 'static>(
     lang: &LanguageIdentifier,
     loaded: &Loaded,
@@ -2425,48 +2686,6 @@ fn render_navicust<M: 'static>(
             .into(),
     };
 
-    // Parts list: two columns — solid parts (left), plus parts (right) —
-    // each colored by NCP color, with hover tooltip showing description.
-    let mut solid_col = column![].spacing(4);
-    let mut plus_col = column![].spacing(4);
-    let mut installed_solid = 0;
-    let mut installed_plus = 0;
-    for i in 0..v.count() {
-        let Some(part) = v.navicust_part(i) else {
-            continue;
-        };
-        let Some(info) = assets.navicust_part(part.id) else {
-            continue;
-        };
-        let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
-        let description = info.description();
-        let is_solid = info.is_solid();
-        let (solid_color, plus_color) = info.color().map(ncp_colors).unwrap_or((
-            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
-            iced::Color::from_rgb8(0x88, 0x88, 0x88),
-        ));
-        let bg = if is_solid { solid_color } else { plus_color };
-        let _ = i; // index no longer needed now that the list-highlight is gone
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0]);
-        let badge_el: Element<'static, M> = if let Some(desc) = description {
-            tooltip(
-                badge_el,
-                container(text(desc).size(TEXT_CAPTION)).padding(8).style(tooltip_style),
-                tooltip::Position::FollowCursor,
-            )
-            .gap(8)
-            .into()
-        } else {
-            badge_el
-        };
-        if is_solid {
-            installed_solid += 1;
-            solid_col = solid_col.push(badge_el);
-        } else {
-            installed_plus += 1;
-            plus_col = plus_col.push(badge_el);
-        }
-    }
     // Single pane sized to its contents — no "(none installed)"
     // fallback; an empty navicust shows just the rounded image with
     // pane padding around it. `align_x(Center)` centers narrower rows
@@ -2475,13 +2694,12 @@ fn render_navicust<M: 'static>(
     // stretch the pane across the tab.
     let mut content = column![].spacing(8).align_x(Alignment::Center);
     content = content.push(grid_el);
-    if installed_solid + installed_plus > 0 {
-        // No Fill anywhere here — Fill on a child propagates up
-        // through the column, forcing the whole pane to span the tab.
-        content = content.push(row![solid_col, plus_col].spacing(12));
+    // Installed-parts badges below the grid (shared with the editor).
+    if let Some(parts) = navicust_installed_parts::<M>(loaded, v) {
+        content = content.push(parts);
     }
 
-    let _ = (cols, rows_n, installed_solid, installed_plus);
+    let _ = (cols, rows_n);
     container(content)
         .padding(crate::widgets::PANE_PADDING)
         .style(crate::widgets::pane)
@@ -2580,6 +2798,268 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
     }
 
     container(list).width(Fill).style(crate::widgets::pane).into()
+}
+
+/// Every PatchCard56 the ROM defines, as `(id, name, mb)`, in `sort`
+/// order. The caller applies the name filter and excludes ids already in
+/// the registered list. Ties fall back to id for a stable order.
+fn sorted_patch_card_library(loaded: &Loaded, sort: PatchCardSort) -> Vec<(usize, String, u8)> {
+    let assets = loaded.assets.as_ref();
+    let mut rows: Vec<(usize, String, u8)> = Vec::new();
+    for id in 0..assets.num_patch_card56s() {
+        let Some(info) = assets.patch_card56(id) else { continue };
+        let name = info.name().unwrap_or_else(|| format!("#{id}"));
+        rows.push((id, name, info.mb()));
+    }
+    match sort {
+        PatchCardSort::Id => {}
+        PatchCardSort::Name => rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0))),
+        PatchCardSort::Mb => rows.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0))),
+    }
+    rows
+}
+
+/// The viewer-style cells for a patch card: `[name+MB, abilities, bugs]`,
+/// matching [`render_patch_cards`]'s column layout exactly (name with MB
+/// stacked beneath, then a fixed-width ability column and bug column, each
+/// a vertical stack of [`effect_badge`]s). Greyed when `enabled` is false.
+/// Callers wrap these with a leading cell (index / add button) and, for the
+/// registered list, trailing edit controls.
+fn patch_card_cells<'a>(loaded: &Loaded, name: &str, mb: u8, enabled: bool, id: usize) -> [Element<'a, Action>; 3] {
+    let effects = loaded.assets.patch_card56(id).map(|c| c.effects()).unwrap_or_default();
+    let name_text = if enabled {
+        text(name.to_string()).size(TEXT_BODY)
+    } else {
+        text(name.to_string()).size(TEXT_BODY).style(muted_text_style)
+    };
+    let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style)].spacing(2);
+    let mut ability_col = column![].spacing(2);
+    for e in effects.iter().filter(|e| e.is_ability) {
+        ability_col = ability_col.push(effect_badge::<Action>(e, enabled));
+    }
+    let mut bug_col = column![].spacing(2);
+    for e in effects.iter().filter(|e| !e.is_ability) {
+        bug_col = bug_col.push(effect_badge::<Action>(e, enabled));
+    }
+    [
+        container(name_col).width(Length::Fill).into(),
+        // Fixed-width ability / bug columns, matching the read-only viewer.
+        container(ability_col).width(Length::Fixed(180.0)).into(),
+        container(bug_col).width(Length::Fixed(180.0)).into(),
+    ]
+}
+
+/// One registered patch card, laid out like a [`render_patch_cards`] row
+/// (index · name+MB · abilities · bugs) with an enable toggle and a remove
+/// (→) button appended. The name dims while the card is disabled.
+/// `can_enable` is whether enabling this (currently disabled) card would
+/// still fit the MB budget; it gates the ON toggle.
+fn patch_card_list_row<'a>(
+    loaded: &'a Loaded,
+    slot: usize,
+    card: tango_dataview::save::PatchCard,
+    can_enable: bool,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    let info = loaded.assets.patch_card56(card.id);
+    let name = info
+        .as_ref()
+        .and_then(|c| c.name())
+        .unwrap_or_else(|| format!("#{}", card.id));
+    let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
+    let [name_cell, ability_cell, bug_cell] = patch_card_cells(loaded, &name, mb, card.enabled, card.id);
+
+    // Green "ON" toggle (matches the folder editor's TAG tint), then the
+    // remove arrow that backs the card out to the library. The toggle is
+    // disabled when the card is off and enabling it would exceed the MB
+    // budget (an already-on card can always be turned off).
+    let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard { slot });
+    let toggle = edit_toggle_maybe(
+        "ON",
+        card.enabled,
+        iced::Color::from_rgb8(0x29, 0xa1, 0x21),
+        toggle_msg,
+    );
+    let remove = button(Icon::ArrowRight.widget().size(TEXT_BODY))
+        .padding([3, 8])
+        .style(widgets::neutral)
+        .on_press(Action::RemovePatchCard { slot });
+
+    let row = row![
+        text(format!("{:>2}", slot + 1))
+            .size(TEXT_CAPTION)
+            .width(Length::Fixed(24.0)),
+        name_cell,
+        ability_cell,
+        bug_cell,
+        toggle,
+        remove,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Start);
+    container(row).padding([6, 10]).style(crate::widgets::zebra_row(slot)).into()
+}
+
+/// One library card, laid out like a [`render_patch_cards`] row (an add
+/// (←) button in place of the index · name+MB · abilities · bugs). Effects
+/// show enabled, since adding a card enables it when it fits. The add
+/// button is disabled when the list is full.
+fn patch_card_library_row<'a>(
+    loaded: &'a Loaded,
+    id: usize,
+    name: String,
+    mb: u8,
+    row_idx: usize,
+    list_full: bool,
+) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    let mut add_btn = button(Icon::ArrowLeft.widget().size(TEXT_BODY))
+        .padding([3, 8])
+        .style(widgets::neutral);
+    if !list_full {
+        add_btn = add_btn.on_press(Action::AddPatchCard { id });
+    }
+    let add: Element<'a, Action> = add_btn.into();
+    let [name_cell, ability_cell, bug_cell] = patch_card_cells(loaded, &name, mb, true, id);
+
+    let row = row![add, name_cell, ability_cell, bug_cell]
+        .spacing(8)
+        .align_y(Alignment::Start);
+    container(row).padding([6, 10]).style(crate::widgets::zebra_row(row_idx)).into()
+}
+
+/// The patch-card editor: a two-pane layout (registered list left, card
+/// library right) whose rows match the read-only viewer (index · name+MB
+/// stacked · ability column · bug column), with edit controls appended —
+/// an enable toggle + remove on the list, an add button on the library.
+/// Edits stage live in the loaded save and are written to disk only on Save.
+fn render_patch_cards_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+    use crate::widgets;
+    // Only reached while editing, so the EditState is present.
+    let Some(edit) = state.editing.as_ref() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let Some(tango_dataview::save::PatchCardsView::PatchCard56s(v)) = loaded.save.view_patch_cards() else {
+        return placeholder(t!(lang, "save-empty"));
+    };
+    let count = v.count();
+    let max = loaded.assets.num_patch_card56s();
+
+    // ----- Left pane: the registered list -----
+    // MB of each card (0 for the "no card" id / unknown), so the budget
+    // and per-row gating are computed from one source.
+    let card_mb = |id: usize| loaded.assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
+    let cards: Vec<(usize, tango_dataview::save::PatchCard)> =
+        (0..count).filter_map(|slot| v.patch_card(slot).map(|c| (slot, c))).collect();
+    let in_list: std::collections::HashSet<usize> = cards.iter().map(|(_, c)| c.id).collect();
+    let enabled_mb: u32 = cards.iter().filter(|(_, c)| c.enabled).map(|(_, c)| card_mb(c.id)).sum();
+
+    let mut list_col = column![].spacing(3).padding(0);
+    for (slot, card) in &cards {
+        // A disabled card can be enabled only if it still fits the budget;
+        // an enabled card can always be turned off.
+        let can_enable = enabled_mb + card_mb(card.id) <= MAX_PATCH_CARD_MB;
+        list_col = list_col.push(patch_card_list_row(loaded, *slot, card.clone(), can_enable));
+    }
+    let clear_all = widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "save-edit-clear"),
+        Action::ClearPatchCards,
+        [5.0, 10.0],
+        widgets::danger_button,
+    );
+    // MB total turns red if it somehow exceeds the limit (e.g. a save
+    // imported over-budget); the editor itself never lets it go over.
+    let mb_text = text(t!(lang, "patch-card-edit-mb", mb = enabled_mb as i64))
+        .size(TEXT_CAPTION)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(if enabled_mb > MAX_PATCH_CARD_MB {
+                theme.palette().danger
+            } else {
+                muted_color(theme)
+            }),
+        });
+    let list_header = container(
+        row![
+            text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),
+            text(t!(lang, "patch-card-edit-count", count = count as i64))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            mb_text,
+            Space::new().width(Fill),
+            clear_all,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let list_pane = container(column![list_header, scrollable(list_col).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    // ----- Right pane: the card library -----
+    let filter = edit.patch_card_filter.to_lowercase();
+    let list_full = count >= max;
+    let mut lib_col = column![].spacing(3).padding(0);
+    let mut shown = 0usize;
+    for (id, name, mb) in sorted_patch_card_library(loaded, state.patch_card_sort) {
+        if in_list.contains(&id) {
+            continue;
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
+            continue;
+        }
+        lib_col = lib_col.push(patch_card_library_row(loaded, id, name, mb, shown, list_full));
+        shown += 1;
+    }
+    let filter_input = text_input(&t!(lang, "patch-card-edit-search"), &edit.patch_card_filter)
+        .on_input(Action::PatchCardFilterChanged)
+        .padding([5, 10])
+        .size(TEXT_BODY)
+        .width(Fill)
+        .style(widgets::chunky_text_input);
+    let sort_options: Vec<PatchCardSortChoice> = PatchCardSort::ALL
+        .iter()
+        .map(|&sort| PatchCardSortChoice {
+            sort,
+            label: sort.label(lang),
+        })
+        .collect();
+    let sort_selected = sort_options.iter().find(|c| c.sort == state.patch_card_sort).cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, |c: PatchCardSortChoice| {
+        Action::PatchCardSortChanged(c.sort)
+    })
+    .padding([5, 10])
+    .text_size(TEXT_BODY)
+    .style(widgets::chunky_pick_list);
+    let lib_header = container(
+        row![
+            text(t!(lang, "patch-card-edit-library")).size(TEXT_BODY),
+            filter_input,
+            text(t!(lang, "save-edit-sort"))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            sort_pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([8, 12]);
+    let library_pane = container(column![lib_header, scrollable(lib_col).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(widgets::pane);
+
+    row![list_pane, library_pane]
+        .spacing(widgets::PANE_GAP)
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 // ---------- Auto Battle Data ----------

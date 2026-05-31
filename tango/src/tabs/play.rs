@@ -263,7 +263,7 @@ impl Default for PlayState {
 /// `Effect` for the caller to interpret.
 /// A single folder edit staged by the folder editor. Applied to the
 /// loaded save in memory by [`Effect::EditChips`]; not persisted to
-/// disk until the user hits Save ([`Effect::FolderEditCommit`]).
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
 #[derive(Debug, Clone)]
 pub enum ChipEdit {
     /// Add chip `chip_id` with `code` to the first empty folder slot.
@@ -283,7 +283,7 @@ pub enum ChipEdit {
 
 /// A single navicust edit staged by the navicust editor. Applied to the
 /// loaded save in memory by [`Effect::EditNavicust`]; not persisted to
-/// disk until the user hits Save ([`Effect::NavicustEditCommit`]).
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
 #[derive(Debug, Clone)]
 pub enum NavicustEdit {
     /// Place a part into the first empty navicust slot.
@@ -291,6 +291,21 @@ pub enum NavicustEdit {
     /// Empty navicust slot `slot`.
     RemovePart { slot: usize },
     /// Remove every installed part.
+    ClearAll,
+}
+
+/// A single patch-card edit staged by the patch-card editor. Applied to
+/// the loaded save in memory by [`Effect::EditPatchCards`]; not persisted
+/// to disk until the user hits Save ([`Effect::SaveEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum PatchCardEdit {
+    /// Register patch card `id` (append to the list, enabled).
+    AddCard { id: usize },
+    /// Unregister the patch card in `slot` (shift the rest up).
+    RemoveCard { slot: usize },
+    /// Toggle the patch card in `slot` between enabled and disabled.
+    ToggleCard { slot: usize },
+    /// Unregister every patch card.
     ClearAll,
 }
 
@@ -348,19 +363,18 @@ pub enum Effect {
     /// Folder editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
     EditChips(ChipEdit),
-    /// Folder editor: write the staged folder to the .sav on disk.
-    FolderEditCommit,
-    /// Folder editor: discard staged edits, reloading the on-disk
-    /// original.
-    FolderEditCancel,
     /// Navicust editor: stage one edit into the loaded save in memory
     /// (UI updates live; nothing hits disk yet).
     EditNavicust(NavicustEdit),
-    /// Navicust editor: write the staged grid to the .sav on disk.
-    NavicustEditCommit,
-    /// Navicust editor: discard staged edits, reloading the on-disk
+    /// Patch-card editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditPatchCards(PatchCardEdit),
+    /// Global save editor: write every staged edit (folder + navicust +
+    /// patch cards) to the .sav on disk in one shot.
+    SaveEditCommit,
+    /// Global save editor: discard all staged edits, reloading the on-disk
     /// original.
-    NavicustEditCancel,
+    SaveEditCancel,
 }
 
 impl PlayState {
@@ -500,8 +514,9 @@ impl PlayState {
                         }
                         None
                     }
-                    A::SaveEdit => Some(Effect::FolderEditCommit),
-                    A::CancelEdit => Some(Effect::FolderEditCancel),
+                    // One global Save / Cancel for the whole save.
+                    A::SaveEdit => Some(Effect::SaveEditCommit),
+                    A::CancelEdit => Some(Effect::SaveEditCancel),
                     A::AddChip { chip_id, code } => Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code })),
                     A::RemoveChip { slot } => {
                         // Mirror the save-side compaction in the in-progress
@@ -511,7 +526,9 @@ impl PlayState {
                         Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
                     }
                     A::ClearFolder => {
-                        self.save_view.editing_tags.clear();
+                        if let Some(e) = self.save_view.editing.as_mut() {
+                            e.tags.clear();
+                        }
                         Some(Effect::EditChips(ChipEdit::ClearFolder))
                     }
                     A::ToggleRegular { slot } => Some(Effect::EditChips(ChipEdit::ToggleRegular { slot })),
@@ -523,20 +540,22 @@ impl PlayState {
                         Some(Effect::EditChips(ChipEdit::SetTags(pair)))
                     }
                     // ----- Navicust editor -----
-                    A::SaveNavicustEdit => Some(Effect::NavicustEditCommit),
-                    A::CancelNavicustEdit => Some(Effect::NavicustEditCancel),
                     A::PlaceHeld { col, row } => {
                         // Build the part from the held state (already
                         // folded by `apply`), then drop it so the cursor
                         // is free again.
-                        let part = self.save_view.held_part.map(|h| tango_dataview::save::NavicustPart {
-                            id: h.id,
-                            col,
-                            row,
-                            rot: h.rot,
-                            compressed: h.compressed,
+                        let edit = self.save_view.editing.as_mut();
+                        let part = edit.and_then(|e| {
+                            let p = e.held_part.map(|h| tango_dataview::save::NavicustPart {
+                                id: h.id,
+                                col,
+                                row,
+                                rot: h.rot,
+                                compressed: h.compressed,
+                            });
+                            e.held_part = None;
+                            p
                         });
-                        self.save_view.held_part = None;
                         part.map(|p| Effect::EditNavicust(NavicustEdit::AddPart(p)))
                     }
                     A::PickUpInstalledPart { slot } => {
@@ -549,19 +568,30 @@ impl PlayState {
                                 None
                             }
                         });
-                        if let Some(p) = held {
-                            self.save_view.held_part = Some(save_view::HeldPart {
+                        if let (Some(p), Some(e)) = (held, self.save_view.editing.as_mut()) {
+                            e.held_part = Some(save_view::HeldPart {
                                 id: p.id,
                                 rot: p.rot,
                                 compressed: p.compressed,
                             });
+                            // Keep the picker entry in sync so picking is
+                            // consistent: the part now shows this rotation
+                            // / compression in the palette too.
+                            e.part_orient.insert(p.id, (p.rot, p.compressed));
                         }
                         Some(Effect::EditNavicust(NavicustEdit::RemovePart { slot }))
                     }
                     A::ClearNavicust => {
-                        self.save_view.held_part = None;
+                        if let Some(e) = self.save_view.editing.as_mut() {
+                            e.held_part = None;
+                        }
                         Some(Effect::EditNavicust(NavicustEdit::ClearAll))
                     }
+                    // ----- Patch-card editor -----
+                    A::AddPatchCard { id } => Some(Effect::EditPatchCards(PatchCardEdit::AddCard { id })),
+                    A::RemovePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::RemoveCard { slot })),
+                    A::TogglePatchCard { slot } => Some(Effect::EditPatchCards(PatchCardEdit::ToggleCard { slot })),
+                    A::ClearPatchCards => Some(Effect::EditPatchCards(PatchCardEdit::ClearAll)),
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }

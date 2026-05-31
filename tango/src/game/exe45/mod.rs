@@ -3,7 +3,7 @@ use crate::bnlc;
 use std::sync::LazyLock;
 use tango_dataview::save::Save as SaveTrait;
 
-const MATCH_TYPES: &[usize] = &[1];
+const MATCH_TYPES: &[usize] = &[1, 1];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: bnlc::Volume::Vol1,
     tga: "04.tga",

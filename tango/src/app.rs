@@ -598,17 +598,12 @@ impl App {
             patch_meta,
         ));
         // We just swapped in a freshly-built save, so any in-progress
-        // folder edit (which lived in the previous in-memory save) is
-        // gone — leave edit mode so the UI doesn't show stale state.
-        // The commit path takes the early-return above and never
+        // edit (which lived in the previous in-memory save) is gone —
+        // leave the global edit mode so the UI doesn't show stale state.
+        // Dropping the whole EditState clears every editor's scratch at
+        // once. The commit path takes the early-return above and never
         // reaches here, so this only fires on a real selection change.
-        self.play.save_view.editing = false;
-        self.play.save_view.editing_tags.clear();
-        self.play.save_view.library_filter.clear();
-        // Likewise drop any in-progress navicust edit.
-        self.play.save_view.navicust_editing = false;
-        self.play.save_view.held_part = None;
-        self.play.save_view.navicust_filter.clear();
+        self.play.save_view.editing = None;
     }
 }
 
@@ -730,7 +725,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
 /// Apply one staged [`tabs::play::NavicustEdit`] to a loaded save's
 /// navicust, in memory. Like [`apply_chip_edit`], this only touches the
 /// part slots; the materialized WRAM grid cache is rebuilt later, at
-/// commit ([`NavicustEditCommit`]). No disk I/O. A no-op on saves whose
+/// commit (`SaveEditCommit`). No disk I/O. A no-op on saves whose
 /// navi view isn't the (writable) Navicust variant.
 fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::NavicustEdit) {
     use tabs::play::NavicustEdit;
@@ -811,6 +806,75 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
     let assets = loaded.assets.as_ref();
     if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
         nc.rebuild_materialized(assets);
+    }
+}
+
+/// Apply one staged [`tabs::play::PatchCardEdit`] to a loaded save's
+/// registered patch-card list, in memory. Reads the current list under an
+/// immutable borrow, computes the new list, then rewrites the slots via
+/// [`PatchCard56sViewMut`]. No disk I/O — the commit path finalizes the
+/// anti-cheat mirror + checksum and writes separately. A no-op on saves
+/// whose patch-card view isn't the (writable) PatchCard56s variant.
+fn apply_patch_card_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCardEdit) {
+    use tabs::play::PatchCardEdit;
+    use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
+
+    let cards: Vec<PatchCard> = match loaded.save.view_patch_cards() {
+        Some(PatchCardsView::PatchCard56s(v)) => (0..v.count()).filter_map(|i| v.patch_card(i)).collect(),
+        _ => return,
+    };
+    // You can register at most one of each card the ROM defines, so the
+    // game's own card count is the list cap.
+    let max = loaded.assets.num_patch_card56s();
+    // Total MB of the currently-enabled cards, used to keep the enabled set
+    // within the in-game budget (see `MAX_PATCH_CARD_MB`).
+    let card_mb = |id: usize| loaded.assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
+    let enabled_mb = |list: &[PatchCard]| -> u32 { list.iter().filter(|c| c.enabled).map(|c| card_mb(c.id)).sum() };
+
+    let mut new_cards = cards.clone();
+    match edit {
+        PatchCardEdit::AddCard { id } => {
+            // No-op if the list is full or the card is already registered.
+            if new_cards.len() >= max || new_cards.iter().any(|c| c.id == id) {
+                return;
+            }
+            // Register it; enable it only if it still fits the MB budget,
+            // otherwise it lands disabled (the user can free up room and
+            // enable it later).
+            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::MAX_PATCH_CARD_MB;
+            new_cards.push(PatchCard { id, enabled });
+        }
+        PatchCardEdit::RemoveCard { slot } => {
+            if slot >= new_cards.len() {
+                return;
+            }
+            new_cards.remove(slot);
+        }
+        PatchCardEdit::ToggleCard { slot } => {
+            let Some(card) = new_cards.get(slot) else { return };
+            if card.enabled {
+                new_cards[slot].enabled = false;
+            } else {
+                // Enabling: refuse if it would exceed the MB budget.
+                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::MAX_PATCH_CARD_MB {
+                    return;
+                }
+                new_cards[slot].enabled = true;
+            }
+        }
+        PatchCardEdit::ClearAll => new_cards.clear(),
+    }
+
+    if let Some(PatchCardsViewMut::PatchCard56s(mut v)) = loaded.save.view_patch_cards_mut() {
+        // `set_patch_card` only writes slots below the current count, so
+        // grow to cover both lengths first, rewrite every kept entry, then
+        // shrink to the final length. Trailing bytes past the new count are
+        // ignored by the reader (which bounds reads on the count).
+        v.set_count(cards.len().max(new_cards.len()));
+        for (slot, card) in new_cards.iter().enumerate() {
+            v.set_patch_card(slot, card.clone());
+        }
+        v.set_count(new_cards.len());
     }
 }
 
@@ -1390,40 +1454,6 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::FolderEditCommit => {
-                if let Some(loaded) = self.loaded.as_mut() {
-                    if !loaded.save_path.as_os_str().is_empty() {
-                        // Finalize the anti-cheat mirror + checksum, then
-                        // write the SRAM dump back to the .sav.
-                        if let Some(mut chips) = loaded.save.view_chips_mut() {
-                            chips.rebuild_anticheat();
-                        }
-                        loaded.save.rebuild_checksum();
-                        let sram = loaded.save.to_sram_dump();
-                        let path = loaded.save_path.clone();
-                        match std::fs::write(&path, sram) {
-                            Ok(()) => {
-                                log::info!("saved edited folder: {}", path.display());
-                                // Reconcile the scanner cache with the new
-                                // on-disk bytes (the in-memory loaded is
-                                // already current, so refresh_loaded will
-                                // early-return and keep it).
-                                return self.rescan_off_thread(RescanFollowup::Refresh);
-                            }
-                            Err(e) => log::error!("save edited folder: {e}"),
-                        }
-                    }
-                }
-                iced::Task::none()
-            }
-            E::FolderEditCancel => {
-                // Staged edits live only in the in-memory loaded save;
-                // the on-disk file and the scanner cache still hold the
-                // original. Drop and rebuild loaded to revert.
-                self.loaded = None;
-                self.refresh_loaded();
-                iced::Task::none()
-            }
             E::EditNavicust(edit) => {
                 // Stage one navicust edit into the in-memory loaded save;
                 // the UI reads `loaded.save` directly so it shows live.
@@ -1432,41 +1462,65 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::NavicustEditCommit => {
+            E::EditPatchCards(edit) => {
+                // Stage one patch-card edit into the in-memory loaded save;
+                // the UI reads `loaded.save` directly so it shows live.
+                if let Some(loaded) = self.loaded.as_mut() {
+                    apply_patch_card_edit(loaded, edit);
+                }
+                iced::Task::none()
+            }
+            E::SaveEditCommit => {
                 if let Some(loaded) = self.loaded.as_mut() {
                     if !loaded.save_path.as_os_str().is_empty() {
-                        // Rebuild the materialized WRAM grid cache from the
-                        // edited part slots (disjoint field borrows: assets
-                        // is separate from save), then checksum + write.
-                        // Navicust lives outside the chip anti-cheat mirror,
-                        // so no anticheat rebuild is needed here.
-                        let assets = loaded.assets.as_ref();
-                        if let Some(tango_dataview::save::NaviViewMut::Navicust(mut nc)) =
-                            loaded.save.view_navi_mut()
+                        // One Save commits every tab's staged edits. Finalize
+                        // each view this game actually has, then checksum +
+                        // write once. Folder + patch-card libraries live in
+                        // the anti-cheat mirror; navicust has its own WRAM
+                        // grid cache (+ a baked read-only render to refresh).
+                        if let Some(mut chips) = loaded.save.view_chips_mut() {
+                            chips.rebuild_anticheat();
+                        }
                         {
-                            nc.rebuild_materialized(assets);
+                            // Disjoint field borrows: assets vs. save.
+                            let assets = loaded.assets.as_ref();
+                            if let Some(tango_dataview::save::NaviViewMut::Navicust(mut nc)) =
+                                loaded.save.view_navi_mut()
+                            {
+                                nc.rebuild_materialized(assets);
+                            }
+                        }
+                        if let Some(tango_dataview::save::PatchCardsViewMut::PatchCard56s(mut v)) =
+                            loaded.save.view_patch_cards_mut()
+                        {
+                            v.rebuild_anticheat();
                         }
                         loaded.save.rebuild_checksum();
-                        // Refresh the baked read-only grid image from the
-                        // now-updated save — the commit keeps the in-memory
-                        // Loaded (refresh_loaded early-returns), so without
-                        // this the Navi view shows the pre-edit grid until
-                        // the next reselection.
+                        // Refresh the baked Navi-view image from the updated
+                        // save (commit keeps the in-memory Loaded, so without
+                        // this the read-only grid lags until reselection).
                         loaded.rebuild_navicust_render();
                         let sram = loaded.save.to_sram_dump();
                         let path = loaded.save_path.clone();
                         match std::fs::write(&path, sram) {
                             Ok(()) => {
-                                log::info!("saved edited navicust: {}", path.display());
+                                log::info!("saved edited save: {}", path.display());
+                                // Reconcile the scanner cache with the new
+                                // on-disk bytes (the in-memory loaded is
+                                // already current, so refresh_loaded will
+                                // early-return and keep it).
                                 return self.rescan_off_thread(RescanFollowup::Refresh);
                             }
-                            Err(e) => log::error!("save edited navicust: {e}"),
+                            Err(e) => log::error!("save edited save: {e}"),
                         }
                     }
                 }
                 iced::Task::none()
             }
-            E::NavicustEditCancel => {
+            E::SaveEditCancel => {
+                // Staged edits live only in the in-memory loaded save;
+                // the on-disk file and the scanner cache still hold the
+                // original. Drop and rebuild loaded to revert every tab.
                 self.loaded = None;
                 self.refresh_loaded();
                 iced::Task::none()

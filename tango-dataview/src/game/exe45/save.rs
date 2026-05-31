@@ -148,9 +148,9 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
         }
 
         let navi = LinkNaviView { save: self.save }.navi();
-        self.save.buf[0x7500
-            + navi * (30 * std::mem::size_of::<RawChip>())
-            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+        self.save.buf
+            [0x7500 + navi * (30 * std::mem::size_of::<RawChip>()) + chip_index * std::mem::size_of::<RawChip>()..]
+            [..std::mem::size_of::<RawChip>()]
             .copy_from_slice(bytemuck::bytes_of(&{
                 let mut raw = RawChip::default();
                 raw.set_id(chip.id as u16);
@@ -168,9 +168,9 @@ impl<'a> crate::save::ChipsViewMut<'a> for ChipsViewMut<'a> {
 
         // 0xffff code reads back as an invalid ChipCode, so `chip()` returns None.
         let navi = LinkNaviView { save: self.save }.navi();
-        self.save.buf[0x7500
-            + navi * (30 * std::mem::size_of::<RawChip>())
-            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
+        self.save.buf
+            [0x7500 + navi * (30 * std::mem::size_of::<RawChip>()) + chip_index * std::mem::size_of::<RawChip>()..]
+            [..std::mem::size_of::<RawChip>()]
             .fill(0xff);
 
         true
