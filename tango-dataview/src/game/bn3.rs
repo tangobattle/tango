@@ -13,7 +13,7 @@ pub const NUM_NAVICUST_PARTS: usize = 204;
 // The previous value (40) cut off Shadow/Bug styles for elements ≥ 3
 // (WoodShadow=43, HeatBug=48, etc.). `Style::name()` and
 // `extra_ncp_color()` already return None for gaps in the table.
-pub const NUM_STYLES: usize = 61;
+pub const NUM_STYLES: usize = 0x40;
 
 /// Whether `id` is a real Style. The id packs element in bits 0..=2 (only
 /// the five elements 0..=4 exist) and type in bits 3..=5; bits 6-7 are
