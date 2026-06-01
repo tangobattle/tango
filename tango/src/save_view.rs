@@ -297,10 +297,13 @@ impl PatchCard4Choice {
         let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}"));
         // 3-digit catalog number prefix (also disambiguates same-named
         // cards in the dropdown); then the effect to tell them apart.
-        let label = match info.as_ref().and_then(|c| c.effect()) {
-            Some(effect) => format!("{id:03} {name} — {effect}"),
-            None => format!("{id:03} {name}"),
-        };
+        let label = format!(
+            "{id:03} {name} — {}",
+            patch_card4_effect_label(
+                info.as_ref()
+                    .map_or(tango_dataview::rom::PatchCard4Effect::None, |c| c.effect(),)
+            )
+        );
         Self { id: Some(id), label }
     }
 }
@@ -315,6 +318,102 @@ impl std::fmt::Display for PatchCard4Choice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
+}
+
+/// Human-readable label for a BN4 patch-card effect, derived from the
+/// machine-readable [`tango_dataview::rom::PatchCard4Effect`] decoded out of
+/// the ROM. (B-shortcut chip params are shown raw for now — the shortcut →
+/// chip-id table isn't mapped yet.)
+fn patch_card4_effect_label(effect: tango_dataview::rom::PatchCard4Effect) -> String {
+    use tango_dataview::rom::{
+        PatchCard4Aura as A, PatchCard4Color as C, PatchCard4Effect as E, PatchCard4Panel as P,
+        PatchCard4PetColor as PT, PatchCard4Soul as S,
+    };
+    match effect {
+        E::None => "—".to_string(),
+        E::PetMenu(c) => format!(
+            "{} PET menu",
+            match c {
+                PT::Blue => "Blue",
+                PT::Pink => "Pink",
+                PT::Green => "Green",
+                PT::Black => "Black",
+            }
+        ),
+        E::MaxHP(n) => format!("Max HP +{n}"),
+        E::BusterAttack(n) => format!("Buster Attack {}", n as u16 + 1),
+        E::BButton(s) => format!("B Button {s:?}"),
+        E::BCharge(s) => format!("B Charge {s:?}"),
+        E::BLeft(s) => format!("B + ← {s:?}"),
+        E::CustomSlots(n) => format!("Custom +{n}"),
+        E::MegaFolder(n) => format!("Mega Chip +{n}"),
+        E::GigaFolder(n) => format!("Giga Chip +{n}"),
+        E::TripleSupporter => "Triple Supporter".to_string(),
+        E::PanelStep(p) => format!(
+            "{} Panel Step",
+            match p {
+                P::Broken => "Broken",
+                P::Cracked => "Cracked",
+                P::Metal => "Metal",
+                P::Holy => "Holy",
+            }
+        ),
+        E::FullSynchro => "Full Synchro".to_string(),
+        E::Aura(a) => match a {
+            A::Barrier100 => "Barrier 100",
+            A::Barrier200 => "Barrier 200",
+            A::LifeAura => "LifeAura",
+        }
+        .to_string(),
+        E::Soul(s) => format!(
+            "{} Soul",
+            match s {
+                S::Roll => "Roll",
+                S::Guts => "Guts",
+                S::Wind => "Wind",
+                S::Search => "Search",
+                S::Fire => "Fire",
+                S::Thunder => "Thunder",
+                S::Proto => "Proto",
+                S::Number => "Number",
+                S::Metal => "Metal",
+                S::Junk => "Junk",
+                S::Aqua => "Aqua",
+                S::Wood => "Wood",
+            }
+        ),
+        E::Color(c) => format!(
+            "{} MegaMan",
+            match c {
+                C::Red => "Red",
+                C::Yellow => "Yellow",
+                C::White => "White",
+                C::Green => "Green",
+            }
+        ),
+        E::AllGuard => "All Guard".to_string(),
+    }
+}
+
+/// Joined human-readable label for a card's bugs, or `None` if it has none.
+fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option<String> {
+    use tango_dataview::rom::PatchCard4Bug as B;
+    if bugs.is_empty() {
+        return None;
+    }
+    Some(
+        bugs.iter()
+            .map(|b| match b {
+                B::Confused => "Start battle Confused",
+                B::AutoMove => "Auto-move forward",
+                B::HP(_) => "HP Bug",
+                B::CustomHP => "Custom HP Bug",
+                B::CustomMinus1 => "Custom −1",
+                B::PoisonPanelStep => "Poison Panel Step",
+            })
+            .collect::<Vec<_>>()
+            .join(" & "),
+    )
 }
 
 /// Sort order for the auto-battle-data editor's chip library pane.
@@ -3383,7 +3482,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                             .as_ref()
                             .and_then(|i| i.name())
                             .unwrap_or_else(|| format!("#{}", card.id));
-                        let effect = info.as_ref().and_then(|i| i.effect());
+                        let effect = info.as_ref().map(|i| i.effect());
                         // 3-digit catalog number, then the "name — effect"
                         // line (name struck + everything muted when off).
                         let number = text(format!("{:03}", card.id))
@@ -3391,10 +3490,9 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                             .font(iced::Font::MONOSPACE)
                             .style(muted_text_style);
                         let label = patch_card_name(
-                            if let Some(effect) = effect {
-                                format!("{name} — {effect}")
-                            } else {
-                                name
+                            match effect {
+                                Some(effect) => format!("{name} — {}", patch_card4_effect_label(effect)),
+                                None => name,
                             },
                             card.enabled,
                         );
@@ -3402,7 +3500,7 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                             .spacing(8)
                             .align_y(Alignment::Center)]
                         .spacing(2);
-                        if let Some(bug) = info.as_ref().and_then(|i| i.bug()) {
+                        if let Some(bug) = info.as_ref().and_then(|i| patch_card4_bugs_label(i.bugs())) {
                             col = col.push(
                                 row![
                                     Space::new().width(Length::Fixed(44.0)),
@@ -3796,7 +3894,7 @@ fn patch_card4_slot_row<'a>(
     if let Some(bug) = installed
         .as_ref()
         .and_then(|c| loaded.assets.patch_card4(c.id))
-        .and_then(|i| i.bug())
+        .and_then(|i| patch_card4_bugs_label(i.bugs()))
     {
         cell = cell.push(
             row![

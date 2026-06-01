@@ -12,7 +12,7 @@ pub struct Offsets {
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     navicust_bg: image::Rgba<u8>,
-    patch_cards: &'static [Option<PatchCard4>; super::NUM_PATCH_CARD4S],
+    patch_card_names: &'static [&'static str; super::NUM_PATCH_CARD4S],
 }
 
 const NAVICUST_BG_RS: image::Rgba<u8> = image::Rgba([0x8c, 0x10, 0x10, 0xff]);
@@ -31,7 +31,7 @@ pub static B4WJ_01: Offsets = Offsets {
     element_icons_pointer:          0x081098a0,
 
     navicust_bg: NAVICUST_BG_RS,
-    patch_cards: patch_cards::JA_PATCH_CARDS,
+    patch_card_names: patch_cards::JA_NAMES,
 };
 
 #[rustfmt::skip]
@@ -47,7 +47,7 @@ pub static B4BJ_01: Offsets = Offsets {
     element_icons_pointer:          0x081098ac,
 
     navicust_bg: NAVICUST_BG_BM,
-    patch_cards: patch_cards::JA_PATCH_CARDS,
+    patch_card_names: patch_cards::JA_NAMES,
 };
 
 #[rustfmt::skip]
@@ -63,7 +63,7 @@ pub static B4WE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099cc,
 
     navicust_bg: NAVICUST_BG_RS,
-    patch_cards: patch_cards::EN_PATCH_CARDS,
+    patch_card_names: patch_cards::EN_NAMES,
 };
 
 #[rustfmt::skip]
@@ -79,7 +79,7 @@ pub static B4BE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099d8,
 
     navicust_bg: NAVICUST_BG_BM,
-    patch_cards: patch_cards::EN_PATCH_CARDS,
+    patch_card_names: patch_cards::EN_NAMES,
 };
 
 pub struct Assets {
@@ -435,28 +435,36 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
     }
 }
 
+/// The locale-independent definition of a patch card (decoded from the ROM).
+/// Names live separately ([`patch_cards::JA_NAMES`]/[`EN_NAMES`](patch_cards::EN_NAMES))
+/// since they come from the physical cards, not the ROM.
 pub struct PatchCard4 {
-    name: &'static str,
     slot: u8,
-    effect: &'static str,
-    bug: Option<&'static str>,
+    effect: crate::rom::PatchCard4Effect,
+    bugs: &'static [crate::rom::PatchCard4Bug],
 }
 
-impl crate::rom::PatchCard4 for &PatchCard4 {
+/// A patch card joined with its locale name, for the [`crate::rom::PatchCard4`] view.
+struct PatchCard4View {
+    data: &'static PatchCard4,
+    name: &'static str,
+}
+
+impl crate::rom::PatchCard4 for PatchCard4View {
     fn name(&self) -> Option<String> {
         Some(self.name.to_string())
     }
 
     fn slot(&self) -> u8 {
-        self.slot
+        self.data.slot
     }
 
-    fn effect(&self) -> Option<String> {
-        Some(self.effect.to_string())
+    fn effect(&self) -> crate::rom::PatchCard4Effect {
+        self.data.effect
     }
 
-    fn bug(&self) -> Option<String> {
-        self.bug.map(|s| s.to_string())
+    fn bugs(&self) -> &[crate::rom::PatchCard4Bug] {
+        self.data.bugs
     }
 }
 
@@ -532,10 +540,9 @@ impl crate::rom::Assets for Assets {
     }
 
     fn patch_card4(&self, id: usize) -> Option<Box<dyn crate::rom::PatchCard4 + '_>> {
-        self.offsets
-            .patch_cards
-            .get(id)
-            .and_then(|m| m.as_ref().map(|m| Box::new(m) as Box<dyn crate::rom::PatchCard4>))
+        let data = patch_cards::PATCH_CARDS.get(id)?.as_ref()?;
+        let name = self.offsets.patch_card_names.get(id).copied().unwrap_or("");
+        Some(Box::new(PatchCard4View { data, name }))
     }
 
     fn num_patch_card4s(&self) -> usize {

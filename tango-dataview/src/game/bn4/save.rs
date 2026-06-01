@@ -210,6 +210,70 @@ impl crate::save::Save for Save {
         )))
     }
 
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
+        let crate::save::NaviView::Navicust(navicust) = self.view_navi().unwrap() else {
+            unreachable!();
+        };
+
+        let mut mega: isize = 5;
+        let mut giga: usize = 1;
+        if let Some(layout) = assets.navicust_layout() {
+            let grid = navicust.materialized();
+            if layout.command_line < grid.nrows() {
+                let mut seen = std::collections::HashSet::new();
+                for &cell in grid.row(layout.command_line).iter() {
+                    let Some(slot) = cell else { continue };
+                    if !seen.insert(slot) {
+                        continue; // a part spans several command-line cells; count once
+                    }
+                    let Some(part) = navicust.navicust_part(slot) else {
+                        continue;
+                    };
+                    match part.id / 4 {
+                        4 => mega += 1, // MegFldr1
+                        5 => mega += 2, // MegFldr2
+                        6 => giga += 1, // GigFldr1
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let crate::save::PatchCardsView::PatchCard4s(pc) = self.view_patch_cards().unwrap() else {
+            unreachable!()
+        };
+
+        for i in 0..6 {
+            let Some(c) = pc.patch_card(i) else {
+                continue;
+            };
+            if !c.enabled {
+                continue;
+            }
+            let Some(c) = assets.patch_card4(c.id) else {
+                continue;
+            };
+            match c.effect() {
+                crate::rom::PatchCard4Effect::MegaFolder(v) => mega += v as isize,
+                crate::rom::PatchCard4Effect::GigaFolder(v) => giga += v as usize,
+                _ => {}
+            }
+        }
+
+        Some(crate::save::FolderLimits {
+            mega_limit: mega.clamp(0, 10) as usize,
+            giga_limit: giga.clamp(0, 10),
+            dark_limit: None,
+            reg_memory: Some(self.buf[0x2148] + 4),
+            tag_memory: None,
+            max_copies: |chip| match chip.class() {
+                crate::rom::ChipClass::Mega | crate::rom::ChipClass::Giga => 1,
+                crate::rom::ChipClass::Standard => 4,
+                _ => 0,
+            },
+        })
+    }
+
     fn view_auto_battle_data(&self) -> Option<Box<dyn crate::save::AutoBattleDataView<'_> + '_>> {
         Some(Box::new(AutoBattleDataView { save: self }))
     }

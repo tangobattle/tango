@@ -38,11 +38,184 @@ pub trait PatchCard56 {
     fn effects(&self) -> Vec<PatchCard56Effect>;
 }
 
+/// A BN4 patch-card (modcard) effect, reverse-engineered from the game's
+/// effect jump table at `0x8041e8c`: each modcard id dispatches to a small
+/// handler that calls `set_effect(id, param)` (`0x800d78a`). The variant
+/// names the effect; a numeric payload is the raw game parameter (a chip /
+/// soul / panel index, or an amount), so it stays faithful to the binary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Effect {
+    /// No in-battle effect — the cosmetic PET-menu recolor cards.
+    None,
+    /// Max HP increased by this many points (direct `maxHP += N`).
+    MaxHP(u16),
+    /// Buster attack power set to this level (`set_effect 0x05`).
+    BusterAttack(u8),
+    /// B Button shortcut / normal-shot modifier (`set_effect 0x09`).
+    BButton(PatchCard4Shot),
+    /// B + charge fires this chip (`set_effect 0x0a`).
+    BCharge(PatchCard4Shot),
+    /// B + ← fires this chip (`set_effect 0x0c`).
+    BLeft(PatchCard4Shot),
+    /// +N Custom-screen slots, capped at 8 (`set_effect 0x12`).
+    CustomSlots(u8),
+    /// +N Mega-chip folder limit, capped at 10 (`set_effect 0x13`).
+    MegaFolder(u8),
+    /// +N Giga-chip folder limit, capped at 10 (`set_effect 0x14`).
+    GigaFolder(u8),
+    /// Triple Supporter — needs both the 1/2 and 2/2 cards (`set_effect 0x18`).
+    TripleSupporter,
+    /// Stepping off a panel leaves this terrain (`set_effect 0x1b`).
+    PanelStep(PatchCard4Panel),
+    /// Start the battle in Full Synchro (`set_effect 0x1f`).
+    FullSynchro,
+    /// Start the battle with this aura / barrier (`set_effect 0x21`).
+    Aura(PatchCard4Aura),
+    /// Start the battle in this Soul Unison (`set_effect 0x24`).
+    Soul(PatchCard4Soul),
+    /// MegaMan recolor (`set_effect 0x27`).
+    Color(PatchCard4Color),
+    /// All Guard — needs both the 1/2 and 2/2 cards (`set_effect 0x28`).
+    AllGuard,
+    /// Recolors the overworld PET menu — a non-battle cosmetic, so the
+    /// modcard's battle handler is empty (no `set_effect`); the colour is
+    /// taken from the card.
+    PetMenu(PatchCard4PetColor),
+}
+
+/// Terrain laid by a [`PatchCard4Effect::PanelStep`] card (`set_effect 0x1b`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Panel {
+    Broken,  // 1
+    Cracked, // 3
+    Metal,   // 5
+    Holy,    // 9
+}
+
+/// Battle-start aura from a [`PatchCard4Effect::Aura`] card (`set_effect 0x21`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Aura {
+    Barrier100, // 2
+    Barrier200, // 3
+    LifeAura,   // 6
+}
+
+/// Soul Unison from a [`PatchCard4Effect::Soul`] card (`set_effect 0x24`, 1-based).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Soul {
+    Roll,
+    Guts,
+    Wind,
+    Search,
+    Fire,
+    Thunder,
+    Proto,
+    Number,
+    Metal,
+    Junk,
+    Aqua,
+    Wood,
+}
+
+/// MegaMan recolor from a [`PatchCard4Effect::Color`] card (`set_effect 0x27`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Color {
+    Red,    // 1
+    Yellow, // 2
+    White,  // 3
+    Green,  // 4
+}
+
+/// PET-menu colour from a [`PatchCard4Effect::PetMenu`] card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4PetColor {
+    Blue,
+    Pink,
+    Green,
+    Black,
+}
+
+/// The chip/shot a [`PatchCard4Effect::BButton`]/[`BCharge`](PatchCard4Effect::BCharge)/
+/// [`BLeft`](PatchCard4Effect::BLeft) card assigns. The discriminant is the
+/// raw game param the modcard's `set_effect` writes (so `as u16` recovers it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u16)]
+pub enum PatchCard4Shot {
+    ZapRing = 4,
+    WaterGun = 32,
+    Flower = 33,
+    Reflect = 38,
+    GutsMachineGun = 40,
+    Cannon = 41,
+    MiniBomb = 42,
+    HeatShot = 43,
+    Bubbler = 44,
+    Thunder1 = 45,
+    Sword = 46,
+    Spreader = 47,
+    RandomTrapChip = 49,
+    CrackedPanel = 52,
+    PoisonPanel = 53,
+    Crackout = 54,
+    CopyDamage = 55,
+    WideShot1 = 56,
+    Thunder2 = 58,
+    DoubleCrack = 60,
+    WideSword = 62,
+    Recov10 = 64,
+    Lance = 65,
+    Hole = 66,
+    WideShot2 = 67,
+    SandRing = 68,
+    EnergyBomb = 69,
+    Thunder3 = 70,
+    TripleCrack = 72,
+    LongSword = 73,
+    FullCustom = 75,
+    WideShot3 = 76,
+    WindRack = 78,
+    MegaEnergyBomb = 79,
+    Ball = 80,
+    BugBomb = 81,
+    WideBlade = 82,
+    LongBlade = 83,
+    NorthWind = 84,
+    PanelReturn = 85,
+    Blind = 90,
+    Blizzard = 91,
+    HeatBreath = 92,
+    WoodyPowder = 93,
+    Repair = 94,
+    AirShot = 95,
+    ElecShock = 96,
+    Guard1 = 98,
+    GrassPanel = 104,
+    IcePanel = 105,
+}
+
+/// A BN4 patch-card drawback ("bug"), from `set_bug(category, param)`
+/// (`0x80476e0`). A card can carry more than one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PatchCard4Bug {
+    /// Start the battle Confused (`set_bug 0x01, 1`).
+    Confused,
+    /// MegaMan auto-moves forward (`set_bug 0x01, 2`).
+    AutoMove,
+    /// HP drains during the battle (`set_bug 0x02, n`) — `n` is the severity.
+    HP(u8),
+    /// Custom gauge HP bug (`set_bug 0x03, 1`).
+    CustomHP,
+    /// Custom gauge −1 (`set_bug 0x03, 2`).
+    CustomMinus1,
+    /// Poison panels appear as you step (`set_bug 0x04, 3`).
+    PoisonPanelStep,
+}
+
 pub trait PatchCard4 {
     fn name(&self) -> Option<String>;
     fn slot(&self) -> u8;
-    fn effect(&self) -> Option<String>;
-    fn bug(&self) -> Option<String>;
+    fn effect(&self) -> PatchCard4Effect;
+    fn bugs(&self) -> &[PatchCard4Bug];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]

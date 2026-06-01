@@ -208,8 +208,8 @@ impl crate::save::Save for Save {
         }
 
         Some(crate::save::FolderLimits {
-            mega_limit: mega.max(0) as usize,
-            giga_limit: giga,
+            mega_limit: mega.clamp(0, 10) as usize,
+            giga_limit: giga.clamp(0, 10),
             dark_limit: Some(3),
             reg_memory: Some(self.buf[0x52b1]),
             tag_memory: None,
@@ -219,7 +219,8 @@ impl crate::save::Save for Save {
                 }
                 match chip.class() {
                     crate::rom::ChipClass::Mega | crate::rom::ChipClass::Giga => 1,
-                    _ => 4,
+                    crate::rom::ChipClass::Standard => 4,
+                    _ => 0,
                 }
             },
         })

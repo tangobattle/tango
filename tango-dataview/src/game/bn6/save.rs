@@ -258,7 +258,11 @@ impl crate::save::Save for Save {
                     }
                 }
 
-                (mega.max(0) as usize, giga, self.buf[self.navi_stats_offset(0) + 0x09])
+                (
+                    mega.clamp(0, 10) as usize,
+                    giga.clamp(0, 10),
+                    self.buf[self.navi_stats_offset(0) + 0x09],
+                )
             }
             crate::save::NaviView::LinkNavi(ln) => {
                 let off = self.navi_stats_offset(ln.navi());

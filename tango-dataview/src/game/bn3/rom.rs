@@ -491,7 +491,7 @@ pub enum Ability {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bug {
     Custom(u8),
-    PoisonStep,
+    PoisonPanelStep,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -538,13 +538,13 @@ pub static EX_CODES: &[ExCode] = &[
     ExCode { code: 0x38, ability: Ability::FastGauge,      bug: Some(Bug::Custom(2)) },
     ExCode { code: 0x39, ability: Ability::SneakRun,       bug: None },
     ExCode { code: 0x3a, ability: Ability::Humor,          bug: None },
-    ExCode { code: 0x3b, ability: Ability::MaxHP(800),     bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x3c, ability: Ability::MaxHP(900),     bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x3d, ability: Ability::MaxHP(1000),    bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x3e, ability: Ability::MegaFolder(3),  bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x3f, ability: Ability::MegaFolder(4),  bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x40, ability: Ability::MegaFolder(5),  bug: Some(Bug::PoisonStep) },
-    ExCode { code: 0x41, ability: Ability::GigaFolder(1),  bug: Some(Bug::PoisonStep) },
+    ExCode { code: 0x3b, ability: Ability::MaxHP(800),     bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3c, ability: Ability::MaxHP(900),     bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3d, ability: Ability::MaxHP(1000),    bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3e, ability: Ability::MegaFolder(3),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3f, ability: Ability::MegaFolder(4),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x40, ability: Ability::MegaFolder(5),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x41, ability: Ability::GigaFolder(1),  bug: Some(Bug::PoisonPanelStep) },
 ];
 
 impl crate::rom::Assets for Assets {
