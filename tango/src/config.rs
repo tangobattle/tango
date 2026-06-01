@@ -73,11 +73,6 @@ pub struct Config {
     #[serde(serialize_with = "ser_language", deserialize_with = "de_language")]
     pub language: unic_langid::LanguageIdentifier,
     pub streamer_mode: bool,
-    /// Experimental: enables the in-app save (chip folder) editor on the
-    /// Play tab's Folder view. Off by default — experimental, may break
-    /// saves, may produce online-illegal folders.
-    #[serde(default)]
-    pub enable_save_editor: bool,
     pub theme: ThemeMode,
     pub data_path: std::path::PathBuf,
     pub matchmaking_endpoint: String,
@@ -195,7 +190,6 @@ impl Default for Config {
             nickname: None,
             language: default_language(),
             streamer_mode: false,
-            enable_save_editor: false,
             theme: ThemeMode::default(),
             data_path,
             matchmaking_endpoint: default_matchmaking_endpoint(),

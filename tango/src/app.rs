@@ -2137,7 +2137,6 @@ impl App {
             C::Language(l) => self.config.language = l,
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
             C::StreamerMode(b) => self.config.streamer_mode = b,
-            C::EnableSaveEditor(b) => self.config.enable_save_editor = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::FrameDelay(v) => {
                 self.config.frame_delay =

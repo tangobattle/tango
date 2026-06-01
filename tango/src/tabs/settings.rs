@@ -49,7 +49,6 @@ pub enum SettingsTab {
     Audio,
     Input,
     Netplay,
-    Experimental,
     About,
 }
 
@@ -76,7 +75,6 @@ pub enum Message {
     LanguageSelected(LanguageIdentifier),
     NicknameChanged(String),
     ToggleStreamerMode(bool),
-    ToggleEnableSaveEditor(bool),
     MatchmakingEndpointChanged(String),
     /// Netplay frame-delay slider moved. Persisted to `config.frame_delay`;
     /// it's this side's local presentation lag, applied at the next match start
@@ -127,7 +125,6 @@ pub enum ConfigChange {
     Language(LanguageIdentifier),
     Nickname(String),
     StreamerMode(bool),
-    EnableSaveEditor(bool),
     MatchmakingEndpoint(String),
     FrameDelay(u32),
     PatchRepo(String),
@@ -160,7 +157,6 @@ impl State {
             Message::LanguageSelected(l) => Some(ConfigChange::Language(l)),
             Message::NicknameChanged(s) => Some(ConfigChange::Nickname(s)),
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
-            Message::ToggleEnableSaveEditor(b) => Some(ConfigChange::EnableSaveEditor(b)),
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
@@ -238,11 +234,6 @@ pub fn view<'a>(
             side_btn(Icon::Volume2, t!(lang, "settings-section-audio"), SettingsTab::Audio),
             side_btn(Icon::Gamepad2, t!(lang, "settings-section-input"), SettingsTab::Input),
             side_btn(Icon::Globe, t!(lang, "settings-section-netplay"), SettingsTab::Netplay),
-            side_btn(
-                Icon::FlaskConical,
-                t!(lang, "settings-section-experimental"),
-                SettingsTab::Experimental
-            ),
             side_btn(Icon::Info, t!(lang, "settings-section-about"), SettingsTab::About),
         ]
         .spacing(4)
@@ -258,7 +249,6 @@ pub fn view<'a>(
         SettingsTab::Audio => settings_audio(lang, config),
         SettingsTab::Input => settings_input(lang, config, state),
         SettingsTab::Netplay => settings_netplay(lang, config),
-        SettingsTab::Experimental => settings_experimental(lang, config),
         SettingsTab::About => settings_about(lang, config, &state.about, updater_status),
         // The status arg is consumed by About's call here; iced
         // discards the unused-on-other-tabs branches at runtime
@@ -386,44 +376,6 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         iced::widget::checkbox(config.allow_prerelease_upgrades)
             .label(t!(lang, "settings-allow-prerelease-upgrades"))
             .on_toggle(Message::ToggleAllowPrereleaseUpgrades)
-            .style(widgets::chunky_checkbox),
-    ]
-    .spacing(14)
-    .padding(widgets::PANE_PADDING)
-    .into()
-}
-
-fn settings_experimental<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    // Prominent amber warning banner above the toggles.
-    let warning = container(
-        row![
-            Icon::AlertTriangle.widget().size(TEXT_BODY),
-            text(t!(lang, "settings-experimental-warning")).size(TEXT_BODY).width(Fill),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Start),
-    )
-    .padding(12)
-    .width(Fill)
-    .style(|theme: &iced::Theme| {
-        let amber = iced::Color::from_rgb8(0xff, 0xb0, 0x2e);
-        container::Style {
-            text_color: Some(theme.palette().text),
-            background: Some(iced::Background::Color(iced::Color { a: 0.14, ..amber })),
-            border: iced::Border {
-                radius: 8.0.into(),
-                width: 1.0,
-                color: iced::Color { a: 0.5, ..amber },
-            },
-            ..Default::default()
-        }
-    });
-
-    column![
-        warning,
-        iced::widget::checkbox(config.enable_save_editor)
-            .label(t!(lang, "settings-enable-save-editor"))
-            .on_toggle(Message::ToggleEnableSaveEditor)
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)

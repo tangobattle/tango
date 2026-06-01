@@ -704,12 +704,12 @@ impl PlayState {
                         // ordered move; pick-up / cancel are visual-only.
                         use sweeten::widget::drag::DragEvent;
                         match ev {
-                            DragEvent::Dropped { index, target_index } if index != target_index => Some(
-                                Effect::EditPatchCard56s(PatchCard56Edit::MoveCard {
+                            DragEvent::Dropped { index, target_index } if index != target_index => {
+                                Some(Effect::EditPatchCard56s(PatchCard56Edit::MoveCard {
                                     from: index,
                                     to: target_index,
-                                }),
-                            ),
+                                }))
+                            }
                             _ => None,
                         }
                     }
@@ -1086,7 +1086,7 @@ impl PlayState {
                 );
             }
         }
-        self.save_view(lang, loaded, streamer_mode, config, netplay_phase)
+        self.save_view(lang, loaded, streamer_mode, netplay_phase)
     }
 
     fn selector_strip<'a>(
@@ -1482,7 +1482,6 @@ impl PlayState {
         lang: &'a LanguageIdentifier,
         loaded: Option<&'a selection::Loaded>,
         streamer_mode: bool,
-        config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
     ) -> Element<'a, Message> {
         let Some(loaded) = loaded else {
@@ -1503,7 +1502,8 @@ impl PlayState {
             streamer_mode,
             play_button,
             true,
-            config.enable_save_editor,
+            // The save editor is always available (no longer experimental).
+            true,
         )
         .map(Message::SaveViewAction)
     }
