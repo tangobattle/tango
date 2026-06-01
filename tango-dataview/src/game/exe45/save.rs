@@ -79,7 +79,17 @@ impl crate::save::Save for Save {
     }
 
     fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
-        crate::save::FolderLimits::default()
+        crate::save::FolderLimits {
+            mega_limit: Some(3),
+            giga_limit: Some(1),
+            reg_memory: None,
+            max_copies: |chip| match chip.class() {
+                crate::rom::ChipClass::Mega | crate::rom::ChipClass::Giga => 1,
+                crate::rom::ChipClass::Standard => 3,
+                _ => 0,
+            },
+            ..Default::default()
+        }
     }
 
     fn rebuild_checksum(&mut self) {
