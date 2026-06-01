@@ -753,6 +753,18 @@ impl State {
         }
     }
 
+    /// Shift the staged tag selection when a chip is added at the top: the run
+    /// of chips above the first empty slot (`gap`) slides down one, so any
+    /// staged tag in that run moves down with it.
+    pub fn shift_tags_for_top_insert(&mut self, gap: usize) {
+        let Some(edit) = self.editing.as_mut() else { return };
+        for s in edit.tags.iter_mut() {
+            if *s < gap {
+                *s += 1;
+            }
+        }
+    }
+
     /// Apply an `Action` to the state. `CopyTab` is left for the
     /// caller to handle (clipboard side-effects can't happen inside
     /// `apply`); everything else is folded in. Returns a Task the

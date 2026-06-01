@@ -565,7 +565,18 @@ impl PlayState {
                     // One global Save / Cancel for the whole save.
                     A::SaveEdit => Some(Effect::SaveEditCommit),
                     A::CancelEdit => Some(Effect::SaveEditCancel),
-                    A::AddChip { chip_id, code } => Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code })),
+                    A::AddChip { chip_id, code } => {
+                        // New chips are inserted at the top, sliding the
+                        // existing run down into the first empty slot — so
+                        // shift the staged TAG selection to match.
+                        if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
+                            let fi = v.equipped_folder_index();
+                            (0..save_view::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+                        }) {
+                            self.save_view.shift_tags_for_top_insert(gap);
+                        }
+                        Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code }))
+                    }
                     A::RemoveChip { slot } => {
                         // Mirror the save-side compaction in the in-progress
                         // tag selection (drop + shift), so the TAG toggles
@@ -575,20 +586,37 @@ impl PlayState {
                     }
                     A::ReorderChips(ev) => {
                         // Only a completed drop reorders; pick-up / cancel are
-                        // visual-only. Reject unless both endpoints are filled
-                        // (no dragging an empty slot, no dropping into a gap).
+                        // visual-only.
                         use sweeten::widget::drag::DragEvent;
                         let DragEvent::Dropped { index, target_index } = ev else {
                             return None;
                         };
-                        let (from, to) = (index, target_index);
-                        let filled = |slot: usize| {
-                            loaded
-                                .and_then(|l| l.save.view_chips().map(|v| (v.equipped_folder_index(), v)))
-                                .map(|(fi, v)| v.chip(fi, slot).is_some())
-                                .unwrap_or(false)
+                        let from = index;
+                        // Live folder occupancy, to validate + resolve the drop.
+                        let Some(filled) = loaded.and_then(|l| l.save.view_chips()).map(|v| {
+                            let fi = v.equipped_folder_index();
+                            (0..save_view::MAX_FOLDER_CHIPS)
+                                .map(|i| v.chip(fi, i).is_some())
+                                .collect::<Vec<bool>>()
+                        }) else {
+                            return None;
                         };
-                        if from == to || !filled(from) || !filled(to) {
+                        // Can't drag an empty slot.
+                        if !filled.get(from).copied().unwrap_or(false) {
+                            return None;
+                        }
+                        // Dropping onto an empty slot drops the chip in at the
+                        // end of the packed list (the first empty slot above the
+                        // target = right after the last chip), never leaving a gap.
+                        let to = if filled.get(target_index).copied().unwrap_or(false) {
+                            target_index
+                        } else {
+                            match filled.iter().rposition(|&f| f) {
+                                Some(last) => last,
+                                None => return None,
+                            }
+                        };
+                        if from == to {
                             return None;
                         }
                         // Keep the staged TAG selection aligned with the move.

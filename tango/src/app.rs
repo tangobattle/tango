@@ -646,18 +646,40 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             if !crate::save_view::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
                 return;
             }
-            // Find the first empty slot; no-op if the folder is full.
-            let slot = loaded
-                .save
-                .view_chips()
-                .and_then(|v| (0..MAX_FOLDER_CHIPS).find(|&i| v.chip(folder_idx, i).is_none()));
-            match slot {
-                Some(slot) => vec![Op::Chip {
-                    slot,
-                    chip: Chip { id: chip_id, code },
-                }],
-                None => return,
-            }
+            let (chips, regular, tags) = {
+                let v = loaded.save.view_chips();
+                let chips: Vec<Option<Chip>> = (0..MAX_FOLDER_CHIPS)
+                    .map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i)))
+                    .collect();
+                let regular = v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten();
+                let tags = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten();
+                (chips, regular, tags)
+            };
+            // First empty slot; no-op if the folder is full. New chips go in at
+            // the top, sliding the chips above the gap down into it. REG/TAG
+            // slot pointers shift down with them.
+            let Some(gap) = (0..MAX_FOLDER_CHIPS).find(|&i| chips[i].is_none()) else {
+                return;
+            };
+            let mut new_chips = chips;
+            new_chips.insert(0, Some(Chip { id: chip_id, code }));
+            new_chips.remove(gap + 1);
+
+            let remap = |i: usize| if i < gap { i + 1 } else { i };
+            let new_regular = regular.map(remap);
+            let new_tags = tags.map(|[a, b]| [remap(a), remap(b)]);
+
+            let mut ops: Vec<Op> = new_chips
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| match c {
+                    Some(chip) => Op::Chip { slot: i, chip },
+                    None => Op::Clear { slot: i },
+                })
+                .collect();
+            ops.push(Op::Regular { value: new_regular });
+            ops.push(Op::Tags(new_tags));
+            ops
         }
         ChipEdit::RemoveChip { slot } => {
             // Remove the chip and shift everything below it up one so the
@@ -942,9 +964,9 @@ fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::Pat
             }
             // Register it; enable it only if it still fits the MB budget,
             // otherwise it lands disabled (the user can free up room and
-            // enable it later).
+            // enable it later). Inserted at the top of the list.
             let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::MAX_PATCH_CARD56_MB;
-            new_cards.push(PatchCard { id, enabled });
+            new_cards.insert(0, PatchCard { id, enabled });
         }
         PatchCard56Edit::RemoveCard { slot } => {
             if slot >= new_cards.len() {
