@@ -75,7 +75,7 @@ impl crate::save::Save for Save {
 
     fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         crate::save::FolderLimits {
-            reg_memory: None, // TODO
+            reg_memory: Some(50), // TODO
             navi_limit: Some(
                 assets
                     .style(self.style())
