@@ -130,8 +130,33 @@ impl crate::save::Save for Save {
         buf
     }
 
-    fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
-        crate::save::FolderLimits::default()
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
+        let crate::save::NaviView::Navicust(nc) = self.view_navi().unwrap() else {
+            unreachable!();
+        };
+
+        // TODO: Take additional NaviCust + EX Code stuff into account.
+        crate::save::FolderLimits {
+            mega_limit: Some(
+                assets
+                    .style(nc.style().unwrap())
+                    .and_then(|style| {
+                        if matches!(style.typ(), crate::rom::StyleType::Team) {
+                            Some(8)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(5),
+            ),
+            giga_limit: Some(1),
+            max_copies: |chip| match chip.class() {
+                crate::rom::ChipClass::Mega | crate::rom::ChipClass::Giga => 1,
+                crate::rom::ChipClass::Standard => 4,
+                _ => 0,
+            },
+            ..Default::default()
+        }
     }
 
     fn rebuild_checksum(&mut self) {

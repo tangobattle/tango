@@ -45,6 +45,13 @@ impl Save {
     pub fn compute_checksum(&self) -> u32 {
         crate::save::compute_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
+
+    /// The current Style Change, packed as `(type << 3) | element` with the
+    /// 0x80 "style acquired" flag masked off; resolve names/colors via
+    /// `Assets::style`. Stored next to `equipped_folder_index` (0x0dc2).
+    pub fn style(&self) -> usize {
+        (self.buf[0x0dc1] & 0x3f) as usize
+    }
 }
 
 impl crate::save::Save for Save {
@@ -66,9 +73,21 @@ impl crate::save::Save for Save {
         buf
     }
 
-    fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         crate::save::FolderLimits {
-            max_copies: |_| 10,
+            navi_limit: Some(
+                assets
+                    .style(self.style())
+                    .and_then(|style| {
+                        if matches!(style.typ(), crate::rom::StyleType::Team | crate::rom::StyleType::Hub) {
+                            Some(8)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(5),
+            ),
+            max_copies: |_| 5,
             ..Default::default()
         }
     }

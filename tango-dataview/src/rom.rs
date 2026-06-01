@@ -245,7 +245,22 @@ pub trait NavicustPart {
 
 pub trait Style {
     fn name(&self) -> Option<String>;
+    fn typ(&self) -> StyleType;
+    fn element(&self) -> usize;
     fn extra_ncp_color(&self) -> Option<NavicustPartColor>;
+}
+
+#[derive(Clone, Copy)]
+pub enum StyleType {
+    Normal,
+    Guts,
+    Custom,
+    Team,
+    Shield,
+    Ground,
+    Shadow,
+    Bug,
+    Hub,
 }
 
 #[derive(Debug, Clone)]

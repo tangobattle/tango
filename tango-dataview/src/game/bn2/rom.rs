@@ -7,6 +7,7 @@ pub struct Offsets {
     chip_icon_palette_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
+    key_items_names_pointer: u32,
 }
 
 #[rustfmt::skip]
@@ -17,6 +18,7 @@ pub static AE2E_00: Offsets = Offsets {
     chip_icon_palette_pointer:      0x0800b890,
     element_icons_pointer:          0x08025fe0,
     element_icon_palette_pointer:   0x08005388,
+    key_items_names_pointer:        0x08021bac,
 };
 
 #[rustfmt::skip]
@@ -27,6 +29,7 @@ pub static AE2J_00_AC: Offsets = Offsets {
     chip_icon_palette_pointer:      0x0800b750,
     element_icons_pointer:          0x08025ec0,
     element_icon_palette_pointer:   0x08005384,
+    key_items_names_pointer:        0x08021a38,
 };
 
 pub struct Assets {
@@ -226,6 +229,71 @@ impl Assets {
     }
 }
 
+#[repr(transparent)]
+#[derive(bytemuck::AnyBitPattern, Clone, Copy, c2rust_bitfields::BitfieldStruct)]
+struct RawStyle {
+    #[bitfield(name = "element", ty = "u8", bits = "0..=2")]
+    #[bitfield(name = "typ", ty = "u8", bits = "3..=7")]
+    type_and_element: [u8; 1],
+}
+
+struct Style<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+impl<'a> crate::rom::Style for Style<'a> {
+    fn name(&self) -> Option<String> {
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+
+        let region = &self.assets.mapper.get(bytemuck::pod_read_unaligned::<u32>(
+            &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..std::mem::size_of::<u32>()],
+        ));
+        let entry = crate::msg::get_entry(region, 128 + raw.typ() as usize * 5 + raw.element() as usize)?;
+
+        Some(
+            self.assets
+                .msg_parser
+                .parse(entry)
+                .ok()?
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        crate::msg::Chunk::Text(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>(),
+        )
+    }
+
+    fn typ(&self) -> crate::rom::StyleType {
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+        match raw.typ() {
+            0 => crate::rom::StyleType::Normal,
+            1 => crate::rom::StyleType::Guts,
+            2 => crate::rom::StyleType::Custom,
+            3 => crate::rom::StyleType::Team,
+            4 => crate::rom::StyleType::Shield,
+            5 => crate::rom::StyleType::Hub,
+            _ => crate::rom::StyleType::Normal,
+        }
+    }
+
+    fn element(&self) -> usize {
+        // 1=Elec, 2=Heat, 3=Aqua, 4=Wood (0 = none).
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+        raw.element() as usize
+    }
+
+    fn extra_ncp_color(&self) -> Option<crate::rom::NavicustPartColor> {
+        // BN2 has no NaviCust.
+        None
+    }
+}
+
 impl crate::rom::Assets for Assets {
     fn chip(&self, id: usize) -> Option<Box<dyn crate::rom::Chip + '_>> {
         if id >= self.num_chips() {
@@ -236,6 +304,17 @@ impl crate::rom::Assets for Assets {
 
     fn num_chips(&self) -> usize {
         super::NUM_CHIPS
+    }
+
+    fn style(&self, id: usize) -> Option<Box<dyn crate::rom::Style + '_>> {
+        if id >= self.num_styles() {
+            return None;
+        }
+        Some(Box::new(Style { id, assets: self }))
+    }
+
+    fn num_styles(&self) -> usize {
+        super::NUM_STYLES
     }
 
     fn can_set_regular_chip(&self) -> bool {

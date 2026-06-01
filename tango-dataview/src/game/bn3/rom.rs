@@ -465,10 +465,31 @@ impl<'a> crate::rom::Style for Style<'a> {
     fn extra_ncp_color(&self) -> Option<crate::rom::NavicustPartColor> {
         extra_ncp_color(self.id as u8)
     }
+
+    fn typ(&self) -> crate::rom::StyleType {
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+
+        match raw.typ() {
+            0 => crate::rom::StyleType::Normal,
+            1 => crate::rom::StyleType::Guts,
+            2 => crate::rom::StyleType::Custom,
+            3 => crate::rom::StyleType::Team,
+            4 => crate::rom::StyleType::Shield,
+            5 => crate::rom::StyleType::Ground,
+            6 => crate::rom::StyleType::Shadow,
+            7 => crate::rom::StyleType::Bug,
+            _ => crate::rom::StyleType::Normal,
+        }
+    }
+
+    fn element(&self) -> usize {
+        let raw = bytemuck::cast::<_, RawStyle>(self.id as u8);
+        raw.element() as usize
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Ability {
+pub enum Effect {
     MaxHP(u16),
     SuperArmor,
     BreakBuster,
@@ -497,7 +518,7 @@ pub enum Bug {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExCode {
     pub code: u8,
-    pub ability: Ability,
+    pub effect: Effect,
     pub bug: Option<Bug>,
 }
 
@@ -509,42 +530,42 @@ impl ExCode {
 
 #[rustfmt::skip]
 pub static EX_CODES: &[ExCode] = &[
-    ExCode { code: 0x1e, ability: Ability::MaxHP(100),     bug: None },
-    ExCode { code: 0x1f, ability: Ability::MaxHP(150),     bug: None },
-    ExCode { code: 0x20, ability: Ability::MaxHP(200),     bug: None },
-    ExCode { code: 0x21, ability: Ability::MaxHP(250),     bug: None },
-    ExCode { code: 0x22, ability: Ability::MaxHP(300),     bug: None },
-    ExCode { code: 0x23, ability: Ability::MaxHP(350),     bug: None },
-    ExCode { code: 0x24, ability: Ability::MaxHP(400),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x25, ability: Ability::MaxHP(450),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x26, ability: Ability::MaxHP(500),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x27, ability: Ability::MaxHP(550),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x28, ability: Ability::MaxHP(600),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x29, ability: Ability::MaxHP(650),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2a, ability: Ability::MaxHP(700),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2b, ability: Ability::SuperArmor,     bug: None },
-    ExCode { code: 0x2c, ability: Ability::BreakBuster,    bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2d, ability: Ability::BreakCharge,    bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x2e, ability: Ability::ShadowShoes,    bug: None },
-    ExCode { code: 0x2f, ability: Ability::FloatShoes,     bug: None },
-    ExCode { code: 0x30, ability: Ability::AirShoes,       bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x31, ability: Ability::UnderShirt,     bug: None },
-    ExCode { code: 0x32, ability: Ability::Block,          bug: None },
-    ExCode { code: 0x33, ability: Ability::Shield,         bug: None },
-    ExCode { code: 0x34, ability: Ability::Reflect,        bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x35, ability: Ability::AntiDamage,     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x36, ability: Ability::MegaFolder(1),  bug: None },
-    ExCode { code: 0x37, ability: Ability::MegaFolder(2),  bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x38, ability: Ability::FastGauge,      bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x39, ability: Ability::SneakRun,       bug: None },
-    ExCode { code: 0x3a, ability: Ability::Humor,          bug: None },
-    ExCode { code: 0x3b, ability: Ability::MaxHP(800),     bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3c, ability: Ability::MaxHP(900),     bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3d, ability: Ability::MaxHP(1000),    bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3e, ability: Ability::MegaFolder(3),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3f, ability: Ability::MegaFolder(4),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x40, ability: Ability::MegaFolder(5),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x41, ability: Ability::GigaFolder(1),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x1e, effect: Effect::MaxHP(100),     bug: None },
+    ExCode { code: 0x1f, effect: Effect::MaxHP(150),     bug: None },
+    ExCode { code: 0x20, effect: Effect::MaxHP(200),     bug: None },
+    ExCode { code: 0x21, effect: Effect::MaxHP(250),     bug: None },
+    ExCode { code: 0x22, effect: Effect::MaxHP(300),     bug: None },
+    ExCode { code: 0x23, effect: Effect::MaxHP(350),     bug: None },
+    ExCode { code: 0x24, effect: Effect::MaxHP(400),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x25, effect: Effect::MaxHP(450),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x26, effect: Effect::MaxHP(500),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x27, effect: Effect::MaxHP(550),     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x28, effect: Effect::MaxHP(600),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x29, effect: Effect::MaxHP(650),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2a, effect: Effect::MaxHP(700),     bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2b, effect: Effect::SuperArmor,     bug: None },
+    ExCode { code: 0x2c, effect: Effect::BreakBuster,    bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x2d, effect: Effect::BreakCharge,    bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x2e, effect: Effect::ShadowShoes,    bug: None },
+    ExCode { code: 0x2f, effect: Effect::FloatShoes,     bug: None },
+    ExCode { code: 0x30, effect: Effect::AirShoes,       bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x31, effect: Effect::UnderShirt,     bug: None },
+    ExCode { code: 0x32, effect: Effect::Block,          bug: None },
+    ExCode { code: 0x33, effect: Effect::Shield,         bug: None },
+    ExCode { code: 0x34, effect: Effect::Reflect,        bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x35, effect: Effect::AntiDamage,     bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x36, effect: Effect::MegaFolder(1),  bug: None },
+    ExCode { code: 0x37, effect: Effect::MegaFolder(2),  bug: Some(Bug::Custom(1)) },
+    ExCode { code: 0x38, effect: Effect::FastGauge,      bug: Some(Bug::Custom(2)) },
+    ExCode { code: 0x39, effect: Effect::SneakRun,       bug: None },
+    ExCode { code: 0x3a, effect: Effect::Humor,          bug: None },
+    ExCode { code: 0x3b, effect: Effect::MaxHP(800),     bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3c, effect: Effect::MaxHP(900),     bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3d, effect: Effect::MaxHP(1000),    bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3e, effect: Effect::MegaFolder(3),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x3f, effect: Effect::MegaFolder(4),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x40, effect: Effect::MegaFolder(5),  bug: Some(Bug::PoisonPanelStep) },
+    ExCode { code: 0x41, effect: Effect::GigaFolder(1),  bug: Some(Bug::PoisonPanelStep) },
 ];
 
 impl crate::rom::Assets for Assets {

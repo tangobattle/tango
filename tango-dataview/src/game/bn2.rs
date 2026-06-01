@@ -7,3 +7,5 @@ pub const NUM_CHIPS: usize = 315;
 /// with no pack slot; reading `pack_count` for them would hit an adjacent
 /// save structure and surface chips the player doesn't own.
 pub const NUM_PACK_CHIPS: usize = 292;
+/// Style ids span the masked style byte (`buf[0x0dc1] & 0x3f`).
+pub const NUM_STYLES: usize = 0x40;
