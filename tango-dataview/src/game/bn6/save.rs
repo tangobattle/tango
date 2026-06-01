@@ -210,28 +210,26 @@ impl crate::save::Save for Save {
     fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         let (mega_limit, giga_limit, reg_memory) = match self.view_navi().unwrap() {
             crate::save::NaviView::Navicust(navicust) => {
+                let layout = assets.navicust_layout().unwrap();
+
                 let mut mega: isize = 5;
                 let mut giga: usize = 1;
 
-                if let Some(layout) = assets.navicust_layout() {
-                    let grid = navicust.materialized();
-                    if layout.command_line < grid.nrows() {
-                        let mut seen = std::collections::HashSet::new();
-                        for &cell in grid.row(layout.command_line).iter() {
-                            let Some(slot) = cell else { continue };
-                            if !seen.insert(slot) {
-                                continue; // a part spans several command-line cells; count once
-                            }
-                            let Some(part) = navicust.navicust_part(slot) else {
-                                continue;
-                            };
-                            match part.id >> 2 {
-                                4 | 29 => mega += 1, // MegFldr1 / FldrPak1
-                                5 | 30 => mega += 2, // MegFldr2 / FldrPak2
-                                6 => giga += 1,      // GigFldr1
-                                _ => {}
-                            }
-                        }
+                let grid = navicust.materialized();
+                let mut seen = std::collections::HashSet::new();
+                for &cell in grid.row(layout.command_line).iter() {
+                    let Some(slot) = cell else { continue };
+                    if !seen.insert(slot) {
+                        continue; // a part spans several command-line cells; count once
+                    }
+                    let Some(part) = navicust.navicust_part(slot) else {
+                        continue;
+                    };
+                    match part.id >> 2 {
+                        4 | 29 => mega += 1, // MegFldr1 / FldrPak1
+                        5 | 30 => mega += 2, // MegFldr2 / FldrPak2
+                        6 => giga += 1,      // GigFldr1
+                        _ => {}
                     }
                 }
 

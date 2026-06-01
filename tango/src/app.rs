@@ -641,10 +641,8 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
     let ops: Vec<Op> = match edit {
         ChipEdit::AddChip { chip_id, code } => {
             // Enforce the equipped navi's folder limits (mega/giga class
-            // caps + the per-chip copy cap). folder_limits is None for
-            // games without them, so those stay unrestricted; the editor
-            // also greys out the library row, so this is the backstop.
-            let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+            // caps + the per-chip copy cap).
+            let limits = loaded.save.folder_limits(&*loaded.assets);
             if !crate::save_view::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
                 return;
             }
@@ -718,7 +716,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // Setting a new Regular requires its MB to fit Regular memory
             // (the editor greys the toggle out otherwise). Clearing is free.
             if current != Some(slot) {
-                let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+                let limits = loaded.save.folder_limits(&*loaded.assets);
                 if let Some(cap) = limits.reg_memory {
                     let fits = loaded
                         .save
@@ -740,7 +738,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // greys out the toggle that would form it, so this is a
             // backstop). `None` clears the pair and is always allowed.
             if let Some([a, b]) = pair {
-                let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+                let limits = loaded.save.folder_limits(&*loaded.assets);
                 if let Some(budget) = limits.tag_memory {
                     let lr: &selection::Loaded = loaded;
                     let mb_of = |slot: usize| {

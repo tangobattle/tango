@@ -1,3 +1,6 @@
+use crate::game::bn3::rom::ex_codes::EX_CODES;
+
+mod ex_codes;
 mod msg;
 
 pub struct Offsets {
@@ -488,86 +491,6 @@ impl<'a> crate::rom::Style for Style<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Effect {
-    MaxHP(u16),
-    SuperArmor,
-    BreakBuster,
-    BreakCharge,
-    ShadowShoes,
-    FloatShoes,
-    AirShoes,
-    UnderShirt,
-    Block,
-    Shield,
-    Reflect,
-    AntiDamage,
-    MegaFolder(u8),
-    GigaFolder(u8),
-    FastGauge,
-    SneakRun,
-    Humor,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Bug {
-    Custom(u8),
-    PoisonPanelStep,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ExCode {
-    pub code: u8,
-    pub effect: Effect,
-    pub bug: Option<Bug>,
-}
-
-impl ExCode {
-    pub fn from_code(code: u8) -> Option<&'static ExCode> {
-        EX_CODES.iter().find(|e| e.code == code)
-    }
-}
-
-#[rustfmt::skip]
-pub static EX_CODES: &[ExCode] = &[
-    ExCode { code: 0x1e, effect: Effect::MaxHP(100),     bug: None },
-    ExCode { code: 0x1f, effect: Effect::MaxHP(150),     bug: None },
-    ExCode { code: 0x20, effect: Effect::MaxHP(200),     bug: None },
-    ExCode { code: 0x21, effect: Effect::MaxHP(250),     bug: None },
-    ExCode { code: 0x22, effect: Effect::MaxHP(300),     bug: None },
-    ExCode { code: 0x23, effect: Effect::MaxHP(350),     bug: None },
-    ExCode { code: 0x24, effect: Effect::MaxHP(400),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x25, effect: Effect::MaxHP(450),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x26, effect: Effect::MaxHP(500),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x27, effect: Effect::MaxHP(550),     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x28, effect: Effect::MaxHP(600),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x29, effect: Effect::MaxHP(650),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2a, effect: Effect::MaxHP(700),     bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2b, effect: Effect::SuperArmor,     bug: None },
-    ExCode { code: 0x2c, effect: Effect::BreakBuster,    bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x2d, effect: Effect::BreakCharge,    bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x2e, effect: Effect::ShadowShoes,    bug: None },
-    ExCode { code: 0x2f, effect: Effect::FloatShoes,     bug: None },
-    ExCode { code: 0x30, effect: Effect::AirShoes,       bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x31, effect: Effect::UnderShirt,     bug: None },
-    ExCode { code: 0x32, effect: Effect::Block,          bug: None },
-    ExCode { code: 0x33, effect: Effect::Shield,         bug: None },
-    ExCode { code: 0x34, effect: Effect::Reflect,        bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x35, effect: Effect::AntiDamage,     bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x36, effect: Effect::MegaFolder(1),  bug: None },
-    ExCode { code: 0x37, effect: Effect::MegaFolder(2),  bug: Some(Bug::Custom(1)) },
-    ExCode { code: 0x38, effect: Effect::FastGauge,      bug: Some(Bug::Custom(2)) },
-    ExCode { code: 0x39, effect: Effect::SneakRun,       bug: None },
-    ExCode { code: 0x3a, effect: Effect::Humor,          bug: None },
-    ExCode { code: 0x3b, effect: Effect::MaxHP(800),     bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3c, effect: Effect::MaxHP(900),     bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3d, effect: Effect::MaxHP(1000),    bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3e, effect: Effect::MegaFolder(3),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x3f, effect: Effect::MegaFolder(4),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x40, effect: Effect::MegaFolder(5),  bug: Some(Bug::PoisonPanelStep) },
-    ExCode { code: 0x41, effect: Effect::GigaFolder(1),  bug: Some(Bug::PoisonPanelStep) },
-];
-
 impl crate::rom::Assets for Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
         if id >= self.num_chips() {
@@ -635,6 +558,10 @@ impl crate::rom::Assets for Assets {
             has_out_of_bounds: false,
             background: self.offsets.navicust_bg,
         })
+    }
+
+    fn ex_code(&self, code: u8) -> Option<crate::rom::ExCode> {
+        EX_CODES.iter().find(|e| e.code == code).copied()
     }
 }
 

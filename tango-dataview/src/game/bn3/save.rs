@@ -134,22 +134,66 @@ impl crate::save::Save for Save {
         let crate::save::NaviView::Navicust(nc) = self.view_navi().unwrap() else {
             unreachable!();
         };
+        let layout = assets.navicust_layout().unwrap();
 
-        // TODO: Take additional NaviCust + EX Code stuff into account.
+        let mut reg_memory: u8 = 50;
+
+        let mut mega: usize = assets
+            .style(nc.style().unwrap())
+            .and_then(|style| {
+                if matches!(style.typ(), crate::rom::StyleType::Team) {
+                    Some(8)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(5);
+        let mut giga: usize = 1;
+
+        let grid = nc.materialized();
+
+        // Reg+5 raises regular memory wherever it is placed in the grid.
+        let mut seen = std::collections::HashSet::new();
+        for &cell in grid.iter() {
+            let Some(slot) = cell else { continue };
+            if !seen.insert(slot) {
+                continue; // a part spans several cells; count once
+            }
+            if nc.navicust_part(slot).is_some_and(|part| part.id / 4 == 0x28) {
+                reg_memory += 5; // Reg+5
+            }
+        }
+
+        // MegFldr/GigFldr only count when they touch the command line.
+        let mut seen = std::collections::HashSet::new();
+        for &cell in grid.row(layout.command_line).iter() {
+            let Some(slot) = cell else { continue };
+            if !seen.insert(slot) {
+                continue; // a part spans several command-line cells; count once
+            }
+            let Some(part) = nc.navicust_part(slot) else {
+                continue;
+            };
+            match part.id / 4 {
+                0x0c => mega += 1, // MegFldr1
+                0x0d => mega += 2, // MegFldr2
+                0x30 => giga += 1, // GigFldr1
+                _ => {}
+            }
+        }
+
+        if let Some(ec) = nc.ex_code().and_then(|code| assets.ex_code(code as u8)) {
+            match ec.effect {
+                crate::rom::ExCodeEffect::MegaFolder(v) => mega += v as usize,
+                crate::rom::ExCodeEffect::GigaFolder(v) => giga += v as usize,
+                _ => {}
+            }
+        }
+
         crate::save::FolderLimits {
-            mega_limit: Some(
-                assets
-                    .style(nc.style().unwrap())
-                    .and_then(|style| {
-                        if matches!(style.typ(), crate::rom::StyleType::Team) {
-                            Some(8)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(5),
-            ),
-            giga_limit: Some(1),
+            reg_memory: Some(reg_memory),
+            mega_limit: Some(mega.clamp(0, 10)),
+            giga_limit: Some(giga.clamp(0, 10)),
             max_copies: |chip| match chip.class() {
                 crate::rom::ChipClass::Mega | crate::rom::ChipClass::Giga => 1,
                 crate::rom::ChipClass::Standard => 4,

@@ -1878,7 +1878,7 @@ pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
         return true;
     };
     let folder_idx = view.equipped_folder_index();
-    let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+    let limits = loaded.save.folder_limits(&*loaded.assets);
     let usage = FolderUsage::scan(loaded, folder_idx);
     if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
         || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)

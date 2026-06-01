@@ -1,6 +1,40 @@
 use byteorder::ReadBytesExt;
 use image::Pixel;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExCodeEffect {
+    MaxHP(u16),
+    SuperArmor,
+    BreakBuster,
+    BreakCharge,
+    ShadowShoes,
+    FloatShoes,
+    AirShoes,
+    UnderShirt,
+    Block,
+    Shield,
+    Reflect,
+    AntiDamage,
+    MegaFolder(u8),
+    GigaFolder(u8),
+    FastGauge,
+    SneakRun,
+    Humor,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExCodeBug {
+    Custom(u8),
+    PoisonPanelStep,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExCode {
+    pub code: u8,
+    pub effect: ExCodeEffect,
+    pub bug: Option<ExCodeBug>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
@@ -334,6 +368,9 @@ pub trait Assets {
         0
     }
     fn navicust_layout(&self) -> Option<NavicustLayout> {
+        None
+    }
+    fn ex_code(&self, _code: u8) -> Option<ExCode> {
         None
     }
 }
