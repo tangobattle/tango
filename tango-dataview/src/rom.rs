@@ -273,7 +273,7 @@ pub trait NavicustPart {
     fn description(&self) -> Option<String>;
     fn color(&self) -> Option<NavicustPartColor>;
     fn is_solid(&self) -> bool;
-    fn compressed_bitmap(&self) -> NavicustBitmap;
+    fn compressed_bitmap(&self) -> Option<NavicustBitmap>;
     fn uncompressed_bitmap(&self) -> NavicustBitmap;
 }
 

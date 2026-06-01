@@ -196,7 +196,11 @@ impl Loaded {
         for id in 0..assets.num_navicust_parts() {
             let icon = assets.navicust_part(id).and_then(|info| {
                 let color = info.color()?;
-                let img = crate::navicust::render_part_thumb(&info.compressed_bitmap(), color, info.is_solid())?;
+                let img = crate::navicust::render_part_thumb(
+                    &info.compressed_bitmap().unwrap_or_else(|| info.uncompressed_bitmap()),
+                    color,
+                    info.is_solid(),
+                )?;
                 let (w, h) = (img.width(), img.height());
                 Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
             });

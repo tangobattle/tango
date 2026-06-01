@@ -22,11 +22,10 @@ where
 
 fn ncp_bitmap(info: &dyn crate::rom::NavicustPart, compressed: bool, rot: u8) -> crate::rom::NavicustBitmap {
     rotate(
-        &if compressed {
-            info.compressed_bitmap()
-        } else {
-            info.uncompressed_bitmap()
-        },
+        &info
+            .compressed_bitmap()
+            .filter(|_| compressed)
+            .unwrap_or_else(|| info.uncompressed_bitmap()),
         rot as usize,
     )
     .into_owned()
@@ -50,8 +49,12 @@ pub fn materialize_color_bar(
 ) -> Vec<Option<crate::rom::NavicustPartColor>> {
     let mut colors: Vec<crate::rom::NavicustPartColor> = Vec::new();
     for i in 0..navicust_view.count() {
-        let Some(ncp) = navicust_view.navicust_part(i) else { continue };
-        let Some(info) = assets.navicust_part(ncp.id) else { continue };
+        let Some(ncp) = navicust_view.navicust_part(i) else {
+            continue;
+        };
+        let Some(info) = assets.navicust_part(ncp.id) else {
+            continue;
+        };
         let Some(c) = info.color() else { continue };
         if !colors.contains(&c) {
             colors.push(c);

@@ -372,16 +372,18 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         .unwrap()
     }
 
-    fn compressed_bitmap(&self) -> crate::rom::NavicustBitmap {
+    fn compressed_bitmap(&self) -> Option<crate::rom::NavicustBitmap> {
         let raw = self.raw();
-        ndarray::Array2::from_shape_vec(
-            (5, 5),
-            self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
-                .iter()
-                .map(|x| *x != 0)
-                .collect(),
+        Some(
+            ndarray::Array2::from_shape_vec(
+                (5, 5),
+                self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
+                    .iter()
+                    .map(|x| *x != 0)
+                    .collect(),
+            )
+            .unwrap(),
         )
-        .unwrap()
     }
 }
 

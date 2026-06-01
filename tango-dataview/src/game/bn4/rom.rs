@@ -422,16 +422,9 @@ impl<'a> crate::rom::NavicustPart for NavicustPart<'a> {
         .unwrap()
     }
 
-    fn compressed_bitmap(&self) -> crate::rom::NavicustBitmap {
-        let raw = self.raw();
-        ndarray::Array2::from_shape_vec(
-            (5, 5),
-            self.assets.mapper.get(raw.compressed_bitmap_ptr)[..25]
-                .iter()
-                .map(|x| *x != 0)
-                .collect(),
-        )
-        .unwrap()
+    fn compressed_bitmap(&self) -> Option<crate::rom::NavicustBitmap> {
+        // BN4 has compressed bitmaps but doens't use them. In fact, the one for UnderSht is just wrong.
+        None
     }
 }
 

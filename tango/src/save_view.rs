@@ -505,9 +505,8 @@ fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> V
         let Some(info) = assets.navicust_part(id) else { continue };
         // Skip unused/padding slots: a real part has a color and a
         // non-empty shape. Placeholder entries have an all-zero bitmap.
-        // Match the (compressed) shape the palette thumbnail shows.
         let Some(color) = info.color() else { continue };
-        if !info.compressed_bitmap().iter().any(|&set| set) {
+        if !info.uncompressed_bitmap().iter().any(|&set| set) {
             continue;
         }
         let Some(name) = info.name() else { continue };
@@ -2282,11 +2281,10 @@ fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim:
     }
     let info = loaded.assets.navicust_part(id)?;
     let color = info.color()?;
-    let bitmap = if compressed {
-        info.compressed_bitmap()
-    } else {
-        info.uncompressed_bitmap()
-    };
+    let bitmap = info
+        .compressed_bitmap()
+        .filter(|_| compressed)
+        .unwrap_or_else(|| info.uncompressed_bitmap());
     let rotated = crate::navicust::rotate_bitmap(&bitmap, rot);
     crate::navicust_editor::PartThumb::new(&rotated, color, info.is_solid(), dim).map(|t| t.view())
 }
@@ -2329,11 +2327,10 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     let held = edit.held_part.and_then(|hp| {
         let info = assets.navicust_part(hp.id)?;
         let color = info.color()?;
-        let bitmap = if hp.compressed {
-            info.compressed_bitmap()
-        } else {
-            info.uncompressed_bitmap()
-        };
+        let bitmap = info
+            .compressed_bitmap()
+            .filter(|_| hp.compressed)
+            .unwrap_or_else(|| info.uncompressed_bitmap());
         let (solid, plus) = crate::navicust::part_colors(color);
         Some(crate::navicust_editor::Held {
             cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
@@ -2488,7 +2485,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         let compressible = loaded
             .assets
             .navicust_part(id)
-            .map(|info| info.compressed_bitmap() != info.uncompressed_bitmap())
+            .and_then(|info| info.compressed_bitmap().map(|bmp| bmp != info.uncompressed_bitmap()))
             .unwrap_or(false);
         let compress_btn = widgets::icon_button_maybe(
             compress_icon,

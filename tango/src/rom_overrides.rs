@@ -157,7 +157,7 @@ impl<'a> tango_dataview::rom::NavicustPart for OverridenNavicustPart<'a> {
     fn is_solid(&self) -> bool {
         self.navicust_part.is_solid()
     }
-    fn compressed_bitmap(&self) -> tango_dataview::rom::NavicustBitmap {
+    fn compressed_bitmap(&self) -> Option<tango_dataview::rom::NavicustBitmap> {
         self.navicust_part.compressed_bitmap()
     }
     fn uncompressed_bitmap(&self) -> tango_dataview::rom::NavicustBitmap {
