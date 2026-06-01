@@ -2288,7 +2288,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     // Editor grid geometry (must match `EditorGrid::new`) so the hover
     // popover overlay's cells line up with the painted squares.
     let g = crate::navicust::geometry(cols, rows);
-    let scale = (crate::navicust_editor::DISPLAY_W / g.total_w).min(1.0);
+    let scale = crate::navicust::display_scale(crate::navicust_editor::DISPLAY_W);
     let cell = crate::navicust::SQUARE_SIZE * scale;
     let origin_x = (g.body_origin_x + crate::navicust::BORDER_WIDTH / 2.0) * scale;
     let origin_y = (g.body_origin_y + crate::navicust::BORDER_WIDTH / 2.0) * scale;

@@ -334,11 +334,10 @@ fn build_navicust_render(
     let mut img = crate::navicust::render(&materialized, &layout, view.as_ref(), assets, &lang, None);
     let (handle_w, handle_h) = (img.width(), img.height());
 
-    let body_w_native = cols as f32 * SQUARE_SIZE + BORDER_WIDTH;
-    let total_w_native = body_w_native + PADDING_H * 2.0;
-    // Same display width as `EditorGrid` (capped at native so small grids
-    // aren't upscaled), so the viewer and editor are the same size.
-    let display_scale = (crate::navicust_editor::DISPLAY_W / total_w_native).min(1.0);
+    // Constant cell size across all games (the 7×7 cell size), so the image
+    // grows/shrinks with the grid instead of every grid being squeezed to one
+    // total width. Same scale `EditorGrid` uses, so viewer and editor match.
+    let display_scale = crate::navicust::display_scale(crate::navicust_editor::DISPLAY_W);
     let display_w = handle_w as f32 * display_scale;
     let display_h = handle_h as f32 * display_scale;
     // Round corners to ~4 display px (the pane's radius).

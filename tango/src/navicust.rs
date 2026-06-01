@@ -289,6 +289,22 @@ pub fn geometry(cols: usize, rows: usize) -> Geometry {
     }
 }
 
+/// Reference grid width, in columns, the on-screen cell size is pinned to.
+/// 7 is the widest navicust (BN6); pinning the display scale here makes every
+/// grid — viewer and editor — draw its cells at the 7×7 cell size, so the
+/// image grows or shrinks with the grid instead of each grid being squeezed
+/// to a single total width.
+pub const REFERENCE_COLS: usize = 7;
+
+/// The constant display scale applied to every navicust: the scale a
+/// `REFERENCE_COLS`-wide grid needs to fit `display_w`. Cells therefore have a
+/// fixed on-screen size across all games. Because 7 is the widest grid this
+/// never upscales — narrower grids render as proportionally smaller images.
+pub fn display_scale(display_w: f32) -> f32 {
+    // `total_w` depends only on the column count, so the row count is moot.
+    display_w / geometry(REFERENCE_COLS, REFERENCE_COLS).total_w
+}
+
 // Drawing primitives: thin wrappers over the iced canvas `Frame` so the
 // shared paint routine reads in native coords + `[u8; 4]` colours. `s` is the
 // display scale, applied to both coordinates and stroke widths (iced's frame
@@ -470,7 +486,7 @@ fn paint_color_bar<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, m: &Gr
         }
     } else {
         const TILE: f32 = SQUARE_SIZE * 3.0 / 4.0;
-        let tile_count = std::cmp::max(4, m.bar.len()) as f32;
+        let tile_count = std::cmp::max(4, m.bar.iter().take_while(|v| v.is_some()).count()) as f32;
         let bar_inner_w = TILE * tile_count + BORDER_WIDTH * 2.0;
         let left = PADDING_H as f32 + (g.body_w - bar_inner_w) + BORDER_WIDTH / 2.0;
         let inner_w = TILE - BORDER_WIDTH;

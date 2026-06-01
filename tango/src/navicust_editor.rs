@@ -228,7 +228,7 @@ pub struct State {
 impl EditorGrid {
     pub fn new(model: GridModel, held: Option<Held>) -> Self {
         let g = navicust::geometry(model.cols, model.rows);
-        let scale = (DISPLAY_W / g.total_w).min(1.0);
+        let scale = navicust::display_scale(DISPLAY_W);
         EditorGrid {
             cell: navicust::SQUARE_SIZE * scale,
             origin_x: (g.body_origin_x + navicust::BORDER_WIDTH / 2.0) * scale,
