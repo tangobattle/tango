@@ -1795,6 +1795,7 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
 /// ([`crate::app`]'s `apply_chip_edit`). Built by scanning the folder's 30
 /// slots; cheap enough to rebuild per edit / per frame.
 pub struct FolderUsage {
+    pub navi: usize,
     pub mega: usize,
     pub giga: usize,
     pub dark: usize,
@@ -1808,6 +1809,7 @@ impl FolderUsage {
     pub fn scan(loaded: &Loaded, folder_idx: usize) -> Self {
         use tango_dataview::rom::ChipClass;
         let assets = loaded.assets.as_ref();
+        let mut navi = 0;
         let mut mega = 0;
         let mut giga = 0;
         let mut dark = 0;
@@ -1824,6 +1826,7 @@ impl FolderUsage {
                     continue;
                 }
                 match chip.class() {
+                    ChipClass::Navi => navi += 1,
                     ChipClass::Mega => mega += 1,
                     ChipClass::Giga => giga += 1,
                     _ => {}
@@ -1831,6 +1834,7 @@ impl FolderUsage {
             }
         }
         Self {
+            navi,
             mega,
             giga,
             dark,
@@ -1853,6 +1857,7 @@ impl FolderUsage {
             return limits.dark_limit.map(|limit| self.dark < limit).unwrap_or(true);
         }
         match info.class() {
+            ChipClass::Navi => limits.navi_limit.map(|limit| self.navi < limit).unwrap_or(true),
             ChipClass::Mega => limits.mega_limit.map(|limit| self.mega < limit).unwrap_or(true),
             ChipClass::Giga => limits.giga_limit.map(|limit| self.giga < limit).unwrap_or(true),
             _ => true,
@@ -1875,7 +1880,8 @@ pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
     let folder_idx = view.equipped_folder_index();
     let limits = loaded.save.folder_limits(loaded.assets.as_ref());
     let usage = FolderUsage::scan(loaded, folder_idx);
-    if limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
+    if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
+        || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
         || limits.giga_limit.map(|limit| usage.giga > limit).unwrap_or(false)
         || limits.dark_limit.map(|limit| usage.dark > limit).unwrap_or(false)
     {
@@ -2031,6 +2037,27 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     // their caps (red when over) plus the Regular/Tag memory budgets.
     let stats_row = {
         let mut r = row![].spacing(12).align_y(Alignment::Center);
+        if let Some(limit) = limits.navi_limit {
+            let navi = text(t!(
+                lang,
+                "folder-edit-navi",
+                used = usage.navi as i64,
+                limit = limit as i64
+            ))
+            .size(TEXT_CAPTION)
+            .style({
+                let over = usage.navi > limit;
+                move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if over {
+                        theme.palette().danger
+                    } else {
+                        muted_color(theme)
+                    }),
+                }
+            });
+            r = r.push(navi);
+        }
+
         if let Some(limit) = limits.mega_limit {
             let mega = text(t!(
                 lang,

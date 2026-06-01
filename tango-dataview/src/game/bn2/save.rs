@@ -67,7 +67,10 @@ impl crate::save::Save for Save {
     }
 
     fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
-        crate::save::FolderLimits::default()
+        crate::save::FolderLimits {
+            max_copies: |_| 10,
+            ..Default::default()
+        }
     }
 
     fn rebuild_checksum(&mut self) {

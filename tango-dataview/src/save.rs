@@ -22,6 +22,7 @@ pub enum PatchCardsViewMut<'a> {
 }
 
 pub struct FolderLimits {
+    pub navi_limit: Option<usize>,
     pub mega_limit: Option<usize>,
     pub giga_limit: Option<usize>,
     pub dark_limit: Option<usize>,
@@ -36,6 +37,7 @@ pub struct FolderLimits {
 impl Default for FolderLimits {
     fn default() -> Self {
         Self {
+            navi_limit: Default::default(),
             mega_limit: Default::default(),
             giga_limit: Default::default(),
             dark_limit: Default::default(),

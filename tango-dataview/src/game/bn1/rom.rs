@@ -47,7 +47,12 @@ struct Chip<'a> {
 struct RawChip {
     codes: [u8; 5],
     element: u8,
-    _unk_06: [u8; 6],
+    family: u8,
+    _subfamily: u8,
+    rarity: u8,
+    library_number: u8,
+    _unk_0a: u8,
+    _unk_0b: u8,
     attack_power: u16,
     _unk_0e: [u8; 2],
     icon_ptr: u32,
@@ -156,7 +161,18 @@ impl<'a> crate::rom::Chip for Chip<'a> {
     }
 
     fn class(&self) -> crate::rom::ChipClass {
-        crate::rom::ChipClass::Standard
+        let raw = self.raw();
+        if raw.family == 0x40 {
+            // Family 0x40 is the Navi-chip family (PharoMan … Bass, ids 148-199).
+            crate::rom::ChipClass::Navi
+        } else if self.id != 0 && raw.library_number == 0xff && raw.rarity != 0xff {
+            // Program-advance result chips (Z-Canon … 2xHero, ids 202-237):
+            // not registered in the library, but real chips (rarity != 0xff,
+            // unlike the blank slots) and not the Buster (id 0).
+            crate::rom::ChipClass::ProgramAdvance
+        } else {
+            crate::rom::ChipClass::Standard
+        }
     }
 
     fn dark(&self) -> bool {

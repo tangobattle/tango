@@ -47,9 +47,9 @@ struct Chip<'a> {
 struct RawChip {
     codes: [u8; 6],
     element: u8,
-    _family: u8,
+    family: u8,
     _subfamily: u8,
-    _rarity: u8,
+    rarity: u8,
     mb: u8,
     _unk_0a: u8,
     attack_power: u16,
@@ -166,7 +166,21 @@ impl<'a> crate::rom::Chip for Chip<'a> {
     }
 
     fn class(&self) -> crate::rom::ChipClass {
-        crate::rom::ChipClass::Standard
+        let raw = self.raw();
+        if raw.family == 0x60 && raw.rarity != 0 {
+            // Family 0x60 is the Navi-chip family; its rarity-0 members are
+            // program advances (Gater, Darkness, …), not Navi chips.
+            crate::rom::ChipClass::Navi
+        } else if raw.codes.iter().all(|&c| c == 0xff)
+            && raw.element != 0xff
+            && self.name().is_some_and(|n| !n.is_empty())
+        {
+            // Program-advance result chips (Z-Canon … Darkness) have no
+            // selectable codes at all.
+            crate::rom::ChipClass::ProgramAdvance
+        } else {
+            crate::rom::ChipClass::Standard
+        }
     }
 
     fn dark(&self) -> bool {

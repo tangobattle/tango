@@ -99,7 +99,7 @@ impl save::Save for Save {
 
     fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         crate::save::FolderLimits {
-            mega_limit: Some(5),
+            navi_limit: Some(5),
             max_copies: |_| 10,
             ..Default::default()
         }

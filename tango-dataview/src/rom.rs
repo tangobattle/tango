@@ -4,6 +4,7 @@ use image::Pixel;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
+    Navi, // Only used for BN1 and 2.
     Mega,
     Giga,
     None,
