@@ -425,12 +425,15 @@ impl canvas::Program<Msg> for EditorGrid {
     }
 
     fn mouse_interaction(&self, _state: &State, bounds: Rectangle, cursor: mouse::Cursor) -> mouse::Interaction {
-        if cursor.is_over(bounds) {
-            if self.held.is_some() {
-                mouse::Interaction::Crosshair
-            } else {
-                mouse::Interaction::Pointer
-            }
+        let Some(p) = cursor.position_in(bounds) else {
+            return mouse::Interaction::default();
+        };
+        if self.held.is_some() {
+            // Carrying a part to drop it — closed "grabbing" hand.
+            mouse::Interaction::Grabbing
+        } else if self.cell_at(p).and_then(|(c, r)| self.occ(c, r)).is_some() {
+            // Hovering a placed part you can pick up — open "grab" hand.
+            mouse::Interaction::Grab
         } else {
             mouse::Interaction::default()
         }

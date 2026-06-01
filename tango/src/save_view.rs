@@ -614,6 +614,23 @@ pub struct State {
     pub auto_battle_data_sort: AutoBattleDataSort,
 }
 
+/// New index of an element originally at `i` after an ordered move that takes
+/// the element at `from` and reinserts it at `to` (i.e. `vec.remove(from);
+/// vec.insert(to, x)`). Elements between the two endpoints shift by one toward
+/// the vacated side; everything outside the range is unchanged. Used to keep
+/// slot-indexed references (REG/TAG, staged tags) aligned with a drag reorder.
+pub fn reorder_index(i: usize, from: usize, to: usize) -> usize {
+    if i == from {
+        to
+    } else if from < to && i > from && i <= to {
+        i - 1
+    } else if from > to && i >= to && i < from {
+        i + 1
+    } else {
+        i
+    }
+}
+
 /// Everything an in-progress save edit needs that's thrown away when the
 /// edit ends. Held as [`State::editing`]'s `Option` payload so one
 /// assignment clears it all.
@@ -723,6 +740,16 @@ impl State {
             if *s > removed_slot {
                 *s -= 1;
             }
+        }
+    }
+
+    /// Remap the in-progress tag selection through a chip reorder (ordered
+    /// move from `from` to `to`), so the staged TAG toggles keep pointing at
+    /// the same chips after a drag — the mirror of [`compact_tags`] for moves.
+    pub fn move_tags(&mut self, from: usize, to: usize) {
+        let Some(edit) = self.editing.as_mut() else { return };
+        for s in edit.tags.iter_mut() {
+            *s = reorder_index(*s, from, to);
         }
     }
 
@@ -870,6 +897,7 @@ impl State {
             Action::EnterEdit
             | Action::AddChip { .. }
             | Action::RemoveChip { .. }
+            | Action::ReorderChips(_)
             | Action::ClearFolder
             | Action::ToggleRegular { .. }
             | Action::ToggleTag { .. }
@@ -878,6 +906,7 @@ impl State {
             | Action::ClearNavicust
             | Action::AddPatchCard56 { .. }
             | Action::RemovePatchCard56 { .. }
+            | Action::ReorderPatchCard56s(_)
             | Action::TogglePatchCard56 { .. }
             | Action::ClearPatchCard56s
             | Action::AddPatchCard4 { .. }
@@ -933,6 +962,10 @@ pub enum Action {
     RemoveChip {
         slot: usize,
     },
+    /// Folder pane: a drag-reorder gesture from the draggable folder list
+    /// (carries sweeten's raw [`DragEvent`]; only a completed drop between two
+    /// filled slots actually moves a chip — see the play tab's handler).
+    ReorderChips(sweeten::widget::drag::DragEvent),
     /// Folder pane: empty every slot (and clear REG/TAG).
     ClearFolder,
     /// Toggle `slot` as the folder's Regular chip — set it, or clear it
@@ -995,6 +1028,9 @@ pub enum Action {
     RemovePatchCard56 {
         slot: usize,
     },
+    /// List pane: a drag-reorder gesture (carries sweeten's raw [`DragEvent`];
+    /// only a completed drop reorders — see the play tab's handler).
+    ReorderPatchCard56s(sweeten::widget::drag::DragEvent),
     /// List pane: toggle the patch card in `slot` between enabled and
     /// disabled.
     TogglePatchCard56 {
@@ -1964,7 +2000,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     let filled = (0..MAX_FOLDER_CHIPS)
         .filter(|&i| chips_view.chip(folder_idx, i).is_some())
         .count();
-    let mut folder_list = column![].spacing(1).padding(0);
+    let mut folder_rows: Vec<Element<'a, Action>> = Vec::with_capacity(MAX_FOLDER_CHIPS);
     for slot in 0..MAX_FOLDER_CHIPS {
         let chip = chips_view.chip(folder_idx, slot);
         let is_regular = regular_idx == Some(slot);
@@ -1990,7 +2026,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             }
             None => true,
         };
-        folder_list = folder_list.push(folder_slot_row(
+        folder_rows.push(folder_slot_row(
             loaded,
             slot,
             chip,
@@ -2002,6 +2038,17 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             tag_allowed,
         ));
     }
+    // Draggable list: grab a chip row and drop it to reorder. The handler
+    // ignores drops involving an empty slot, so only chips move (no dragging a
+    // gap, no dropping into one).
+    // `width(Fill)` is required because the rows contain `Fill` cells — unlike
+    // iced's `column!`, sweeten's `from_vec` defaults to `Shrink` and won't
+    // adapt to Fill children (they'd collapse to zero width, hiding the rows).
+    let folder_list = sweeten::widget::Column::from_vec(folder_rows)
+        .width(Fill)
+        .spacing(1)
+        .style(reorder_drag_style)
+        .on_drag(Action::ReorderChips);
     let clear_all = widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),
@@ -2643,6 +2690,45 @@ fn chip_stat_cells<'a>(loaded: &'a Loaded, chip_id: usize, chips_have_mb: bool) 
 }
 
 /// One folder slot in the editor's left pane. Filled slots show the
+/// A muted grip glyph marking a row as drag-to-reorder. The whole row is the
+/// drag surface (sweeten's `Column` owns the gesture); this is just the visual
+/// affordance, in a fixed-width cell so rows line up. Wrapped in a `mouse_area`
+/// only to show the grab-hand cursor on hover — it sets no handlers, so it
+/// doesn't capture the press (the drag gesture still reaches the column).
+fn drag_handle<'a>() -> Element<'a, Action> {
+    use lucide_icons::Icon;
+    let grip = container(Icon::GripVertical.widget().size(TEXT_BODY).style(muted_text_style))
+        .width(Length::Fixed(16.0))
+        .align_x(iced::alignment::Horizontal::Center);
+    iced::widget::mouse_area(grip)
+        .interaction(iced::mouse::Interaction::Grab)
+        .into()
+}
+
+/// Drag styling shared by the reorderable folder / patch-card columns. The
+/// default sweeten style tints the rows that shift aside with the theme's
+/// *primary* color (green in this app); we don't want any overlay, so it's
+/// turned off. The floating ghost is softened to a plain panel.
+fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
+    let ep = theme.extended_palette();
+    let ghost = {
+        let mut c = ep.background.weak.color;
+        c.a = 0.92;
+        c
+    };
+    sweeten::widget::column::Style {
+        scale: 1.02,
+        // No tint on the rows that move to open a gap.
+        moved_item_overlay: iced::Color::TRANSPARENT,
+        ghost_border: iced::Border {
+            width: 1.0,
+            color: ep.background.strong.color,
+            radius: 4.0.into(),
+        },
+        ghost_background: iced::Background::Color(ghost),
+    }
+}
+
 /// chip's full stats (element / code / ATK / MB, like the read-only
 /// list) plus Remove / REG / TAG controls (REG/TAG only where the game
 /// supports them); empty slots show a muted placeholder.
@@ -2716,12 +2802,18 @@ fn folder_slot_row<'a>(
             inner = inner.push(text("—").size(TEXT_BODY).style(muted_text_style).width(Fill));
         }
     }
-    with_chip_tooltip(
-        loaded,
-        chip_id,
-        accent,
-        edit_row_wrap(inner.padding([3, 12]).into(), accent, slot, None),
-    )
+    // Drag handle in the far-left gutter (left of the accent stripe) on filled
+    // rows; empty slots get a same-width spacer so the stripes stay aligned and
+    // aren't draggable anyway.
+    let leading: Option<Element<'a, Action>> = Some(if chip.is_some() {
+        drag_handle()
+    } else {
+        Space::new().width(Length::Fixed(16.0)).into()
+    });
+    // Tooltip wraps only the chip content — not the leading grip gutter — so
+    // hovering the drag handle doesn't pop the chip card.
+    let tipped = with_chip_tooltip(loaded, chip_id, accent, inner.padding([3, 12]).into());
+    edit_row_wrap(tipped, accent, slot, leading)
 }
 
 /// One chip+code in the editor's right pane (the library / palette).
@@ -3652,6 +3744,7 @@ fn patch_card56_list_row<'a>(
         .on_press(Action::RemovePatchCard56 { slot });
 
     let row = row![
+        drag_handle(),
         text(format!("{:>2}", slot + 1))
             .size(TEXT_CAPTION)
             .width(Length::Fixed(24.0)),
@@ -3663,8 +3756,15 @@ fn patch_card56_list_row<'a>(
     ]
     .spacing(8)
     .align_y(Alignment::Start);
+    // Left padding trimmed (vs the usual 10) so the drag handle sits flush in
+    // the gutter, matching the folder editor's grip.
     container(row)
-        .padding([6, 10])
+        .padding(iced::Padding {
+            top: 6.0,
+            right: 10.0,
+            bottom: 6.0,
+            left: 6.0,
+        })
         .style(crate::widgets::zebra_row(slot))
         .into()
 }
@@ -3752,13 +3852,20 @@ fn render_patch_card56s_edit<'a>(
         .map(|(_, c)| card_mb(c.id))
         .sum();
 
-    let mut list_col = column![].spacing(3).padding(0);
+    let mut list_rows: Vec<Element<'a, Action>> = Vec::with_capacity(cards.len());
     for (slot, card) in &cards {
         // A disabled card can be enabled only if it still fits the budget;
         // an enabled card can always be turned off.
         let can_enable = enabled_mb + card_mb(card.id) <= MAX_PATCH_CARD56_MB;
-        list_col = list_col.push(patch_card56_list_row(loaded, *slot, card.clone(), can_enable));
+        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone(), can_enable));
     }
+    // Draggable list: grab a card row and drop it to reorder the registered
+    // order (dense list, so any drop is a valid ordered move).
+    let list_col = sweeten::widget::Column::from_vec(list_rows)
+        .width(Fill)
+        .spacing(3)
+        .style(reorder_drag_style)
+        .on_drag(Action::ReorderPatchCard56s);
     let clear_all = widgets::labeled_icon_button(
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),

@@ -273,6 +273,11 @@ pub enum ChipEdit {
     },
     /// Empty `slot`.
     RemoveChip { slot: usize },
+    /// Reorder: move the chip at `from` to `to` (an ordered move that shifts
+    /// the chips in between). Both slots must be filled — the editor never
+    /// drags an empty slot or drops into a gap. REG/TAG slot pointers follow
+    /// the moved chips.
+    MoveChip { from: usize, to: usize },
     /// Empty every folder slot (and clear REG/TAG).
     ClearFolder,
     /// Toggle `slot` as the folder's Regular chip (clear if already set).
@@ -303,6 +308,10 @@ pub enum PatchCard56Edit {
     AddCard { id: usize },
     /// Unregister the patch card in `slot` (shift the rest up).
     RemoveCard { slot: usize },
+    /// Reorder: move the card at `from` to `to` (an ordered move that shifts
+    /// the cards in between). The registered list is dense, so both ends are
+    /// always valid.
+    MoveCard { from: usize, to: usize },
     /// Toggle the patch card in `slot` between enabled and disabled.
     ToggleCard { slot: usize },
     /// Unregister every patch card.
@@ -564,6 +573,28 @@ impl PlayState {
                         self.save_view.compact_tags(slot);
                         Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
                     }
+                    A::ReorderChips(ev) => {
+                        // Only a completed drop reorders; pick-up / cancel are
+                        // visual-only. Reject unless both endpoints are filled
+                        // (no dragging an empty slot, no dropping into a gap).
+                        use sweeten::widget::drag::DragEvent;
+                        let DragEvent::Dropped { index, target_index } = ev else {
+                            return None;
+                        };
+                        let (from, to) = (index, target_index);
+                        let filled = |slot: usize| {
+                            loaded
+                                .and_then(|l| l.save.view_chips().map(|v| (v.equipped_folder_index(), v)))
+                                .map(|(fi, v)| v.chip(fi, slot).is_some())
+                                .unwrap_or(false)
+                        };
+                        if from == to || !filled(from) || !filled(to) {
+                            return None;
+                        }
+                        // Keep the staged TAG selection aligned with the move.
+                        self.save_view.move_tags(from, to);
+                        Some(Effect::EditChips(ChipEdit::MoveChip { from, to }))
+                    }
                     A::ClearFolder => {
                         if let Some(e) = self.save_view.editing.as_mut() {
                             e.tags.clear();
@@ -640,6 +671,20 @@ impl PlayState {
                         Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot }))
                     }
                     A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
+                    A::ReorderPatchCard56s(ev) => {
+                        // Registered list is dense, so any drop is a valid
+                        // ordered move; pick-up / cancel are visual-only.
+                        use sweeten::widget::drag::DragEvent;
+                        match ev {
+                            DragEvent::Dropped { index, target_index } if index != target_index => Some(
+                                Effect::EditPatchCard56s(PatchCard56Edit::MoveCard {
+                                    from: index,
+                                    to: target_index,
+                                }),
+                            ),
+                            _ => None,
+                        }
+                    }
                     // ----- BN4 patch-card editor -----
                     A::AddPatchCard4 { id } => Some(Effect::EditPatchCard4s(PatchCard4Edit::AddCard { id })),
                     A::RemovePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::RemoveCard { slot })),

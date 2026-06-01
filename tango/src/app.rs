@@ -700,6 +700,45 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             ops.push(Op::Tags(new_tags));
             ops
         }
+        ChipEdit::MoveChip { from, to } => {
+            // Ordered move (remove at `from`, insert at `to`). Both ends must
+            // be filled — the editor never drags an empty slot or drops into a
+            // gap — and REG/TAG slot pointers follow the permutation.
+            if from == to || from >= MAX_FOLDER_CHIPS || to >= MAX_FOLDER_CHIPS {
+                return;
+            }
+            let (chips, regular, tags) = {
+                let v = loaded.save.view_chips();
+                let chips: Vec<Option<Chip>> = (0..MAX_FOLDER_CHIPS)
+                    .map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i)))
+                    .collect();
+                let regular = v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten();
+                let tags = v.as_ref().and_then(|v| v.tag_chip_indexes(folder_idx)).flatten();
+                (chips, regular, tags)
+            };
+            if chips[from].is_none() || chips[to].is_none() {
+                return;
+            }
+            let mut new_chips = chips;
+            let moved = new_chips.remove(from);
+            new_chips.insert(to, moved);
+
+            let remap = |i: usize| crate::save_view::reorder_index(i, from, to);
+            let new_regular = regular.map(remap);
+            let new_tags = tags.map(|[a, b]| [remap(a), remap(b)]);
+
+            let mut ops: Vec<Op> = new_chips
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| match c {
+                    Some(chip) => Op::Chip { slot: i, chip },
+                    None => Op::Clear { slot: i },
+                })
+                .collect();
+            ops.push(Op::Regular { value: new_regular });
+            ops.push(Op::Tags(new_tags));
+            ops
+        }
         ChipEdit::ClearFolder => {
             let mut ops: Vec<Op> = (0..MAX_FOLDER_CHIPS).map(|slot| Op::Clear { slot }).collect();
             ops.push(Op::Regular { value: None });
@@ -912,6 +951,14 @@ fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::Pat
                 return;
             }
             new_cards.remove(slot);
+        }
+        PatchCard56Edit::MoveCard { from, to } => {
+            // Ordered move within the dense registered list.
+            if from == to || from >= new_cards.len() || to >= new_cards.len() {
+                return;
+            }
+            let card = new_cards.remove(from);
+            new_cards.insert(to, card);
         }
         PatchCard56Edit::ToggleCard { slot } => {
             let Some(card) = new_cards.get(slot) else { return };
