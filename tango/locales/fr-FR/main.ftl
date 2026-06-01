@@ -108,6 +108,7 @@ save-edit-cancel = Cancel
 folder-edit-search = Search chips…
 folder-edit-folder = Folder
 folder-edit-count = { $count } / { $limit }
+folder-edit-navi = Navi { $used } / { $limit }
 folder-edit-mega = Mega { $used } / { $limit }
 folder-edit-giga = Giga { $used } / { $limit }
 folder-edit-dark = Dark { $used } / { $limit }
