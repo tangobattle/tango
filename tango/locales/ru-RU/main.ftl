@@ -172,7 +172,7 @@ save-edit-save = Сохранить
 save-edit-cancel = Отмена
 folder-edit-search = Поиск чипов…
 folder-edit-folder = Папка
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 save-edit-sort = Сортировка
 save-edit-clear = Очистить всё
 folder-sort-id = ID
@@ -204,7 +204,7 @@ patch-card-edit-count = { $count ->
     [few] { $count } карты
    *[other] { $count } карт
 }
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = Название
 patch-card-sort-mb = MB

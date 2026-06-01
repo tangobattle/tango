@@ -171,7 +171,7 @@ save-edit-save = Speichern
 save-edit-cancel = Abbrechen
 folder-edit-search = Chips suchen …
 folder-edit-folder = Ordner
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 save-edit-sort = Sortieren
 save-edit-clear = Alle löschen
 folder-sort-id = ID
@@ -201,7 +201,7 @@ patch-card-edit-count = { $count ->
     [one] { $count } Karte
    *[other] { $count } Karten
 }
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = Name
 patch-card-sort-mb = MB

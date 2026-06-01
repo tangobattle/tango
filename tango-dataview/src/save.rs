@@ -24,6 +24,7 @@ pub enum PatchCardsViewMut<'a> {
 pub struct FolderLimits {
     pub mega_limit: usize,
     pub giga_limit: usize,
+    pub dark_limit: Option<usize>,
     /// Regular Memory capacity, or `None` if the game has no Regular chip.
     pub reg_memory: Option<u8>,
     /// Combined-MB budget for the Tag pair, or `None` if no Tag chips.

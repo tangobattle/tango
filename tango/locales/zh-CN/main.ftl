@@ -168,7 +168,7 @@ save-edit-save = 保存
 save-edit-cancel = 取消
 folder-edit-search = 搜索芯片…
 folder-edit-folder = 芯片夹
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 save-edit-sort = 排序
 save-edit-clear = 全部清除
 folder-sort-id = ID
@@ -192,7 +192,7 @@ navicust-sort-color = 颜色
 # Patch card editor
 patch-card-edit-search = 搜索改造卡…
 patch-card-edit-count = { $count } 张卡
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = 名称
 patch-card-sort-mb = MB

@@ -1148,7 +1148,7 @@ fn tab_extras<'a>(
         let can_save = !loaded.chips_editable || {
             let full = loaded.save.view_chips().map_or(true, |v| {
                 let folder = v.equipped_folder_index();
-                (0..30).all(|i| v.chip(folder, i).is_some())
+                (0..MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
             });
             full && folder_limits_satisfied(loaded)
         };
@@ -1282,7 +1282,7 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
             let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
 
             let mut chips: Vec<Option<tango_dataview::save::Chip>> =
-                (0..30).map(|i| chips_view.chip(folder_idx, i)).collect();
+                (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
             let regular_display_idx = if !assets.regular_chip_is_in_place() {
                 if let Some(ri) = regular_idx {
                     let c = chips.remove(0);
@@ -1591,7 +1591,8 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
     let chips_have_mb = assets.chips_have_mb();
 
     // Pull the 30-chip folder.
-    let mut chips: Vec<Option<tango_dataview::save::Chip>> = (0..30).map(|i| chips_view.chip(folder_idx, i)).collect();
+    let mut chips: Vec<Option<tango_dataview::save::Chip>> =
+        (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
     let regular_display_idx = if !assets.regular_chip_is_in_place() {
         if let Some(ri) = regular_idx {
             let c = chips.remove(0);
@@ -1697,6 +1698,7 @@ fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded, grouped
 pub struct FolderUsage {
     pub mega: usize,
     pub giga: usize,
+    pub dark: usize,
     /// Copies installed per chip id (codes collapsed — the copy cap is
     /// per chip, not per code).
     pub copies: std::collections::HashMap<usize, usize>,
@@ -1709,19 +1711,32 @@ impl FolderUsage {
         let assets = loaded.assets.as_ref();
         let mut mega = 0;
         let mut giga = 0;
+        let mut dark = 0;
         let mut copies: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         if let Some(view) = loaded.save.view_chips() {
-            for slot in 0..30 {
+            for slot in 0..MAX_FOLDER_CHIPS {
                 let Some(c) = view.chip(folder_idx, slot) else { continue };
                 *copies.entry(c.id).or_insert(0) += 1;
-                match assets.chip(c.id).map(|i| i.class()) {
-                    Some(ChipClass::Mega) => mega += 1,
-                    Some(ChipClass::Giga) => giga += 1,
+                let Some(chip) = assets.chip(c.id) else {
+                    continue;
+                };
+                if chip.dark() {
+                    dark += 1;
+                    continue;
+                }
+                match chip.class() {
+                    ChipClass::Mega => mega += 1,
+                    ChipClass::Giga => giga += 1,
                     _ => {}
                 }
             }
         }
-        Self { mega, giga, copies }
+        Self {
+            mega,
+            giga,
+            dark,
+            copies,
+        }
     }
 
     /// Whether one more copy of `chip_id` fits under `limits` — the
@@ -1734,6 +1749,11 @@ impl FolderUsage {
         };
         if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
             return false;
+        }
+        if let Some(dark_limit) = limits.dark_limit {
+            if info.dark() {
+                return self.dark < dark_limit;
+            }
         }
         match info.class() {
             ChipClass::Mega => self.mega < limits.mega_limit,
@@ -1761,7 +1781,13 @@ pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
     };
     let usage = FolderUsage::scan(loaded, folder_idx);
     // Mega/Giga class caps.
-    if usage.mega > limits.mega_limit || usage.giga > limits.giga_limit {
+    if usage.mega > limits.mega_limit
+        || usage.giga > limits.giga_limit
+        || limits
+            .dark_limit
+            .map(|dark_limit| usage.dark > dark_limit)
+            .unwrap_or(false)
+    {
         return false;
     }
     // Per-chip copy cap.
@@ -1838,9 +1864,11 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     };
 
     // ----- Left pane: the folder -----
-    let filled = (0..30).filter(|&i| chips_view.chip(folder_idx, i).is_some()).count();
+    let filled = (0..MAX_FOLDER_CHIPS)
+        .filter(|&i| chips_view.chip(folder_idx, i).is_some())
+        .count();
     let mut folder_list = column![].spacing(1).padding(0);
-    for slot in 0..30usize {
+    for slot in 0..MAX_FOLDER_CHIPS {
         let chip = chips_view.chip(folder_idx, slot);
         let is_regular = regular_idx == Some(slot);
         let is_tag = edit.tags.contains(&slot);
@@ -1886,15 +1914,20 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     );
     // "Folder" label, then a smaller count that turns red while the
     // folder is short of the 30 chips a legal folder needs.
-    let count = text(t!(lang, "folder-edit-count", count = filled as i64))
-        .size(TEXT_CAPTION)
-        .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if filled < MAX_FOLDER_CHIPS {
-                theme.palette().danger
-            } else {
-                muted_color(theme)
-            }),
-        });
+    let count = text(t!(
+        lang,
+        "folder-edit-count",
+        count = filled as i64,
+        limit = MAX_FOLDER_CHIPS
+    ))
+    .size(TEXT_CAPTION)
+    .style(move |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(if filled < MAX_FOLDER_CHIPS {
+            theme.palette().danger
+        } else {
+            muted_color(theme)
+        }),
+    });
     let header_row = row![
         text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
         count,
@@ -1903,11 +1936,9 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     ]
     .spacing(8)
     .align_y(Alignment::Center);
-    // Second line (only for navis with folder limits): mega/giga usage vs
+    // Second line (only for navis with folder limits): mega/dark/giga usage vs
     // their caps (red when over) plus the Regular/Tag memory budgets.
     let stats_row = limits.as_ref().map(|l| {
-        let mega_over = usage.mega > l.mega_limit;
-        let giga_over = usage.giga > l.giga_limit;
         let mega = text(t!(
             lang,
             "folder-edit-mega",
@@ -1915,12 +1946,15 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             limit = l.mega_limit as i64
         ))
         .size(TEXT_CAPTION)
-        .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if mega_over {
-                theme.palette().danger
-            } else {
-                muted_color(theme)
-            }),
+        .style({
+            let over = usage.mega > l.mega_limit;
+            move |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(if over {
+                    theme.palette().danger
+                } else {
+                    muted_color(theme)
+                }),
+            }
         });
         let giga = text(t!(
             lang,
@@ -1929,14 +1963,38 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             limit = l.giga_limit as i64
         ))
         .size(TEXT_CAPTION)
-        .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if giga_over {
-                theme.palette().danger
-            } else {
-                muted_color(theme)
-            }),
+        .style({
+            let over = usage.giga > l.giga_limit;
+            move |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(if over {
+                    theme.palette().danger
+                } else {
+                    muted_color(theme)
+                }),
+            }
         });
+
         let mut r = row![mega, giga].spacing(12).align_y(Alignment::Center);
+        if let Some(dark_limit) = l.dark_limit {
+            let dark = text(t!(
+                lang,
+                "folder-edit-dark",
+                used = usage.dark as i64,
+                limit = dark_limit as i64
+            ))
+            .size(TEXT_CAPTION)
+            .style({
+                let over = usage.dark > dark_limit;
+                move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if over {
+                        theme.palette().danger
+                    } else {
+                        muted_color(theme)
+                    }),
+                }
+            });
+            r = r.push(dark);
+        }
         if let Some(reg) = l.reg_memory {
             r = r.push(
                 text(t!(lang, "folder-edit-reg-memory", mb = reg as i64))
@@ -3589,15 +3647,20 @@ fn render_patch_card56s_edit<'a>(
     );
     // MB total turns red if it somehow exceeds the limit (e.g. a save
     // imported over-budget); the editor itself never lets it go over.
-    let mb_text = text(t!(lang, "patch-card-edit-mb", mb = enabled_mb as i64))
-        .size(TEXT_CAPTION)
-        .style(move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(if enabled_mb > MAX_PATCH_CARD56_MB {
-                theme.palette().danger
-            } else {
-                muted_color(theme)
-            }),
-        });
+    let mb_text = text(t!(
+        lang,
+        "patch-card-edit-mb",
+        mb = enabled_mb as i64,
+        limit = MAX_PATCH_CARD56_MB
+    ))
+    .size(TEXT_CAPTION)
+    .style(move |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(if enabled_mb > MAX_PATCH_CARD56_MB {
+            theme.palette().danger
+        } else {
+            muted_color(theme)
+        }),
+    });
     let list_header = container(
         row![
             text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),

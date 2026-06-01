@@ -117,9 +117,10 @@ save-edit-save = Save
 save-edit-cancel = Cancel
 folder-edit-search = Search chips…
 folder-edit-folder = Folder
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 folder-edit-mega = Mega { $used } / { $limit }
 folder-edit-giga = Giga { $used } / { $limit }
+folder-edit-dark = Dark { $used } / { $limit }
 folder-edit-reg-memory = Reg { $mb }MB
 folder-edit-tag-memory = Tag { $mb }MB
 save-edit-sort = Sort
@@ -158,7 +159,7 @@ patch-card-edit-count = { $count ->
     [one] 1 card
    *[other] { $count } cards
 }
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = ABCDE
 patch-card-sort-mb = MB

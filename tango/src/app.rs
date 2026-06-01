@@ -622,6 +622,7 @@ impl App {
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
 fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
+    use crate::save_view::MAX_FOLDER_CHIPS;
     use tabs::play::ChipEdit;
     use tango_dataview::save::Chip;
 
@@ -652,7 +653,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             let slot = loaded
                 .save
                 .view_chips()
-                .and_then(|v| (0..30).find(|&i| v.chip(folder_idx, i).is_none()));
+                .and_then(|v| (0..MAX_FOLDER_CHIPS).find(|&i| v.chip(folder_idx, i).is_none()));
             match slot {
                 Some(slot) => vec![Op::Chip {
                     slot,
@@ -668,7 +669,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // cleared if they pointed at the removed chip.
             let (chips, regular, tags) = {
                 let v = loaded.save.view_chips();
-                let chips: Vec<Option<Chip>> = (0..30)
+                let chips: Vec<Option<Chip>> = (0..MAX_FOLDER_CHIPS)
                     .map(|i| v.as_ref().and_then(|v| v.chip(folder_idx, i)))
                     .collect();
                 let regular = v.as_ref().and_then(|v| v.regular_chip_index(folder_idx)).flatten();
@@ -703,7 +704,7 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             ops
         }
         ChipEdit::ClearFolder => {
-            let mut ops: Vec<Op> = (0..30).map(|slot| Op::Clear { slot }).collect();
+            let mut ops: Vec<Op> = (0..MAX_FOLDER_CHIPS).map(|slot| Op::Clear { slot }).collect();
             ops.push(Op::Regular { value: None });
             ops.push(Op::Tags(None));
             ops

@@ -273,6 +273,7 @@ impl crate::save::Save for Save {
         Some(crate::save::FolderLimits {
             mega_limit,
             giga_limit,
+            dark_limit: None,
             reg_memory: Some(reg_memory),
             tag_memory: Some(60),
             max_copies: |chip| 6usize.saturating_sub(chip.mb() as usize / 10).clamp(1, 5),

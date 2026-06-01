@@ -168,7 +168,7 @@ save-edit-save = Lưu
 save-edit-cancel = Hủy
 folder-edit-search = Tìm chip…
 folder-edit-folder = Folder
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 save-edit-sort = Sắp xếp
 save-edit-clear = Xóa tất cả
 folder-sort-id = ID
@@ -192,7 +192,7 @@ navicust-sort-color = Màu
 # Patch card editor
 patch-card-edit-search = Tìm thẻ…
 patch-card-edit-count = { $count } thẻ
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = Tên
 patch-card-sort-mb = MB

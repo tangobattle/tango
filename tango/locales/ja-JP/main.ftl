@@ -126,7 +126,7 @@ save-edit-save = 保存
 save-edit-cancel = キャンセル
 folder-edit-search = チップを検索…
 folder-edit-folder = フォルダ
-folder-edit-count = { $count } / 30
+folder-edit-count = { $count } / { $limit }
 save-edit-sort = 並べ替え
 save-edit-clear = すべてクリア
 folder-sort-id = ID
@@ -150,7 +150,7 @@ navicust-sort-color = 色
 # Patch card editor
 patch-card-edit-search = カードを検索…
 patch-card-edit-count = { $count } 枚
-patch-card-edit-mb = { $mb }MB / 80MB
+patch-card-edit-mb = { $mb }MB / { $limit }MB
 patch-card-sort-id = ID
 patch-card-sort-name = 名前
 patch-card-sort-mb = MB
