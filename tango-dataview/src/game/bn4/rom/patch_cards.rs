@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 pub const PATCH_CARDS: &[Option<super::PatchCard4>; super::super::NUM_PATCH_CARD4S] = &[
     None,
     Some(super::PatchCard4 { slot: 0, effect: crate::rom::PatchCard4Effect::MaxHP(100), bugs: &[] }),
