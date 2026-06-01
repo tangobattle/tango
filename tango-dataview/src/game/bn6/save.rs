@@ -207,7 +207,7 @@ impl crate::save::Save for Save {
         )))
     }
 
-    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         let (mega_limit, giga_limit, reg_memory) = match self.view_navi().unwrap() {
             crate::save::NaviView::Navicust(navicust) => {
                 let mut mega: isize = 5;
@@ -274,14 +274,14 @@ impl crate::save::Save for Save {
             }
         };
 
-        Some(crate::save::FolderLimits {
-            mega_limit,
-            giga_limit,
-            dark_limit: None,
+        crate::save::FolderLimits {
+            mega_limit: Some(mega_limit),
+            giga_limit: Some(giga_limit),
             reg_memory: Some(reg_memory),
             tag_memory: Some(60),
             max_copies: |chip| 6usize.saturating_sub(chip.mb() as usize / 10).clamp(1, 5),
-        })
+            ..Default::default()
+        }
     }
 
     fn as_raw_wram(&self) -> std::borrow::Cow<'_, [u8]> {

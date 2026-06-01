@@ -97,6 +97,14 @@ impl save::Save for Save {
         buf
     }
 
+    fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
+        crate::save::FolderLimits {
+            mega_limit: Some(5),
+            max_copies: |_| 10,
+            ..Default::default()
+        }
+    }
+
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
         self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));

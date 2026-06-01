@@ -157,9 +157,9 @@ impl crate::save::Save for Save {
         )))
     }
 
-    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         let crate::save::NaviView::Navicust(navicust) = self.view_navi().unwrap() else {
-            return None;
+            return crate::save::FolderLimits::default();
         };
 
         let mut mega: isize = 5;
@@ -207,12 +207,11 @@ impl crate::save::Save for Save {
             }
         }
 
-        Some(crate::save::FolderLimits {
-            mega_limit: mega.clamp(0, 10) as usize,
-            giga_limit: giga.clamp(0, 10),
+        crate::save::FolderLimits {
+            mega_limit: Some(mega.clamp(0, 10) as usize),
+            giga_limit: Some(giga.clamp(0, 10)),
             dark_limit: Some(3),
             reg_memory: Some(self.buf[0x52b1]),
-            tag_memory: None,
             max_copies: |chip| {
                 if chip.dark() {
                     return 1;
@@ -223,7 +222,8 @@ impl crate::save::Save for Save {
                     _ => 0,
                 }
             },
-        })
+            ..Default::default()
+        }
     }
 
     fn view_auto_battle_data(&self) -> Option<Box<dyn crate::save::AutoBattleDataView<'_> + '_>> {

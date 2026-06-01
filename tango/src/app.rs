@@ -644,10 +644,9 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // caps + the per-chip copy cap). folder_limits is None for
             // games without them, so those stay unrestricted; the editor
             // also greys out the library row, so this is the backstop.
-            if let Some(limits) = loaded.save.folder_limits(loaded.assets.as_ref()) {
-                if !crate::save_view::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
-                    return;
-                }
+            let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+            if !crate::save_view::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
+                return;
             }
             // Find the first empty slot; no-op if the folder is full.
             let slot = loaded
@@ -719,17 +718,16 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // Setting a new Regular requires its MB to fit Regular memory
             // (the editor greys the toggle out otherwise). Clearing is free.
             if current != Some(slot) {
-                if let Some(limits) = loaded.save.folder_limits(loaded.assets.as_ref()) {
-                    if let Some(cap) = limits.reg_memory {
-                        let fits = loaded
-                            .save
-                            .view_chips()
-                            .and_then(|v| v.chip(folder_idx, slot))
-                            .and_then(|c| loaded.assets.chip(c.id))
-                            .map_or(true, |c| c.mb() <= cap);
-                        if !fits {
-                            return;
-                        }
+                let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+                if let Some(cap) = limits.reg_memory {
+                    let fits = loaded
+                        .save
+                        .view_chips()
+                        .and_then(|v| v.chip(folder_idx, slot))
+                        .and_then(|c| loaded.assets.chip(c.id))
+                        .map_or(true, |c| c.mb() <= cap);
+                    if !fits {
+                        return;
                     }
                 }
             }
@@ -742,19 +740,18 @@ fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
             // greys out the toggle that would form it, so this is a
             // backstop). `None` clears the pair and is always allowed.
             if let Some([a, b]) = pair {
-                if let Some(limits) = loaded.save.folder_limits(loaded.assets.as_ref()) {
-                    if let Some(budget) = limits.tag_memory {
-                        let lr: &selection::Loaded = loaded;
-                        let mb_of = |slot: usize| {
-                            lr.save
-                                .view_chips()
-                                .and_then(|v| v.chip(folder_idx, slot))
-                                .and_then(|c| lr.assets.chip(c.id))
-                                .map_or(0u32, |c| c.mb() as u32)
-                        };
-                        if mb_of(a) + mb_of(b) > budget {
-                            return;
-                        }
+                let limits = loaded.save.folder_limits(loaded.assets.as_ref());
+                if let Some(budget) = limits.tag_memory {
+                    let lr: &selection::Loaded = loaded;
+                    let mb_of = |slot: usize| {
+                        lr.save
+                            .view_chips()
+                            .and_then(|v| v.chip(folder_idx, slot))
+                            .and_then(|c| lr.assets.chip(c.id))
+                            .map_or(0u32, |c| c.mb() as u32)
+                    };
+                    if mb_of(a) + mb_of(b) > budget {
+                        return;
                     }
                 }
             }

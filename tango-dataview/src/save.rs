@@ -22,8 +22,8 @@ pub enum PatchCardsViewMut<'a> {
 }
 
 pub struct FolderLimits {
-    pub mega_limit: usize,
-    pub giga_limit: usize,
+    pub mega_limit: Option<usize>,
+    pub giga_limit: Option<usize>,
     pub dark_limit: Option<usize>,
     /// Regular Memory capacity, or `None` if the game has no Regular chip.
     pub reg_memory: Option<u8>,
@@ -31,6 +31,19 @@ pub struct FolderLimits {
     pub tag_memory: Option<u32>,
     /// Max copies of one chip given its MB.
     pub max_copies: fn(&dyn crate::rom::Chip) -> usize,
+}
+
+impl Default for FolderLimits {
+    fn default() -> Self {
+        Self {
+            mega_limit: Default::default(),
+            giga_limit: Default::default(),
+            dark_limit: Default::default(),
+            reg_memory: Default::default(),
+            tag_memory: Default::default(),
+            max_copies: |_| usize::MAX,
+        }
+    }
 }
 
 pub trait Save
@@ -66,10 +79,7 @@ where
         None
     }
 
-    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> Option<crate::save::FolderLimits> {
-        let _ = assets;
-        None
-    }
+    fn folder_limits(&self, assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits;
 
     fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView<'_> + '_>> {
         None

@@ -1849,14 +1849,12 @@ impl FolderUsage {
         if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
             return false;
         }
-        if let Some(dark_limit) = limits.dark_limit {
-            if info.dark() {
-                return self.dark < dark_limit;
-            }
+        if info.dark() {
+            return limits.dark_limit.map(|limit| self.dark < limit).unwrap_or(true);
         }
         match info.class() {
-            ChipClass::Mega => self.mega < limits.mega_limit,
-            ChipClass::Giga => self.giga < limits.giga_limit,
+            ChipClass::Mega => limits.mega_limit.map(|limit| self.mega < limit).unwrap_or(true),
+            ChipClass::Giga => limits.giga_limit.map(|limit| self.giga < limit).unwrap_or(true),
             _ => true,
         }
     }
@@ -1875,17 +1873,11 @@ pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
         return true;
     };
     let folder_idx = view.equipped_folder_index();
-    let Some(limits) = loaded.save.folder_limits(loaded.assets.as_ref()) else {
-        return true;
-    };
+    let limits = loaded.save.folder_limits(loaded.assets.as_ref());
     let usage = FolderUsage::scan(loaded, folder_idx);
-    // Mega/Giga class caps.
-    if usage.mega > limits.mega_limit
-        || usage.giga > limits.giga_limit
-        || limits
-            .dark_limit
-            .map(|dark_limit| usage.dark > dark_limit)
-            .unwrap_or(false)
+    if limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
+        || limits.giga_limit.map(|limit| usage.giga > limit).unwrap_or(false)
+        || limits.dark_limit.map(|limit| usage.dark > limit).unwrap_or(false)
     {
         return false;
     }
@@ -1975,7 +1967,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         let this_mb = chip.as_ref().and_then(|c| assets.chip(c.id)).map(|c| c.mb());
         // A chip can be made Regular only if its MB fits Regular memory;
         // clearing the current Regular is always allowed.
-        let reg_allowed = match limits.as_ref().and_then(|l| l.reg_memory) {
+        let reg_allowed = match limits.reg_memory {
             Some(cap) => is_regular || this_mb.map_or(true, |mb| mb <= cap),
             None => true,
         };
@@ -1983,7 +1975,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         // (a chip bigger than the whole budget can never be tagged) and,
         // once a partner is picked, the pair's combined MB still fits.
         // Deselecting is always allowed.
-        let tag_allowed = match limits.as_ref().and_then(|l| l.tag_memory) {
+        let tag_allowed = match limits.tag_memory {
             Some(budget) => {
                 is_tag || {
                     let this = this_mb.map(|m| m as u32).unwrap_or(0);
@@ -2037,53 +2029,60 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     .align_y(Alignment::Center);
     // Second line (only for navis with folder limits): mega/dark/giga usage vs
     // their caps (red when over) plus the Regular/Tag memory budgets.
-    let stats_row = limits.as_ref().map(|l| {
-        let mega = text(t!(
-            lang,
-            "folder-edit-mega",
-            used = usage.mega as i64,
-            limit = l.mega_limit as i64
-        ))
-        .size(TEXT_CAPTION)
-        .style({
-            let over = usage.mega > l.mega_limit;
-            move |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(if over {
-                    theme.palette().danger
-                } else {
-                    muted_color(theme)
-                }),
-            }
-        });
-        let giga = text(t!(
-            lang,
-            "folder-edit-giga",
-            used = usage.giga as i64,
-            limit = l.giga_limit as i64
-        ))
-        .size(TEXT_CAPTION)
-        .style({
-            let over = usage.giga > l.giga_limit;
-            move |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(if over {
-                    theme.palette().danger
-                } else {
-                    muted_color(theme)
-                }),
-            }
-        });
+    let stats_row = {
+        let mut r = row![].spacing(12).align_y(Alignment::Center);
+        if let Some(limit) = limits.mega_limit {
+            let mega = text(t!(
+                lang,
+                "folder-edit-mega",
+                used = usage.mega as i64,
+                limit = limit as i64
+            ))
+            .size(TEXT_CAPTION)
+            .style({
+                let over = usage.mega > limit;
+                move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if over {
+                        theme.palette().danger
+                    } else {
+                        muted_color(theme)
+                    }),
+                }
+            });
+            r = r.push(mega);
+        }
 
-        let mut r = row![mega, giga].spacing(12).align_y(Alignment::Center);
-        if let Some(dark_limit) = l.dark_limit {
+        if let Some(limit) = limits.giga_limit {
+            let giga = text(t!(
+                lang,
+                "folder-edit-giga",
+                used = usage.giga as i64,
+                limit = limit as i64
+            ))
+            .size(TEXT_CAPTION)
+            .style({
+                let over = usage.giga > limit;
+                move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if over {
+                        theme.palette().danger
+                    } else {
+                        muted_color(theme)
+                    }),
+                }
+            });
+            r = r.push(giga);
+        }
+
+        if let Some(limit) = limits.dark_limit {
             let dark = text(t!(
                 lang,
                 "folder-edit-dark",
                 used = usage.dark as i64,
-                limit = dark_limit as i64
+                limit = limit as i64
             ))
             .size(TEXT_CAPTION)
             .style({
-                let over = usage.dark > dark_limit;
+                let over = usage.dark > limit;
                 move |theme: &iced::Theme| iced::widget::text::Style {
                     color: Some(if over {
                         theme.palette().danger
@@ -2094,14 +2093,14 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             });
             r = r.push(dark);
         }
-        if let Some(reg) = l.reg_memory {
+        if let Some(reg) = limits.reg_memory {
             r = r.push(
                 text(t!(lang, "folder-edit-reg-memory", mb = reg as i64))
                     .size(TEXT_CAPTION)
                     .style(muted_text_style),
             );
         }
-        if let Some(tag) = l.tag_memory {
+        if let Some(tag) = limits.tag_memory {
             r = r.push(
                 text(t!(lang, "folder-edit-tag-memory", mb = tag as i64))
                     .size(TEXT_CAPTION)
@@ -2109,11 +2108,8 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
             );
         }
         r
-    });
-    let mut header_col = column![header_row].spacing(4);
-    if let Some(stats_row) = stats_row {
-        header_col = header_col.push(stats_row);
-    }
+    };
+    let header_col = column![header_row, stats_row].spacing(4);
     let folder_header = container(header_col).width(Fill).padding([8, 12]);
     let folder_pane = container(column![folder_header, scrollable(folder_list).height(Fill).width(Fill)])
         .width(Fill)
@@ -2131,7 +2127,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         }
         // Disabled when the folder is full or adding this chip would break
         // the navi's mega/giga/copy limits.
-        let addable = filled < MAX_FOLDER_CHIPS && limits.as_ref().map_or(true, |l| usage.can_add(loaded, id, l));
+        let addable = filled < MAX_FOLDER_CHIPS && usage.can_add(loaded, id, &limits);
         lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, addable));
         shown += 1;
     }
