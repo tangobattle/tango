@@ -2398,7 +2398,63 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         }
         overlay_col = overlay_col.push(cell_row);
     }
-    let canvas_el: Element<'a, Action> = stack![canvas_el, overlay_col]
+    // Style dropdown (BN3 — `num_styles` is 0 on BN4/5/6), overlaid on the
+    // color bar exactly where the viewer bakes the style name: inset to the
+    // bar's label gap (left of the color tiles), at the bar's top. The
+    // current style can read as `None` (unset / invalid byte) → the pick
+    // shows a placeholder.
+    let style_overlay: Option<Element<'a, Action>> = (assets.num_styles() > 0).then(|| {
+        let current = v.style();
+        let mut choices: Vec<StyleChoice> = (0..assets.num_styles())
+            .filter_map(|id| {
+                let name = assets.style(id).and_then(|s| s.name())?;
+                (!name.trim().is_empty()).then_some(StyleChoice { id, name })
+            })
+            .collect();
+        // Keep the current style selectable even if the ROM gives it no name.
+        if let Some(cur) = current {
+            if !choices.iter().any(|c| c.id == cur) {
+                choices.push(StyleChoice {
+                    id: cur,
+                    name: assets
+                        .style(cur)
+                        .and_then(|s| s.name())
+                        .unwrap_or_else(|| format!("#{cur}")),
+                });
+            }
+        }
+        let selected = current.and_then(|cur| choices.iter().find(|c| c.id == cur).cloned());
+        let pick = pick_list(choices, selected, |c: StyleChoice| Action::SetNavicustStyle(c.id))
+            .placeholder(t!(lang, "navi-style-unset"))
+            .padding([5, 10])
+            .text_size(TEXT_BODY)
+            .width(Fill)
+            .style(widgets::chunky_pick_list);
+        // Position over the color bar (native coords scaled to display): its
+        // left edge flush with the grid's left border, spanning right to a
+        // small gap before the color tiles. A column/row of Spaces drops it
+        // there. It keeps its natural, regular height — taller than the bar,
+        // spilling into the empty gap above the grid.
+        let label_pad = crate::navicust::BORDER_WIDTH + 4.0;
+        let tiles_w = crate::navicust::SQUARE_SIZE + crate::navicust::BORDER_WIDTH;
+        let x = g.body_origin_x * scale;
+        let y = crate::navicust::PADDING_V as f32 * scale;
+        let w = (g.body_w - tiles_w - label_pad) * scale;
+        column![
+            Space::new().height(Length::Fixed(y)),
+            row![
+                Space::new().width(Length::Fixed(x)),
+                container(pick).width(Length::Fixed(w)),
+            ],
+        ]
+        .into()
+    });
+
+    let mut grid_stack = stack![canvas_el, overlay_col];
+    if let Some(style_overlay) = style_overlay {
+        grid_stack = grid_stack.push(style_overlay);
+    }
+    let canvas_el: Element<'a, Action> = grid_stack
         .width(Length::Fixed(grid_w))
         .height(Length::Fixed(grid_h))
         .into();
@@ -2564,54 +2620,13 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     .width(Fill)
     .padding([8, 12]);
 
-    // Style selector — shown for games that have styles (BN3; `num_styles`
-    // is 0 on BN4/5/6). Lists every real style; changing it rewrites the
-    // navi's style, which shifts the color bar's extra color and the
-    // off-color budget. The current style may be absent (an unset / invalid
-    // byte reads as `None`), in which case the pick shows a placeholder.
-    let style_selector: Option<Element<'a, Action>> = (assets.num_styles() > 0).then(|| {
-        let current = v.style();
-        let mut choices: Vec<StyleChoice> = (0..assets.num_styles())
-            .filter_map(|id| {
-                let name = assets.style(id).and_then(|s| s.name())?;
-                (!name.trim().is_empty()).then_some(StyleChoice { id, name })
-            })
-            .collect();
-        // Keep the current style selectable even if the ROM gives it no name.
-        if let Some(cur) = current {
-            if !choices.iter().any(|c| c.id == cur) {
-                choices.push(StyleChoice {
-                    id: cur,
-                    name: assets
-                        .style(cur)
-                        .and_then(|s| s.name())
-                        .unwrap_or_else(|| format!("#{cur}")),
-                });
-            }
-        }
-        let selected = current.and_then(|cur| choices.iter().find(|c| c.id == cur).cloned());
-        let pick = pick_list(choices, selected, |c: StyleChoice| Action::SetNavicustStyle(c.id))
-            .placeholder(t!(lang, "navi-style-unset"))
-            .padding([5, 10])
-            .text_size(TEXT_BODY)
-            .style(widgets::chunky_pick_list);
-        row![
-            text(t!(lang, "navi-style")).size(TEXT_CAPTION).style(muted_text_style),
-            pick,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center)
-        .into()
-    });
-
-    // Left pane: mirrors the read-only Navi view — the grid with the
-    // installed ("picked") parts listed below it — and fills/expands to
-    // its half of the tab, with the grid + parts centered inside.
-    let mut grid_inner = column![].spacing(8).align_x(Alignment::Center).padding([4, 8]);
-    if let Some(style_selector) = style_selector {
-        grid_inner = grid_inner.push(style_selector);
-    }
-    grid_inner = grid_inner.push(container(canvas_el).center_x(Fill));
+    // Left pane: mirrors the read-only Navi view — the grid (with the style
+    // dropdown overlaid on its color bar) and the installed ("picked") parts
+    // listed below it — filling its half of the tab, centered inside.
+    let mut grid_inner = column![container(canvas_el).center_x(Fill)]
+        .spacing(8)
+        .align_x(Alignment::Center)
+        .padding([4, 8]);
     if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
         grid_inner = grid_inner.push(parts);
     }
