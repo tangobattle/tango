@@ -136,7 +136,9 @@ impl crate::save::Save for Save {
         };
         let layout = assets.navicust_layout().unwrap();
 
-        let mut reg_memory: u8 = 50;
+        // Base Regular Memory (raised permanently by RegUP items). The Reg+5
+        // NaviCust bonus is applied on top below.
+        let mut reg_memory: u8 = self.buf[0x1897];
 
         let mut mega: usize = assets
             .style(nc.style().unwrap())
