@@ -1735,8 +1735,12 @@ impl App {
                 iced::Task::none()
             }
             E::SaveEditCommit => {
-                if let Some(loaded) = self.loaded.as_mut() {
-                    if !loaded.save_path.as_os_str().is_empty() {
+                // `Some(sram)` once the edited save is written; the SRAM is
+                // reused below to refresh a live netplay commitment.
+                let saved_sram = if let Some(loaded) = self.loaded.as_mut() {
+                    if loaded.save_path.as_os_str().is_empty() {
+                        None
+                    } else {
                         // Every staged edit already keeps its view's derived
                         // caches in sync as it's applied — the anti-cheat
                         // folder/patch-card mirror (chips, patch cards) and
@@ -1750,20 +1754,41 @@ impl App {
                         loaded.rebuild_navicust_render();
                         let sram = loaded.save.to_sram_dump();
                         let path = loaded.save_path.clone();
-                        match std::fs::write(&path, sram) {
+                        match std::fs::write(&path, &sram) {
                             Ok(()) => {
                                 log::info!("saved edited save: {}", path.display());
-                                // Reconcile the scanner cache with the new
-                                // on-disk bytes (the in-memory loaded is
-                                // already current, so refresh_loaded will
-                                // early-return and keep it).
-                                return self.rescan_off_thread(RescanFollowup::Refresh);
+                                Some(sram)
                             }
-                            Err(e) => log::error!("save edited save: {e}"),
+                            Err(e) => {
+                                log::error!("save edited save: {e}");
+                                None
+                            }
                         }
                     }
-                }
-                iced::Task::none()
+                } else {
+                    None
+                };
+                let Some(sram) = saved_sram else {
+                    return iced::Task::none();
+                };
+                // If we're in a lobby and already committed (Ready), the saved
+                // edits changed the save our commitment was made over — re-commit
+                // so the opponent gets the new commitment (and chunks) instead of
+                // a hash of our pre-edit save.
+                let recommit = if matches!(self.netplay.phase, netplay::Phase::Lobby { .. })
+                    && self.netplay.lobby.local_ready
+                {
+                    self.netplay
+                        .update(netplay::Message::Commit { save_sram: sram })
+                        .map(Message::Netplay)
+                } else {
+                    iced::Task::none()
+                };
+                // Reconcile the scanner cache with the new on-disk bytes (the
+                // in-memory loaded is already current, so refresh_loaded will
+                // early-return and keep it).
+                let rescan = self.rescan_off_thread(RescanFollowup::Refresh);
+                iced::Task::batch([rescan, recommit])
             }
             E::SaveEditCancel => {
                 // Staged edits live only in the in-memory loaded save;
