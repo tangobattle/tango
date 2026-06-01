@@ -230,6 +230,24 @@ impl std::fmt::Display for NavicustSortChoice {
     }
 }
 
+/// One entry in the navicust editor's style dropdown (BN3). Equality is by
+/// id so `pick_list` can mark the current style selected regardless of name.
+#[derive(Clone)]
+struct StyleChoice {
+    id: usize,
+    name: String,
+}
+impl PartialEq for StyleChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl std::fmt::Display for StyleChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
 /// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
 /// past this is blocked, and a freshly added card lands disabled if it
 /// wouldn't fit — so a committed save never exceeds the in-game limit.
@@ -915,6 +933,7 @@ impl State {
             | Action::PlaceHeld { .. }
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
+            | Action::SetNavicustStyle(_)
             | Action::AddPatchCard56 { .. }
             | Action::RemovePatchCard56 { .. }
             | Action::ReorderPatchCard56s(_)
@@ -1025,6 +1044,8 @@ pub enum Action {
     },
     /// Remove every installed part.
     ClearNavicust,
+    /// Set the navi's style (BN3 style dropdown).
+    SetNavicustStyle(usize),
     /// Palette: the filter text changed.
     NavicustFilterChanged(String),
     /// Palette: the sort order changed.
@@ -1395,7 +1416,7 @@ fn tab_extras<'a>(
                 tail = tail.push(copy_img_btn(Tab::Navi));
             }
             tail = tail.push(copy_btn(Tab::Navi));
-            // Only BN4/5/6 (writable navicust) get the Edit affordance.
+            // Only BN3/4/5/6 (writable navicust) get the Edit affordance.
             if editable && loaded.navicust_editable && has_navicust {
                 tail = tail.push(widgets::labeled_icon_button(
                     Icon::Pencil,
@@ -2261,24 +2282,11 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         .into()
 }
 
-/// The palette thumbnail for part `id` at orientation `(rot, compressed)`.
-/// The default orientation reuses the icon baked once at load; a rotated /
-/// uncompressed shape is drawn live by a small canvas ([`PartThumb`]) so
-/// we never re-bake an image (which would mint a fresh texture id every
-/// frame). `dim` fades it for at-cap rows. `None` for an empty shape.
+/// The palette thumbnail for part `id` at orientation `(rot, compressed)`,
+/// drawn live by a small canvas ([`PartThumb`]) for every orientation so
+/// the compressed and uncompressed (and rotated) shapes all render through
+/// one path. `dim` fades it for at-cap rows. `None` for an empty shape.
 fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim: bool) -> Option<Element<'a, Action>> {
-    if rot == 0 && compressed {
-        let (w, h, handle) = loaded.navicust_part_icons.get(id)?.as_ref()?;
-        return Some(
-            Image::new(handle.clone())
-                .width(Length::Fixed(*w as f32))
-                .height(Length::Fixed(*h as f32))
-                .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::None)
-                .opacity(if dim { 0.35 } else { 1.0 })
-                .into(),
-        );
-    }
     let info = loaded.assets.navicust_part(id)?;
     let color = info.color()?;
     let bitmap = info
@@ -2309,7 +2317,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     let assets = loaded.assets.as_ref();
     let size = v.size();
     let (cols, rows) = (size[0], size[1]);
-    // BN4/5/6 (the only editable navicust games) always publish a layout.
+    // BN3/4/5/6 (the editable navicust games) always publish a layout.
     let Some(layout) = assets.navicust_layout() else {
         return placeholder(t!(lang, "save-empty"));
     };
@@ -2403,6 +2411,10 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
             *installed_counts.entry(p.id).or_insert(0) += 1;
         }
     }
+    // BN3 off-color budget: once one part of a restricted color is installed,
+    // every other restricted-color part greys out (the same treatment as
+    // at-cap parts). `None` for games with no color limit (BN4/5/6).
+    let off_color = tango_dataview::navicust::off_color_budget(v.as_ref(), assets);
 
     // ----- Left pane: grid + rotate/compress controls -----
     let clear_all = widgets::labeled_icon_button(
@@ -2441,18 +2453,29 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         // Parts already at the per-part copy cap are greyed out + not
         // selectable.
         let at_cap = installed_counts.get(&id).copied().unwrap_or(0) >= crate::navicust_editor::MAX_COPIES_PER_PART;
+        // BN3: a part of a restricted (off-bar) color is locked once one
+        // off-color part is already installed — placing it would break the
+        // "single off-color program" rule.
+        let color_locked = off_color.as_ref().map_or(false, |(free, installed_off)| {
+            *installed_off >= 1
+                && assets
+                    .navicust_part(id)
+                    .and_then(|info| info.color())
+                    .map_or(false, |c| !free.contains(&c))
+        });
+        let disabled = at_cap || color_locked;
         // Orientation shown in (and picked up from) the picker.
         let (rot, compressed) = edit.orient_of(id);
         // Shape thumbnail at the part's current picker orientation, shown
         // at the baked pixel size (1:1) so the 1px lines stay crisp; every
-        // part shares the same n×n grid so rows align. Dimmed when at cap.
-        let icon_el: Element<'a, Action> = part_thumb(loaded, id, rot, compressed, at_cap).unwrap_or_else(|| {
+        // part shares the same n×n grid so rows align. Dimmed when disabled.
+        let icon_el: Element<'a, Action> = part_thumb(loaded, id, rot, compressed, disabled).unwrap_or_else(|| {
             Space::new()
                 .width(Length::Fixed(40.0))
                 .height(Length::Fixed(40.0))
                 .into()
         });
-        let name_text = if at_cap {
+        let name_text = if disabled {
             text(name).size(TEXT_BODY).style(muted_text_style)
         } else {
             text(name).size(TEXT_BODY)
@@ -2502,7 +2525,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
             .padding([6, 10])
             .width(Fill)
             .style(widgets::list_item(selected, row_idx));
-        if !at_cap {
+        if !disabled {
             pick = pick.on_press(Action::PickUpPalettePart { id });
         }
         palette = palette.push(pick);
@@ -2541,13 +2564,54 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     .width(Fill)
     .padding([8, 12]);
 
+    // Style selector — shown for games that have styles (BN3; `num_styles`
+    // is 0 on BN4/5/6). Lists every real style; changing it rewrites the
+    // navi's style, which shifts the color bar's extra color and the
+    // off-color budget. The current style may be absent (an unset / invalid
+    // byte reads as `None`), in which case the pick shows a placeholder.
+    let style_selector: Option<Element<'a, Action>> = (assets.num_styles() > 0).then(|| {
+        let current = v.style();
+        let mut choices: Vec<StyleChoice> = (0..assets.num_styles())
+            .filter_map(|id| {
+                let name = assets.style(id).and_then(|s| s.name())?;
+                (!name.trim().is_empty()).then_some(StyleChoice { id, name })
+            })
+            .collect();
+        // Keep the current style selectable even if the ROM gives it no name.
+        if let Some(cur) = current {
+            if !choices.iter().any(|c| c.id == cur) {
+                choices.push(StyleChoice {
+                    id: cur,
+                    name: assets
+                        .style(cur)
+                        .and_then(|s| s.name())
+                        .unwrap_or_else(|| format!("#{cur}")),
+                });
+            }
+        }
+        let selected = current.and_then(|cur| choices.iter().find(|c| c.id == cur).cloned());
+        let pick = pick_list(choices, selected, |c: StyleChoice| Action::SetNavicustStyle(c.id))
+            .placeholder(t!(lang, "navi-style-unset"))
+            .padding([5, 10])
+            .text_size(TEXT_BODY)
+            .style(widgets::chunky_pick_list);
+        row![
+            text(t!(lang, "navi-style")).size(TEXT_CAPTION).style(muted_text_style),
+            pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .into()
+    });
+
     // Left pane: mirrors the read-only Navi view — the grid with the
     // installed ("picked") parts listed below it — and fills/expands to
     // its half of the tab, with the grid + parts centered inside.
-    let mut grid_inner = column![container(canvas_el).center_x(Fill)]
-        .spacing(8)
-        .align_x(Alignment::Center)
-        .padding([4, 8]);
+    let mut grid_inner = column![].spacing(8).align_x(Alignment::Center).padding([4, 8]);
+    if let Some(style_selector) = style_selector {
+        grid_inner = grid_inner.push(style_selector);
+    }
+    grid_inner = grid_inner.push(container(canvas_el).center_x(Fill));
     if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
         grid_inner = grid_inner.push(parts);
     }

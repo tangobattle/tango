@@ -297,6 +297,9 @@ pub enum NavicustEdit {
     RemovePart { slot: usize },
     /// Remove every installed part.
     ClearAll,
+    /// Set the navi's style (BN3). Changes the color bar's extra color
+    /// (and folder limits), so the materialized grid is rebuilt after.
+    SetStyle(usize),
 }
 
 /// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
@@ -690,6 +693,7 @@ impl PlayState {
                         }
                         Some(Effect::EditNavicust(NavicustEdit::ClearAll))
                     }
+                    A::SetNavicustStyle(style) => Some(Effect::EditNavicust(NavicustEdit::SetStyle(style))),
                     // ----- BN5/BN6 patch-card editor -----
                     A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
                     A::RemovePatchCard56 { slot } => {

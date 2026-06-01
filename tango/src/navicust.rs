@@ -961,65 +961,6 @@ fn rasterize(model: &GridModel) -> image::RgbaImage {
     image::RgbaImage::from_raw(w, h, rgba).expect("navicust rgba")
 }
 
-/// A small standalone thumbnail of one part's shape — the whole grid-sized
-/// bitmap (uncropped, so every part's thumbnail is the same n×n block size
-/// and lines up in the palette), with filled cells in the part's solid
-/// color and a plus-color outline + separators, on a transparent
-/// background. Rendered at an integer block size and shown 1:1, so the 1px
-/// lines never warp. Returns `None` for an empty bitmap.
-pub fn render_part_thumb(
-    bitmap: &tango_dataview::rom::NavicustBitmap,
-    color: NavicustPartColor,
-    is_solid: bool,
-) -> Option<image::RgbaImage> {
-    const PX: u32 = 8;
-    let (h, w) = bitmap.dim();
-    let cells: Vec<(usize, usize)> = (0..h)
-        .flat_map(|y| (0..w).map(move |x| (x, y)))
-        .filter(|&(x, y)| bitmap[[y, x]])
-        .collect();
-    if cells.is_empty() {
-        return None;
-    }
-    let (solid, plus) = part_colors(color);
-    let mut img = image::RgbaImage::new(w as u32 * PX, h as u32 * PX);
-    // Solid bodies first.
-    for &(cx, cy) in &cells {
-        for dy in 0..PX {
-            for dx in 0..PX {
-                img.put_pixel(cx as u32 * PX + dx, cy as u32 * PX + dy, image::Rgba(solid));
-            }
-        }
-    }
-    // Plus edges + cross via the shared shape walk — uniform 1px lines:
-    // top/left of every cell (the separators between blocks) and bottom/right
-    // only on the outer boundary, with no doubled-up internal borders. Same
-    // model the live `PartThumb` canvas draws.
-    let own: std::collections::HashSet<(isize, isize)> = cells.iter().map(|&(c, r)| (c as isize, r as isize)).collect();
-    for_each_part_edge(
-        &cells,
-        is_solid,
-        |c, r| if own.contains(&(c, r)) { Adj::Own } else { Adj::Outside },
-        |mark| match mark {
-            PartMark::Edge { col, row, side, .. } => {
-                let (ox, oy) = (col as u32 * PX, row as u32 * PX);
-                match side {
-                    Side::Top => (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy, image::Rgba(plus))),
-                    Side::Bottom => (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy + PX - 1, image::Rgba(plus))),
-                    Side::Left => (0..PX).for_each(|dy| img.put_pixel(ox, oy + dy, image::Rgba(plus))),
-                    Side::Right => (0..PX).for_each(|dy| img.put_pixel(ox + PX - 1, oy + dy, image::Rgba(plus))),
-                }
-            }
-            PartMark::Cross { col, row } => {
-                let (ox, oy) = (col as u32 * PX, row as u32 * PX);
-                (0..PX).for_each(|dy| img.put_pixel(ox + PX / 2, oy + dy, image::Rgba(plus)));
-                (0..PX).for_each(|dx| img.put_pixel(ox + dx, oy + PX / 2, image::Rgba(plus)));
-            }
-        },
-    );
-    Some(img)
-}
-
 /// `bitmap` rotated clockwise `rot` quarter turns. Grids are square
 /// (5×5 / 7×7), so a quarter turn preserves the dimensions. Matches the
 /// `(by, bx) -> (bx, n-1-by)` mapping used by

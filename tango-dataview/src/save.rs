@@ -328,6 +328,16 @@ pub trait NavicustView<'a> {
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
     fn materialized(&self) -> crate::navicust::MaterializedNavicust;
     fn navicust_color_bar(&self) -> Vec<Option<crate::rom::NavicustPartColor>>;
+
+    /// Colors the navi may install in unlimited quantity. When `Some`,
+    /// parts whose color lies outside this set are limited to a single
+    /// installed copy *in total* across the whole grid — the BN3 NaviCust
+    /// rule (only one program may be a color other than White/Pink/Yellow
+    /// and the style's extra color). `None` (the default) means no color
+    /// limit (BN4/5/6).
+    fn unrestricted_colors(&self) -> Option<Vec<crate::rom::NavicustPartColor>> {
+        None
+    }
 }
 
 pub trait NavicustViewMut<'a> {

@@ -67,10 +67,8 @@ fn draw_part_outline(
     }
 }
 
-/// Per-cell pixel size of a palette thumbnail — matches
-/// [`crate::navicust::render_part_thumb`]'s `PX`, so the baked
-/// (default-orientation) palette icons and these live (re-oriented) ones
-/// share a size and line up in the list.
+/// Per-cell pixel size of a palette thumbnail. Every part is drawn on the
+/// same n×n grid at this size so the rows line up in the palette list.
 const THUMB_PX: f32 = 8.0;
 
 /// A small live thumbnail of one part's shape at a chosen orientation,

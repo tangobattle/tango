@@ -74,6 +74,25 @@ pub fn color_to_raw(
     (1u8..=0xff).find(|&b| from_raw(b).as_ref() == Some(color)).unwrap_or(0)
 }
 
+/// The navi's off-color budget (BN3). If the navi limits off-color parts
+/// ([`crate::save::NavicustView::unrestricted_colors`] is `Some`), returns
+/// the unrestricted color set together with how many currently-installed
+/// parts fall *outside* it — the rule allows at most one. `None` when the
+/// navi has no color limit (BN4/5/6). Shared by the editor's commit-time
+/// check and its palette greying so both agree on what's allowed.
+pub fn off_color_budget(
+    navicust_view: &dyn crate::save::NavicustView,
+    assets: &dyn crate::rom::Assets,
+) -> Option<(Vec<crate::rom::NavicustPartColor>, usize)> {
+    let free = navicust_view.unrestricted_colors()?;
+    let installed_off = (0..navicust_view.count())
+        .filter_map(|i| navicust_view.navicust_part(i))
+        .filter_map(|p| assets.navicust_part(p.id).and_then(|info| info.color()))
+        .filter(|c| !free.contains(c))
+        .count();
+    Some((free, installed_off))
+}
+
 pub fn materialize(
     navicust_view: &dyn crate::save::NavicustView,
     max_size: [usize; 2],

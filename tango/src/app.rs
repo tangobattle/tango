@@ -856,6 +856,7 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
     enum Op {
         Set { slot: usize, part: NavicustPart },
         Clear { slot: usize },
+        SetStyle { style: usize },
     }
     let ops: Vec<Op> = match edit {
         NavicustEdit::AddPart(part) => {
@@ -868,6 +869,20 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
                         .count();
                     if copies >= crate::navicust_editor::MAX_COPIES_PER_PART {
                         return;
+                    }
+                    // BN3: at most one installed program may be a color
+                    // outside the free set — reject a second off-color part.
+                    if let Some((free, installed_off)) =
+                        tango_dataview::navicust::off_color_budget(v.as_ref(), loaded.assets.as_ref())
+                    {
+                        let candidate_off = loaded
+                            .assets
+                            .navicust_part(part.id)
+                            .and_then(|info| info.color())
+                            .map_or(false, |c| !free.contains(&c));
+                        if candidate_off && installed_off >= 1 {
+                            return;
+                        }
                     }
                     (0..v.count()).find(|&i| v.navicust_part(i).is_none())
                 }
@@ -908,6 +923,7 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
             };
             (0..count).map(|slot| Op::Clear { slot }).collect()
         }
+        NavicustEdit::SetStyle(style) => vec![Op::SetStyle { style }],
     };
 
     if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
@@ -918,6 +934,9 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
                 }
                 Op::Clear { slot } => {
                     nc.set_navicust_part(slot, None);
+                }
+                Op::SetStyle { style } => {
+                    nc.set_style(style);
                 }
             }
         }

@@ -544,7 +544,12 @@ impl crate::rom::Assets for Assets {
     }
 
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Style + 'a>> {
-        if id >= self.num_styles() {
+        // Only real styles (valid element/type bits); the gap ids in 0..NUM
+        // would otherwise alias another type's name and show as duplicates.
+        let Ok(raw) = u8::try_from(id) else {
+            return None;
+        };
+        if !super::is_valid_style(raw) {
             return None;
         }
         Some(Box::new(Style { id, assets: self }))

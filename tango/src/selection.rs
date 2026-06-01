@@ -56,11 +56,6 @@ pub struct Loaded {
     /// Precomputed NaviCust grid image for the Navicust variant. None
     /// for LinkNavi games or when no navicust_layout is published.
     pub navicust_render: Option<NavicustRender>,
-    /// Per-part shape thumbnails (compressed footprint, in the part's
-    /// color) for the navicust editor palette, as `(width, height,
-    /// handle)`. Indexed by part id; `None` = no shape / no color. Baked
-    /// once here so the per-frame palette just clones handles.
-    pub navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>>,
     /// Logos for the Cover tab, as `(width, height, handle)`. The
     /// loaded game's own variant comes first; any sibling variants in
     /// the family follow (so families with two logos — Gregar/Falzar
@@ -128,8 +123,8 @@ impl Loaded {
         // the mutable chip view has no side effects, so this is a pure
         // capability check we can cache on the immutable Loaded.
         let chips_editable = save.view_chips_mut().is_some();
-        // Navicust editability: only the `Navicust` navi variant (BN4/5/6)
-        // is writable. LinkNavi games and read-only-navicust BN3 stay
+        // Navicust editability: only the `Navicust` navi variant (BN3/4/5/6)
+        // is writable. LinkNavi games (BN6 with a link navi equipped) stay
         // off. Same pure-capability probe pattern as `chips_editable`.
         let navicust_editable = matches!(
             save.view_navi_mut(),
@@ -190,23 +185,6 @@ impl Loaded {
         // Render the NaviCust grid once per save+game.
         let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref(), game);
 
-        // Bake a shape thumbnail per navicust part for the editor palette.
-        let mut navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>> =
-            Vec::with_capacity(assets.num_navicust_parts());
-        for id in 0..assets.num_navicust_parts() {
-            let icon = assets.navicust_part(id).and_then(|info| {
-                let color = info.color()?;
-                let img = crate::navicust::render_part_thumb(
-                    &info.compressed_bitmap().unwrap_or_else(|| info.uncompressed_bitmap()),
-                    color,
-                    info.is_solid(),
-                )?;
-                let (w, h) = (img.width(), img.height());
-                Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
-            });
-            navicust_part_icons.push(icon);
-        }
-
         // Logos for the Cover tab. The loaded variant goes first; its
         // family siblings (the other color version, where one exists)
         // follow so the Cover tab can fan both out. The per-game
@@ -244,7 +222,6 @@ impl Loaded {
             element_icons,
             navi_emblems,
             navicust_render,
-            navicust_part_icons,
             logos,
         }
     }

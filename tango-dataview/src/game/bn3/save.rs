@@ -1,6 +1,9 @@
 use bitvec::view::BitView;
 
-use crate::{game::bn3::rom::extra_ncp_color, save::ChipsView as _};
+use crate::{
+    game::bn3::rom::extra_ncp_color,
+    save::{ChipsView as _, NavicustView as _},
+};
 
 pub const SAVE_SIZE: usize = 0x57b0;
 pub const GAME_NAME_OFFSET: usize = 0x1e00;
@@ -99,7 +102,6 @@ impl Save {
         self.buf[0x0030 + i / 8].view_bits::<bitvec::order::Msb0>()[i % 8]
     }
 
-    #[allow(dead_code)]
     fn set_flag(&mut self, i: usize, v: bool) {
         self.buf[0x0030 + i / 8]
             .view_bits_mut::<bitvec::order::Msb0>()
@@ -124,6 +126,12 @@ impl crate::save::Save for Save {
         Some(crate::save::NaviView::Navicust(Box::new(NavicustView { save: self })))
     }
 
+    fn view_navi_mut(&mut self) -> Option<crate::save::NaviViewMut<'_>> {
+        Some(crate::save::NaviViewMut::Navicust(Box::new(NavicustViewMut {
+            save: self,
+        })))
+    }
+
     fn to_sram_dump(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SAVE_SIZE].copy_from_slice(&self.buf);
@@ -140,8 +148,9 @@ impl crate::save::Save for Save {
         // NaviCust bonus is applied on top below.
         let mut reg_memory: u8 = self.buf[0x1897];
 
-        let mut mega: usize = assets
-            .style(nc.style().unwrap())
+        let mut mega: usize = nc
+            .style()
+            .and_then(|s| assets.style(s))
             .and_then(|style| {
                 if matches!(style.typ(), crate::rom::StyleType::Team) {
                     Some(8)
@@ -357,7 +366,12 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
     }
 
     fn style(&self) -> Option<usize> {
-        Some((self.save.buf[0x1881] & 0x3f) as usize)
+        // The style byte packs element (bits 0..=2, only 0..=4 valid) and
+        // type (bits 3..=5); bits 6-7 are unused. A byte outside that range
+        // isn't a real style (e.g. an empty / never-assigned slot), so
+        // report no style rather than a bogus one.
+        let raw = self.save.buf[0x1881];
+        super::is_valid_style(raw).then_some(raw as usize)
     }
 
     fn ex_code(&self) -> Option<usize> {
@@ -396,7 +410,84 @@ impl<'a> crate::save::NavicustView<'a> for NavicustView<'a> {
             Some(crate::rom::NavicustPartColor::White),
             Some(crate::rom::NavicustPartColor::Pink),
             Some(crate::rom::NavicustPartColor::Yellow),
-            extra_ncp_color(self.style().unwrap() as u8),
+            self.style().and_then(|s| extra_ncp_color(s as u8)),
         ]
+    }
+
+    fn unrestricted_colors(&self) -> Option<Vec<crate::rom::NavicustPartColor>> {
+        // The color bar (White/Pink/Yellow + the style's extra color) is
+        // exactly the set BN3 lets you use freely; any other color is
+        // capped at a single installed program across the whole grid.
+        Some(self.navicust_color_bar().into_iter().flatten().collect())
+    }
+}
+
+pub struct NavicustViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
+    fn set_style(&mut self, style: usize) -> bool {
+        // Reject anything that isn't a real style (bad element/type bits);
+        // a valid style fully occupies the byte, so write it as-is.
+        let Ok(raw) = u8::try_from(style) else {
+            return false;
+        };
+        if !super::is_valid_style(raw) {
+            return false;
+        }
+        self.save.buf[0x1881] = raw;
+        true
+    }
+
+    fn set_navicust_part(&mut self, i: usize, part: Option<crate::save::NavicustPart>) -> bool {
+        if i >= (NavicustView { save: self.save }).count() {
+            return false;
+        }
+        let raw = match part {
+            Some(part) => {
+                if part.id >= super::NUM_NAVICUST_PARTS {
+                    return false;
+                }
+                // Unlike BN4+, BN3 keeps the compressed state in a
+                // per-program flag bitfield rather than inline in the part
+                // record — mirror `NavicustView`'s read at `0x02e0 + id`.
+                self.save.set_flag(0x02e0 + part.id, part.compressed);
+                RawNavicustPart {
+                    id: part.id as u8,
+                    col: part.col,
+                    row: part.row,
+                    rot: part.rot,
+                    ..Default::default()
+                }
+            }
+            // An all-zero part (id 0) reads back as an empty slot. Leaving
+            // the old program's compressed flag set is harmless: it's only
+            // consulted for ids that are actually placed, and re-placing a
+            // part always rewrites it.
+            None => RawNavicustPart::default(),
+        };
+        self.save.buf[0x1300 + i * std::mem::size_of::<RawNavicustPart>()..][..std::mem::size_of::<RawNavicustPart>()]
+            .copy_from_slice(bytemuck::bytes_of(&raw));
+
+        true
+    }
+
+    fn clear_materialized(&mut self) {
+        self.save.buf[0x1d90..][..(5 * 5)].copy_from_slice(&[0; 5 * 5]);
+    }
+
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
+        let materialized = crate::navicust::materialize(&NavicustView { save: self.save }, [5, 5], assets);
+        self.save.buf[0x1d90..][..(5 * 5)].copy_from_slice(
+            &materialized
+                .into_iter()
+                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+                .chain(std::iter::repeat(0))
+                .take(5 * 5)
+                .collect::<Vec<_>>(),
+        );
+        // BN3 computes the navicust color bar on read (White/Pink/Yellow +
+        // a style-derived color), so there's nothing to rebuild here.
     }
 }
