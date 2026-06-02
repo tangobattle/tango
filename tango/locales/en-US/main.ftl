@@ -107,6 +107,7 @@ save-tab-auto-battle-data = Auto Battle Data
 
 # Navi pane
 navi-style = Style
+navi-excode = EX
 
 # Folder pane
 folder-group = Group by chip

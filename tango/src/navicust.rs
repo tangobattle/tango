@@ -51,6 +51,12 @@ pub fn part_colors(color: NavicustPartColor) -> ([u8; 4], [u8; 4]) {
 pub const PADDING_H: u32 = 40;
 pub const PADDING_V: u32 = 40;
 
+/// Height (native coords) of the BN3 EX-Code strip — a band reserved
+/// between the color bar and the grid body. The grid renderer leaves it
+/// empty; the viewer/editor overlay the EX-code badges / dropdown there.
+/// Matches the color bar's height for visual rhythm.
+pub const EXCODE_STRIP_H: f32 = SQUARE_SIZE / 2.0 + BORDER_WIDTH;
+
 /// Map a BCP-47 language id to the Noto font family name we want
 /// cosmic-text to prefer when rasterizing the BN3 style label.
 /// Latin scripts get plain "Noto Sans"; JP/SC/TC each get their
@@ -94,7 +100,7 @@ pub fn render(
     target_w: Option<u32>,
 ) -> image::RgbaImage {
     let model = build_model(materialized, layout, view, assets);
-    let g = geometry(model.cols, model.rows);
+    let g = geometry(model.cols, model.rows, model.has_excode);
     let native = rasterize(&model);
 
     // Resize the (label-free) composite to display size if a target was
@@ -245,6 +251,9 @@ pub struct GridModel {
     /// Per-slot resolved style.
     pub part_styles: Vec<Option<PartStyle>>,
     pub is_bn3: bool,
+    /// Whether to reserve the EX-code strip band (BN3). Kept in sync with
+    /// the `excode_strip` arg every `geometry()` call for this model passes.
+    pub has_excode: bool,
     pub bar: Vec<Option<[u8; 4]>>,
 }
 
@@ -270,22 +279,35 @@ pub struct Geometry {
     pub total_w: f32,
     pub total_h: f32,
     pub bar_h: f32,
+    /// Height of the EX-code strip (0 when `excode_strip` is false).
+    pub excode_strip_h: f32,
+    /// Top of the EX-code strip band (only meaningful when reserved).
+    pub excode_origin_y: f32,
     pub body_w: f32,
     pub body_origin_x: f32,
     pub body_origin_y: f32,
 }
 
-pub fn geometry(cols: usize, rows: usize) -> Geometry {
+/// `excode_strip` reserves an empty band between the color bar and the grid
+/// body (BN3 EX code); it only adds height, so width-only callers pass
+/// `false`.
+pub fn geometry(cols: usize, rows: usize, excode_strip: bool) -> Geometry {
     let body_w = cols as f32 * SQUARE_SIZE + BORDER_WIDTH;
     let body_h = rows as f32 * SQUARE_SIZE + BORDER_WIDTH;
     let bar_h = SQUARE_SIZE / 2.0 + BORDER_WIDTH;
+    let excode_strip_h = if excode_strip { EXCODE_STRIP_H } else { 0.0 };
+    // The strip and its own gap below it push the grid body down.
+    let strip_block = if excode_strip { excode_strip_h + PADDING_V as f32 } else { 0.0 };
+    let body_origin_y = PADDING_V as f32 + bar_h + PADDING_V as f32 + strip_block;
     Geometry {
         total_w: body_w + PADDING_H as f32 * 2.0,
-        total_h: body_h + PADDING_V as f32 * 3.0 + bar_h,
+        total_h: body_origin_y + body_h + PADDING_V as f32,
         bar_h,
+        excode_strip_h,
+        excode_origin_y: PADDING_V as f32 + bar_h + PADDING_V as f32,
         body_w,
         body_origin_x: PADDING_H as f32,
-        body_origin_y: PADDING_V as f32 + bar_h + PADDING_V as f32,
+        body_origin_y,
     }
 }
 
@@ -302,7 +324,7 @@ pub const REFERENCE_COLS: usize = 7;
 /// never upscales — narrower grids render as proportionally smaller images.
 pub fn display_scale(display_w: f32) -> f32 {
     // `total_w` depends only on the column count, so the row count is moot.
-    display_w / geometry(REFERENCE_COLS, REFERENCE_COLS).total_w
+    display_w / geometry(REFERENCE_COLS, REFERENCE_COLS, false).total_w
 }
 
 // Drawing primitives: thin wrappers over the iced canvas `Frame` so the
@@ -428,6 +450,7 @@ pub fn build_model(
         occupancy,
         part_styles,
         is_bn3: view.style().is_some(),
+        has_excode: view.ex_code().is_some(),
         bar: view
             .navicust_color_bar()
             .into_iter()
@@ -447,7 +470,7 @@ pub fn paint<R: geometry::Renderer>(
     bg_radius: f32,
     scale: f32,
 ) {
-    let g = geometry(m.cols, m.rows);
+    let g = geometry(m.cols, m.rows, m.has_excode);
     fill_round_rect(frame, scale, 0.0, 0.0, g.total_w, g.total_h, bg_radius, m.background);
     paint_color_bar(frame, m, &g, scale);
     paint_body(frame, m, &g, scale);
@@ -927,7 +950,7 @@ fn to_color(c: [u8; 4]) -> Color {
 /// pixmap instead of the window. No text is drawn here (the BN3 style
 /// label is baked separately, after), so the default font is irrelevant.
 fn rasterize(model: &GridModel) -> image::RgbaImage {
-    let g = geometry(model.cols, model.rows);
+    let g = geometry(model.cols, model.rows, model.has_excode);
     let w = g.total_w.round().max(1.0) as u32;
     let h = g.total_h.round().max(1.0) as u32;
 

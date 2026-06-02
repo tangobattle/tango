@@ -345,6 +345,14 @@ pub trait NavicustViewMut<'a> {
         false
     }
 
+    /// Set the active EX Code (BN3 Mod Code). `None` clears it. Returns
+    /// `false` (no write) if the navi has no EX Code or the code isn't a
+    /// real one. Writes only the stored code; it does not recompile the
+    /// in-game ability array.
+    fn set_ex_code(&mut self, _code: Option<u8>) -> bool {
+        false
+    }
+
     /// Write slot `i`. `None` empties the slot. Returns `false` (no
     /// write) if `i` is out of range or the part id is invalid.
     fn set_navicust_part(&mut self, i: usize, part: Option<NavicustPart>) -> bool;

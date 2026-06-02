@@ -857,6 +857,7 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
         Set { slot: usize, part: NavicustPart },
         Clear { slot: usize },
         SetStyle { style: usize },
+        SetExCode { code: Option<u8> },
     }
     let ops: Vec<Op> = match edit {
         NavicustEdit::AddPart(part) => {
@@ -924,6 +925,7 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
             (0..count).map(|slot| Op::Clear { slot }).collect()
         }
         NavicustEdit::SetStyle(style) => vec![Op::SetStyle { style }],
+        NavicustEdit::SetExCode(code) => vec![Op::SetExCode { code }],
     };
 
     if let Some(NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
@@ -937,6 +939,9 @@ fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Navicus
                 }
                 Op::SetStyle { style } => {
                     nc.set_style(style);
+                }
+                Op::SetExCode { code } => {
+                    nc.set_ex_code(code);
                 }
             }
         }

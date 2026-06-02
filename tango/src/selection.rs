@@ -75,6 +75,10 @@ pub struct NavicustRender {
     /// Top-left of the cell grid in source-image coordinates.
     pub body_origin_x: f32,
     pub body_origin_y: f32,
+    /// Top of the EX-code strip band, and its height, in source-image
+    /// coordinates. `excode_strip_h` is 0 when the navi has no EX code.
+    pub excode_origin_y: f32,
+    pub excode_strip_h: f32,
     /// Edge length of one cell in source-image coordinates.
     pub cell_size: f32,
     pub cols: usize,
@@ -301,12 +305,13 @@ fn build_navicust_render(
     let layout = assets.navicust_layout()?;
     let materialized = view.materialized();
 
-    // Mirrors the constants inside navicust.rs's tiny-skia render.
-    const PADDING_H: f32 = crate::navicust::PADDING_H as f32;
-    const PADDING_V: f32 = crate::navicust::PADDING_V as f32;
-    const SQUARE_SIZE: f32 = crate::navicust::SQUARE_SIZE;
     const BORDER_WIDTH: f32 = crate::navicust::BORDER_WIDTH;
     let (rows, cols) = materialized.dim();
+    // The strip band (BN3) shifts the grid body down; derive every origin
+    // from the same geometry the tiny-skia render uses so the overlay lines
+    // up with the baked image.
+    let has_excode = view.ex_code().is_some();
+    let g = crate::navicust::geometry(cols, rows, has_excode);
 
     let lang = crate::game::region_to_language(game.region());
     // Render at native resolution; the iced widget paints it at the same
@@ -323,10 +328,11 @@ fn build_navicust_render(
     let display_h = handle_h as f32 * display_scale;
     // Round corners to ~4 display px (the pane's radius).
     mask_rounded_corners(&mut img, (4.0 / display_scale).round().max(1.0) as u32);
-    let color_bar_h = (SQUARE_SIZE / 2.0 + BORDER_WIDTH).round();
-    let body_origin_x = (PADDING_H + BORDER_WIDTH / 2.0) * display_scale;
-    let body_origin_y = (PADDING_V + color_bar_h + PADDING_V + BORDER_WIDTH / 2.0) * display_scale;
-    let cell_size = SQUARE_SIZE * display_scale;
+    let body_origin_x = (g.body_origin_x + BORDER_WIDTH / 2.0) * display_scale;
+    let body_origin_y = (g.body_origin_y + BORDER_WIDTH / 2.0) * display_scale;
+    let excode_origin_y = g.excode_origin_y * display_scale;
+    let excode_strip_h = g.excode_strip_h * display_scale;
+    let cell_size = crate::navicust::SQUARE_SIZE * display_scale;
 
     let cell_part_idx: Vec<Option<usize>> = materialized.iter().copied().collect();
 
@@ -339,6 +345,8 @@ fn build_navicust_render(
         handle: iced_image::Handle::from_rgba(handle_w, handle_h, img.into_raw()),
         body_origin_x,
         body_origin_y,
+        excode_origin_y,
+        excode_strip_h,
         cell_size,
         cols,
         rows,

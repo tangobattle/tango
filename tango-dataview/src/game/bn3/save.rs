@@ -440,6 +440,17 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         true
     }
 
+    fn set_ex_code(&mut self, code: Option<u8>) -> bool {
+        // 0 = no EX Code (matches `NavicustView::ex_code`'s read at 0x1270).
+        let raw = match code {
+            None => 0,
+            Some(code) if super::rom::is_valid_ex_code(code) => code,
+            Some(_) => return false,
+        };
+        self.save.buf[0x1270] = raw;
+        true
+    }
+
     fn set_navicust_part(&mut self, i: usize, part: Option<crate::save::NavicustPart>) -> bool {
         if i >= (NavicustView { save: self.save }).count() {
             return false;
@@ -488,6 +499,19 @@ impl<'a> crate::save::NavicustViewMut<'a> for NavicustViewMut<'a> {
                 .collect::<Vec<_>>(),
         );
         // BN3 computes the navicust color bar on read (White/Pink/Yellow +
-        // a style-derived color), so there's nothing to rebuild here.
+        // a style-derived color), so there's nothing to rebuild there.
+
+        // Recompile MegaMan's ability array (0x5770) from style + the placed
+        // programs (+ their command-line membership, just written above) +
+        // the EX Code — the array the game actually reads. Without this, edits
+        // to navicust/style/excode don't take effect until the customizer is
+        // re-entered in-game. Battle-scratch slots are left for the game to
+        // recompute at battle start.
+        let abil = super::abilities::compile(&self.save.buf);
+        for i in 0..super::abilities::ABILITY_ARRAY_LEN {
+            if !super::abilities::SCRATCH.contains(&i) {
+                self.save.buf[super::abilities::ABILITY_ARRAY_OFFSET + i] = abil[i];
+            }
+        }
     }
 }

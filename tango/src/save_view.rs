@@ -248,6 +248,67 @@ impl std::fmt::Display for StyleChoice {
     }
 }
 
+/// One entry in the BN3 EX-Code dropdown. `code == None` is the "no EX
+/// Code" entry. Equality is by code so `pick_list` can mark the active one.
+#[derive(Clone)]
+struct ExCodeChoice {
+    code: Option<u8>,
+    label: String,
+}
+impl PartialEq for ExCodeChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code
+    }
+}
+impl std::fmt::Display for ExCodeChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// Short human label for an EX-code benefit. These are terse game-data
+/// terms with no ROM-side name, so they're formatted here (not localized).
+fn ex_code_effect_label(effect: tango_dataview::rom::ExCodeEffect) -> String {
+    use tango_dataview::rom::ExCodeEffect as E;
+    match effect {
+        E::MaxHP(n) => format!("HP +{n}"),
+        E::SuperArmor => "Super Armor".to_string(),
+        E::BreakBuster => "Break Buster".to_string(),
+        E::BreakCharge => "Break Charge".to_string(),
+        E::ShadowShoes => "Shadow Shoes".to_string(),
+        E::FloatShoes => "Float Shoes".to_string(),
+        E::AirShoes => "Air Shoes".to_string(),
+        E::UnderShirt => "UnderShirt".to_string(),
+        E::Block => "Block".to_string(),
+        E::Shield => "Shield".to_string(),
+        E::Reflect => "Reflect".to_string(),
+        E::AntiDamage => "AntiDamage".to_string(),
+        E::MegaFolder(n) => format!("MegFldr +{n}"),
+        E::GigaFolder(n) => format!("GigFldr +{n}"),
+        E::FastGauge => "FastGauge".to_string(),
+        E::SneakRun => "SneakRun".to_string(),
+        E::Humor => "Humor".to_string(),
+    }
+}
+
+/// Short human label for an EX-code penalty bug.
+fn ex_code_bug_label(bug: tango_dataview::rom::ExCodeBug) -> String {
+    use tango_dataview::rom::ExCodeBug as B;
+    match bug {
+        B::Custom(n) => format!("Custom −{n}"),
+        B::PoisonPanelStep => "Poison Panel".to_string(),
+    }
+}
+
+/// `(effect, bug)` badge backgrounds for EX codes — the same gold benefit /
+/// purple bug colors the BN5/6 patch-card effect badges use.
+fn excode_badge_colors() -> (iced::Color, iced::Color) {
+    (
+        iced::Color::from_rgb8(0xff, 0xbd, 0x18),
+        iced::Color::from_rgb8(0xb5, 0x5a, 0xde),
+    )
+}
+
 /// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
 /// past this is blocked, and a freshly added card lands disabled if it
 /// wouldn't fit — so a committed save never exceeds the in-game limit.
@@ -934,6 +995,7 @@ impl State {
             | Action::PickUpInstalledPart { .. }
             | Action::ClearNavicust
             | Action::SetNavicustStyle(_)
+            | Action::SetExCode(_)
             | Action::AddPatchCard56 { .. }
             | Action::RemovePatchCard56 { .. }
             | Action::ReorderPatchCard56s(_)
@@ -1046,6 +1108,8 @@ pub enum Action {
     ClearNavicust,
     /// Set the navi's style (BN3 style dropdown).
     SetNavicustStyle(usize),
+    /// Set the navi's EX Code (BN3); `None` clears it.
+    SetExCode(Option<u8>),
     /// Palette: the filter text changed.
     NavicustFilterChanged(String),
     /// Palette: the sort order changed.
@@ -2351,7 +2415,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
 
     // Editor grid geometry (must match `EditorGrid::new`) so the hover
     // popover overlay's cells line up with the painted squares.
-    let g = crate::navicust::geometry(cols, rows);
+    let g = crate::navicust::geometry(cols, rows, v.ex_code().is_some());
     let scale = crate::navicust::display_scale(crate::navicust_editor::DISPLAY_W);
     let cell = crate::navicust::SQUARE_SIZE * scale;
     let origin_x = (g.body_origin_x + crate::navicust::BORDER_WIDTH / 2.0) * scale;
@@ -2450,9 +2514,58 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         .into()
     });
 
+    // EX Code dropdown (BN3), overlaid on the strip band reserved between the
+    // color bar and the grid: an effect picker + a red bug badge for the
+    // selected code's penalty. Same left-border alignment as the style pick.
+    let excode_overlay: Option<Element<'a, Action>> = v.ex_code().map(|cur| {
+        let current = u8::try_from(cur).ok().filter(|&c| assets.ex_code(c).is_some());
+        let mut choices = vec![ExCodeChoice {
+            code: None,
+            label: "None".to_string(),
+        }];
+        for c in 0u8..=0xff {
+            if let Some(ec) = assets.ex_code(c) {
+                choices.push(ExCodeChoice {
+                    code: Some(c),
+                    label: ex_code_effect_label(ec.effect),
+                });
+            }
+        }
+        let selected = choices.iter().find(|ch| ch.code == current).cloned();
+        let pick = pick_list(choices, selected, |ch: ExCodeChoice| Action::SetExCode(ch.code))
+            .padding([5, 10])
+            .text_size(TEXT_BODY)
+            .style(widgets::chunky_pick_list);
+        let mut bar = row![
+            text(t!(lang, "navi-excode")).size(TEXT_BODY).style(muted_text_style),
+            pick,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+        if let Some(bug) = current.and_then(|c| assets.ex_code(c)).and_then(|ec| ec.bug) {
+            bar = bar.push(colored_badge_sized(
+                ex_code_bug_label(bug),
+                excode_badge_colors().1,
+                iced::Color::BLACK,
+                TEXT_CAPTION,
+                [3.0, 8.0],
+            ));
+        }
+        let x = g.body_origin_x * scale;
+        let y = g.excode_origin_y * scale;
+        column![
+            Space::new().height(Length::Fixed(y)),
+            row![Space::new().width(Length::Fixed(x)), bar],
+        ]
+        .into()
+    });
+
     let mut grid_stack = stack![canvas_el, overlay_col];
     if let Some(style_overlay) = style_overlay {
         grid_stack = grid_stack.push(style_overlay);
+    }
+    if let Some(excode_overlay) = excode_overlay {
+        grid_stack = grid_stack.push(excode_overlay);
     }
     let canvas_el: Element<'a, Action> = grid_stack
         .width(Length::Fixed(grid_w))
@@ -3588,9 +3701,50 @@ fn render_navicust<M: 'static>(
             }
             .view::<M>();
 
-            let stacked = stack![image, overlay_col, hover]
-                .width(Length::Fixed(dw))
-                .height(Length::Fixed(dh));
+            // EX-code badges on the reserved strip band (BN3), matching the
+            // editor: effect badge (green) + bug badge (red), or "None".
+            let excode_overlay: Option<Element<'static, M>> = (nc.excode_strip_h > 0.0).then(|| {
+                let code = v
+                    .ex_code()
+                    .and_then(|c| u8::try_from(c).ok())
+                    .filter(|&c| assets.ex_code(c).is_some());
+                let mut bar = row![text(t!(lang, "navi-excode")).size(TEXT_BODY).style(muted_text_style)]
+                    .spacing(8)
+                    .align_y(Alignment::Center);
+                let (eff_bg, bug_bg) = excode_badge_colors();
+                match code.and_then(|c| assets.ex_code(c)) {
+                    Some(ec) => {
+                        bar = bar.push(colored_badge_sized(
+                            ex_code_effect_label(ec.effect),
+                            eff_bg,
+                            iced::Color::BLACK,
+                            TEXT_CAPTION,
+                            [3.0, 8.0],
+                        ));
+                        if let Some(bug) = ec.bug {
+                            bar = bar.push(colored_badge_sized(
+                                ex_code_bug_label(bug),
+                                bug_bg,
+                                iced::Color::BLACK,
+                                TEXT_CAPTION,
+                                [3.0, 8.0],
+                            ));
+                        }
+                    }
+                    None => bar = bar.push(text("None").size(TEXT_CAPTION).style(muted_text_style)),
+                }
+                column![
+                    Space::new().height(Length::Fixed(nc.excode_origin_y)),
+                    row![Space::new().width(Length::Fixed(body_x)), bar],
+                ]
+                .into()
+            });
+
+            let mut layers = stack![image, overlay_col, hover];
+            if let Some(excode_overlay) = excode_overlay {
+                layers = layers.push(excode_overlay);
+            }
+            let stacked = layers.width(Length::Fixed(dw)).height(Length::Fixed(dh));
             // Flush against the pane — no shadow, no extra padding.
             // The image's corners are pre-masked in selection.rs to
             // match the pane's rounded corners. No Fill / centering

@@ -1,3 +1,4 @@
+mod abilities;
 pub mod rom;
 pub mod save;
 
