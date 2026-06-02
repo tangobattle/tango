@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::input::PartialInput;
 
-use super::world::{MgbaPredictor, MgbaPresenter, MgbaSimulator, MgbaState, MgbaWorld, ReplayObserver};
+use super::world::{MgbaPredictor, MgbaSimulator, MgbaState, MgbaWorld, ReplayObserver};
 use super::EXPECTED_FPS;
 
 /// Per-side input-queue capacity.
@@ -17,7 +17,10 @@ const MAX_QUEUE_LENGTH: usize = 120;
 /// sender (for shipping the local input each frame) and the live core's thread
 /// handle (to restore the frame-rate target when the round ends).
 pub struct Round {
-    session: getgud::Session<MgbaWorld>,
+    /// The rollback engine. `None` while the round is "armed" but hasn't reached
+    /// its first commit; created — seeded with the first committed state — by
+    /// [`start_session`](Round::start_session) on the first `main_read_joyflags`.
+    session: Option<getgud::Session<MgbaWorld>>,
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
@@ -33,18 +36,45 @@ pub struct Round {
     /// Handle to the live core's mgba thread, held so `Drop` can reset its
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
-    /// Time-sync throttler. Lives here (not in the per-frame presenter) so its
-    /// EMA state carries across frames; the presenter borrows it each frame to
-    /// turn the engine's skew into an fps target.
+    /// Time-sync throttler. Its EMA state carries across frames;
+    /// `add_local_input_and_fastforward` feeds it the engine's skew each frame to
+    /// turn it into an fps target for the live core.
     throttler: super::throttler::Throttler,
+    /// Tick of the last state loaded into the live core — the tick returned by
+    /// the most recent [`Session::advance`](getgud::Session::advance), or 0
+    /// before the first load. Read by the per-game `round_post_increment_tick`
+    /// traps via [`last_loaded_tick`](Self::last_loaded_tick).
+    last_loaded_tick: u32,
 }
 
 impl Round {
-    pub(super) fn new(match_: &super::Match) -> anyhow::Result<Self> {
-        let hooks = match_.local_hooks();
-        let local_player_index = match_.local_player_index();
+    pub(super) fn new(match_: &super::Match) -> Self {
+        Self {
+            session: None,
+            local_player_index: match_.local_player_index(),
+            sender: match_.sender_handle(),
+            frame_delay: match_.frame_delay(),
+            primary_thread_handle: match_.primary_thread_handle(),
+            throttler: super::throttler::Throttler::new(),
+            last_loaded_tick: 0,
+        }
+    }
 
-        let ff = crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), local_player_index)?;
+    /// Build the rollback session from the round's first committed state, seeding
+    /// the engine's settled checkpoint at tick 0. Called once per round from
+    /// [`Match::record_first_commit`](super::Match::record_first_commit) when the
+    /// live core reaches the first commit tick. The heavy
+    /// [`Fastforwarder`](crate::stepper::Fastforwarder) is built here rather than
+    /// at round start — it isn't needed until the first re-sim, which is
+    /// post-commit.
+    pub(super) fn start_session(
+        &mut self,
+        match_: &super::Match,
+        local_state: Box<mgba::state::State>,
+        first_packet: &[u8],
+    ) -> anyhow::Result<()> {
+        let hooks = match_.local_hooks();
+        let ff = crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), self.local_player_index)?;
         let simulator = Box::new(MgbaSimulator {
             ff,
             shadow: match_.shadow_handle(),
@@ -54,26 +84,20 @@ impl Round {
         let predictor: Arc<dyn getgud::Predictor<MgbaWorld>> = Arc::new(MgbaPredictor);
         let observer: Box<dyn getgud::CommitObserver<MgbaWorld>> = Box::new(ReplayObserver {
             writer: match_.replay_writer_handle(),
-            local_player_index,
+            local_player_index: self.local_player_index,
         });
-
-        let frame_delay = match_.frame_delay();
-        let session = getgud::Session::new(getgud::SessionParams {
-            frame_delay: frame_delay.load(Ordering::Relaxed),
+        self.session = Some(getgud::Session::new(getgud::SessionParams {
+            present_delay: self.frame_delay.load(Ordering::Relaxed),
             initial_remote: PartialInput { joyflags: 0 },
+            initial_state: MgbaState {
+                core: local_state,
+                outgoing: first_packet.to_vec(),
+            },
             simulator,
             predictor,
             observer: Some(observer),
-        });
-
-        Ok(Self {
-            session,
-            local_player_index,
-            sender: match_.sender_handle(),
-            frame_delay,
-            primary_thread_handle: match_.primary_thread_handle(),
-            throttler: super::throttler::Throttler::new(),
-        })
+        }));
+        Ok(())
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -83,43 +107,39 @@ impl Round {
     /// Netcode frontier — advances one per wall-frame via the live core's
     /// post-tick hook.
     pub(crate) fn frontier(&self) -> u32 {
-        self.session.frontier()
+        self.session.as_ref().map_or(0, |s| s.frontier())
     }
 
     /// Tick of the last `present_state` loaded into the live core (0 before any
     /// load). Per-game `round_post_increment_tick` traps compare the game's
     /// tick against this.
     pub fn last_loaded_tick(&self) -> u32 {
-        self.session.presented_tick()
+        self.last_loaded_tick
     }
 
     /// Called from each per-game `round_post_increment_tick` trap to keep the
-    /// netcode frontier in lockstep with the wall clock.
+    /// netcode frontier in lockstep with the wall clock. Only fires after the
+    /// first commit (the traps gate on [`has_settled_snapshot`](Self::has_settled_snapshot)).
     pub fn advance_frontier(&mut self) {
-        self.session.advance_frontier();
+        self.session.as_mut().expect("round committed").advance_frontier();
     }
 
-    pub fn set_first_settled_state(&mut self, local_state: Box<mgba::state::State>, first_packet: &[u8]) {
-        self.session.set_first_settled_state(MgbaState {
-            core: local_state,
-            outgoing: first_packet.to_vec(),
-        });
-    }
-
+    /// Whether the round has reached its first commit and the rollback session
+    /// is live. Until then the round is armed but not yet running.
     pub fn has_settled_snapshot(&self) -> bool {
-        self.session.has_settled_snapshot()
+        self.session.is_some()
     }
 
     pub fn local_frame_advantage(&self) -> i16 {
-        self.session.local_frame_advantage()
+        self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
     }
 
     pub fn last_remote_frame_advantage(&self) -> i16 {
-        self.session.last_remote_frame_advantage()
+        self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
     }
 
     pub fn speculative_depth(&self) -> u32 {
-        self.session.speculative_depth()
+        self.session.as_ref().map_or(0, |s| s.speculative_depth())
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -128,10 +148,10 @@ impl Round {
     /// state into `core`.
     pub async fn add_local_input_and_fastforward(
         &mut self,
-        core: mgba::core::CoreMutRef<'_>,
+        mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
     ) -> anyhow::Result<()> {
-        let frame_advantage = self.session.local_frame_advantage();
+        let frame_advantage = self.local_frame_advantage();
         self.sender
             .lock()
             .await
@@ -141,24 +161,34 @@ impl Round {
             })
             .await?;
 
-        if self.session.local_queue_length() >= MAX_QUEUE_LENGTH {
+        // The session exists by now: the primary's first `main_read_joyflags`
+        // calls `start_session` before this in the same trap fire.
+        let session = self.session.as_mut().expect("round committed before stepping");
+        if session.local_queue_length() >= MAX_QUEUE_LENGTH {
             anyhow::bail!("local overflowed our input buffer");
         }
 
         // Push the host-side live frame delay into the engine before stepping,
         // so a footer-slider change takes effect on this frame.
-        self.session.set_frame_delay(self.frame_delay.load(Ordering::Relaxed));
+        session.set_present_delay(self.frame_delay.load(Ordering::Relaxed));
 
-        let mut presenter = MgbaPresenter {
-            core,
-            throttler: &mut self.throttler,
-        };
-        self.session.advance(&mut presenter, PartialInput { joyflags })
+        let frame = session.advance(PartialInput { joyflags })?;
+        core.load_state(&frame.state.core).expect("load present state");
+        self.last_loaded_tick = frame.tick;
+
+        // Smooth the raw skew into a slowdown below our nominal rate, then turn
+        // that into an absolute fps target for the live core.
+        let slowdown = self.throttler.step(session.skew());
+        core.gba_mut()
+            .sync_mut()
+            .expect("set fps target")
+            .set_fps_target(EXPECTED_FPS - slowdown);
+        Ok(())
     }
 
     pub fn add_remote_input(&mut self, input: crate::net::Input) {
         log::debug!("remote input: {:?}", input);
-        self.session.add_remote_input(
+        self.session.as_mut().expect("round committed").add_remote_input(
             PartialInput {
                 joyflags: input.joyflags,
             },
@@ -167,7 +197,9 @@ impl Round {
     }
 
     pub(super) fn can_add_remote_input(&self) -> bool {
-        self.session.remote_queue_length() < MAX_QUEUE_LENGTH
+        self.session
+            .as_ref()
+            .is_some_and(|s| s.remote_queue_length() < MAX_QUEUE_LENGTH)
     }
 }
 

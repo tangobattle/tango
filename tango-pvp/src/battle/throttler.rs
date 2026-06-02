@@ -1,9 +1,8 @@
 //! Time-sync throttler. Converts the engine's raw per-frame skew
-//! (`local_advantage - remote_advantage`, handed to the presenter) into a
-//! slowdown in fps below the base rate; [`MgbaPresenter`](super::world::MgbaPresenter)
-//! turns that into an absolute fps target for the live core. Only the leading
-//! peer slows down — the trailing peer runs at full rate and lets the leader
-//! ease back toward it.
+//! (`local_advantage - remote_advantage`) into a slowdown in fps below the base
+//! rate; [`Round`](super::Round) turns that into an absolute fps target for the
+//! live core. Only the leading peer slows down — the trailing peer runs at full
+//! rate and lets the leader ease back toward it.
 
 /// EMA weight applied while skew is growing. τ ≈ 5 s rise (at 60 Hz).
 const ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
@@ -12,8 +11,8 @@ const ALPHA_SPEEDUP: f32 = 1.0 / 30.0;
 /// Slowdown ceiling, in fps below the base rate.
 const MAX_SLOWDOWN: f32 = 30.0;
 
-/// Per-round time-sync throttler. [`Round`](super::Round) owns one and the
-/// presenter feeds it the engine's raw skew each frame.
+/// Per-round time-sync throttler. [`Round`](super::Round) owns one and feeds it
+/// the engine's raw skew each frame.
 pub(crate) struct Throttler {
     /// Asymmetric-EMA-smoothed skew, carried across frames. Holds the raw
     /// (unclamped) value so the clamp only shapes the emitted slowdown, not the

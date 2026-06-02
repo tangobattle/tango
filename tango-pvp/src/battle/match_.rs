@@ -142,7 +142,7 @@ impl Match {
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
         self.shadow.lock().unwrap().advance_until_first_committed_state()?;
-        round.set_first_settled_state(local_state, first_packet);
+        round.start_session(self, local_state, first_packet)?;
         self.bump_round_progress();
         Ok(())
     }
@@ -298,7 +298,7 @@ impl Match {
 
         log::info!("preparing round state");
 
-        *round_state = Some(Round::new(self)?);
+        *round_state = Some(Round::new(self));
         self.bump_round_progress();
         log::info!("round has started");
         Ok(())

@@ -13,9 +13,10 @@
 //!   and owns the shadow.
 //! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet is
 //!   the simulator's own business.
-//! - [`MgbaPresenter`] loads the chosen display state into the live core and
-//!   drives the live frame-rate target from the engine's time-sync skew via the
-//!   [`Throttler`](super::throttler::Throttler).
+//!
+//! The chosen display state is loaded into the live core — and the time-sync
+//! skew turned into a frame-rate target via [`Throttler`](super::throttler::Throttler)
+//! — by [`Round`](super::Round), not here.
 
 use std::sync::{Arc, Mutex as SyncMutex};
 
@@ -118,29 +119,6 @@ impl getgud::Predictor<MgbaWorld> for MgbaPredictor {
         PartialInput {
             joyflags: last_remote.joyflags & HELD_KEYS,
         }
-    }
-}
-
-/// [`getgud::Presenter`] over the live core: load the displayed state and, from
-/// the engine's raw time-sync skew, set the frame-rate target via our throttler.
-pub struct MgbaPresenter<'a> {
-    pub core: mgba::core::CoreMutRef<'a>,
-    /// Borrowed from the owning [`Round`](super::Round) so the throttler's EMA
-    /// state persists across frames (the presenter itself is rebuilt each frame).
-    pub throttler: &'a mut super::throttler::Throttler,
-}
-
-impl getgud::Presenter<MgbaWorld> for MgbaPresenter<'_> {
-    fn present(&mut self, state: &MgbaState, skew: i32) {
-        self.core.load_state(&state.core).expect("load present state");
-        // Smooth the raw skew into a slowdown below our nominal rate, then turn
-        // that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(skew);
-        self.core
-            .gba_mut()
-            .sync_mut()
-            .expect("set fps target")
-            .set_fps_target(super::EXPECTED_FPS - slowdown);
     }
 }
 
