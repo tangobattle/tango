@@ -141,18 +141,5 @@ pub(super) fn traps(
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             }),
         ),
-        (hooks.offsets.rom.round_call_jump_table_ret, {
-            let match_ = match_.clone();
-            Box::new(move |_core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
-                let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.as_mut() else { return };
-                if !round.has_settled_snapshot() {
-                    return;
-                }
-                round.advance_frontier();
-            })
-        }),
     ]
 }

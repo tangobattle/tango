@@ -117,13 +117,6 @@ impl Round {
         self.last_loaded_tick
     }
 
-    /// Called from each per-game `round_post_increment_tick` trap to keep the
-    /// netcode frontier in lockstep with the wall clock. Only fires after the
-    /// first commit (the traps gate on [`has_settled_snapshot`](Self::has_settled_snapshot)).
-    pub fn advance_frontier(&mut self) {
-        self.session.as_mut().expect("round committed").advance_frontier();
-    }
-
     /// Whether the round has reached its first commit and the rollback session
     /// is live. Until then the round is armed but not yet running.
     pub fn has_settled_snapshot(&self) -> bool {
@@ -178,7 +171,7 @@ impl Round {
 
         // Smooth the raw skew into a slowdown below our nominal rate, then turn
         // that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(session.skew());
+        let slowdown = self.throttler.step(frame.skew);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

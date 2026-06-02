@@ -27,11 +27,10 @@
 //! # Driving a session
 //!
 //! Construct with [`Session::new`] (passing the tick-0 world state as
-//! [`SessionParams::initial_state`]), then each tick call
-//! [`advance_frontier`](Session::advance_frontier) followed by
-//! [`advance`](Session::advance) — the latter hands back the [`Frame`] to draw
-//! and a [`skew`](Session::skew) to throttle against. Feed remote inputs in as
-//! they arrive with [`add_remote_input`](Session::add_remote_input).
+//! [`SessionParams::initial_state`]), then call [`advance`](Session::advance)
+//! once per tick — it advances the wall clock and hands back the [`Frame`] to
+//! draw (carrying the time-sync skew to throttle against). Feed remote inputs in
+//! as they arrive with [`add_remote_input`](Session::add_remote_input).
 
 mod input;
 mod session;
