@@ -61,7 +61,6 @@ impl Round {
             simulator,
             predictor,
             observer: Some(observer),
-            throttler: match_.build_throttler(),
         });
 
         Ok(Self {

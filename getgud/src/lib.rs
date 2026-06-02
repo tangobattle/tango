@@ -44,5 +44,4 @@ pub use input::{Pair, PairQueue};
 pub use present::Presenter;
 pub use session::{Session, SessionParams};
 pub use sim::{CommitObserver, Predictor, SimResult, Simulator};
-pub use throttler::{Clamp, Ema, Throttler};
 pub use world::{Snapshot, World};

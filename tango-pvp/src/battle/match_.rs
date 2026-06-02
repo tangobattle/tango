@@ -3,8 +3,6 @@ use std::sync::{Arc, Mutex as SyncMutex};
 
 use tokio::sync::{watch, Mutex};
 
-use getgud::{Clamp, Ema, Throttler};
-
 use super::round::Round;
 use super::types::{MatchIdentity, ReplayConfig};
 
@@ -70,10 +68,6 @@ impl Match {
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
         })
-    }
-
-    pub(super) fn build_throttler(&self) -> Box<dyn Throttler> {
-        Box::new(Clamp::<Ema>::default().with_min(0.0))
     }
 
     pub(super) fn rom(&self) -> &[u8] {

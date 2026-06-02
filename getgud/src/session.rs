@@ -21,7 +21,6 @@ pub struct SessionParams<W: World> {
     pub simulator: Box<dyn Simulator<W>>,
     pub predictor: Arc<dyn Predictor<W>>,
     pub observer: Option<Box<dyn CommitObserver<W>>>,
-    pub throttler: Box<dyn Throttler>,
 }
 
 /// One session's rollback state machine — the whole engine. A session covers a
@@ -50,7 +49,7 @@ pub struct Session<W: World> {
 
     // ---- Tick tracking ----
     /// Netcode frontier: advances one per wall-frame, independent of how far
-    /// the simulation lags. `frontier - frame_delay` is the display target.
+    /// the simulation lags. `frontier - frame_delay` is the present target.
     frontier: u32,
     /// Tick of the state most recently handed to the presenter (0 before any
     /// present).
@@ -70,17 +69,15 @@ pub struct Session<W: World> {
     /// settle advances.
     settle_backlog: std::collections::VecDeque<Pair<W::Input, W::Input>>,
     /// The single settled checkpoint that drives display + committed-side
-    /// bookkeeping. Capped at `commit_frontier - 1` so it only ever holds real,
-    /// confirmed state.
+    /// bookkeeping.
     settled_snapshot: Option<Snapshot<W>>,
 
     // ---- Time sync ----
-    /// Count of remote inputs received this session (= highest remote tick + 1,
-    /// since they arrive in order).
+    /// Count of remote inputs received this session.
     last_remote_received_tick: u32,
     /// The peer's frame advantage as of their most recent input.
     last_remote_frame_advantage: i16,
-    throttler: Box<dyn Throttler>,
+    throttler: Throttler,
 }
 
 impl<W: World> Session<W> {
@@ -92,7 +89,6 @@ impl<W: World> Session<W> {
             simulator,
             predictor,
             observer,
-            throttler,
         } = params;
 
         Self {
@@ -109,7 +105,7 @@ impl<W: World> Session<W> {
             settled_snapshot: None,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            throttler,
+            throttler: Throttler::new(),
         }
     }
 
@@ -160,11 +156,7 @@ impl<W: World> Session<W> {
     /// before calling this — there's no input delay, so what goes on the wire
     /// is exactly what's committed here. The engine has no notion of the bout
     /// ending; the host detects that however it likes (e.g. its own traps).
-    pub fn advance(
-        &mut self,
-        presenter: &mut dyn Presenter<W>,
-        local_input: W::Input,
-    ) -> Result<(), W::Error> {
+    pub fn advance(&mut self, presenter: &mut dyn Presenter<W>, local_input: W::Input) -> Result<(), W::Error> {
         if !self.input_queue.can_add_local_input() {
             return Err(EngineError::LocalInputOverflow.into());
         }
