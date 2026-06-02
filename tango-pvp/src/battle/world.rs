@@ -40,7 +40,7 @@ pub struct MgbaState {
 }
 
 /// Per-tick remote-packet resolver handed to the fastforwarder.
-type Resolver = Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Send>;
+type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
 /// [`getgud::Simulator`] over the per-frame [`Fastforwarder`]. Owns the shadow
 /// and resolves each tick's remote packet itself: a settle (`speculative =
@@ -59,7 +59,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
     fn simulate(
         &mut self,
         base: &Snapshot<MgbaWorld>,
-        inputs: Vec<Pair<PartialInput, PartialInput>>,
+        inputs: Vec<Pair<PartialInput>>,
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
         let resolver: Resolver = if speculative {
@@ -149,7 +149,7 @@ pub struct ReplayObserver {
 }
 
 impl getgud::CommitObserver<MgbaWorld> for ReplayObserver {
-    fn on_commit(&mut self, _tick: u32, pair: &Pair<PartialInput, PartialInput>) {
+    fn on_commit(&mut self, _tick: u32, pair: &Pair<PartialInput>) {
         if let Some(writer) = self.writer.lock().unwrap().as_mut() {
             writer.write_input(self.local_player_index, pair).expect("write input");
         }

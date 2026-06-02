@@ -5,10 +5,10 @@ use crate::input::{Input, Pair, PartialInput};
 
 use super::types::{BattleOutcome, RoundPhase, RoundResult};
 
-type InputPair = Pair<Input, Input>;
-type PartialInputPair = Pair<PartialInput, PartialInput>;
+type InputPair = Pair<Input>;
+type PartialInputPair = Pair<PartialInput>;
 
-type ApplyShadowInput = Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Send>;
+type ApplyShadowInput = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
 type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
 type SharedShadow = Arc<Mutex<crate::shadow::Shadow>>;
@@ -395,11 +395,11 @@ impl InnerState {
 
     // ----- shadow input -----
 
-    pub fn apply_shadow_input(&mut self, input: Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> {
+    pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let remote_packet = (self.apply_shadow_input)(self.current_tick, input.clone())?;
         self.output_pairs.push(Pair {
-            local: input.local,
-            remote: input.remote.with_packet(remote_packet.clone()),
+            local: input.0,
+            remote: input.1.with_packet(remote_packet.clone()),
         });
         Ok(remote_packet)
     }
@@ -409,7 +409,7 @@ impl InnerState {
     /// callers that need a full-replay record must drain it before the
     /// stepper observes the next round-start. Used by the replay regression
     /// harness to build a per-tick remote-packet digest.
-    pub fn output_pairs(&self) -> &[Pair<Input, Input>] {
+    pub fn output_pairs(&self) -> &[Pair<Input>] {
         &self.output_pairs
     }
 

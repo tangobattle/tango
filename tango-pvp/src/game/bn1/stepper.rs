@@ -59,10 +59,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 core,
                 stepper_state.remote_player_index() as u32,
                 &stepper_state
-                    .apply_shadow_input(crate::input::Pair {
-                        local: ip.local.with_packet(local_packet),
-                        remote: ip.remote,
-                    })
+                    .apply_shadow_input((ip.local.with_packet(local_packet), ip.remote))
                     .expect("apply shadow input")
                     .try_into()
                     .unwrap(),

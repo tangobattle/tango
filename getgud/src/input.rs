@@ -1,47 +1,39 @@
+use std::collections::VecDeque;
+
 /// One tick's local + remote input, paired for the simulator.
 #[derive(Clone, Debug)]
-pub struct Pair<LocalInput, RemoteInput> {
-    pub local: LocalInput,
-    pub remote: RemoteInput,
+pub struct Pair<Input> {
+    pub local: Input,
+    pub remote: Input,
 }
 
 /// The per-round delay queue. Local and remote inputs arrive independently;
-/// [`consume_and_peek_local`](PairQueue::consume_and_peek_local) drains as many
+/// [`consume_and_peek_local`](Queue::consume_and_peek_local) drains as many
 /// matched pairs as both sides have, leaving the surplus local inputs as the
-/// speculative window.
-pub struct PairQueue<LocalInput, RemoteInput> {
-    local_queue: std::collections::VecDeque<LocalInput>,
-    remote_queue: std::collections::VecDeque<RemoteInput>,
-    max_length: usize,
+/// speculative window. The queue is unbounded — the host bounds how deep it
+/// lets either side run by reading the queue lengths and stopping its own feed.
+pub struct Queue<Input> {
+    local_queue: VecDeque<Input>,
+    remote_queue: VecDeque<Input>,
 }
 
-impl<LocalInput, RemoteInput> PairQueue<LocalInput, RemoteInput>
+impl<Input> Queue<Input>
 where
-    LocalInput: Clone,
-    RemoteInput: Clone,
+    Input: Clone,
 {
-    pub fn new(capacity: usize) -> Self {
-        PairQueue {
-            local_queue: std::collections::VecDeque::with_capacity(capacity),
-            remote_queue: std::collections::VecDeque::with_capacity(capacity),
-            max_length: capacity,
+    pub fn new() -> Self {
+        Self {
+            local_queue: VecDeque::new(),
+            remote_queue: VecDeque::new(),
         }
     }
 
-    pub fn add_local_input(&mut self, v: LocalInput) {
+    pub fn add_local_input(&mut self, v: Input) {
         self.local_queue.push_back(v);
     }
 
-    pub fn can_add_local_input(&self) -> bool {
-        self.local_queue.len() < self.max_length
-    }
-
-    pub fn add_remote_input(&mut self, v: RemoteInput) {
+    pub fn add_remote_input(&mut self, v: Input) {
         self.remote_queue.push_back(v);
-    }
-
-    pub fn can_add_remote_input(&self) -> bool {
-        self.remote_queue.len() < self.max_length
     }
 
     pub fn local_queue_length(&self) -> usize {
@@ -52,14 +44,11 @@ where
         self.remote_queue.len()
     }
 
-    /// Local inputs queued past the latest remote — the speculative window.
-    /// Invariant under `consume_and_peek_local` (which drains equal counts
-    /// from both sides), so callers can read it at any point in the frame.
     pub fn speculative_depth(&self) -> usize {
         self.local_queue.len().saturating_sub(self.remote_queue.len())
     }
 
-    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<LocalInput, RemoteInput>>, Vec<LocalInput>) {
+    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<Input>>, Vec<Input>) {
         let n = std::cmp::min(self.local_queue.len(), self.remote_queue.len());
         let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n))
             .map(|(local, remote)| Pair { local, remote })

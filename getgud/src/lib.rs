@@ -31,7 +31,6 @@
 //!
 //! The type axes the engine is generic over live on [`World`].
 
-mod error;
 mod input;
 mod present;
 mod session;
@@ -39,8 +38,7 @@ mod sim;
 mod throttler;
 mod world;
 
-pub use error::EngineError;
-pub use input::{Pair, PairQueue};
+pub use input::{Pair, Queue};
 pub use present::Presenter;
 pub use session::{Session, SessionParams};
 pub use sim::{CommitObserver, Predictor, SimResult, Simulator};

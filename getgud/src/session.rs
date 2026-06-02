@@ -1,7 +1,7 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 
-use crate::error::EngineError;
-use crate::input::{Pair, PairQueue};
+use crate::input::{Pair, Queue};
 use crate::present::Presenter;
 use crate::sim::{CommitObserver, Predictor, Simulator};
 use crate::throttler::Throttler;
@@ -14,8 +14,6 @@ pub struct SessionParams<W: World> {
     /// by this much. Adjustable mid-session via
     /// [`Session::set_frame_delay`].
     pub frame_delay: u32,
-    /// Input-queue capacity (per side).
-    pub max_queue: usize,
     /// Seed for remote prediction before any remote input has committed.
     pub initial_remote: W::Input,
     pub simulator: Box<dyn Simulator<W>>,
@@ -56,7 +54,7 @@ pub struct Session<W: World> {
     presented_tick: u32,
 
     // ---- Input pipeline ----
-    input_queue: PairQueue<W::Input, W::Input>,
+    input_queue: Queue<W::Input>,
 
     // ---- Commit + settled checkpoint ----
     /// Exclusive upper bound of ticks where both peers' real inputs are known.
@@ -67,7 +65,7 @@ pub struct Session<W: World> {
     /// Confirmed input pairs the settle hasn't folded into the checkpoint yet,
     /// covering `[settled.tick, commit_frontier)`. Drained front-first as the
     /// settle advances.
-    settle_backlog: std::collections::VecDeque<Pair<W::Input, W::Input>>,
+    settle_backlog: VecDeque<Pair<W::Input>>,
     /// The single settled checkpoint that drives display + committed-side
     /// bookkeeping.
     settled_snapshot: Option<Snapshot<W>>,
@@ -84,7 +82,6 @@ impl<W: World> Session<W> {
     pub fn new(params: SessionParams<W>) -> Self {
         let SessionParams {
             frame_delay,
-            max_queue,
             initial_remote,
             simulator,
             predictor,
@@ -98,7 +95,7 @@ impl<W: World> Session<W> {
             observer,
             frontier: 0,
             presented_tick: 0,
-            input_queue: PairQueue::new(max_queue),
+            input_queue: Queue::new(),
             commit_frontier: 0,
             last_committed_remote: initial_remote,
             settle_backlog: std::collections::VecDeque::new(),
@@ -157,9 +154,6 @@ impl<W: World> Session<W> {
     /// is exactly what's committed here. The engine has no notion of the bout
     /// ending; the host detects that however it likes (e.g. its own traps).
     pub fn advance(&mut self, presenter: &mut dyn Presenter<W>, local_input: W::Input) -> Result<(), W::Error> {
-        if !self.input_queue.can_add_local_input() {
-            return Err(EngineError::LocalInputOverflow.into());
-        }
         self.input_queue.add_local_input(local_input);
 
         // Drain matched pairs onto the commit chain.
@@ -197,6 +191,18 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
+    /// Local inputs currently queued (committed + speculative). The host reads
+    /// this to bound its own feed; the engine imposes no cap.
+    pub fn local_queue_length(&self) -> usize {
+        self.input_queue.local_queue_length()
+    }
+
+    /// Remote inputs currently queued. The host reads this to bound its own
+    /// feed; the engine imposes no cap.
+    pub fn remote_queue_length(&self) -> usize {
+        self.input_queue.remote_queue_length()
+    }
+
     /// "How far ahead of the latest remote input I am." The host attaches this
     /// to each outgoing input so the peer can compute relative real-time skew.
     pub fn local_frame_advantage(&self) -> i16 {
@@ -216,16 +222,13 @@ impl<W: World> Session<W> {
     }
 
     /// Feed a remote input received off the wire, with the peer's frame
-    /// advantage. Inputs must arrive in tick order. Check
-    /// [`can_add_remote_input`](Session::can_add_remote_input) first.
+    /// advantage. Inputs must arrive in tick order. The host is responsible for
+    /// bounding the queue — check
+    /// [`remote_queue_length`](Session::remote_queue_length) first.
     pub fn add_remote_input(&mut self, input: W::Input, frame_advantage: i16) {
         self.input_queue.add_remote_input(input);
         self.last_remote_received_tick = self.last_remote_received_tick.wrapping_add(1);
         self.last_remote_frame_advantage = frame_advantage;
-    }
-
-    pub fn can_add_remote_input(&self) -> bool {
-        self.input_queue.can_add_remote_input()
     }
 
     /// Settle the checkpoint forward to `target` (at or behind the commit
@@ -245,7 +248,7 @@ impl<W: World> Session<W> {
         // guarantees `settle_backlog` is long enough.
         let count = (target - seed_tick + 1) as usize;
         debug_assert!(self.settle_backlog.len() >= count);
-        let input_pairs: Vec<Pair<W::Input, W::Input>> = self.settle_backlog.iter().take(count).cloned().collect();
+        let input_pairs: Vec<Pair<W::Input>> = self.settle_backlog.iter().take(count).cloned().collect();
 
         let result = self.simulator.simulate(&seed, input_pairs, false)?;
 
@@ -291,7 +294,7 @@ impl<W: World> Session<W> {
         // last confirmed remote, held constant across the tail.
         let predicted = self.predictor.predict(&self.last_committed_remote);
         let total = (target - seed_tick + 1) as usize;
-        let mut input_pairs: Vec<Pair<W::Input, W::Input>> = Vec::with_capacity(total);
+        let mut input_pairs: Vec<Pair<W::Input>> = Vec::with_capacity(total);
 
         // First entry sits at the committed cap: real local+remote inputs from
         // the settle-backlog front (the simulator resolves its remote data

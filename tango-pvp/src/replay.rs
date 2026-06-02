@@ -60,7 +60,7 @@ pub struct Replay {
     /// WRAM here and reassembled SRAM on read.
     pub local_sram: Vec<u8>,
     pub remote_sram: Vec<u8>,
-    pub rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>>,
+    pub rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput>>>,
 }
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
@@ -157,9 +157,9 @@ impl Replay {
         // `OP_PREV` for the per-record encoding. `0x00` ends the stream
         // cleanly; any unexpected EOF mid-record drops the partial record
         // and leaves is_complete=false.
-        let mut rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>>> =
+        let mut rounds: Vec<Vec<crate::input::Pair<crate::input::PartialInput>>> =
             Vec::new();
-        let mut current_round: Vec<crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>> =
+        let mut current_round: Vec<crate::input::Pair<crate::input::PartialInput>> =
             Vec::new();
         let mut is_complete = false;
         let mut prev: (u16, u16) = (0, 0);
@@ -280,7 +280,7 @@ impl Writer {
     pub fn write_input(
         &mut self,
         local_player_index: u8,
-        ip: &crate::input::Pair<crate::input::PartialInput, crate::input::PartialInput>,
+        ip: &crate::input::Pair<crate::input::PartialInput>,
     ) -> std::io::Result<()> {
         let (p1, p2) = if local_player_index == 0 {
             (ip.local.joyflags, ip.remote.joyflags)

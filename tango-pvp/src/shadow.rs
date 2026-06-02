@@ -25,7 +25,7 @@ pub struct ShadowSnapshot {
     pub round_state: RoundState,
 }
 
-use crate::input::{Input, Pair, PartialInput};
+use crate::input::{Input, PartialInput};
 
 /// Shadow-mode emulator that mirrors the remote peer locally. The visible
 /// primary calls into this to advance the predicted opponent state via
@@ -210,7 +210,7 @@ impl Shadow {
     /// per-game traps use it to detect the "shadow advanced one tick before
     /// the trap fired" race. Returns the remote packet that was queued before
     /// this run.
-    pub fn apply_input(&mut self, expected_tick: u32, ip: Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> {
+    pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");

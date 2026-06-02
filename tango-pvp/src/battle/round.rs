@@ -56,7 +56,6 @@ impl Round {
         let frame_delay = match_.frame_delay();
         let session = getgud::Session::new(getgud::SessionParams {
             frame_delay: frame_delay.load(Ordering::Relaxed),
-            max_queue: MAX_QUEUE_LENGTH,
             initial_remote: PartialInput { joyflags: 0 },
             simulator,
             predictor,
@@ -131,8 +130,15 @@ impl Round {
         self.sender
             .lock()
             .await
-            .send(&crate::net::Input { joyflags, frame_advantage })
+            .send(&crate::net::Input {
+                joyflags,
+                frame_advantage,
+            })
             .await?;
+
+        if self.session.local_queue_length() >= MAX_QUEUE_LENGTH {
+            anyhow::bail!("local overflowed our input buffer");
+        }
 
         // Push the host-side live frame delay into the engine before stepping,
         // so a footer-slider change takes effect on this frame.
@@ -144,11 +150,16 @@ impl Round {
 
     pub fn add_remote_input(&mut self, input: crate::net::Input) {
         log::debug!("remote input: {:?}", input);
-        self.session.add_remote_input(PartialInput { joyflags: input.joyflags }, input.frame_advantage);
+        self.session.add_remote_input(
+            PartialInput {
+                joyflags: input.joyflags,
+            },
+            input.frame_advantage,
+        );
     }
 
     pub(super) fn can_add_remote_input(&self) -> bool {
-        self.session.can_add_remote_input()
+        self.session.remote_queue_length() < MAX_QUEUE_LENGTH
     }
 }
 

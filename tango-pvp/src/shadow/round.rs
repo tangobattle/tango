@@ -1,4 +1,4 @@
-use crate::input::{Input, Pair, PartialInput};
+use crate::input::{Input, PartialInput};
 
 /// A shadow input pair queued by `Shadow::apply_input` for the next per-game
 /// trap to consume, plus the tick the primary expected the shadow to process
@@ -7,7 +7,7 @@ use crate::input::{Input, Pair, PartialInput};
 #[derive(Clone)]
 pub struct PendingShadowInput {
     pub expected_tick: u32,
-    pub pair: Pair<Input, PartialInput>,
+    pub pair: (Input, PartialInput),
 }
 
 /// `pending_remote_packet`'s payload bundled with the tick at which a
@@ -72,7 +72,7 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub(super) fn set_pending_shadow_input(&mut self, expected_tick: u32, pair: Pair<Input, PartialInput>) {
+    pub(super) fn set_pending_shadow_input(&mut self, expected_tick: u32, pair: (Input, PartialInput)) {
         self.pending_shadow_input = Some(PendingShadowInput { expected_tick, pair });
     }
 

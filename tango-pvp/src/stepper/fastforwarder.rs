@@ -12,7 +12,7 @@ pub struct FastforwardResult {
     /// next base state) resumes with the right local-joyflags register.
     pub snapshot: crate::battle::Snapshot,
     pub round_result: Option<RoundResult>,
-    pub output_pairs: Vec<Pair<Input, Input>>,
+    pub output_pairs: Vec<Pair<Input>>,
 }
 
 /// Per-Match emulator dedicated to running the per-frame stepper traps over a
@@ -63,10 +63,10 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        input_pairs: Vec<Pair<PartialInput, PartialInput>>,
+        input_pairs: Vec<Pair<PartialInput>>,
         current_tick: u32,
         last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Send>,
+        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<FastforwardResult> {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());

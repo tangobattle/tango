@@ -1,5 +1,3 @@
-use crate::error::EngineError;
-
 /// The type axes the engine is generic over, plus the error type its seams
 /// report through.
 ///
@@ -19,10 +17,9 @@ pub trait World: Sized + 'static {
     /// whatever a re-sim needs to resume (for a link-cable game, that includes
     /// the in-flight outgoing packet).
     type State: Send + 'static;
-    /// Error type the seams (simulator, …) report. Must absorb the engine's own
-    /// [`EngineError`]; an adapter is free to use `anyhow::Error` or any
-    /// concrete enum here.
-    type Error: From<EngineError> + Send + 'static;
+    /// Error type the seams (simulator, …) report. An adapter is free to use
+    /// `anyhow::Error` or any concrete enum here.
+    type Error: Send + 'static;
 }
 
 /// A simulation checkpoint captured at `tick`.

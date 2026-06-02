@@ -17,10 +17,6 @@ pub struct SimResult<W: World> {
 
 /// The deterministic core of the game: re-simulate a window of inputs from a
 /// checkpoint, with save/restore and a single forward run per call.
-///
-/// The window is inclusive of the capture tick, so the captured snapshot lands
-/// at `base.tick + inputs.len() - 1` (the engine never calls this with empty
-/// `inputs`).
 pub trait Simulator<W: World>: Send {
     /// From `base`, process `inputs` and capture a fresh snapshot.
     ///
@@ -33,14 +29,12 @@ pub trait Simulator<W: World>: Send {
     fn simulate(
         &mut self,
         base: &Snapshot<W>,
-        inputs: Vec<Pair<W::Input, W::Input>>,
+        inputs: Vec<Pair<W::Input>>,
         speculative: bool,
     ) -> Result<SimResult<W>, W::Error>;
 }
 
-/// Guesses an unknown remote input from the last known one. Applied repeatedly
-/// across the speculative window, so it must be stable under iteration (a
-/// fixpoint, not a drift).
+/// Guesses an unknown remote input from the last known one.
 pub trait Predictor<W: World>: Send + Sync {
     fn predict(&self, last_remote: &W::Input) -> W::Input;
 }
@@ -49,5 +43,5 @@ pub trait Predictor<W: World>: Send + Sync {
 /// known). Used for e.g. recording a replay. Pairs are reported in tick order;
 /// pairs at or past a terminal tick are not reported.
 pub trait CommitObserver<W: World>: Send {
-    fn on_commit(&mut self, tick: u32, pair: &Pair<W::Input, W::Input>);
+    fn on_commit(&mut self, tick: u32, pair: &Pair<W::Input>);
 }

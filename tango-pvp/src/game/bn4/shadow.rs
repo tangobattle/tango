@@ -110,7 +110,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 if let Some(pending) = round.peek_shadow_input() {
                     core.gba_mut()
                         .cpu_mut()
-                        .set_gpr(4, (pending.pair.remote.joyflags | 0xfc00) as i32);
+                        .set_gpr(4, (pending.pair.1.joyflags | 0xfc00) as i32);
                 }
 
                 if round.take_input_injected() {
@@ -146,7 +146,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
-                    &pending.pair.local.packet.try_into().unwrap(),
+                    &pending.pair.0.packet.try_into().unwrap(),
                 );
                 munger.set_rx_packet(
                     core,
