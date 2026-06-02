@@ -114,11 +114,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     state.on_first_commit();
                 }
 
-                let Some(ip) = state.peek_input_pair().cloned() else {
+                let Some((local, _remote)) = state.peek_input_pair().cloned() else {
                     return;
                 };
 
-                core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+                core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | 0xfc00) as i32);
 
                 // FF state capture (post-peek so r4 is set). `capture_tick` is
                 // u32::MAX in replay mode, so this never fires there.
@@ -147,7 +147,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 }
 
-                let Some(ip) = state.pop_input_pair() else {
+                let Some((local, remote)) = state.pop_input_pair() else {
                     return;
                 };
 
@@ -167,7 +167,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     core,
                     state.remote_player_index() as u32,
                     &state
-                        .apply_shadow_input((ip.local.with_packet(local_packet), ip.remote))
+                        .apply_shadow_input((local.with_packet(local_packet), remote))
                         .expect("apply shadow input")
                         .try_into()
                         .unwrap(),

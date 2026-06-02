@@ -1,84 +1,64 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use crate::input::{Pair, Queue};
+use crate::input::Queue;
 use crate::present::Presenter;
 use crate::sim::{CommitObserver, Predictor, Simulator};
-use crate::throttler::Throttler;
 use crate::world::{Snapshot, World};
 
-/// Everything a [`Session`] needs at construction. The host assembles this
-/// (capturing its simulator, predictor, replay sink, …) for each new session.
+/// Everything needed to construct a [`Session`]. Pass to [`Session::new`].
 pub struct SessionParams<W: World> {
-    /// Display delay in ticks: the displayed state trails the netcode frontier
-    /// by this much. Adjustable mid-session via
-    /// [`Session::set_frame_delay`].
+    /// Ticks the display lags the frontier (`target = frontier - frame_delay`).
+    /// A small input buffer: larger values mean fewer rollbacks but more input
+    /// latency. Adjustable later via [`Session::set_frame_delay`].
     pub frame_delay: u32,
-    /// Seed for remote prediction before any remote input has committed.
+    /// Seed remote input used for the very first prediction, before any real
+    /// remote input has arrived.
     pub initial_remote: W::Input,
+    /// Advances the world (authoritative commits and throwaway tails).
     pub simulator: Box<dyn Simulator<W>>,
+    /// Guesses remote inputs for the speculative tail.
     pub predictor: Arc<dyn Predictor<W>>,
+    /// Optional hook over confirmed history (e.g. replay recording).
     pub observer: Option<Box<dyn CommitObserver<W>>>,
 }
 
-/// One session's rollback state machine — the whole engine. A session covers a
-/// single bout of play; the host creates a fresh one per round (or match, or
-/// whatever its unit of orchestration is) and owns everything around it: the
-/// wire, round boundaries, and the lifecycle of any co-simulation.
+/// The rollback engine for one local + one remote participant.
 ///
-/// Per displayed frame, [`advance`](Session::advance) queues the local input,
-/// drains newly-paired inputs onto the commit chain, settles the single
-/// checkpoint forward over confirmed inputs, optionally runs a throwaway
-/// speculative tail past the commit frontier, presents the chosen state, and
-/// emits the time-sync slowdown.
+/// Holds the authoritative settled checkpoint and the input queues, and on each
+/// [`advance`](Session::advance) settles confirmed inputs into the checkpoint,
+/// re-simulates a predicted tail up to the display target, and presents it.
 ///
-/// The host is responsible for sending the local input over the wire (reading
-/// [`local_frame_advantage`](Session::local_frame_advantage) for the value to
-/// attach) and for feeding received remote inputs in via
-/// [`add_remote_input`](Session::add_remote_input).
+/// Lifecycle: [`new`](Session::new) → [`set_first_settled_state`](Session::set_first_settled_state)
+/// (seed tick 0) → per frame, [`advance_frontier`](Session::advance_frontier)
+/// then [`advance`](Session::advance); feed remote inputs in with
+/// [`add_remote_input`](Session::add_remote_input) as they arrive.
 pub struct Session<W: World> {
-    // ---- Constants / config ----
     frame_delay: u32,
 
-    // ---- Seams ----
     simulator: Box<dyn Simulator<W>>,
     predictor: Arc<dyn Predictor<W>>,
     observer: Option<Box<dyn CommitObserver<W>>>,
 
-    // ---- Tick tracking ----
-    /// Netcode frontier: advances one per wall-frame, independent of how far
-    /// the simulation lags. `frontier - frame_delay` is the present target.
     frontier: u32,
-    /// Tick of the state most recently handed to the presenter (0 before any
-    /// present).
     presented_tick: u32,
 
-    // ---- Input pipeline ----
     input_queue: Queue<W::Input>,
 
-    // ---- Commit + settled checkpoint ----
-    /// Exclusive upper bound of ticks where both peers' real inputs are known.
     commit_frontier: u32,
-    /// The most recent remote input the settle committed — seeds the
-    /// speculative tail's prediction.
     last_committed_remote: W::Input,
-    /// Confirmed input pairs the settle hasn't folded into the checkpoint yet,
-    /// covering `[settled.tick, commit_frontier)`. Drained front-first as the
-    /// settle advances.
-    settle_backlog: VecDeque<Pair<W::Input>>,
-    /// The single settled checkpoint that drives display + committed-side
-    /// bookkeeping.
+
+    settle_backlog: VecDeque<(W::Input, W::Input)>,
     settled_snapshot: Option<Snapshot<W>>,
 
-    // ---- Time sync ----
-    /// Count of remote inputs received this session.
     last_remote_received_tick: u32,
-    /// The peer's frame advantage as of their most recent input.
     last_remote_frame_advantage: i16,
-    throttler: Throttler,
 }
 
 impl<W: World> Session<W> {
+    /// Build a session from [`SessionParams`]. Call
+    /// [`set_first_settled_state`](Self::set_first_settled_state) before the
+    /// first [`advance`](Self::advance).
     pub fn new(params: SessionParams<W>) -> Self {
         let SessionParams {
             frame_delay,
@@ -102,57 +82,58 @@ impl<W: World> Session<W> {
             settled_snapshot: None,
             last_remote_received_tick: 0,
             last_remote_frame_advantage: 0,
-            throttler: Throttler::new(),
         }
     }
 
-    /// Netcode frontier — advances one per wall-frame regardless of how far the
-    /// simulation lags.
+    /// The local wall-clock tick counter.
     pub fn frontier(&self) -> u32 {
         self.frontier
     }
 
-    /// Tick of the state most recently handed to the presenter (0 before any
-    /// present).
+    /// The tick actually drawn during the last [`advance`](Self::advance).
+    /// Usually `frontier - frame_delay`, but clamped early in a match and when
+    /// `frame_delay` changes live, so read it rather than recomputing.
     pub fn presented_tick(&self) -> u32 {
         self.presented_tick
     }
 
-    /// How far the displayed state trails the netcode frontier, in ticks.
+    /// The current display lag, in ticks.
     pub fn frame_delay(&self) -> u32 {
         self.frame_delay
     }
 
-    /// Adjust the display delay. Takes effect on the next
-    /// [`advance`](Session::advance).
+    /// Adjust the display lag live. Takes effect on the next
+    /// [`advance`](Self::advance).
     pub fn set_frame_delay(&mut self, frame_delay: u32) {
         self.frame_delay = frame_delay;
     }
 
-    /// Bump the netcode frontier. The host calls this once per wall-frame once
-    /// the session is live.
+    /// Advance the wall clock by one tick. Call once per rendered frame, before
+    /// [`advance`](Self::advance).
     pub fn advance_frontier(&mut self) {
         self.frontier += 1;
     }
 
-    /// Seed the settled checkpoint at the session's tick-0 state.
+    /// Seed the authoritative checkpoint with the world state at tick 0. Must be
+    /// called once before the first [`advance`](Self::advance).
     pub fn set_first_settled_state(&mut self, state: W::State) {
         self.settled_snapshot = Some(Snapshot { state, tick: 0 });
     }
 
-    pub fn has_committed_state(&self) -> bool {
+    /// Whether [`set_first_settled_state`](Self::set_first_settled_state) has
+    /// been called.
+    pub fn has_settled_snapshot(&self) -> bool {
         self.settled_snapshot.is_some()
     }
 
-    /// One displayed frame. Queues the local input, settles the checkpoint
-    /// forward, speculates past the commit frontier when the display target
-    /// demands it, presents the chosen state, and emits the time-sync slowdown.
+    /// Run one frame: append `local_input`, match any newly pairable inputs,
+    /// settle the checkpoint as far as confirmed inputs allow, then present
+    /// either a speculative tail (predicted remotes) or the checkpoint itself
+    /// via `presenter`, handing it the current time-sync skew.
     ///
-    /// The host must already have sent `local_input` over the wire (with
-    /// [`local_frame_advantage`](Session::local_frame_advantage) attached)
-    /// before calling this — there's no input delay, so what goes on the wire
-    /// is exactly what's committed here. The engine has no notion of the bout
-    /// ending; the host detects that however it likes (e.g. its own traps).
+    /// Call once per rendered frame, after [`advance_frontier`](Self::advance_frontier)
+    /// and after [`set_first_settled_state`](Self::set_first_settled_state).
+    /// Propagates any [`W::Error`](World::Error) from the simulator.
     pub fn advance(&mut self, presenter: &mut dyn Presenter<W>, local_input: W::Input) -> Result<(), W::Error> {
         self.input_queue.add_local_input(local_input);
 
@@ -169,12 +150,19 @@ impl<W: World> Session<W> {
         let settled_target = target.min(self.commit_frontier.saturating_sub(1));
         self.settle_to(settled_target)?;
 
-        if target > settled_target && self.commit_frontier > 0 {
+        // Raw time-sync skew handed to the presenter's own throttle. Both
+        // advantages carry the symmetric network delay, so their difference
+        // isolates the real clock skew between the two peers; positive means
+        // we're running ahead and should ease off. Computed up front so the
+        // borrow ends before we touch `settled_snapshot` below.
+        let skew = self.local_frame_advantage() as i32 - self.last_remote_frame_advantage as i32;
+
+        let tick = if target > settled_target && self.commit_frontier > 0 {
             // Speculative tail: throwaway re-sim from the checkpoint to the
             // target, predicting every remote payload past the frontier.
             let state = self.speculate_tail(target, &peeked)?;
-            self.presented_tick = target;
-            presenter.present(&state, target);
+            presenter.present(&state, skew);
+            target
         } else {
             // Settled (or pre-first-commit): the checkpoint IS the display. Its
             // tick is not always `target` — the wall clock can push `target`
@@ -182,60 +170,50 @@ impl<W: World> Session<W> {
             // frame_delay increase can pull it back behind the cap — so track
             // the tick actually presented.
             let snapshot = self.settled_snapshot.as_ref().unwrap();
-            let tick = snapshot.tick;
-            presenter.present(&snapshot.state, tick);
-            self.presented_tick = tick;
-        }
-
-        self.update_slowdown(presenter);
+            presenter.present(&snapshot.state, skew);
+            snapshot.tick
+        };
+        self.presented_tick = tick;
         Ok(())
     }
 
-    /// Local inputs currently queued (committed + speculative). The host reads
-    /// this to bound its own feed; the engine imposes no cap.
+    /// Local inputs not yet matched into a confirmed pair.
     pub fn local_queue_length(&self) -> usize {
         self.input_queue.local_queue_length()
     }
 
-    /// Remote inputs currently queued. The host reads this to bound its own
-    /// feed; the engine imposes no cap.
+    /// Remote inputs not yet matched into a confirmed pair.
     pub fn remote_queue_length(&self) -> usize {
         self.input_queue.remote_queue_length()
     }
 
-    /// "How far ahead of the latest remote input I am." The host attaches this
-    /// to each outgoing input so the peer can compute relative real-time skew.
+    /// How far the local frontier leads the remote inputs received so far.
+    /// Send this to the peer each frame so its throttler can sync against you.
     pub fn local_frame_advantage(&self) -> i16 {
         let diff = self.frontier as i32 - self.last_remote_received_tick as i32;
         diff.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
-    /// Peer's frame advantage as of their most recent input.
+    /// The lead the peer reported with its most recent remote input (see
+    /// [`add_remote_input`](Self::add_remote_input)).
     pub fn last_remote_frame_advantage(&self) -> i16 {
         self.last_remote_frame_advantage
     }
 
-    /// Speculative depth — local inputs queued past the latest remote, i.e. how
-    /// many frames a real remote input can force us to re-simulate.
+    /// Local frames currently being simulated against a predicted remote.
     pub fn speculative_depth(&self) -> u32 {
         self.input_queue.speculative_depth() as u32
     }
 
-    /// Feed a remote input received off the wire, with the peer's frame
-    /// advantage. Inputs must arrive in tick order. The host is responsible for
-    /// bounding the queue — check
-    /// [`remote_queue_length`](Session::remote_queue_length) first.
+    /// Feed in a remote input as it arrives off the transport, along with the
+    /// `frame_advantage` the peer reported (its [`local_frame_advantage`](Self::local_frame_advantage)),
+    /// used to drive time synchronization.
     pub fn add_remote_input(&mut self, input: W::Input, frame_advantage: i16) {
         self.input_queue.add_remote_input(input);
         self.last_remote_received_tick = self.last_remote_received_tick.wrapping_add(1);
         self.last_remote_frame_advantage = frame_advantage;
     }
 
-    /// Settle the checkpoint forward to `target` (at or behind the commit
-    /// frontier). One settle re-sim over `settle_backlog`: the simulator
-    /// resolves real remote data internally and the captured state becomes the
-    /// next checkpoint. Reports committed pairs to the observer and drops them.
-    /// No-op when `target` is at or behind the checkpoint.
     fn settle_to(&mut self, target: u32) -> Result<(), W::Error> {
         let seed_tick = self.settled_snapshot.as_ref().expect("settled state").tick;
         if target <= seed_tick {
@@ -248,7 +226,7 @@ impl<W: World> Session<W> {
         // guarantees `settle_backlog` is long enough.
         let count = (target - seed_tick + 1) as usize;
         debug_assert!(self.settle_backlog.len() >= count);
-        let input_pairs: Vec<Pair<W::Input>> = self.settle_backlog.iter().take(count).cloned().collect();
+        let input_pairs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(count).cloned().collect();
 
         let result = self.simulator.simulate(&seed, input_pairs, false)?;
 
@@ -256,7 +234,8 @@ impl<W: World> Session<W> {
         // prediction. `consumed >= 1` here (we returned early if `target <=
         // seed_tick`), so the index is in range.
         let consumed = (target - seed_tick) as usize;
-        self.last_committed_remote = self.settle_backlog[consumed - 1].remote.clone();
+        let (_local, remote) = &self.settle_backlog[consumed - 1];
+        self.last_committed_remote = remote.clone();
 
         // Report the just-committed pairs (paced at the display rate), dropping
         // any at or past the terminal tick (so a replay isn't recorded past the
@@ -278,10 +257,6 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
-    /// Throwaway re-sim from the checkpoint to `target`, predicting the remote
-    /// input across the range. Used only when `target > commit_frontier - 1`.
-    /// Doesn't touch the checkpoint — the next settle re-processes the committed
-    /// portion with real data.
     fn speculate_tail(&mut self, target: u32, peeked: &[W::Input]) -> Result<W::State, W::Error> {
         let seed_tick = self.settled_snapshot.as_ref().expect("settled state").tick;
         assert_eq!(
@@ -294,7 +269,7 @@ impl<W: World> Session<W> {
         // last confirmed remote, held constant across the tail.
         let predicted = self.predictor.predict(&self.last_committed_remote);
         let total = (target - seed_tick + 1) as usize;
-        let mut input_pairs: Vec<Pair<W::Input>> = Vec::with_capacity(total);
+        let mut input_pairs: Vec<(W::Input, W::Input)> = Vec::with_capacity(total);
 
         // First entry sits at the committed cap: real local+remote inputs from
         // the settle-backlog front (the simulator resolves its remote data
@@ -302,25 +277,11 @@ impl<W: World> Session<W> {
         input_pairs.push(self.settle_backlog[0].clone());
         // Trailing entries are pure speculation.
         for local in &peeked[..total - 1] {
-            input_pairs.push(Pair {
-                local: local.clone(),
-                remote: predicted.clone(),
-            });
+            input_pairs.push((local.clone(), predicted.clone()));
         }
 
         let base = self.settled_snapshot.as_ref().expect("settled state");
         let result = self.simulator.simulate(base, input_pairs, true)?;
         Ok(result.snapshot.state)
-    }
-
-    fn update_slowdown(&mut self, presenter: &mut dyn Presenter<W>) {
-        // Asymmetric time sync: only the leading peer slows. Both advantages
-        // carry the symmetric network-delay term; their difference isolates
-        // real-time clock skew.
-        let local_advantage = self.local_frame_advantage() as i32;
-        let remote_advantage = self.last_remote_frame_advantage as i32;
-        let skew = local_advantage - remote_advantage;
-
-        presenter.set_slowdown(self.throttler.step(skew));
     }
 }

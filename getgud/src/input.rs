@@ -1,17 +1,11 @@
 use std::collections::VecDeque;
 
-/// One tick's local + remote input, paired for the simulator.
-#[derive(Clone, Debug)]
-pub struct Pair<Input> {
-    pub local: Input,
-    pub remote: Input,
-}
-
-/// The per-round delay queue. Local and remote inputs arrive independently;
-/// [`consume_and_peek_local`](Queue::consume_and_peek_local) drains as many
-/// matched pairs as both sides have, leaving the surplus local inputs as the
-/// speculative window. The queue is unbounded — the host bounds how deep it
-/// lets either side run by reading the queue lengths and stopping its own feed.
+/// The pair of FIFO input streams the session matches into `(local, remote)`
+/// tuples.
+///
+/// Local inputs are produced every frame; remote inputs arrive off the network.
+/// Inputs at the same depth in both queues form a confirmed pair; local inputs
+/// beyond the last received remote are the speculative frontier.
 pub struct Queue<Input> {
     local_queue: VecDeque<Input>,
     remote_queue: VecDeque<Input>,
@@ -21,6 +15,7 @@ impl<Input> Queue<Input>
 where
     Input: Clone,
 {
+    /// An empty queue.
     pub fn new() -> Self {
         Self {
             local_queue: VecDeque::new(),
@@ -28,31 +23,42 @@ where
         }
     }
 
+    /// Enqueue a local input (one per frame).
     pub fn add_local_input(&mut self, v: Input) {
         self.local_queue.push_back(v);
     }
 
+    /// Enqueue a remote input as it arrives off the transport.
     pub fn add_remote_input(&mut self, v: Input) {
         self.remote_queue.push_back(v);
     }
 
+    /// Number of local inputs not yet matched into a pair.
     pub fn local_queue_length(&self) -> usize {
         self.local_queue.len()
     }
 
+    /// Number of remote inputs not yet matched into a pair.
     pub fn remote_queue_length(&self) -> usize {
         self.remote_queue.len()
     }
 
+    /// How many local frames are ahead of the latest remote input — i.e. how
+    /// many ticks currently run on a predicted remote.
     pub fn speculative_depth(&self) -> usize {
         self.local_queue.len().saturating_sub(self.remote_queue.len())
     }
 
-    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<Input>>, Vec<Input>) {
+    /// Drain every local/remote input that now has a counterpart into confirmed
+    /// pairs, and return them alongside a clone of the still-unmatched local
+    /// inputs.
+    ///
+    /// The unmatched locals (the second tuple element) are the frames ahead of
+    /// the latest remote input; they get simulated against a *predicted* remote
+    /// until the real one arrives.
+    pub fn consume_and_peek_local(&mut self) -> (Vec<(Input, Input)>, Vec<Input>) {
         let n = std::cmp::min(self.local_queue.len(), self.remote_queue.len());
-        let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n))
-            .map(|(local, remote)| Pair { local, remote })
-            .collect();
+        let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n)).collect();
 
         // Everything still in the local queue is ahead of the latest remote
         // input — those frames get committed against a predicted remote input

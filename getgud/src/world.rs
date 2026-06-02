@@ -1,31 +1,28 @@
-/// The type axes the engine is generic over, plus the error type its seams
-/// report through.
+/// Your game's type contract — what the engine simulates over.
 ///
-/// A `World` is a marker type — it's never instantiated, it just bundles the
-/// associated types so the driver and traits don't carry the parameters each.
-/// The engine is plain rollback: it knows nothing about how a tick's input is
-/// produced or what a [`State`](World::State) contains — a host whose remote
-/// input isn't fully known from the wire (e.g. a link-cable game deriving the
-/// opponent's packets) hides that inside its [`Simulator`](crate::Simulator).
+/// Implement this on a marker type and wire its three associated types to your
+/// game. Everything else in the crate is generic over `W: World`.
 pub trait World: Sized + 'static {
-    /// One tick's input for a player. The local one is whatever the host puts
-    /// on the wire; the remote one is fed in via
-    /// [`Session::add_remote_input`](crate::Session::add_remote_input) or
-    /// guessed by the [`Predictor`](crate::Predictor).
+    /// One participant's input for one tick. The session pairs the local and
+    /// remote `Input`s into a `(local, remote)` tuple; a `Predictor` clones one
+    /// to guess the remote's next input, so it must be `Clone`.
     type Input: Clone + Send + 'static;
-    /// A serializable simulation checkpoint. Opaque to the engine — bundle
-    /// whatever a re-sim needs to resume (for a link-cable game, that includes
-    /// the in-flight outgoing packet).
+    /// A complete, restorable world state. The [`Simulator`](crate::Simulator)
+    /// resumes from a [`Snapshot`] of this, so it must capture *everything* the
+    /// simulation reads — anything omitted will desync on rollback.
     type State: Send + 'static;
-    /// Error type the seams (simulator, …) report. An adapter is free to use
-    /// `anyhow::Error` or any concrete enum here.
+    /// The error a simulation step can fail with, surfaced out of
+    /// [`Session::advance`](crate::Session::advance).
     type Error: Send + 'static;
 }
 
-/// A simulation checkpoint captured at `tick`.
+/// A world [`State`](World::State) tagged with the `tick` it represents.
+///
+/// Snapshots are the boundaries the simulator starts from and returns to. The
+/// engine keeps one as the authoritative settled checkpoint.
 pub struct Snapshot<W: World> {
+    /// The world state at `tick`.
     pub state: W::State,
-    /// The tick the simulation is *about to process next* — an exclusive upper
-    /// bound on what has already been simulated.
+    /// The simulation tick this state corresponds to.
     pub tick: u32,
 }

@@ -1,21 +1,9 @@
-//! Frame-rate-target throttler. Takes the current raw skew
-//! (`local_advantage - remote_advantage`, in frames) and returns a slowdown
-//! amount in fps; the driver applies it as `base_rate - slowdown`. Only the
-//! leading peer corrects — trailers run at full speed and rely on the leader
-//! pulling back.
-//!
-//! The strategy is a continuous proportional response smoothed by an asymmetric
-//! EMA on skew, with the result clamped to a uniform worst-case window:
-//!
-//! - [`ALPHA_SLOWDOWN`] is used when skew is growing (the smoothed value climbs
-//!   gradually, so sub-second loss bursts don't engage the throttler);
-//! - [`ALPHA_SPEEDUP`] is used when skew is shrinking (the smoothed value drops
-//!   fast, so the throttler lifts as soon as the imbalance closes).
-//!
-//! Net: a gentle glide into a slowdown, a snappy return out of it. The smoothed
-//! value is then clamped to `[0, MAX_SLOWDOWN]` fps — negatives (speed-up
-//! requests) are gated off, and the slowdown is capped so the rate can't be
-//! warped past a uniform worst-case ceiling.
+//! Time-sync throttler. Converts the engine's raw per-frame skew
+//! (`local_advantage - remote_advantage`, handed to the presenter) into a
+//! slowdown in fps below the base rate; [`MgbaPresenter`](super::world::MgbaPresenter)
+//! turns that into an absolute fps target for the live core. Only the leading
+//! peer slows down — the trailing peer runs at full rate and lets the leader
+//! ease back toward it.
 
 /// EMA weight applied while skew is growing. τ ≈ 5 s rise (at 60 Hz).
 const ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
@@ -24,8 +12,8 @@ const ALPHA_SPEEDUP: f32 = 1.0 / 30.0;
 /// Slowdown ceiling, in fps below the base rate.
 const MAX_SLOWDOWN: f32 = 30.0;
 
-/// The engine's per-session time-sync throttler. The [`Session`](crate::Session)
-/// owns one and feeds it the raw skew every frame; the host never configures it.
+/// Per-round time-sync throttler. [`Round`](super::Round) owns one and the
+/// presenter feeds it the engine's raw skew each frame.
 pub(crate) struct Throttler {
     /// Asymmetric-EMA-smoothed skew, carried across frames. Holds the raw
     /// (unclamped) value so the clamp only shapes the emitted slowdown, not the

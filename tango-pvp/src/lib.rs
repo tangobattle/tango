@@ -26,10 +26,11 @@
 //!   `common`/`primary`/`shadow`/`stepper` submodules that supply the trap
 //!   sets the framework needs.
 //!
-//! - [`input`]: input plumbing. `Pair<Input>` packs a tick's local + remote
-//!   input; `Queue` is the per-round delay queue. Heterogeneous local/remote
-//!   pairings (a committed [`Input`](input::Input) against a remote
-//!   [`PartialInput`](input::PartialInput)) ride as plain tuples.
+//! - [`input`]: input plumbing. `Queue` is the per-round delay queue; confirmed
+//!   input pairs are plain `(local, remote)` tuples — both same-typed (two
+//!   [`PartialInput`](input::PartialInput)s) at the engine boundary, or a
+//!   committed [`Input`](input::Input) against a remote
+//!   [`PartialInput`](input::PartialInput) on the shadow/stepper paths.
 //!
 //! - [`replay`]: replay file format and replay-export pipeline.
 //!

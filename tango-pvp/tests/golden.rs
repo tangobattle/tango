@@ -285,8 +285,8 @@ fn compute_fingerprint(
             if pairs.len() < hashed_count {
                 hashed_count = 0;
             }
-            for p in &pairs[hashed_count..] {
-                packet_hasher.update(&p.remote.packet);
+            for (_local, remote) in &pairs[hashed_count..] {
+                packet_hasher.update(&remote.packet);
             }
             hashed_count = pairs.len();
             (

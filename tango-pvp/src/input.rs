@@ -1,10 +1,11 @@
-//! Input plumbing. The rollback engine ([`getgud`]) owns the generic
-//! [`Pair`] / [`Queue`] machinery, re-exported here so the rest of the
-//! crate keeps a single `crate::input::Pair` path. The two concrete input
-//! payloads — [`Input`] (joyflags + outgoing link-cable packet) and
-//! [`PartialInput`] (joyflags only) — are game-specific and stay here.
+//! Input plumbing. The rollback engine ([`getgud`]) owns the [`Queue`]
+//! machinery, re-exported here so the rest of the crate keeps a single
+//! `crate::input::Queue` path. Confirmed input pairs are plain
+//! `(local, remote)` tuples. The two concrete input payloads — [`Input`]
+//! (joyflags + outgoing link-cable packet) and [`PartialInput`] (joyflags
+//! only) — are game-specific and stay here.
 
-pub use getgud::{Pair, Queue};
+pub use getgud::Queue;
 
 /// A committed local-side input plus the matching outgoing packet for that
 /// tick. Tick is positional — derived from the input's position in its

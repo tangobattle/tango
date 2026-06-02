@@ -13,13 +13,15 @@
 //!   and owns the shadow.
 //! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet is
 //!   the simulator's own business.
-//! - [`MgbaPresenter`] loads the chosen display state into the live core.
+//! - [`MgbaPresenter`] loads the chosen display state into the live core and
+//!   drives the live frame-rate target from the engine's time-sync skew via the
+//!   [`Throttler`](super::throttler::Throttler).
 
 use std::sync::{Arc, Mutex as SyncMutex};
 
 use getgud::{SimResult, Snapshot};
 
-use crate::input::{Input, Pair, PartialInput};
+use crate::input::{Input, PartialInput};
 
 /// Binds the engine's generic type axes to this crate's concrete types.
 pub struct MgbaWorld;
@@ -59,7 +61,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
     fn simulate(
         &mut self,
         base: &Snapshot<MgbaWorld>,
-        inputs: Vec<Pair<PartialInput>>,
+        inputs: Vec<(PartialInput, PartialInput)>,
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
         let resolver: Resolver = if speculative {
@@ -87,8 +89,8 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         // A settle defines the new last-confirmed remote packet for the next
         // speculative tail's prediction.
         if !speculative {
-            if let Some(last) = result.output_pairs.last() {
-                self.last_remote_packet = last.remote.packet.clone();
+            if let Some((_local, remote)) = result.output_pairs.last() {
+                self.last_remote_packet = remote.packet.clone();
             }
         }
 
@@ -119,20 +121,21 @@ impl getgud::Predictor<MgbaWorld> for MgbaPredictor {
     }
 }
 
-/// [`getgud::Presenter`] over the live core: load the displayed state, set the
-/// frame-rate target.
+/// [`getgud::Presenter`] over the live core: load the displayed state and, from
+/// the engine's raw time-sync skew, set the frame-rate target via our throttler.
 pub struct MgbaPresenter<'a> {
     pub core: mgba::core::CoreMutRef<'a>,
+    /// Borrowed from the owning [`Round`](super::Round) so the throttler's EMA
+    /// state persists across frames (the presenter itself is rebuilt each frame).
+    pub throttler: &'a mut super::throttler::Throttler,
 }
 
 impl getgud::Presenter<MgbaWorld> for MgbaPresenter<'_> {
-    fn present(&mut self, state: &MgbaState, _tick: u32) {
+    fn present(&mut self, state: &MgbaState, skew: i32) {
         self.core.load_state(&state.core).expect("load present state");
-    }
-
-    fn set_slowdown(&mut self, slowdown: f32) {
-        // The engine reports a slowdown below our nominal rate; turn it into an
-        // absolute fps target for the live core.
+        // Smooth the raw skew into a slowdown below our nominal rate, then turn
+        // that into an absolute fps target for the live core.
+        let slowdown = self.throttler.step(skew);
         self.core
             .gba_mut()
             .sync_mut()
@@ -149,7 +152,7 @@ pub struct ReplayObserver {
 }
 
 impl getgud::CommitObserver<MgbaWorld> for ReplayObserver {
-    fn on_commit(&mut self, _tick: u32, pair: &Pair<PartialInput>) {
+    fn on_commit(&mut self, _tick: u32, pair: &(PartialInput, PartialInput)) {
         if let Some(writer) = self.writer.lock().unwrap().as_mut() {
             writer.write_input(self.local_player_index, pair).expect("write input");
         }

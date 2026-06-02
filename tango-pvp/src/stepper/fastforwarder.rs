@@ -1,4 +1,4 @@
-use crate::input::{Input, Pair, PartialInput};
+use crate::input::{Input, PartialInput};
 
 use super::state::{InnerState, State};
 use super::types::RoundResult;
@@ -12,7 +12,7 @@ pub struct FastforwardResult {
     /// next base state) resumes with the right local-joyflags register.
     pub snapshot: crate::battle::Snapshot,
     pub round_result: Option<RoundResult>,
-    pub output_pairs: Vec<Pair<Input>>,
+    pub output_pairs: Vec<(Input, Input)>,
 }
 
 /// Per-Match emulator dedicated to running the per-frame stepper traps over a
@@ -63,7 +63,7 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        input_pairs: Vec<Pair<PartialInput>>,
+        input_pairs: Vec<(PartialInput, PartialInput)>,
         current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,

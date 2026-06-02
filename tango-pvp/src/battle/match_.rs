@@ -253,7 +253,7 @@ impl Match {
             // wait for the next round to spin up before delivering the input.
             return Ok(false);
         };
-        if !round.has_committed_state() {
+        if !round.has_settled_snapshot() {
             // Round started but hasn't reached its first commit.
             return Ok(false);
         }

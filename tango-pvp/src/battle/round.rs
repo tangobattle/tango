@@ -33,6 +33,10 @@ pub struct Round {
     /// Handle to the live core's mgba thread, held so `Drop` can reset its
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
+    /// Time-sync throttler. Lives here (not in the per-frame presenter) so its
+    /// EMA state carries across frames; the presenter borrows it each frame to
+    /// turn the engine's skew into an fps target.
+    throttler: super::throttler::Throttler,
 }
 
 impl Round {
@@ -68,6 +72,7 @@ impl Round {
             sender: match_.sender_handle(),
             frame_delay,
             primary_thread_handle: match_.primary_thread_handle(),
+            throttler: super::throttler::Throttler::new(),
         })
     }
 
@@ -101,8 +106,8 @@ impl Round {
         });
     }
 
-    pub fn has_committed_state(&self) -> bool {
-        self.session.has_committed_state()
+    pub fn has_settled_snapshot(&self) -> bool {
+        self.session.has_settled_snapshot()
     }
 
     pub fn local_frame_advantage(&self) -> i16 {
@@ -144,7 +149,10 @@ impl Round {
         // so a footer-slider change takes effect on this frame.
         self.session.set_frame_delay(self.frame_delay.load(Ordering::Relaxed));
 
-        let mut presenter = MgbaPresenter { core };
+        let mut presenter = MgbaPresenter {
+            core,
+            throttler: &mut self.throttler,
+        };
         self.session.advance(&mut presenter, PartialInput { joyflags })
     }
 

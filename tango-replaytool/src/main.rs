@@ -136,10 +136,10 @@ async fn cmd_copy(replay: tango_pvp::replay::Replay, output_path: std::path::Pat
 async fn cmd_text(replay: tango_pvp::replay::Replay) -> Result<(), anyhow::Error> {
     for (idx, round) in replay.rounds.iter().enumerate() {
         println!("=== round {} ({} inputs) ===", idx + 1, round.len());
-        for (tick, ip) in round.iter().enumerate() {
+        for (tick, (local, remote)) in round.iter().enumerate() {
             println!(
                 "tick = {:08x?}, l = {:04x}, r = {:04x}",
-                tick, ip.local.joyflags, ip.remote.joyflags,
+                tick, local.joyflags, remote.joyflags,
             );
         }
     }

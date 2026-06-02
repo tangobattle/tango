@@ -11,6 +11,7 @@
 
 mod match_;
 mod round;
+mod throttler;
 mod types;
 mod world;
 

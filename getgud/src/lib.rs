@@ -1,44 +1,46 @@
-//! `getgud` — a transport-, input-, and state-agnostic rollback netcode
-//! engine.
+//! An engine-agnostic **rollback netcode** core for two participants — a local
+//! player and one remote peer.
 //!
-//! The engine knows nothing about emulators, link cables, networking, or
-//! rounds. It owns the rollback *algebra* for a single session: a paired
-//! local/remote input queue, one settled checkpoint that advances over
-//! confirmed inputs, a throwaway speculative tail rendered ahead of the commit
-//! frontier, and the GGPO-style frame-advantage time-sync that keeps two peers'
-//! clocks together.
+//! `getgud` owns input matching, confirmed-state checkpointing, speculative
+//! re-simulation, and time synchronization. It does no networking, threading,
+//! rendering, or timekeeping: you feed it local inputs and the remote inputs
+//! that arrive off your transport, and it tells you which world state to draw
+//! and the clock skew to throttle against to stay in sync with the peer.
 //!
-//! It is fully synchronous and pulls in no async runtime. The host drives it:
-//! it sends each local input over the wire (attaching
-//! [`Session::local_frame_advantage`]), feeds received remote inputs in via
-//! [`Session::add_remote_input`], and calls [`Session::advance`] once per
-//! displayed frame. Anything spanning more than one session — round
-//! boundaries, match lifecycle, the receive loop — lives in the host.
+//! # How it fits together
 //!
-//! It's plain rollback over an opaque [`World::State`] and [`World::Input`]:
-//! confirmed inputs are settled into the checkpoint, unconfirmed ones are
-//! guessed and re-simulated. A host whose remote input isn't fully known from
-//! the wire (e.g. a link-cable game that derives the opponent's per-tick data
-//! by co-simulating it) hides that *inside* its [`Simulator`] — the engine
-//! never sees it; it just passes `speculative` so the simulator knows whether
-//! that side-effectful work should run.
+//! Everything is indexed by an integer **tick** (one simulation step). The
+//! engine keeps a [`Session`] that holds an authoritative *settled* checkpoint
+//! built purely from confirmed input pairs, and each displayed frame is a
+//! *throwaway* re-simulation from that checkpoint forward — predicting the
+//! remote's not-yet-received inputs. Confirmed inputs fold into the checkpoint;
+//! predictions live only in the disposable tail, so a wrong guess can never
+//! corrupt authoritative state.
 //!
-//! Everything game-specific is supplied through three seams:
+//! You parameterize the engine over a [`World`] (your game's `Input` / `State`
+//! / `Error` types) and supply four behaviors as trait objects:
 //!
-//! - [`Simulator`]: re-simulate a window of inputs from a checkpoint.
-//! - [`Predictor`]: guess an unknown remote input from the last known one.
-//! - [`Presenter`]: where the chosen display state and frame-rate target go.
+//! - [`Simulator`] — advance the world by a list of input pairs.
+//! - [`Predictor`] — guess a remote input from the last confirmed one.
+//! - [`Presenter`] — receive the state to draw and the time-sync skew.
+//! - [`CommitObserver`] — optional; observe confirmed history (e.g. replays).
 //!
-//! The type axes the engine is generic over live on [`World`].
+//! # Driving a session
+//!
+//! Construct with [`Session::new`], seed tick 0 with
+//! [`set_first_settled_state`](Session::set_first_settled_state), then each
+//! frame call [`advance_frontier`](Session::advance_frontier) followed by
+//! [`advance`](Session::advance). Feed remote inputs in as they arrive with
+//! [`add_remote_input`](Session::add_remote_input). See the crate README for a
+//! worked example and the full architecture overview.
 
 mod input;
 mod present;
 mod session;
 mod sim;
-mod throttler;
 mod world;
 
-pub use input::{Pair, Queue};
+pub use input::Queue;
 pub use present::Presenter;
 pub use session::{Session, SessionParams};
 pub use sim::{CommitObserver, Predictor, SimResult, Simulator};
