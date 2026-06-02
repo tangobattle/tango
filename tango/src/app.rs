@@ -1771,6 +1771,16 @@ impl App {
                         // the materialized WRAM caches (navicust, auto-battle
                         // data). So commit only has to recompute the whole-SRAM
                         // checksum and write once.
+                        //
+                        // Also rebuild the navicust materialized grid (and, on
+                        // BN3, the compiled ability array the game reads) so a
+                        // save loaded already-edited and re-saved without a
+                        // fresh navicust edit still gets a current cache.
+                        // Disjoint field borrows: assets vs save.
+                        let assets = loaded.assets.as_ref();
+                        if let Some(tango_dataview::save::NaviViewMut::Navicust(mut nc)) = loaded.save.view_navi_mut() {
+                            nc.rebuild_materialized(assets);
+                        }
                         loaded.save.rebuild_checksum();
                         // Refresh the baked Navi-view image from the updated
                         // save (commit keeps the in-memory Loaded, so without
