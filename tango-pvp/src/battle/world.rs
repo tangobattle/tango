@@ -62,7 +62,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
     fn simulate(
         &mut self,
         base: &Snapshot<MgbaWorld>,
-        committed: Vec<(PartialInput, PartialInput)>,
+        inputs: Vec<(PartialInput, PartialInput)>,
         peeked: (PartialInput, PartialInput),
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
@@ -85,11 +85,11 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         };
 
         // The peek threads straight through: the fastforwarder advances through
-        // `committed`, then captures at the peeked tick (priming r4 with its
-        // local joyflags) without integrating it — mirroring getgud's contract.
+        // `inputs`, then captures at the peeked tick (priming r4 with its local
+        // joyflags) without integrating it — mirroring getgud's contract.
         let result = self
             .ff
-            .fastforward(&base.state.core, committed, peeked, base.tick, &base.state.outgoing, resolver)?;
+            .fastforward(&base.state.core, inputs, peeked, base.tick, &base.state.outgoing, resolver)?;
 
         // A settle defines the new last-confirmed remote packet for the next
         // speculative tail's prediction.

@@ -46,11 +46,11 @@ Then you provide three behaviors:
 
 ### The Simulator contract
 
-`simulate(base, committed, peeked, speculative)` advances the world from `base` by every pair in `committed`, then samples `peeked` at the resulting tick without integrating it:
+`simulate(base, inputs, peeked, speculative)` advances the world from `base` by every pair in `inputs`, then samples `peeked` at the resulting tick without integrating it:
 
-- Apply **all** of `committed`, advancing one tick per pair.
-- Return a snapshot whose `tick == base.tick + committed.len()`.
-- `peeked` is the input sampled *at* that snapshot tick. A simulator whose state is a clean inter-tick value can ignore it — the session re-supplies it as `committed[0]` of the next call, integrated there exactly once. It exists for engines that must bake the boundary tick's input into an opaque snapshot up front (e.g. priming an input register a resume will read).
+- Apply **all** of `inputs`, advancing one tick per pair.
+- Return a snapshot whose `tick == base.tick + inputs.len()`.
+- `peeked` is the input sampled *at* that snapshot tick. A simulator whose state is a clean inter-tick value can ignore it — the session re-supplies it as `inputs[0]` of the next call, integrated there exactly once. It exists for engines that must bake the boundary tick's input into an opaque snapshot up front (e.g. priming an input register a resume will read).
 
 `SimResult::commit_before` lets the simulator report a terminal tick (e.g. a round ending); the session then stops reporting committed inputs at or past that tick, so replays aren't recorded into the few ticks a simulator may overshoot the end by.
 

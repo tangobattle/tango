@@ -63,7 +63,7 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        committed: Vec<(PartialInput, PartialInput)>,
+        inputs: Vec<(PartialInput, PartialInput)>,
         peeked: (PartialInput, PartialInput),
         current_tick: u32,
         last_local_packet: &[u8],
@@ -75,7 +75,7 @@ impl Fastforwarder {
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
-            committed,
+            inputs,
             peeked,
             current_tick,
             last_local_packet.to_vec(),
