@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex as SyncMutex};
 
 use tokio::sync::{watch, Mutex};
 
+use getgud::{Clamp, Ema, Throttler};
+
 use super::round::Round;
-use super::throttler::{Clamp, Ema, Throttler};
 use super::types::{MatchIdentity, ReplayConfig};
 
 /// Connection-level state for a single PvP match.
@@ -303,10 +304,7 @@ impl Match {
 
         log::info!("preparing round state");
 
-        const MAX_QUEUE_LENGTH: usize = 120;
-        let input_queue = crate::input::PairQueue::new(MAX_QUEUE_LENGTH);
-
-        *round_state = Some(Round::new(self, input_queue)?);
+        *round_state = Some(Round::new(self)?);
         self.bump_round_progress();
         log::info!("round has started");
         Ok(())

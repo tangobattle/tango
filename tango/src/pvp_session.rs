@@ -536,7 +536,7 @@ impl PvpSession {
         Some(RoundStats {
             local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
-            depth: round.rollback_depth(),
+            depth: round.speculative_depth(),
         })
     }
 }

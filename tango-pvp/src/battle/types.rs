@@ -1,12 +1,3 @@
-/// Outcome from primary's perspective: did the local player win or lose this
-/// round? (Draws are mapped to win/loss by [`Round::on_draw_outcome`] before
-/// reaching this enum.)
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub enum BattleOutcome {
-    Loss,
-    Win,
-}
-
 /// Match-wide identity. Both peers compute these to identical values from the
 /// shared protocol state, then carry them through Match → Shadow → Round.
 #[derive(Clone, Copy)]

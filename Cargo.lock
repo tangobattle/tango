@@ -2036,6 +2036,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "getgud"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.16",
+]
+
+[[package]]
 name = "gethostname"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5894,6 +5901,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "byteorder",
+ "getgud",
  "image",
  "log",
  "mgba",

@@ -8,7 +8,7 @@ use super::types::{BattleOutcome, RoundPhase, RoundResult};
 type InputPair = Pair<Input, Input>;
 type PartialInputPair = Pair<PartialInput, PartialInput>;
 
-type ApplyShadowInput = Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>;
+type ApplyShadowInput = Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Send>;
 
 type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
 type SharedShadow = Arc<Mutex<crate::shadow::Shadow>>;
@@ -213,10 +213,13 @@ impl InnerState {
         local_player_index: u8,
         input_pairs: Vec<PartialInputPair>,
         current_tick: u32,
-        capture_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
+        // The input window is inclusive of the capture tick, so capture lands on
+        // the last input.
+        debug_assert!(!input_pairs.is_empty());
+        let capture_tick = current_tick + input_pairs.len() as u32 - 1;
         Self {
             disable_bgm: false,
             current_tick,

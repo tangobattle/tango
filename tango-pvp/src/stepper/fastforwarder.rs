@@ -65,9 +65,8 @@ impl Fastforwarder {
         state: &mgba::state::State,
         input_pairs: Vec<Pair<PartialInput, PartialInput>>,
         current_tick: u32,
-        capture_tick: u32,
         last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send>,
+        apply_shadow_input: Box<dyn FnMut(u32, Pair<Input, PartialInput>) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<FastforwardResult> {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());
@@ -77,7 +76,6 @@ impl Fastforwarder {
             self.local_player_index,
             input_pairs,
             current_tick,
-            capture_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
