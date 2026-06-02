@@ -2,7 +2,8 @@ use crate::world::{Snapshot, World};
 
 /// The result of one [`Simulator::simulate`] call.
 pub struct SimResult<W: World> {
-    /// The world advanced to `base.tick + inputs.len() - 1`.
+    /// The world advanced to `base.tick + committed.len()`, poised at the start
+    /// of that tick with the `peeked` input sampled but not yet integrated.
     pub snapshot: Snapshot<W>,
     /// `Some(end_tick)` once the world has reached a terminal state (e.g. a
     /// round ending) at `end_tick`; the session then stops reporting committed
@@ -15,14 +16,19 @@ pub struct SimResult<W: World> {
 /// Advances your world. Supplied to the [`Session`](crate::Session) as a boxed
 /// trait object and called for both authoritative commits and throwaway tails.
 pub trait Simulator<W: World>: Send {
-    /// Simulate forward from `base`.
+    /// Advance `base` by every pair in `committed`, then sample `peeked` at the
+    /// resulting tick without integrating it.
     ///
     /// Contract:
-    /// - Apply the **first `inputs.len() - 1`** pairs, advancing one tick each.
-    /// - The **last** pair is *peeked* — it is the input sampled **at** the
-    ///   returned snapshot's tick, not yet integrated. The session re-supplies
-    ///   it as `inputs[0]` of the next segment, so do **not** commit it twice.
-    /// - Return a snapshot whose `tick == base.tick + inputs.len() - 1`.
+    /// - Apply **all** of `committed`, advancing one tick per pair.
+    /// - Return a snapshot whose `tick == base.tick + committed.len()`.
+    /// - `peeked` is the input sampled **at** that snapshot tick. A simulator
+    ///   whose state is a clean inter-tick value can ignore it: the session
+    ///   re-supplies it as `committed[0]` of the next call, where it is
+    ///   integrated — exactly once. It exists for engines that must bake the
+    ///   boundary tick's input into an opaque snapshot up front (e.g. priming an
+    ///   input register a resume will read). Either way there is no "the last
+    ///   element is special" rule to get wrong.
     ///
     /// `speculative` is `true` for the disposable display tail and `false` for
     /// authoritative commits — use it to skip work that only matters for
@@ -30,7 +36,8 @@ pub trait Simulator<W: World>: Send {
     fn simulate(
         &mut self,
         base: &Snapshot<W>,
-        inputs: Vec<(W::Input, W::Input)>,
+        committed: Vec<(W::Input, W::Input)>,
+        peeked: (W::Input, W::Input),
         speculative: bool,
     ) -> Result<SimResult<W>, W::Error>;
 }

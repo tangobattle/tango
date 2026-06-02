@@ -142,7 +142,7 @@ impl<W: World> Session<W> {
         self.input_queue.add_local_input(local_input);
 
         // Drain matched pairs onto the commit chain.
-        let (committable, peeked) = self.input_queue.consume_and_peek_local();
+        let (committable, unmatched_locals) = self.input_queue.consume_and_peek_local();
         self.commit_frontier += committable.len() as u32;
         self.settle_backlog.extend(committable);
 
@@ -166,7 +166,7 @@ impl<W: World> Session<W> {
             // Speculative tail: throwaway re-sim from the checkpoint to the
             // target, predicting every remote payload past the frontier. Stash
             // it so we can return a borrow without cloning.
-            let state = self.speculate_tail(target, &peeked)?;
+            let state = self.speculate_tail(target, &unmatched_locals)?;
             self.speculative_state = Some(state);
             Frame {
                 tick: target,
@@ -231,19 +231,21 @@ impl<W: World> Session<W> {
             return Ok(());
         }
 
-        // Inputs for `[seed_tick, target]` — inclusive: the simulator peeks the
-        // capture-tick input before snapshotting. `target <= commit_frontier - 1`
-        // guarantees `settle_backlog` is long enough.
-        let count = (target - seed_tick + 1) as usize;
-        assert!(self.settle_backlog.len() >= count);
-        let input_pairs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(count).cloned().collect();
+        // Commit the `[seed_tick, target)` pairs and peek the one at `target`:
+        // the simulator advances through every committed pair and leaves the
+        // snapshot poised at the start of `target`, with the peeked pair sampled
+        // but not integrated. `target <= commit_frontier - 1` guarantees the
+        // backlog holds the peeked pair past the committed ones.
+        let consumed = (target - seed_tick) as usize;
+        assert!(self.settle_backlog.len() > consumed);
+        let committed: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(consumed).cloned().collect();
+        let peeked = self.settle_backlog[consumed].clone();
 
-        let result = self.simulator.simulate(&self.settled_snapshot, input_pairs, false)?;
+        let result = self.simulator.simulate(&self.settled_snapshot, committed, peeked, false)?;
 
-        // The last settled pair's remote seeds the speculative tail's
+        // The last committed pair's remote seeds the speculative tail's
         // prediction. `consumed >= 1` here (we returned early if `target <=
         // seed_tick`), so the index is in range.
-        let consumed = (target - seed_tick) as usize;
         let (_local, remote) = &self.settle_backlog[consumed - 1];
         self.last_committed_remote = remote.clone();
 
@@ -267,7 +269,7 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
-    fn speculate_tail(&mut self, target: u32, peeked: &[W::Input]) -> Result<W::State, W::Error> {
+    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<W::State, W::Error> {
         let seed_tick = self.settled_snapshot.tick;
         assert_eq!(
             seed_tick,
@@ -278,19 +280,22 @@ impl<W: World> Session<W> {
         // Remote input for the speculative ticks: the predictor's guess from the
         // last confirmed remote, held constant across the tail.
         let predicted = self.predictor.predict(&self.last_committed_remote);
-        let total = (target - seed_tick + 1) as usize;
-        let mut input_pairs: Vec<(W::Input, W::Input)> = Vec::with_capacity(total);
+        let committed_count = (target - seed_tick) as usize;
+        let mut committed: Vec<(W::Input, W::Input)> = Vec::with_capacity(committed_count);
 
-        // First entry sits at the committed cap: real local+remote inputs from
-        // the settle-backlog front (the simulator resolves its remote data
-        // speculatively, since the next settle redoes it for real).
-        input_pairs.push(self.settle_backlog[0].clone());
-        // Trailing entries are pure speculation.
-        for local in &peeked[..total - 1] {
-            input_pairs.push((local.clone(), predicted.clone()));
+        // First committed entry sits at the committed cap: real local+remote
+        // inputs from the settle-backlog front (the simulator resolves its remote
+        // data speculatively, since the next settle redoes it for real).
+        committed.push(self.settle_backlog[0].clone());
+        // The remaining committed entries are pure speculation.
+        for local in &unmatched_locals[..committed_count - 1] {
+            committed.push((local.clone(), predicted.clone()));
         }
+        // The peeked pair sits one tick past the last committed: a speculative
+        // local against the predicted remote, sampled but not integrated.
+        let peeked = (unmatched_locals[committed_count - 1].clone(), predicted.clone());
 
-        let result = self.simulator.simulate(&self.settled_snapshot, input_pairs, true)?;
+        let result = self.simulator.simulate(&self.settled_snapshot, committed, peeked, true)?;
         Ok(result.snapshot.state)
     }
 }

@@ -211,21 +211,24 @@ impl InnerState {
     pub(super) fn for_fastforward(
         match_type: (u8, u8),
         local_player_index: u8,
-        input_pairs: Vec<PartialInputPair>,
+        committed: Vec<PartialInputPair>,
+        peeked: PartialInputPair,
         current_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
-        // The input window is inclusive of the capture tick, so capture lands on
-        // the last input.
-        debug_assert!(!input_pairs.is_empty());
-        let capture_tick = current_tick + input_pairs.len() as u32 - 1;
+        // Run `committed` one tick each, then capture at the peeked tick (one
+        // past the last committed): `peek_input_pair` sets r4 from `peeked` but
+        // it is never popped, so the snapshot lands at the start of that tick.
+        let capture_tick = current_tick + committed.len() as u32;
+        let mut input_pairs: VecDeque<PartialInputPair> = committed.into_iter().collect();
+        input_pairs.push_back(peeked);
         Self {
             disable_bgm: false,
             current_tick,
             local_player_index,
             match_type,
-            input_pairs: input_pairs.into_iter().collect(),
+            input_pairs,
             output_pairs: vec![],
             apply_shadow_input,
             local_packet: Some(LocalPacket {

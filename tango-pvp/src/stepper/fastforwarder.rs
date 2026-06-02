@@ -63,7 +63,8 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        input_pairs: Vec<(PartialInput, PartialInput)>,
+        committed: Vec<(PartialInput, PartialInput)>,
+        peeked: (PartialInput, PartialInput),
         current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
@@ -74,7 +75,8 @@ impl Fastforwarder {
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
-            input_pairs,
+            committed,
+            peeked,
             current_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
