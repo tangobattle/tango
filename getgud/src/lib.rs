@@ -39,5 +39,5 @@ mod world;
 
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
-pub use sim::{CommitObserver, Predictor, SimResult, Simulator};
+pub use sim::{Logger, NullLogger, Predictor, SimResult, Simulator};
 pub use world::{Snapshot, World};

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::input::Queue;
-use crate::sim::{CommitObserver, Predictor, Simulator};
+use crate::sim::{Logger, Predictor, Simulator};
 use crate::world::{Snapshot, World};
 
 /// Everything needed to construct a [`Session`]. Pass to [`Session::new`].
@@ -23,7 +23,7 @@ pub struct SessionParams<W: World> {
     /// Guesses remote inputs for the speculative tail.
     pub predictor: Arc<dyn Predictor<W>>,
     /// Optional hook over confirmed history (e.g. replay recording).
-    pub observer: Option<Box<dyn CommitObserver<W>>>,
+    pub logger: Box<dyn Logger<W>>,
 }
 
 /// The state to display this tick, returned by [`Session::advance`].
@@ -60,7 +60,7 @@ pub struct Session<W: World> {
 
     simulator: Box<dyn Simulator<W>>,
     predictor: Arc<dyn Predictor<W>>,
-    observer: Option<Box<dyn CommitObserver<W>>>,
+    logger: Box<dyn Logger<W>>,
 
     frontier: u32,
 
@@ -91,14 +91,14 @@ impl<W: World> Session<W> {
             initial_state,
             simulator,
             predictor,
-            observer,
+            logger,
         } = params;
 
         Self {
             present_delay,
             simulator,
             predictor,
-            observer,
+            logger,
             frontier: 0,
             input_queue: Queue::new(),
             commit_frontier: 0,
@@ -241,7 +241,9 @@ impl<W: World> Session<W> {
         let inputs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(consumed).cloned().collect();
         let next_input = self.settle_backlog[consumed].clone();
 
-        let result = self.simulator.simulate(&self.settled_snapshot, inputs, next_input, false)?;
+        let result = self
+            .simulator
+            .simulate(&self.settled_snapshot, inputs, next_input, false)?;
 
         // The last committed pair's remote seeds the speculative tail's
         // prediction. `consumed >= 1` here (we returned early if `target <=
@@ -252,14 +254,12 @@ impl<W: World> Session<W> {
         // Report the just-committed pairs (paced at the display rate), dropping
         // any at or past the terminal tick (so a replay isn't recorded past the
         // few ticks the simulator overshoots the end by).
-        if let Some(observer) = self.observer.as_mut() {
-            for i in 0..consumed {
-                let tick = seed_tick + i as u32;
-                if result.commit_before.is_some_and(|end| tick >= end) {
-                    break;
-                }
-                observer.on_commit(tick, &self.settle_backlog[i]);
+        for i in 0..consumed {
+            let tick = seed_tick + i as u32;
+            if result.commit_before.is_some_and(|end| tick >= end) {
+                break;
             }
+            self.logger.log(&self.settle_backlog[i]);
         }
         for _ in 0..consumed {
             self.settle_backlog.pop_front();
@@ -295,7 +295,9 @@ impl<W: World> Session<W> {
         // local against the predicted remote, sampled but not stepped.
         let next_input = (unmatched_locals[input_count - 1].clone(), predicted.clone());
 
-        let result = self.simulator.simulate(&self.settled_snapshot, inputs, next_input, true)?;
+        let result = self
+            .simulator
+            .simulate(&self.settled_snapshot, inputs, next_input, true)?;
         Ok(result.snapshot.state)
     }
 }

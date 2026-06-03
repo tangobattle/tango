@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::input::PartialInput;
 
-use super::world::{MgbaPredictor, MgbaSimulator, MgbaState, MgbaWorld, ReplayObserver};
+use super::world::{MgbaPredictor, MgbaSimulator, MgbaState, MgbaWorld, ReplayLogger};
 use super::EXPECTED_FPS;
 
 /// Per-side input-queue capacity.
@@ -82,7 +82,7 @@ impl Round {
             last_remote_packet: vec![0u8; hooks.packet_size()],
         });
         let predictor: Arc<dyn getgud::Predictor<MgbaWorld>> = Arc::new(MgbaPredictor);
-        let observer: Box<dyn getgud::CommitObserver<MgbaWorld>> = Box::new(ReplayObserver {
+        let logger: Box<dyn getgud::Logger<MgbaWorld>> = Box::new(ReplayLogger {
             writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
         });
@@ -95,7 +95,7 @@ impl Round {
             },
             simulator,
             predictor,
-            observer: Some(observer),
+            logger,
         }));
         Ok(())
     }

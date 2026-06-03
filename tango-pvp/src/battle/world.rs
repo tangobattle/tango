@@ -87,9 +87,14 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         // The next input threads straight through: the fastforwarder advances
         // through `inputs`, then captures at the boundary tick (priming r4 with
         // its local joyflags) without stepping it — mirroring getgud's contract.
-        let result = self
-            .ff
-            .fastforward(&base.state.core, inputs, next_input, base.tick, &base.state.outgoing, resolver)?;
+        let result = self.ff.fastforward(
+            &base.state.core,
+            inputs,
+            next_input,
+            base.tick,
+            &base.state.outgoing,
+            resolver,
+        )?;
 
         // A settle defines the new last-confirmed remote packet for the next
         // speculative tail's prediction.
@@ -126,15 +131,15 @@ impl getgud::Predictor<MgbaWorld> for MgbaPredictor {
     }
 }
 
-/// [`getgud::CommitObserver`] that records committed joyflags into the replay
-/// file. Packets aren't stored — the playback stepper re-derives them.
-pub struct ReplayObserver {
+/// [`getgud::Logger`] that logs committed joyflags into the replay file.
+/// Packets aren't stored — the playback stepper re-derives them.
+pub struct ReplayLogger {
     pub writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     pub local_player_index: u8,
 }
 
-impl getgud::CommitObserver<MgbaWorld> for ReplayObserver {
-    fn on_commit(&mut self, _tick: u32, pair: &(PartialInput, PartialInput)) {
+impl getgud::Logger<MgbaWorld> for ReplayLogger {
+    fn log(&mut self, pair: &(PartialInput, PartialInput)) {
         if let Some(writer) = self.writer.lock().unwrap().as_mut() {
             writer.write_input(self.local_player_index, pair).expect("write input");
         }

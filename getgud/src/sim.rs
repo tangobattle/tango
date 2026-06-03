@@ -61,7 +61,14 @@ pub trait Predictor<W: World>: Send + Sync {
 /// Optional hook fired once per confirmed input pair as it commits, in tick
 /// order. The natural place for replay recording, rollback metrics, or desync
 /// hashing. Predictions are never reported — only confirmed history.
-pub trait CommitObserver<W: World>: Send {
-    /// Called when `pair` is confirmed at `tick`.
-    fn on_commit(&mut self, tick: u32, pair: &(W::Input, W::Input));
+pub trait Logger<W: World>: Send {
+    /// Called when `pair` is confirmed.
+    fn log(&mut self, pair: &(W::Input, W::Input));
+}
+
+/// Logger that does nothing.
+pub struct NullLogger;
+
+impl<W: World> Logger<W> for NullLogger {
+    fn log(&mut self, _pair: &(<W as World>::Input, <W as World>::Input)) {}
 }
