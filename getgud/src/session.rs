@@ -252,13 +252,9 @@ impl<W: World> Session<W> {
         self.last_committed_remote = remote.clone();
 
         // Report the just-committed pairs (paced at the display rate), dropping
-        // any at or past the terminal tick (so a replay isn't recorded past the
-        // few ticks the simulator overshoots the end by).
-        for i in 0..consumed {
-            let tick = seed_tick + i as u32;
-            if result.commit_before.is_some_and(|end| tick >= end) {
-                break;
-            }
+        // any the simulator didn't consume before terminating (so a replay isn't
+        // recorded past the few ticks the simulator overshoots the end by).
+        for i in 0..result.committed.min(consumed) {
             self.logger.log(&self.settle_backlog[i]);
         }
         for _ in 0..consumed {

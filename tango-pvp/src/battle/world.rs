@@ -84,6 +84,8 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
             Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
         };
 
+        let input_count = inputs.len();
+
         // The next input threads straight through: the fastforwarder advances
         // through `inputs`, then captures at the boundary tick (priming r4 with
         // its local joyflags) without stepping it — mirroring getgud's contract.
@@ -104,6 +106,14 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
             }
         }
 
+        // `round_result.tick` is the absolute tick the round ended at, in the
+        // same per-pair units as `base.tick`; turn it into a count of the pairs
+        // consumed before the end. Live (no result) means all of them.
+        let committed = match result.round_result {
+            Some(rr) => (rr.tick.saturating_sub(base.tick) as usize).min(input_count),
+            None => input_count,
+        };
+
         Ok(SimResult {
             snapshot: Snapshot {
                 state: MgbaState {
@@ -112,7 +122,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
                 },
                 tick: result.snapshot.tick,
             },
-            commit_before: result.round_result.map(|rr| rr.tick),
+            committed,
         })
     }
 }

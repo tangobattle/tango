@@ -6,12 +6,13 @@ pub struct SimResult<W: World> {
     /// invariant it is *poised at the start of* that tick — integrated through
     /// the tick before, with `next_input` sampled but not yet stepped.
     pub snapshot: Snapshot<W>,
-    /// `Some(end_tick)` once the world has reached a terminal state (e.g. a
-    /// round ending) at `end_tick`; the session then stops reporting committed
-    /// inputs at or past that tick, so replays aren't recorded into the few
-    /// ticks a simulator may overshoot the end by. `None` while the world is
-    /// live.
-    pub commit_before: Option<u32>,
+    /// How many leading pairs of `inputs` the world actually consumed before
+    /// reaching a terminal state (e.g. a round ending). Equal to `inputs.len()`
+    /// while the world is live; smaller once it terminates partway through the
+    /// batch, since a simulator may overshoot the end by a few ticks. The
+    /// session reports only these leading pairs to the logger, so a replay isn't
+    /// recorded into the overshoot.
+    pub committed: usize,
 }
 
 /// Advances your world. Supplied to the [`Session`](crate::Session) as a boxed
