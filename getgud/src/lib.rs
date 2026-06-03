@@ -22,7 +22,8 @@
 //!
 //! - [`Simulator`] — advance the world by a list of input pairs.
 //! - [`Predictor`] — guess a remote input from the last confirmed one.
-//! - [`CommitObserver`] — optional; observe confirmed history (e.g. replays).
+//! - [`Logger`] — observe confirmed history as it commits (e.g. replays);
+//!   supply [`NullLogger`] to ignore it.
 //!
 //! # Driving a session
 //!
