@@ -1,19 +1,39 @@
-/// Your game's type contract — what the engine simulates over.
+/// Binds together the concrete types a game provides to the netcode core.
 ///
-/// Implement this on a marker type and wire its three associated types to your
-/// game. Everything else in the crate is generic over `W: World`.
+/// A `World` is a marker type (it holds no data) whose sole purpose is to name
+/// the three associated types the rest of the crate is generic over. Implement
+/// it once for your game and pass it as the `W` type parameter to
+/// [`Session`](crate::Session), [`Simulator`](crate::Simulator), and friends.
+///
+/// # Example
+///
+/// ```
+/// use getgud::World;
+///
+/// struct MyGame;
+///
+/// impl World for MyGame {
+///     type Input = u8;            // e.g. a bitfield of held buttons
+///     type State = Vec<i32>;      // your full, serializable game state
+///     type Error = std::convert::Infallible;
+/// }
+/// ```
 pub trait World: Sized + 'static {
-    /// One participant's input for one tick. The session pairs the local and
-    /// remote `Input`s into a `(local, remote)` tuple; a `Predictor` clones one
-    /// to guess the remote's next input, so it must be `Clone`.
+    /// One player's input for a single tick.
+    ///
+    /// Must be cheap to [`Clone`] — the session clones inputs while matching
+    /// local and remote streams and while building speculative tails.
     type Input: Clone + Send + 'static;
-    /// A complete, restorable world state. The [`Simulator`](crate::Simulator)
-    /// resumes from one of these, so it must capture *everything* the simulation
-    /// reads — anything omitted will desync on rollback. The engine pairs the
-    /// authoritative settled state with the tick it tracks itself, rather than
-    /// trusting the simulator to report one back.
+
+    /// The complete simulation state at a single tick.
+    ///
+    /// This is the value the [`Simulator`](crate::Simulator) advances and that
+    /// [`Frame`](crate::Frame) hands back for rendering. It must hold everything
+    /// needed to deterministically continue the simulation from a given tick.
     type State: Send + 'static;
-    /// The error a simulation step can fail with, surfaced out of
-    /// [`Session::advance`](crate::Session::advance).
+
+    /// The error type a [`Simulator`](crate::Simulator) may return.
+    ///
+    /// Use [`std::convert::Infallible`] if your simulation cannot fail.
     type Error: Send + 'static;
 }

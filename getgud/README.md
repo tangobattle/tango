@@ -1,113 +1,79 @@
 # getgud
 
-An engine-agnostic **rollback netcode** core for two participants — a local player and one remote peer.
+A small, dependency-free **rollback netcode** core for two-player deterministic
+games, in Rust.
 
-`getgud` owns input matching, confirmed-state checkpointing, speculative re-simulation, and time synchronization. It does **no** networking, threading, rendering, or timekeeping. You feed it your local inputs and the remote inputs that arrive off your transport, and it tells you:
+It handles the hard part of peer-to-peer netcode: confirming inputs, predicting
+the ones that haven't arrived, correcting mispredictions, and keeping the two
+peers' clocks in sync.
 
-- which world state to draw this tick, and
-- the clock skew to throttle against to stay in sync with the peer.
+## API
 
-Everything game-specific lives behind a handful of traits; the engine treats your world state as an opaque, restorable blob.
+The crate is generic over a `World` you define.
 
-## The model
+| Trait                 | Responsibility                                                  |
+|-----------------------|----------------------------------------------------------------|
+| `World`               | Names your `Input`, `State`, and `Error` types.                |
+| `Simulator`           | Advances `State` by applying input pairs — **deterministically**. |
+| `Predictor`           | Guesses the remote player's next input from their last one.     |
+| `Logger` *(optional)* | Receives confirmed input pairs (replays, spectators, desync checks). Use `NullLogger` to skip. |
 
-Everything is indexed by an integer **tick** (one simulation step).
+Determinism is the one hard requirement: identical inputs on identical state must
+yield identical state: rollback depends on it.
 
-The session holds an authoritative *settled* checkpoint built purely from confirmed input pairs. Each displayed tick is a *throwaway* re-simulation from that checkpoint forward, predicting the remote's not-yet-received inputs:
+## Operation
 
-```
-settled checkpoint            speculative tail (disposable)
-[ confirmed pairs ] ─────────► [ predicted remotes ] ──► displayed state
-        ▲                                                     ▲
-   folds in confirmed inputs                          recomputed every tick
-```
+Each peer runs a `Session`. Every tick you feed it the local input and any remote
+inputs that have arrived; it returns a `Frame` to render plus a `skew` for clock
+sync. Key terms:
 
-Confirmed inputs fold into the checkpoint; predictions live only in the disposable tail. A wrong guess can never corrupt authoritative state — the tail is thrown away and rebuilt each tick, and the checkpoint only ever absorbs inputs that have been confirmed by both sides.
+- **Frontier** — the newest local tick (`Session::advance` advances it).
+- **Present delay** — how many ticks behind the frontier you display. Larger =
+  less prediction, more latency; smaller = snappier, more speculation. Tunable at
+  runtime.
+- **Settled state** — authoritative state built only from confirmed
+  `(local, remote)` pairs; confirmed inputs are handed to the `Logger`.
+- **Speculative tail** — when the presented tick runs past confirmed input, the
+  session simulates forward with *predicted* remote inputs. It is rebuilt from the
+  settled state each tick, so mispredictions self-correct — no manual rollback.
+- **Skew** — each peer reports how far its frontier leads the remote input it has
+  received; the difference is the `skew` in every `Frame`. Positive means you're
+  ahead — stall a frame to converge.
 
-The display lags the local frontier by a configurable `present_delay` (a small input buffer): larger values mean fewer rollbacks but more input latency.
+Whether the session predicts depends on how far confirmed input has progressed
+relative to the presented tick. Both diagrams share `frontier` 9 and
+`present_delay` 3 (so `target` 6), differing only in how much remote input has
+arrived.
 
-## What you supply
+**Prediction regime** — confirmed input lags the present, so `target` sits past
+the settled cap and the session speculates the gap:
 
-You parameterize the engine over a [`World`] — a marker type wiring three associated types to your game:
+```text
+ tick  0   1   2   3   4   5   6   7   8   9
+       ●───●───●───●───○───○───○───◌───◌───◌
+                   │           │           │
+                   │           │           └─ frontier (newest local tick)
+                   │           └─ target = frontier - present_delay
+                   │                (the frame you render)
+                   └─ settled cap (last tick confirmed by both)
 
-| Associated type | Meaning | Bounds |
-| --- | --- | --- |
-| `Input` | one participant's input for one tick | `Clone + Send` |
-| `State` | a complete, **restorable** world state | `Send` |
-| `Error` | what a simulation step can fail with | `Send` |
-
-> `State` must capture *everything* the simulation reads — anything omitted will desync on rollback.
-
-Then you provide three behaviors:
-
-- **`Simulator`** — advances the world by a list of `(local, remote)` input pairs. Called for both authoritative commits and throwaway tails; a `speculative: bool` flag lets you skip work that only matters for confirmed state (audio, particles, observer-visible side effects).
-- **`Predictor`** — guesses a remote input from the last confirmed one. Cloning the last remote ("the peer keeps doing what it last did") is the usual, hard-to-beat strategy.
-- **`CommitObserver`** *(optional)* — fired once per confirmed input pair, in tick order. The natural place for replay recording, rollback metrics, or desync hashing. Predictions are never reported — only confirmed history.
-
-### The Simulator contract
-
-`simulate(base, inputs, peeked, speculative)` advances the world from `base` by every pair in `inputs`, then samples `peeked` at the resulting tick without integrating it:
-
-- Apply **all** of `inputs`, advancing one tick per pair.
-- Return a snapshot whose `tick == base.tick + inputs.len()`.
-- `peeked` is the input sampled *at* that snapshot tick. A simulator whose state is a clean inter-tick value can ignore it — the session re-supplies it as `inputs[0]` of the next call, integrated there exactly once. It exists for engines that must bake the boundary tick's input into an opaque snapshot up front (e.g. priming an input register a resume will read).
-
-`SimResult::commit_before` lets the simulator report a terminal tick (e.g. a round ending); the session then stops reporting committed inputs at or past that tick, so replays aren't recorded into the few ticks a simulator may overshoot the end by.
-
-## Driving a session
-
-1. Construct with [`Session::new`], passing the tick-0 world state as `SessionParams::initial_state`. The settled checkpoint is seeded immediately — there is no separate "seed me later" step.
-2. Call [`advance(local_input)`](Session::advance) **once per rendered tick**. This call *is* the per-tick wall clock — it advances the frontier itself. It returns a [`Frame`]:
-   - `frame.tick` — the simulation tick `state` represents (read it; don't recompute — it's clamped early in a match and when `present_delay` changes live).
-   - `frame.state` — the world state to draw (a borrow valid only until the next `advance`; don't retain it).
-   - `frame.skew` — the time-sync skew in ticks to feed your own throttle (see below).
-3. Feed remote inputs in as they arrive with [`add_remote_input(input, tick_advantage)`](Session::add_remote_input).
-
-### Time synchronization
-
-Each tick, send the peer your `local_tick_advantage()` — how far your frontier leads the remote inputs you've received. The peer reports its own advantage back with each remote input (the `tick_advantage` argument to `add_remote_input`).
-
-`Frame::skew` is `local_tick_advantage - last_remote_tick_advantage`. Both advantages carry the symmetric network delay, so their difference isolates the real clock skew. **Positive means you're running ahead and should ease off.** Feed it to your throttle (e.g. lower your frame-rate target); the engine itself never sleeps or slows.
-
-## Sketch
-
-```rust
-struct MyGame;
-impl getgud::World for MyGame {
-    type Input = Buttons;
-    type State = GameState;
-    type Error = anyhow::Error;
-}
-
-// impl getgud::Simulator<MyGame>, Predictor<MyGame>, [CommitObserver<MyGame>] ...
-
-let mut session = getgud::Session::new(getgud::SessionParams {
-    present_delay: 2,
-    initial_remote: Buttons::default(),
-    initial_state: initial_game_state,
-    simulator: Box::new(my_simulator),
-    predictor: Arc::new(my_predictor),
-    observer: Some(Box::new(my_replay_recorder)),
-});
-
-// off the network, whenever a packet lands:
-session.add_remote_input(remote_buttons, peer_reported_advantage);
-
-// once per rendered tick:
-send_to_peer(local_buttons, session.local_tick_advantage());
-let frame = session.advance(local_buttons)?;
-draw(frame.state);
-throttle.apply(frame.skew);
+   ●  confirmed  — real local + real remote, folded into settled state
+   ○  speculated — real local + predicted remote (rebuilt every tick)
+   ◌  buffered   — local input entered, not yet presented (= present_delay)
 ```
 
-For a complete real-world adapter — driving an mGBA core over Game Boy Advance link-cable battles, deriving the opponent's packets via a co-simulated shadow for settles and a per-game predictor for speculative tails — see the sibling `tango-pvp` crate (`battle::world` and `battle::round`).
+**Delay regime** — confirmed input has caught up, so `target` is at or behind the
+settled cap and the rendered frame is already confirmed; no `Predictor` runs. A
+large enough `present_delay` (or low latency) keeps you here:
 
-## Inspecting state
+```text
+ tick  0   1   2   3   4   5   6   7   8   9
+       ●───●───●───●───●───●───●───●───◌───◌
+                               │   │       │
+                               │   │       └─ frontier (newest local tick)
+                               │   └─ last confirmed tick
+                               └─ target (= settled cap) — confirmed frame you render
 
-`Session` exposes read-only counters useful for diagnostics and flow control:
-
-- `frontier()` — the local wall-clock tick counter.
-- `present_delay()` / `set_present_delay()` — read or adjust the display lag live.
-- `local_queue_length()` / `remote_queue_length()` — unmatched inputs on each side.
-- `speculative_depth()` — local ticks currently running against a predicted remote.
-- `local_tick_advantage()` / `last_remote_tick_advantage()` — the two halves of the skew.
+   ●  confirmed — real local + real remote (settled state)
+   ◌  buffered  — local input entered, not yet presented
+```

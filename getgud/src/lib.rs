@@ -1,37 +1,116 @@
-//! An engine-agnostic **rollback netcode** core for two participants — a local
-//! player and one remote peer.
+//! `getgud` is a small, dependency-free core for **rollback netcode** in
+//! two-player deterministic games.
 //!
-//! `getgud` owns input matching, confirmed-state checkpointing, speculative
-//! re-simulation, and time synchronization. It does no networking, threading,
-//! rendering, or timekeeping: you feed it local inputs and the remote inputs
-//! that arrive off your transport, and it tells you which world state to draw
-//! and the clock skew to throttle against to stay in sync with the peer.
+//! Each peer runs its own [`Session`]. You feed it the local player's input
+//! every tick and the remote player's inputs as they arrive over the network.
+//! The session confirms ticks for which both inputs are known, *predicts* the
+//! remote inputs that haven't arrived yet so it can present a responsive frame,
+//! and transparently corrects those predictions once the real inputs land. It
+//! also produces a clock-[`skew`](Frame::skew) signal so the two peers can keep
+//! their simulations aligned.
 //!
-//! # How it fits together
+//! The crate is generic over your game and contains no game logic itself. You
+//! provide four things:
 //!
-//! Everything is indexed by an integer **tick** (one simulation step). The
-//! engine keeps a [`Session`] that holds an authoritative *settled* checkpoint
-//! built purely from confirmed input pairs, and each displayed tick is a
-//! *throwaway* re-simulation from that checkpoint forward — predicting the
-//! remote's not-yet-received inputs. Confirmed inputs fold into the checkpoint;
-//! predictions live only in the disposable tail, so a wrong guess can never
-//! corrupt authoritative state.
+//! | You implement        | Responsibility                                            |
+//! |----------------------|-----------------------------------------------------------|
+//! | [`World`]            | Names your `Input`, `State`, and `Error` types.           |
+//! | [`Simulator`]        | Advances `State` by applying input pairs (deterministically). |
+//! | [`Predictor`]        | Guesses the remote's next input from their last one.      |
+//! | [`Logger`] *(opt.)*  | Receives confirmed input pairs; use [`NullLogger`] to skip. |
 //!
-//! You parameterize the engine over a [`World`] (your game's `Input` / `State`
-//! / `Error` types) and supply three behaviors as trait objects:
+//! # Model
 //!
-//! - [`Simulator`] — advance the world by a list of input pairs.
-//! - [`Predictor`] — guess a remote input from the last confirmed one.
-//! - [`Logger`] — observe confirmed history as it commits (e.g. replays);
-//!   supply [`NullLogger`] to ignore it.
+//! * **Frontier** — the newest local tick; advances once per [`Session::advance`].
+//! * **Present delay** — how many ticks behind the frontier you present. Larger
+//!   means less prediction but more input latency; smaller is snappier but
+//!   speculates further. Tunable at runtime.
+//! * **Settled state** — the authoritative state built only from confirmed
+//!   `(local, remote)` input pairs. Inputs are logged as they settle.
+//! * **Speculative tail** — when the presented tick runs past the confirmed
+//!   region, the session simulates forward from the settled state using real
+//!   local inputs and predicted remote inputs. It is rebuilt from scratch every
+//!   frame, so a wrong prediction simply disappears once the true input settles.
 //!
-//! # Driving a session
+//! # Per-tick loop
 //!
-//! Construct with [`Session::new`] (passing the tick-0 world state as
-//! [`SessionParams::initial_state`]), then call [`advance`](Session::advance)
-//! once per tick — it advances the wall clock and hands back the [`Frame`] to
-//! draw (carrying the time-sync skew to throttle against). Feed remote inputs in
-//! as they arrive with [`add_remote_input`](Session::add_remote_input).
+//! ```text
+//! loop each tick:
+//!     while packet arrived:  session.add_remote_input(remote_input, their_advantage)
+//!     let frame = session.advance(local_input)?;
+//!     render(frame.state);
+//!     adjust_clock(frame.skew);   // stall a frame when running ahead
+//! ```
+//!
+//! # Example
+//!
+//! A toy world whose state is a single integer that each player's input nudges.
+//!
+//! ```
+//! use std::sync::Arc;
+//! use getgud::{
+//!     NullLogger, Predictor, Session, SessionParams, SimResult, Simulator, World,
+//! };
+//!
+//! // 1. Describe the game's types.
+//! struct Counter;
+//! impl World for Counter {
+//!     type Input = i64;
+//!     type State = i64;
+//!     type Error = std::convert::Infallible;
+//! }
+//!
+//! // 2. The simulation: fold each (local, remote) pair into the running total.
+//! struct Sim;
+//! impl Simulator<Counter> for Sim {
+//!     fn simulate(
+//!         &mut self,
+//!         base: &i64,
+//!         _base_tick: u32,
+//!         inputs: Vec<(i64, i64)>,
+//!         _speculative: bool,
+//!     ) -> Result<SimResult<Counter>, std::convert::Infallible> {
+//!         let mut state = *base;
+//!         let committed = inputs.len();
+//!         for (local, remote) in inputs {
+//!             state += local + remote;
+//!         }
+//!         Ok(SimResult { state, committed })
+//!     }
+//! }
+//!
+//! // 3. Predict that the remote keeps repeating its last input.
+//! struct Repeat;
+//! impl Predictor<Counter> for Repeat {
+//!     fn predict(&self, last_remote: &i64) -> i64 { *last_remote }
+//! }
+//!
+//! let mut session = Session::<Counter>::new(SessionParams {
+//!     present_delay: 2,
+//!     initial_remote: 0,
+//!     initial_state: 0,
+//!     simulator: Box::new(Sim),
+//!     predictor: Arc::new(Repeat),
+//!     logger: Box::new(NullLogger),
+//! });
+//!
+//! // Drive ten ticks. Remote inputs arrive two frames late, so the session
+//! // must speculate to present the latest frame — and correct itself later.
+//! let mut pending: Vec<i64> = Vec::new();
+//! for tick in 0..10 {
+//!     // A packet from two ticks ago becomes available now.
+//!     if tick >= 2 {
+//!         session.add_remote_input(pending.remove(0), session.local_tick_advantage());
+//!     }
+//!     pending.push(1); // the remote input we'll deliver later
+//!
+//!     let frame = session.advance(1).unwrap();
+//!     // `frame.state` is what to render; `frame.skew` drives clock sync.
+//!     let _ = (frame.tick, frame.skew, frame.state, frame.local_input);
+//! }
+//!
+//! assert_eq!(session.frontier(), 10);
+//! ```
 
 mod input;
 mod session;

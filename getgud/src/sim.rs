@@ -1,50 +1,45 @@
 use crate::world::World;
 
-/// The result of one [`Simulator::simulate`] call.
+/// The outcome of a single [`Simulator::simulate`] call.
 pub struct SimResult<W: World> {
-    /// The world advanced one tick per input pair. Per the state invariant it is
-    /// *poised at the start of* `base_tick + inputs.len()` — integrated through
-    /// the tick before, with that tick's input not yet sampled. The simulator
-    /// doesn't report the tick: it's `base_tick + inputs.len()` by construction,
-    /// and the session tracks it.
+    /// The new state after applying every input pair that was passed in.
     pub state: W::State,
-    /// How many leading pairs of `inputs` the world actually consumed before
-    /// reaching a terminal state (e.g. a round ending). Equal to `inputs.len()`
-    /// while the world is live; smaller once it terminates partway through the
-    /// batch, since a simulator may overshoot the end by a few ticks. The
-    /// session reports only these leading pairs to the logger, so a replay isn't
-    /// recorded into the overshoot.
+
+    /// How many of the supplied input pairs the simulator considers *committed*
+    /// (i.e. final and safe to log / surface to gameplay systems).
+    ///
+    /// During an authoritative settle this is normally equal to the number of
+    /// inputs handed in. The session uses it to decide how many leading input
+    /// pairs to forward to the [`Logger`]; only the first `committed` pairs are
+    /// logged. Values larger than the input count are clamped.
     pub committed: usize,
 }
 
-/// Advances your world. Supplied to the [`Session`](crate::Session) as a boxed
-/// trait object and called for both authoritative commits and throwaway tails.
+/// Advances game state by applying confirmed or predicted input pairs.
 ///
-/// **State invariant.** A [`State`](World::State) at tick `T` is the world
-/// *poised at the start of* `T`: integrated through `T - 1`, with `T`'s input
-/// not yet sampled. The start-of-`T` local input rides out separately on the
-/// [`Frame`](crate::Frame) (as [`local_input`](crate::Frame::local_input)), so a
-/// consumer that must bake the boundary input onto the displayed state — e.g.
-/// priming an input register a resume will read — applies it itself rather than
-/// the simulator baking it into the opaque state.
+/// This is the heart of the game-specific simulation and the one trait every
+/// game must implement with real logic. The session calls it in two modes:
+///
+/// * **Authoritative ("settle")** — `speculative == false`. The inputs are fully
+///   confirmed `(local, remote)` pairs. The resulting state becomes the new
+///   trusted baseline and the leading pairs are logged.
+/// * **Speculative ("tail")** — `speculative == true`. The leading pairs are
+///   confirmed but the trailing remote inputs are *predictions* (see
+///   [`Predictor`]). The result is shown to the player this frame and thrown
+///   away next frame, so it should avoid irreversible side effects.
+///
+/// The same input must always produce the same output: rollback prediction only
+/// works if the simulation is deterministic.
 pub trait Simulator<W: World>: Send {
-    /// Advance `base` (the world at `base_tick`) by every pair in `inputs`, one
-    /// tick per pair, and return the state poised at the start of the resulting
-    /// tick.
+    /// Apply `inputs` on top of `base` and return the resulting state.
     ///
-    /// Contract:
-    /// - Apply **all** of `inputs`, advancing one tick per pair.
-    /// - Return the state at `base_tick + inputs.len()`. The tick itself isn't
-    ///   returned — it's implied by the count, and the session owns it.
-    ///
-    /// The input that lands **at** the resulting tick is not passed in and not
-    /// stepped here: the session hands it back as `inputs[0]` of the next call
-    /// (where it *is* stepped, so it counts exactly once) and surfaces it on the
-    /// current [`Frame`](crate::Frame) for the consumer to prime onto the display.
-    ///
-    /// `speculative` is `true` for the disposable display tail and `false` for
-    /// authoritative commits — use it to skip work that only matters for
-    /// confirmed state (audio, particles, observer-visible side effects).
+    /// * `base` — the state at `base_tick` to simulate forward from.
+    /// * `base_tick` — the tick `base` corresponds to (the first pair in
+    ///   `inputs` advances the world from `base_tick` to `base_tick + 1`).
+    /// * `inputs` — `(local, remote)` input pairs, one per tick to advance.
+    /// * `speculative` — `true` when some trailing remote inputs are predicted
+    ///   and the result is a throwaway presentation frame; `false` for an
+    ///   authoritative advance of the trusted state.
     fn simulate(
         &mut self,
         base: &W::State,
@@ -54,24 +49,34 @@ pub trait Simulator<W: World>: Send {
     ) -> Result<SimResult<W>, W::Error>;
 }
 
-/// Guesses a remote input for the speculative tail. The session holds the guess
-/// constant across the whole tail and replaces it as soon as real remote inputs
-/// arrive. Cloning `last_remote` ("the peer keeps doing what it last did") is
-/// the usual, hard-to-beat strategy.
+/// Guesses the remote player's next input from their most recent confirmed one.
+///
+/// When local simulation runs ahead of the inputs that have arrived over the
+/// network, the session fills the gap with predictions so it can present a
+/// responsive frame. Mispredictions are corrected automatically: once the real
+/// remote input arrives it is settled into the authoritative state, replacing
+/// whatever was predicted.
+///
+/// The simplest useful predictor is "repeat the last input", which assumes the
+/// remote player keeps doing what they were doing.
 pub trait Predictor<W: World>: Send + Sync {
-    /// Predict the remote input that follows `last_remote`.
+    /// Return the predicted remote input given the last confirmed remote input.
     fn predict(&self, last_remote: &W::Input) -> W::Input;
 }
 
-/// Optional hook fired once per confirmed input pair as it commits, in tick
-/// order. The natural place for replay recording, rollback metrics, or desync
-/// hashing. Predictions are never reported — only confirmed history.
+/// Receives confirmed input pairs as they become final.
+///
+/// The session calls [`log`](Logger::log) for each `(local, remote)` pair the
+/// moment it is settled into the authoritative state, in tick order. This is the
+/// hook for recording replays, sending confirmed inputs to a spectator/server,
+/// or building a desync-detection trail. Use [`NullLogger`] if you need none of
+/// that.
 pub trait Logger<W: World>: Send {
-    /// Called when `pair` is confirmed.
+    /// Record a single confirmed `(local, remote)` input pair.
     fn log(&mut self, pair: &(W::Input, W::Input));
 }
 
-/// Logger that does nothing.
+/// A [`Logger`] that discards everything. The default when you don't need logging.
 pub struct NullLogger;
 
 impl<W: World> Logger<W> for NullLogger {
