@@ -80,11 +80,13 @@ pub struct InnerState {
     /// `is_replaying()` so the value is irrelevant there).
     commit_frontier: u32,
     /// Tick at which the per-game stepper trap snapshots the state into
-    /// [`captured_state`]. Captured *post-peek* (after `peek_input_pair` +
-    /// `set_gpr(r4, ip.local.joyflags)`), so the saved state's r4 is the
-    /// local joyflags for `current_tick` — suitable both for loading into the
-    /// live core and for using as the next FF's base state. `u32::MAX` in
-    /// replay mode so the capture never fires.
+    /// [`captured_snapshot`]. The input window is exhausted by then, so the
+    /// capturing `main_read_joyflags` finds no pair to peek and saves the state
+    /// poised at the start of `current_tick` with r4 left unset. The consumer
+    /// supplies the local joyflags: the live core via
+    /// `Hooks::inject_joyflags_on_primary_snapshot`, the next FF by re-priming r4
+    /// at its first `main_read_joyflags`. `u32::MAX` in replay mode so the
+    /// capture never fires.
     capture_tick: u32,
     captured_snapshot: Option<crate::battle::Snapshot>,
     round_result: Option<RoundResult>,
@@ -212,17 +214,17 @@ impl InnerState {
         match_type: (u8, u8),
         local_player_index: u8,
         inputs: Vec<PartialInputPair>,
-        next_input: PartialInputPair,
         current_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
         // Run `inputs` one tick each, then capture at the boundary tick (one past
-        // the last applied): `peek_input_pair` sets r4 from `next_input` but it
-        // is never popped, so the snapshot lands at the start of that tick.
+        // the last applied). By then the input window is exhausted, so the
+        // capturing `main_read_joyflags` finds no pair to peek and snapshots
+        // poised at the start of that tick with r4 left unset — the consumer
+        // injects the boundary tick's local joyflags.
         let capture_tick = current_tick + inputs.len() as u32;
-        let mut input_pairs: VecDeque<PartialInputPair> = inputs.into_iter().collect();
-        input_pairs.push_back(next_input);
+        let input_pairs: VecDeque<PartialInputPair> = inputs.into_iter().collect();
         Self {
             disable_bgm: false,
             current_tick,
@@ -444,8 +446,8 @@ impl InnerState {
     }
 
     /// Capture the FF's single state snapshot. Called by per-game stepper traps
-    /// when `current_tick == capture_tick()` (post-peek, so r4 is set to the
-    /// next input's local joyflags).
+    /// when `current_tick == capture_tick()`, poised at the start of the tick
+    /// with r4 (local joyflags) left unset for the consumer to inject.
     pub fn capture(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;

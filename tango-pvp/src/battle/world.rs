@@ -63,7 +63,6 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         &mut self,
         base: &Snapshot<MgbaWorld>,
         inputs: Vec<(PartialInput, PartialInput)>,
-        next_input: (PartialInput, PartialInput),
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
         let resolver: Resolver = if speculative {
@@ -86,13 +85,14 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
 
         let input_count = inputs.len();
 
-        // The next input threads straight through: the fastforwarder advances
-        // through `inputs`, then captures at the boundary tick (priming r4 with
-        // its local joyflags) without stepping it — mirroring getgud's contract.
+        // The fastforwarder advances through `inputs`, then captures poised at
+        // the start of the boundary tick (one past the last applied) without
+        // stepping it — mirroring getgud's contract. The boundary tick's local
+        // joyflags are not baked into the snapshot; the live core primes them
+        // from `Frame::local_input` via `inject_joyflags_on_primary_snapshot`.
         let result = self.ff.fastforward(
             &base.state.core,
             inputs,
-            next_input,
             base.tick,
             &base.state.outgoing,
             resolver,

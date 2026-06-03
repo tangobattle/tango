@@ -24,6 +24,10 @@ pub struct Round {
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
+    /// Per-game hooks for the running ROM. Held so the live render path can
+    /// prime the loaded snapshot's local-joyflags register (r4) via
+    /// [`inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot).
+    hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     /// Outbound network input channel. The engine no longer sends; we ship the
     /// local input ourselves (with the engine's frame advantage attached)
     /// before stepping it.
@@ -52,6 +56,7 @@ impl Round {
         Self {
             session: None,
             local_player_index: match_.local_player_index(),
+            hooks: match_.local_hooks(),
             sender: match_.sender_handle(),
             frame_delay: match_.frame_delay(),
             primary_thread_handle: match_.primary_thread_handle(),
@@ -167,6 +172,13 @@ impl Round {
 
         let frame = session.advance(PartialInput { joyflags })?;
         core.load_state(&frame.state.core).expect("load present state");
+        // The snapshot is poised at the start of `frame.tick` with its local
+        // joyflags register (r4) unset — the engine carries that input on the
+        // frame instead of baking it in. Prime it now so the live core resumes
+        // the displayed tick with the right local input.
+        if let Some(local) = frame.local_input {
+            self.hooks.inject_joyflags_on_primary_snapshot(core, local.joyflags);
+        }
         self.last_loaded_tick = frame.tick;
 
         // Smooth the raw skew into a slowdown below our nominal rate, then turn

@@ -42,6 +42,13 @@ pub struct Frame<'a, W: World> {
     /// next [`advance`](Session::advance). Usually a speculative (predicted) view
     /// that is recomputed each tick; don't retain it.
     pub state: &'a W::State,
+    /// The local input sampled **at** [`tick`](Self::tick) but not yet stepped —
+    /// the start-of-tick input the snapshot invariant leaves un-applied (see
+    /// [`Simulator`](crate::Simulator)). A consumer that bakes the boundary input
+    /// onto the displayed state (e.g. priming an input register the resumed core
+    /// will read) applies this to `state` itself. `None` when no input is queued
+    /// at `tick` yet (e.g. a settled checkpoint sitting at the commit frontier).
+    pub local_input: Option<W::Input>,
 }
 
 /// The rollback engine for one local + one remote participant.
@@ -166,12 +173,13 @@ impl<W: World> Session<W> {
             // Speculative tail: throwaway re-sim from the checkpoint to the
             // target, predicting every remote payload past the frontier. Stash
             // it so we can return a borrow without cloning.
-            let state = self.speculate_tail(target, &unmatched_locals)?;
+            let (state, local_input) = self.speculate_tail(target, &unmatched_locals)?;
             self.speculative_state = Some(state);
             Frame {
                 tick: target,
                 skew,
                 state: self.speculative_state.as_ref().unwrap(),
+                local_input: Some(local_input),
             }
         } else {
             // Settled (or pre-first-commit): the checkpoint IS the display. Its
@@ -184,6 +192,10 @@ impl<W: World> Session<W> {
                 tick: self.settled_snapshot.tick,
                 skew,
                 state: &self.settled_snapshot.state,
+                // The next pair to settle from the checkpoint sits at the front
+                // of the backlog; its local half is the start-of-tick input
+                // poised at the displayed tick. None before the first commit.
+                local_input: self.settle_backlog.front().map(|(local, _remote)| local.clone()),
             }
         })
     }
@@ -231,19 +243,18 @@ impl<W: World> Session<W> {
             return Ok(());
         }
 
-        // Commit the `[seed_tick, target)` pairs and sample the one at `target`:
-        // the simulator advances through every committed pair and leaves the
-        // snapshot poised at the start of `target`, with that next input sampled
-        // but not stepped. `target <= commit_frontier - 1` guarantees the
-        // backlog holds the next-input pair past the committed ones.
+        // Commit the `[seed_tick, target)` pairs: the simulator advances through
+        // every committed pair and leaves the snapshot poised at the start of
+        // `target`. The input at `target` is not stepped here — it rides out on
+        // the next `advance`'s `Frame::local_input`. The `target <=
+        // commit_frontier - 1` cap keeps at least one confirmed pair past the
+        // committed ones in the backlog, so the settled frame's `local_input`
+        // and the speculative tail both have a real pair to seed from.
         let consumed = (target - seed_tick) as usize;
         assert!(self.settle_backlog.len() > consumed);
         let inputs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(consumed).cloned().collect();
-        let next_input = self.settle_backlog[consumed].clone();
 
-        let result = self
-            .simulator
-            .simulate(&self.settled_snapshot, inputs, next_input, false)?;
+        let result = self.simulator.simulate(&self.settled_snapshot, inputs, false)?;
 
         // The last committed pair's remote seeds the speculative tail's
         // prediction. `consumed >= 1` here (we returned early if `target <=
@@ -265,7 +276,11 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
-    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<W::State, W::Error> {
+    fn speculate_tail(
+        &mut self,
+        target: u32,
+        unmatched_locals: &[W::Input],
+    ) -> Result<(W::State, W::Input), W::Error> {
         let seed_tick = self.settled_snapshot.tick;
         assert_eq!(
             seed_tick,
@@ -287,13 +302,12 @@ impl<W: World> Session<W> {
         for local in &unmatched_locals[..input_count - 1] {
             inputs.push((local.clone(), predicted.clone()));
         }
-        // The next-input pair sits one tick past the last applied: a speculative
-        // local against the predicted remote, sampled but not stepped.
-        let next_input = (unmatched_locals[input_count - 1].clone(), predicted.clone());
+        // The local input one tick past the last applied — sampled but not
+        // stepped — rides out on the Frame so the consumer can prime it onto the
+        // displayed state.
+        let local_input = unmatched_locals[input_count - 1].clone();
 
-        let result = self
-            .simulator
-            .simulate(&self.settled_snapshot, inputs, next_input, true)?;
-        Ok(result.snapshot.state)
+        let result = self.simulator.simulate(&self.settled_snapshot, inputs, true)?;
+        Ok((result.snapshot.state, local_input))
     }
 }

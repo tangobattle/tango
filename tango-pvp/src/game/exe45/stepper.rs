@@ -114,18 +114,25 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     state.on_first_commit();
                 }
 
+                // FF state capture. At `capture_tick` the input window is
+                // exhausted (all of `inputs` consumed), so there's no pair to
+                // peek: snapshot poised at the start of the tick with r4 left
+                // unset. The consumer injects the local joyflags — the live
+                // primary via `inject_joyflags_on_primary_snapshot`, the next FF
+                // by re-priming r4 at its first `main_read_joyflags`.
+                // `capture_tick` is u32::MAX in replay mode, so this never fires
+                // there.
+                if current_tick == state.capture_tick() {
+                    state.set_local_packet(munger.tx_packet(core).to_vec());
+                    state.capture(core.save_state().expect("save captured state"));
+                    return;
+                }
+
                 let Some((local, _remote)) = state.peek_input_pair().cloned() else {
                     return;
                 };
 
                 core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | 0xfc00) as i32);
-
-                // FF state capture (post-peek so r4 is set). `capture_tick` is
-                // u32::MAX in replay mode, so this never fires there.
-                if current_tick == state.capture_tick() {
-                    state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.capture(core.save_state().expect("save captured state"));
-                }
             })
         }),
         (hooks.offsets.rom.copy_input_data_entry, {

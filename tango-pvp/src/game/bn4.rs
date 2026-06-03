@@ -57,4 +57,8 @@ impl crate::hooks::Hooks for Hooks {
             .cpu_mut()
             .set_thumb_pc(self.offsets.rom.main_read_joyflags);
     }
+
+    fn inject_joyflags_on_primary_snapshot(&self, mut core: mgba::core::CoreMutRef, joyflags: u16) {
+        core.gba_mut().cpu_mut().set_gpr(4, (joyflags | 0xfc00) as i32);
+    }
 }

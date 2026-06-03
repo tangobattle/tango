@@ -5,11 +5,14 @@ use super::types::RoundResult;
 
 /// Output of a single Fastforwarder run.
 pub struct FastforwardResult {
-    /// State captured at `capture_tick` post-peek: the per-game stepper trap
-    /// fires `main_read_joyflags`, sets r4 to the next input's local joyflags,
-    /// and snapshots from there — so loading this state into either the live
-    /// core (immediate render) or another `fastforward` run (as the next base
-    /// state) resumes with the right local-joyflags register.
+    /// State captured at `capture_tick`: the per-game stepper trap fires
+    /// `main_read_joyflags` once the input window is exhausted and snapshots
+    /// poised at the start of that tick, with r4 (local joyflags) left unset.
+    /// The consumer supplies it: the live core via
+    /// [`Hooks::inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot)
+    /// after loading the snapshot, and the next `fastforward` run by re-priming
+    /// r4 at its first `main_read_joyflags` (its PC is rewound there by
+    /// `prepare_for_fastforward`).
     pub snapshot: crate::battle::Snapshot,
     pub round_result: Option<RoundResult>,
     pub output_pairs: Vec<(Input, Input)>,
@@ -64,7 +67,6 @@ impl Fastforwarder {
         &mut self,
         state: &mgba::state::State,
         inputs: Vec<(PartialInput, PartialInput)>,
-        next_input: (PartialInput, PartialInput),
         current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
@@ -76,7 +78,6 @@ impl Fastforwarder {
             self.match_type,
             self.local_player_index,
             inputs,
-            next_input,
             current_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,

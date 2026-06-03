@@ -49,6 +49,16 @@ pub trait Hooks {
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
+    /// Prime `core`'s local-joyflags register (r4) from `joyflags` after a
+    /// fastforwarder snapshot is loaded into the live primary core. The snapshot
+    /// is captured poised at the start of its tick with r4 left unset (the
+    /// boundary input is no longer baked in), so the live core — which resumes
+    /// straight from the captured PC, past `main_read_joyflags` — must inject the
+    /// displayed tick's local joyflags itself before stepping. (A fastforwarder
+    /// run doesn't need this: `prepare_for_fastforward` rewinds its PC to
+    /// `main_read_joyflags`, which re-primes r4 from the input window.)
+    fn inject_joyflags_on_primary_snapshot(&self, core: mgba::core::CoreMutRef, joyflags: u16);
+
     fn predict_rx(&self, _rx: &mut Vec<u8>) {}
 }
 
