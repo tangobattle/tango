@@ -294,11 +294,7 @@ impl<W: World> Session<W> {
         Ok(())
     }
 
-    fn speculate_tail(
-        &mut self,
-        target: u32,
-        unmatched_locals: &[W::Input],
-    ) -> Result<(W::State, W::Input), W::Error> {
+    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(W::State, W::Input), W::Error> {
         let seed_tick = self.settled_tick;
         assert_eq!(
             seed_tick,
