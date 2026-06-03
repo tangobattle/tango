@@ -40,4 +40,4 @@ mod world;
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
 pub use sim::{Logger, NullLogger, Predictor, SimResult, Simulator};
-pub use world::{Snapshot, World};
+pub use world::World;

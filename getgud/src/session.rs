@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::input::Queue;
 use crate::sim::{Logger, Predictor, Simulator};
-use crate::world::{Snapshot, World};
+use crate::world::World;
 
 /// Everything needed to construct a [`Session`]. Pass to [`Session::new`].
 pub struct SessionParams<W: World> {
@@ -81,7 +81,12 @@ pub struct Session<W: World> {
     last_committed_remote: W::Input,
 
     settle_backlog: VecDeque<(W::Input, W::Input)>,
-    settled_snapshot: Snapshot<W>,
+    /// The authoritative settled checkpoint: the world built purely from
+    /// confirmed input pairs, and the tick it sits at. The tick is tracked here
+    /// rather than read back off the simulator — it advances by exactly the
+    /// number of pairs committed each settle.
+    settled_state: W::State,
+    settled_tick: u32,
     /// The speculative tail's state from the most recent [`advance`](Self::advance),
     /// retained only so `advance` can hand back a borrow instead of cloning. It
     /// is overwritten on a speculative tick and cleared on a settled one.
@@ -115,10 +120,8 @@ impl<W: World> Session<W> {
             commit_frontier: 0,
             last_committed_remote: initial_remote,
             settle_backlog: std::collections::VecDeque::new(),
-            settled_snapshot: Snapshot {
-                state: initial_state,
-                tick: 0,
-            },
+            settled_state: initial_state,
+            settled_tick: 0,
             speculative_state: None,
             last_remote_received_tick: 0,
             last_remote_tick_advantage: 0,
@@ -203,9 +206,9 @@ impl<W: World> Session<W> {
                 .map(|(local, _remote)| local.clone())
                 .unwrap_or_else(|| unmatched_locals[0].clone());
             Frame {
-                tick: self.settled_snapshot.tick,
+                tick: self.settled_tick,
                 skew,
-                state: &self.settled_snapshot.state,
+                state: &self.settled_state,
                 local_input,
             }
         })
@@ -249,13 +252,13 @@ impl<W: World> Session<W> {
     }
 
     fn settle_to(&mut self, target: u32) -> Result<(), W::Error> {
-        let seed_tick = self.settled_snapshot.tick;
+        let seed_tick = self.settled_tick;
         if target <= seed_tick {
             return Ok(());
         }
 
         // Commit the `[seed_tick, target)` pairs: the simulator advances through
-        // every committed pair and leaves the snapshot poised at the start of
+        // every committed pair and leaves the state poised at the start of
         // `target`. The input at `target` is not stepped here — it rides out on
         // the next `advance`'s `Frame::local_input`. The `target <=
         // commit_frontier - 1` cap keeps at least one confirmed pair past the
@@ -265,7 +268,7 @@ impl<W: World> Session<W> {
         assert!(self.settle_backlog.len() > consumed);
         let inputs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(consumed).cloned().collect();
 
-        let result = self.simulator.simulate(&self.settled_snapshot, inputs, false)?;
+        let result = self.simulator.simulate(&self.settled_state, seed_tick, inputs, false)?;
 
         // The last committed pair's remote seeds the speculative tail's
         // prediction. `consumed >= 1` here (we returned early if `target <=
@@ -283,7 +286,11 @@ impl<W: World> Session<W> {
             self.settle_backlog.pop_front();
         }
 
-        self.settled_snapshot = result.snapshot;
+        // The state advanced by exactly `consumed` pairs, so it now sits at
+        // `target` (= `seed_tick + consumed`) — tracked here rather than read off
+        // the simulator.
+        self.settled_state = result.state;
+        self.settled_tick = target;
         Ok(())
     }
 
@@ -292,7 +299,7 @@ impl<W: World> Session<W> {
         target: u32,
         unmatched_locals: &[W::Input],
     ) -> Result<(W::State, W::Input), W::Error> {
-        let seed_tick = self.settled_snapshot.tick;
+        let seed_tick = self.settled_tick;
         assert_eq!(
             seed_tick,
             self.commit_frontier.saturating_sub(1),
@@ -318,7 +325,7 @@ impl<W: World> Session<W> {
         // displayed state.
         let local_input = unmatched_locals[input_count - 1].clone();
 
-        let result = self.simulator.simulate(&self.settled_snapshot, inputs, true)?;
-        Ok((result.snapshot.state, local_input))
+        let result = self.simulator.simulate(&self.settled_state, seed_tick, inputs, true)?;
+        Ok((result.state, local_input))
     }
 }

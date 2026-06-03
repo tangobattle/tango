@@ -1,11 +1,13 @@
-use crate::world::{Snapshot, World};
+use crate::world::World;
 
 /// The result of one [`Simulator::simulate`] call.
 pub struct SimResult<W: World> {
-    /// The world advanced to `base.tick + inputs.len()`. Per the snapshot
-    /// invariant it is *poised at the start of* that tick — integrated through
-    /// the tick before, with that tick's input not yet sampled.
-    pub snapshot: Snapshot<W>,
+    /// The world advanced one tick per input pair. Per the state invariant it is
+    /// *poised at the start of* `base_tick + inputs.len()` — integrated through
+    /// the tick before, with that tick's input not yet sampled. The simulator
+    /// doesn't report the tick: it's `base_tick + inputs.len()` by construction,
+    /// and the session tracks it.
+    pub state: W::State,
     /// How many leading pairs of `inputs` the world actually consumed before
     /// reaching a terminal state (e.g. a round ending). Equal to `inputs.len()`
     /// while the world is live; smaller once it terminates partway through the
@@ -18,22 +20,24 @@ pub struct SimResult<W: World> {
 /// Advances your world. Supplied to the [`Session`](crate::Session) as a boxed
 /// trait object and called for both authoritative commits and throwaway tails.
 ///
-/// **Snapshot invariant.** A [`Snapshot`] at tick `T` is the world *poised at
-/// the start of* `T`: integrated through `T - 1`, with `T`'s input not yet
-/// sampled. The start-of-`T` local input rides out separately on the
+/// **State invariant.** A [`State`](World::State) at tick `T` is the world
+/// *poised at the start of* `T`: integrated through `T - 1`, with `T`'s input
+/// not yet sampled. The start-of-`T` local input rides out separately on the
 /// [`Frame`](crate::Frame) (as [`local_input`](crate::Frame::local_input)), so a
 /// consumer that must bake the boundary input onto the displayed state — e.g.
 /// priming an input register a resume will read — applies it itself rather than
-/// the simulator baking it into the opaque snapshot.
+/// the simulator baking it into the opaque state.
 pub trait Simulator<W: World>: Send {
-    /// Advance `base` by every pair in `inputs`, one tick per pair, and return a
-    /// snapshot poised at the start of the resulting tick.
+    /// Advance `base` (the world at `base_tick`) by every pair in `inputs`, one
+    /// tick per pair, and return the state poised at the start of the resulting
+    /// tick.
     ///
     /// Contract:
     /// - Apply **all** of `inputs`, advancing one tick per pair.
-    /// - Return a snapshot whose `tick == base.tick + inputs.len()`.
+    /// - Return the state at `base_tick + inputs.len()`. The tick itself isn't
+    ///   returned — it's implied by the count, and the session owns it.
     ///
-    /// The input that lands **at** that snapshot tick is not passed in and not
+    /// The input that lands **at** the resulting tick is not passed in and not
     /// stepped here: the session hands it back as `inputs[0]` of the next call
     /// (where it *is* stepped, so it counts exactly once) and surfaces it on the
     /// current [`Frame`](crate::Frame) for the consumer to prime onto the display.
@@ -43,7 +47,8 @@ pub trait Simulator<W: World>: Send {
     /// confirmed state (audio, particles, observer-visible side effects).
     fn simulate(
         &mut self,
-        base: &Snapshot<W>,
+        base: &W::State,
+        base_tick: u32,
         inputs: Vec<(W::Input, W::Input)>,
         speculative: bool,
     ) -> Result<SimResult<W>, W::Error>;

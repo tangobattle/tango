@@ -20,7 +20,7 @@
 
 use std::sync::{Arc, Mutex as SyncMutex};
 
-use getgud::{SimResult, Snapshot};
+use getgud::SimResult;
 
 use crate::input::{Input, PartialInput};
 
@@ -61,7 +61,8 @@ pub struct MgbaSimulator {
 impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
     fn simulate(
         &mut self,
-        base: &Snapshot<MgbaWorld>,
+        base: &MgbaState,
+        base_tick: u32,
         inputs: Vec<(PartialInput, PartialInput)>,
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
@@ -91,10 +92,10 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         // joyflags are not baked into the snapshot; the live core primes them
         // from `Frame::local_input` via `inject_joyflags_on_primary_snapshot`.
         let result = self.ff.fastforward(
-            &base.state.core,
+            &base.core,
             inputs,
-            base.tick,
-            &base.state.outgoing,
+            base_tick,
+            &base.outgoing,
             resolver,
         )?;
 
@@ -107,20 +108,17 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         }
 
         // `round_result.tick` is the absolute tick the round ended at, in the
-        // same per-pair units as `base.tick`; turn it into a count of the pairs
+        // same per-pair units as `base_tick`; turn it into a count of the pairs
         // consumed before the end. Live (no result) means all of them.
         let committed = match result.round_result {
-            Some(rr) => (rr.tick.saturating_sub(base.tick) as usize).min(input_count),
+            Some(rr) => (rr.tick.saturating_sub(base_tick) as usize).min(input_count),
             None => input_count,
         };
 
         Ok(SimResult {
-            snapshot: Snapshot {
-                state: MgbaState {
-                    core: result.snapshot.state,
-                    outgoing: result.snapshot.packet,
-                },
-                tick: result.snapshot.tick,
+            state: MgbaState {
+                core: result.snapshot.state,
+                outgoing: result.snapshot.packet,
             },
             committed,
         })
