@@ -42,13 +42,17 @@ pub struct Frame<'a, W: World> {
     /// next [`advance`](Session::advance). Usually a speculative (predicted) view
     /// that is recomputed each tick; don't retain it.
     pub state: &'a W::State,
-    /// The local input sampled **at** [`tick`](Self::tick) but not yet stepped —
-    /// the start-of-tick input the snapshot invariant leaves un-applied (see
-    /// [`Simulator`](crate::Simulator)). A consumer that bakes the boundary input
-    /// onto the displayed state (e.g. priming an input register the resumed core
-    /// will read) applies this to `state` itself. `None` when no input is queued
-    /// at `tick` yet (e.g. a settled checkpoint sitting at the commit frontier).
-    pub local_input: Option<W::Input>,
+    /// The local input poised at [`tick`](Self::tick): sampled but not yet
+    /// stepped — the start-of-tick input the snapshot invariant leaves un-applied
+    /// (see [`Simulator`](crate::Simulator)). A consumer that bakes the boundary
+    /// input onto the displayed state (e.g. priming an input register the resumed
+    /// core will read) applies this to `state` itself.
+    ///
+    /// Always present: every displayed tick has a local input. Even the
+    /// pre-first-commit bootstrap frame (whose `state` is the caller's
+    /// [`initial_state`](crate::SessionParams::initial_state) at tick 0) carries
+    /// tick 0's local input, so the consumer never has to special-case it.
+    pub local_input: W::Input,
 }
 
 /// The rollback engine for one local + one remote participant.
@@ -179,7 +183,7 @@ impl<W: World> Session<W> {
                 tick: target,
                 skew,
                 state: self.speculative_state.as_ref().unwrap(),
-                local_input: Some(local_input),
+                local_input,
             }
         } else {
             // Settled (or pre-first-commit): the checkpoint IS the display. Its
@@ -188,14 +192,21 @@ impl<W: World> Session<W> {
             // present_delay increase can pull it back behind the cap — so report
             // the tick actually presented.
             self.speculative_state = None;
+            // The local input poised at the displayed tick. Normally the front of
+            // the settle backlog — the next pair to commit. Before the first
+            // commit the backlog is empty and the display is the initial state at
+            // tick 0, whose local input is the oldest still-unmatched local
+            // (`commit_frontier == 0` means nothing has drained, so it exists).
+            let local_input = self
+                .settle_backlog
+                .front()
+                .map(|(local, _remote)| local.clone())
+                .unwrap_or_else(|| unmatched_locals[0].clone());
             Frame {
                 tick: self.settled_snapshot.tick,
                 skew,
                 state: &self.settled_snapshot.state,
-                // The next pair to settle from the checkpoint sits at the front
-                // of the backlog; its local half is the start-of-tick input
-                // poised at the displayed tick. None before the first commit.
-                local_input: self.settle_backlog.front().map(|(local, _remote)| local.clone()),
+                local_input,
             }
         })
     }

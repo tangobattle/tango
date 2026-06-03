@@ -176,9 +176,8 @@ impl Round {
         // joyflags register (r4) unset — the engine carries that input on the
         // frame instead of baking it in. Prime it now so the live core resumes
         // the displayed tick with the right local input.
-        if let Some(local) = frame.local_input {
-            self.hooks.inject_joyflags_on_primary_snapshot(core, local.joyflags);
-        }
+        self.hooks
+            .inject_joyflags_on_primary_snapshot(core, frame.local_input.joyflags);
         self.last_loaded_tick = frame.tick;
 
         // Smooth the raw skew into a slowdown below our nominal rate, then turn
