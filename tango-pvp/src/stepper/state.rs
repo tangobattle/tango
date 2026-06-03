@@ -212,17 +212,17 @@ impl InnerState {
         match_type: (u8, u8),
         local_player_index: u8,
         inputs: Vec<PartialInputPair>,
-        peeked: PartialInputPair,
+        next_input: PartialInputPair,
         current_tick: u32,
         last_local_packet: Vec<u8>,
         apply_shadow_input: ApplyShadowInput,
     ) -> Self {
-        // Run `inputs` one tick each, then capture at the peeked tick (one past
-        // the last applied): `peek_input_pair` sets r4 from `peeked` but it is
-        // never popped, so the snapshot lands at the start of that tick.
+        // Run `inputs` one tick each, then capture at the boundary tick (one past
+        // the last applied): `peek_input_pair` sets r4 from `next_input` but it
+        // is never popped, so the snapshot lands at the start of that tick.
         let capture_tick = current_tick + inputs.len() as u32;
         let mut input_pairs: VecDeque<PartialInputPair> = inputs.into_iter().collect();
-        input_pairs.push_back(peeked);
+        input_pairs.push_back(next_input);
         Self {
             disable_bgm: false,
             current_tick,
@@ -445,7 +445,7 @@ impl InnerState {
 
     /// Capture the FF's single state snapshot. Called by per-game stepper traps
     /// when `current_tick == capture_tick()` (post-peek, so r4 is set to the
-    /// peeked input's local joyflags).
+    /// next input's local joyflags).
     pub fn capture(&mut self, state: Box<mgba::state::State>) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;

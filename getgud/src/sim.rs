@@ -2,8 +2,9 @@ use crate::world::{Snapshot, World};
 
 /// The result of one [`Simulator::simulate`] call.
 pub struct SimResult<W: World> {
-    /// The world advanced to `base.tick + inputs.len()`, poised at the start
-    /// of that tick with the `peeked` input sampled but not yet integrated.
+    /// The world advanced to `base.tick + inputs.len()`. Per the snapshot
+    /// invariant it is *poised at the start of* that tick — integrated through
+    /// the tick before, with `next_input` sampled but not yet stepped.
     pub snapshot: Snapshot<W>,
     /// `Some(end_tick)` once the world has reached a terminal state (e.g. a
     /// round ending) at `end_tick`; the session then stops reporting committed
@@ -15,20 +16,26 @@ pub struct SimResult<W: World> {
 
 /// Advances your world. Supplied to the [`Session`](crate::Session) as a boxed
 /// trait object and called for both authoritative commits and throwaway tails.
+///
+/// **Snapshot invariant.** A [`Snapshot`] at tick `T` is the world *poised at
+/// the start of* `T`: integrated through `T - 1`, with `T`'s input sampled but
+/// not yet stepped. Every rule below is a consequence of this one sentence.
 pub trait Simulator<W: World>: Send {
-    /// Advance `base` by every pair in `inputs`, then sample `peeked` at the
-    /// resulting tick without integrating it.
+    /// Advance `base` by every pair in `inputs`, then sample `next_input` at the
+    /// resulting tick without stepping it.
     ///
     /// Contract:
     /// - Apply **all** of `inputs`, advancing one tick per pair.
     /// - Return a snapshot whose `tick == base.tick + inputs.len()`.
-    /// - `peeked` is the input sampled **at** that snapshot tick. A simulator
-    ///   whose state is a clean inter-tick value can ignore it: the session
-    ///   re-supplies it as `inputs[0]` of the next call, where it is
-    ///   integrated — exactly once. It exists for engines that must bake the
-    ///   boundary tick's input into an opaque snapshot up front (e.g. priming an
-    ///   input register a resume will read). Either way there is no "the last
-    ///   element is special" rule to get wrong.
+    /// - `next_input` is the input that lands **at** that snapshot tick — the
+    ///   start-of-`T` input the invariant leaves un-stepped. The session hands
+    ///   it straight back as `inputs[0]` of the next call, where it *is* stepped,
+    ///   so it counts exactly once. A simulator whose state is a clean inter-tick
+    ///   value can ignore it and let that next call do the work; it exists for
+    ///   engines that must bake the boundary input into an opaque snapshot up
+    ///   front (e.g. priming an input register a resume will read). Passing it
+    ///   separately — rather than as `inputs.last()` — is deliberate: there is
+    ///   no "the last element is special" rule to get wrong.
     ///
     /// `speculative` is `true` for the disposable display tail and `false` for
     /// authoritative commits — use it to skip work that only matters for
@@ -37,7 +44,7 @@ pub trait Simulator<W: World>: Send {
         &mut self,
         base: &Snapshot<W>,
         inputs: Vec<(W::Input, W::Input)>,
-        peeked: (W::Input, W::Input),
+        next_input: (W::Input, W::Input),
         speculative: bool,
     ) -> Result<SimResult<W>, W::Error>;
 }

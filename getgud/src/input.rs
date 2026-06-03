@@ -56,15 +56,15 @@ where
     /// The unmatched locals (the second tuple element) are the ticks ahead of
     /// the latest remote input; they get simulated against a *predicted* remote
     /// until the real one arrives.
-    pub fn consume_and_peek_local(&mut self) -> (Vec<(Input, Input)>, Vec<Input>) {
+    pub fn drain_matched(&mut self) -> (Vec<(Input, Input)>, Vec<Input>) {
         let n = std::cmp::min(self.local_queue.len(), self.remote_queue.len());
         let to_commit = std::iter::zip(self.local_queue.drain(..n), self.remote_queue.drain(..n)).collect();
 
         // Everything still in the local queue is ahead of the latest remote
         // input — those ticks get committed against a predicted remote input
         // until the real one arrives.
-        let peeked = self.local_queue.iter().cloned().collect();
+        let unmatched_locals = self.local_queue.iter().cloned().collect();
 
-        (to_commit, peeked)
+        (to_commit, unmatched_locals)
     }
 }
