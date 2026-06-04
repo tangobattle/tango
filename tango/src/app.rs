@@ -1936,6 +1936,16 @@ impl App {
         let prep = (|| -> anyhow::Result<ExportPrep> {
             let f = std::fs::File::open(&replay_path)?;
             let replay = tango_pvp::replay::Replay::decode(f)?;
+            // The export re-simulates both sides (the local-perspective
+            // core plus the opponent shadow) from the recorded inputs, so
+            // each side's ROM must be the exact patched ROM that was used
+            // when the match was recorded — otherwise the re-sim desyncs.
+            // Mirror `session::build_playback`'s `resolve_rom`: apply the
+            // side's patch from disk before handing the bytes to export.
+            // (Without this a cross-patch replay renders desynced garbage
+            // or stalls partway, while playback — which does patch — is
+            // fine.)
+            let patches_path = self.config.patches_path();
             let resolve = |side: Option<&tango_pvp::replay::metadata::Side>| -> anyhow::Result<(
                 &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
                 Vec<u8>,
@@ -1957,6 +1967,12 @@ impl App {
                     .get(&entry)
                     .cloned()
                     .ok_or_else(|| anyhow::anyhow!("rom for {:?} not scanned", entry.family_and_variant()))?;
+                let rom = if let Some(patch_info) = gi.patch.as_ref() {
+                    let v = semver::Version::parse(&patch_info.version)?;
+                    patch::apply_patch_from_disk(&rom, entry, &patches_path, &patch_info.name, &v)?
+                } else {
+                    rom
+                };
                 Ok((hooks, rom))
             };
             let (local_hooks, local_rom) = resolve(replay.metadata.local_side.as_ref())?;
