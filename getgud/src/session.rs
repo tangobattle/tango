@@ -59,10 +59,12 @@ pub struct Frame<'a, W: World> {
     /// remote input.
     pub state: &'a W::State,
 
-    /// The local input that applies at [`tick`](Frame::tick) — handy for
-    /// presentation that should line up with the frame being shown (local audio,
-    /// effects, UI).
-    pub local_input: W::Input,
+    /// The `(local, remote)` input pair that applies at [`tick`](Frame::tick) —
+    /// handy for presentation that should line up with the frame being shown
+    /// (local audio, effects, UI). For a confirmed tick the remote half is the
+    /// real input received from the peer; for a speculative tick it is the
+    /// [`Predictor`]-supplied guess used to build the frame.
+    pub input: (W::Input, W::Input),
 }
 
 /// A single peer's view of a two-player rollback session.
@@ -161,7 +163,8 @@ impl<W: World> Session<W> {
     /// 3. computes the present target (`frontier - present_delay`);
     /// 4. if the target is beyond what's confirmed, simulates a throwaway
     ///    speculative tail using [`Predictor`]-supplied remote inputs;
-    /// 5. returns the resulting state, tick, local input, and clock [`skew`](Frame::skew).
+    /// 5. returns the resulting state, tick, the local/remote input pair at that
+    ///    tick, and clock [`skew`](Frame::skew).
     ///
     /// # Errors
     ///
@@ -184,26 +187,28 @@ impl<W: World> Session<W> {
         self.frontier += 1;
 
         Ok(if target > settled_target && self.commit_frontier > 0 {
-            let (state, local_input) = self.speculate_tail(target, &unmatched_locals)?;
+            let (state, input) = self.speculate_tail(target, &unmatched_locals)?;
             self.speculative_state = Some(state);
             Frame {
                 tick: target,
                 skew,
                 state: self.speculative_state.as_ref().unwrap(),
-                local_input,
+                input,
             }
         } else {
             self.speculative_state = None;
-            let local_input = self
+            let input = self
                 .settle_backlog
                 .front()
-                .map(|(local, _remote)| local.clone())
-                .unwrap_or_else(|| unmatched_locals[0].clone());
+                .cloned()
+                .unwrap_or_else(|| {
+                    (unmatched_locals[0].clone(), self.predictor.predict(&self.last_committed_remote))
+                });
             Frame {
                 tick: self.settled_tick,
                 skew,
                 state: &self.settled_state,
-                local_input,
+                input,
             }
         })
     }
@@ -291,9 +296,10 @@ impl<W: World> Session<W> {
 
     /// Simulate a throwaway tail from the settled cap up to `target`, using real
     /// local inputs and predicted remote inputs, and return the speculative
-    /// state plus the local input at `target`. Rebuilt from scratch each frame,
-    /// so mispredictions self-correct as real remote inputs get settled.
-    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(W::State, W::Input), W::Error> {
+    /// state plus the `(local, predicted-remote)` input pair at `target`. Rebuilt
+    /// from scratch each frame, so mispredictions self-correct as real remote
+    /// inputs get settled.
+    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(W::State, (W::Input, W::Input)), W::Error> {
         let seed_tick = self.settled_tick;
         assert_eq!(
             seed_tick,
@@ -312,6 +318,6 @@ impl<W: World> Session<W> {
         let local_input = unmatched_locals[input_count - 1].clone();
 
         let result = self.simulator.simulate(&self.settled_state, seed_tick, inputs, true)?;
-        Ok((result.state, local_input))
+        Ok((result.state, (local_input, predicted)))
     }
 }

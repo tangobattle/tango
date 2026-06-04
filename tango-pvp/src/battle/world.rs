@@ -90,7 +90,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         // the start of the boundary tick (one past the last applied) without
         // stepping it — mirroring getgud's contract. The boundary tick's local
         // joyflags are not baked into the snapshot; the live core primes them
-        // from `Frame::local_input` via `inject_joyflags_on_primary_snapshot`.
+        // from `Frame::input` via `inject_joyflags_on_primary_snapshot`.
         let result = self.ff.fastforward(
             &base.core,
             inputs,

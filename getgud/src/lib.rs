@@ -106,7 +106,7 @@
 //!
 //!     let frame = session.advance(1).unwrap();
 //!     // `frame.state` is what to render; `frame.skew` drives clock sync.
-//!     let _ = (frame.tick, frame.skew, frame.state, frame.local_input);
+//!     let _ = (frame.tick, frame.skew, frame.state, frame.input);
 //! }
 //!
 //! assert_eq!(session.frontier(), 10);
