@@ -5,6 +5,21 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 pub type AbortReason = crate::proto::signaling::packet::abort::Reason;
 
+/// The concrete websocket stream `tokio_tungstenite::connect_async` hands back.
+type SignalingStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// How long to wait for any signaling traffic before treating the websocket as
+/// dead. The server echoes our pings, so a healthy idle connection reads at
+/// least every `PING_INTERVAL`.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Backoff bounds for transparent reconnects while we're still waiting for the
+/// peer to start the SDP exchange.
+const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(500);
+const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
+
 async fn create_data_channel(
     rtc_config: datachannel_wrapper::RtcConfig,
 ) -> Result<
@@ -82,17 +97,45 @@ pub enum Error {
     PeerConnectionClosed,
 }
 
+/// Whether an error is a transport-level hiccup that a reconnect might paper
+/// over (websocket dropped, timed out, reset, EOF) as opposed to a definitive
+/// protocol-level rejection (server abort, malformed/unexpected packet, bad
+/// SDP). Only the former is worth retrying transparently.
+fn is_transient(e: &Error) -> bool {
+    use tokio_tungstenite::tungstenite::Error as Ws;
+    match e {
+        Error::Io(_) => true,
+        Error::Tungstenite(ws) => matches!(
+            ws,
+            Ws::ConnectionClosed | Ws::AlreadyClosed | Ws::Io(_) | Ws::Protocol(_) | Ws::Tls(_)
+        ),
+        _ => false,
+    }
+}
+
 pub type Connecting = futures_util::future::BoxFuture<
     'static,
     Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
 >;
 
-pub async fn connect(
+/// Bring up a fresh signaling websocket end to end: connect, read the server's
+/// `Hello`, build a new peer connection from the offered ICE servers, and send
+/// our `Start`. This is the unit we re-run on a transparent reconnect, so every
+/// attempt gets fresh ICE credentials and a brand-new local offer.
+async fn establish(
     addr: &str,
     session_id: &str,
     use_relay: Option<bool>,
     protocol_version: u32,
-) -> Result<Connecting, Error> {
+) -> Result<
+    (
+        SignalingStream,
+        datachannel_wrapper::DataChannel,
+        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+        datachannel_wrapper::PeerConnection,
+    ),
+    Error,
+> {
     let mut url = url::Url::parse(addr)?;
     url.set_query(Some(
         &url::form_urlencoded::Serializer::new(String::new())
@@ -189,7 +232,7 @@ pub async fn connect(
     if use_relay == Some(true) {
         rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
     }
-    let (dc, mut event_rx, mut peer_conn) = create_data_channel(rtc_config).await?;
+    let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -205,93 +248,195 @@ pub async fn connect(
         ))
         .await?;
 
-    Ok(Box::pin(async move {
-        const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-        const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-        let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
-        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    Ok((signaling_stream, dc, event_rx, peer_conn))
+}
 
-        loop {
-            let raw = tokio::select! {
-                _ = ping_interval.tick() => {
-                    signaling_stream
-                        .send(tokio_tungstenite::tungstenite::Message::Binary(
-                            crate::proto::signaling::Packet {
-                                which: Some(crate::proto::signaling::packet::Which::Ping(
-                                    crate::proto::signaling::packet::Ping {},
-                                )),
-                            }
-                            .encode_to_vec(),
-                        ))
-                        .await?;
-                    continue;
-                }
-                result = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
-                    match result.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))?? {
-                        Some(raw) => raw,
-                        None => return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into()),
-                    }
-                }
-            };
+/// Outcome of waiting on a single signaling websocket for the peer to begin the
+/// SDP exchange.
+enum WaitOutcome {
+    /// We received the peer's `Offer` (and answered it) or `Answer` (and applied
+    /// it). The peer has committed to this handshake — `peer_conn` now holds the
+    /// remote description and we proceed to the ICE phase.
+    Exchanged,
+    /// The websocket dropped (closed / reset / timed out / EOF) *before* the peer
+    /// sent any SDP. Nothing is committed on either side, so it's safe to throw
+    /// this connection away and reconnect from scratch.
+    Dropped(Error),
+}
 
-            let packet = match raw {
-                tokio_tungstenite::tungstenite::Message::Binary(d) => {
-                    crate::proto::signaling::Packet::decode(d.as_slice())?
-                }
-                tokio_tungstenite::tungstenite::Message::Ping(_) => {
-                    // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
-                    // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
-                    // This means you should not respond to ping frames manually.
-                    continue;
-                }
-                _ => {
-                    return Err(Error::InvalidPacket(raw));
-                }
-            };
+/// Pump the signaling websocket, keeping it alive with pings, until either the
+/// peer starts the SDP exchange or the connection drops underneath us.
+///
+/// The key invariant: once the peer has sent an `Offer` or `Answer`, both sides
+/// are committed to *this* set of SDPs, so any subsequent failure is fatal and
+/// propagates as `Err`. Only failures observed strictly before the peer says
+/// anything become `Dropped`, which the caller may transparently reconnect.
+async fn wait_for_exchange(
+    signaling_stream: &mut SignalingStream,
+    peer_conn: &mut datachannel_wrapper::PeerConnection,
+) -> Result<WaitOutcome, Error> {
+    let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
+    ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            match &packet.which {
-                Some(crate::proto::signaling::packet::Which::Ping(_)) => continue,
-                Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
-                    return Err(Error::ServerAbort(
-                        AbortReason::try_from(abort.reason).unwrap_or_default(),
+    loop {
+        let raw = tokio::select! {
+            _ = ping_interval.tick() => {
+                if let Err(e) = signaling_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Binary(
+                        crate::proto::signaling::Packet {
+                            which: Some(crate::proto::signaling::packet::Which::Ping(
+                                crate::proto::signaling::packet::Ping {},
+                            )),
+                        }
+                        .encode_to_vec(),
                     ))
+                    .await
+                {
+                    // Couldn't even send a keepalive: the socket is gone.
+                    return Ok(WaitOutcome::Dropped(e.into()));
                 }
-                Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
-                    log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
+                continue;
+            }
+            result = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
+                match result {
+                    // No traffic at all within the timeout: treat as a dead socket.
+                    Err(_elapsed) => {
+                        return Ok(WaitOutcome::Dropped(
+                            std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out").into(),
+                        ));
+                    }
+                    // Read error off the socket.
+                    Ok(Err(e)) => return Ok(WaitOutcome::Dropped(e.into())),
+                    // Clean EOF before the peer said anything.
+                    Ok(Ok(None)) => {
+                        return Ok(WaitOutcome::Dropped(
+                            std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into(),
+                        ));
+                    }
+                    Ok(Ok(Some(raw))) => raw,
+                }
+            }
+        };
 
-                    peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                    peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                        sdp_type: datachannel_wrapper::SdpType::Offer,
-                        sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
-                    })?;
+        let packet = match raw {
+            tokio_tungstenite::tungstenite::Message::Binary(d) => {
+                crate::proto::signaling::Packet::decode(d.as_slice())?
+            }
+            tokio_tungstenite::tungstenite::Message::Ping(_) => {
+                // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
+                // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
+                // This means you should not respond to ping frames manually.
+                continue;
+            }
+            // The server closed the socket on us before any exchange happened
+            // (e.g. it dropped the session). Safe to reconnect.
+            tokio_tungstenite::tungstenite::Message::Close(_) => {
+                return Ok(WaitOutcome::Dropped(
+                    tokio_tungstenite::tungstenite::Error::ConnectionClosed.into(),
+                ));
+            }
+            _ => {
+                return Err(Error::InvalidPacket(raw));
+            }
+        };
 
-                    let local_description = peer_conn.local_description().unwrap();
-                    signaling_stream
-                        .send(tokio_tungstenite::tungstenite::Message::Binary(
-                            crate::proto::signaling::Packet {
-                                which: Some(crate::proto::signaling::packet::Which::Answer(
-                                    crate::proto::signaling::packet::Answer {
-                                        sdp: local_description.sdp.to_string(),
-                                    },
-                                )),
+        match &packet.which {
+            Some(crate::proto::signaling::packet::Which::Ping(_)) => continue,
+            Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
+                return Err(Error::ServerAbort(
+                    AbortReason::try_from(abort.reason).unwrap_or_default(),
+                ))
+            }
+            Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
+                log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
+
+                // From here on the peer has committed to this offer: any failure
+                // is fatal, never a reconnect.
+                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
+                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                    sdp_type: datachannel_wrapper::SdpType::Offer,
+                    sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
+                })?;
+
+                let local_description = peer_conn.local_description().unwrap();
+                signaling_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Binary(
+                        crate::proto::signaling::Packet {
+                            which: Some(crate::proto::signaling::packet::Which::Answer(
+                                crate::proto::signaling::packet::Answer {
+                                    sdp: local_description.sdp.to_string(),
+                                },
+                            )),
+                        }
+                        .encode_to_vec(),
+                    ))
+                    .await?;
+                log::info!("sent answer to impolite side");
+                return Ok(WaitOutcome::Exchanged);
+            }
+            Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
+                log::info!("received an answer, this is the impolite side");
+
+                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                    sdp_type: datachannel_wrapper::SdpType::Answer,
+                    sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
+                })?;
+                return Ok(WaitOutcome::Exchanged);
+            }
+            _ => {
+                return Err(Error::UnexpectedPacket(packet));
+            }
+        }
+    }
+}
+
+pub async fn connect(
+    addr: &str,
+    session_id: &str,
+    use_relay: Option<bool>,
+    protocol_version: u32,
+) -> Result<Connecting, Error> {
+    // The initial dial surfaces failures to the caller (so "couldn't reach the
+    // matchmaking server" is reported promptly); transparent reconnects only
+    // kick in once we've successfully connected at least once.
+    let (mut signaling_stream, mut dc, mut event_rx, mut peer_conn) =
+        establish(addr, session_id, use_relay, protocol_version).await?;
+
+    let addr = addr.to_owned();
+    let session_id = session_id.to_owned();
+
+    Ok(Box::pin(async move {
+        // Wait for the peer to start the SDP exchange. As long as the peer hasn't
+        // started, a websocket drop is recoverable: tear everything down and dial
+        // again with a fresh peer connection / offer.
+        loop {
+            match wait_for_exchange(&mut signaling_stream, &mut peer_conn).await? {
+                WaitOutcome::Exchanged => break,
+                WaitOutcome::Dropped(reason) => {
+                    log::warn!(
+                        "signaling websocket dropped before the peer started exchanging ({reason}); reconnecting transparently"
+                    );
+
+                    let mut backoff = MIN_RECONNECT_BACKOFF;
+                    loop {
+                        match establish(&addr, &session_id, use_relay, protocol_version).await {
+                            Ok((s, d, e, p)) => {
+                                signaling_stream = s;
+                                dc = d;
+                                event_rx = e;
+                                peer_conn = p;
+                                log::info!("signaling reconnected; still waiting for the peer");
+                                break;
                             }
-                            .encode_to_vec(),
-                        ))
-                        .await?;
-                    log::info!("sent answer to impolite side");
-                    break;
-                }
-                Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
-                    log::info!("received an answer, this is the impolite side");
-
-                    peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                        sdp_type: datachannel_wrapper::SdpType::Answer,
-                        sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
-                    })?;
-                    break;
-                }
-                _ => {
-                    return Err(Error::UnexpectedPacket(packet));
+                            Err(e) if is_transient(&e) => {
+                                log::warn!("signaling reconnect attempt failed ({e}); retrying in {backoff:?}");
+                                tokio::time::sleep(backoff).await;
+                                backoff = (backoff * 2).min(MAX_RECONNECT_BACKOFF);
+                            }
+                            // A protocol-level rejection won't fix itself on retry.
+                            Err(e) => return Err(e),
+                        }
+                    }
                 }
             }
         }
