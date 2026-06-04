@@ -682,10 +682,11 @@ impl ReplaysState {
             };
 
             let selected = self.selected.as_ref() == Some(&r.path);
-            // Show a render-in-progress glyph for replays whose
-            // export job is still running. Multiple renders can
-            // run at once now, so this is the only way to see
-            // background progress without selecting each replay.
+            // Right-edge status glyph: a clapperboard while a render
+            // is in flight, a green check on success, a red X on
+            // failure. In-flight renders additionally get a progress
+            // bar flush along the row's bottom edge (see
+            // `progress_strip`).
             let job_state = self.job(&r.path);
             let rendering = matches!(job_state, Some(j) if j.result.is_none());
             let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
@@ -719,6 +720,39 @@ impl ReplaysState {
             } else {
                 Space::new().width(Length::Fixed(0.0)).into()
             };
+            // Bottom progress strip. While an export is in flight we
+            // draw a full-width bar flush with the row's bottom edge
+            // (no label — the detail panel carries the percentage);
+            // otherwise we reserve the same height with an empty
+            // spacer so toggling the bar on never shifts row height.
+            let progress_strip: Element<'_, Message> = if rendering {
+                let pct = match job_state.filter(|j| j.total > 0) {
+                    Some(j) => (j.completed as f32 / j.total as f32).clamp(0.0, 1.0),
+                    None => 0.0,
+                };
+                iced::widget::progress_bar(0.0..=1.0, pct)
+                    .girth(Length::Fixed(4.0))
+                    .style(|theme: &iced::Theme| {
+                        iced::widget::progress_bar::Style {
+                            // Transparent track lets the row's own
+                            // background show through — so it matches
+                            // exactly, including the zebra stripe on
+                            // alternating rows. Only the filled portion
+                            // reads as progress. Square corners, no
+                            // border — a flush bottom-edge accent.
+                            background: iced::Background::Color(iced::Color::TRANSPARENT),
+                            bar: iced::Background::Color(theme.palette().primary),
+                            border: iced::Border {
+                                radius: 0.0.into(),
+                                width: 0.0,
+                                color: iced::Color::TRANSPARENT,
+                            },
+                        }
+                    })
+                    .into()
+            } else {
+                Space::new().height(Length::Fixed(4.0)).into()
+            };
             // Match-type name (e.g. "Triple") for the stats line.
             let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
             let type_name = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
@@ -742,7 +776,13 @@ impl ReplaysState {
             // duration / rounds / incomplete (only when stats
             // have loaded for this row).
             let mut text_col = column![
-                text(ts_str).size(TEXT_BODY),
+                // Title line carries the status glyph pinned to its
+                // right. Keeping it on this fixed first line (rather
+                // than vertically centered across the whole row) means
+                // it never moves as the optional stats line loads or
+                // the glyph changes.
+                row![text(ts_str).size(TEXT_BODY), Space::new().width(Fill), badge]
+                    .align_y(Alignment::Center),
                 text(format!(
                     "{game_label} @ {}  ·  {nick_pair}",
                     link_code_display(lang, &md.link_code)
@@ -768,11 +808,19 @@ impl ReplaysState {
                 }));
             }
             list = list.push(
-                button(row![text_col, badge].spacing(0).align_y(Alignment::Center))
-                    .padding([6, 10])
-                    .width(Fill)
-                    .style(widgets::list_item(selected, idx))
-                    .on_press(Message::Selected(r.path.clone())),
+                button(
+                    column![
+                        container(text_col)
+                            .padding([6, 10])
+                            .width(Fill),
+                        progress_strip,
+                    ]
+                    .width(Fill),
+                )
+                .padding(0)
+                .width(Fill)
+                .style(widgets::list_item(selected, idx))
+                .on_press(Message::Selected(r.path.clone())),
             );
         }
         let left = container(scrollable(list).height(Fill))
