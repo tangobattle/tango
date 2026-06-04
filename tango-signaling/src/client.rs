@@ -1,4 +1,3 @@
-use futures_util::FutureExt;
 use futures_util::SinkExt;
 use futures_util::TryStreamExt;
 use prost::Message;
@@ -83,12 +82,10 @@ pub enum Error {
     PeerConnectionClosed,
 }
 
-pub struct Connecting {
-    fut: futures_util::future::BoxFuture<
-        'static,
-        Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
-    >,
-}
+pub type Connecting = futures_util::future::BoxFuture<
+    'static,
+    Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
+>;
 
 pub async fn connect(
     addr: &str,
@@ -208,143 +205,132 @@ pub async fn connect(
         ))
         .await?;
 
-    Ok(Connecting {
-        fut: Box::pin(async move {
-            const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-            const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-            let mut ping_interval =
-                tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
-            ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    Ok(Box::pin(async move {
+        const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+        const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+        let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            loop {
-                let raw = tokio::select! {
-                    _ = ping_interval.tick() => {
-                        signaling_stream
-                            .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                crate::proto::signaling::Packet {
-                                    which: Some(crate::proto::signaling::packet::Which::Ping(
-                                        crate::proto::signaling::packet::Ping {},
-                                    )),
-                                }
-                                .encode_to_vec(),
-                            ))
-                            .await?;
-                        continue;
-                    }
-                    result = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
-                        match result.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))?? {
-                            Some(raw) => raw,
-                            None => return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into()),
-                        }
-                    }
-                };
-
-                let packet = match raw {
-                    tokio_tungstenite::tungstenite::Message::Binary(d) => {
-                        crate::proto::signaling::Packet::decode(d.as_slice())?
-                    }
-                    tokio_tungstenite::tungstenite::Message::Ping(_) => {
-                        // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
-                        // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
-                        // This means you should not respond to ping frames manually.
-                        continue;
-                    }
-                    _ => {
-                        return Err(Error::InvalidPacket(raw));
-                    }
-                };
-
-                match &packet.which {
-                    Some(crate::proto::signaling::packet::Which::Ping(_)) => continue,
-                    Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
-                        return Err(Error::ServerAbort(
-                            AbortReason::try_from(abort.reason).unwrap_or_default(),
+        loop {
+            let raw = tokio::select! {
+                _ = ping_interval.tick() => {
+                    signaling_stream
+                        .send(tokio_tungstenite::tungstenite::Message::Binary(
+                            crate::proto::signaling::Packet {
+                                which: Some(crate::proto::signaling::packet::Which::Ping(
+                                    crate::proto::signaling::packet::Ping {},
+                                )),
+                            }
+                            .encode_to_vec(),
                         ))
-                    }
-                    Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
-                        log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
-
-                        peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                        peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                            sdp_type: datachannel_wrapper::SdpType::Offer,
-                            sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
-                        })?;
-
-                        let local_description = peer_conn.local_description().unwrap();
-                        signaling_stream
-                            .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                crate::proto::signaling::Packet {
-                                    which: Some(crate::proto::signaling::packet::Which::Answer(
-                                        crate::proto::signaling::packet::Answer {
-                                            sdp: local_description.sdp.to_string(),
-                                        },
-                                    )),
-                                }
-                                .encode_to_vec(),
-                            ))
-                            .await?;
-                        log::info!("sent answer to impolite side");
-                        break;
-                    }
-                    Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
-                        log::info!("received an answer, this is the impolite side");
-
-                        peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                            sdp_type: datachannel_wrapper::SdpType::Answer,
-                            sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
-                        })?;
-                        break;
-                    }
-                    _ => {
-                        return Err(Error::UnexpectedPacket(packet));
+                        .await?;
+                    continue;
+                }
+                result = tokio::time::timeout(READ_TIMEOUT, signaling_stream.try_next()) => {
+                    match result.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"))?? {
+                        Some(raw) => raw,
+                        None => return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream ended early").into()),
                     }
                 }
-            }
+            };
 
-            signaling_stream.close(None).await?;
+            let packet = match raw {
+                tokio_tungstenite::tungstenite::Message::Binary(d) => {
+                    crate::proto::signaling::Packet::decode(d.as_slice())?
+                }
+                tokio_tungstenite::tungstenite::Message::Ping(_) => {
+                    // Note that upon receiving a ping message, tungstenite cues a pong reply automatically.
+                    // When you call either read_message, write_message or write_pending next it will try to send that pong out if the underlying connection can take more data.
+                    // This means you should not respond to ping frames manually.
+                    continue;
+                }
+                _ => {
+                    return Err(Error::InvalidPacket(raw));
+                }
+            };
 
-            log::debug!(
-                "local sdp (type = {:?}): {}",
-                peer_conn.local_description().expect("local sdp").sdp_type,
-                peer_conn.local_description().expect("local sdp").sdp
-            );
-            log::debug!(
-                "remote sdp (type = {:?}): {}",
-                peer_conn.remote_description().expect("remote sdp").sdp_type,
-                peer_conn.remote_description().expect("remote sdp").sdp
-            );
+            match &packet.which {
+                Some(crate::proto::signaling::packet::Which::Ping(_)) => continue,
+                Some(crate::proto::signaling::packet::Which::Abort(abort)) => {
+                    return Err(Error::ServerAbort(
+                        AbortReason::try_from(abort.reason).unwrap_or_default(),
+                    ))
+                }
+                Some(crate::proto::signaling::packet::Which::Offer(offer)) => {
+                    log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
-            loop {
-                let signal = event_rx.recv().await.unwrap();
+                    peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
+                    peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                        sdp_type: datachannel_wrapper::SdpType::Offer,
+                        sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
+                    })?;
 
-                if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) = signal {
-                    match c {
-                        datachannel_wrapper::ConnectionState::Connected => {
-                            break;
-                        }
-                        datachannel_wrapper::ConnectionState::Disconnected => {
-                            return Err(Error::PeerConnectionDisconnected);
-                        }
-                        datachannel_wrapper::ConnectionState::Failed => {
-                            return Err(Error::PeerConnectionFailed);
-                        }
-                        datachannel_wrapper::ConnectionState::Closed => {
-                            return Err(Error::PeerConnectionClosed);
-                        }
-                        _ => {}
-                    }
+                    let local_description = peer_conn.local_description().unwrap();
+                    signaling_stream
+                        .send(tokio_tungstenite::tungstenite::Message::Binary(
+                            crate::proto::signaling::Packet {
+                                which: Some(crate::proto::signaling::packet::Which::Answer(
+                                    crate::proto::signaling::packet::Answer {
+                                        sdp: local_description.sdp.to_string(),
+                                    },
+                                )),
+                            }
+                            .encode_to_vec(),
+                        ))
+                        .await?;
+                    log::info!("sent answer to impolite side");
+                    break;
+                }
+                Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
+                    log::info!("received an answer, this is the impolite side");
+
+                    peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
+                        sdp_type: datachannel_wrapper::SdpType::Answer,
+                        sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
+                    })?;
+                    break;
+                }
+                _ => {
+                    return Err(Error::UnexpectedPacket(packet));
                 }
             }
+        }
 
-            Ok((dc, peer_conn))
-        }),
-    })
-}
+        signaling_stream.close(None).await?;
 
-impl std::future::Future for Connecting {
-    type Output = Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>;
+        log::debug!(
+            "local sdp (type = {:?}): {}",
+            peer_conn.local_description().expect("local sdp").sdp_type,
+            peer_conn.local_description().expect("local sdp").sdp
+        );
+        log::debug!(
+            "remote sdp (type = {:?}): {}",
+            peer_conn.remote_description().expect("remote sdp").sdp_type,
+            peer_conn.remote_description().expect("remote sdp").sdp
+        );
 
-    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        self.fut.poll_unpin(cx)
-    }
+        loop {
+            let signal = event_rx.recv().await.unwrap();
+
+            if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) = signal {
+                match c {
+                    datachannel_wrapper::ConnectionState::Connected => {
+                        break;
+                    }
+                    datachannel_wrapper::ConnectionState::Disconnected => {
+                        return Err(Error::PeerConnectionDisconnected);
+                    }
+                    datachannel_wrapper::ConnectionState::Failed => {
+                        return Err(Error::PeerConnectionFailed);
+                    }
+                    datachannel_wrapper::ConnectionState::Closed => {
+                        return Err(Error::PeerConnectionClosed);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok((dc, peer_conn))
+    }))
 }
