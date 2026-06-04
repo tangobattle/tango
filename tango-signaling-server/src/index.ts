@@ -10,6 +10,25 @@ const HUB_SINGLETON_NAME = "global";
 interface Attachment {
   sessionId: string;
   offerSdp?: string;
+  // Hex-encoded `connection_id` of the offer this socket is holding, if any.
+  // Lets us recognize a reconnecting offerer (same id, fresh offer) and replace
+  // its stale offer rather than treating the new socket as the answering peer.
+  connectionId?: string;
+}
+
+// Hex-encode a `connection_id`, treating an empty/absent value as "none" so it
+// never matches a real id.
+function encodeConnectionId(
+  connectionId: Uint8Array | null | undefined,
+): string | undefined {
+  if (connectionId == null || connectionId.length === 0) {
+    return undefined;
+  }
+  let hex = "";
+  for (const byte of connectionId) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
 }
 
 async function getICEServers(
@@ -178,15 +197,43 @@ export class MatchmakingHub extends DurableObject<Env> {
     attachment: Attachment,
     start: tango.signaling.Packet.IStart,
   ): void {
+    const connectionId = encodeConnectionId(start.connectionId);
     const offerer = findOfferer(this.ctx, attachment.sessionId);
+
     if (offerer == null) {
+      // No one is waiting yet: become the offerer.
       ws.serializeAttachment({
         ...attachment,
         offerSdp: start.offerSdp ?? "",
+        connectionId,
       } satisfies Attachment);
       return;
     }
 
+    if (connectionId != null && connectionId === offerer.attachment.connectionId) {
+      // Same `connection_id` as the offer already on file: this is the offerer
+      // reconnecting with a fresh offer (its previous socket dropped before the
+      // peer arrived). Replace the stale offer with this one and evict the old
+      // socket, so the answering peer is handed the live offer.
+      ws.serializeAttachment({
+        ...attachment,
+        offerSdp: start.offerSdp ?? "",
+        connectionId,
+      } satisfies Attachment);
+      if (offerer.ws !== ws) {
+        // Clear the stale socket's offer first so it can't be picked as the
+        // offerer during the brief window before its close completes.
+        offerer.ws.serializeAttachment({
+          sessionId: offerer.attachment.sessionId,
+        } satisfies Attachment);
+        try {
+          offerer.ws.close(1000);
+        } catch {}
+      }
+      return;
+    }
+
+    // A different peer: hand it the offerer's SDP so it can answer.
     ws.send(
       Packet.encode({ offer: { sdp: offerer.attachment.offerSdp! } }).finish(),
     );

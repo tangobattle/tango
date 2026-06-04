@@ -10,7 +10,8 @@ client = [
   "dep:url",
   "dep:urlencoding",
   "dep:tokio-tungstenite",
-  "dep:tokio"
+  "dep:tokio",
+  "dep:rand"
 ]
 proto = []
 
@@ -21,6 +22,7 @@ futures-util = "0.3"
 http = "0.2"
 log = "0.4"
 prost = "0.14"
+rand = { version = "0.8", optional = true }
 thiserror = "1"
 tokio = { version = "1", features = ["full"], optional = true }
 tokio-tungstenite = { version = "0.16", features = [

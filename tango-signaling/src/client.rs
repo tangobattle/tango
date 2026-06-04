@@ -6,14 +6,13 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 pub type AbortReason = crate::proto::signaling::packet::abort::Reason;
 
 /// The concrete websocket stream `tokio_tungstenite::connect_async` hands back.
-type SignalingStream =
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+type SignalingStream = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// How long to wait for any signaling traffic before treating the websocket as
 /// dead. The server echoes our pings, so a healthy idle connection reads at
 /// least every `PING_INTERVAL`.
-const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Backoff bounds for transparent reconnects while we're still waiting for the
 /// peer to start the SDP exchange.
@@ -127,6 +126,7 @@ async fn establish(
     session_id: &str,
     use_relay: Option<bool>,
     protocol_version: u32,
+    connection_id: &[u8],
 ) -> Result<
     (
         SignalingStream,
@@ -241,6 +241,7 @@ async fn establish(
                     crate::proto::signaling::packet::Start {
                         protocol_version,
                         offer_sdp: peer_conn.local_description().unwrap().sdp.to_string(),
+                        connection_id: connection_id.to_vec(),
                     },
                 )),
             }
@@ -396,11 +397,18 @@ pub async fn connect(
     use_relay: Option<bool>,
     protocol_version: u32,
 ) -> Result<Connecting, Error> {
+    // A stable id for this logical connection attempt, sent with every `Start`.
+    // It survives transparent reconnects, so when our offerer socket drops and
+    // we re-dial with a fresh offer, the server recognizes the matching id and
+    // replaces our stale offer instead of mistaking the new socket for the
+    // answering peer.
+    let connection_id: [u8; 16] = rand::random();
+
     // The initial dial surfaces failures to the caller (so "couldn't reach the
     // matchmaking server" is reported promptly); transparent reconnects only
     // kick in once we've successfully connected at least once.
     let (mut signaling_stream, mut dc, mut event_rx, mut peer_conn) =
-        establish(addr, session_id, use_relay, protocol_version).await?;
+        establish(addr, session_id, use_relay, protocol_version, &connection_id).await?;
 
     let addr = addr.to_owned();
     let session_id = session_id.to_owned();
@@ -419,7 +427,7 @@ pub async fn connect(
 
                     let mut backoff = MIN_RECONNECT_BACKOFF;
                     loop {
-                        match establish(&addr, &session_id, use_relay, protocol_version).await {
+                        match establish(&addr, &session_id, use_relay, protocol_version, &connection_id).await {
                             Ok((s, d, e, p)) => {
                                 signaling_stream = s;
                                 dc = d;

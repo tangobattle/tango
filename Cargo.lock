@@ -5942,6 +5942,7 @@ dependencies = [
  "log",
  "prost",
  "prost-build",
+ "rand",
  "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite",

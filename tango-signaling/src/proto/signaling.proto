@@ -15,6 +15,7 @@ message Packet {
   message Start {
     uint32 protocol_version = 1;
     string offer_sdp = 2;
+    bytes connection_id = 3;
   }
 
   message Offer { string sdp = 1; }
