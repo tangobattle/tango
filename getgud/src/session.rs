@@ -37,22 +37,13 @@ pub struct SessionParams<W: World> {
 }
 
 /// The result of one [`Session::advance`] call: the state to present this
-/// frame, plus the metadata needed to render it and to keep the two peers'
-/// clocks in sync.
+/// frame, plus the metadata needed to render it. The clock-sync hint is read
+/// separately via [`Session::skew`].
 pub struct Frame<'a, W: World> {
     /// The tick this frame represents (`frontier - present_delay`, clamped to
     /// what has been simulated). May be a speculative tick or a fully confirmed
     /// one depending on how far remote input has lagged.
     pub tick: u32,
-
-    /// The clock-sync hint: local tick advantage minus the remote peer's
-    /// reported tick advantage.
-    ///
-    /// Positive means this client is running ahead of the remote and should slow
-    /// down (e.g. occasionally stall a frame) so the two simulations converge
-    /// and the prediction window stays small. Zero means the peers are balanced.
-    /// See [`Session::local_tick_advantage`].
-    pub skew: i32,
 
     /// The game state to render this frame, borrowed from the session. It may be
     /// the authoritative settled state or a speculative one built from predicted
@@ -73,11 +64,11 @@ pub struct Frame<'a, W: World> {
 /// state, and the speculative state shown to the player. The intended loop is:
 ///
 /// 1. As remote packets arrive, call [`add_remote_input`](Session::add_remote_input).
-/// 2. Once per tick, call [`advance`](Session::advance) with the local input.
-///    It confirms any newly-matched ticks into the settled state, speculates
-///    forward with predicted remote input as needed, and returns a [`Frame`] to
-///    render.
-/// 3. Feed [`Frame::skew`] into your clock so the two peers stay aligned.
+/// 2. Once per tick, read [`skew`](Session::skew) and feed it into your clock so
+///    the two peers stay aligned, then call [`advance`](Session::advance) with
+///    the local input. `advance` confirms any newly-matched ticks into the
+///    settled state, speculates forward with predicted remote input as needed,
+///    and returns a [`Frame`] to render.
 ///
 /// Construct one with [`Session::new`]. See the [crate-level docs](crate) for a
 /// complete example.
@@ -161,21 +152,15 @@ impl<W: World> Session<W> {
     /// 3. computes the present target (`frontier - present_delay`);
     /// 4. if the target is beyond what's confirmed, simulates a throwaway
     ///    speculative tail using [`Predictor`]-supplied remote inputs;
-    /// 5. returns the resulting state, tick, the local/remote input pair at that
-    ///    tick, and clock [`skew`](Frame::skew).
+    /// 5. returns the resulting state, tick, and the local/remote input pair at
+    ///    that tick. (Read [`skew`](Session::skew) *before* this call for the
+    ///    clock-sync hint covering the tick being advanced.)
     ///
     /// # Errors
     ///
     /// Propagates any [`W::Error`](World::Error) returned by the
     /// [`Simulator`](crate::Simulator).
     pub fn advance(&mut self, local_input: W::Input) -> Result<Frame<'_, W>, W::Error> {
-        // Sample the clock-sync skew before enqueuing this tick's local input.
-        // `local_tick_advantage` reads the queue's signed lead, so it has to be
-        // taken at the same point the peer reads the value we ship them (before
-        // their own `advance`); pushing the local input first would bias our
-        // half of the skew up by one.
-        let skew = self.local_tick_advantage() as i32 - self.last_remote_tick_advantage as i32;
-
         self.input_queue.add_local_input(local_input);
 
         let (committable, unmatched_locals) = self.input_queue.drain_matched();
@@ -194,7 +179,6 @@ impl<W: World> Session<W> {
             self.speculative_state = Some(state);
             Frame {
                 tick: target,
-                skew,
                 state: self.speculative_state.as_ref().unwrap(),
                 input,
             }
@@ -208,7 +192,6 @@ impl<W: World> Session<W> {
             });
             Frame {
                 tick: self.settled_tick,
-                skew,
                 state: &self.settled_state,
                 input,
             }
@@ -232,7 +215,7 @@ impl<W: World> Session<W> {
     /// for clock sync. It is each peer's half of the clock-sync handshake: you
     /// send it to the remote with every input, and the remote's value comes back
     /// via [`add_remote_input`](Session::add_remote_input). The difference of the
-    /// two is the [`skew`](Frame::skew) used to keep the simulations aligned.
+    /// two is the [`skew`](Session::skew) used to keep the simulations aligned.
     pub fn local_tick_advantage(&self) -> i16 {
         self.input_queue.lead().clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
@@ -241,6 +224,23 @@ impl<W: World> Session<W> {
     /// `tick_advantage` argument to [`add_remote_input`](Session::add_remote_input)).
     pub fn last_remote_tick_advantage(&self) -> i16 {
         self.last_remote_tick_advantage
+    }
+
+    /// The clock-sync hint for the next tick to advance:
+    /// [`local_tick_advantage`](Session::local_tick_advantage) minus the remote
+    /// peer's reported advantage.
+    ///
+    /// Positive means this client is running ahead of the remote and should slow
+    /// down (e.g. occasionally stall a frame) so the two simulations converge and
+    /// the prediction window stays small; zero means the peers are balanced.
+    ///
+    /// Read this *before* [`advance`](Session::advance): it reflects the local
+    /// advantage at the point the peer reads the value you ship them, which is
+    /// before this tick's local input is enqueued. Reading it afterward would
+    /// fold that just-enqueued input into the local half and bias the skew up by
+    /// one.
+    pub fn skew(&self) -> i32 {
+        self.local_tick_advantage() as i32 - self.last_remote_tick_advantage as i32
     }
 
     /// The signed balance of the latest presented frame around the speculation
@@ -261,7 +261,7 @@ impl<W: World> Session<W> {
     ///   (speculation-free buffer) still to spend before speculation begins.
     ///
     /// Clock-sync leniency keys off the negative range: a positive
-    /// [`skew`](Frame::skew) only starts costing presentation quality once the
+    /// [`skew`](Session::skew) only starts costing presentation quality once the
     /// balance reaches 0, so callers take `(-balance).max(0)` for the headroom.
     pub fn speculation_balance(&self) -> i32 {
         self.input_queue.lead().max(0) - self.present_delay as i32
@@ -272,7 +272,7 @@ impl<W: World> Session<W> {
     /// * `input` — the remote player's input for the next unmatched tick.
     /// * `tick_advantage` — the remote peer's reported
     ///   [`local_tick_advantage`](Session::local_tick_advantage), used to
-    ///   compute clock [`skew`](Frame::skew).
+    ///   compute clock [`skew`](Session::skew).
     ///
     /// Call this whenever remote inputs arrive; they are matched to local inputs
     /// on the next [`advance`](Session::advance).

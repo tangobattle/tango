@@ -6,7 +6,7 @@
 //! The session confirms ticks for which both inputs are known, *predicts* the
 //! remote inputs that haven't arrived yet so it can present a responsive frame,
 //! and transparently corrects those predictions once the real inputs land. It
-//! also produces a clock-[`skew`](Frame::skew) signal so the two peers can keep
+//! also produces a clock-[`skew`](Session::skew) signal so the two peers can keep
 //! their simulations aligned.
 //!
 //! The crate is generic over your game and contains no game logic itself. You
@@ -37,9 +37,9 @@
 //! ```text
 //! loop each tick:
 //!     while packet arrived:  session.add_remote_input(remote_input, their_advantage)
+//!     adjust_clock(session.skew());   // stall a frame when running ahead
 //!     let frame = session.advance(local_input)?;
 //!     render(frame.state);
-//!     adjust_clock(frame.skew);   // stall a frame when running ahead
 //! ```
 //!
 //! # Example
@@ -104,9 +104,12 @@
 //!     }
 //!     pending.push(1); // the remote input we'll deliver later
 //!
+//!     // `skew` drives clock sync; read it before `advance`, which enqueues
+//!     // this tick's local input.
+//!     let skew = session.skew();
 //!     let frame = session.advance(1).unwrap();
-//!     // `frame.state` is what to render; `frame.skew` drives clock sync.
-//!     let _ = (frame.tick, frame.skew, frame.state, frame.input);
+//!     // `frame.state` is what to render.
+//!     let _ = (skew, frame.tick, frame.state, frame.input);
 //! }
 //!
 //! assert_eq!(session.frontier(), 10);

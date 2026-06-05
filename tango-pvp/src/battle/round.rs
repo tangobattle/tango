@@ -173,8 +173,11 @@ impl Round {
         // so a footer-slider change takes effect on this frame.
         session.set_present_delay(self.frame_delay.load(Ordering::Relaxed));
 
+        // Sample skew before `advance` enqueues this tick's local input, so our
+        // half matches the advantage we shipped the peer above (reading it after
+        // would fold in the just-enqueued input and bias the skew up by one).
+        let skew = session.skew();
         let frame = session.advance(PartialInput { joyflags })?;
-        let skew = frame.skew;
         core.load_state(&frame.state.core).expect("load present state");
         // The snapshot is poised at the start of `frame.tick` with its local
         // joyflags register (r4) unset — the engine carries that input on the
