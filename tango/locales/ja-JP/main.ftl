@@ -100,7 +100,7 @@ session-back-to-session = 対戦に戻る
 # PvP telemetry deck cell tooltips
 session-stat-tps = 毎秒ティック数（現在/上限）
 session-stat-skew = ずれ
-session-stat-depth = 投機的深度
+session-stat-depth = 投機深度
 session-stat-ping = 遅延
 
 # Save view sub-tabs

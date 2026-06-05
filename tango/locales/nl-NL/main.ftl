@@ -158,7 +158,7 @@ session-back-to-session = Terug naar sessie
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (huidig/max.)
 session-stat-skew = Afwijking
-session-stat-depth = Speculatieve diepte
+session-stat-depth = Speculatiediepte
 session-stat-ping = Latentie
 navi-style = Stijl
 folder-group = Groeperen per chip
