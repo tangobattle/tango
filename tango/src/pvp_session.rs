@@ -75,7 +75,10 @@ pub struct PvpSession {
     /// (`Match::run`, `Match::cancel`). On Close we cancel + drop
     /// the session, which tears the network loop down cleanly.
     cancellation_token: tokio_util::sync::CancellationToken,
-    latency_counter: Arc<tokio::sync::Mutex<crate::net::LatencyCounter>>,
+    /// Ping tracker shared with the net receive task. `Some` while the link is
+    /// up; the match-run task swaps it to `None` the moment the remote drops,
+    /// which is how the UI retires the instrument panel (see [`Self::latency`]).
+    latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
     /// `None` for the direct-TCP local transport (the TCP stream
     /// halves live inside the Sender/Receiver). `Some` for WebRTC,
     /// where the peer connection must outlive the data channel.
@@ -249,7 +252,7 @@ impl PvpSession {
         )?;
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        let latency_counter = Arc::new(tokio::sync::Mutex::new(crate::net::LatencyCounter::new(5)));
+        let latency_counter = Arc::new(tokio::sync::Mutex::new(Some(crate::net::LatencyCounter::new(5))));
         let end = EndState::default();
         // `frame_delay` (this side's frame delay) is realized entirely
         // locally by the display core trailing the netcode frontier; it's not
@@ -280,6 +283,7 @@ impl PvpSession {
             let completion_token = completion_token.clone();
             let end = end.clone();
             let frame_notify_for_disc = frame_notify.clone();
+            let latency_counter_for_disc = latency_counter.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
@@ -298,16 +302,24 @@ impl PvpSession {
                         // can short-circuit past PEER_END_GRACE.
                         log::info!("pvp match thread ending: {:?}", r);
                         end.remote_disconnected.store(true, Ordering::Release);
-                        // Wake the session subscription so it
-                        // re-checks `is_ended` and tears the view
-                        // down without waiting on the next vblank
-                        // (which would never come — emu paused).
-                        frame_notify_for_disc.notify_one();
                     }
                     _ = inner_match.cancelled() => {
+                        // Local teardown — e.g. a comm error surfaced on the
+                        // *send* side first (`add_local_input_and_fastforward`
+                        // fails → the primary hook calls `Match::cancel`), or
+                        // the user closed the session. `remote_disconnected`
+                        // stays as-is; the cancellation token already gates
+                        // `is_ended`.
                         log::info!("pvp match thread cancelled");
                     }
                 }
+                // However the match task ended, no more ping/pong will flow —
+                // retire the latency tracker so `latency()` reads `None` and the
+                // live telemetry panel retires, then wake the session so it
+                // re-checks `is_ended` / re-renders without waiting on the next
+                // vblank (which may never come — the emu thread can be paused).
+                *latency_counter_for_disc.lock().await = None;
+                frame_notify_for_disc.notify_one();
                 // Only stamp END_OF_REPLAY when the in-game match
                 // hooks fired `completion_token.complete()` — i.e.
                 // the match was actually played to its end-game
@@ -521,22 +533,15 @@ impl PvpSession {
         }
     }
 
-    /// Median ping over the last few seconds — drives the in-
-    /// match latency indicator. Returns ZERO until the first
-    /// Pong arrives.
-    pub fn latency_blocking(&self) -> std::time::Duration {
-        self.latency_counter.blocking_lock().median()
-    }
-
-    /// True once the remote's data channel has closed (RTC drop / SCTP
-    /// disconnect). Distinct from [`is_ended`](Self::is_ended): mid-match
-    /// (before the completion handshake) the session lingers after a remote
-    /// drop, but the live netcode telemetry is no longer meaningful — the UI
-    /// uses this to retire the instrument panel. Ping can't stand in for it:
-    /// the latency median sticks at its last reading after a drop, and a real
-    /// ping can legitimately be 0 on a LAN.
-    pub fn remote_disconnected(&self) -> bool {
-        self.end.remote_disconnected.load(Ordering::Acquire)
+    /// Median ping over the last few seconds — drives the in-match latency
+    /// indicator. `Some(ZERO)` until the first Pong arrives, then `Some(median)`
+    /// while the link is up; `None` once the remote drops (the match-run task
+    /// clears the counter). The UI keys the instrument panel off this: `None`
+    /// means "no live link", which `remote_disconnected` (still used internally
+    /// by [`is_ended`](Self::is_ended)) can't distinguish from a legitimate 0 ms
+    /// LAN ping that sticks at its last reading after a drop.
+    pub fn latency(&self) -> Option<std::time::Duration> {
+        self.latency_counter.blocking_lock().as_ref().map(|c| c.median())
     }
 
     /// Smoothed emulator ticks-per-second from the per-frame

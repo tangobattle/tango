@@ -21,9 +21,10 @@ use crate::selection;
 use crate::singleplayer_session;
 use crate::video::framebuffer::Effect;
 use crate::widgets;
+use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{container, stack, text};
-use iced::{Alignment, Element, Fill, Length};
+use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{button, column, mouse_area, row};
 use unic_langid::LanguageIdentifier;
@@ -80,6 +81,34 @@ impl ActiveSession {
 /// Replays tabs swap an `ActiveSession` into `active` to start a
 /// session, then [`State::update`] handles the rest until [`Close`]
 /// clears it.
+/// One per-frame snapshot of the live PvP telemetry, retained in a short ring
+/// buffer ([`State::metric_history`]) so the match-settings popover can draw a
+/// sparkline per metric. `round` is `None` between rounds, when no skew/depth
+/// reading exists.
+#[derive(Clone, Copy)]
+pub struct MetricSample {
+    pub tps: f32,
+    pub fps_target: f32,
+    pub ping_ms: u128,
+    pub round: Option<(i32, u32)>,
+}
+
+impl MetricSample {
+    /// Read the current telemetry off a live PvP session. Called once per
+    /// emulator frame from the [`Message::UpdateFramebuffer`] handler.
+    fn capture(pvp: &pvp_session::PvpSession) -> Self {
+        Self {
+            tps: pvp.tps(),
+            fps_target: pvp.fps_target(),
+            ping_ms: pvp.latency().map_or(0, |d| d.as_millis()),
+            round: pvp.round_stats().map(|s| (s.skew, s.depth)),
+        }
+    }
+}
+
+/// How many frames of telemetry the sparklines retain (~3 s at 60 fps).
+const METRIC_HISTORY_LEN: usize = 180;
+
 pub struct State {
     /// Permanent iced ↔ emu-thread wake handle. Cloned into each
     /// active session at construction so its frame callback (and
@@ -149,6 +178,12 @@ pub struct State {
     /// framebuffer pipeline can skip re-uploading when the same frame
     /// is presented twice (a UI redraw with no new emu frame).
     pub frame_revision: u64,
+    /// Rolling window of PvP telemetry snapshots (newest at the back),
+    /// sampled once per frame from the [`Message::UpdateFramebuffer`] handler
+    /// and drawn as sparklines in the match-settings popover. Capped at
+    /// [`METRIC_HISTORY_LEN`]; cleared whenever the active session is not a
+    /// live PvP match.
+    pub metric_history: std::collections::VecDeque<MetricSample>,
 }
 
 impl Default for State {
@@ -171,6 +206,7 @@ impl Default for State {
             show_match_settings: false,
             current_frame: None,
             frame_revision: 0,
+            metric_history: std::collections::VecDeque::new(),
         }
     }
 }
@@ -424,6 +460,11 @@ impl State {
                 self.show_settings = false;
             }
             Message::UpdateFramebuffer => {
+                // Telemetry snapshot for the popover sparklines, captured while
+                // the session is borrowed below and pushed afterward. `None`
+                // (no live PvP match) clears the history so a fresh match — or
+                // a return to SP/replay — starts the charts clean.
+                let mut sample = None;
                 if let Some(session) = self.active.as_ref() {
                     // PvP self-closes when the per-game match-end
                     // hook + peer-end handshake (or grace timeout)
@@ -448,7 +489,19 @@ impl State {
                             revision: self.frame_revision,
                             effect: crate::video::effects::effect_for(video_filter),
                         });
+                        if let ActiveSession::PvP(pvp) = session {
+                            sample = Some(MetricSample::capture(pvp));
+                        }
                     }
+                }
+                match sample {
+                    Some(s) => {
+                        self.metric_history.push_back(s);
+                        while self.metric_history.len() > METRIC_HISTORY_LEN {
+                            self.metric_history.pop_front();
+                        }
+                    }
+                    None => self.metric_history.clear(),
                 }
             }
         }
@@ -532,34 +585,34 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
     handle
 }
 
-/// Live frame-delay control for the PvP match-settings popover. Built to look
-/// identical to the lobby's frame-delay row — label + 160px slider + fixed-width
-/// numeric readout + the latency-driven "suggest" wand. Frame delay is purely
-/// local display lag, so dragging it mid-match takes effect on the next rendered
-/// frame with no peer coordination.
+/// Live frame-delay control for the match-settings panel, laid out as a
+/// telemetry card (turtle icon + caption on top, slider + value below) so it
+/// matches the metric cards above it. The latency-driven "suggest" wand rides
+/// on the caption line. Frame delay is purely local display lag, so dragging it
+/// mid-match takes effect on the next rendered frame with no peer coordination.
 fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
-    let latency = pvp.latency_blocking();
 
     let slider = iced::widget::slider(
         tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
         fd,
         Message::SetFrameDelay,
     )
-    .width(Length::Fixed(160.0));
+    .width(Length::Fixed(FD_SLIDER_W));
 
     // "Suggest" button — same legacy formula as the lobby (one-way frames + 1 -
     // 2, clamped to the slider range). Disabled until the first ping reading
-    // lands (`latency_blocking` returns zero until then).
-    let suggest_msg = if latency.is_zero() {
-        None
-    } else {
-        let one_way_frames = (latency.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-        let d = (one_way_frames + 1 - 2).clamp(
-            tango_pvp::battle::MIN_FRAME_DELAY as i32,
-            tango_pvp::battle::MAX_FRAME_DELAY as i32,
-        ) as u32;
-        Some(Message::SetFrameDelay(d))
+    // lands (`latency()` is `Some(ZERO)` until then).
+    let suggest_msg = match pvp.latency() {
+        Some(latency) if !latency.is_zero() => {
+            let one_way_frames = (latency.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
+            let d = (one_way_frames + 1 - 2).clamp(
+                tango_pvp::battle::MIN_FRAME_DELAY as i32,
+                tango_pvp::battle::MAX_FRAME_DELAY as i32,
+            ) as u32;
+            Some(Message::SetFrameDelay(d))
+        }
+        _ => None,
     };
     let suggest = widgets::icon_button_maybe(
         Icon::Wand,
@@ -568,22 +621,266 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
         crate::app::STANDARD_PADDING,
     );
 
-    row![
-        text(t!(lang, "settings-netplay-frame-delay"))
-            .size(TEXT_BODY)
-            .style(widgets::muted_text_style),
-        slider,
-        // Live value as a fixed-width monospaced numeral so the slider's
-        // position has a readable counterpart that doesn't jiggle layout.
-        text(format!("{}", fd))
-            .size(TEXT_BODY)
-            .font(iced::Font::MONOSPACE)
-            .width(Length::Fixed(18.0)),
-        suggest,
+    telemetry_card(
+        Icon::Turtle,
+        t!(lang, "settings-netplay-frame-delay"),
+        // Suggest wand sits right beside the slider, the value to its right —
+        // so the control line reads `[slider][suggest] … value`.
+        row![slider, suggest].spacing(6).align_y(Alignment::Center).into(),
+        format!("{}", fd),
+        // Frame delay isn't a health metric — the value reads in plain text.
+        None,
+    )
+}
+
+// Panel + sparkline geometry. The cards are all `PANEL_W` wide so the metrics
+// line up with the frame-delay control; the sparkline is deliberately narrower
+// than the slider, leaving room for the right-aligned value (and, on the
+// frame-delay card, the suggest wand beside the slider).
+const PANEL_W: f32 = 220.0;
+const FD_SLIDER_W: f32 = 120.0;
+const SPARK_W: f32 = 84.0;
+const SPARK_H: f32 = 18.0;
+// Each metric's full-height value span (sample saturates into it). Chosen to
+// line up with the tone thresholds so a point's height roughly tracks its color.
+const TPS_SPAN: f32 = 8.0; // fps below target = floor of the chart
+const SKEW_SPAN: i32 = 8; // ± about parity; 0 sits mid-height
+const DEPTH_SPAN: u32 = 8;
+const PING_SPAN: u128 = 200;
+
+/// A compact per-metric history chart for the match-settings panel. Each
+/// retained sample is `(height fraction in 0..=1, tone)`, plotted left→right
+/// (oldest→newest) as a thin line whose every segment and vertex is colored by
+/// that sample's health tone — so the trend tells the same green/amber/red
+/// story as the readout, point by point, instead of one flat color for the
+/// whole line. `None` slots are gaps (e.g. skew/depth between rounds) and break
+/// the line.
+struct Sparkline {
+    points: Vec<Option<(f32, StatTone)>>,
+    /// Whether to wash the area under the trace with a faint tint of each
+    /// segment's tone. On for the one-sided metrics (tps, depth, ping), where a
+    /// fill down to the floor reads as magnitude; off for skew, which centers on
+    /// 0 at mid-height, so a fill-to-bottom would misread.
+    fill_under: bool,
+}
+
+impl Sparkline {
+    fn view<'a>(self) -> Element<'a, Message> {
+        Canvas::new(self)
+            .width(Length::Fixed(SPARK_W))
+            .height(Length::Fixed(SPARK_H))
+            .into()
+    }
+}
+
+impl canvas::Program<Message> for Sparkline {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let n = self.points.len();
+        let w = bounds.width;
+        let h = bounds.height;
+        // Inset vertically so points at the extremes (yf 0 or 1) keep the line
+        // width fully on-canvas instead of clipping at the edge.
+        const PAD: f32 = 2.0;
+        let x_at = |i: usize| if n > 1 { i as f32 / (n - 1) as f32 * w } else { w / 2.0 };
+        let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
+
+        // Faint tone wash from the line down to the zero baseline, per segment,
+        // for true-zero-floor charts. Drawn first so the line sits on top.
+        if self.fill_under {
+            let base = y_at(0.0);
+            for i in 0..n.saturating_sub(1) {
+                if let (Some((y0, _)), Some((y1, tone))) = (self.points[i], self.points[i + 1]) {
+                    let (x0, x1) = (x_at(i), x_at(i + 1));
+                    let area = Path::new(|p| {
+                        p.move_to(Point::new(x0, y_at(y0)));
+                        p.line_to(Point::new(x1, y_at(y1)));
+                        p.line_to(Point::new(x1, base));
+                        p.line_to(Point::new(x0, base));
+                        p.close();
+                    });
+                    frame.fill(
+                        &area,
+                        Color {
+                            a: 0.3,
+                            ..stat_tone_color(theme, tone)
+                        },
+                    );
+                }
+            }
+        }
+
+        // The trace itself: one hairline segment per adjacent pair of samples,
+        // each colored by the newer endpoint's tone, breaking across `None`
+        // gaps. No vertices/dots — the connected segments are the whole chart.
+        for i in 0..n.saturating_sub(1) {
+            if let (Some((y0, _)), Some((y1, tone))) = (self.points[i], self.points[i + 1]) {
+                let seg = Path::line(Point::new(x_at(i), y_at(y0)), Point::new(x_at(i + 1), y_at(y1)));
+                frame.stroke(
+                    &seg,
+                    Stroke::default()
+                        .with_color(stat_tone_color(theme, tone))
+                        .with_width(1.0)
+                        .with_line_cap(LineCap::Round),
+                );
+            }
+        }
+
+        vec![frame.into_geometry()]
+    }
+}
+
+/// One telemetry card: `icon caption` on top, `[control] value` below — the
+/// shape shared by every metric (control = sparkline) and the frame-delay knob
+/// (control = slider). Icon + caption ride muted; the value picks up the health
+/// `value_tone` (or `None` for plain text, e.g. the frame-delay number). Fixed
+/// at [`PANEL_W`] so the cards align with one another.
+fn telemetry_card<'a>(
+    icon: Icon,
+    caption: String,
+    control: Element<'a, Message>,
+    value: String,
+    value_tone: Option<StatTone>,
+) -> Element<'a, Message> {
+    let value_style = move |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(value_tone.map_or_else(|| theme.palette().text, |tone| stat_tone_color(theme, tone))),
+    };
+    let caption_row = row![
+        icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
+        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
     ]
-    .spacing(10)
+    .spacing(6)
     .align_y(Alignment::Center)
-    .into()
+    .width(Fill);
+    let value_row = row![
+        control,
+        container(
+            text(value)
+                .size(TEXT_BODY)
+                .font(iced::Font::MONOSPACE)
+                .style(value_style),
+        )
+        .width(Fill)
+        .align_x(iced::alignment::Horizontal::Right),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .width(Fill);
+    column![caption_row, value_row]
+        .spacing(3)
+        .width(Length::Fixed(PANEL_W))
+        .into()
+}
+
+/// One metric card: build its sparkline series by mapping every retained
+/// sample through `point` (returning `None` for slots with no reading, which
+/// become gaps), and read the current value + tone off the newest sample via
+/// `value` (showing `—` muted when there's nothing yet, e.g. skew/depth between
+/// rounds).
+fn metric_card<'a>(
+    icon: Icon,
+    caption: String,
+    fill_under: bool,
+    history: &std::collections::VecDeque<MetricSample>,
+    point: impl Fn(&MetricSample) -> Option<(f32, StatTone)>,
+    value: impl Fn(&MetricSample) -> Option<(String, StatTone)>,
+) -> Element<'a, Message> {
+    let points = history.iter().map(&point).collect();
+    let (value, tone) = history
+        .back()
+        .and_then(value)
+        .unwrap_or_else(|| ("—".to_string(), StatTone::Muted));
+    telemetry_card(
+        icon,
+        caption,
+        Sparkline { points, fill_under }.view(),
+        value,
+        Some(tone),
+    )
+}
+
+/// Contents of the match-settings panel: a sparkline card per live metric
+/// (TPS, skew, depth, ping) stacked above the frame-delay card. Each chart
+/// reads its window from `history` and its current value from the newest
+/// sample.
+fn match_settings_content<'a>(
+    lang: &'a LanguageIdentifier,
+    pvp: &'a pvp_session::PvpSession,
+    history: &std::collections::VecDeque<MetricSample>,
+) -> Element<'a, Message> {
+    let tps_card = metric_card(
+        Icon::Gauge,
+        t!(lang, "session-stat-tps"),
+        true,
+        history,
+        |s| {
+            (s.fps_target > 0.0).then(|| {
+                let yf = (s.tps - (s.fps_target - TPS_SPAN)) / TPS_SPAN;
+                (yf.clamp(0.0, 1.0), tone_for_tps(s.tps, s.fps_target))
+            })
+        },
+        |s| (s.fps_target > 0.0).then(|| (fmt_tps(s.tps, s.fps_target), tone_for_tps(s.tps, s.fps_target))),
+    );
+
+    let skew_card = metric_card(
+        Icon::ArrowLeftRight,
+        t!(lang, "session-stat-skew"),
+        false,
+        history,
+        |s| {
+            s.round.map(|(skew, _)| {
+                let yf = (skew.clamp(-SKEW_SPAN, SKEW_SPAN) as f32 + SKEW_SPAN as f32) / (2.0 * SKEW_SPAN as f32);
+                (yf, tone_for_skew(skew))
+            })
+        },
+        |s| s.round.map(|(skew, _)| (fmt_skew(skew), tone_for_skew(skew))),
+    );
+
+    let depth_card = metric_card(
+        Icon::Layers2,
+        t!(lang, "session-stat-depth"),
+        true,
+        history,
+        |s| s.round.map(|(_, depth)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth))),
+        |s| s.round.map(|(_, depth)| (fmt_depth(depth), tone_for_depth(depth))),
+    );
+
+    let ping_card = metric_card(
+        Icon::SignalHigh,
+        t!(lang, "session-stat-ping"),
+        true,
+        history,
+        |s| Some((s.ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32, tone_for_ping(s.ping_ms))),
+        |s| Some((fmt_ping(s.ping_ms), tone_for_ping(s.ping_ms))),
+    );
+
+    // Faint rule separating the read-only metrics from the frame-delay knob.
+    let rule = container(iced::widget::Space::new().width(Fill).height(Length::Fixed(1.0))).style(
+        |theme: &iced::Theme| {
+            let p = theme.extended_palette();
+            iced::widget::container::Style {
+                background: Some(iced::Background::Color(Color {
+                    a: if p.is_dark { 0.16 } else { 0.13 },
+                    ..theme.palette().text
+                })),
+                ..Default::default()
+            }
+        },
+    );
+
+    column![tps_card, skew_card, depth_card, ping_card, rule, frame_delay_control(lang, pvp)]
+        .spacing(8)
+        .width(Length::Fixed(PANEL_W))
+        .into()
 }
 
 /// Semantic tone for a PvP telemetry value. The icon always rides
@@ -610,16 +907,89 @@ fn stat_tone_color(theme: &iced::Theme, tone: StatTone) -> iced::Color {
     }
 }
 
+// Health tone per metric. Shared by the instrument-panel cells and the
+// popover sparklines so the value readout and the chart points always agree
+// on green/amber/red.
+
+/// TPS vs the live fps target: green at/near rate, amber as it dips, red when
+/// it falls well behind (visible netplay stutter). Muted before a target exists.
+fn tone_for_tps(tps: f32, fps_target: f32) -> StatTone {
+    if fps_target <= 0.0 {
+        StatTone::Muted
+    } else if tps >= fps_target - 1.0 {
+        StatTone::Good
+    } else if tps >= fps_target - 5.0 {
+        StatTone::Warn
+    } else {
+        StatTone::Bad
+    }
+}
+
+/// Clock skew: green near parity, amber drifting, red far out, by `|skew|`.
+fn tone_for_skew(skew: i32) -> StatTone {
+    match skew.unsigned_abs() {
+        0..=3 => StatTone::Good,
+        4..=7 => StatTone::Warn,
+        _ => StatTone::Bad,
+    }
+}
+
+/// Rollback depth: green shallow, amber climbing, red when speculation runs deep.
+fn tone_for_depth(depth: u32) -> StatTone {
+    match depth {
+        0..=2 => StatTone::Good,
+        3..=5 => StatTone::Warn,
+        _ => StatTone::Bad,
+    }
+}
+
+/// Latency band: green under 80 ms, amber under 140 ms, red beyond.
+fn tone_for_ping(ping_ms: u128) -> StatTone {
+    if ping_ms < 80 {
+        StatTone::Good
+    } else if ping_ms < 140 {
+        StatTone::Warn
+    } else {
+        StatTone::Bad
+    }
+}
+
+// Value formatting, shared by the instrument-panel cells and the popover
+// sparkline readouts so the two always render a metric the same way.
+
+/// Current tps over the live cap, both to two decimals (e.g. `60.00/60.00`).
+fn fmt_tps(tps: f32, fps_target: f32) -> String {
+    format!("{:.2}/{:.2}", tps, fps_target)
+}
+/// Signed skew in a 3-wide field; bare `0` at parity reads calmer than `+0`.
+fn fmt_skew(skew: i32) -> String {
+    if skew == 0 {
+        "  0".to_string()
+    } else {
+        format!("{:>+3}", skew)
+    }
+}
+/// Rollback depth, right-aligned in a 2-wide field.
+fn fmt_depth(depth: u32) -> String {
+    format!("{:>2}", depth)
+}
+/// Latency in ms, right-aligned in a 3-wide field.
+fn fmt_ping(ping_ms: u128) -> String {
+    format!("{:>3} ms", ping_ms)
+}
+
 /// One telemetry cell: a label `icon` and the current `value`, both
 /// color-coded by the health `tone`. `tip` is the hover tooltip
 /// naming the metric (the cells are icon-only, so it's the only place
 /// the full name shows).
 fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String, tip: String) -> Element<'a, Message> {
+    // Only the value carries the health tint; the icon always rides muted so
+    // color reads as "this number means something", not decoration.
     let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(stat_tone_color(theme, tone)),
     };
     let cell = row![
-        icon.widget().size(TEXT_BODY).style(tone_style),
+        icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
         text(value)
             .size(TEXT_BODY)
             .font(iced::Font::MONOSPACE)
@@ -1062,109 +1432,83 @@ pub fn view<'a>(
     // depth, ping — each metric drawn next to its current value,
     // colored by health (green/amber/red), gathered into one
     // hairline-divided plate. P1/P2 leads the cluster as an identity tag.
+    // Gate the whole deck on a live latency reading: `latency()` is `Some` while
+    // the link is up (even at 0 ms on LAN) and `None` the moment the remote
+    // drops — at which point the telemetry is frozen and meaningless, so the
+    // panel retires itself.
     if let ActiveSession::PvP(pvp) = session {
-        let stats = pvp.round_stats();
-        let ping_ms = pvp.latency_blocking().as_millis();
-        let tps = pvp.tps();
-        let fps_target = pvp.fps_target();
+        if let Some(latency) = pvp.latency() {
+            let stats = pvp.round_stats();
+            let ping_ms = latency.as_millis();
+            let tps = pvp.tps();
+            let fps_target = pvp.fps_target();
 
-        let mut cells: Vec<Element<'a, Message>> = Vec::new();
+            let mut cells: Vec<Element<'a, Message>> = Vec::new();
 
-        // P1/P2 identity tag now leads the instrument cluster, inside
-        // the plate — it reads as the "which side am I" label sitting
-        // ahead of the live metrics.
-        if let Some(s) = stats {
-            cells.push(player_cell(s.local_player_index));
-        }
-
-        // TPS: current rate vs target — green at/near rate, amber as it
-        // dips, red when it falls well behind (visible netplay stutter).
-        let tps_tone = if fps_target <= 0.0 {
-            StatTone::Muted
-        } else if tps >= fps_target - 1.0 {
-            StatTone::Good
-        } else if tps >= fps_target - 5.0 {
-            StatTone::Warn
-        } else {
-            StatTone::Bad
-        };
-        cells.push(stat_cell(
-            Icon::Gauge,
-            tps_tone,
-            format!("{:.2}/{:.2}", tps, fps_target),
-            t!(lang, "session-stat-tps"),
-        ));
-
-        if let Some(s) = stats {
-            // Skew: how tight the sync is — green near parity, amber
-            // drifting, red far out, by |skew| in frames.
-            let skew_tone = match s.skew.unsigned_abs() {
-                0..=3 => StatTone::Good,
-                4..=7 => StatTone::Warn,
-                _ => StatTone::Bad,
-            };
-            let skew_label = if s.skew == 0 {
-                "  0".to_string()
-            } else {
-                format!("{:>+3}", s.skew)
-            };
-            cells.push(stat_cell(
-                Icon::ArrowLeftRight,
-                skew_tone,
-                skew_label,
-                t!(lang, "session-stat-skew"),
-            ));
-
-            // Rollback depth: lower = tighter prediction. Green when
-            // shallow, amber as it climbs, red when speculation runs deep.
-            let depth_tone = match s.depth {
-                0..=2 => StatTone::Good,
-                3..=5 => StatTone::Warn,
-                _ => StatTone::Bad,
-            };
-            cells.push(stat_cell(
-                Icon::Layers2,
-                depth_tone,
-                format!("{:>2}", s.depth),
-                t!(lang, "session-stat-depth"),
-            ));
-        }
-
-        // Ping: latency band. The signal icon's bar strength tracks
-        // the band too — full bars (SignalHigh) when ping is low,
-        // dropping to SignalLow as latency climbs.
-        let (ping_tone, ping_icon) = if ping_ms < 80 {
-            (StatTone::Good, Icon::SignalHigh)
-        } else if ping_ms < 140 {
-            (StatTone::Warn, Icon::SignalMedium)
-        } else {
-            (StatTone::Bad, Icon::SignalLow)
-        };
-        cells.push(stat_cell(
-            ping_icon,
-            ping_tone,
-            format!("{:>3} ms", ping_ms),
-            t!(lang, "session-stat-ping"),
-        ));
-
-        // Interleave hairline dividers, then wrap the deck in one flat
-        // plate. The plate is a button: clicking the instrument panel
-        // toggles the match-settings popover anchored above it. The cells'
-        // own tooltips still fire on hover.
-        let mut strip = row![].spacing(6).align_y(Alignment::Center);
-        for (i, cell) in cells.into_iter().enumerate() {
-            if i > 0 {
-                strip = strip.push(stat_divider());
+            // P1/P2 identity tag now leads the instrument cluster, inside
+            // the plate — it reads as the "which side am I" label sitting
+            // ahead of the live metrics.
+            if let Some(s) = stats {
+                cells.push(player_cell(s.local_player_index));
             }
-            strip = strip.push(cell);
-        }
-        // Only surface the instrument panel while the peer link is actually
-        // up. A mid-match peer drop leaves the session lingering (no
-        // completion handshake) with frozen telemetry, so gate on the live
-        // data-channel state — not on any metric value, since ping can read 0
-        // legitimately on LAN and its median sticks at the last reading after
-        // a drop.
-        if !pvp.remote_disconnected() {
+
+            // TPS: current rate vs target — green at/near rate, amber as it
+            // dips, red when it falls well behind (visible netplay stutter).
+            cells.push(stat_cell(
+                Icon::Gauge,
+                tone_for_tps(tps, fps_target),
+                fmt_tps(tps, fps_target),
+                t!(lang, "session-stat-tps"),
+            ));
+
+            if let Some(s) = stats {
+                // Skew: how tight the sync is — green near parity, amber
+                // drifting, red far out, by |skew| in frames.
+                cells.push(stat_cell(
+                    Icon::ArrowLeftRight,
+                    tone_for_skew(s.skew),
+                    fmt_skew(s.skew),
+                    t!(lang, "session-stat-skew"),
+                ));
+
+                // Rollback depth: lower = tighter prediction. Green when
+                // shallow, amber as it climbs, red when speculation runs deep.
+                cells.push(stat_cell(
+                    Icon::Layers2,
+                    tone_for_depth(s.depth),
+                    fmt_depth(s.depth),
+                    t!(lang, "session-stat-depth"),
+                ));
+            }
+
+            // Ping: latency band. The signal icon's bar strength tracks
+            // the band too — full bars (SignalHigh) when ping is low,
+            // dropping to SignalLow as latency climbs.
+            let ping_icon = if ping_ms < 80 {
+                Icon::SignalHigh
+            } else if ping_ms < 140 {
+                Icon::SignalMedium
+            } else {
+                Icon::SignalLow
+            };
+            cells.push(stat_cell(
+                ping_icon,
+                tone_for_ping(ping_ms),
+                fmt_ping(ping_ms),
+                t!(lang, "session-stat-ping"),
+            ));
+
+            // Interleave hairline dividers into one flat plate. The plate is a
+            // button: clicking the instrument panel toggles the match-settings
+            // popover anchored above it. The cells' own tooltips still fire on
+            // hover.
+            let mut strip = row![].spacing(6).align_y(Alignment::Center);
+            for (i, cell) in cells.into_iter().enumerate() {
+                if i > 0 {
+                    strip = strip.push(stat_divider());
+                }
+                strip = strip.push(cell);
+            }
             controls = controls.push(
                 button(strip)
                     .padding([3, 9])
@@ -1407,8 +1751,8 @@ pub fn view<'a>(
     // backdrop — clicking the plate again or pressing Esc closes it. No
     // heading: the frame-delay row already labels itself.
     let match_settings_overlay: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(pvp) if state.show_match_settings && !pvp.remote_disconnected() => {
-            let popover = container(frame_delay_control(lang, pvp))
+        ActiveSession::PvP(pvp) if state.show_match_settings && pvp.latency().is_some() => {
+            let popover = container(match_settings_content(lang, pvp, &state.metric_history))
                 .padding(12)
                 .style(widgets::panel);
             // Same lift as the options menu so the popover floats just

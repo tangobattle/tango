@@ -223,7 +223,10 @@ impl tango_pvp::net::Sender for PvpSender {
 pub struct PvpReceiver {
     receiver: Receiver,
     sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
-    latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
+    /// `None` once the remote drops — the session swaps the counter out so the
+    /// UI can tell "no live link" from "0 ms ping on LAN". While the link is up
+    /// it's `Some` and ping samples land here.
+    latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
     ping_timer: tokio::time::Interval,
     /// Flipped to `true` the first time we see an `EndOfMatch`
     /// packet from the remote. `PvpSession::is_ended` reads this
@@ -240,7 +243,7 @@ impl PvpReceiver {
     pub fn new(
         receiver: Receiver,
         sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
-        latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
+        latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
         frame_notify: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
@@ -276,7 +279,9 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             if let Ok(dt) =
                                 std::time::SystemTime::now().duration_since(pong.ts)
                             {
-                                self.latency_counter.lock().await.mark(dt);
+                                if let Some(c) = self.latency_counter.lock().await.as_mut() {
+                                    c.mark(dt);
+                                }
                             }
                         }
                         protocol::Packet::Input(input) => {
