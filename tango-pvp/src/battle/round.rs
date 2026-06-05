@@ -196,9 +196,12 @@ impl Round {
         // tightens, and once we're actually speculating (headroom → 0) this is
         // exactly the old raw-skew behavior.
         //
-        // The factor of 2: skew is a *difference* of advantages, so under
-        // symmetric latency it runs at ~2× our one-sided frontier lead, while
-        // headroom is one-sided. Doubling it puts the buffer in skew's units.
+        // The factor of 2: a one-tick change in our frontier lead moves `skew`
+        // by 2 (it's local_advantage − remote_advantage, and under symmetric
+        // latency the one-way latency cancels, leaving skew ≈ 2×lead) but moves
+        // `headroom` by only 1. Scaling headroom by 2 matches that sensitivity;
+        // the net controller eases off the throttle until we're ~halfway into
+        // the speculation-free buffer, then tightens to raw-skew as headroom → 0.
         let headroom = session.speculation_headroom();
         // Smooth the buffered skew into a slowdown below our nominal rate, then
         // turn that into an absolute fps target for the live core.
