@@ -50,12 +50,15 @@ where
         self.remote_queue.len()
     }
 
-    /// How many ticks local input is ahead of remote input — i.e. the number of
-    /// local inputs that currently have no matching remote input.
+    /// How many ticks local input leads remote input — the number of local
+    /// inputs that currently have no matching remote input.
     ///
-    /// This is the depth of the speculative window: how many future ticks must
-    /// be simulated with *predicted* remote input to present the latest frame.
-    pub fn speculative_depth(&self) -> usize {
+    /// This is the *raw* lead, not the speculation depth. The queue has no
+    /// notion of present delay, which buffers the first `present_delay` ticks of
+    /// the lead before any of it has to be rendered speculatively; only the
+    /// excess is. See [`Session::speculation_depth`](crate::Session::speculation_depth)
+    /// for the depth actually speculated.
+    pub fn lead(&self) -> usize {
         self.local_queue.len().saturating_sub(self.remote_queue.len())
     }
 

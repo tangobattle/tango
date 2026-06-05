@@ -136,8 +136,14 @@ impl Round {
         self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
     }
 
-    pub fn speculative_depth(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.speculative_depth())
+    pub fn speculation_depth(&self) -> u32 {
+        self.session.as_ref().map_or(0, |s| s.speculation_depth())
+    }
+
+    /// Ticks of lead we can still take before the presented frame must
+    /// speculate. See [`Session::speculation_headroom`](getgud::Session::speculation_headroom).
+    pub fn speculation_headroom(&self) -> u32 {
+        self.session.as_ref().map_or(0, |s| s.speculation_headroom())
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -171,6 +177,7 @@ impl Round {
         session.set_present_delay(self.frame_delay.load(Ordering::Relaxed));
 
         let frame = session.advance(PartialInput { joyflags })?;
+        let skew = frame.skew;
         core.load_state(&frame.state.core).expect("load present state");
         // The snapshot is poised at the start of `frame.tick` with its local
         // joyflags register (r4) unset — the engine carries that input on the
@@ -179,10 +186,19 @@ impl Round {
         let (local, _) = frame.input;
         self.hooks.inject_joyflags_on_primary_snapshot(core, local.joyflags);
         self.last_loaded_tick = frame.tick;
+        // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
-        // Smooth the raw skew into a slowdown below our nominal rate, then turn
-        // that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(frame.skew);
+        // Leniency: a positive skew only actually costs us once the *presented*
+        // frame has to speculate. `speculation_headroom` is the lead (in ticks)
+        // we can still take while every presented frame stays fully confirmed —
+        // free buffer to grow into. Absorb that much skew before slowing down, so
+        // we stop fighting a harmless lead. As the headroom shrinks the throttle
+        // tightens, and once we're actually speculating (headroom → 0) this is
+        // exactly the old raw-skew behavior.
+        let headroom = session.speculation_headroom();
+        // Smooth the buffered skew into a slowdown below our nominal rate, then
+        // turn that into an absolute fps target for the live core.
+        let slowdown = self.throttler.step(skew - headroom as i32);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

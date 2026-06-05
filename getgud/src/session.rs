@@ -197,13 +197,12 @@ impl<W: World> Session<W> {
             }
         } else {
             self.speculative_state = None;
-            let input = self
-                .settle_backlog
-                .front()
-                .cloned()
-                .unwrap_or_else(|| {
-                    (unmatched_locals[0].clone(), self.predictor.predict(&self.last_committed_remote))
-                });
+            let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
+                (
+                    unmatched_locals[0].clone(),
+                    self.predictor.predict(&self.last_committed_remote),
+                )
+            });
             Frame {
                 tick: self.settled_tick,
                 skew,
@@ -242,10 +241,29 @@ impl<W: World> Session<W> {
         self.last_remote_tick_advantage
     }
 
-    /// How many ticks of prediction the latest frame requires — the count of
-    /// local inputs with no confirmed remote counterpart yet.
-    pub fn speculative_depth(&self) -> u32 {
-        self.input_queue.speculative_depth() as u32
+    /// How deep the speculative tail of the latest presented frame is — the
+    /// number of ticks simulated with *predicted* remote input to render it.
+    ///
+    /// This is *not* the raw local-over-remote lead. The presented frame is
+    /// `frontier - present_delay`, so the present delay absorbs the first
+    /// `present_delay` ticks of lead before any speculation is needed; only the
+    /// excess is actually rendered into the speculative tail. So it's
+    /// `lead - present_delay`, saturating at 0 — and 0 means the presented frame
+    /// is fully confirmed.
+    pub fn speculation_depth(&self) -> u32 {
+        (self.input_queue.lead() as u32).saturating_sub(self.present_delay)
+    }
+
+    /// How many more ticks of lead we can take before the presented frame has to
+    /// speculate at all — the speculation-free buffer.
+    ///
+    /// The complement of [`speculation_depth`](Session::speculation_depth) about
+    /// the present delay: `present_delay - lead`, saturating at 0 once we're
+    /// already speculating. Useful for clock-sync leniency: a positive
+    /// [`skew`](Frame::skew) only starts costing presentation quality once this
+    /// hits 0.
+    pub fn speculation_headroom(&self) -> u32 {
+        self.present_delay.saturating_sub(self.input_queue.lead() as u32)
     }
 
     /// Record an input received from the remote peer.
@@ -299,7 +317,11 @@ impl<W: World> Session<W> {
     /// state plus the `(local, predicted-remote)` input pair at `target`. Rebuilt
     /// from scratch each frame, so mispredictions self-correct as real remote
     /// inputs get settled.
-    fn speculate_tail(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(W::State, (W::Input, W::Input)), W::Error> {
+    fn speculate_tail(
+        &mut self,
+        target: u32,
+        unmatched_locals: &[W::Input],
+    ) -> Result<(W::State, (W::Input, W::Input)), W::Error> {
         let seed_tick = self.settled_tick;
         assert_eq!(
             seed_tick,

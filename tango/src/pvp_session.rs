@@ -325,8 +325,10 @@ impl PvpSession {
         // netcode and renders straight to the UI. The `Round` loads the FF's
         // computed `present_state` into it each frame, so the live core's game
         // tick lags `current_tick` by `frame_delay`.
-        let audio_stream: Box<dyn crate::audio::Stream + Send> =
-            Box::new(crate::audio::MGBAStream::new(thread.handle(), audio_binder.sample_rate()));
+        let audio_stream: Box<dyn crate::audio::Stream + Send> = Box::new(crate::audio::MGBAStream::new(
+            thread.handle(),
+            audio_binder.sample_rate(),
+        ));
         let audio_binding = match audio_binder.bind(Some(audio_stream)) {
             Ok(b) => Some(b),
             Err(e) => {
@@ -436,10 +438,7 @@ impl PvpSession {
     /// range as a guard against an out-of-range caller.
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay.store(
-            frame_delay.clamp(
-                tango_pvp::battle::MIN_FRAME_DELAY,
-                tango_pvp::battle::MAX_FRAME_DELAY,
-            ),
+            frame_delay.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY),
             Ordering::Relaxed,
         );
     }
@@ -536,7 +535,7 @@ impl PvpSession {
         Some(RoundStats {
             local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
-            depth: round.speculative_depth(),
+            depth: round.speculation_depth(),
         })
     }
 }
