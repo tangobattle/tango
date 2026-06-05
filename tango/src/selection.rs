@@ -90,17 +90,21 @@ pub struct NavicustRender {
 }
 
 impl Loaded {
+    /// Build from a *raw* (unpatched) ROM, applying the selected patch
+    /// from disk first. On apply failure we fall back to the unpatched
+    /// ROM (and log) so the save view still renders. Callers that
+    /// already hold the patched image should use [`from_patched_rom`]
+    /// instead, to avoid applying the patch a second time.
+    ///
+    /// [`from_patched_rom`]: Self::from_patched_rom
     pub fn build(
         game: GameRef,
         rom: Vec<u8>,
         save_path: std::path::PathBuf,
-        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+        save: Box<dyn tango_dataview::save::Save + Send + Sync>,
         patches_path: &std::path::Path,
         patch: Option<(String, semver::Version, Arc<crate::patch::Version>)>,
     ) -> Self {
-        // Apply the BPS patch to the raw ROM if one is selected. On
-        // failure we fall back to the unpatched ROM (and log) so the
-        // save view still renders.
         let (rom, applied_patch) = match patch {
             Some((name, version, meta)) => {
                 match crate::patch::apply_patch_from_disk(&rom, game, patches_path, &name, &version) {
@@ -123,7 +127,24 @@ impl Loaded {
             }
             None => (rom, None),
         };
+        Self::from_patched_rom(game, rom, save_path, save, applied_patch)
+    }
 
+    /// Build from a ROM that's *already* had its patch applied, plus the
+    /// [`AppliedPatch`] that produced it (`None` for a raw ROM). Unlike
+    /// [`build`], this never touches the BPS patch — use it when the
+    /// caller already holds the patched image (e.g. a live session that
+    /// patched the ROM for the emulator) so the patch isn't re-applied
+    /// just to read the asset overrides + charset off `applied_patch`.
+    ///
+    /// [`build`]: Self::build
+    pub fn from_patched_rom(
+        game: GameRef,
+        rom: Vec<u8>,
+        save_path: std::path::PathBuf,
+        mut save: Box<dyn tango_dataview::save::Save + Send + Sync>,
+        applied_patch: Option<AppliedPatch>,
+    ) -> Self {
         // Probe folder-editability once (needs `&mut save`); constructing
         // the mutable chip view has no side effects, so this is a pure
         // capability check we can cache on the immutable Loaded.

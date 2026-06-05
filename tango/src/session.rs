@@ -1760,26 +1760,31 @@ pub async fn spawn_pvp(
 
     // Build the opponent's Loaded only if they enabled reveal-
     // setup — otherwise we don't have visibility into their save.
-    // Loaded::build parses chip/navi/navicust assets from the
-    // rom + wram, so the session pane can render them with the
-    // same widgets we use for the local side.
+    // Loaded parses chip/navi/navicust assets from the rom + wram,
+    // so the session pane can render them with the same widgets we
+    // use for the local side.
     let opponent_loaded = if pre_match.remote_settings.reveal_setup {
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
-        let patch_meta = remote_gi.patch.as_ref().and_then(|p| {
+        // `remote_rom_bytes` is already the patched image we run in the
+        // session, so resolve the matching `rom_overrides` + charset and
+        // hand both straight to `from_patched_rom` — no second BPS apply.
+        let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
             let patches = scanners.patches.read();
-            let pinfo = patches.get(&p.name)?;
-            let v = pinfo.versions.get(&p.version).cloned()?;
-            Some((p.name.clone(), p.version.clone(), v))
+            let version_meta = patches.get(&p.name)?.versions.get(&p.version).cloned()?;
+            Some(crate::selection::AppliedPatch {
+                name: p.name.clone(),
+                version: p.version.clone(),
+                version_meta,
+            })
         });
-        Some(crate::selection::Loaded::build(
+        Some(crate::selection::Loaded::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
             remote_save,
-            &config.patches_path(),
-            patch_meta,
+            applied_patch,
         ))
     } else {
         None
@@ -1792,19 +1797,24 @@ pub async fn spawn_pvp(
         let local_save = local_game
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
-        let patch_meta = local_patch.as_ref().and_then(|(name, version)| {
+        // Same as the opponent side: `local_rom_bytes` is already
+        // patched, so layer the overrides on via `from_patched_rom`
+        // instead of re-applying the BPS patch.
+        let applied_patch = local_patch.as_ref().and_then(|(name, version)| {
             let patches = scanners.patches.read();
-            let pinfo = patches.get(name)?;
-            let v = pinfo.versions.get(version).cloned()?;
-            Some((name.clone(), version.clone(), v))
+            let version_meta = patches.get(name)?.versions.get(version).cloned()?;
+            Some(crate::selection::AppliedPatch {
+                name: name.clone(),
+                version: version.clone(),
+                version_meta,
+            })
         });
-        Some(crate::selection::Loaded::build(
+        Some(crate::selection::Loaded::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
             local_save,
-            &config.patches_path(),
-            patch_meta,
+            applied_patch,
         ))
     };
 
