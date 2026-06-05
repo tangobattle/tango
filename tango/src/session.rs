@@ -134,6 +134,11 @@ pub struct State {
     /// session down mid-match (same as Close), so the confirm
     /// keeps a stray click from costing the user a real game.
     pub show_disconnect_confirm: bool,
+    /// PvP-only: the match-settings popover, anchored above the
+    /// telemetry plate (instrument panel) and toggled by clicking it.
+    /// Holds the live frame-delay control (moved here from the footer).
+    /// Mutually exclusive with the options menu.
+    pub show_match_settings: bool,
     /// Latest GBA framebuffer (post upscale filter), presented by the
     /// [`crate::video::framebuffer`] shader widget. Refreshed in
     /// [`Message::UpdateFramebuffer`] (which the session subscription
@@ -163,6 +168,7 @@ impl Default for State {
             show_settings: false,
             show_options_menu: false,
             show_disconnect_confirm: false,
+            show_match_settings: false,
             current_frame: None,
             frame_revision: 0,
         }
@@ -198,16 +204,21 @@ pub enum Message {
     Seek(u32),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
-    /// PvP-only: footer frame-delay slider moved. Live-sets this side's local
-    /// frame delay on the running session; the App also persists it to
-    /// config. No peer coordination — it's purely a local display lag.
+    /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
+    /// side's local frame delay on the running session; the App also persists it
+    /// to config. No peer coordination — it's purely a local display lag.
     SetFrameDelay(u32),
     /// Open/close the ellipsis-anchored options popover.
     ToggleOptionsMenu,
+    /// PvP-only: open/close the match-settings popover anchored on the
+    /// telemetry plate (instrument panel). Mutually exclusive with the
+    /// options menu.
+    ToggleMatchSettings,
     /// User pressed Esc inside a session. Closes whichever overlay is on
-    /// top (settings modal, disconnect confirm, options popover) if any,
-    /// otherwise opens the options popover. Routed here rather than from
-    /// the InputCapture so the decision sees the current overlay state.
+    /// top (settings modal, disconnect confirm, match-settings popover,
+    /// options popover) if any, otherwise opens the options popover. Routed
+    /// here rather than from the InputCapture so the decision sees the
+    /// current overlay state.
     EscPressed,
     /// Show the "really disconnect?" modal. PvP-only; picked from
     /// the options menu's Disconnect item, which also dismisses
@@ -283,6 +294,7 @@ impl State {
                 self.current_frame = None;
                 self.show_options_menu = false;
                 self.show_disconnect_confirm = false;
+                self.show_match_settings = false;
             }
             Message::Input(ev) => {
                 match ev {
@@ -352,12 +364,27 @@ impl State {
             }
             Message::ToggleOptionsMenu => {
                 self.show_options_menu = !self.show_options_menu;
+                // The two popovers share the bottom-right corner; never
+                // show both at once.
+                self.show_match_settings = false;
+            }
+            Message::ToggleMatchSettings => {
+                // PvP-only: applied by the view's plate button. Toggle the
+                // popover and close the options menu so they don't overlap.
+                if let Some(ActiveSession::PvP(_)) = self.active.as_ref() {
+                    self.show_match_settings = !self.show_match_settings;
+                    self.show_options_menu = false;
+                }
             }
             Message::EscPressed => {
+                // Peel overlays off top-down: the modal first, then the two
+                // bottom-right popovers, else fall through to toggling options.
                 if self.show_settings {
                     self.show_settings = false;
                 } else if self.show_disconnect_confirm {
                     self.show_disconnect_confirm = false;
+                } else if self.show_match_settings {
+                    self.show_match_settings = false;
                 } else {
                     self.show_options_menu = !self.show_options_menu;
                 }
@@ -391,6 +418,7 @@ impl State {
             Message::OpenSettings => {
                 self.show_settings = true;
                 self.show_options_menu = false;
+                self.show_match_settings = false;
             }
             Message::CloseSettings => {
                 self.show_settings = false;
@@ -407,6 +435,7 @@ impl State {
                         self.current_frame = None;
                         self.show_options_menu = false;
                         self.show_disconnect_confirm = false;
+                        self.show_match_settings = false;
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.
@@ -503,11 +532,11 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
     handle
 }
 
-/// Live frame-delay control for the PvP footer. Built to look identical to the
-/// lobby's frame-delay row — label + 160px slider + fixed-width numeric readout
-/// + the latency-driven "suggest" wand. Frame delay is purely local display lag,
-/// so dragging it mid-match takes effect on the next rendered frame with no peer
-/// coordination.
+/// Live frame-delay control for the PvP match-settings popover. Built to look
+/// identical to the lobby's frame-delay row — label + 160px slider + fixed-width
+/// numeric readout + the latency-driven "suggest" wand. Frame delay is purely
+/// local display lag, so dragging it mid-match takes effect on the next rendered
+/// frame with no peer coordination.
 fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
     let latency = pvp.latency_blocking();
@@ -640,16 +669,23 @@ fn stat_divider<'a>() -> Element<'a, Message> {
 
 /// Flat plate behind the telemetry deck — a faint fill + hairline
 /// border so the readout reads as one grouped module without drawing
-/// attention to itself.
-fn telemetry_plate(theme: &iced::Theme) -> iced::widget::container::Style {
+/// attention to itself. Realized as a button style (not a static
+/// container) because the instrument panel is clickable: a subtle
+/// hover/press brighten marks it as the trigger for the match-settings
+/// popover. PvP-only; the cells inside keep their own tooltips.
+fn telemetry_plate_button(theme: &iced::Theme, status: sweeten::widget::button::Status) -> sweeten::widget::button::Style {
+    use sweeten::widget::button::Status;
     let p = theme.extended_palette();
     let text = theme.palette().text;
-    iced::widget::container::Style {
-        background: Some(iced::Background::Color(iced::Color {
-            a: if p.is_dark { 0.06 } else { 0.05 },
-            ..text
-        })),
-        text_color: Some(text),
+    let base = if p.is_dark { 0.06 } else { 0.05 };
+    let fill = match status {
+        Status::Hovered => base + 0.06,
+        Status::Pressed => base + 0.10,
+        _ => base,
+    };
+    sweeten::widget::button::Style {
+        background: Some(iced::Background::Color(iced::Color { a: fill, ..text })),
+        text_color: text,
         border: iced::Border {
             radius: 6.0.into(),
             width: 1.0,
@@ -1018,13 +1054,8 @@ pub fn view<'a>(
         if let Some(t) = self_toggle {
             controls = controls.push(t);
         }
-        // PvP-only: live frame-delay control on the left, built to look identical
-        // to the lobby's (label + slider + numeric readout + "suggest" wand).
-        // Frame delay here is purely local display lag, so it's safe to drag
-        // mid-match — no peer coordination.
-        if let ActiveSession::PvP(pvp) = session {
-            controls = controls.push(frame_delay_control(lang, pvp));
-        }
+        // Frame delay used to live here; it now rides in the match-settings
+        // popover anchored on the telemetry plate (see below).
         controls = controls.push(horizontal_space());
     }
     // PvP-only telemetry deck: P1/P2 tag, TPS, frame skew, rollback
@@ -1116,7 +1147,10 @@ pub fn view<'a>(
             t!(lang, "session-stat-ping"),
         ));
 
-        // Interleave hairline dividers, then wrap in one flat plate.
+        // Interleave hairline dividers, then wrap the deck in one flat
+        // plate. The plate is a button: clicking the instrument panel
+        // toggles the match-settings popover anchored above it. The cells'
+        // own tooltips still fire on hover.
         let mut strip = row![].spacing(6).align_y(Alignment::Center);
         for (i, cell) in cells.into_iter().enumerate() {
             if i > 0 {
@@ -1124,7 +1158,12 @@ pub fn view<'a>(
             }
             strip = strip.push(cell);
         }
-        controls = controls.push(container(strip).padding([3, 9]).style(telemetry_plate));
+        controls = controls.push(
+            button(strip)
+                .padding([3, 9])
+                .style(telemetry_plate_button)
+                .on_press(Message::ToggleMatchSettings),
+        );
     }
     // Opponent setup-reveal toggle (PvP-only) sits to the left of
     // the options trigger so the ellipsis stays the rightmost
@@ -1353,6 +1392,42 @@ pub fn view<'a>(
         None
     };
 
+    // Match-settings popover (PvP-only), anchored above the telemetry
+    // plate that triggers it. Currently holds just the live frame-delay
+    // control (moved here from the footer), but it's the home for any
+    // future in-match knobs. Like the options menu it owns no dismiss
+    // backdrop — clicking the plate again or pressing Esc closes it. No
+    // heading: the frame-delay row already labels itself.
+    let match_settings_overlay: Option<Element<'a, Message>> = match session {
+        ActiveSession::PvP(pvp) if state.show_match_settings => {
+            let popover = container(frame_delay_control(lang, pvp))
+                .padding(12)
+                .style(widgets::panel);
+            // Same lift as the options menu so the popover floats just
+            // above the HUD bar. Right padding aligns the popover's right
+            // edge with the telemetry plate's: controls-container pad (8) +
+            // options button + spacing (10) + opponent toggle + spacing
+            // (10), where each button is CTRL_PAD·2 + CTRL_ICON ≈ 44 wide.
+            let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
+            const PLATE_RIGHT_OFFSET: f32 = 8.0 + 44.0 + 10.0 + 44.0 + 10.0;
+            Some(
+                container(popover)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .align_y(iced::alignment::Vertical::Bottom)
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: PLATE_RIGHT_OFFSET,
+                        bottom: lift,
+                        left: 0.0,
+                    })
+                    .into(),
+            )
+        }
+        _ => None,
+    };
+
     // Disconnect confirmation modal (PvP-only). Centered panel with a
     // dimmed click-to-dismiss backdrop — same shape as app.rs's
     // in-session Settings modal so the two read as the same family
@@ -1411,6 +1486,9 @@ pub fn view<'a>(
 
     let mut stacked = stack![Element::from(layout)];
     if let Some(o) = options_overlay {
+        stacked = stacked.push(o);
+    }
+    if let Some(o) = match_settings_overlay {
         stacked = stacked.push(o);
     }
     if let Some(o) = disconnect_overlay {
