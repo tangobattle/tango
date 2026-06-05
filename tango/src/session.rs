@@ -19,6 +19,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
+use crate::video::framebuffer::Effect;
 use crate::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{container, stack, text};
@@ -407,14 +408,16 @@ impl State {
                         self.show_options_menu = false;
                         self.show_disconnect_confirm = false;
                     } else {
+                        // Upload the native frame as-is; the selected effect
+                        // magnifies it on the GPU at draw time.
                         let pixels = self.vbuf.lock().unwrap().clone();
-                        let (width, height, buf) = build_frame_pixels(pixels, video_filter);
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::video::framebuffer::Frame {
-                            pixels: std::sync::Arc::new(buf),
-                            width,
-                            height,
+                            pixels: std::sync::Arc::new(pixels),
+                            width: replay_session::SCREEN_WIDTH,
+                            height: replay_session::SCREEN_HEIGHT,
                             revision: self.frame_revision,
+                            effect: crate::video::effects::effect_for(video_filter),
                         });
                     }
                 }
@@ -463,32 +466,6 @@ fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
         notify.notified().await;
         Some((Message::UpdateFramebuffer, notify))
     })
-}
-
-/// Snapshot the framebuffer into upload-ready RGBA, applying the configured
-/// upscale filter. Returns `(width, height, pixels)` for
-/// [`crate::video::framebuffer::Frame`]. Called from
-/// [`Message::UpdateFramebuffer`] once per emulator vblank.
-///
-/// Alpha is deliberately *not* stamped here. The per-session frame
-/// callbacks already run `fix_vbuf_alpha` on the emu thread, and the
-/// framebuffer shader forces display alpha to 1.0 regardless — so a second
-/// full-buffer alpha pass on the UI thread would be pure redundancy.
-fn build_frame_pixels(pixels: Vec<u8>, video_filter: &str) -> (u32, u32, Vec<u8>) {
-    let src_w = replay_session::SCREEN_WIDTH as usize;
-    let src_h = replay_session::SCREEN_HEIGHT as usize;
-    // Run the upscale filter selected in settings, if any. Bad /
-    // empty name falls back to NullFilter (pass-through). The filter
-    // structs are zero-sized, so the box never allocates.
-    let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
-    let [out_w, out_h] = filter.output_size([src_w, src_h]);
-    if [out_w, out_h] == [src_w, src_h] {
-        (src_w as u32, src_h as u32, pixels)
-    } else {
-        let mut dst = vec![0u8; out_w * out_h * 4];
-        filter.apply(&pixels, &mut dst, [src_w, src_h]);
-        (out_w as u32, out_h as u32, dst)
-    }
 }
 
 /// Optional iced texture handle for a Game's background art. Pulls
@@ -683,7 +660,7 @@ pub fn view<'a>(
     state: &'a State,
     fractional_scaling: bool,
     hide_emulator_border: bool,
-    video_filter: &'a str,
+    effect: &'static Effect,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
         return iced::widget::Space::new().width(Fill).height(Fill).into();
@@ -692,13 +669,12 @@ pub fn view<'a>(
     // Post-filter framebuffer dimensions. Drive the scale math below;
     // match the (w, h) `build_frame_pixels` stamps into the frame the
     // `framebuffer` shader uploads.
-    let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
-    let [out_w, out_h] = filter.output_size([
-        replay_session::SCREEN_WIDTH as usize,
-        replay_session::SCREEN_HEIGHT as usize,
-    ]);
-    let img_w = out_w as f32;
-    let img_h = out_h as f32;
+    // The widget is sized to native·scale — the same rectangle the old CPU
+    // upscalers produced — and the effect's fragment shader magnifies the
+    // native texture to fill it.
+    let scale = effect.scale;
+    let img_w = (replay_session::SCREEN_WIDTH * scale) as f32;
+    let img_h = (replay_session::SCREEN_HEIGHT * scale) as f32;
 
     // The live framebuffer renders through a custom wgpu shader widget
     // (one persistent GPU texture, written in place each vblank) instead

@@ -1,5 +1,6 @@
 //! GPU presentation of the live emulator framebuffer via a custom iced
-//! `wgpu` shader primitive.
+//! `wgpu` shader primitive, plus a small pluggable **effect** framework that
+//! does upscaling (hqx/mmpx) on the GPU.
 //!
 //! ## Why this exists
 //!
@@ -20,19 +21,23 @@
 //!
 //! ## What this does
 //!
-//! We keep ONE persistent GPU texture sized to the post-filter
+//! We keep ONE persistent GPU texture sized to the **native** 240×160
 //! framebuffer and `queue.write_texture` the new pixels into it once per
 //! frame — no atlas, no per-frame allocate/free, no worker detour. A
 //! `revision` counter lets `prepare` skip the upload entirely when the
 //! same frame is presented twice (e.g. a UI redraw with no new emu frame).
 //!
+//! Upscaling happens on the GPU: each [`Effect`] is a fragment shader that
+//! samples the native texture and magnifies it while drawing (see
+//! `shaders/*.wgsl`). So the uploaded texture is identical for every effect
+//! and only the selected render pipeline changes. The widget is sized to
+//! `native·scale` by the caller (`session::view`), the same rectangle the
+//! old CPU upscalers produced, so the on-screen result matches.
+//!
 //! iced sets the render-pass **viewport** to the widget's bounds before
 //! calling [`Primitive::draw`] (see `iced_wgpu`'s `lib.rs`: `set_viewport`
 //! to `instance.bounds`), so a fullscreen triangle drawn in NDC lands
-//! exactly on the widget with no transform uniform. The widget is sized to
-//! the framebuffer rect by the caller (`session::view`), so the triangle
-//! always fills it; nearest sampling keeps pixels crisp, matching the old
-//! `FilterMethod::Nearest` image.
+//! exactly on the widget with no transform uniform.
 //!
 //! Note: this is a `wgpu`-only widget. On a pure software (`tiny_skia`)
 //! fallback it draws nothing — but Tango already forces a wgpu adapter
@@ -45,34 +50,110 @@ use iced::advanced::mouse;
 use iced::widget::shader::{self, Viewport};
 use iced::Rectangle;
 
-/// The native GBA framebuffer is 240×160; the only thing that grows it is a
-/// CPU upscale filter, whose output size we carry in [`Frame`].
+/// The native GBA framebuffer is 240×160; the uploaded texture is always
+/// native and the selected [`Effect`] magnifies it in the fragment shader.
 const BYTES_PER_PIXEL: u32 = 4;
+
+/// A selectable GPU upscaler, defined as a named constant in
+/// [`crate::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
+/// `config.video_filter` key; `name` is the picker label; `scale` is the
+/// integer magnification the fragment shader emulates (used by
+/// `session::view` to size the widget to the same rectangle the old CPU
+/// upscalers produced). `parts` are the WGSL pieces concatenated into the
+/// shader module — the shared prelude first, then any family prelude, then
+/// the fragment.
+#[derive(Debug, Clone, Copy)]
+pub struct Effect {
+    /// Stable identifier stored in `config.video_filter` ("" = pass-through,
+    /// "hq2x", …); also keys the compiled-pipeline cache.
+    pub id: &'static str,
+    /// Picker label shown in settings.
+    pub name: &'static str,
+    pub scale: u32,
+    /// The ordered WGSL pieces concatenated into the shader module. Built by
+    /// the effect constants in [`crate::video::effects`].
+    pub(crate) parts: &'static [&'static str],
+}
+
+impl Effect {
+    /// Assemble the full WGSL module source for this effect.
+    fn source(&self) -> String {
+        self.parts.join("\n")
+    }
+
+    /// Compile this effect into a render pipeline. Every effect shares the
+    /// `pipeline_layout`, vertex shader, bind group layout, and render-pass
+    /// `target` format from the owning [`Pipeline`]; only the fragment (and
+    /// thus the module) differs.
+    fn build(
+        &self,
+        device: &wgpu::Device,
+        pipeline_layout: &wgpu::PipelineLayout,
+        target: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(&format!("framebuffer shader: {}", self.id)),
+            source: wgpu::ShaderSource::Wgsl(self.source().into()),
+        });
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(&format!("framebuffer pipeline: {}", self.id)),
+            layout: Some(pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            // iced draws custom primitives into the (non-multisampled) surface
+            // pass — sample_count 1, matching its quad pipeline.
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        })
+    }
+}
 
 /// A framebuffer ready to present. Cheap to clone — the pixels live behind
 /// an `Arc`, so [`crate::session::view`] can rebuild this every redraw
 /// without copying. `revision` is monotonic per real frame so the pipeline
 /// can tell "same frame again" (skip upload) from "new frame" (upload).
+/// `effect` selects which render pipeline draws it.
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub pixels: Arc<Vec<u8>>,
     pub width: u32,
     pub height: u32,
     pub revision: u64,
+    pub effect: &'static Effect,
 }
 
 impl Frame {
     /// A 1×1 opaque-black frame for "no frame yet" (between sessions and
-    /// before the first vblank). Sampled nearest over the whole widget it
-    /// reads as a solid black pane — matching the old all-`0xff`-alpha
-    /// placeholder handle. The fixed sentinel revision keeps it from
-    /// re-uploading on every redraw.
+    /// before the first vblank). Sampled over the whole widget it reads as a
+    /// solid black pane. The fixed sentinel revision keeps it from
+    /// re-uploading on every redraw; the pass-through effect draws it plainly.
     pub fn black() -> Self {
         Self {
             pixels: Arc::new(vec![0, 0, 0, 0xff]),
             width: 1,
             height: 1,
             revision: u64::MAX,
+            effect: &crate::video::effects::PASSTHROUGH,
         }
     }
 }
@@ -121,20 +202,30 @@ impl shader::Primitive for Primitive {
         _viewport: &Viewport,
     ) {
         pipeline.upload(device, queue, &self.frame);
+        pipeline.ensure(device, self.frame.effect);
     }
 
     fn draw(&self, pipeline: &Pipeline, render_pass: &mut wgpu::RenderPass<'_>) -> bool {
-        pipeline.draw(render_pass);
+        pipeline.draw(render_pass, self.frame.effect);
         // We drew into the existing pass; tell iced not to call `render`.
         true
     }
 }
 
-/// Persistent wgpu state: the render pipeline + sampler created once, and a
-/// lazily (re)created texture that tracks the current framebuffer size.
+/// Persistent wgpu state: the render pipelines (one per [`Effect`], built
+/// lazily and shared across instances), plus a lazily (re)created texture that
+/// tracks the current framebuffer size.
 #[derive(Debug)]
 pub struct Pipeline {
-    render_pipeline: wgpu::RenderPipeline,
+    /// Compiled pipelines, keyed by [`Effect::id`]. Populated lazily on first
+    /// use (`ensure`) so only the effects actually selected pay their
+    /// shader-compile cost — at startup that's just the pass-through, not the
+    /// three large hqx tables.
+    compiled: std::collections::HashMap<&'static str, wgpu::RenderPipeline>,
+    /// Retained so `ensure` can build pipelines after `new`.
+    pipeline_layout: wgpu::PipelineLayout,
+    /// Render-pass target format, needed for the lazy pipeline builds.
+    target_format: wgpu::TextureFormat,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// Texture storage format, chosen to mirror iced's atlas so our
@@ -164,9 +255,9 @@ impl shader::Pipeline for Pipeline {
         // `format` iced hands us is sRGB in the first case and linear in
         // the second, so we can recover the same choice from its srgb-ness.
         // Sampling an sRGB texture (→linear) and writing to an sRGB target
-        // (linear→sRGB) round-trips to identity, exactly like the old
-        // pass-through image shader; likewise the linear/linear case. This
-        // keeps colors pixel-identical to before in either mode.
+        // (linear→sRGB) round-trips to identity for the pass-through, exactly
+        // like the old image shader; effects compute in that same sampled
+        // space. This keeps the no-filter case pixel-identical to before.
         let texture_format = if format.is_srgb() {
             wgpu::TextureFormat::Rgba8UnormSrgb
         } else {
@@ -195,8 +286,9 @@ impl shader::Pipeline for Pipeline {
             ],
         });
 
-        // Nearest everything — crisp integer-scaled pixels, matching the
-        // old `FilterMethod::Nearest`.
+        // Nearest everything — crisp integer-scaled pixels for the
+        // pass-through. Effects fetch texels directly (`textureLoad`) and
+        // ignore this sampler.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("framebuffer sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -208,50 +300,17 @@ impl shader::Pipeline for Pipeline {
             ..Default::default()
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("framebuffer shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("framebuffer pipeline layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("framebuffer pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            // iced draws custom primitives into the (non-multisampled)
-            // surface pass — sample_count 1, matching its quad pipeline.
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
         Self {
-            render_pipeline,
+            // Built lazily in `ensure` as effects are selected.
+            compiled: std::collections::HashMap::new(),
+            pipeline_layout,
+            target_format: format,
             bind_group_layout,
             sampler,
             texture_format,
@@ -262,9 +321,9 @@ impl shader::Pipeline for Pipeline {
 
 impl Pipeline {
     /// Ensure a texture of the right size exists and holds `frame`'s pixels.
-    /// (Re)creates the texture when the framebuffer size changes (e.g. the
-    /// user switches upscale filter), and uploads only when the resident
-    /// revision differs from the frame's.
+    /// The framebuffer texture is always native (240×160) now — only a
+    /// resolution change (never, in practice) would resize it — and uploads
+    /// only when the resident revision differs from the frame's.
     fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &Frame) {
         let needs_new = match &self.texture {
             Some(t) => t.width != frame.width || t.height != frame.height,
@@ -340,48 +399,30 @@ impl Pipeline {
         tex.revision = Some(frame.revision);
     }
 
+    /// Compile `effect`'s pipeline if it hasn't been built yet (deferring the
+    /// large hqx WGSL until the effect is first selected). Called from
+    /// `prepare`, before `draw`.
+    fn ensure(&mut self, device: &wgpu::Device, effect: &'static Effect) {
+        if self.compiled.contains_key(effect.id) {
+            return;
+        }
+        let pipeline = effect.build(device, &self.pipeline_layout, self.target_format);
+        self.compiled.insert(effect.id, pipeline);
+    }
+
     /// Draw the framebuffer as a fullscreen triangle into iced's render
-    /// pass. The pass viewport is already set to the widget bounds, so NDC
-    /// maps onto the widget.
-    fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+    /// pass, using the pipeline for `effect`. The pass viewport is already
+    /// set to the widget bounds, so NDC maps onto the widget.
+    fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>, effect: &'static Effect) {
         let Some(tex) = self.texture.as_ref() else {
             return;
         };
-        render_pass.set_pipeline(&self.render_pipeline);
+        // Built by `ensure` in `prepare`, which iced runs before `draw`.
+        let Some(pipeline) = self.compiled.get(effect.id) else {
+            return;
+        };
+        render_pass.set_pipeline(pipeline);
         render_pass.set_bind_group(0, &tex.bind_group, &[]);
         render_pass.draw(0..3, 0..1);
     }
 }
-
-/// Fullscreen-triangle pass-through. The vertex shader synthesizes the
-/// triangle from `vertex_index` (no vertex buffer); UV origin is top-left
-/// so texture row 0 renders at the top, matching the old image widget.
-const SHADER: &str = r#"
-struct VsOut {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) index: u32) -> VsOut {
-    var out: VsOut;
-    let uv = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
-    out.position = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
-    out.uv = uv;
-    return out;
-}
-
-@group(0) @binding(0) var fb_texture: texture_2d<f32>;
-@group(0) @binding(1) var fb_sampler: sampler;
-
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    // The GBA framebuffer is always opaque, so force alpha to 1.0 here. This
-    // decouples display opacity from any CPU-side alpha handling, letting the
-    // redundant per-frame alpha-stamp pass in `build_frame_pixels` go away.
-    // RGB is unaffected by the stored alpha: textures hold straight
-    // (non-premultiplied) values, so sampling returns RGB regardless of the
-    // alpha byte.
-    return vec4<f32>(textureSample(fb_texture, fb_sampler, in.uv).rgb, 1.0);
-}
-"#;

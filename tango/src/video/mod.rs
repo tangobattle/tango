@@ -1,59 +1,10 @@
-//! Software upscale filters applied to each emulator frame
-//! before it's uploaded to the GPU. Ported from
-//! `tango/src/video.rs`. The selected filter is owned by the
-//! session module, which pipes its output into iced's
-//! `image::Handle::from_rgba`.
+//! Live emulator video presentation.
 //!
-//! `NullFilter` is the always-available pass-through.
+//! The native 240×160 frame is uploaded to a persistent GPU texture and drawn
+//! through a pluggable WGSL [`framebuffer::Effect`] that does any upscaling
+//! (hqx/mmpx) on the GPU. The CPU upscalers that used to run on the UI thread
+//! each vblank are gone — the workspace `hqx`/`mmpx` crates remain in-tree but
+//! are no longer used here.
 
+pub mod effects;
 pub mod framebuffer;
-pub mod hqx;
-pub mod mmpx;
-
-pub trait Filter {
-    fn output_size(&self, size: [usize; 2]) -> [usize; 2];
-    fn apply(&self, input: &[u8], output: &mut [u8], size: [usize; 2]);
-}
-
-pub struct NullFilter;
-impl Filter for NullFilter {
-    fn output_size(&self, size: [usize; 2]) -> [usize; 2] {
-        size
-    }
-    fn apply(&self, input: &[u8], output: &mut [u8], _size: [usize; 2]) {
-        output.copy_from_slice(input)
-    }
-}
-
-/// Same registry as the legacy app. Empty string = "null" =
-/// nearest-neighbor pass-through. Unknown names return `None`.
-pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
-    match name {
-        "null" | "" => Some(Box::new(NullFilter)),
-        "hq2x" => Some(Box::new(hqx::HQ2XFilter)),
-        "hq3x" => Some(Box::new(hqx::HQ3XFilter)),
-        "hq4x" => Some(Box::new(hqx::HQ4XFilter)),
-        "mmpx" => Some(Box::new(mmpx::MMPXFilter)),
-        _ => None,
-    }
-}
-
-/// Display names of every filter, in pick-list order. The first
-/// entry is the canonical "no filter" label.
-///
-/// HQ4X is implemented (`filter_by_name("hq4x")` still works) but
-/// omitted from the picker. The old reason was renderer flicker:
-/// the iced `image` path minted a fresh `Id::unique()` per frame and
-/// re-uploaded the full 2.4 MB texture 60×/sec, racing the vsync-off
-/// present. That's gone now — [`framebuffer`] presents through a
-/// persistent GPU texture (one in-place `write_texture` per frame).
-/// HQ4X stays hidden because its 4×4 = 16× CPU upscale is the kind of
-/// per-frame cost slower machines can't afford; doing the scaling on
-/// the GPU instead would be the way to surface it cheaply.
-pub const FILTERS: &[(&str, &str)] = &[
-    ("", "—"),
-    ("hq2x", "hq2x"),
-    ("hq3x", "hq3x"),
-    ("hq4x", "hq4x"),
-    ("mmpx", "mmpx"),
-];

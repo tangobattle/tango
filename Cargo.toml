@@ -3,10 +3,8 @@ resolver = "2"
 members = [
     "bps",
     "datachannel-wrapper",
-    "hqx",
     "input-helper",
     "mgba",
-    "mmpx",
     "getgud",
     "tango",
     "tango-dataview",

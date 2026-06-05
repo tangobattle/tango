@@ -84,10 +84,11 @@ pub struct Config {
     /// in the Patches tab working.
     #[serde(default = "default_true")]
     pub enable_patch_autoupdate: bool,
-    /// Upscaler applied to each emulator frame before it's
-    /// uploaded to the GPU. Empty / "null" = nearest-neighbor
+    /// GPU upscale effect applied to the emulator frame while it's
+    /// drawn (the native frame is uploaded once and magnified in the
+    /// fragment shader). Empty = nearest-neighbor pass-through
     /// (default). Other values: "hq2x", "hq3x", "hq4x", "mmpx".
-    /// See `video::filter_by_name`.
+    /// See `video::framebuffer::EFFECTS`.
     #[serde(default)]
     pub video_filter: String,
     /// When true, the emulator frame uses the full fractional

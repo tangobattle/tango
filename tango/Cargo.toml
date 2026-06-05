@@ -112,10 +112,6 @@ anyhow = "1"
 crash-handler = "0.6"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
-# Software upscale filters for the emulator framebuffer. Match
-# the legacy crates pinned in tango/Cargo.toml.
-hqx = { path = "../hqx" }
-mmpx = { path = "../mmpx" }
 # Discord rich-presence IPC client (ported from legacy
 # tango/src/discord). byteorder + bytes for the framing layer,
 # num-derive/num-traits for the opcode enum, serde-hex for the

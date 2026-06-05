@@ -1775,15 +1775,14 @@ impl App {
                 // edits changed the save our commitment was made over — re-commit
                 // so the opponent gets the new commitment (and chunks) instead of
                 // a hash of our pre-edit save.
-                let recommit = if matches!(self.netplay.phase, netplay::Phase::Lobby { .. })
-                    && self.netplay.lobby.local_ready
-                {
-                    self.netplay
-                        .update(netplay::Message::Commit { save_sram: sram })
-                        .map(Message::Netplay)
-                } else {
-                    iced::Task::none()
-                };
+                let recommit =
+                    if matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) && self.netplay.lobby.local_ready {
+                        self.netplay
+                            .update(netplay::Message::Commit { save_sram: sram })
+                            .map(Message::Netplay)
+                    } else {
+                        iced::Task::none()
+                    };
                 // Reconcile the scanner cache with the new on-disk bytes (the
                 // in-memory loaded is already current, so refresh_loaded will
                 // early-return and keep it).
@@ -2298,7 +2297,7 @@ impl App {
                 &self.session,
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
-                &self.config.video_filter,
+                crate::video::effects::effect_for(&self.config.video_filter),
             )
             .map(Message::Session);
             // In-session settings modal: floats centered over the

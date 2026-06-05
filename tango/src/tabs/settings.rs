@@ -528,11 +528,11 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
                 .style(widgets::chunky_pick_list),
         ),
         labeled::<Message>(t!(lang, "settings-video-filter"), {
-            let options: Vec<VideoFilterChoice> = crate::video::FILTERS
+            let options: Vec<VideoFilterChoice> = crate::video::effects::EFFECTS
                 .iter()
-                .map(|(k, d)| VideoFilterChoice {
-                    key: (*k).into(),
-                    display: (*d).into(),
+                .map(|effect| VideoFilterChoice {
+                    key: effect.id.into(),
+                    display: effect.name.into(),
                 })
                 .collect();
             let selected = options.iter().find(|c| c.key == config.video_filter).cloned();
@@ -559,10 +559,9 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
 fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     // Clamp the displayed value so a stale out-of-range config still lands the
     // slider handle inside the track.
-    let frame_delay = config.frame_delay.clamp(
-        tango_pvp::battle::MIN_FRAME_DELAY,
-        tango_pvp::battle::MAX_FRAME_DELAY,
-    );
+    let frame_delay = config
+        .frame_delay
+        .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
     column![
         labeled::<Message>(
             t!(lang, "settings-matchmaking-endpoint"),
