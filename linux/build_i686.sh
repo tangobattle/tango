@@ -14,14 +14,14 @@ chmod a+x appimagetool-i686.AppImage
 
 # Build Linux binaries.
 target_arch="i686"
-cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --release
+cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --profile release-dist
 
 # Assemble AppImage stuff.
 mkdir -p "tango_linux_workdir/${target_arch}/bin"
 cp tango/src/icon.png tango_linux_workdir/tango.png
 cp linux/AppRun tango_linux_workdir/AppRun
 cp linux/tango.desktop tango_linux_workdir/tango.desktop
-cp "target/${target_arch}-unknown-linux-gnu/release/tango" "tango_linux_workdir/${target_arch}/bin/tango"
+cp "target/${target_arch}-unknown-linux-gnu/release-dist/tango" "tango_linux_workdir/${target_arch}/bin/tango"
 
 # Bundle ffmpeg.
 ffmpeg_version="6.0"

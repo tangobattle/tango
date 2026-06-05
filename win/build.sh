@@ -40,7 +40,7 @@ rm -rf Tango.iconset
 
 # Build Windows binaries. MSVC target — statically links the MSVC
 # runtime so no mingw DLL bundling is needed.
-cargo build --bin tango --release --target x86_64-pc-windows-msvc
+cargo build --bin tango --profile release-dist --target x86_64-pc-windows-msvc
 
 # Build installer.
 mkdir tango_win_workdir
@@ -49,7 +49,7 @@ tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/installer.nsi.mako" >tang
 pushd tango_win_workdir
 
 cp ../tango/icon.ico .
-cp ../target/x86_64-pc-windows-msvc/release/tango.exe .
+cp ../target/x86_64-pc-windows-msvc/release-dist/tango.exe .
 
 angle_zip_url="https://github.com/google/gfbuild-angle/releases/download/github%2Fgoogle%2Fgfbuild-angle%2Ff810e998993290f049bbdad4fae975e4867100ad/gfbuild-angle-f810e998993290f049bbdad4fae975e4867100ad-Windows_x64_Release.zip"
 curl -L -o angle.zip "${angle_zip_url}"

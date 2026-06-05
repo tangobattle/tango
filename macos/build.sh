@@ -30,9 +30,9 @@ iconutil -c icns Tango.iconset --output Tango.app/Contents/Resources/Tango.icns
 rm -rf Tango.iconset
 
 # Build macOS binaries.
-cargo build --bin tango --target=aarch64-apple-darwin --release
-cargo build --bin tango --target=x86_64-apple-darwin --release
-lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -output Tango.app/Contents/MacOS/tango
+cargo build --bin tango --target=aarch64-apple-darwin --profile release-dist
+cargo build --bin tango --target=x86_64-apple-darwin --profile release-dist
+lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release-dist/tango -output Tango.app/Contents/MacOS/tango
 
 ffmpeg_version="6.0"
 

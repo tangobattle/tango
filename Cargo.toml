@@ -15,15 +15,19 @@ members = [
     "tango-signaling",
 ]
 
-# No profile section previously existed, so release builds used Cargo's
-# defaults (lto = false, codegen-units = 16). For a CPU-bound emulator the
-# hot Rust paths (mgba fastforwarder, getgud rollback, stepper, hqx/mmpx
-# upscalers) benefit measurably from cross-crate inlining. Thin LTO gets
-# most of fat LTO's runtime win at a fraction of the build-time cost;
+# `release` keeps Cargo's defaults (lto = false, codegen-units = 16) so
+# iterative release builds and `cargo run --release` stay cheap. Shipped
+# binaries use the `release-dist` profile below — the platform build scripts
+# (win/macos/linux) pass `--profile release-dist`.
+#
+# For a CPU-bound emulator the hot Rust paths (mgba fastforwarder, getgud
+# rollback, stepper) benefit measurably from cross-crate inlining. Thin LTO
+# gets most of fat LTO's runtime win at a fraction of the build-time cost;
 # codegen-units = 1 maximizes per-crate optimization of the tight loops.
-# mgba's C side is unaffected (it's a separate cmake static lib already
-# built -O3 -DNDEBUG).
-[profile.release]
+# mgba's C side is unaffected (it's a separate cmake static lib already built
+# -O3 -DNDEBUG).
+[profile.release-dist]
+inherits = "release"
 lto = "thin"
 codegen-units = 1
 
