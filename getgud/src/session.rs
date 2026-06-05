@@ -100,7 +100,6 @@ pub struct Session<W: World> {
     settled_tick: u32,
     speculative_state: Option<W::State>,
 
-    last_remote_received_tick: u32,
     last_remote_tick_advantage: i16,
 }
 
@@ -129,7 +128,6 @@ impl<W: World> Session<W> {
             settled_state: initial_state,
             settled_tick: 0,
             speculative_state: None,
-            last_remote_received_tick: 0,
             last_remote_tick_advantage: 0,
         }
     }
@@ -171,6 +169,13 @@ impl<W: World> Session<W> {
     /// Propagates any [`W::Error`](World::Error) returned by the
     /// [`Simulator`](crate::Simulator).
     pub fn advance(&mut self, local_input: W::Input) -> Result<Frame<'_, W>, W::Error> {
+        // Sample the clock-sync skew before enqueuing this tick's local input.
+        // `local_tick_advantage` reads the queue's signed lead, so it has to be
+        // taken at the same point the peer reads the value we ship them (before
+        // their own `advance`); pushing the local input first would bias our
+        // half of the skew up by one.
+        let skew = self.local_tick_advantage() as i32 - self.last_remote_tick_advantage as i32;
+
         self.input_queue.add_local_input(local_input);
 
         let (committable, unmatched_locals) = self.input_queue.drain_matched();
@@ -181,8 +186,6 @@ impl<W: World> Session<W> {
 
         let settled_target = target.min(self.commit_frontier.saturating_sub(1));
         self.settle_to(settled_target)?;
-
-        let skew = self.local_tick_advantage() as i32 - self.last_remote_tick_advantage as i32;
 
         self.frontier += 1;
 
@@ -223,16 +226,15 @@ impl<W: World> Session<W> {
         self.input_queue.remote_queue_length()
     }
 
-    /// How far the local frontier is ahead of the most recently received remote
-    /// input, in ticks (saturated to [`i16`]).
+    /// How far local input leads remote input, in ticks (clamped to [`i16`]).
     ///
-    /// This is each peer's half of the clock-sync handshake: you send it to the
-    /// remote with every input, and the remote's value comes back via
-    /// [`add_remote_input`](Session::add_remote_input). The difference of the two
-    /// is the [`skew`](Frame::skew) used to keep the simulations aligned.
+    /// This is the input queue's signed [`lead`](crate::Queue::lead), surfaced
+    /// for clock sync. It is each peer's half of the clock-sync handshake: you
+    /// send it to the remote with every input, and the remote's value comes back
+    /// via [`add_remote_input`](Session::add_remote_input). The difference of the
+    /// two is the [`skew`](Frame::skew) used to keep the simulations aligned.
     pub fn local_tick_advantage(&self) -> i16 {
-        let diff = self.frontier as i32 - self.last_remote_received_tick as i32;
-        diff.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+        self.input_queue.lead().clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
     /// The tick advantage the remote peer last reported (via the
@@ -241,29 +243,28 @@ impl<W: World> Session<W> {
         self.last_remote_tick_advantage
     }
 
-    /// How deep the speculative tail of the latest presented frame is — the
-    /// number of ticks simulated with *predicted* remote input to render it.
+    /// The signed balance of the latest presented frame around the speculation
+    /// boundary — `lead - present_delay`, spanning both the speculative-depth
+    /// and headroom sides so a single value covers both. (Floor the positive
+    /// side for the plain speculative depth; negate and floor the other for the
+    /// headroom.)
     ///
     /// This is *not* the raw local-over-remote lead. The presented frame is
     /// `frontier - present_delay`, so the present delay absorbs the first
     /// `present_delay` ticks of lead before any speculation is needed; only the
-    /// excess is actually rendered into the speculative tail. So it's
-    /// `lead - present_delay`, saturating at 0 — and 0 means the presented frame
-    /// is fully confirmed.
-    pub fn speculation_depth(&self) -> u32 {
-        (self.input_queue.lead() as u32).saturating_sub(self.present_delay)
-    }
-
-    /// How many more ticks of lead we can take before the presented frame has to
-    /// speculate at all — the speculation-free buffer.
+    /// excess is actually rendered into the speculative tail. So:
     ///
-    /// The complement of [`speculation_depth`](Session::speculation_depth) about
-    /// the present delay: `present_delay - lead`, saturating at 0 once we're
-    /// already speculating. Useful for clock-sync leniency: a positive
-    /// [`skew`](Frame::skew) only starts costing presentation quality once this
-    /// hits 0.
-    pub fn speculation_headroom(&self) -> u32 {
-        self.present_delay.saturating_sub(self.input_queue.lead() as u32)
+    /// * positive — the presented frame speculates that many ticks past the last
+    ///   confirmed input;
+    /// * zero — the frame is confirmed and sitting exactly at the boundary;
+    /// * negative — the frame is confirmed with `-balance` ticks of *headroom*
+    ///   (speculation-free buffer) still to spend before speculation begins.
+    ///
+    /// Clock-sync leniency keys off the negative range: a positive
+    /// [`skew`](Frame::skew) only starts costing presentation quality once the
+    /// balance reaches 0, so callers take `(-balance).max(0)` for the headroom.
+    pub fn speculation_balance(&self) -> i32 {
+        self.input_queue.lead().max(0) - self.present_delay as i32
     }
 
     /// Record an input received from the remote peer.
@@ -277,7 +278,6 @@ impl<W: World> Session<W> {
     /// on the next [`advance`](Session::advance).
     pub fn add_remote_input(&mut self, input: W::Input, tick_advantage: i16) {
         self.input_queue.add_remote_input(input);
-        self.last_remote_received_tick = self.last_remote_received_tick.wrapping_add(1);
         self.last_remote_tick_advantage = tick_advantage;
     }
 

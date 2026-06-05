@@ -136,14 +136,11 @@ impl Round {
         self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
     }
 
+    /// Speculative rollback depth shown in the UI: the positive side of the
+    /// engine's signed [`speculation_balance`](getgud::Session::speculation_balance),
+    /// floored at 0 (negative balance is headroom, which reads as no rollback risk).
     pub fn speculation_depth(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.speculation_depth())
-    }
-
-    /// Ticks of lead we can still take before the presented frame must
-    /// speculate. See [`Session::speculation_headroom`](getgud::Session::speculation_headroom).
-    pub fn speculation_headroom(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.speculation_headroom())
+        self.session.as_ref().map_or(0, |s| s.speculation_balance().max(0) as u32)
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -189,12 +186,13 @@ impl Round {
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
         // Leniency: a positive skew only actually costs us once the *presented*
-        // frame has to speculate. `speculation_headroom` is the lead (in ticks)
-        // we can still take while every presented frame stays fully confirmed —
-        // free buffer to grow into. Absorb that buffer before slowing down, so we
-        // stop fighting a harmless lead. As the headroom shrinks the throttle
-        // tightens, and once we're actually speculating (headroom → 0) this is
-        // exactly the old raw-skew behavior.
+        // frame has to speculate. Negative `speculation_balance` is the lead (in
+        // ticks) we can still take while every presented frame stays fully
+        // confirmed — free buffer to grow into; `(-balance).max(0)` is that
+        // headroom. Absorb that buffer before slowing down, so we stop fighting
+        // a harmless lead. As the headroom shrinks the throttle tightens, and
+        // once we're actually speculating (headroom → 0) this is exactly the old
+        // raw-skew behavior.
         //
         // The factor of 2: skew = local_advantage − remote_advantage, and those
         // are mirror images of the same frontier gap (we count ourselves +1
@@ -204,10 +202,10 @@ impl Round {
         // headroom by 2 matches that, easing the throttle until ~halfway into
         // the speculation-free buffer, then tightening to raw-skew as
         // headroom → 0.
-        let headroom = session.speculation_headroom();
+        let headroom = (-session.speculation_balance()).max(0);
         // Smooth the buffered skew into a slowdown below our nominal rate, then
         // turn that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(skew - 2 * headroom as i32);
+        let slowdown = self.throttler.step(skew - 2 * headroom);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

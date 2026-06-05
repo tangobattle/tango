@@ -50,16 +50,21 @@ where
         self.remote_queue.len()
     }
 
-    /// How many ticks local input leads remote input — the number of local
-    /// inputs that currently have no matching remote input.
+    /// How many ticks local input leads remote input, signed: positive when the
+    /// local queue is longer (local ahead of remote), negative when received
+    /// remote inputs have piled up past the local ones (local behind).
     ///
-    /// This is the *raw* lead, not the speculation depth. The queue has no
-    /// notion of present delay, which buffers the first `present_delay` ticks of
-    /// the lead before any of it has to be rendered speculatively; only the
-    /// excess is. See [`Session::speculation_depth`](crate::Session::speculation_depth)
-    /// for the depth actually speculated.
-    pub fn lead(&self) -> usize {
-        self.local_queue.len().saturating_sub(self.remote_queue.len())
+    /// This is the *raw* lead, not the speculation depth, and it can go
+    /// negative — callers that want only the non-negative lead (e.g. speculation
+    /// math) take `.max(0)`. The queue has no notion of present delay, which
+    /// buffers the first `present_delay` ticks of the lead before any of it has
+    /// to be rendered speculatively; only the excess is. See
+    /// [`Session::speculation_balance`](crate::Session::speculation_balance) for
+    /// the depth actually speculated, and
+    /// [`Session::local_tick_advantage`](crate::Session::local_tick_advantage),
+    /// which surfaces this as one half of the clock-sync skew.
+    pub fn lead(&self) -> i32 {
+        self.local_queue.len() as i32 - self.remote_queue.len() as i32
     }
 
     /// Pull every tick for which both players' inputs are now present.
