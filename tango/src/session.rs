@@ -20,7 +20,6 @@ use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
 use crate::widgets;
-use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{container, stack, text};
 use iced::{Alignment, Element, Fill, Length};
@@ -73,19 +72,6 @@ impl ActiveSession {
             Self::SinglePlayer(s) => s.game(),
             Self::PvP(s) => s.game(),
         }
-    }
-}
-
-/// Number of recent samples each PvP footer sparkline retains (~3 s at
-/// 60 fps). Cheap to clone per frame; old samples drop off the front.
-const HISTORY_LEN: usize = 180;
-
-/// Append a sample to a sparkline window, trimming the oldest to keep
-/// it within [`HISTORY_LEN`].
-fn push_history(buf: &mut std::collections::VecDeque<f32>, v: f32) {
-    buf.push_back(v);
-    while buf.len() > HISTORY_LEN {
-        buf.pop_front();
     }
 }
 
@@ -157,15 +143,6 @@ pub struct State {
     /// framebuffer pipeline can skip re-uploading when the same frame
     /// is presented twice (a UI redraw with no new emu frame).
     pub frame_revision: u64,
-    /// PvP-only rolling sample windows feeding the footer sparklines.
-    /// Pushed once per frame in [`Message::UpdateFramebuffer`], capped
-    /// to [`HISTORY_LEN`], and cleared when the session tears down.
-    /// `tps`/`ping` accrue every frame; `skew`/`depth` only while a
-    /// round is live (i.e. `round_stats()` is `Some`).
-    pub pvp_tps_history: std::collections::VecDeque<f32>,
-    pub pvp_ping_history: std::collections::VecDeque<f32>,
-    pub pvp_skew_history: std::collections::VecDeque<f32>,
-    pub pvp_depth_history: std::collections::VecDeque<f32>,
 }
 
 impl Default for State {
@@ -187,10 +164,6 @@ impl Default for State {
             show_disconnect_confirm: false,
             current_frame: None,
             frame_revision: 0,
-            pvp_tps_history: std::collections::VecDeque::new(),
-            pvp_ping_history: std::collections::VecDeque::new(),
-            pvp_skew_history: std::collections::VecDeque::new(),
-            pvp_depth_history: std::collections::VecDeque::new(),
         }
     }
 }
@@ -433,10 +406,6 @@ impl State {
                         self.current_frame = None;
                         self.show_options_menu = false;
                         self.show_disconnect_confirm = false;
-                        self.pvp_tps_history.clear();
-                        self.pvp_ping_history.clear();
-                        self.pvp_skew_history.clear();
-                        self.pvp_depth_history.clear();
                     } else {
                         let pixels = self.vbuf.lock().unwrap().clone();
                         let (width, height, buf) = build_frame_pixels(pixels, video_filter);
@@ -447,19 +416,6 @@ impl State {
                             height,
                             revision: self.frame_revision,
                         });
-                        // Sample the live PvP metrics into the footer
-                        // sparkline windows, once per emulator frame.
-                        if let ActiveSession::PvP(pvp) = session {
-                            let tps = pvp.tps();
-                            let ping = pvp.latency_blocking().as_secs_f64() as f32 * 1000.0;
-                            let stats = pvp.round_stats();
-                            push_history(&mut self.pvp_tps_history, tps);
-                            push_history(&mut self.pvp_ping_history, ping);
-                            if let Some(s) = stats {
-                                push_history(&mut self.pvp_skew_history, s.skew as f32);
-                                push_history(&mut self.pvp_depth_history, s.depth as f32);
-                            }
-                        }
                     }
                 }
             }
@@ -648,171 +604,22 @@ fn stat_tone_color(theme: &iced::Theme, tone: StatTone) -> iced::Color {
     }
 }
 
-/// Tiny historical line chart for one PvP metric. Strokes the recent
-/// sample window across a small rect, tinted by the current health
-/// `tone`, over a faint backing + area fill so it reads as a chart at
-/// thumbnail size. `baseline` draws a faint reference rule (used by
-/// skew for the zero line). Owns its samples — the window is tiny —
-/// so the produced Element is `'static`, like the scrubber canvas.
-struct Sparkline {
-    samples: Vec<f32>,
-    min: f32,
-    max: f32,
-    baseline: Option<f32>,
-    tone: StatTone,
-    width: f32,
-    height: f32,
-}
-
-impl Sparkline {
-    fn view(self) -> Element<'static, Message> {
-        let (w, h) = (self.width, self.height);
-        Canvas::new(self)
-            .width(Length::Fixed(w))
-            .height(Length::Fixed(h))
-            .into()
-    }
-}
-
-impl canvas::Program<Message> for Sparkline {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &iced::Renderer,
-        theme: &iced::Theme,
-        bounds: iced::Rectangle,
-        _cursor: iced::mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = Frame::new(renderer, bounds.size());
-        let w = bounds.width;
-        let h = bounds.height;
-        let color = stat_tone_color(theme, self.tone);
-
-        // Faint backing so the chart reads as its own little panel.
-        let bg = Path::rounded_rectangle(iced::Point::new(0.0, 0.0), iced::Size::new(w, h), 2.0.into());
-        frame.fill(
-            &bg,
-            iced::Color {
-                a: 0.08,
-                ..widgets::muted_color(theme)
-            },
-        );
-
-        // Value→y mapping (inverted: high value near the top), padded
-        // a touch so peaks/troughs don't clip the edges.
-        let span = (self.max - self.min).max(1e-3);
-        let pad = 1.5;
-        let y_of = |v: f32| {
-            let t = ((v - self.min) / span).clamp(0.0, 1.0);
-            pad + (1.0 - t) * (h - 2.0 * pad)
-        };
-
-        if let Some(bv) = self.baseline {
-            let by = y_of(bv);
-            frame.fill_rectangle(
-                iced::Point::new(0.0, by - 0.5),
-                iced::Size::new(w, 1.0),
-                iced::Color {
-                    a: 0.25,
-                    ..widgets::muted_color(theme)
-                },
-            );
-        }
-
-        let n = self.samples.len();
-        if n >= 2 {
-            let dx = w / (n - 1) as f32;
-            let pts: Vec<iced::Point> = self
-                .samples
-                .iter()
-                .enumerate()
-                .map(|(i, &v)| iced::Point::new(i as f32 * dx, y_of(v)))
-                .collect();
-
-            // Soft area fill under the trace.
-            let area = Path::new(|b| {
-                b.move_to(iced::Point::new(pts[0].x, h));
-                for p in &pts {
-                    b.line_to(*p);
-                }
-                b.line_to(iced::Point::new(pts[n - 1].x, h));
-                b.close();
-            });
-            frame.fill(&area, iced::Color { a: 0.16, ..color });
-
-            // The trace itself.
-            let line = Path::new(|b| {
-                b.move_to(pts[0]);
-                for p in &pts[1..] {
-                    b.line_to(*p);
-                }
-            });
-            frame.stroke(
-                &line,
-                Stroke::default()
-                    .with_color(color)
-                    .with_width(1.5)
-                    .with_line_cap(LineCap::Round),
-            );
-        }
-
-        vec![frame.into_geometry()]
-    }
-}
-
-/// One metric cell: a label `icon`, the current value, then its
-/// sparkline. The whole cell — icon, value, and chart — is color-coded
-/// by the health `tone`. `baseline` is forwarded to the chart (skew
-/// passes `Some(0.0)` for a centered zero rule; the rest pass `None`).
-fn sparkline_cell<'a>(
-    icon: Icon,
-    samples: Vec<f32>,
-    min: f32,
-    max: f32,
-    baseline: Option<f32>,
-    tone: StatTone,
-    value: String,
-) -> Element<'a, Message> {
+/// One telemetry cell: a label `icon` and the current `value`, both
+/// color-coded by the health `tone`.
+fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Message> {
     let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(stat_tone_color(theme, tone)),
     };
-    let chart = Sparkline {
-        samples,
-        min,
-        max,
-        baseline,
-        tone,
-        width: 46.0,
-        height: 16.0,
-    }
-    .view();
-    let value = text(value).size(TEXT_BODY).font(iced::Font::MONOSPACE).style(tone_style);
     row![
         icon.widget().size(TEXT_BODY).style(tone_style),
-        value,
-        chart
+        text(value)
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE)
+            .style(tone_style),
     ]
     .spacing(5)
     .align_y(Alignment::Center)
     .into()
-}
-
-/// Min/max of a sample window, padded; falls back to `(0, 1)` when the
-/// window is empty. Used to auto-scale a sparkline with no fixed range.
-fn range_of(samples: &[f32], pad: f32) -> (f32, f32) {
-    let mut lo = f32::INFINITY;
-    let mut hi = f32::NEG_INFINITY;
-    for &v in samples {
-        lo = lo.min(v);
-        hi = hi.max(v);
-    }
-    if lo.is_finite() && hi.is_finite() {
-        (lo - pad, hi + pad)
-    } else {
-        (0.0, 1.0)
-    }
 }
 
 /// P1/P2 identity tag sitting beside the instrument cluster. Plain
@@ -1246,10 +1053,8 @@ pub fn view<'a>(
 
         let mut cells: Vec<Element<'a, Message>> = Vec::new();
 
-        // TPS: trace vs. target, colored by how well the emulator keeps
-        // up — green at/near rate, amber as it dips, red when it falls
-        // well behind (visible netplay stutter). Scaled so a ~15 fps
-        // drop spans the chart height.
+        // TPS: current rate vs target — green at/near rate, amber as it
+        // dips, red when it falls well behind (visible netplay stutter).
         let tps_tone = if fps_target <= 0.0 {
             StatTone::Muted
         } else if tps >= fps_target - 1.0 {
@@ -1259,72 +1064,38 @@ pub fn view<'a>(
         } else {
             StatTone::Bad
         };
-        let tps_samples: Vec<f32> = state.pvp_tps_history.iter().copied().collect();
-        let (tps_lo, tps_hi) = if fps_target > 0.0 {
-            ((fps_target - 15.0).max(0.0), fps_target + 1.0)
-        } else {
-            range_of(&tps_samples, 1.0)
-        };
-        cells.push(sparkline_cell(
+        cells.push(stat_cell(
             Icon::Gauge,
-            tps_samples,
-            tps_lo,
-            tps_hi,
-            None,
             tps_tone,
             format!("{:.2}/{:.2}", tps, fps_target),
         ));
 
         if let Some(s) = stats {
-            // Skew: trace centered on a zero rule (above = ahead, below
-            // = behind), colored by how tight the sync is — green near
-            // parity, amber drifting, red far out. Symmetric scale, at
-            // least ±4 frames so small skews don't fill the chart.
+            // Skew: how tight the sync is — green near parity, amber
+            // drifting, red far out, by |skew| in frames.
             let skew_tone = match s.skew.unsigned_abs() {
-                0..=1 => StatTone::Good,
-                2..=5 => StatTone::Warn,
+                0..=3 => StatTone::Good,
+                4..=7 => StatTone::Warn,
                 _ => StatTone::Bad,
             };
-            let skew_samples: Vec<f32> = state.pvp_skew_history.iter().copied().collect();
-            let skew_m = skew_samples.iter().fold(4.0_f32, |m, &v| m.max(v.abs()));
             let skew_label = if s.skew == 0 {
                 "  0".to_string()
             } else {
                 format!("{:>+3}", s.skew)
             };
-            cells.push(sparkline_cell(
-                Icon::ArrowLeftRight,
-                skew_samples,
-                -skew_m,
-                skew_m,
-                Some(0.0),
-                skew_tone,
-                skew_label,
-            ));
+            cells.push(stat_cell(Icon::ArrowLeftRight, skew_tone, skew_label));
 
             // Rollback depth: lower = tighter prediction. Green when
-            // shallow, amber as it climbs, red when speculation runs
-            // deep. Scaled from 0 to at least 4.
+            // shallow, amber as it climbs, red when speculation runs deep.
             let depth_tone = match s.depth {
-                0..=1 => StatTone::Good,
-                2..=5 => StatTone::Warn,
+                0..=2 => StatTone::Good,
+                3..=5 => StatTone::Warn,
                 _ => StatTone::Bad,
             };
-            let depth_samples: Vec<f32> = state.pvp_depth_history.iter().copied().collect();
-            let depth_hi = depth_samples.iter().fold(4.0_f32, |m, &v| m.max(v));
-            cells.push(sparkline_cell(
-                Icon::Layers2,
-                depth_samples,
-                0.0,
-                depth_hi,
-                None,
-                depth_tone,
-                format!("{:>2}", s.depth),
-            ));
+            cells.push(stat_cell(Icon::Layers2, depth_tone, format!("{:>2}", s.depth)));
         }
 
-        // Ping: trace from 0 to the window peak (with headroom) so
-        // spikes stand out, colored by latency band.
+        // Ping: latency band.
         let ping_tone = if ping_ms < 80 {
             StatTone::Good
         } else if ping_ms < 140 {
@@ -1332,17 +1103,7 @@ pub fn view<'a>(
         } else {
             StatTone::Bad
         };
-        let ping_samples: Vec<f32> = state.pvp_ping_history.iter().copied().collect();
-        let ping_hi = (ping_samples.iter().fold(0.0_f32, |m, &v| m.max(v)) * 1.15).max(10.0);
-        cells.push(sparkline_cell(
-            Icon::Signal,
-            ping_samples,
-            0.0,
-            ping_hi,
-            None,
-            ping_tone,
-            format!("{:>3} ms", ping_ms),
-        ));
+        cells.push(stat_cell(Icon::Signal, ping_tone, format!("{:>3} ms", ping_ms)));
 
         // Interleave hairline dividers, then wrap in one flat plate.
         let mut strip = row![].spacing(6).align_y(Alignment::Center);
