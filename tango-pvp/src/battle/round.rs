@@ -191,14 +191,18 @@ impl Round {
         // Leniency: a positive skew only actually costs us once the *presented*
         // frame has to speculate. `speculation_headroom` is the lead (in ticks)
         // we can still take while every presented frame stays fully confirmed —
-        // free buffer to grow into. Absorb that much skew before slowing down, so
-        // we stop fighting a harmless lead. As the headroom shrinks the throttle
+        // free buffer to grow into. Absorb that buffer before slowing down, so we
+        // stop fighting a harmless lead. As the headroom shrinks the throttle
         // tightens, and once we're actually speculating (headroom → 0) this is
         // exactly the old raw-skew behavior.
+        //
+        // The factor of 2: skew is a *difference* of advantages, so under
+        // symmetric latency it runs at ~2× our one-sided frontier lead, while
+        // headroom is one-sided. Doubling it puts the buffer in skew's units.
         let headroom = session.speculation_headroom();
         // Smooth the buffered skew into a slowdown below our nominal rate, then
         // turn that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(skew - headroom as i32);
+        let slowdown = self.throttler.step(skew - 2 * headroom as i32);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
