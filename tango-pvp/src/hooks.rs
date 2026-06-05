@@ -11,15 +11,15 @@ impl CompletionToken {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.flag.load(std::sync::atomic::Ordering::SeqCst)
+        self.flag.load(std::sync::atomic::Ordering::Acquire)
     }
 
     pub fn complete(&self) {
-        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.flag.store(true, std::sync::atomic::Ordering::Release);
     }
 
     pub fn reset(&self) {
-        self.flag.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.flag.store(false, std::sync::atomic::Ordering::Release);
     }
 }
 

@@ -7,9 +7,9 @@
 //! ride for one player. (The PVP / replay traps require a partner /
 //! recorded packets, neither of which apply here.)
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 const EXPECTED_FPS: f32 = 60.0;
 
@@ -104,7 +104,7 @@ impl SinglePlayerSession {
     }
 
     pub fn request_close(&self) {
-        self.close_requested.store(true, Ordering::SeqCst);
+        self.close_requested.store(true, Ordering::Release);
     }
 
     /// Drive the emulator at `factor * EXPECTED_FPS` fps. 1.0 = realtime,

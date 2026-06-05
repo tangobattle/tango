@@ -6,9 +6,9 @@
 //! playhead to keep that store populated for seeks. Audio is bound via
 //! the shared [`crate::audio::LateBinder`].
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use tango_pvp::replay::playback::SnapshotStore;
 use tango_pvp::shadow::Shadow;
 
@@ -217,7 +217,7 @@ impl ReplaySession {
     }
 
     pub fn request_close(&self) {
-        self.close_requested.store(true, Ordering::SeqCst);
+        self.close_requested.store(true, Ordering::Release);
     }
 
     /// Absolute playhead tick: how many emulated ticks the stepper has
