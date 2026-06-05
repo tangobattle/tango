@@ -27,14 +27,19 @@ VIAddVersionKey "FileVersion" "${version.major}.${version.minor}.${version.patch
 VIAddVersionKey "FileDescription" "Tango Installer"
 VIAddVersionKey "LegalCopyright" "© Copyright The Tango Developers"
 
-SetCompressor /solid /final lzma
+SetCompressor /solid /final zlib
 Unicode true
 RequestExecutionLevel user
+; No installer UI at all. First-install and auto-update (updater.rs
+; spawns this exe detached, with no /S flag) both apply with zero
+; visible window; the app itself is launched by .onInstSuccess, so the
+; user still gets feedback. Manual uninstall stays interactive so the
+; "delete config?" prompt is preserved.
+SilentInstall silent
 AutoCloseWindow true
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
 BrandingText " "
-ChangeUI all "<%text>$</%text>{NSISDIR}\\Contrib\\UIs\\sdbarker_tiny.exe"
 
 InstallDir ""
 InstallDirRegKey HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "UninstallString"
@@ -53,7 +58,15 @@ Function .onInit
         StrCpy $INSTDIR "$INSTDIR\\$(^Name)"
     <%text>$</%text>{EndIf}
 
-    ExecWait '"$INSTDIR\\Uninstall Tango.exe" /S'
+    ; Clean up a prior install before laying down new files, so any
+    ; component dropped between versions doesn't linger. Run the old
+    ; uninstaller silently and synchronously: /S suppresses its UI (and
+    ; the "delete config?" prompt, so settings survive an upgrade), and
+    ; _?=$INSTDIR makes it run in place so ExecWait actually blocks
+    ; until it finishes instead of returning while a self-copy in $TEMP
+    ; races our file writes. Skipped on a fresh install.
+    IfFileExists "$INSTDIR\\uninstall.exe" 0 +2
+        ExecWait '"$INSTDIR\\uninstall.exe" /S _?=$INSTDIR'
 FunctionEnd
 
 Function un.onInit

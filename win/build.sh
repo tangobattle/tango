@@ -59,8 +59,6 @@ rm angle.zip
 ffmpeg_version="6.0"
 curl -L -o ffmpeg.exe "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-win32-x64"
 
-curl -L -o vc_redist.x64.exe https://aka.ms/vc14/vc_redist.x64.exe
-
 makensis installer.nsi
 popd
 
