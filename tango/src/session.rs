@@ -509,28 +509,30 @@ fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
     })
 }
 
-/// Snapshot the framebuffer into upload-ready RGBA: apply the configured
-/// upscale filter and re-stamp alpha to 0xff. Returns `(width, height,
-/// pixels)` for [`crate::video::framebuffer::Frame`]. Called from
+/// Snapshot the framebuffer into upload-ready RGBA, applying the configured
+/// upscale filter. Returns `(width, height, pixels)` for
+/// [`crate::video::framebuffer::Frame`]. Called from
 /// [`Message::UpdateFramebuffer`] once per emulator vblank.
+///
+/// Alpha is deliberately *not* stamped here. The per-session frame
+/// callbacks already run `fix_vbuf_alpha` on the emu thread, and the
+/// framebuffer shader forces display alpha to 1.0 regardless — so a second
+/// full-buffer alpha pass on the UI thread would be pure redundancy.
 fn build_frame_pixels(pixels: Vec<u8>, video_filter: &str) -> (u32, u32, Vec<u8>) {
     let src_w = replay_session::SCREEN_WIDTH as usize;
     let src_h = replay_session::SCREEN_HEIGHT as usize;
     // Run the upscale filter selected in settings, if any. Bad /
-    // empty name falls back to NullFilter (pass-through).
+    // empty name falls back to NullFilter (pass-through). The filter
+    // structs are zero-sized, so the box never allocates.
     let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
     let [out_w, out_h] = filter.output_size([src_w, src_h]);
-    let (w, h, mut buf) = if [out_w, out_h] == [src_w, src_h] {
+    if [out_w, out_h] == [src_w, src_h] {
         (src_w as u32, src_h as u32, pixels)
     } else {
         let mut dst = vec![0u8; out_w * out_h * 4];
         filter.apply(&pixels, &mut dst, [src_w, src_h]);
         (out_w as u32, out_h as u32, dst)
-    };
-    for chunk in buf.chunks_mut(4) {
-        chunk[3] = 0xff;
     }
-    (w, h, buf)
 }
 
 /// Optional iced texture handle for a Game's background art. Pulls

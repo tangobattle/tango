@@ -376,6 +376,12 @@ fn vs_main(@builtin(vertex_index) index: u32) -> VsOut {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    return textureSample(fb_texture, fb_sampler, in.uv);
+    // The GBA framebuffer is always opaque, so force alpha to 1.0 here. This
+    // decouples display opacity from any CPU-side alpha handling, letting the
+    // redundant per-frame alpha-stamp pass in `build_frame_pixels` go away.
+    // RGB is unaffected by the stored alpha: textures hold straight
+    // (non-premultiplied) values, so sampling returns RGB regardless of the
+    // alpha byte.
+    return vec4<f32>(textureSample(fb_texture, fb_sampler, in.uv).rgb, 1.0);
 }
 "#;
