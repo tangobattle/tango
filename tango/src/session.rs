@@ -585,20 +585,34 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
     handle
 }
 
-/// Live frame-delay control for the match-settings panel, laid out as a
-/// telemetry card (turtle icon + caption on top, slider + value below) so it
-/// matches the metric cards above it. The latency-driven "suggest" wand rides
-/// on the caption line. Frame delay is purely local display lag, so dragging it
-/// mid-match takes effect on the next rendered frame with no peer coordination.
+/// Live frame-delay control: a turtle-icon heading naming it, over the lobby's
+/// frame-delay row (slider, fixed-width numeric readout, latency-driven
+/// "suggest" wand). Lifting the title into the heading frees the control line so
+/// the slider gets lobby-like width even in the compact panel. Frame delay is
+/// purely local display lag, so dragging it mid-match takes effect on the next
+/// rendered frame with no peer coordination.
 fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
 
+    // Heading: turtle glyph + title, both muted — matches the metric-card
+    // captions above so the control reads as part of the same panel.
+    let heading = row![
+        Icon::Turtle.widget().size(TEXT_BODY).style(widgets::muted_text_style),
+        text(t!(lang, "settings-netplay-frame-delay"))
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .width(Fill);
+
+    // Slider fills the row; the value + wand take their natural sizes.
     let slider = iced::widget::slider(
         tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
         fd,
         Message::SetFrameDelay,
     )
-    .width(Length::Fixed(FD_SLIDER_W));
+    .width(Length::Fill);
 
     // "Suggest" button — same legacy formula as the lobby (one-way frames + 1 -
     // 2, clamped to the slider range). Disabled until the first ping reading
@@ -621,26 +635,35 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
         crate::app::STANDARD_PADDING,
     );
 
-    telemetry_card(
-        Icon::Turtle,
-        t!(lang, "settings-netplay-frame-delay"),
-        // Suggest wand sits right beside the slider, the value to its right —
-        // so the control line reads `[slider][suggest] … value`.
-        row![slider, suggest].spacing(6).align_y(Alignment::Center).into(),
-        format!("{}", fd),
-        // Frame delay isn't a health metric — the value reads in plain text.
-        None,
-    )
+    let control = row![
+        slider,
+        // Live value as a fixed-width monospaced numeral so the slider's
+        // position has a readable counterpart that doesn't jiggle layout.
+        text(format!("{}", fd))
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE)
+            .width(Length::Fixed(18.0)),
+        suggest,
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .width(Fill);
+
+    column![heading, control]
+        .spacing(3)
+        .width(Length::Fixed(PANEL_W))
+        .into()
 }
 
 // Panel + sparkline geometry. The cards are all `PANEL_W` wide so the metrics
-// line up with the frame-delay control; the sparkline is deliberately narrower
-// than the slider, leaving room for the right-aligned value (and, on the
-// frame-delay card, the suggest wand beside the slider).
-const PANEL_W: f32 = 220.0;
-const FD_SLIDER_W: f32 = 120.0;
-const SPARK_W: f32 = 84.0;
-const SPARK_H: f32 = 18.0;
+// line up; the metric value reads in a fixed `VALUE_W` column on the right
+// (sized to the widest readout, `NNN ms`) so every number right-aligns and
+// every chart ends at the same x, with the chart filling everything to its
+// left. The frame-delay control spans the same width: a turtle-icon heading
+// over a lobby-style slider row.
+const PANEL_W: f32 = 228.0;
+const VALUE_W: f32 = 50.0;
+const SPARK_H: f32 = 24.0;
 // Each metric's full-height value span (sample saturates into it). Chosen to
 // line up with the tone thresholds so a point's height roughly tracks its color.
 const TPS_SPAN: f32 = 8.0; // fps below target = floor of the chart
@@ -657,19 +680,21 @@ const PING_SPAN: u128 = 200;
 /// the line.
 struct Sparkline {
     points: Vec<Option<(f32, StatTone)>>,
-    /// Whether to wash the area under the trace with a faint tint of each
-    /// segment's tone. On for the one-sided metrics (tps, depth, ping), where a
-    /// fill down to the floor reads as magnitude; off for skew, which centers on
-    /// 0 at mid-height, so a fill-to-bottom would misread.
+    /// Whether to wash the area below the trace (down to the chart floor) with a
+    /// faint tint of each segment's tone. On for the one-sided metrics (tps,
+    /// depth, ping); off for skew, which is bidirectional about its midline.
     fill_under: bool,
+    /// Height fraction (0 = bottom, 1 = top) of a reference line to draw, or
+    /// `None` for no line. Parity (mid-height) for skew, the value-0 floor for
+    /// depth/ping — and `None` for tps, whose displayed floor is `target − 8`,
+    /// not 0, so a "zero" line there would mislead.
+    zero: Option<f32>,
 }
 
 impl Sparkline {
     fn view<'a>(self) -> Element<'a, Message> {
-        Canvas::new(self)
-            .width(Length::Fixed(SPARK_W))
-            .height(Length::Fixed(SPARK_H))
-            .into()
+        // Fill the card's chart area; height is fixed so the row lays out cleanly.
+        Canvas::new(self).width(Length::Fill).height(Length::Fixed(SPARK_H)).into()
     }
 }
 
@@ -685,17 +710,34 @@ impl canvas::Program<Message> for Sparkline {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
+        let palette = theme.extended_palette();
+        let text_color = theme.palette().text;
         let n = self.points.len();
         let w = bounds.width;
         let h = bounds.height;
         // Inset vertically so points at the extremes (yf 0 or 1) keep the line
         // width fully on-canvas instead of clipping at the edge.
         const PAD: f32 = 2.0;
-        let x_at = |i: usize| if n > 1 { i as f32 / (n - 1) as f32 * w } else { w / 2.0 };
         let y_at = |yf: f32| PAD + (1.0 - yf.clamp(0.0, 1.0)) * (h - 2.0 * PAD);
 
-        // Faint tone wash from the line down to the zero baseline, per segment,
-        // for true-zero-floor charts. Drawn first so the line sits on top.
+        // Recessed background so the chart area reads as its own inset panel.
+        let bg = Path::rounded_rectangle(Point::new(0.0, 0.0), bounds.size(), 3.0.into());
+        frame.fill(
+            &bg,
+            Color {
+                a: if palette.is_dark { 0.10 } else { 0.05 },
+                ..text_color
+            },
+        );
+
+        // Fixed rolling window: samples sit a fixed pixel step apart with the
+        // newest pinned to the right edge, so the trace scrolls in from the
+        // right at full scale instead of stretching to fill while the buffer is
+        // still filling up.
+        let dx = w / (METRIC_HISTORY_LEN.saturating_sub(1).max(1) as f32);
+        let x_at = |i: usize| w - (n.saturating_sub(1) - i) as f32 * dx;
+
+        // Tone wash below the trace, down to the chart floor, per segment.
         if self.fill_under {
             let base = y_at(0.0);
             for i in 0..n.saturating_sub(1) {
@@ -708,15 +750,20 @@ impl canvas::Program<Message> for Sparkline {
                         p.line_to(Point::new(x0, base));
                         p.close();
                     });
-                    frame.fill(
-                        &area,
-                        Color {
-                            a: 0.3,
-                            ..stat_tone_color(theme, tone)
-                        },
-                    );
+                    frame.fill(&area, Color { a: 0.3, ..stat_tone_color(theme, tone) });
                 }
             }
+        }
+
+        // Reference line where one is meaningful (parity for skew, the value-0
+        // floor for depth/ping). Drawn over the fill so it stays visible, under
+        // the trace.
+        if let Some(z) = self.zero {
+            let zero_y = y_at(z);
+            frame.stroke(
+                &Path::line(Point::new(0.0, zero_y), Point::new(w, zero_y)),
+                Stroke::default().with_color(Color { a: 0.22, ..text_color }).with_width(1.0),
+            );
         }
 
         // The trace itself: one hairline segment per adjacent pair of samples,
@@ -739,21 +786,18 @@ impl canvas::Program<Message> for Sparkline {
     }
 }
 
-/// One telemetry card: `icon caption` on top, `[control] value` below — the
-/// shape shared by every metric (control = sparkline) and the frame-delay knob
-/// (control = slider). Icon + caption ride muted; the value picks up the health
-/// `value_tone` (or `None` for plain text, e.g. the frame-delay number). Fixed
-/// at [`PANEL_W`] so the cards align with one another.
+/// One telemetry card: `icon caption` on top, `control value` below — the shape
+/// shared by every metric (control = sparkline) and the frame-delay knob
+/// (control = slider). Icon + caption ride muted; `control` fills the row while
+/// `value` sits right-aligned in a fixed [`VALUE_W`] column, so every readout
+/// lines up and every chart ends at the same x. Fixed at [`PANEL_W`] so the
+/// cards align with one another.
 fn telemetry_card<'a>(
     icon: Icon,
     caption: String,
     control: Element<'a, Message>,
-    value: String,
-    value_tone: Option<StatTone>,
+    value: Element<'a, Message>,
 ) -> Element<'a, Message> {
-    let value_style = move |theme: &iced::Theme| iced::widget::text::Style {
-        color: Some(value_tone.map_or_else(|| theme.palette().text, |tone| stat_tone_color(theme, tone))),
-    };
     let caption_row = row![
         icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
         text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
@@ -763,14 +807,9 @@ fn telemetry_card<'a>(
     .width(Fill);
     let value_row = row![
         control,
-        container(
-            text(value)
-                .size(TEXT_BODY)
-                .font(iced::Font::MONOSPACE)
-                .style(value_style),
-        )
-        .width(Fill)
-        .align_x(iced::alignment::Horizontal::Right),
+        container(value)
+            .width(Length::Fixed(VALUE_W))
+            .align_x(iced::alignment::Horizontal::Right),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -781,31 +820,60 @@ fn telemetry_card<'a>(
         .into()
 }
 
-/// One metric card: build its sparkline series by mapping every retained
-/// sample through `point` (returning `None` for slots with no reading, which
-/// become gaps), and read the current value + tone off the newest sample via
-/// `value` (showing `—` muted when there's nothing yet, e.g. skew/depth between
-/// rounds).
+/// A right-aligned monospace value readout, tinted by `tone` (or default text
+/// when `None`, e.g. the frame-delay number).
+fn value_text<'a>(s: String, tone: Option<StatTone>) -> Element<'a, Message> {
+    text(s)
+        .size(TEXT_BODY)
+        .font(iced::Font::MONOSPACE)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(tone.map_or_else(|| theme.palette().text, |t| stat_tone_color(theme, t))),
+        })
+        .into()
+}
+
+/// TPS readout: current rate over its live cap, stacked to stay narrow. The
+/// current rate carries the health tone; the cap rides muted underneath.
+fn tps_value<'a>(tps: f32, fps_target: f32, tone: StatTone) -> Element<'a, Message> {
+    use iced::widget::text::LineHeight;
+    column![
+        text(format!("{:.2}", tps))
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE)
+            .line_height(LineHeight::Relative(1.0))
+            .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(stat_tone_color(theme, tone)),
+            }),
+        text(format!("{:.2}", fps_target))
+            .size(TEXT_CAPTION)
+            .font(iced::Font::MONOSPACE)
+            .line_height(LineHeight::Relative(1.0))
+            .style(widgets::muted_text_style),
+    ]
+    .spacing(2)
+    .align_x(Alignment::End)
+    .into()
+}
+
+/// One metric card: build its sparkline series by mapping every retained sample
+/// through `point` (returning `None` for slots with no reading, which become
+/// gaps), and read the current value off the newest sample via `value` (showing
+/// `—` muted when there's nothing yet, e.g. skew/depth between rounds).
 fn metric_card<'a>(
     icon: Icon,
     caption: String,
     fill_under: bool,
+    zero: Option<f32>,
     history: &std::collections::VecDeque<MetricSample>,
     point: impl Fn(&MetricSample) -> Option<(f32, StatTone)>,
-    value: impl Fn(&MetricSample) -> Option<(String, StatTone)>,
+    value: impl Fn(&MetricSample) -> Option<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     let points = history.iter().map(&point).collect();
-    let (value, tone) = history
+    let value = history
         .back()
         .and_then(value)
-        .unwrap_or_else(|| ("—".to_string(), StatTone::Muted));
-    telemetry_card(
-        icon,
-        caption,
-        Sparkline { points, fill_under }.view(),
-        value,
-        Some(tone),
-    )
+        .unwrap_or_else(|| value_text("—".to_string(), Some(StatTone::Muted)));
+    telemetry_card(icon, caption, Sparkline { points, fill_under, zero }.view(), value)
 }
 
 /// Contents of the match-settings panel: a sparkline card per live metric
@@ -817,10 +885,14 @@ fn match_settings_content<'a>(
     pvp: &'a pvp_session::PvpSession,
     history: &std::collections::VecDeque<MetricSample>,
 ) -> Element<'a, Message> {
+    // `zero` is the reference line: parity (mid-height) for skew, the value-0
+    // floor for depth/ping, and `None` for tps (its floor is `target − 8`, so a
+    // "zero" line there would mislead).
     let tps_card = metric_card(
         Icon::Gauge,
         t!(lang, "session-stat-tps"),
         true,
+        None,
         history,
         |s| {
             (s.fps_target > 0.0).then(|| {
@@ -828,13 +900,14 @@ fn match_settings_content<'a>(
                 (yf.clamp(0.0, 1.0), tone_for_tps(s.tps, s.fps_target))
             })
         },
-        |s| (s.fps_target > 0.0).then(|| (fmt_tps(s.tps, s.fps_target), tone_for_tps(s.tps, s.fps_target))),
+        |s| (s.fps_target > 0.0).then(|| tps_value(s.tps, s.fps_target, tone_for_tps(s.tps, s.fps_target))),
     );
 
     let skew_card = metric_card(
         Icon::ArrowLeftRight,
         t!(lang, "session-stat-skew"),
         false,
+        Some(0.5),
         history,
         |s| {
             s.round.map(|(skew, _)| {
@@ -842,25 +915,27 @@ fn match_settings_content<'a>(
                 (yf, tone_for_skew(skew))
             })
         },
-        |s| s.round.map(|(skew, _)| (fmt_skew(skew), tone_for_skew(skew))),
+        |s| s.round.map(|(skew, _)| value_text(fmt_skew(skew), Some(tone_for_skew(skew)))),
     );
 
     let depth_card = metric_card(
         Icon::Layers2,
         t!(lang, "session-stat-depth"),
         true,
+        Some(0.0),
         history,
         |s| s.round.map(|(_, depth)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth))),
-        |s| s.round.map(|(_, depth)| (fmt_depth(depth), tone_for_depth(depth))),
+        |s| s.round.map(|(_, depth)| value_text(fmt_depth(depth), Some(tone_for_depth(depth)))),
     );
 
     let ping_card = metric_card(
         Icon::SignalHigh,
         t!(lang, "session-stat-ping"),
         true,
+        Some(0.0),
         history,
         |s| Some((s.ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32, tone_for_ping(s.ping_ms))),
-        |s| Some((fmt_ping(s.ping_ms), tone_for_ping(s.ping_ms))),
+        |s| Some(value_text(fmt_ping(s.ping_ms), Some(tone_for_ping(s.ping_ms)))),
     );
 
     // Faint rule separating the read-only metrics from the frame-delay knob.
