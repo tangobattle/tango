@@ -1164,7 +1164,7 @@ pub fn view<'a>(
         // data-channel state — not on any metric value, since ping can read 0
         // legitimately on LAN and its median sticks at the last reading after
         // a drop.
-        if !pvp.peer_disconnected() {
+        if !pvp.remote_disconnected() {
             controls = controls.push(
                 button(strip)
                     .padding([3, 9])
@@ -1407,7 +1407,7 @@ pub fn view<'a>(
     // backdrop — clicking the plate again or pressing Esc closes it. No
     // heading: the frame-delay row already labels itself.
     let match_settings_overlay: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(pvp) if state.show_match_settings && !pvp.peer_disconnected() => {
+        ActiveSession::PvP(pvp) if state.show_match_settings && !pvp.remote_disconnected() => {
             let popover = container(frame_delay_control(lang, pvp))
                 .padding(12)
                 .style(widgets::panel);

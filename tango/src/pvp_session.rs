@@ -33,21 +33,21 @@ const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 /// frame_callback each keep one and raise their own signal.
 #[derive(Clone, Default)]
 struct EndState {
-    /// Peer's in-game match-end handshake (`Packet::EndOfMatch`) arrived
+    /// Remote's in-game match-end handshake (`Packet::EndOfMatch`) arrived
     /// — raised by the net receive task ([`crate::net::PvpReceiver`]).
     /// `is_ended` honors it so the lagging side gets time to write its
     /// replay tail before we drop the data channel.
-    peer_ended: Arc<AtomicBool>,
-    /// Peer's data channel closed (clean RTC `on_closed` or receiver
+    remote_ended: Arc<AtomicBool>,
+    /// Remote's data channel closed (clean RTC `on_closed` or receiver
     /// `Err`) — raised by the match-run task. No more packets are coming,
     /// so `is_ended` skips straight past the grace window.
-    peer_disconnected: Arc<AtomicBool>,
-    /// Our own `EndOfMatch` has been sent — rising-edge guard so the
-    /// frame_callback fires it exactly once when local completion lands.
-    local_eom_sent: Arc<AtomicBool>,
-    /// Wall-clock instant we first observed local completion; the
-    /// fallback deadline `is_ended` uses so a silent peer can't pin us.
-    local_completed_at: Arc<Mutex<Option<std::time::Instant>>>,
+    remote_disconnected: Arc<AtomicBool>,
+    /// Wall-clock instant we first observed local completion, or `None`
+    /// until then. Pulls double duty: the frame_callback fires our
+    /// `EndOfMatch` exactly once on the `None → Some` edge, and `is_ended`
+    /// reads the stamp as the fallback grace deadline so a silent peer
+    /// can't pin us forever.
+    local_ended_at: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 pub struct PvpSession {
@@ -60,8 +60,8 @@ pub struct PvpSession {
     /// `Session::completed()` check (see `tango/src/gui.rs`'s
     /// `should_close` block).
     completion_token: tango_pvp::hooks::CompletionToken,
-    /// Latching end-of-match signals (peer-ended / peer-disconnected /
-    /// local-completion). Grouped in [`EndState`]; `is_ended` reads them
+    /// Latching end-of-match signals (remote-ended / remote-disconnected /
+    /// local-ended). Grouped in [`EndState`]; `is_ended` reads them
     /// alongside `completion_token` and `cancellation_token`.
     end: EndState,
     /// Sliding-window timestamp counter marked once per emulator
@@ -284,7 +284,7 @@ impl PvpSession {
                 receiver,
                 pre_match.sender.clone(),
                 latency_counter.clone(),
-                end.peer_ended.clone(),
+                end.remote_ended.clone(),
                 frame_notify.clone(),
             ));
             tokio::task::spawn(async move {
@@ -297,7 +297,7 @@ impl PvpSession {
                         // arrive; raise the flag so `is_ended`
                         // can short-circuit past PEER_END_GRACE.
                         log::info!("pvp match thread ending: {:?}", r);
-                        end.peer_disconnected.store(true, Ordering::Release);
+                        end.remote_disconnected.store(true, Ordering::Release);
                         // Wake the session subscription so it
                         // re-checks `is_ended` and tears the view
                         // down without waiting on the next vblank
@@ -362,8 +362,21 @@ impl PvpSession {
                 if !completion_token.is_complete() {
                     return false;
                 }
-                if !end.local_eom_sent.swap(true, Ordering::AcqRel) {
-                    *end.local_completed_at.lock().unwrap() = Some(std::time::Instant::now());
+                // First frame on which local completion is visible: stamp the
+                // grace deadline and fire our EndOfMatch + fallback wake exactly
+                // once. The `None → Some` transition under the lock is the guard
+                // (the frame_callback is the only writer, so check-then-set is
+                // sound).
+                let first_completion = {
+                    let mut completed_at = end.local_ended_at.lock().unwrap();
+                    if completed_at.is_some() {
+                        false
+                    } else {
+                        *completed_at = Some(std::time::Instant::now());
+                        true
+                    }
+                };
+                if first_completion {
                     let sender = sender_for_eom.clone();
                     rt_handle.spawn(async move {
                         if let Err(e) = sender.lock().await.send_end_of_match().await {
@@ -480,25 +493,25 @@ impl PvpSession {
         if !self.completion_token.is_complete() {
             return false;
         }
-        if self.end.peer_ended.load(Ordering::Acquire) {
+        if self.end.remote_ended.load(Ordering::Acquire) {
             return true;
         }
-        // Peer's data channel closed (RTCPeerConnection drop or
+        // Remote's data channel closed (RTCPeerConnection drop or
         // SCTP-level disconnect). No EndOfMatch is ever coming
         // so skip straight to teardown without burning the
         // grace window.
-        if self.end.peer_disconnected.load(Ordering::Acquire) {
+        if self.end.remote_disconnected.load(Ordering::Acquire) {
             return true;
         }
         // We tore our own netcode down (local input-buffer overflow cancels the
         // match via the primary `main_read_joyflags` hook). Same rationale as
-        // `peer_disconnected`, from our side: no useful EndOfMatch is coming, so
+        // `remote_disconnected`, from our side: no useful EndOfMatch is coming, so
         // skip the grace window. The completion gate above still holds, so the
         // comm-error / match-end screen runs to completion as normal first.
         if self.cancellation_token.is_cancelled() {
             return true;
         }
-        match *self.end.local_completed_at.lock().unwrap() {
+        match *self.end.local_ended_at.lock().unwrap() {
             Some(t) => t.elapsed() >= PEER_END_GRACE,
             // Completion-token can flip before the frame_callback
             // observes it and stamps the deadline. Hold off
@@ -515,15 +528,15 @@ impl PvpSession {
         self.latency_counter.blocking_lock().median()
     }
 
-    /// True once the peer's data channel has closed (RTC drop / SCTP
+    /// True once the remote's data channel has closed (RTC drop / SCTP
     /// disconnect). Distinct from [`is_ended`](Self::is_ended): mid-match
-    /// (before the completion handshake) the session lingers after a peer
+    /// (before the completion handshake) the session lingers after a remote
     /// drop, but the live netcode telemetry is no longer meaningful — the UI
     /// uses this to retire the instrument panel. Ping can't stand in for it:
     /// the latency median sticks at its last reading after a drop, and a real
     /// ping can legitimately be 0 on a LAN.
-    pub fn peer_disconnected(&self) -> bool {
-        self.end.peer_disconnected.load(Ordering::Acquire)
+    pub fn remote_disconnected(&self) -> bool {
+        self.end.remote_disconnected.load(Ordering::Acquire)
     }
 
     /// Smoothed emulator ticks-per-second from the per-frame

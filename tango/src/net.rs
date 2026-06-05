@@ -226,11 +226,11 @@ pub struct PvpReceiver {
     latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
     ping_timer: tokio::time::Interval,
     /// Flipped to `true` the first time we see an `EndOfMatch`
-    /// packet from the peer. `PvpSession::is_ended` reads this
-    /// to know the peer has also reached its match_end_ret hook
+    /// packet from the remote. `PvpSession::is_ended` reads this
+    /// to know the remote has also reached its match_end_ret hook
     /// and the connection is safe to tear down.
-    peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Session subscription wake. Pinged after `peer_ended` flips
+    remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Session subscription wake. Pinged after `remote_ended` flips
     /// so `is_ended` is re-checked without waiting on the next
     /// vblank — by then the emu thread has already paused.
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
@@ -241,7 +241,7 @@ impl PvpReceiver {
         receiver: Receiver,
         sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
         latency_counter: std::sync::Arc<tokio::sync::Mutex<LatencyCounter>>,
-        peer_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
         frame_notify: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
         Self {
@@ -249,7 +249,7 @@ impl PvpReceiver {
             sender,
             latency_counter,
             ping_timer: tokio::time::interval(PING_INTERVAL),
-            peer_ended,
+            remote_ended,
             frame_notify,
         }
     }
@@ -286,11 +286,11 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             return Ok(tango_pvp::net::Event::EndOfRound);
                         }
                         protocol::Packet::EndOfMatch(_) => {
-                            // Peer reached its match_end_ret hook.
+                            // Remote reached its match_end_ret hook.
                             // No input to yield; keep looping so
-                            // any tail-end Input packets the peer
+                            // any tail-end Input packets the remote
                             // already queued can still arrive.
-                            self.peer_ended.store(true, std::sync::atomic::Ordering::Release);
+                            self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
                             self.frame_notify.notify_one();
                         }
                         p => {
