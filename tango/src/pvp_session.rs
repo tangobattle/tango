@@ -505,6 +505,17 @@ impl PvpSession {
         self.latency_counter.blocking_lock().median()
     }
 
+    /// True once the peer's data channel has closed (RTC drop / SCTP
+    /// disconnect). Distinct from [`is_ended`](Self::is_ended): mid-match
+    /// (before the completion handshake) the session lingers after a peer
+    /// drop, but the live netcode telemetry is no longer meaningful — the UI
+    /// uses this to retire the instrument panel. Ping can't stand in for it:
+    /// the latency median sticks at its last reading after a drop, and a real
+    /// ping can legitimately be 0 on a LAN.
+    pub fn peer_disconnected(&self) -> bool {
+        self.peer_disconnected.load(Ordering::Acquire)
+    }
+
     /// Smoothed emulator ticks-per-second from the per-frame
     /// callback's interval samples. Independent of UI refresh
     /// rate. ZERO until the second sample lands.

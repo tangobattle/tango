@@ -1158,12 +1158,20 @@ pub fn view<'a>(
             }
             strip = strip.push(cell);
         }
-        controls = controls.push(
-            button(strip)
-                .padding([3, 9])
-                .style(telemetry_plate_button)
-                .on_press(Message::ToggleMatchSettings),
-        );
+        // Only surface the instrument panel while the peer link is actually
+        // up. A mid-match peer drop leaves the session lingering (no
+        // completion handshake) with frozen telemetry, so gate on the live
+        // data-channel state — not on any metric value, since ping can read 0
+        // legitimately on LAN and its median sticks at the last reading after
+        // a drop.
+        if !pvp.peer_disconnected() {
+            controls = controls.push(
+                button(strip)
+                    .padding([3, 9])
+                    .style(telemetry_plate_button)
+                    .on_press(Message::ToggleMatchSettings),
+            );
+        }
     }
     // Opponent setup-reveal toggle (PvP-only) sits to the left of
     // the options trigger so the ellipsis stays the rightmost
@@ -1399,7 +1407,7 @@ pub fn view<'a>(
     // backdrop — clicking the plate again or pressing Esc closes it. No
     // heading: the frame-delay row already labels itself.
     let match_settings_overlay: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(pvp) if state.show_match_settings => {
+        ActiveSession::PvP(pvp) if state.show_match_settings && !pvp.peer_disconnected() => {
             let popover = container(frame_delay_control(lang, pvp))
                 .padding(12)
                 .style(widgets::panel);
