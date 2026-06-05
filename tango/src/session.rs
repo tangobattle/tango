@@ -105,7 +105,7 @@ pub struct State {
     /// `copy_from_slice`s mgba's video buffer into this Mutex once
     /// per emu vblank; the [`Message::UpdateFramebuffer`] handler
     /// locks it, clones the bytes, and rebuilds
-    /// [`State::current_handle`]. Pre-sized to GBA dimensions and
+    /// [`State::current_frame`]. Pre-sized to GBA dimensions and
     /// reused across sessions — saves the per-session
     /// `Arc<Mutex<Vec<u8>>>` allocation dance and lets the handler
     /// read straight off `State` without dispatching through
@@ -147,12 +147,16 @@ pub struct State {
     /// session down mid-match (same as Close), so the confirm
     /// keeps a stray click from costing the user a real game.
     pub show_disconnect_confirm: bool,
-    /// Latest GBA framebuffer rebuilt into an iced image handle.
-    /// Refreshed in [`Message::UpdateFramebuffer`] (which the
-    /// session subscription fires once per emulator vblank); the
-    /// view widget just renders this handle. `None` between
-    /// sessions and before the first frame lands.
-    pub current_handle: Option<iced::widget::image::Handle>,
+    /// Latest GBA framebuffer (post upscale filter), presented by the
+    /// [`crate::video::framebuffer`] shader widget. Refreshed in
+    /// [`Message::UpdateFramebuffer`] (which the session subscription
+    /// fires once per emulator vblank). `None` between sessions and
+    /// before the first frame lands.
+    pub current_frame: Option<crate::video::framebuffer::Frame>,
+    /// Monotonic counter stamped into each [`current_frame`] so the
+    /// framebuffer pipeline can skip re-uploading when the same frame
+    /// is presented twice (a UI redraw with no new emu frame).
+    pub frame_revision: u64,
     /// PvP-only rolling sample windows feeding the footer sparklines.
     /// Pushed once per frame in [`Message::UpdateFramebuffer`], capped
     /// to [`HISTORY_LEN`], and cleared when the session tears down.
@@ -181,7 +185,8 @@ impl Default for State {
             show_settings: false,
             show_options_menu: false,
             show_disconnect_confirm: false,
-            current_handle: None,
+            current_frame: None,
+            frame_revision: 0,
             pvp_tps_history: std::collections::VecDeque::new(),
             pvp_ping_history: std::collections::VecDeque::new(),
             pvp_skew_history: std::collections::VecDeque::new(),
@@ -255,8 +260,8 @@ pub enum Message {
     CloseSettings,
     /// One emulator frame has landed, or `is_ended` could have
     /// flipped (PvP peer-end / disconnect / grace-timeout). The
-    /// handler rebuilds the iced texture handle from the active
-    /// session's vbuf into [`State::current_handle`] and tears
+    /// handler rebuilds the framebuffer from the active
+    /// session's vbuf into [`State::current_frame`] and tears
     /// the session down if it's now ended. Fired by the session
     /// subscription, which wakes on [`State::frame_notify`] —
     /// `notify_one()`'d by both the frame callback and the PvP
@@ -301,7 +306,7 @@ impl State {
                     s.request_close();
                 }
                 self.active = None;
-                self.current_handle = None;
+                self.current_frame = None;
                 self.show_options_menu = false;
                 self.show_disconnect_confirm = false;
             }
@@ -425,7 +430,7 @@ impl State {
                     // even after the emu thread has paused.
                     if session.is_ended() {
                         self.active = None;
-                        self.current_handle = None;
+                        self.current_frame = None;
                         self.show_options_menu = false;
                         self.show_disconnect_confirm = false;
                         self.pvp_tps_history.clear();
@@ -434,7 +439,14 @@ impl State {
                         self.pvp_depth_history.clear();
                     } else {
                         let pixels = self.vbuf.lock().unwrap().clone();
-                        self.current_handle = Some(build_frame_handle(pixels, video_filter));
+                        let (width, height, buf) = build_frame_pixels(pixels, video_filter);
+                        self.frame_revision = self.frame_revision.wrapping_add(1);
+                        self.current_frame = Some(crate::video::framebuffer::Frame {
+                            pixels: std::sync::Arc::new(buf),
+                            width,
+                            height,
+                            revision: self.frame_revision,
+                        });
                         // Sample the live PvP metrics into the footer
                         // sparkline windows, once per emulator frame.
                         if let ActiveSession::PvP(pvp) = session {
@@ -497,11 +509,11 @@ fn build_frame_stream(tag: &FrameTag) -> impl futures::Stream<Item = Message> {
     })
 }
 
-/// Build an iced texture handle from a freshly-snapshotted
-/// framebuffer, applying the configured upscale filter and re-
-/// stamping alpha to 0xff. Called from [`Message::UpdateFramebuffer`]
-/// once per emulator vblank.
-fn build_frame_handle(pixels: Vec<u8>, video_filter: &str) -> iced::widget::image::Handle {
+/// Snapshot the framebuffer into upload-ready RGBA: apply the configured
+/// upscale filter and re-stamp alpha to 0xff. Returns `(width, height,
+/// pixels)` for [`crate::video::framebuffer::Frame`]. Called from
+/// [`Message::UpdateFramebuffer`] once per emulator vblank.
+fn build_frame_pixels(pixels: Vec<u8>, video_filter: &str) -> (u32, u32, Vec<u8>) {
     let src_w = replay_session::SCREEN_WIDTH as usize;
     let src_h = replay_session::SCREEN_HEIGHT as usize;
     // Run the upscale filter selected in settings, if any. Bad /
@@ -518,7 +530,7 @@ fn build_frame_handle(pixels: Vec<u8>, video_filter: &str) -> iced::widget::imag
     for chunk in buf.chunks_mut(4) {
         chunk[3] = 0xff;
     }
-    iced::widget::image::Handle::from_rgba(w, h, buf)
+    (w, h, buf)
 }
 
 /// Optional iced texture handle for a Game's background art. Pulls
@@ -868,9 +880,9 @@ pub fn view<'a>(
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
 
-    // Post-filter framebuffer dimensions. Drives the integer-scale
-    // math below; matches the (w, h) `build_frame_handle` bakes
-    // into the iced texture handle stored in `state.current_handle`.
+    // Post-filter framebuffer dimensions. Drive the scale math below;
+    // match the (w, h) `build_frame_pixels` stamps into the frame the
+    // `framebuffer` shader uploads.
     let filter = crate::video::filter_by_name(video_filter).unwrap_or_else(|| Box::new(crate::video::NullFilter));
     let [out_w, out_h] = filter.output_size([
         replay_session::SCREEN_WIDTH as usize,
@@ -879,43 +891,46 @@ pub fn view<'a>(
     let img_w = out_w as f32;
     let img_h = out_h as f32;
 
-    let make_image = move || -> iced::widget::Image<iced::widget::image::Handle> {
-        // No frame yet → show opaque black (an all-zero RGBA buffer would be
-        // transparent). The first `Message::UpdateFramebuffer` (one vblank in)
-        // drops the real handle into `state.current_handle`.
-        let handle = state.current_handle.clone().unwrap_or_else(|| {
-            let mut px = vec![0u8; out_w * out_h * 4];
-            for p in px.chunks_exact_mut(4) {
-                p[3] = 0xFF;
-            }
-            iced::widget::image::Handle::from_rgba(out_w as u32, out_h as u32, px)
-        });
-        iced::widget::image(handle).filter_method(iced::widget::image::FilterMethod::Nearest)
-    };
+    // The live framebuffer renders through a custom wgpu shader widget
+    // (one persistent GPU texture, written in place each vblank) instead
+    // of a per-frame `image` handle. The shader fills the widget's bounds,
+    // so we size the widget to the framebuffer rect here — an exact
+    // integer multiple (crisp, the default) or a smooth aspect-fit — using
+    // `responsive` for the pane size both need. Before the first frame, a
+    // 1×1 black placeholder keeps the pane opaque.
+    let frame: Element<'a, Message> = iced::widget::responsive(move |size| {
+        let raw = (size.width / img_w).min(size.height / img_h);
+        let scale = if fractional_scaling {
+            raw.max(0.0)
+        } else {
+            raw.floor().max(1.0)
+        };
+        let (w, h) = (img_w * scale, img_h * scale);
 
-    let frame: Element<'a, Message> = if fractional_scaling {
-        // Smooth Fill+Contain — let the renderer scale the image to
-        // fit the pane at any ratio.
-        make_image()
-            .width(Fill)
-            .height(Fill)
-            .content_fit(iced::ContentFit::Contain)
-            .into()
-    } else {
-        // Integer scaling: pick the largest whole-integer multiple
-        // of the source texture that fits — needs the pane size,
-        // which only `responsive` can provide.
-        iced::widget::responsive(move |size| {
-            let scale = (size.width / img_w).min(size.height / img_h).floor().max(1.0);
-            let (w, h) = (img_w * scale, img_h * scale);
-            let image = make_image()
-                .width(Length::Fixed(w))
-                .height(Length::Fixed(h))
-                .content_fit(iced::ContentFit::Fill);
-            // Tight container around the Fixed-size framebuffer so
-            // the shadow style traces its edges, not the surrounding
-            // pane.
-            let framed = iced::widget::container(image)
+        let frame = state
+            .current_frame
+            .clone()
+            .unwrap_or_else(crate::video::framebuffer::Frame::black);
+        let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::Program::new(frame))
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h));
+
+        let centered = |content: Element<'a, Message>| -> Element<'a, Message> {
+            iced::widget::container(content)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center)
+                .into()
+        };
+
+        if fractional_scaling {
+            // Smooth aspect-fit, centered, no drop shadow.
+            centered(fb.into())
+        } else {
+            // Tight container around the Fixed-size framebuffer so the
+            // shadow style traces its edges, not the surrounding pane.
+            let framed = iced::widget::container(fb)
                 .width(Length::Fixed(w))
                 .height(Length::Fixed(h))
                 .style(|_theme: &iced::Theme| iced::widget::container::Style {
@@ -926,15 +941,10 @@ pub fn view<'a>(
                     },
                     ..Default::default()
                 });
-            iced::widget::container(framed)
-                .width(Fill)
-                .height(Fill)
-                .align_x(iced::alignment::Horizontal::Center)
-                .align_y(iced::alignment::Vertical::Center)
-                .into()
-        })
-        .into()
-    };
+            centered(framed.into())
+        }
+    })
+    .into();
 
     // Controls-strip sizing: one icon size + padding so the
     // play/pause, settings, close, opponent-toggle buttons all

@@ -6,6 +6,7 @@
 //!
 //! `NullFilter` is the always-available pass-through.
 
+pub mod framebuffer;
 pub mod hqx;
 pub mod mmpx;
 
@@ -41,12 +42,14 @@ pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
 /// entry is the canonical "no filter" label.
 ///
 /// HQ4X is implemented (`filter_by_name("hq4x")` still works) but
-/// omitted from the picker: its 4×4 = 16× output is 2.4 MB per
-/// frame, and iced's `image::Handle` cycles a fresh
-/// `Id::unique()` every Tick so the renderer re-uploads the full
-/// texture 60×/sec. With vsync off (input-latency fix, task #118)
-/// the present races the upload and the user sees flicker. HQ3X
-/// is the practical ceiling for the iced image path.
+/// omitted from the picker. The old reason was renderer flicker:
+/// the iced `image` path minted a fresh `Id::unique()` per frame and
+/// re-uploaded the full 2.4 MB texture 60×/sec, racing the vsync-off
+/// present. That's gone now — [`framebuffer`] presents through a
+/// persistent GPU texture (one in-place `write_texture` per frame).
+/// HQ4X stays hidden because its 4×4 = 16× CPU upscale is the kind of
+/// per-frame cost slower machines can't afford; doing the scaling on
+/// the GPU instead would be the way to surface it cheaply.
 pub const FILTERS: &[(&str, &str)] = &[
     ("", "—"),
     ("hq2x", "hq2x"),

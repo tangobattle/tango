@@ -49,7 +49,7 @@ impl SinglePlayerSession {
         let thread = mgba::thread::Thread::new(core);
         // Wipe the shared framebuffer so the previous session's
         // last frame doesn't flash through before mgba writes its
-        // first one. The post-constructor `current_handle` clear
+        // first one. The post-constructor `current_frame` clear
         // covers iced's side; this covers the source.
         vbuf.lock().unwrap().fill(0);
 
