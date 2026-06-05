@@ -153,7 +153,7 @@ session-opponent = 对手配置
 session-self = 我的配置
 session-back-to-session = 返回对战
 # PvP telemetry deck cell tooltips
-session-stat-tps = 刻/秒（当前/上限）
+session-stat-tps = 每秒刻数（当前/上限）
 session-stat-skew = 偏移
 session-stat-depth = 预测深度
 session-stat-ping = 延迟

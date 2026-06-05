@@ -98,7 +98,7 @@ session-opponent = 相手の構築
 session-self = 自分の構築
 session-back-to-session = 対戦に戻る
 # PvP telemetry deck cell tooltips
-session-stat-tps = ティック/秒（現在/上限）
+session-stat-tps = 毎秒ティック数（現在/上限）
 session-stat-skew = ずれ
 session-stat-depth = 投機的深度
 session-stat-ping = 遅延
