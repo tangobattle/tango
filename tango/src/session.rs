@@ -566,6 +566,270 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
     .into()
 }
 
+/// Semantic tone for a PvP telemetry value. The icon always rides
+/// muted; only the value picks up `Good`/`Warn`/`Bad` so color reads
+/// as "this number means something is healthy / borderline / wrong"
+/// rather than mere decoration.
+#[derive(Clone, Copy)]
+enum StatTone {
+    Muted,
+    Good,
+    Warn,
+    Bad,
+}
+
+fn stat_tone_color(theme: &iced::Theme, tone: StatTone) -> iced::Color {
+    match tone {
+        StatTone::Muted => widgets::muted_color(theme),
+        StatTone::Good => theme.extended_palette().success.strong.color,
+        // Amber lives outside iced's default palette, so hardcode a
+        // tone that reads on both the dark navy and light parchment
+        // HUD plates.
+        StatTone::Warn => iced::Color::from_rgb(0.92, 0.67, 0.18),
+        StatTone::Bad => theme.extended_palette().danger.strong.color,
+    }
+}
+
+/// One telemetry cell: an icon + monospaced value sharing a tone
+/// color. Carries no plate of its own — cells live inside the single
+/// cluster plate built in [`view`], separated by [`stat_divider`]
+/// hairlines, so the readout reads as one consolidated instrument
+/// strip rather than scattered chips. Monospaced value so digits
+/// don't wiggle as they tick frame-to-frame.
+fn stat_cell<'a>(icon: Icon, value: String, tone: StatTone) -> Element<'a, Message> {
+    // Icon and value share the tone so a `Good`/`Warn`/`Bad` cell
+    // lights up as a single colored unit; `Muted` resolves back to
+    // the muted color the icons used before.
+    let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(stat_tone_color(theme, tone)),
+    };
+    row![
+        icon.widget().size(TEXT_BODY).style(tone_style),
+        text(value)
+            .size(TEXT_BODY)
+            .font(iced::Font::MONOSPACE)
+            .style(tone_style),
+    ]
+    .spacing(3)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// P1/P2 identity tag sitting beside the instrument cluster. Plain
+/// monospaced text in the default color — the label tells you which
+/// side you are; it's not a metric, so it carries no tint.
+fn player_cell<'a>(player_index: u8) -> Element<'a, Message> {
+    let label = if player_index == 0 { "P1" } else { "P2" };
+    text(label).size(TEXT_BODY).font(iced::Font::MONOSPACE).into()
+}
+
+/// Horizontal fill meter: a dim rounded track filled left-to-right to
+/// `frac` (0..=1) in the tone color. Turns a ratio (e.g. TPS vs its
+/// target) into a bar you read at a glance.
+fn hmeter<'a>(frac: f32, tone: StatTone) -> Element<'a, Message> {
+    const W: f32 = 32.0;
+    const H: f32 = 8.0;
+    let frac = frac.clamp(0.0, 1.0);
+    let fill = container(
+        iced::widget::Space::new()
+            .width(Length::Fixed(W * frac))
+            .height(Length::Fill),
+    )
+    .style(move |theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(stat_tone_color(theme, tone))),
+        border: iced::Border {
+            radius: 2.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    container(fill)
+        .width(Length::Fixed(W))
+        .height(Length::Fixed(H))
+        .style(|theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: 0.22,
+                ..widgets::muted_color(theme)
+            })),
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Bidirectional meter for frame skew: a centered track that fills
+/// toward the right when we're ahead, toward the left when behind,
+/// length scaled by magnitude and colored by `tone` (green = tight
+/// sync … red = far out). The bright center tick is the parity
+/// reference, so who's leading reads at a glance.
+fn skew_meter<'a>(skew: i32, tone: StatTone) -> Element<'a, Message> {
+    const HALF: f32 = 14.0;
+    const H: f32 = 8.0;
+    const MAX: f32 = 8.0; // frames that fill one side completely
+    let len = HALF * ((skew.unsigned_abs() as f32) / MAX).clamp(0.0, 1.0);
+    let fill_style = move |theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(stat_tone_color(theme, tone))),
+        border: iced::Border {
+            radius: 1.5.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let track_style = |theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color {
+            a: 0.22,
+            ..widgets::muted_color(theme)
+        })),
+        ..Default::default()
+    };
+    let fill_bar = move || {
+        container(
+            iced::widget::Space::new()
+                .width(Length::Fixed(len))
+                .height(Length::Fill),
+        )
+        .style(fill_style)
+    };
+    // Left half hugs the center (right edge) and grows leftward when
+    // behind; right half mirrors it when ahead.
+    let left: Element<'a, Message> = container(if skew < 0 {
+        Element::from(fill_bar())
+    } else {
+        Element::from(iced::widget::Space::new())
+    })
+    .width(Length::Fixed(HALF))
+    .height(Length::Fixed(H))
+    .align_x(iced::alignment::Horizontal::Right)
+    .style(track_style)
+    .into();
+    let right: Element<'a, Message> = container(if skew > 0 {
+        Element::from(fill_bar())
+    } else {
+        Element::from(iced::widget::Space::new())
+    })
+    .width(Length::Fixed(HALF))
+    .height(Length::Fixed(H))
+    .align_x(iced::alignment::Horizontal::Left)
+    .style(track_style)
+    .into();
+    let tick = container(
+        iced::widget::Space::new()
+            .width(Length::Fixed(1.0))
+            .height(Length::Fixed(H)),
+    )
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color {
+            a: 0.5,
+            ..widgets::muted_color(theme)
+        })),
+        ..Default::default()
+    });
+    row![left, tick, right].spacing(0).align_y(Alignment::Center).into()
+}
+
+/// Ping cell rendered as a 4-segment signal-strength meter + value.
+/// Bars fill and recolor by latency band (4/green = great … 1/red =
+/// rough) so connection health reads as a glanceable gauge, not a
+/// number you have to parse.
+fn ping_cell<'a>(ping_ms: u128) -> Element<'a, Message> {
+    let (level, tone) = if ping_ms < 40 {
+        (4u8, StatTone::Good)
+    } else if ping_ms < 80 {
+        (3, StatTone::Good)
+    } else if ping_ms < 140 {
+        (2, StatTone::Warn)
+    } else {
+        (1, StatTone::Bad)
+    };
+    // Stepped bars, aligned to a common baseline like a cell-signal
+    // icon. Lit bars take the band tone; the rest sit dim.
+    let heights = [5.0_f32, 8.0, 11.0, 14.0];
+    let mut bars = row![].spacing(1).align_y(Alignment::End);
+    for (i, &h) in heights.iter().enumerate() {
+        let lit = (i as u8) < level;
+        bars = bars.push(
+            container(
+                iced::widget::Space::new()
+                    .width(Length::Fixed(3.0))
+                    .height(Length::Fixed(h)),
+            )
+            .style(move |theme: &iced::Theme| {
+                let color = if lit {
+                    stat_tone_color(theme, tone)
+                } else {
+                    iced::Color {
+                        a: 0.25,
+                        ..widgets::muted_color(theme)
+                    }
+                };
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(color)),
+                    border: iced::Border {
+                        radius: 1.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            }),
+        );
+    }
+    let value = text(format!("{:>3} ms", ping_ms))
+        .size(TEXT_BODY)
+        .font(iced::Font::MONOSPACE)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(stat_tone_color(theme, tone)),
+        });
+    row![bars, value].spacing(5).align_y(Alignment::Center).into()
+}
+
+/// Hairline rule separating cells inside the telemetry deck.
+fn stat_divider<'a>() -> Element<'a, Message> {
+    container(
+        iced::widget::Space::new()
+            .width(Length::Fixed(1.0))
+            .height(Length::Fixed(15.0)),
+    )
+    .style(|theme: &iced::Theme| {
+        let p = theme.extended_palette();
+        let text = theme.palette().text;
+        iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: if p.is_dark { 0.16 } else { 0.13 },
+                ..text
+            })),
+            ..Default::default()
+        }
+    })
+    .into()
+}
+
+/// Flat plate behind the telemetry deck — a faint fill + hairline
+/// border so the readout reads as one grouped module without drawing
+/// attention to itself.
+fn telemetry_plate(theme: &iced::Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let text = theme.palette().text;
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color {
+            a: if p.is_dark { 0.06 } else { 0.05 },
+            ..text
+        })),
+        text_color: Some(text),
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: if p.is_dark { 0.10 } else { 0.08 },
+                ..text
+            },
+        },
+        ..Default::default()
+    }
+}
+
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
@@ -934,51 +1198,99 @@ pub fn view<'a>(
         }
         controls = controls.push(horizontal_space());
     }
-    // PvP-only status readout: P1/P2, TPS, frame advantage, ping.
-    // Mirrors the legacy bottom-bar metrics in
-    // `tango/src/gui/session_view.rs`. Monospaced so values don't
-    // wiggle as they tick up.
+    // PvP-only telemetry deck: P1/P2, TPS, frame skew, rollback depth,
+    // ping — each metric drawn as a little gauge (TPS fill meter, skew
+    // center meter, ping signal bars) next to its value, gathered into
+    // one hairline-divided plate so connection/sync health reads
+    // graphically at a glance instead of as a wall of numbers.
     if let ActiveSession::PvP(pvp) = session {
         let stats = pvp.round_stats();
         let ping_ms = pvp.latency_blocking().as_millis();
         let tps = pvp.tps();
         let fps_target = pvp.fps_target();
-        let mut metrics = row![].spacing(10).align_y(Alignment::Center);
-        if let Some(s) = stats {
-            metrics = metrics.push(
-                text(format!("P{}", s.local_player_index + 1))
-                    .size(TEXT_BODY)
-                    .font(iced::Font::MONOSPACE)
-                    .style(widgets::muted_text_style),
-            );
-        }
-        metrics = metrics.push(
-            text(format!("tps {:5.1}/{:5.1}", tps, fps_target))
+
+        // Small helper for the value text riding next to a meter.
+        let meter_value = |s: String, tone: StatTone| -> Element<'a, Message> {
+            text(s)
                 .size(TEXT_BODY)
                 .font(iced::Font::MONOSPACE)
-                .style(widgets::muted_text_style),
+                .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(stat_tone_color(theme, tone)),
+                })
+                .into()
+        };
+
+        let mut cells: Vec<Element<'a, Message>> = Vec::new();
+        // TPS: fill meter against its target, colored by how well the
+        // emulator keeps up — green at/near rate, amber as it dips, red
+        // when it falls well behind (visible netplay stutter).
+        let tps_tone = if fps_target <= 0.0 {
+            StatTone::Muted
+        } else if tps >= fps_target - 1.0 {
+            StatTone::Good
+        } else if tps >= fps_target - 5.0 {
+            StatTone::Warn
+        } else {
+            StatTone::Bad
+        };
+        let tps_frac = if fps_target > 0.0 { tps / fps_target } else { 0.0 };
+        cells.push(
+            row![
+                hmeter(tps_frac, tps_tone),
+                meter_value(format!("{:.2}/{:.2}", tps, fps_target), tps_tone)
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .into(),
         );
         if let Some(s) = stats {
-            metrics = metrics.push(
-                text(format!("skew {:+3}", s.skew))
-                    .size(TEXT_BODY)
-                    .font(iced::Font::MONOSPACE)
-                    .style(widgets::muted_text_style),
+            // Skew: bidirectional meter (left = behind, right = ahead),
+            // colored by how tight the sync is — green near parity,
+            // amber drifting, red far out. Sign only carries meaning
+            // off-zero; a bare "0" (sign column padded) reads cleaner
+            // than "+0" at parity.
+            let skew_tone = match s.skew.unsigned_abs() {
+                0..=1 => StatTone::Good,
+                2..=5 => StatTone::Warn,
+                _ => StatTone::Bad,
+            };
+            let skew_label = if s.skew == 0 {
+                "  0".to_string()
+            } else {
+                format!("{:>+3}", s.skew)
+            };
+            cells.push(
+                row![skew_meter(s.skew, skew_tone), meter_value(skew_label, skew_tone)]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+                    .into(),
             );
-            metrics = metrics.push(
-                text(format!("depth {:>3}", s.depth))
-                    .size(TEXT_BODY)
-                    .font(iced::Font::MONOSPACE)
-                    .style(widgets::muted_text_style),
-            );
+            // Rollback depth: lower = tighter prediction. Green when
+            // shallow, amber as it climbs, red when speculation runs deep.
+            let depth_tone = match s.depth {
+                0..=1 => StatTone::Good,
+                2..=5 => StatTone::Warn,
+                _ => StatTone::Bad,
+            };
+            cells.push(stat_cell(Icon::Layers2, format!("{:>2}", s.depth), depth_tone));
         }
-        metrics = metrics.push(
-            text(format!("ping {:>3} ms", ping_ms))
-                .size(TEXT_BODY)
-                .font(iced::Font::MONOSPACE)
-                .style(widgets::muted_text_style),
-        );
-        controls = controls.push(metrics);
+        cells.push(ping_cell(ping_ms));
+
+        // Interleave hairline dividers, then wrap in one flat plate.
+        let mut strip = row![].spacing(6).align_y(Alignment::Center);
+        for (i, cell) in cells.into_iter().enumerate() {
+            if i > 0 {
+                strip = strip.push(stat_divider());
+            }
+            strip = strip.push(cell);
+        }
+        // P1/P2 sits OUTSIDE the instrument plate — it's an identity
+        // label, not a metric, so it reads as a separate tag next to
+        // the gauge cluster.
+        if let Some(s) = stats {
+            controls = controls.push(player_cell(s.local_player_index));
+        }
+        controls = controls.push(container(strip).padding([3, 9]).style(telemetry_plate));
     }
     // Opponent setup-reveal toggle (PvP-only) sits to the left of
     // the options trigger so the ellipsis stays the rightmost
