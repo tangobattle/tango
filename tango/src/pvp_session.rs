@@ -23,10 +23,36 @@ pub use tango_pvp::battle::EXPECTED_FPS;
 /// enough that a crashed peer doesn't pin the UI for long.
 const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// The latching end-of-match signals, grouped so the teardown policy
+/// lives in one place instead of four loose atomics on the session.
+///
+/// Each field starts cleared and flips exactly once as the match winds
+/// down; [`PvpSession::is_ended`] combines them with the completion +
+/// cancellation tokens. Every field is an `Arc`, so [`Clone`] hands out a
+/// shared handle: the net receive task, the match-run task, and the
+/// frame_callback each keep one and raise their own signal.
+#[derive(Clone, Default)]
+struct EndState {
+    /// Peer's in-game match-end handshake (`Packet::EndOfMatch`) arrived
+    /// — raised by the net receive task ([`crate::net::PvpReceiver`]).
+    /// `is_ended` honors it so the lagging side gets time to write its
+    /// replay tail before we drop the data channel.
+    peer_ended: Arc<AtomicBool>,
+    /// Peer's data channel closed (clean RTC `on_closed` or receiver
+    /// `Err`) — raised by the match-run task. No more packets are coming,
+    /// so `is_ended` skips straight past the grace window.
+    peer_disconnected: Arc<AtomicBool>,
+    /// Our own `EndOfMatch` has been sent — rising-edge guard so the
+    /// frame_callback fires it exactly once when local completion lands.
+    local_eom_sent: Arc<AtomicBool>,
+    /// Wall-clock instant we first observed local completion; the
+    /// fallback deadline `is_ended` uses so a silent peer can't pin us.
+    local_completed_at: Arc<Mutex<Option<std::time::Instant>>>,
+}
+
 pub struct PvpSession {
     local_game: &'static crate::game::Game,
     joyflags: Arc<AtomicU32>,
-    close_requested: Arc<AtomicBool>,
     /// Per-game in-match hook fires `completion_token.complete()`
     /// once the match has actually reached its end-game screen.
     /// We hold a handle to poll it from the UI tick so the
@@ -34,22 +60,10 @@ pub struct PvpSession {
     /// `Session::completed()` check (see `tango/src/gui.rs`'s
     /// `should_close` block).
     completion_token: tango_pvp::hooks::CompletionToken,
-    /// Peer sent us `Packet::EndOfMatch` — their `match_end_ret`
-    /// hook fired too. `is_ended` waits on this so the lagging
-    /// side has time to write `END_OF_REPLAY` before we drop the
-    /// data channel.
-    peer_ended: Arc<AtomicBool>,
-    /// Peer's WebRTC connection actually closed (clean
-    /// `on_closed` or receiver returned `Err`). Distinct from
-    /// `peer_ended` (which is the in-game handshake) — this is
-    /// the "they're gone, no point waiting" signal that lets
-    /// `is_ended` skip the `PEER_END_GRACE` timeout. Set by the
-    /// network-receive task on its non-cancellation exit.
-    peer_disconnected: Arc<AtomicBool>,
-    /// Wall-clock time we first observed local completion. Used
-    /// as the fallback deadline for `is_ended` so a crashed peer
-    /// can't pin us forever.
-    local_completed_at: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
+    /// Latching end-of-match signals (peer-ended / peer-disconnected /
+    /// local-completion). Grouped in [`EndState`]; `is_ended` reads them
+    /// alongside `completion_token` and `cancellation_token`.
+    end: EndState,
     /// Sliding-window timestamp counter marked once per emulator
     /// frame_callback — yields the true emulator TPS regardless
     /// of how often the UI polls. Equivalent to legacy
@@ -236,10 +250,7 @@ impl PvpSession {
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         let latency_counter = Arc::new(tokio::sync::Mutex::new(crate::net::LatencyCounter::new(5)));
-        let peer_ended = Arc::new(AtomicBool::new(false));
-        let peer_disconnected = Arc::new(AtomicBool::new(false));
-        let local_eom_sent = Arc::new(AtomicBool::new(false));
-        let local_completed_at = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+        let end = EndState::default();
         // `frame_delay` (this side's frame delay) is realized entirely
         // locally by the display core trailing the netcode frontier; it's not
         // part of the deterministic simulation and never crosses the wire. Shared
@@ -267,13 +278,13 @@ impl PvpSession {
             let match_handle = match_handle.clone();
             let inner_match = inner_match.clone();
             let completion_token = completion_token.clone();
-            let peer_disconnected = peer_disconnected.clone();
+            let end = end.clone();
             let frame_notify_for_disc = frame_notify.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
                 receiver,
                 pre_match.sender.clone(),
                 latency_counter.clone(),
-                peer_ended.clone(),
+                end.peer_ended.clone(),
                 frame_notify.clone(),
             ));
             tokio::task::spawn(async move {
@@ -286,7 +297,7 @@ impl PvpSession {
                         // arrive; raise the flag so `is_ended`
                         // can short-circuit past PEER_END_GRACE.
                         log::info!("pvp match thread ending: {:?}", r);
-                        peer_disconnected.store(true, Ordering::Release);
+                        end.peer_disconnected.store(true, Ordering::Release);
                         // Wake the session subscription so it
                         // re-checks `is_ended` and tears the view
                         // down without waiting on the next vblank
@@ -344,16 +355,15 @@ impl PvpSession {
         let handle_completion = {
             let completion_token = completion_token.clone();
             let frame_notify = frame_notify.clone();
-            let local_eom_sent = local_eom_sent.clone();
-            let local_completed_at = local_completed_at.clone();
+            let end = end.clone();
             let sender_for_eom = pre_match.sender.clone();
             let rt_handle = tokio::runtime::Handle::current();
             move || -> bool {
                 if !completion_token.is_complete() {
                     return false;
                 }
-                if !local_eom_sent.swap(true, Ordering::AcqRel) {
-                    *local_completed_at.lock().unwrap() = Some(std::time::Instant::now());
+                if !end.local_eom_sent.swap(true, Ordering::AcqRel) {
+                    *end.local_completed_at.lock().unwrap() = Some(std::time::Instant::now());
                     let sender = sender_for_eom.clone();
                     rt_handle.spawn(async move {
                         if let Err(e) = sender.lock().await.send_end_of_match().await {
@@ -401,11 +411,8 @@ impl PvpSession {
         Ok(Self {
             local_game,
             joyflags,
-            close_requested: Arc::new(AtomicBool::new(false)),
             completion_token,
-            peer_ended,
-            peer_disconnected,
-            local_completed_at,
+            end,
             tps_counter,
             _audio_binding: audio_binding,
             _thread: thread,
@@ -450,7 +457,10 @@ impl PvpSession {
     }
 
     pub fn request_close(&self) {
-        self.close_requested.store(true, Ordering::SeqCst);
+        // Cancelling the token is the whole close signal: it unblocks the
+        // match-run task's `cancelled()` arm and flips `is_ended`'s
+        // cancellation check. (The grace gate there still holds, so the
+        // match-end screen plays out before the view tears down.)
         self.cancellation_token.cancel();
     }
 
@@ -470,14 +480,14 @@ impl PvpSession {
         if !self.completion_token.is_complete() {
             return false;
         }
-        if self.peer_ended.load(Ordering::Acquire) {
+        if self.end.peer_ended.load(Ordering::Acquire) {
             return true;
         }
         // Peer's data channel closed (RTCPeerConnection drop or
         // SCTP-level disconnect). No EndOfMatch is ever coming
         // so skip straight to teardown without burning the
         // grace window.
-        if self.peer_disconnected.load(Ordering::Acquire) {
+        if self.end.peer_disconnected.load(Ordering::Acquire) {
             return true;
         }
         // We tore our own netcode down (local input-buffer overflow cancels the
@@ -488,7 +498,7 @@ impl PvpSession {
         if self.cancellation_token.is_cancelled() {
             return true;
         }
-        match *self.local_completed_at.lock().unwrap() {
+        match *self.end.local_completed_at.lock().unwrap() {
             Some(t) => t.elapsed() >= PEER_END_GRACE,
             // Completion-token can flip before the frame_callback
             // observes it and stamps the deadline. Hold off
@@ -513,7 +523,7 @@ impl PvpSession {
     /// the latency median sticks at its last reading after a drop, and a real
     /// ping can legitimately be 0 on a LAN.
     pub fn peer_disconnected(&self) -> bool {
-        self.peer_disconnected.load(Ordering::Acquire)
+        self.end.peer_disconnected.load(Ordering::Acquire)
     }
 
     /// Smoothed emulator ticks-per-second from the per-frame
