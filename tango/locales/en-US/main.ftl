@@ -97,6 +97,11 @@ lobby-reveal-peer-unknown = (waiting on opponent)
 session-opponent = Opponent setup
 session-self = My setup
 session-back-to-session = Back to session
+# PvP telemetry deck cell tooltips
+session-stat-tps = Tick/s (current/max)
+session-stat-skew = Skew
+session-stat-depth = Speculative depth
+session-stat-ping = Latency
 
 # Save view sub-tabs
 save-tab-cover = Cover

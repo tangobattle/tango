@@ -156,6 +156,11 @@ lobby-reveal-peer-unknown = (ожидание соперника)
 session-opponent = Сборка соперника
 session-self = Моя сборка
 session-back-to-session = Вернуться к сессии
+# PvP telemetry deck cell tooltips
+session-stat-tps = Тик/с (текущее/макс.)
+session-stat-skew = Смещение
+session-stat-depth = Глубина спекуляции
+session-stat-ping = Задержка
 navi-style = Стиль
 folder-group = Группировать по чипу
 save-copy = Копировать

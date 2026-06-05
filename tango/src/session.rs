@@ -582,12 +582,14 @@ fn stat_tone_color(theme: &iced::Theme, tone: StatTone) -> iced::Color {
 }
 
 /// One telemetry cell: a label `icon` and the current `value`, both
-/// color-coded by the health `tone`.
-fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Message> {
+/// color-coded by the health `tone`. `tip` is the hover tooltip
+/// naming the metric (the cells are icon-only, so it's the only place
+/// the full name shows).
+fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String, tip: String) -> Element<'a, Message> {
     let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(stat_tone_color(theme, tone)),
     };
-    row![
+    let cell = row![
         icon.widget().size(TEXT_BODY).style(tone_style),
         text(value)
             .size(TEXT_BODY)
@@ -595,11 +597,19 @@ fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Messa
             .style(tone_style),
     ]
     .spacing(5)
-    .align_y(Alignment::Center)
+    .align_y(Alignment::Center);
+    iced::widget::tooltip(
+        cell,
+        container(text(tip).size(TEXT_CAPTION))
+            .padding(6)
+            .style(widgets::tooltip_chrome),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4)
     .into()
 }
 
-/// P1/P2 identity tag sitting beside the instrument cluster. Plain
+/// P1/P2 identity tag leading the instrument cluster. Plain
 /// monospaced text in the default color — the label tells you which
 /// side you are; it's not a metric, so it carries no tint.
 fn player_cell<'a>(player_index: u8) -> Element<'a, Message> {
@@ -1017,10 +1027,10 @@ pub fn view<'a>(
         }
         controls = controls.push(horizontal_space());
     }
-    // PvP-only telemetry deck: TPS, frame skew, rollback depth, ping —
-    // each metric drawn as a historical sparkline next to its current
-    // value, colored by health (green/amber/red), gathered into one
-    // hairline-divided plate. P1/P2 rides outside as an identity tag.
+    // PvP-only telemetry deck: P1/P2 tag, TPS, frame skew, rollback
+    // depth, ping — each metric drawn next to its current value,
+    // colored by health (green/amber/red), gathered into one
+    // hairline-divided plate. P1/P2 leads the cluster as an identity tag.
     if let ActiveSession::PvP(pvp) = session {
         let stats = pvp.round_stats();
         let ping_ms = pvp.latency_blocking().as_millis();
@@ -1028,6 +1038,13 @@ pub fn view<'a>(
         let fps_target = pvp.fps_target();
 
         let mut cells: Vec<Element<'a, Message>> = Vec::new();
+
+        // P1/P2 identity tag now leads the instrument cluster, inside
+        // the plate — it reads as the "which side am I" label sitting
+        // ahead of the live metrics.
+        if let Some(s) = stats {
+            cells.push(player_cell(s.local_player_index));
+        }
 
         // TPS: current rate vs target — green at/near rate, amber as it
         // dips, red when it falls well behind (visible netplay stutter).
@@ -1044,6 +1061,7 @@ pub fn view<'a>(
             Icon::Gauge,
             tps_tone,
             format!("{:.2}/{:.2}", tps, fps_target),
+            t!(lang, "session-stat-tps"),
         ));
 
         if let Some(s) = stats {
@@ -1059,7 +1077,12 @@ pub fn view<'a>(
             } else {
                 format!("{:>+3}", s.skew)
             };
-            cells.push(stat_cell(Icon::ArrowLeftRight, skew_tone, skew_label));
+            cells.push(stat_cell(
+                Icon::ArrowLeftRight,
+                skew_tone,
+                skew_label,
+                t!(lang, "session-stat-skew"),
+            ));
 
             // Rollback depth: lower = tighter prediction. Green when
             // shallow, amber as it climbs, red when speculation runs deep.
@@ -1068,18 +1091,30 @@ pub fn view<'a>(
                 3..=5 => StatTone::Warn,
                 _ => StatTone::Bad,
             };
-            cells.push(stat_cell(Icon::Layers2, depth_tone, format!("{:>2}", s.depth)));
+            cells.push(stat_cell(
+                Icon::Layers2,
+                depth_tone,
+                format!("{:>2}", s.depth),
+                t!(lang, "session-stat-depth"),
+            ));
         }
 
-        // Ping: latency band.
-        let ping_tone = if ping_ms < 80 {
-            StatTone::Good
+        // Ping: latency band. The signal icon's bar strength tracks
+        // the band too — full bars (SignalHigh) when ping is low,
+        // dropping to SignalLow as latency climbs.
+        let (ping_tone, ping_icon) = if ping_ms < 80 {
+            (StatTone::Good, Icon::SignalHigh)
         } else if ping_ms < 140 {
-            StatTone::Warn
+            (StatTone::Warn, Icon::SignalMedium)
         } else {
-            StatTone::Bad
+            (StatTone::Bad, Icon::SignalLow)
         };
-        cells.push(stat_cell(Icon::Signal, ping_tone, format!("{:>3} ms", ping_ms)));
+        cells.push(stat_cell(
+            ping_icon,
+            ping_tone,
+            format!("{:>3} ms", ping_ms),
+            t!(lang, "session-stat-ping"),
+        ));
 
         // Interleave hairline dividers, then wrap in one flat plate.
         let mut strip = row![].spacing(6).align_y(Alignment::Center);
@@ -1088,12 +1123,6 @@ pub fn view<'a>(
                 strip = strip.push(stat_divider());
             }
             strip = strip.push(cell);
-        }
-        // P1/P2 sits OUTSIDE the instrument plate — it's an identity
-        // label, not a metric, so it reads as a separate tag next to
-        // the gauge cluster.
-        if let Some(s) = stats {
-            controls = controls.push(player_cell(s.local_player_index));
         }
         controls = controls.push(container(strip).padding([3, 9]).style(telemetry_plate));
     }

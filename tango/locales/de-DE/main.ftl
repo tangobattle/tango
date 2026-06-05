@@ -155,6 +155,11 @@ lobby-reveal-peer-unknown = (warte auf Gegner)
 session-opponent = Gegner-Setup
 session-self = Mein Setup
 session-back-to-session = Zurück zur Sitzung
+# PvP telemetry deck cell tooltips
+session-stat-tps = Tick/s (aktuell/max.)
+session-stat-skew = Versatz
+session-stat-depth = Spekulative Tiefe
+session-stat-ping = Latenz
 navi-style = Stil
 folder-group = Nach Chip gruppieren
 save-copy = Kopieren

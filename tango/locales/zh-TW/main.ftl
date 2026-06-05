@@ -152,6 +152,11 @@ lobby-reveal-peer-unknown = （等待對手）
 session-opponent = 對手配置
 session-self = 我的配置
 session-back-to-session = 返回對戰
+# PvP telemetry deck cell tooltips
+session-stat-tps = 刻/秒（目前/上限）
+session-stat-skew = 偏移
+session-stat-depth = 預測深度
+session-stat-ping = 延遲
 navi-style = 風格
 folder-group = 依晶片分組
 save-copy = 複製

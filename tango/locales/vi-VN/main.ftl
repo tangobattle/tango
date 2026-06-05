@@ -152,6 +152,11 @@ lobby-reveal-peer-unknown = (đang đợi đối thủ)
 session-opponent = Thiết lập đối thủ
 session-self = Thiết lập của tôi
 session-back-to-session = Trở về phiên
+# PvP telemetry deck cell tooltips
+session-stat-tps = Tick/giây (hiện tại/tối đa)
+session-stat-skew = Độ lệch
+session-stat-depth = Độ sâu suy đoán
+session-stat-ping = Độ trễ
 navi-style = Style
 folder-group = Nhóm theo chip
 save-copy = Sao chép
