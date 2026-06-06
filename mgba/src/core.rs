@@ -228,11 +228,6 @@ impl<'a> CoreMutRef<'a> {
 
     pub fn save_state(&self) -> Result<Box<state::State>, crate::Error> {
         unsafe {
-            let layout = std::alloc::Layout::new::<mgba_sys::GBASerializedState>();
-            let ptr = std::alloc::alloc(layout);
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
             let mut state = state::State::new_uninit();
             if !(*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) {
                 return Err(crate::Error::CallFailed("mCore.saveState"));
