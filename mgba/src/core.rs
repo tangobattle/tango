@@ -289,6 +289,13 @@ impl<'a> CoreMutRef<'a> {
         unsafe { (*self.ptr).runLoop.unwrap()(self.ptr) }
     }
 
+    pub fn end_run_loop(&mut self) {
+        unsafe {
+            let cpu = (*((*self.ptr).board as *mut mgba_sys::GBA)).cpu;
+            (*cpu).nextEvent = (*cpu).cycles;
+        }
+    }
+
     pub fn step(&mut self) {
         unsafe { (*self.ptr).step.unwrap()(self.ptr) }
     }

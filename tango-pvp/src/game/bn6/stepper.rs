@@ -148,6 +148,10 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if current_tick == state.capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.capture(core.save_state().expect("save captured state"));
+                    // Halt run_loop at the capture: its leftover cycle budget must
+                    // not spill into copy_input_data_entry and double-advance the
+                    // shadow for the captured tick.
+                    core.end_run_loop();
                     return;
                 }
 
@@ -171,13 +175,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // game's tick has advanced but we haven't started the
                 // new round yet.
                 if state.is_replaying() && !state.has_committed_this_round() {
-                    return;
-                }
-                // FF has captured its state and the Fastforwarder is about to
-                // return. `run_loop`'s remaining cycle budget can still spill
-                // past the trap-fire point — don't let it advance the shadow
-                // again for the captured tick.
-                if state.has_captured_snapshot() {
                     return;
                 }
 

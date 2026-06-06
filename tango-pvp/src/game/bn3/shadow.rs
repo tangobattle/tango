@@ -35,12 +35,6 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             };
             let (local, _remote) = pending.pair;
 
-            // HACK: This is required if the emulator advances beyond read joyflags and runs this function again, but is missing input data.
-            // We permit this for one tick only, but really we should just not be able to get into this situation in the first place.
-            if pending.expected_tick + 1 == round.current_tick() {
-                return;
-            }
-
             if let Err(e) = round.check_remote_packet_at_current_tick() {
                 shadow_state.set_anyhow_error(e);
                 return;
@@ -97,9 +91,11 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         }),
         (hooks.offsets.rom.round_end_entry, {
             let shadow_state = shadow_state.clone();
-            Box::new(move |core| {
+            Box::new(move |mut core| {
                 shadow_state.end_round();
                 shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+                // Halt run_loop at the snapshot so it can't run past round end.
+                core.end_run_loop();
             })
         }),
         (hooks.offsets.rom.battle_is_p2_ret, {
@@ -143,6 +139,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     munger.set_rng2_state(core, rng2_state);
 
                     round.set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
+                    // Halt run_loop at the snapshot so it can't over-run the committed tick.
+                    core.end_run_loop();
                     log::info!(
                         "shadow rng1 state: {:08x}, rng2 state: {:08x}",
                         munger.rng1_state(core),
@@ -161,6 +159,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
 
                 if round.take_input_injected() {
                     shadow_state.set_applied_state(core.save_state().expect("save state"), round.current_tick());
+                    // Halt run_loop at the snapshot so it can't spill past the applied tick.
+                    core.end_run_loop();
                 }
             })
         }),

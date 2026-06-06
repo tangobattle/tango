@@ -1,12 +1,9 @@
 use crate::input::{Input, PartialInput};
 
 /// A shadow input pair queued by `Shadow::apply_input` for the next per-game
-/// trap to consume, plus the tick the primary expected the shadow to process
-/// it at. The expected tick lets per-game traps detect the "shadow advanced
-/// one tick before the trap fired" race.
+/// trap to consume.
 #[derive(Clone)]
 pub struct PendingShadowInput {
-    pub expected_tick: u32,
     pub pair: (Input, PartialInput),
 }
 
@@ -72,8 +69,8 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub(super) fn set_pending_shadow_input(&mut self, expected_tick: u32, pair: (Input, PartialInput)) {
-        self.pending_shadow_input = Some(PendingShadowInput { expected_tick, pair });
+    pub(super) fn set_pending_shadow_input(&mut self, pair: (Input, PartialInput)) {
+        self.pending_shadow_input = Some(PendingShadowInput { pair });
     }
 
     pub fn take_shadow_input(&mut self) -> Option<PendingShadowInput> {

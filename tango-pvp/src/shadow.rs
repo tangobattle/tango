@@ -206,15 +206,15 @@ impl Shadow {
 
     /// Inject the given input pair as the next shadow input, then run the
     /// shadow until per-game traps capture an applied snapshot. `expected_tick`
-    /// is the tick the primary expected the shadow to be on for this input —
-    /// per-game traps use it to detect the "shadow advanced one tick before
-    /// the trap fired" race. Returns the remote packet that was queued before
-    /// this run.
+    /// is now unused — kept only to match the resolver callback signature. The
+    /// per-game traps `end_run_loop` at the snapshot, so the "shadow advanced
+    /// one tick before the trap fired" race it used to guard against can no
+    /// longer happen. Returns the remote packet that was queued before this run.
     pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
-            round.set_pending_shadow_input(expected_tick, ip);
+            round.set_pending_shadow_input(ip);
             round.peek_remote_packet().expect("pending remote packet")
         };
         self.hooks.prepare_for_fastforward(self.core.as_mut());
