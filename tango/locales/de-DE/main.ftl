@@ -94,7 +94,7 @@ session-back-to-session = Back to session
 session-stat-tps = Tick/s (current/max)
 session-stat-skew = Skew
 session-stat-depth = Speculation depth
-session-stat-ping = Latency
+session-stat-ping = Network latency
 # Save view sub-tabs
 save-tab-cover = Cover
 save-tab-navi = Navi
