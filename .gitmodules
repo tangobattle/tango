@@ -1,3 +1,6 @@
 [submodule "mgba/mgba-sys/mgba"]
 	path = mgba/mgba-sys/mgba
 	url = https://github.com/mgba-emu/mgba.git
+[submodule "libdatachannel"]
+	path = libdatachannel
+	url = https://github.com/tangobattle/libdatachannel

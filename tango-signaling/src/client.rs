@@ -77,9 +77,6 @@ pub enum Error {
     #[error("http error: {0:?}")]
     Http(#[from] tokio_tungstenite::tungstenite::http::Error),
 
-    #[error("sdp parse error: {0:?}")]
-    SdpParse(#[from] datachannel_wrapper::sdp::error::SdpParserError),
-
     #[error("invalid packet")]
     InvalidPacket(tokio_tungstenite::tungstenite::Message),
 
@@ -356,7 +353,7 @@ async fn wait_for_exchange(
                 peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
                 peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                     sdp_type: datachannel_wrapper::SdpType::Offer,
-                    sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
+                    sdp: offer.sdp.clone(),
                 })?;
 
                 let local_description = peer_conn.local_description().unwrap();
@@ -380,7 +377,7 @@ async fn wait_for_exchange(
 
                 peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                     sdp_type: datachannel_wrapper::SdpType::Answer,
-                    sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
+                    sdp: answer.sdp.clone(),
                 })?;
                 return Ok(WaitOutcome::Exchanged);
             }

@@ -1237,7 +1237,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
-                .map(|d| d.sdp_type == datachannel_wrapper::SdpType::Offer)
+                .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
                 .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),

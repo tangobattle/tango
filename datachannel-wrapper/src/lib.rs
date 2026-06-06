@@ -1,10 +1,102 @@
-pub use datachannel::{
-    sdp, ConnectionState, DataChannelInit, GatheringState, IceCandidate, Reliability, RtcConfig, SdpType,
-    SessionDescription, SignalingState, TransportPolicy,
-};
+//! A small async/Tokio-friendly facade over [`libdatachannel`].
+//!
+//! `libdatachannel` exposes a synchronous, callback-based API. The rest of
+//! Tango is written against an async, channel-based shape (peer-connection
+//! events arrive on an `mpsc::Receiver`, data-channel sends/receives are
+//! `await`-able). This crate keeps that shape: native callbacks fire on
+//! libdatachannel's own threads and we forward them onto Tokio channels.
+
+// Re-export the libdatachannel enums whose shape/variants we use verbatim.
+pub use libdatachannel::{GatheringState, Reliability, SdpType, State as ConnectionState, TransportPolicy};
+
+/// An ICE candidate string emitted by the local agent. Tango does non-trickle
+/// ICE (it waits for gathering to complete and ships the full SDP), so nothing
+/// consumes these today, but they're surfaced for API completeness.
+#[derive(Debug, Clone)]
+pub struct IceCandidate {
+    pub candidate: String,
+}
+
+/// A full SDP session description. Unlike the old wrapper, `sdp` is just the raw
+/// SDP text — libdatachannel parses/serializes it internally.
+#[derive(Debug, Clone)]
+pub struct SessionDescription {
+    pub sdp_type: SdpType,
+    pub sdp: String,
+}
+
+/// Peer connection configuration. A thin stand-in for the old `RtcConfig`,
+/// carrying only what Tango sets.
+#[derive(Debug, Clone, Default)]
+pub struct RtcConfig {
+    pub ice_servers: Vec<String>,
+    pub ice_transport_policy: TransportPolicy,
+}
+
+impl RtcConfig {
+    pub fn new<S: AsRef<str>>(ice_servers: &[S]) -> Self {
+        Self {
+            ice_servers: ice_servers.iter().map(|s| s.as_ref().to_owned()).collect(),
+            ice_transport_policy: TransportPolicy::All,
+        }
+    }
+}
+
+/// Builder for data-channel options, matching the old fluent API
+/// (`DataChannelInit::default().reliability(..).negotiated().manual_stream().stream(0)`).
+#[derive(Default)]
+pub struct DataChannelInit(libdatachannel::DataChannelOptions);
+
+impl DataChannelInit {
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.0.reliability = reliability;
+        self
+    }
+
+    pub fn negotiated(mut self) -> Self {
+        self.0.negotiated = true;
+        self
+    }
+
+    /// Use a caller-assigned stream id. In libdatachannel a manual stream is
+    /// simply expressed as `stream = Some(..)`, so this is a no-op kept for API
+    /// compatibility — call [`DataChannelInit::stream`] to set the id.
+    pub fn manual_stream(self) -> Self {
+        self
+    }
+
+    pub fn stream(mut self, stream: u16) -> Self {
+        self.0.stream = Some(stream);
+        self
+    }
+
+    pub fn protocol(mut self, protocol: String) -> Self {
+        self.0.protocol = protocol;
+        self
+    }
+}
+
+/// Events forwarded off libdatachannel's threads onto the peer-connection's
+/// event channel.
+#[derive(Debug)]
+pub enum PeerConnectionEvent {
+    SessionDescription(SessionDescription),
+    IceCandidate(IceCandidate),
+    ConnectionStateChange(ConnectionState),
+    GatheringStateChange(GatheringState),
+}
+
+fn error_to_io(err: libdatachannel::Error) -> std::io::Error {
+    match err {
+        libdatachannel::Error::Invalid => std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid argument"),
+        libdatachannel::Error::Failure => std::io::Error::other("runtime error"),
+        libdatachannel::Error::NotAvail => std::io::Error::new(std::io::ErrorKind::WouldBlock, "not available"),
+        libdatachannel::Error::TooSmall => std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too small"),
+    }
+}
 
 pub struct PeerConnection {
-    peer_conn: Box<datachannel::RtcPeerConnection<PeerConnectionHandler>>,
+    inner: libdatachannel::PeerConnection,
     data_channel_rx: tokio::sync::mpsc::Receiver<DataChannel>,
 }
 
@@ -12,19 +104,66 @@ impl PeerConnection {
     pub fn new(config: RtcConfig) -> Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
-        let pch = PeerConnectionHandler {
-            event_tx,
-            pending_dc_receiver: None,
-            data_channel_tx,
-        };
-        let peer_conn = datachannel::RtcPeerConnection::new(&config, pch).map_err(datachannel_error_to_io_error)?;
-        Ok((
-            PeerConnection {
-                peer_conn,
-                data_channel_rx,
-            },
-            event_rx,
-        ))
+
+        let mut inner = libdatachannel::PeerConnection::new(libdatachannel::Configuration {
+            ice_servers: config.ice_servers,
+            ice_transport_policy: config.ice_transport_policy,
+            ..Default::default()
+        })
+        .map_err(error_to_io)?;
+
+        inner.set_on_local_description(Some({
+            let event_tx = event_tx.clone();
+            move |sdp: &str, type_: SdpType| {
+                let _ = event_tx.blocking_send(PeerConnectionEvent::SessionDescription(SessionDescription {
+                    sdp_type: type_,
+                    sdp: sdp.to_owned(),
+                }));
+            }
+        }));
+
+        inner.set_on_local_candidate(Some({
+            let event_tx = event_tx.clone();
+            move |cand: &str| {
+                let _ = event_tx.blocking_send(PeerConnectionEvent::IceCandidate(IceCandidate {
+                    candidate: cand.to_owned(),
+                }));
+            }
+        }));
+
+        inner.set_on_state_change(Some({
+            let event_tx = event_tx.clone();
+            move |state: ConnectionState| {
+                // libdatachannel can fire this synchronously from the destructor
+                // on the same thread Tokio is driving (horrible). `blocking_send`
+                // would panic in an async context, so try-send there instead.
+                let event = PeerConnectionEvent::ConnectionStateChange(state);
+                match tokio::runtime::Handle::try_current() {
+                    Ok(_) => {
+                        let _ = event_tx.try_send(event);
+                    }
+                    Err(_) => {
+                        let _ = event_tx.blocking_send(event);
+                    }
+                }
+            }
+        }));
+
+        inner.set_on_gathering_state_change(Some({
+            let event_tx = event_tx.clone();
+            move |state: GatheringState| {
+                let _ = event_tx.blocking_send(PeerConnectionEvent::GatheringStateChange(state));
+            }
+        }));
+
+        inner.set_on_data_channel(Some({
+            let data_channel_tx = data_channel_tx.clone();
+            move |dc: libdatachannel::DataChannel| {
+                let _ = data_channel_tx.blocking_send(DataChannel::wrap(dc));
+            }
+        }));
+
+        Ok((PeerConnection { inner, data_channel_rx }, event_rx))
     }
 
     pub fn create_data_channel(
@@ -32,25 +171,8 @@ impl PeerConnection {
         label: &str,
         dc_init: DataChannelInit,
     ) -> Result<DataChannel, std::io::Error> {
-        let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
-        let (open_tx, open_rx) = tokio::sync::oneshot::channel();
-        let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
-            open_rx: Some(open_rx),
-            error: None,
-        }));
-        let dch = DataChannelHandler {
-            message_tx: Some(message_tx),
-            open_tx: Some(open_tx),
-            state: state.clone(),
-        };
-        let dc = self
-            .peer_conn
-            .create_data_channel_ex(label, dch, &dc_init)
-            .map_err(datachannel_error_to_io_error)?;
-        Ok(DataChannel {
-            sender: DataChannelSender { state, dc },
-            receiver: DataChannelReceiver { message_rx },
-        })
+        let dc = self.inner.create_data_channel(label, dc_init.0).map_err(error_to_io)?;
+        Ok(DataChannel::wrap(dc))
     }
 
     pub async fn accept(&mut self) -> Option<DataChannel> {
@@ -58,121 +180,46 @@ impl PeerConnection {
     }
 
     pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), std::io::Error> {
-        self.peer_conn
-            .set_local_description(sdp_type)
-            .map_err(datachannel_error_to_io_error)?;
-        Ok(())
+        self.inner
+            .set_local_description(Some(sdp_type))
+            .map_err(error_to_io)
     }
 
     pub fn set_remote_description(&mut self, sess_desc: SessionDescription) -> Result<(), std::io::Error> {
-        self.peer_conn
-            .set_remote_description(&sess_desc)
-            .map_err(datachannel_error_to_io_error)?;
-        Ok(())
+        self.inner
+            .set_remote_description(&libdatachannel::Description {
+                type_: sess_desc.sdp_type,
+                sdp: sess_desc.sdp,
+            })
+            .map_err(error_to_io)
     }
 
     pub fn local_description(&self) -> Option<SessionDescription> {
-        self.peer_conn.local_description()
+        self.inner.local_description().ok().map(|d| SessionDescription {
+            sdp_type: d.type_,
+            sdp: d.sdp,
+        })
     }
 
     pub fn remote_description(&self) -> Option<SessionDescription> {
-        self.peer_conn.remote_description()
+        self.inner.remote_description().ok().map(|d| SessionDescription {
+            sdp_type: d.type_,
+            sdp: d.sdp,
+        })
     }
 
     pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> Result<(), std::io::Error> {
-        self.peer_conn
-            .add_remote_candidate(&cand)
-            .map_err(datachannel_error_to_io_error)?;
-        Ok(())
+        self.inner.add_remote_candidate(&cand.candidate).map_err(error_to_io)
     }
 }
 
-struct PeerConnectionHandler {
-    event_tx: tokio::sync::mpsc::Sender<PeerConnectionEvent>,
-    pending_dc_receiver: Option<(
-        tokio::sync::mpsc::Receiver<Vec<u8>>,
-        std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    )>,
-    data_channel_tx: tokio::sync::mpsc::Sender<DataChannel>,
-}
-
-#[derive(Debug)]
-pub enum PeerConnectionEvent {
-    SessionDescription(SessionDescription),
-    IceCandidate(IceCandidate),
-    ConnectionStateChange(ConnectionState),
-    GatheringStateChange(GatheringState),
-    SignalingStateChange(SignalingState),
-}
-
-impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
-    type DCH = DataChannelHandler;
-
-    fn data_channel_handler(&mut self, _info: datachannel::DataChannelInfo) -> Self::DCH {
-        let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
-        let (open_tx, open_rx) = tokio::sync::oneshot::channel();
-        let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
-            open_rx: Some(open_rx),
-            error: None,
-        }));
-        let dch = DataChannelHandler {
-            message_tx: Some(message_tx),
-            open_tx: Some(open_tx),
-            state: state.clone(),
-        };
-        self.pending_dc_receiver = Some((message_rx, state));
-        dch
-    }
-
-    fn on_description(&mut self, sess_desc: SessionDescription) {
-        let _ = self
-            .event_tx
-            .blocking_send(PeerConnectionEvent::SessionDescription(sess_desc));
-    }
-
-    fn on_candidate(&mut self, cand: IceCandidate) {
-        let _ = self.event_tx.blocking_send(PeerConnectionEvent::IceCandidate(cand));
-    }
-
-    fn on_connection_state_change(&mut self, state: ConnectionState) {
-        // This can called by the destructor on the same thread that Tokio is running on (horrible).
-        let event = PeerConnectionEvent::ConnectionStateChange(state);
-        match tokio::runtime::Handle::try_current() {
-            Ok(_) => {
-                // We're running in an async context, just try send it and if we can't, oh well (this is probably during destruction).
-                let _ = self.event_tx.try_send(event);
-            }
-            Err(_) => {
-                // We're not running in an async context, block on sending it.
-                let _ = self.event_tx.blocking_send(event);
-            }
-        }
-    }
-
-    fn on_gathering_state_change(&mut self, state: GatheringState) {
-        let _ = self
-            .event_tx
-            .blocking_send(PeerConnectionEvent::GatheringStateChange(state));
-    }
-
-    fn on_signaling_state_change(&mut self, state: SignalingState) {
-        let _ = self
-            .event_tx
-            .blocking_send(PeerConnectionEvent::SignalingStateChange(state));
-    }
-
-    fn on_data_channel(&mut self, dc: Box<datachannel::RtcDataChannel<Self::DCH>>) {
-        let (message_rx, state) = self.pending_dc_receiver.take().unwrap();
-        let _ = self.data_channel_tx.blocking_send(DataChannel {
-            sender: DataChannelSender { state, dc },
-            receiver: DataChannelReceiver { message_rx },
-        });
-    }
-}
-
-struct DataChannelState {
-    open_rx: Option<tokio::sync::oneshot::Receiver<()>>,
-    error: Option<String>,
+/// The lifecycle of a data channel as observed by the send side.
+#[derive(Debug, Clone)]
+enum DataChannelStatus {
+    Pending,
+    Open,
+    Closed,
+    Error(String),
 }
 
 pub struct DataChannel {
@@ -181,6 +228,63 @@ pub struct DataChannel {
 }
 
 impl DataChannel {
+    /// Attach our Tokio-channel callbacks to a raw libdatachannel data channel
+    /// and split it into a sender/receiver pair. Shared by `create_data_channel`
+    /// (local) and the `on_data_channel` callback (remote-opened).
+    fn wrap(mut inner: libdatachannel::DataChannel) -> Self {
+        let (status_tx, status_rx) = tokio::sync::watch::channel(DataChannelStatus::Pending);
+        // `watch::Sender` isn't `Clone`, so share it across the callbacks via Arc.
+        let status_tx = std::sync::Arc::new(status_tx);
+
+        // Capacity-1 bounded channel: `blocking_send` on the network thread
+        // applies backpressure when the consumer falls behind. Wrapped in an
+        // Option so `on_closed` can drop the sender and signal EOF to the
+        // receiver even while the channel object is still alive.
+        let (message_tx, message_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1);
+        let message_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(message_tx)));
+
+        inner.set_on_open(Some({
+            let status_tx = status_tx.clone();
+            move || {
+                let _ = status_tx.send(DataChannelStatus::Open);
+            }
+        }));
+
+        inner.set_on_error(Some({
+            let status_tx = status_tx.clone();
+            move |err: &str| {
+                let _ = status_tx.send(DataChannelStatus::Error(err.to_owned()));
+            }
+        }));
+
+        inner.set_on_closed(Some({
+            let status_tx = status_tx.clone();
+            let message_tx = message_tx.clone();
+            move || {
+                let _ = status_tx.send(DataChannelStatus::Closed);
+                // Drop the sender so a blocked/idle `receive()` observes EOF.
+                *message_tx.lock().unwrap() = None;
+            }
+        }));
+
+        inner.set_on_message(Some({
+            let message_tx = message_tx.clone();
+            move |msg: &[u8]| {
+                // Clone the sender out from under the lock so we never hold it
+                // across a (potentially blocking) send.
+                let tx = message_tx.lock().unwrap().clone();
+                if let Some(tx) = tx {
+                    let _ = tx.blocking_send(msg.to_vec());
+                }
+            }
+        }));
+
+        DataChannel {
+            sender: DataChannelSender { inner, status_rx },
+            receiver: DataChannelReceiver { message_rx },
+        }
+    }
+
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
         self.sender.send(msg).await
     }
@@ -195,25 +299,34 @@ impl DataChannel {
 }
 
 pub struct DataChannelSender {
-    state: std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    dc: Box<datachannel::RtcDataChannel<DataChannelHandler>>,
+    inner: libdatachannel::DataChannel,
+    status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
 }
 
 impl DataChannelSender {
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
-        let mut state = self.state.lock().await;
-        if let Some(err) = &state.error {
-            return Err(std::io::Error::other(err.clone()));
+        // Block on the first send until the channel leaves `Pending` (opens or
+        // dies); once it's `Open` this returns immediately on every later send.
+        let status = match self
+            .status_rx
+            .wait_for(|s| !matches!(s, DataChannelStatus::Pending))
+            .await
+        {
+            Ok(s) => s.clone(),
+            // The status sender is gone, i.e. the underlying channel was dropped.
+            Err(_) => DataChannelStatus::Closed,
+        };
+
+        match status {
+            DataChannelStatus::Open => {}
+            DataChannelStatus::Error(err) => return Err(std::io::Error::other(err)),
+            DataChannelStatus::Closed => {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))
+            }
+            DataChannelStatus::Pending => unreachable!("wait_for guarantees we left Pending"),
         }
 
-        if let Some(open_rx) = state.open_rx.take() {
-            open_rx
-                .await
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
-        }
-
-        self.dc.send(msg).map_err(datachannel_error_to_io_error)?;
-        Ok(())
+        self.inner.send(msg).map_err(error_to_io)
     }
 
     pub fn unsplit(self, receiver: DataChannelReceiver) -> DataChannel {
@@ -233,45 +346,4 @@ impl DataChannelReceiver {
     pub fn unsplit(self, tx: DataChannelSender) -> DataChannel {
         tx.unsplit(self)
     }
-}
-
-struct DataChannelHandler {
-    state: std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
-    open_tx: Option<tokio::sync::oneshot::Sender<()>>,
-    message_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-}
-
-fn datachannel_error_to_io_error(err: datachannel::Error) -> std::io::Error {
-    match err {
-        datachannel::Error::InvalidArg => std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid argument"),
-        datachannel::Error::Runtime => std::io::Error::other("runtime error"),
-        datachannel::Error::NotAvailable => std::io::Error::new(std::io::ErrorKind::WouldBlock, "not available"),
-        datachannel::Error::TooSmall => std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too small"),
-        datachannel::Error::Unkown => std::io::Error::other("unknown"),
-        datachannel::Error::BadString(s) => {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("bad string: {}", s))
-        }
-    }
-}
-
-impl datachannel::DataChannelHandler for DataChannelHandler {
-    fn on_open(&mut self) {
-        let _ = self.open_tx.take().unwrap().send(());
-    }
-
-    fn on_closed(&mut self) {
-        self.message_tx = None;
-    }
-
-    fn on_error(&mut self, err: &str) {
-        self.state.blocking_lock().error = Some(err.to_owned());
-    }
-
-    fn on_message(&mut self, msg: &[u8]) {
-        let _ = self.message_tx.as_mut().unwrap().blocking_send(msg.to_vec());
-    }
-
-    fn on_buffered_amount_low(&mut self) {}
-
-    fn on_available(&mut self) {}
 }

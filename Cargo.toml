@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "bps",
     "datachannel-wrapper",
-    "input-helper",
+    "libdatachannel",
     "mgba",
     "getgud",
     "tango",
