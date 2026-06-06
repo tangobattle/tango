@@ -187,7 +187,7 @@ static BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
     let mut arr = [image::Rgba([0, 0, 0, 0]); 0x8000];
     let mut i = 0u16;
     while i < 0x8000 {
-        arr[i as usize] = unsafe { std::mem::transmute::<_, tango_dataview::rom::Bgr555>(i as u16) }.to_rgba8();
+        arr[i as usize] = tango_dataview::rom::Bgr555::new(i.to_le_bytes()).to_rgba8();
         i += 1;
     }
     arr

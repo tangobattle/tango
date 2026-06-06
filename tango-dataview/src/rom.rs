@@ -384,8 +384,16 @@ pub struct Bgr555 {
 }
 
 impl Bgr555 {
+    pub const fn new(raw: [u8; 2]) -> Self {
+        Self { raw }
+    }
+
+    pub const fn to_le(&self) -> u16 {
+        u16::from_le_bytes(self.raw)
+    }
+
     pub const fn to_rgba8(&self) -> image::Rgba<u8> {
-        let raw = u16::from_le_bytes(self.raw);
+        let raw = self.to_le();
         image::Rgba([
             ((raw & 0x1f) * 0xff / 0x1f) as u8,
             (((raw >> 5) & 0x1f) as u16 * 0xff / 0x1f) as u8,
