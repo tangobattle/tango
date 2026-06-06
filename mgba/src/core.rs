@@ -4,6 +4,7 @@ use super::state;
 use super::trapper;
 use super::vfile;
 use std::ffi::CString;
+use std::mem::MaybeUninit;
 
 pub struct Core {
     pub(super) ptr: *mut mgba_sys::mCore,
@@ -227,12 +228,20 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn save_state(&self) -> Result<Box<state::State>, crate::Error> {
+        let mut state = state::State::new_uninit();
+        self.save_state_into(state.as_mut())?;
+        Ok(unsafe { state.assume_init() })
+    }
+
+    pub fn save_state_into<'b>(
+        &self,
+        state: &'b mut MaybeUninit<state::State>,
+    ) -> Result<&'b state::State, crate::Error> {
         unsafe {
-            let mut state = state::State::new_uninit();
             if !(*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) {
                 return Err(crate::Error::CallFailed("mCore.saveState"));
             }
-            Ok(Box::from_raw(Box::into_raw(state) as *mut _))
+            Ok(state.assume_init_ref())
         }
     }
 

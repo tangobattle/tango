@@ -61,12 +61,10 @@ impl State {
         }
     }
 
-    pub fn from_slice(slice: &[u8]) -> Box<Self> {
+    pub unsafe fn from_slice(slice: &[u8]) -> Box<Self> {
         let mut state = Self::new_uninit();
-        unsafe {
-            std::slice::from_raw_parts_mut(state.as_mut_ptr() as *mut _, std::mem::size_of::<Self>())
-                .copy_from_slice(slice);
-            Box::from_raw(Box::into_raw(state) as *mut _)
-        }
+        std::slice::from_raw_parts_mut(state.as_mut_ptr() as *mut _, std::mem::size_of::<Self>())
+            .copy_from_slice(slice);
+        Box::from_raw(Box::into_raw(state) as *mut _)
     }
 }
