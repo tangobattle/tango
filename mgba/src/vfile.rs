@@ -29,7 +29,7 @@ impl VFileOps for std::io::Cursor<Vec<u8>> {
 
 #[repr(C)]
 pub struct VFile {
-    vfile: mgba_sys::VFile,
+    vtable: mgba_sys::VFile,
     f: Box<dyn VFileOps>,
 }
 
@@ -120,7 +120,7 @@ unsafe extern "C" fn vfile_sync(vf: *mut mgba_sys::VFile, _buffer: *mut ::std::o
     f.sync_data().is_ok()
 }
 
-const VFILE_OPS: mgba_sys::VFile = mgba_sys::VFile {
+const VFILE_VTABLE: mgba_sys::VFile = mgba_sys::VFile {
     close: Some(vfile_close as _),
     seek: Some(vfile_seek as _),
     read: Some(vfile_read as _),
@@ -136,14 +136,14 @@ const VFILE_OPS: mgba_sys::VFile = mgba_sys::VFile {
 impl VFile {
     pub fn from_file(f: std::fs::File) -> Self {
         Self {
-            vfile: VFILE_OPS,
+            vtable: VFILE_VTABLE,
             f: Box::new(f),
         }
     }
 
     pub fn from_vec(v: Vec<u8>) -> Self {
         Self {
-            vfile: VFILE_OPS,
+            vtable: VFILE_VTABLE,
             f: Box::new(std::io::Cursor::new(v)),
         }
     }
