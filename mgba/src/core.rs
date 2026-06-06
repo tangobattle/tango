@@ -236,12 +236,12 @@ impl<'a> CoreMutRef<'a> {
     pub fn save_state_into<'b>(
         &self,
         state: &'b mut MaybeUninit<state::State>,
-    ) -> Result<&'b state::State, crate::Error> {
+    ) -> Result<&'b mut state::State, crate::Error> {
         unsafe {
             if !(*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) {
                 return Err(crate::Error::CallFailed("mCore.saveState"));
             }
-            Ok(state.assume_init_ref())
+            Ok(state.assume_init_mut())
         }
     }
 
