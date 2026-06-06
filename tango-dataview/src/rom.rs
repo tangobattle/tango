@@ -431,7 +431,10 @@ pub fn bgr555_to_rgba8(src: &[u8], dst: &mut [u8]) {
         .iter()
         .zip(bytemuck::cast_slice_mut::<_, u32>(dst).iter_mut())
     {
-        *d = bytemuck::cast(BGR555_RGBA8_LUT[*s as usize].0);
+        // Mask to 15 bits: bit 15 is unused in GBA BGR555 (mGBA emits 0), so
+        // this is a no-op on the value, but it lets the compiler prove the
+        // index is < 0x8000 and elide the per-pixel bounds check.
+        *d = bytemuck::cast(BGR555_RGBA8_LUT[(*s & 0x7fff) as usize].0);
     }
 }
 
