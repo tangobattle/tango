@@ -1,14 +1,7 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::round::{Round, RoundState};
-
-/// Snapshot of the shadow emulator at a specific tick, captured by per-game
-/// shadow traps and consumed by [`super::Shadow::apply_input`] /
-/// [`super::Shadow::advance_until_round_end`] to advance the visible primary.
-pub(super) struct Snapshot {
-    pub(super) tick: u32,
-    pub(super) state: Box<mgba::state::State>,
-}
 
 pub(super) struct InnerState {
     match_type: (u8, u8),
@@ -16,7 +9,13 @@ pub(super) struct InnerState {
     local_player_index: u8,
     pub(super) round_state: Mutex<RoundState>,
     pub(super) rng: Mutex<rand_pcg::Mcg128Xsl64>,
-    pub(super) applied_snapshot: Mutex<Option<Snapshot>>,
+    /// Full mgba state captured at round end (`round_end_entry`), consumed by
+    /// [`super::Shadow::advance_until_round_end`] to park the shadow at the
+    /// round boundary. The per-tick `apply_input` path needs no snapshot —
+    /// `end_run_loop` already leaves the core at the right tick — and uses
+    /// `input_applied` as a bare done-signal instead.
+    pub(super) round_end_snapshot: Mutex<Option<Box<mgba::state::State>>>,
+    pub(super) input_applied: AtomicBool,
     pub(super) error: Mutex<Option<anyhow::Error>>,
 }
 
@@ -36,7 +35,8 @@ impl State {
                 round: None,
                 result_is_in: false,
             }),
-            applied_snapshot: Mutex::new(None),
+            round_end_snapshot: Mutex::new(None),
+            input_applied: AtomicBool::new(false),
             error: Mutex::new(None),
         }))
     }
@@ -84,7 +84,20 @@ impl State {
         *self.0.error.lock().unwrap() = Some(err);
     }
 
-    pub fn set_applied_state(&self, state: Box<mgba::state::State>, tick: u32) {
-        *self.0.applied_snapshot.lock().unwrap() = Some(Snapshot { tick, state });
+    pub fn set_round_end_snapshot(&self, state: Box<mgba::state::State>) {
+        *self.0.round_end_snapshot.lock().unwrap() = Some(state);
+    }
+
+    /// Signal that the pending shadow input has been consumed and the core has
+    /// run forward to the next tick's `main_read_joyflags` (where the per-game
+    /// trap calls `end_run_loop`). [`super::Shadow::apply_input`] polls this to
+    /// know its run is done — no snapshot needed, since `end_run_loop` already
+    /// parks the core at that tick boundary.
+    pub fn set_input_applied(&self) {
+        self.0.input_applied.store(true, Ordering::Relaxed);
+    }
+
+    pub fn take_input_applied(&self) -> bool {
+        self.0.input_applied.swap(false, Ordering::Relaxed)
     }
 }

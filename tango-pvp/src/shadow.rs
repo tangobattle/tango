@@ -139,10 +139,11 @@ impl Shadow {
         self.core.as_mut().load_state(&snapshot.mgba_state)?;
         *self.state.0.rng.lock().unwrap() = snapshot.rng.clone();
         *self.state.0.round_state.lock().unwrap() = snapshot.round_state.clone();
-        // applied_state and error are per-apply_input scratch; clear so the
-        // next apply_input call doesn't pick up stale values that don't
-        // correspond to the just-restored core state.
-        *self.state.0.applied_snapshot.lock().unwrap() = None;
+        // round_end_snapshot, input_applied, and error are per-run scratch;
+        // clear so the next apply_input / round-end run doesn't pick up stale
+        // values that don't correspond to the just-restored core state.
+        *self.state.0.round_end_snapshot.lock().unwrap() = None;
+        self.state.0.input_applied.store(false, std::sync::atomic::Ordering::Relaxed);
         *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }
@@ -186,18 +187,18 @@ impl Shadow {
 
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
-                let applied_snapshot = self
+                let round_end_snapshot = self
                     .state
                     .0
-                    .applied_snapshot
+                    .round_end_snapshot
                     .lock()
                     .unwrap()
                     .take()
-                    .expect("applied snapshot");
+                    .expect("round-end snapshot");
 
                 self.core
                     .as_mut()
-                    .load_state(&applied_snapshot.state)
+                    .load_state(&round_end_snapshot)
                     .expect("load state");
                 return Ok(());
             }
@@ -205,11 +206,13 @@ impl Shadow {
     }
 
     /// Inject the given input pair as the next shadow input, then run the
-    /// shadow until per-game traps capture an applied snapshot. `expected_tick`
-    /// is now unused — kept only to match the resolver callback signature. The
-    /// per-game traps `end_run_loop` at the snapshot, so the "shadow advanced
-    /// one tick before the trap fired" race it used to guard against can no
-    /// longer happen. Returns the remote packet that was queued before this run.
+    /// shadow forward until the per-game trap signals the input was applied:
+    /// the core has reached the next tick's `main_read_joyflags`, where the
+    /// trap calls `end_run_loop`. No snapshot/reload — `end_run_loop` parks the
+    /// core exactly at that boundary, and the shadow only ever advances forward
+    /// (speculation uses `predict_rx`, never the shadow), so there's nothing to
+    /// rewind. `expected_tick` is unused, kept only to match the resolver
+    /// callback signature. Returns the remote packet queued before this run.
     pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
@@ -223,22 +226,9 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            let Some(applied_snapshot) = self.state.0.applied_snapshot.lock().unwrap().take() else {
+            if !self.state.take_input_applied() {
                 continue;
-            };
-
-            // NOTE: applied_state.tick may legitimately differ from
-            // expected_tick by one or more — depending on the per-game
-            // shadow trap layout, set_applied_state can fire after
-            // current_tick has already advanced. The applied state is
-            // still correct; we just don't assert here.
-            self.core
-                .as_mut()
-                .load_state(&applied_snapshot.state)
-                .expect("load state");
-            let mut round_state = self.state.lock_round_state();
-            let round = round_state.round.as_mut().expect("round");
-            round.current_tick = applied_snapshot.tick;
+            }
             let _ = expected_tick;
             return Ok(pending_remote_packet);
         }

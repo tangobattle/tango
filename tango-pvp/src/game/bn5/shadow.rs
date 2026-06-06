@@ -21,7 +21,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 shadow_state.end_round();
-                shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+                shadow_state.set_round_end_snapshot(core.save_state().expect("save state"));
                 // Halt run_loop at the snapshot so it can't run past round end.
                 core.end_run_loop();
             })
@@ -130,8 +130,10 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 }
 
                 if round.take_input_injected() {
-                    shadow_state.set_applied_state(core.save_state().expect("save state"), round.current_tick());
-                    // Halt run_loop at the snapshot so it can't spill past the applied tick.
+                    // The input's been applied and the core has reached the next
+                    // tick's read_joyflags; signal apply_input and stop here so
+                    // run_loop parks the shadow exactly at that boundary.
+                    shadow_state.set_input_applied();
                     core.end_run_loop();
                 }
             })
