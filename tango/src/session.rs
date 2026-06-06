@@ -1054,16 +1054,15 @@ fn fmt_ping(ping_ms: u128) -> String {
 }
 
 /// One telemetry cell: a label `icon` and the current `value`, both
-/// color-coded by the health `tone`. `tip` is the hover tooltip
-/// naming the metric (the cells are icon-only, so it's the only place
-/// the full name shows).
-fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String, tip: String) -> Element<'a, Message> {
+/// color-coded by the health `tone`. The full metric name lives in the
+/// match-settings panel's captions, so the cell carries no hover tooltip.
+fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Message> {
     // Only the value carries the health tint; the icon always rides muted so
     // color reads as "this number means something", not decoration.
     let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(stat_tone_color(theme, tone)),
     };
-    let cell = row![
+    row![
         icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
         text(value)
             .size(TEXT_BODY)
@@ -1071,15 +1070,7 @@ fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String, tip: String) -> Elem
             .style(tone_style),
     ]
     .spacing(5)
-    .align_y(Alignment::Center);
-    iced::widget::tooltip(
-        cell,
-        container(text(tip).size(TEXT_CAPTION))
-            .padding(6)
-            .style(widgets::tooltip_chrome),
-        iced::widget::tooltip::Position::Top,
-    )
-    .gap(4)
+    .align_y(Alignment::Center)
     .into()
 }
 
@@ -1117,7 +1108,7 @@ fn stat_divider<'a>() -> Element<'a, Message> {
 /// attention to itself. Realized as a button style (not a static
 /// container) because the instrument panel is clickable: a subtle
 /// hover/press brighten marks it as the trigger for the match-settings
-/// popover. PvP-only; the cells inside keep their own tooltips.
+/// popover. PvP-only.
 fn telemetry_plate_button(theme: &iced::Theme, status: sweeten::widget::button::Status) -> sweeten::widget::button::Style {
     use sweeten::widget::button::Status;
     let p = theme.extended_palette();
@@ -1533,27 +1524,16 @@ pub fn view<'a>(
                 Icon::Gauge,
                 tone_for_tps(tps, fps_target),
                 fmt_tps(tps, fps_target),
-                t!(lang, "session-stat-tps"),
             ));
 
             if let Some(s) = stats {
                 // Skew: how tight the sync is — green near parity, amber
                 // drifting, red far out, by |skew| in frames.
-                cells.push(stat_cell(
-                    Icon::ArrowLeftRight,
-                    tone_for_skew(s.skew),
-                    fmt_skew(s.skew),
-                    t!(lang, "session-stat-skew"),
-                ));
+                cells.push(stat_cell(Icon::ArrowLeftRight, tone_for_skew(s.skew), fmt_skew(s.skew)));
 
                 // Rollback depth: lower = tighter prediction. Green when
                 // shallow, amber as it climbs, red when speculation runs deep.
-                cells.push(stat_cell(
-                    Icon::Layers2,
-                    tone_for_depth(s.depth),
-                    fmt_depth(s.depth),
-                    t!(lang, "session-stat-depth"),
-                ));
+                cells.push(stat_cell(Icon::Layers2, tone_for_depth(s.depth), fmt_depth(s.depth)));
             }
 
             // Ping: latency band. The signal icon's bar strength tracks
@@ -1566,17 +1546,11 @@ pub fn view<'a>(
             } else {
                 Icon::SignalLow
             };
-            cells.push(stat_cell(
-                ping_icon,
-                tone_for_ping(ping_ms),
-                fmt_ping(ping_ms),
-                t!(lang, "session-stat-ping"),
-            ));
+            cells.push(stat_cell(ping_icon, tone_for_ping(ping_ms), fmt_ping(ping_ms)));
 
             // Interleave hairline dividers into one flat plate. The plate is a
             // button: clicking the instrument panel toggles the match-settings
-            // popover anchored above it. The cells' own tooltips still fire on
-            // hover.
+            // popover anchored above it.
             let mut strip = row![].spacing(6).align_y(Alignment::Center);
             for (i, cell) in cells.into_iter().enumerate() {
                 if i > 0 {
