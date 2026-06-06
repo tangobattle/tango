@@ -109,12 +109,6 @@ impl Settings {
     }
 }
 
-fn fix_vbuf_alpha(vbuf: &mut [u8]) {
-    for chunk in vbuf.chunks_mut(4) {
-        chunk[3] = 0xff;
-    }
-}
-
 const SAMPLE_RATE: f64 = 48000.0;
 
 fn make_core_and_state(
@@ -194,7 +188,6 @@ fn run_frame<'a>(
     let samples = &samples[..n * AUDIO_CHANNELS];
 
     emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
-    fix_vbuf_alpha(emu_vbuf);
     samples
 }
 

@@ -424,7 +424,6 @@ impl PvpSession {
                 {
                     let mut vbuf = vbuf.lock().unwrap();
                     vbuf.copy_from_slice(video_buffer);
-                    fix_vbuf_alpha(&mut vbuf);
                 }
                 frame_notify.notify_one();
                 if handle_completion() {
@@ -612,12 +611,6 @@ impl Drop for PvpSession {
         // network/match tasks to wind down before the mgba
         // thread joins.
         self.cancellation_token.cancel();
-    }
-}
-
-fn fix_vbuf_alpha(vbuf: &mut [u8]) {
-    for px in vbuf.chunks_exact_mut(4) {
-        px[3] = 0xFF;
     }
 }
 

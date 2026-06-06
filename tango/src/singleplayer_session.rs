@@ -60,7 +60,6 @@ impl SinglePlayerSession {
             move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock().unwrap();
                 vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 // Wake the session subscription so iced rebuilds
                 // the texture handle for this frame. Notify
@@ -113,11 +112,5 @@ impl SinglePlayerSession {
     pub fn set_speed(&self, factor: f32) {
         let fps = (EXPECTED_FPS * factor).clamp(1.0, EXPECTED_FPS * 4.0);
         self._thread.handle().lock_audio().sync_mut().set_fps_target(fps);
-    }
-}
-
-fn fix_vbuf_alpha(vbuf: &mut [u8]) {
-    for px in vbuf.chunks_exact_mut(4) {
-        px[3] = 0xFF;
     }
 }

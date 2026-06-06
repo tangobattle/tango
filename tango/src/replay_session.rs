@@ -117,8 +117,6 @@ impl ReplaySession {
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock().unwrap();
                 vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut vbuf);
-                // Wake the session subscription so iced rebuilds
                 // the texture handle for this frame. See
                 // `singleplayer_session` for rationale.
                 frame_notify.notify_one();
@@ -303,12 +301,6 @@ impl ReplaySession {
                 log::error!("seek to {target} failed: {e:?}");
             }
         });
-    }
-}
-
-fn fix_vbuf_alpha(vbuf: &mut [u8]) {
-    for px in vbuf.chunks_exact_mut(4) {
-        px[3] = 0xFF;
     }
 }
 
