@@ -140,7 +140,9 @@ impl Round {
     /// engine's signed [`speculation_balance`](getgud::Session::speculation_balance),
     /// floored at 0 (negative balance is headroom, which reads as no rollback risk).
     pub fn speculation_depth(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.speculation_balance().max(0) as u32)
+        self.session
+            .as_ref()
+            .map_or(0, |s| s.speculation_balance().max(0) as u32)
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -188,27 +190,7 @@ impl Round {
         self.last_loaded_tick = frame.tick;
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
-        // Leniency: a positive skew only actually costs us once the *presented*
-        // frame has to speculate. Negative `speculation_balance` is the lead (in
-        // ticks) we can still take while every presented frame stays fully
-        // confirmed — free buffer to grow into; `(-balance).max(0)` is that
-        // headroom. Absorb that buffer before slowing down, so we stop fighting
-        // a harmless lead. As the headroom shrinks the throttle tightens, and
-        // once we're actually speculating (headroom → 0) this is exactly the old
-        // raw-skew behavior.
-        //
-        // The factor of 2: skew = local_advantage − remote_advantage, and those
-        // are mirror images of the same frontier gap (we count ourselves +1
-        // ahead; once it round-trips, the remote counts itself −1 behind).
-        // Subtracting the −1 adds a +1, so one tick of real gap settles to 2 of
-        // skew — while headroom (present_delay − lead) moves only 1. Scaling
-        // headroom by 2 matches that, easing the throttle until ~halfway into
-        // the speculation-free buffer, then tightening to raw-skew as
-        // headroom → 0.
-        let headroom = (-session.speculation_balance()).max(0);
-        // Smooth the buffered skew into a slowdown below our nominal rate, then
-        // turn that into an absolute fps target for the live core.
-        let slowdown = self.throttler.step(skew - 2 * headroom);
+        let slowdown = self.throttler.step(skew);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
