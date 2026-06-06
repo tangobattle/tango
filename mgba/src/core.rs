@@ -237,12 +237,10 @@ impl<'a> CoreMutRef<'a> {
         &self,
         state: &'b mut MaybeUninit<state::State>,
     ) -> Result<&'b mut state::State, crate::Error> {
-        unsafe {
-            if !(*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) {
-                return Err(crate::Error::CallFailed("mCore.saveState"));
-            }
-            Ok(state.assume_init_mut())
+        if !unsafe { (*self.ptr).saveState.unwrap()(self.ptr, state.as_mut_ptr() as *mut _) } {
+            return Err(crate::Error::CallFailed("mCore.saveState"));
         }
+        Ok(unsafe { state.assume_init_mut() })
     }
 
     pub fn set_keys(&mut self, keys: u32) {
