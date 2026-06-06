@@ -52,7 +52,10 @@ use iced::Rectangle;
 
 /// The native GBA framebuffer is 240×160; the uploaded texture is always
 /// native and the selected [`Effect`] magnifies it in the fragment shader.
-const BYTES_PER_PIXEL: u32 = 4;
+/// We upload mGBA's raw BGR555 — one little-endian `u16` per pixel — and the
+/// shader expands it to RGB on read (see `effects/common.wgsl`), so this is 2,
+/// not 4: half the per-frame upload of the old CPU-expanded RGBA8.
+const BYTES_PER_PIXEL: u32 = 2;
 
 /// A selectable GPU upscaler, defined as a named constant in
 /// [`crate::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
@@ -76,9 +79,21 @@ pub struct Effect {
 }
 
 impl Effect {
-    /// Assemble the full WGSL module source for this effect.
-    fn source(&self) -> String {
-        self.parts.join("\n")
+    /// Assemble the full WGSL module source for this effect, prefixed with the
+    /// `SRGB_TARGET` const the shared `decode()` reads to decide whether to
+    /// linearize the BGR555 color (sRGB target) or pass it through (linear /
+    /// web-colors target). The target's gamma is fixed for the pipeline's
+    /// lifetime, so baking it in as a const lets the shader const-fold the
+    /// branch.
+    fn source(&self, srgb_target: bool) -> String {
+        let mut parts = Vec::with_capacity(self.parts.len() + 1);
+        parts.push(if srgb_target {
+            "const SRGB_TARGET: bool = true;"
+        } else {
+            "const SRGB_TARGET: bool = false;"
+        });
+        parts.extend_from_slice(self.parts);
+        parts.join("\n")
     }
 
     /// Compile this effect into a render pipeline. Every effect shares the
@@ -93,7 +108,7 @@ impl Effect {
     ) -> wgpu::RenderPipeline {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(&format!("framebuffer shader: {}", self.id)),
-            source: wgpu::ShaderSource::Wgsl(self.source().into()),
+            source: wgpu::ShaderSource::Wgsl(self.source(target.is_srgb()).into()),
         });
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(&format!("framebuffer pipeline: {}", self.id)),
@@ -144,12 +159,13 @@ pub struct Frame {
 
 impl Frame {
     /// A 1×1 opaque-black frame for "no frame yet" (between sessions and
-    /// before the first vblank). Sampled over the whole widget it reads as a
-    /// solid black pane. The fixed sentinel revision keeps it from
+    /// before the first vblank). One BGR555 `u16` of 0 decodes to black, and
+    /// the shader forces alpha opaque; sampled over the whole widget it reads
+    /// as a solid black pane. The fixed sentinel revision keeps it from
     /// re-uploading on every redraw; the pass-through effect draws it plainly.
     pub fn black() -> Self {
         Self {
-            pixels: Arc::new(vec![0, 0, 0, 0xff]),
+            pixels: Arc::new(vec![0, 0]),
             width: 1,
             height: 1,
             revision: u64::MAX,
@@ -227,10 +243,10 @@ pub struct Pipeline {
     /// Render-pass target format, needed for the lazy pipeline builds.
     target_format: wgpu::TextureFormat,
     bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    /// Texture storage format, chosen to mirror iced's atlas so our
-    /// sample→write round-trip is byte-identical to the old image path in
-    /// both gamma modes (see [`Pipeline::new`]).
+    /// Texture storage format. `R16Uint` holds one raw BGR555 `u16` per pixel;
+    /// the shader expands it to RGB on read (see `effects/common.wgsl`). An
+    /// integer texture isn't filterable, but every effect already fetches
+    /// texels with `textureLoad`, so no sampler is needed.
     texture_format: wgpu::TextureFormat,
     texture: Option<FrameTexture>,
 }
@@ -249,55 +265,30 @@ struct FrameTexture {
 
 impl shader::Pipeline for Pipeline {
     fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        // iced's image atlas stores pixels as `Rgba8UnormSrgb` when gamma
-        // correction is on and `Rgba8Unorm` otherwise (web-colors), and it
-        // renders into a matching target. The custom-primitive target
-        // `format` iced hands us is sRGB in the first case and linear in
-        // the second, so we can recover the same choice from its srgb-ness.
-        // Sampling an sRGB texture (→linear) and writing to an sRGB target
-        // (linear→sRGB) round-trips to identity for the pass-through, exactly
-        // like the old image shader; effects compute in that same sampled
-        // space. This keeps the no-filter case pixel-identical to before.
-        let texture_format = if format.is_srgb() {
-            wgpu::TextureFormat::Rgba8UnormSrgb
-        } else {
-            wgpu::TextureFormat::Rgba8Unorm
-        };
+        // The framebuffer texture holds raw BGR555 (`R16Uint`); the shared
+        // `decode()` expands each texel and — keyed by the target's gamma —
+        // either linearizes it (sRGB target, gamma correction on) or passes it
+        // through (linear / web-colors target). The target `format` iced hands
+        // us is sRGB in the first case and linear in the second; `Effect::build`
+        // threads that srgb-ness into the shader. This reproduces what sampling
+        // the old `Rgba8UnormSrgb`/`Rgba8Unorm` image texture returned, keeping
+        // the no-filter case pixel-identical to before (exactly in the linear
+        // case; to fp precision, snapped back by the 8-bit write, in sRGB).
+        let texture_format = wgpu::TextureFormat::R16Uint;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("framebuffer bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    // Integer texture: not filterable, fetched via `textureLoad`.
+                    sample_type: wgpu::TextureSampleType::Uint,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        // Nearest everything — crisp integer-scaled pixels for the
-        // pass-through. Effects fetch texels directly (`textureLoad`) and
-        // ignore this sampler.
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("framebuffer sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -312,7 +303,6 @@ impl shader::Pipeline for Pipeline {
             pipeline_layout,
             target_format: format,
             bind_group_layout,
-            sampler,
             texture_format,
             texture: None,
         }
@@ -349,16 +339,10 @@ impl Pipeline {
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("framebuffer bind group"),
                 layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                }],
             });
             self.texture = Some(FrameTexture {
                 texture,
@@ -375,8 +359,8 @@ impl Pipeline {
         }
 
         // `write_texture` (unlike `copy_buffer_to_texture`) imposes no
-        // 256-byte row-alignment requirement, so a 240-wide (960 B/row)
-        // GBA frame uploads directly.
+        // 256-byte row-alignment requirement, so a 240-wide (480 B/row at 2
+        // bytes/pixel) GBA frame uploads directly.
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &tex.texture,

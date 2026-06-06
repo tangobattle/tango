@@ -1,9 +1,10 @@
-// Nearest pass-through (the "—" / no-filter default). Samples the framebuffer
-// texture through `fb_sampler` (nearest, clamp-to-edge) and forces alpha to
-// 1.0 — the GBA framebuffer is always opaque. RGB is unaffected by the stored
-// alpha because the texture holds straight (non-premultiplied) values.
+// Nearest pass-through (the "—" / no-filter default). Reads the nearest native
+// texel — `floor(uv * dims)`, the same rule the other effects use, which
+// reproduces the old nearest-clamp sampler — and forces alpha to 1.0, since the
+// GBA framebuffer is always opaque.
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(textureSample(fb_texture, fb_sampler, in.uv).rgb, 1.0);
+    let dims = vec2<f32>(textureDimensions(fb_texture));
+    return vec4<f32>(load(vec2<i32>(floor(in.uv * dims))), 1.0);
 }

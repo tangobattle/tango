@@ -192,7 +192,9 @@ impl Default for State {
             frame_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
             vbuf: std::sync::Arc::new(std::sync::Mutex::new(vec![
                 0u8;
-                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+                // Raw BGR555 from mgba: 2 bytes/pixel. The framebuffer shader
+                // expands it to RGB on the GPU (see `video::framebuffer`).
+                (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 2)
                     as usize
             ])),
             active: None,

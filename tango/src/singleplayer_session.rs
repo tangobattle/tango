@@ -1,7 +1,8 @@
 //! Standalone (no-netplay) emulator session. Boots a ROM with the
 //! user-selected save file and accepts joyflag input from the UI tick
-//! loop. The video frame plumbing mirrors `replay_session` — same
-//! Arc<Mutex<Vec<u8>>> vbuf, same fix_vbuf_alpha pass.
+//! loop. The video frame plumbing mirrors `replay_session` — the same
+//! Arc<Mutex<Vec<u8>>> vbuf, fed mgba's raw BGR555 (the framebuffer shader
+//! expands it on the GPU).
 //!
 //! No hooks::Hooks traps are installed: this is a vanilla emulator
 //! ride for one player. (The PVP / replay traps require a partner /
@@ -58,8 +59,9 @@ impl SinglePlayerSession {
             let joyflags = joyflags.clone();
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, _thread_handle| {
-                let mut vbuf = vbuf.lock().unwrap();
-                tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
+                // Copy mgba's native BGR555 straight through; the framebuffer
+                // shader expands it to RGB on the GPU at draw time.
+                vbuf.lock().unwrap().copy_from_slice(video_buffer);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 // Wake the session subscription so iced rebuilds
                 // the texture handle for this frame. Notify

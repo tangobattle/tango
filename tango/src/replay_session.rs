@@ -115,8 +115,9 @@ impl ReplaySession {
             let shadow = shadow.clone();
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
-                let mut vbuf = vbuf.lock().unwrap();
-                tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
+                // Copy mgba's native BGR555 straight through; the framebuffer
+                // shader expands it to RGB on the GPU at draw time.
+                vbuf.lock().unwrap().copy_from_slice(video_buffer);
                 // the texture handle for this frame. See
                 // `singleplayer_session` for rationale.
                 frame_notify.notify_one();

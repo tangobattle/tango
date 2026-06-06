@@ -422,8 +422,9 @@ impl PvpSession {
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 tps_counter.lock().unwrap().mark();
                 {
-                    let mut vbuf = vbuf.lock().unwrap();
-                    tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
+                    // Copy mgba's native BGR555 straight through; the
+                    // framebuffer shader expands it to RGB on the GPU.
+                    vbuf.lock().unwrap().copy_from_slice(video_buffer);
                 }
                 frame_notify.notify_one();
                 if handle_completion() {
