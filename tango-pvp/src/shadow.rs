@@ -139,18 +139,17 @@ impl Shadow {
         self.core.as_mut().load_state(&snapshot.mgba_state)?;
         *self.state.0.rng.lock().unwrap() = snapshot.rng.clone();
         *self.state.0.round_state.lock().unwrap() = snapshot.round_state.clone();
-        // round_end_snapshot, input_applied, and error are per-run scratch;
-        // clear so the next apply_input / round-end run doesn't pick up stale
-        // values that don't correspond to the just-restored core state.
-        *self.state.0.round_end_snapshot.lock().unwrap() = None;
+        // input_applied and error are per-run scratch; clear so the next
+        // apply_input / round-end run doesn't pick up stale values that don't
+        // correspond to the just-restored core state.
         self.state.0.input_applied.store(false, std::sync::atomic::Ordering::Relaxed);
         *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }
 
-    /// Run the shadow until the per-game traps have captured this round's
-    /// initial committed state, then load it back into the core so the next
-    /// apply_input run continues from there.
+    /// Run the shadow until the per-game traps mark this round's first
+    /// committed state. `end_run_loop` parks the core right there, so there's
+    /// nothing to load back — the next apply_input run continues from here.
     pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until first committed state");
         loop {
@@ -163,19 +162,17 @@ impl Shadow {
             let Some(round) = round_state.round.as_mut() else {
                 continue;
             };
-
-            let Some(state) = round.first_committed_state.as_ref() else {
+            if !round.has_first_committed_state() {
                 continue;
-            };
-
-            self.core.as_mut().load_state(state).expect("load state");
+            }
             round.current_tick = 0;
             return Ok(());
         }
     }
 
-    /// Run the shadow until `end_round` has dropped its round state, then
-    /// load the most recent applied snapshot.
+    /// Run the shadow until `end_round` drops the round state. `end_run_loop`
+    /// in `round_end_entry` parks the core right at round end, so there's
+    /// nothing to load back.
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until round end");
         self.hooks.prepare_for_fastforward(self.core.as_mut());
@@ -184,22 +181,7 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-
-            let round_state = self.state.lock_round_state();
-            if round_state.round.is_none() {
-                let round_end_snapshot = self
-                    .state
-                    .0
-                    .round_end_snapshot
-                    .lock()
-                    .unwrap()
-                    .take()
-                    .expect("round-end snapshot");
-
-                self.core
-                    .as_mut()
-                    .load_state(&round_end_snapshot)
-                    .expect("load state");
+            if self.state.lock_round_state().round.is_none() {
                 return Ok(());
             }
         }

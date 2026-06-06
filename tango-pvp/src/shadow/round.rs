@@ -23,7 +23,7 @@ pub(super) struct RemotePacket {
 pub struct Round {
     pub(super) current_tick: u32,
     pub(super) local_player_index: u8,
-    pub(super) first_committed_state: Option<Box<mgba::state::State>>,
+    pub(super) first_committed: bool,
     pub(super) pending_shadow_input: Option<PendingShadowInput>,
     pub(super) pending_remote_packet: Option<RemotePacket>,
     pub(super) input_injected: bool,
@@ -34,7 +34,7 @@ impl Round {
         Self {
             current_tick: 0,
             local_player_index,
-            first_committed_state: None,
+            first_committed: false,
             pending_shadow_input: None,
             pending_remote_packet: None,
             input_injected: false,
@@ -57,8 +57,8 @@ impl Round {
         1 - self.local_player_index
     }
 
-    pub fn set_first_committed_state(&mut self, state: Box<mgba::state::State>, packet: &[u8]) {
-        self.first_committed_state = Some(state);
+    pub fn set_first_committed(&mut self, packet: &[u8]) {
+        self.first_committed = true;
         self.pending_remote_packet = Some(RemotePacket {
             target_tick: 0,
             packet: packet.to_vec(),
@@ -66,7 +66,7 @@ impl Round {
     }
 
     pub fn has_first_committed_state(&self) -> bool {
-        self.first_committed_state.is_some()
+        self.first_committed
     }
 
     pub(super) fn set_pending_shadow_input(&mut self, pair: (Input, PartialInput)) {

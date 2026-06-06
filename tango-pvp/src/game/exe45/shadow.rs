@@ -31,8 +31,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
                 shadow_state.end_round();
-                shadow_state.set_round_end_snapshot(core.save_state().expect("save state"));
-                // Halt run_loop at the snapshot so it can't run past round end.
+                // Round's over — halt run_loop here so it can't spill into the
+                // inter-round transition.
                 core.end_run_loop();
             })
         }),
@@ -96,8 +96,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     munger.set_rng2_state(core, rng2_state);
 
                     // HACK: For some inexplicable reason, we don't always start on tick 0.
-                    round.set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
-                    // Halt run_loop at the snapshot so it can't over-run the committed tick.
+                    round.set_first_committed(&munger.tx_packet(core));
+                    // Halt run_loop at the first committed tick so it can't over-run it.
                     core.end_run_loop();
                     log::info!(
                         "shadow rng1 state: {:08x}, rng2 state: {:08x}",
