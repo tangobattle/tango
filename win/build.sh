@@ -56,8 +56,8 @@ curl -L -o angle.zip "${angle_zip_url}"
 unzip -o -j angle.zip "lib/libEGL.dll" "lib/libGLESv2.dll" -d .
 rm angle.zip
 
-ffmpeg_version="6.0"
-curl -L -o ffmpeg.exe "https://github.com/eugeneware/ffmpeg-static/releases/download/b${ffmpeg_version}/ffmpeg-win32-x64"
+ffmpeg_version="8.1.1"
+curl -L -o ffmpeg.exe "https://github.com/tangobattle/ffmpeg-build/releases/download/ffmpeg-${ffmpeg_version}/ffmpeg-windows-x86_64.exe"
 
 makensis installer.nsi
 popd
