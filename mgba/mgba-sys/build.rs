@@ -134,6 +134,17 @@ fn apply_patches() {
     }
 }
 
+/// Extra preprocessor defines forced onto the mgba build.
+///
+/// `COLOR_16_BIT` switches mgba's `mColor` from 32-bit XBGR8 to the GBA-native
+/// 15-bit BGR555 (no `COLOR_5_6_5`, so it stays BGR5, not RGB565), letting
+/// tango do its own color conversion off the raw framebuffer.
+///
+/// These must reach BOTH the C compile (via cmake CFLAGS) and the bindgen pass
+/// (via clang args) — if only one side sees them, `mColor`'s width disagrees
+/// across the FFI boundary and the video buffer is silently misinterpreted.
+const FORCED_DEFINES: &[&str] = &["COLOR_16_BIT"];
+
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
@@ -141,6 +152,9 @@ fn main() {
 
     let mut cfg = cmake::Config::new("mgba");
     cfg.define("LIBMGBA_ONLY", "on");
+    for def in FORCED_DEFINES {
+        cfg.cflag(format!("-D{def}"));
+    }
 
     let mgba_dst = cfg.build();
 
@@ -168,6 +182,10 @@ fn main() {
         tos => panic!("unknown target os {:?}!", tos),
     }
     println!("cargo:rerun-if-changed=wrapper.h");
+    // We emit explicit rerun-if-changed directives, which override cargo's
+    // default of re-running on any package change — so track build.rs itself,
+    // or edits to FORCED_DEFINES (e.g. toggling COLOR_16_BIT) won't take effect.
+    println!("cargo:rerun-if-changed=build.rs");
     let ignored_macros = IgnoreMacros(
         vec![
             "FP_INFINITE".into(),
@@ -192,6 +210,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_args(&["-Imgba/include", "-D__STDC_NO_THREADS__=1"])
+        .clang_args(FORCED_DEFINES.iter().map(|def| format!("-D{def}")))
         .clang_args(flags)
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))

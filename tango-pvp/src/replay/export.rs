@@ -91,7 +91,22 @@ impl Settings {
                 "-c:a flac".to_string()
             },
             ffmpeg_video_flags: if let Some(factor) = factor {
-                format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor)
+                // Convert RGB→YUV with the BT.709 matrix in full range, and tag
+                // the stream as full-range sRGB (BT.709 primaries + matrix,
+                // IEC 61966-2-1 transfer) via `setparams`. Without tags the
+                // decoder guesses a steeper "video" gamma and the export looks
+                // more saturated than the on-screen sRGB colors; pinning the
+                // conversion matrix to the tagged one avoids a hue shift.
+                // `-color_*` output options don't stick through the filtergraph
+                // (only the matrix/range do), hence `setparams`.
+                //
+                // The lossless 1× path below stays untagged: gbrp/RGB H.264
+                // streams can't carry primaries/transfer at all, so there's no
+                // equivalent fix there.
+                format!(
+                    "-c:v libx264 -vf scale=iw*{f}:ih*{f}:flags=neighbor:out_range=pc:out_color_matrix=bt709,format=yuv420p,setparams=range=pc:colorspace=bt709:color_primaries=bt709:color_trc=iec61966-2-1 -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2",
+                    f = factor
+                )
             } else {
                 "-c:v libx264rgb -preset ultrafast -qp 0".to_string()
             },
@@ -187,7 +202,7 @@ fn run_frame<'a>(
 
     let samples = &samples[..n * AUDIO_CHANNELS];
 
-    emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
+    tango_dataview::rom::bgr555_to_rgba8(core.video_buffer().unwrap(), emu_vbuf);
     samples
 }
 

@@ -423,7 +423,7 @@ impl PvpSession {
                 tps_counter.lock().unwrap().mark();
                 {
                     let mut vbuf = vbuf.lock().unwrap();
-                    vbuf.copy_from_slice(video_buffer);
+                    tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
                 }
                 frame_notify.notify_one();
                 if handle_completion() {

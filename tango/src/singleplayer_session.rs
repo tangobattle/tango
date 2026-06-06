@@ -59,7 +59,7 @@ impl SinglePlayerSession {
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock().unwrap();
-                vbuf.copy_from_slice(video_buffer);
+                tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
                 core.set_keys(joyflags.load(Ordering::Relaxed));
                 // Wake the session subscription so iced rebuilds
                 // the texture handle for this frame. Notify

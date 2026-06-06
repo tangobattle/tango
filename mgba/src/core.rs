@@ -73,9 +73,11 @@ impl Core {
         let mut height: u32 = 0;
         unsafe { (*self.ptr).baseVideoSize.unwrap()(self.ptr, &mut width, &mut height) };
 
-        let mut buffer = vec![0u8; (width * height * 4) as usize];
+        // Sized and typed off mColor so this tracks the build's color depth:
+        // 32-bit XBGR8 by default, or 16-bit BGR555 under -DCOLOR_16_BIT.
+        let mut buffer = vec![0u8; (width * height) as usize * std::mem::size_of::<mgba_sys::mColor>()];
         unsafe {
-            (*self.ptr).setVideoBuffer.unwrap()(self.ptr, buffer.as_mut_ptr() as *mut _ as *mut u32, width as _);
+            (*self.ptr).setVideoBuffer.unwrap()(self.ptr, buffer.as_mut_ptr() as *mut mgba_sys::mColor, width as _);
         }
         self.video_buffer = Some(buffer);
     }

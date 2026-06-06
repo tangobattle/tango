@@ -1,5 +1,4 @@
 use byteorder::ReadBytesExt;
-use image::Pixel;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExCodeEffect {
@@ -385,24 +384,54 @@ pub struct Bgr555 {
 }
 
 impl Bgr555 {
-    pub fn as_rgb888_mgba(&self) -> image::Rgb<u8> {
-        image::Rgb([
-            self.r() << 3 | self.r() >> 2,
-            self.g() << 3 | self.g() >> 2,
-            self.b() << 3 | self.b() >> 2,
-        ])
+    /// Expand to RGB888 (`c * 255 / 31` per channel). Routed through the shared
+    /// 32768-entry table that also backs [`bgr555_to_rgba8`], so the per-color
+    /// and whole-buffer conversions can never diverge.
+    pub fn to_rgba8(&self) -> image::Rgba<u8> {
+        let idx = self.r() as usize | (self.g() as usize) << 5 | (self.b() as usize) << 10;
+        BGR555_RGBA8_LUT[idx]
+    }
+}
+
+/// Canonical BGR555 → RGBA8 expansion, indexed by the 15-bit value
+/// (`r | g << 5 | b << 10`): each channel scaled `c * 255 / 31`, alpha opaque.
+///
+/// The single source of truth for the conversion — both [`Bgr555::to_rgb888`]
+/// and [`bgr555_to_rgba8`] read from this table rather than recomputing it.
+static BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
+    const fn expand(c: u16) -> u8 {
+        (c * 0xff / 0x1f) as u8
     }
 
-    pub fn as_rgb888_nocash(&self) -> image::Rgb<u8> {
-        image::Rgb([self.r() << 3, self.g() << 3, self.b() << 3])
+    let mut arr = [image::Rgba([0, 0, 0, 0]); 0x8000];
+    let mut i = 0u16;
+    while i < 0x8000 {
+        arr[i as usize] = image::Rgba([
+            expand(i & 0x1f),
+            expand((i >> 5) & 0x1f),
+            expand((i >> 10) & 0x1f),
+            0xff,
+        ]);
+        i += 1;
     }
+    arr
+};
 
-    pub fn as_rgb888(&self) -> image::Rgb<u8> {
-        image::Rgb([
-            (self.r() as u16 * 0xff / 0x1f) as u8,
-            (self.g() as u16 * 0xff / 0x1f) as u8,
-            (self.b() as u16 * 0xff / 0x1f) as u8,
-        ])
+/// Convert an mGBA `BGR5` framebuffer — what `COLOR_16_BIT` builds emit: one
+/// little-endian `u16` per pixel holding the GBA-native 15-bit color — into
+/// RGBA8.
+///
+/// `src` is 2 bytes per pixel and `dst` 4 bytes per pixel; conversion runs over
+/// whole pixels and stops when either buffer is exhausted. Backed by the same
+/// shared table [`Bgr555::to_rgb888`] uses to render ROM sprites and palettes,
+/// so emulated frames and in-app ROM imagery share identical colors, at one
+/// lookup per pixel. Alpha is forced opaque.
+pub fn bgr555_to_rgba8(src: &[u8], dst: &mut [u8]) {
+    for (s, d) in bytemuck::cast_slice::<u8, u16>(src)
+        .iter()
+        .zip(bytemuck::cast_slice_mut::<_, u32>(dst).iter_mut())
+    {
+        *d = bytemuck::cast(BGR555_RGBA8_LUT[*s as usize].0);
     }
 }
 
@@ -442,7 +471,7 @@ pub fn apply_palette(paletted: PalettedImage, palette: &Palette) -> image::RgbaI
             .iter()
             .flat_map(|v| {
                 if *v > 0 {
-                    palette[*v as usize].as_rgb888_mgba().to_rgba()
+                    palette[*v as usize].to_rgba8()
                 } else {
                     image::Rgba([0, 0, 0, 0])
                 }

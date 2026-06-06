@@ -116,7 +116,7 @@ impl ReplaySession {
             let frame_notify = frame_notify.clone();
             move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock().unwrap();
-                vbuf.copy_from_slice(video_buffer);
+                tango_dataview::rom::bgr555_to_rgba8(video_buffer, &mut vbuf);
                 // the texture handle for this frame. See
                 // `singleplayer_session` for rationale.
                 frame_notify.notify_one();
