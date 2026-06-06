@@ -8,7 +8,7 @@ license = "LGPL-3.0-or-later"
 bitvec = "1"
 bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
-c2rust-bitfields = "0.17"
+c2rust-bitfields = "0.22"
 image = { version = "0.25", default-features = false }
 itertools = "0.6"
 ndarray = "0.15"
