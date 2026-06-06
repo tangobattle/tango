@@ -1872,11 +1872,16 @@ impl App {
                 copy_image_to_clipboard(img);
                 iced::Task::none()
             }
-            E::OpenExportSaveDialog(replay_path) => {
-                let default_name = replay_path
+            E::OpenExportSaveDialog { replay: replay_path, lossless } => {
+                // Lossless export muxes libx264rgb + flac, which .mkv holds
+                // natively; scaled export targets the more portable .mp4.
+                let ext = if lossless { "mkv" } else { "mp4" };
+                let filter_name = if lossless { "Matroska" } else { "MP4" };
+                let stem = replay_path
                     .file_stem()
-                    .map(|s| format!("{}.mp4", s.to_string_lossy()))
-                    .unwrap_or_else(|| "replay.mp4".to_string());
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "replay".to_string());
+                let default_name = format!("{stem}.{ext}");
                 let initial_dir = replay_path
                     .parent()
                     .map(|p| p.to_path_buf())
@@ -1887,7 +1892,7 @@ impl App {
                         rfd::AsyncFileDialog::new()
                             .set_directory(&initial_dir)
                             .set_file_name(&default_name)
-                            .add_filter("MP4", &["mp4"])
+                            .add_filter(filter_name, &[ext])
                             .save_file()
                             .await
                             .map(|h| h.path().to_path_buf())

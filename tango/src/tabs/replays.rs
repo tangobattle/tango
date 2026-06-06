@@ -238,8 +238,13 @@ pub enum Effect {
     CopyImage(image::RgbaImage),
     /// Open the native Save-File dialog for the given replay's
     /// rendered video. App picks a path async and dispatches
-    /// `Message::ExportStart`.
-    OpenExportSaveDialog(std::path::PathBuf),
+    /// `Message::ExportStart`. `lossless` selects the default
+    /// extension/filter: .mkv for lossless (libx264rgb + flac), .mp4
+    /// for scaled exports.
+    OpenExportSaveDialog {
+        replay: std::path::PathBuf,
+        lossless: bool,
+    },
     /// User confirmed an export. App decodes the replay, resolves
     /// hooks + ROMs, spawns the tango_pvp::replay::export task,
     /// and streams `Message::ExportProgress` / `ExportFinished`
@@ -325,7 +330,10 @@ impl ReplaysState {
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }
-            Message::Export(replay_path) => Some(Effect::OpenExportSaveDialog(replay_path)),
+            Message::Export(replay_path) => Some(Effect::OpenExportSaveDialog {
+                replay: replay_path,
+                lossless: self.export_settings.scale == 0,
+            }),
             Message::ExportStart { replay, output } => {
                 // Snapshot the form + round mask exactly as the
                 // user has it right now. With the panel forced

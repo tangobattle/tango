@@ -95,7 +95,15 @@ impl Settings {
             } else {
                 "-c:v libx264rgb -preset ultrafast -qp 0".to_string()
             },
-            ffmpeg_mux_flags: "-movflags +faststart -strict -2".to_string(),
+            // Scaled exports mux into .mp4 (faststart for streaming);
+            // lossless exports mux into .mkv, which takes none of these
+            // mp4-only flags. The output extension is chosen by the caller
+            // (app.rs save dialog) to match.
+            ffmpeg_mux_flags: if factor.is_some() {
+                "-movflags +faststart -strict -2".to_string()
+            } else {
+                String::new()
+            },
             disable_bgm: false,
         }
     }
