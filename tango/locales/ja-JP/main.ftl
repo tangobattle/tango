@@ -101,7 +101,7 @@ session-back-to-session = 対戦に戻る
 session-stat-tps = 毎秒ティック数（現在/上限）
 session-stat-skew = ずれ
 session-stat-depth = 投機深度
-session-stat-ping = 遅延
+session-stat-ping = ネットワーク遅延
 
 # Save view sub-tabs
 save-tab-cover = カバー
