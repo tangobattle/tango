@@ -220,6 +220,15 @@ impl Shadow {
             round.set_pending_shadow_input(ip);
             round.peek_remote_packet().expect("pending remote packet")
         };
+        // Discard any stale "input applied" signal before this run. The per-game
+        // trap sets it whenever `take_input_injected()` fires, which also happens
+        // outside apply_input — e.g. while `advance_until_round_end` runs the game
+        // through round-end link-cable exchanges. The old shared `applied_snapshot`
+        // signal was cleared by whichever of apply_input / advance_until_round_end
+        // `.take()`'d it; the split into `input_applied` lost that, so a leftover
+        // `true` would make the next round's first apply_input return before it
+        // actually applied its input.
+        self.state.take_input_applied();
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
             self.core.as_mut().run_loop();
