@@ -1515,10 +1515,10 @@ pub fn view<'a>(
 
             // P1/P2 identity tag now leads the instrument cluster, inside
             // the plate — it reads as the "which side am I" label sitting
-            // ahead of the live metrics.
-            if let Some(s) = stats {
-                cells.push(player_cell(s.local_player_index));
-            }
+            // ahead of the live metrics. It's a match-level constant, so it
+            // shows whenever the panel is up — including between rounds, when
+            // there's no live `RoundStats`.
+            cells.push(player_cell(pvp.local_player_index()));
 
             // TPS: current rate vs target — green at/near rate, amber as it
             // dips, red when it falls well behind (visible netplay stutter).

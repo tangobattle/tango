@@ -52,6 +52,11 @@ struct EndState {
 
 pub struct PvpSession {
     local_game: &'static crate::game::Game,
+    /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
+    /// stable for the whole match. Match-level, not round-level — the instrument
+    /// panel's P1/P2 tag reads it directly so it shows even between rounds, when
+    /// there's no live [`RoundStats`].
+    local_player_index: u8,
     joyflags: Arc<AtomicU32>,
     /// Per-game in-match hook fires `completion_token.complete()`
     /// once the match has actually reached its end-game screen.
@@ -441,6 +446,7 @@ impl PvpSession {
 
         Ok(Self {
             local_game,
+            local_player_index,
             joyflags,
             completion_token,
             end,
@@ -463,6 +469,13 @@ impl PvpSession {
 
     pub fn game(&self) -> &'static crate::game::Game {
         self.local_game
+    }
+
+    /// This side's player index (P1 = 0, P2 = 1) for the match. Stable across
+    /// rounds, so the instrument panel's P1/P2 tag reads it directly rather than
+    /// pulling it from the per-round [`RoundStats`].
+    pub fn local_player_index(&self) -> u8 {
+        self.local_player_index
     }
 
     /// Current local frame delay — drives the footer slider's
@@ -578,7 +591,6 @@ impl PvpSession {
         let round_state = match_.lock_round_state();
         let round = round_state.as_ref()?;
         Some(RoundStats {
-            local_player_index: round.local_player_index(),
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
             depth: round.speculation_depth(),
         })
@@ -586,10 +598,10 @@ impl PvpSession {
 }
 
 /// Subset of `tango_pvp::battle::Round` metrics surfaced in the
-/// status bar.
+/// status bar. Per-round and `None` between rounds; the match-level
+/// player index lives on [`PvpSession::local_player_index`] instead.
 #[derive(Clone, Copy, Debug)]
 pub struct RoundStats {
-    pub local_player_index: u8,
     /// Real-time clock skew the throttler reacts to: `local_advantage −
     /// remote_advantage` (see `Round::update_fps_target`). The symmetric
     /// network term cancels in the difference, so this reads ~0 at clock
