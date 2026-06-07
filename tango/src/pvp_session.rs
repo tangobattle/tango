@@ -552,8 +552,9 @@ impl PvpSession {
         }
     }
 
-    /// Median ping over the last few seconds — drives the in-match latency
-    /// indicator. `Some(ZERO)` until the first Pong arrives, then `Some(median)`
+    /// Median ping over the last few seconds — drives the frame-delay
+    /// suggestion, where smoothing out a transient spike is what we want.
+    /// `Some(ZERO)` until the first Pong arrives, then `Some(median)`
     /// while the link is up; `None` once the remote drops (the match-run task
     /// clears the counter). The UI keys the instrument panel off this: `None`
     /// means "no live link", which `remote_disconnected` (still used internally
@@ -561,6 +562,18 @@ impl PvpSession {
     /// LAN ping that sticks at its last reading after a drop.
     pub fn latency(&self) -> Option<std::time::Duration> {
         self.latency_counter.blocking_lock().as_ref().map(|c| c.median())
+    }
+
+    /// Raw latest ping — the most recent single measurement, unsmoothed.
+    /// Drives the live telemetry plate + sparkline, where the median's lag
+    /// would mask a real spike. Same `Some`/`None` link-up semantics as
+    /// [`latency`](Self::latency) (both read the same counter), so it gates
+    /// the instrument panel identically; only the reported value differs.
+    pub fn latency_raw(&self) -> Option<std::time::Duration> {
+        self.latency_counter
+            .blocking_lock()
+            .as_ref()
+            .map(|c| c.latest().unwrap_or(std::time::Duration::ZERO))
     }
 
     /// Smoothed emulator ticks-per-second from the per-frame

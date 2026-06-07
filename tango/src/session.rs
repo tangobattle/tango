@@ -100,7 +100,10 @@ impl MetricSample {
         Self {
             tps: pvp.tps(),
             fps_target: pvp.fps_target(),
-            ping_ms: pvp.latency().map_or(0, |d| d.as_millis()),
+            // Raw latest ping (not the median) — the sparkline is a live
+            // display, so it should track the true per-frame reading and
+            // show spikes. The median feeds only the frame-delay suggestion.
+            ping_ms: pvp.latency_raw().map_or(0, |d| d.as_millis()),
             round: pvp.round_stats().map(|s| (s.skew, s.depth)),
         }
     }
@@ -1549,7 +1552,10 @@ pub fn view<'a>(
     // drops — at which point the telemetry is frozen and meaningless, so the
     // panel retires itself.
     if let ActiveSession::PvP(pvp) = session {
-        if let Some(latency) = pvp.latency() {
+        // Raw latest ping drives the plate — same `Some`/`None` link-up gate
+        // as `latency()`, but it shows the true current reading rather than the
+        // smoothed median (which is reserved for the frame-delay suggestion).
+        if let Some(latency) = pvp.latency_raw() {
             let stats = pvp.round_stats();
             let ping_ms = latency.as_millis();
             let tps = pvp.tps();

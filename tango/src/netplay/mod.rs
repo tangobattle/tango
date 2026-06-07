@@ -145,9 +145,12 @@ pub struct State {
 pub struct LobbyState {
     pub local: Option<crate::net::protocol::Settings>,
     pub remote: Option<crate::net::protocol::Settings>,
-    /// Most recent measured round-trip ping. None before the first
-    /// Pong; updated by `PingMeasured` from the lobby loop.
-    pub latency: Option<std::time::Duration>,
+    /// Round-trip ping measurements, fed one-per-Pong by `PingMeasured` from
+    /// the lobby loop. Empty before the first Pong. Its `latest()` (raw) drives
+    /// the latency line in the pane; its `median()` smooths the per-second
+    /// jitter so the frame-delay "suggest" button recommends a stable value
+    /// rather than chasing the latest spike.
+    pub latency_counter: crate::net::LatencyCounter,
     /// User-picked match type (mode + subtype). Defaults to (0, 0)
     /// = Single. Local-only UI state; gets folded into Settings
     /// on send.
@@ -181,7 +184,9 @@ impl Default for LobbyState {
         Self {
             local: None,
             remote: None,
-            latency: None,
+            // 5 marks at one Pong/second ≈ a 5 s median window, matching the
+            // in-match `PvpSession` latency counter.
+            latency_counter: crate::net::LatencyCounter::new(5),
             match_type: (0, 0),
             reveal_setup: false,
             local_ready: false,
@@ -521,7 +526,7 @@ impl State {
                 iced::Task::none()
             }
             Message::PingMeasured(dur) => {
-                self.lobby.latency = Some(dur);
+                self.lobby.latency_counter.mark(dur);
                 iced::Task::none()
             }
             Message::SendLocalSettings(settings) => {

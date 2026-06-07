@@ -7,6 +7,7 @@ use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, pick_list, row, text_input};
+use tango_pvp::battle::{MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -29,8 +30,8 @@ pub enum Message {
     /// machinery picks it up.
     NetplaySetMatchType((u8, u8)),
     /// Lobby UI: user dragged the frame-delay slider, OR pressed
-    /// the "suggest" button (which dispatches a value computed
-    /// from `lobby.latency`). Routes to the shared `config.frame_delay`
+    /// the "suggest" button (which dispatches a value computed from the
+    /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
     /// (same store the Settings-tab slider writes), not lobby-local state.
     NetplaySetFrameDelay(u32),
     /// Lobby UI: user toggled the reveal-setup checkbox.
@@ -2056,7 +2057,7 @@ fn lobby_view<'a>(
     // no identifier" state (the identifier is always available
     // otherwise); skip the header line entirely there rather than
     // reserving a slot for it.
-    let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency {
+    let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency_counter.latest() {
         Some(
             text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
                 .size(TEXT_BODY)
@@ -2163,14 +2164,18 @@ fn lobby_view<'a>(
     // clamped to the slider range. Disabled until the first Pong
     // gives us a latency reading — and unconditionally disabled
     // when the controls are inert.
-    let suggest_msg = if inert {
+    // Suggestion smooths over the per-second jitter with the median window
+    // rather than the raw `latest()` shown on the line — the recommended frame
+    // delay shouldn't jump with a single spiky Pong. Still gated on at least
+    // one Pong having landed (`latest()` is `Some`), so the counter has a real
+    // reading to take the median of.
+    let suggest_msg = if inert || lobby.latency_counter.latest().is_none() {
         None
     } else {
-        lobby.latency.map(|rtt| {
-            let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-            let d = (one_way_frames + 1 - 2).clamp(2, 10) as u32;
-            Message::NetplaySetFrameDelay(d)
-        })
+        let rtt = lobby.latency_counter.median();
+        let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
+        let d = (one_way_frames + 1 - 2).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
+        Some(Message::NetplaySetFrameDelay(d))
     };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,

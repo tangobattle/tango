@@ -158,6 +158,7 @@ impl Receiver {
 /// Median-of-window latency tracker. Identical to the legacy
 /// `tango/src/stats.rs::LatencyCounter` — used by the PvP loop
 /// to report ping in the running match.
+#[derive(Clone)]
 pub struct LatencyCounter {
     marks: std::collections::VecDeque<std::time::Duration>,
     window_size: usize,
@@ -185,6 +186,15 @@ impl LatencyCounter {
         let mut marks = self.marks.iter().collect::<Vec<_>>();
         let (_, v, _) = marks.select_nth_unstable(self.marks.len() / 2);
         **v
+    }
+
+    /// Most recent (raw) ping mark — the latest single measurement, with no
+    /// smoothing. `None` before the first `mark` (so callers can tell "no
+    /// reading yet" from a genuine 0 ms ping). Feeds the live latency readout,
+    /// where the median's lag would hide a real spike; [`median`](Self::median)
+    /// stays the source for the frame-delay suggestion, which wants it smoothed.
+    pub fn latest(&self) -> Option<std::time::Duration> {
+        self.marks.back().copied()
     }
 }
 
