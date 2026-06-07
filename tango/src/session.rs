@@ -27,6 +27,7 @@ use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, mouse_area, row};
+use tango_pvp::battle::{MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -612,23 +613,16 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
     .width(Fill);
 
     // Slider fills the row; the value + wand take their natural sizes.
-    let slider = iced::widget::slider(
-        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
-        fd,
-        Message::SetFrameDelay,
-    )
-    .width(Length::Fill);
+    let slider =
+        iced::widget::slider(MIN_FRAME_DELAY..=MAX_FRAME_DELAY, fd, Message::SetFrameDelay).width(Length::Fill);
 
     // "Suggest" button — same legacy formula as the lobby (one-way frames + 1 -
     // 2, clamped to the slider range). Disabled until the first ping reading
     // lands (`latency()` is `Some(ZERO)` until then).
     let suggest_msg = match pvp.latency() {
-        Some(latency) if !latency.is_zero() => {
-            let one_way_frames = (latency.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-            let d = (one_way_frames + 1 - 2).clamp(
-                tango_pvp::battle::MIN_FRAME_DELAY as i32,
-                tango_pvp::battle::MAX_FRAME_DELAY as i32,
-            ) as u32;
+        Some(rtt) => {
+            let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
+            let d = (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
             Some(Message::SetFrameDelay(d))
         }
         _ => None,
@@ -642,12 +636,7 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
 
     let control = row![
         slider,
-        // Live value as a fixed-width monospaced numeral so the slider's
-        // position has a readable counterpart that doesn't jiggle layout.
-        text(format!("{}", fd))
-            .size(TEXT_BODY)
-            .font(iced::Font::MONOSPACE)
-            .width(Length::Fixed(18.0)),
+        text(format!("{}", fd)).size(TEXT_BODY).width(Length::Fixed(18.0)),
         suggest,
     ]
     .spacing(10)
@@ -1155,10 +1144,7 @@ fn stat_divider<'a>() -> Element<'a, Message> {
 /// container) because the instrument panel is clickable: a subtle
 /// hover/press brighten marks it as the trigger for the match-settings
 /// popover. PvP-only.
-fn telemetry_plate_button(
-    theme: &iced::Theme,
-    status: iced::widget::button::Status,
-) -> iced::widget::button::Style {
+fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
     use iced::widget::button::Status;
     let p = theme.extended_palette();
     let text = theme.palette().text;
@@ -1270,40 +1256,39 @@ pub fn view<'a>(
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let ctrl_icon_btn_maybe =
-        |icon: Icon,
-         label: String,
-         msg: Option<Message>,
-         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
-         -> Element<'a, Message> {
-            let mut btn = button(icon.widget().size(CTRL_ICON))
-                .padding(CTRL_PAD)
-                .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-                .style(style);
-            if let Some(m) = msg {
-                btn = btn.on_press(m);
-            }
-            iced::widget::tooltip(
-                btn,
-                iced::widget::container(text(label).size(TEXT_CAPTION))
-                    .padding(6)
-                    .style(|theme: &iced::Theme| {
-                        let p = theme.extended_palette();
-                        iced::widget::container::Style {
-                            background: Some(iced::Background::Color(p.background.strong.color)),
-                            text_color: Some(p.background.strong.text),
-                            border: iced::Border {
-                                radius: 4.0.into(),
-                                ..Default::default()
-                            },
+    let ctrl_icon_btn_maybe = |icon: Icon,
+                               label: String,
+                               msg: Option<Message>,
+                               style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+     -> Element<'a, Message> {
+        let mut btn = button(icon.widget().size(CTRL_ICON))
+            .padding(CTRL_PAD)
+            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+            .style(style);
+        if let Some(m) = msg {
+            btn = btn.on_press(m);
+        }
+        iced::widget::tooltip(
+            btn,
+            iced::widget::container(text(label).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
                             ..Default::default()
-                        }
-                    }),
-                iced::widget::tooltip::Position::Top,
-            )
-            .gap(4)
-            .into()
-        };
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    };
     let ctrl_icon_btn_styled =
         |icon: Icon,
          label: String,
@@ -1463,8 +1448,7 @@ pub fn view<'a>(
         // as a perfect circle (square padding + huge radius) so
         // it reads as a console transport button instead of a
         // generic pill.
-        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused
-        {
+        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
             widgets::primary_button
         } else {
             widgets::neutral

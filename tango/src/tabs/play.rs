@@ -2173,8 +2173,8 @@ fn lobby_view<'a>(
         None
     } else {
         let rtt = lobby.latency_counter.median();
-        let one_way_frames = (rtt.as_nanos() * 60 / 2 / std::time::Duration::from_secs(1).as_nanos()) as i32;
-        let d = (one_way_frames + 1 - 2).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
+        let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
+        let d = (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
         Some(Message::NetplaySetFrameDelay(d))
     };
     let id_suggest = widgets::icon_button_maybe(
@@ -2236,12 +2236,8 @@ fn lobby_view<'a>(
             .into(),
         row![
             id_slider,
-            // Live value rendered as a fixed-width monospaced
-            // numeral so the slider's position has a readable
-            // numeric counterpart that doesn't jiggle layout.
             text(format!("{}", frame_delay))
                 .size(TEXT_BODY)
-                .font(iced::Font::MONOSPACE)
                 .width(Length::Fixed(18.0)),
             id_suggest,
         ]
