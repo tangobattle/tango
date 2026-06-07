@@ -36,6 +36,7 @@ impl Fastforwarder {
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         local_player_index: u8,
+        initial_state: Option<&mgba::state::State>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -53,6 +54,10 @@ impl Fastforwarder {
         // cuts a large constant off the dominant cost. Set after reset() —
         // which zeroes frameskip — and it sticks (frameskip isn't serialized).
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
+
+        if let Some(initial_state) = initial_state {
+            core.as_mut().load_state(initial_state)?;
+        }
 
         Ok(Fastforwarder {
             core,

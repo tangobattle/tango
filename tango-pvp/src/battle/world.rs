@@ -63,11 +63,6 @@ pub struct MgbaSimulator {
     /// The last remote packet a settle resolved — the seed `predict_rx` advances
     /// from during a speculative tail.
     pub last_remote_packet: Vec<u8>,
-    /// Tick the `authoritative_ff` core is parked at, or `None` before the first
-    /// settle. A settle warm-continues when this equals the engine's seed tick;
-    /// otherwise it cold-seeds via `load_state`. The equality guard self-heals:
-    /// any discontinuity (round boundary, unexpected seed) just falls to cold.
-    pub authoritative_parked_tick: Option<u32>,
 }
 
 impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
@@ -92,11 +87,9 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
             // tail can diverge without disturbing the authoritative core.
             let hooks = self.hooks;
             let mut packet = self.last_remote_packet.clone();
-            hooks.predict_rx(&mut packet);
             let resolver: Resolver = Box::new(move |_tick, _ip| {
-                let out = packet.clone();
                 hooks.predict_rx(&mut packet);
-                Ok(out)
+                Ok(packet.clone())
             });
             self.speculative_ff
                 .fastforward(&base.core, inputs, base_tick, &base.outgoing, resolver)?
@@ -107,19 +100,9 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
                 let shadow = self.shadow.clone();
                 Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
             };
-            let result = if self.authoritative_parked_tick == Some(base_tick) {
-                // Warm: the core is already parked at `base_tick` from the
-                // previous settle's capture — continue without reloading.
-                self.authoritative_ff
-                    .fastforward_resume(inputs, base_tick, &base.outgoing, resolver)?
-            } else {
-                // Cold: first settle of the round, or a discontinuity. Seed the
-                // core from the engine's settled checkpoint.
-                self.authoritative_ff
-                    .fastforward(&base.core, inputs, base_tick, &base.outgoing, resolver)?
-            };
-            // Capture parked the core at the new settled tick; warm next time.
-            self.authoritative_parked_tick = Some(result.snapshot.tick);
+            let result = self
+                .authoritative_ff
+                .fastforward_resume(inputs, base_tick, &base.outgoing, resolver)?;
             // A settle defines the new last-confirmed remote packet for the next
             // speculative tail's prediction.
             if let Some((_local, remote)) = result.output_pairs.last() {
