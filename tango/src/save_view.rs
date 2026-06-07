@@ -4128,56 +4128,62 @@ fn render_patch_card4s_edit<'a>(
 
 // ---------- Auto Battle Data ----------
 
-/// The six materialized deck sections, in display order, as `(title,
-/// slots)`. The deck is derived from per-chip use counts, so this is the
-/// read model shared by the read-only viewer and the editor's live
-/// preview; `combos` is always empty (the game reserves those slots).
-fn abd_sections(
+/// The six deck sections in display order, as `(title, runs)` where each run
+/// is a `(chip, slots)` pair (see [`GroupedAutoBattleData`]). Shared read model
+/// for the read-only viewer and the editor's live preview; combos are always
+/// unfilled (the game reserves those slots).
+///
+/// [`GroupedAutoBattleData`]: tango_dataview::auto_battle_data::GroupedAutoBattleData
+fn abd_grouped_sections(
     lang: &LanguageIdentifier,
-    mat: &tango_dataview::auto_battle_data::MaterializedAutoBattleData,
-) -> Vec<(String, Vec<Option<usize>>)> {
+    grouped: &tango_dataview::auto_battle_data::GroupedAutoBattleData,
+) -> Vec<(String, Vec<(Option<usize>, usize)>)> {
     vec![
         (
             t!(lang, "auto-battle-data-secondary-standard-chips"),
-            mat.secondary_standard_chips().to_vec(),
+            grouped.secondary_standard_chips.clone(),
         ),
         (
             t!(lang, "auto-battle-data-standard-chips"),
-            mat.standard_chips().to_vec(),
+            grouped.standard_chips.clone(),
         ),
-        (t!(lang, "auto-battle-data-mega-chips"), mat.mega_chips().to_vec()),
-        (t!(lang, "auto-battle-data-giga-chip"), vec![mat.giga_chip()]),
-        (t!(lang, "auto-battle-data-combos"), mat.combos().to_vec()),
+        (t!(lang, "auto-battle-data-mega-chips"), grouped.mega_chips.clone()),
+        (t!(lang, "auto-battle-data-giga-chip"), grouped.giga_chip.clone()),
+        (t!(lang, "auto-battle-data-combos"), grouped.combos.clone()),
         (
             t!(lang, "auto-battle-data-program-advance"),
-            vec![mat.program_advance()],
+            grouped.program_advance.clone(),
         ),
     ]
 }
 
-/// One deck section's chip rows (title row + a `chip_row` per slot),
-/// shared by the read-only viewer and the editor's live preview. ABD
-/// slots have no chip code and no REG/TAG indicators, so `code=None` and
-/// a default-zeroed badge struct; hover preview comes for free from
-/// `chip_row`. `is_first` stays false — the title sits above the chips,
-/// so no chip row touches a rounded top corner.
-fn abd_section_rows<M: 'static>(
+/// One deck section's rows (title row + a `chip_row` per run), shared by the
+/// read-only viewer and the editor's live preview. Each run carries the folder
+/// view's leading "N× " count column, so a chip that fills four slots reads as
+/// one row instead of four; unfilled runs still render as empty "—" rows so the
+/// section keeps its full shape. ABD rows have no chip code and no REG/TAG
+/// indicators, so `code=None` and a default badge struct (overridden only by
+/// the count); hover preview comes for free from `chip_row`.
+fn abd_grouped_section_rows<M: 'static>(
     loaded: &Loaded,
     title: String,
-    slots: &[Option<usize>],
+    runs: &[(Option<usize>, usize)],
     chips_have_mb: bool,
 ) -> Element<'static, M> {
     let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
     let mut col = column![title_el, Space::new().height(4)].spacing(1);
-    let empty_badges = GroupedChip::default();
-    let last_idx = slots.len().saturating_sub(1);
-    for (idx, id) in slots.iter().enumerate() {
+    let last_idx = runs.len().saturating_sub(1);
+    for (idx, (id, count)) in runs.iter().enumerate() {
+        let g = GroupedChip {
+            count: *count,
+            ..GroupedChip::default()
+        };
         col = col.push(chip_row(
             loaded,
             *id,
             None,
-            &empty_badges,
-            false,
+            &g,
+            true,
             chips_have_mb,
             idx,
             false,
@@ -4192,14 +4198,20 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
         return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
-    let mat = view.materialized();
     let chips_have_mb = assets.chips_have_mb();
+
+    // Grouped form of the deck, computed from the per-chip use counts rather
+    // than the flat materialized slots: a chip that fills several deck slots
+    // becomes one "N× chip" row (the same count column the folder's grouped
+    // view uses) instead of N identical rows, while unfilled slots still show
+    // as empty rows so each section keeps its full shape.
+    let grouped = tango_dataview::auto_battle_data::GroupedAutoBattleData::materialize(view.as_ref(), assets);
 
     // Each section becomes its own pane so the outer scrollable in `view`
     // shows them as distinct demarcated regions.
     let mut col = column![].spacing(crate::widgets::PANE_GAP).width(Fill);
-    for (title, slots) in abd_sections(lang, &mat) {
-        let rows = abd_section_rows::<M>(loaded, title, &slots, chips_have_mb);
+    for (title, runs) in abd_grouped_sections(lang, &grouped) {
+        let rows = abd_grouped_section_rows::<M>(loaded, title, &runs, chips_have_mb);
         col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
     }
     col.into()
@@ -4369,19 +4381,22 @@ fn render_auto_battle_data_edit<'a>(
     };
     let assets = loaded.assets.as_ref();
     let chips_have_mb = assets.chips_have_mb();
-    let mat = view.materialized();
-
-    // ----- Left pane: the live materialized deck -----
+    // ----- Left pane: the live deck, grouped like the read-only viewer -----
+    // Built from the staged use counts (not the WRAM-materialized deck), so
+    // each edit's restaged counts show immediately and a chip that fills
+    // several slots reads as one "N× chip" row.
+    let grouped = tango_dataview::auto_battle_data::GroupedAutoBattleData::materialize(view.as_ref(), assets);
+    let sections = abd_grouped_sections(lang, &grouped);
     let mut deck = column![].spacing(1).padding(0);
-    for (title, slots) in abd_sections(lang, &mat) {
-        deck = deck.push(abd_section_rows::<Action>(loaded, title, &slots, chips_have_mb));
+    for (title, runs) in &sections {
+        deck = deck.push(abd_grouped_section_rows::<Action>(loaded, title.clone(), runs, chips_have_mb));
     }
-    // Distinct chips currently contributing to the deck (slots repeat the
-    // top chips, so a raw slot count would overstate it).
-    let distinct = mat
-        .as_slice()
+    // Distinct chips currently contributing to the deck (runs repeat the top
+    // chips, so a raw slot count would overstate it).
+    let distinct = sections
         .iter()
-        .flatten()
+        .flat_map(|(_, runs)| runs.iter())
+        .filter_map(|(id, _)| *id)
         .collect::<std::collections::HashSet<_>>()
         .len();
     let clear_all = widgets::labeled_icon_button(
