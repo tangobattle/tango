@@ -243,11 +243,6 @@ pub struct Pipeline {
     /// Render-pass target format, needed for the lazy pipeline builds.
     target_format: wgpu::TextureFormat,
     bind_group_layout: wgpu::BindGroupLayout,
-    /// Texture storage format. `R16Uint` holds one raw BGR555 `u16` per pixel;
-    /// the shader expands it to RGB on read (see `effects/common.wgsl`). An
-    /// integer texture isn't filterable, but every effect already fetches
-    /// texels with `textureLoad`, so no sampler is needed.
-    texture_format: wgpu::TextureFormat,
     texture: Option<FrameTexture>,
 }
 
@@ -265,17 +260,6 @@ struct FrameTexture {
 
 impl shader::Pipeline for Pipeline {
     fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        // The framebuffer texture holds raw BGR555 (`R16Uint`); the shared
-        // `decode()` expands each texel and — keyed by the target's gamma —
-        // either linearizes it (sRGB target, gamma correction on) or passes it
-        // through (linear / web-colors target). The target `format` iced hands
-        // us is sRGB in the first case and linear in the second; `Effect::build`
-        // threads that srgb-ness into the shader. This reproduces what sampling
-        // the old `Rgba8UnormSrgb`/`Rgba8Unorm` image texture returned, keeping
-        // the no-filter case pixel-identical to before (exactly in the linear
-        // case; to fp precision, snapped back by the 8-bit write, in sRGB).
-        let texture_format = wgpu::TextureFormat::R16Uint;
-
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("framebuffer bind group layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -303,7 +287,6 @@ impl shader::Pipeline for Pipeline {
             pipeline_layout,
             target_format: format,
             bind_group_layout,
-            texture_format,
             texture: None,
         }
     }
@@ -331,7 +314,7 @@ impl Pipeline {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: self.texture_format,
+                format: wgpu::TextureFormat::R16Uint,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
