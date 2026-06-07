@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 pub mod compat;
 
-pub const PROTOCOL_VERSION: u32 = 0x43;
+pub const PROTOCOL_VERSION: u32 = 0x44;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -1276,15 +1276,13 @@ async fn run_lobby_loop(
     // First interval tick fires immediately by default; skip so
     // we don't ping before the peer is ready.
     ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    let mut last_ping_sent: Option<std::time::SystemTime> = None;
     loop {
         tokio::select! {
             biased;
             _ = cancel.cancelled() => return receiver,
             _ = ping_timer.tick() => {
-                let ts = std::time::SystemTime::now();
-                last_ping_sent = Some(ts);
-                if let Err(e) = sender.lock().await.send_ping(ts).await {
+                let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
+                if let Err(e) = sender.lock().await.send_ping(now_short).await {
                     log::warn!("lobby: send_ping failed: {e}");
                     let _ = tx.unbounded_send(Message::Failed(format!("ping: {e}")));
                     return receiver;
@@ -1300,10 +1298,9 @@ async fn run_lobby_loop(
                         }
                     }
                     Ok(crate::net::protocol::Packet::Pong(p)) => {
-                        if let Ok(dt) = std::time::SystemTime::now().duration_since(p.ts) {
-                            let _ = tx.unbounded_send(Message::PingMeasured(dt));
-                        }
-                        let _ = last_ping_sent.take();
+                        let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
+                        let dt = now_short.wrapping_sub(p.ts);
+                        let _ = tx.unbounded_send(Message::PingMeasured(std::time::Duration::from_millis(dt as u64)));
                     }
                     Ok(crate::net::protocol::Packet::Settings(s)) => {
                         let _ = tx.unbounded_send(Message::RemoteSettings(Box::new(s)));

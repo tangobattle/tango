@@ -96,11 +96,11 @@ impl Sender {
         .await
     }
 
-    pub async fn send_ping(&mut self, ts: std::time::SystemTime) -> std::io::Result<()> {
+    pub async fn send_ping(&mut self, ts: u16) -> std::io::Result<()> {
         self.send_packet(&protocol::Packet::Ping(protocol::Ping { ts })).await
     }
 
-    pub async fn send_pong(&mut self, ts: std::time::SystemTime) -> std::io::Result<()> {
+    pub async fn send_pong(&mut self, ts: u16) -> std::io::Result<()> {
         self.send_packet(&protocol::Packet::Pong(protocol::Pong { ts })).await
     }
 
@@ -274,10 +274,11 @@ impl tango_pvp::net::Receiver for PvpReceiver {
         loop {
             tokio::select! {
                 _ = self.ping_timer.tick() => {
+                    let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
                     self.sender
                         .lock()
                         .await
-                        .send_ping(std::time::SystemTime::now())
+                        .send_ping(now_short)
                         .await?;
                 }
                 p = self.receiver.receive() => {
@@ -286,12 +287,11 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             self.sender.lock().await.send_pong(ping.ts).await?;
                         }
                         protocol::Packet::Pong(pong) => {
-                            if let Ok(dt) =
-                                std::time::SystemTime::now().duration_since(pong.ts)
-                            {
-                                if let Some(c) = self.latency_counter.lock().await.as_mut() {
-                                    c.mark(dt);
-                                }
+                            let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
+                            let dt = now_short.wrapping_sub(pong.ts);
+
+                            if let Some(c) = self.latency_counter.lock().await.as_mut() {
+                                c.mark(std::time::Duration::from_millis(dt as u64));
                             }
                         }
                         protocol::Packet::Input(input) => {

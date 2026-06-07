@@ -88,12 +88,12 @@ pub struct Chunk {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Ping {
-    pub ts: std::time::SystemTime,
+    pub ts: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Pong {
-    pub ts: std::time::SystemTime,
+    pub ts: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
