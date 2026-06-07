@@ -403,7 +403,8 @@ impl InnerState {
     pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let remote_packet = (self.apply_shadow_input)(self.current_tick, input.clone())?;
         let (local, remote) = input;
-        self.output_pairs.push((local, remote.with_packet(remote_packet.clone())));
+        self.output_pairs
+            .push((local, remote.with_packet(remote_packet.clone())));
         Ok(remote_packet)
     }
 
@@ -477,8 +478,8 @@ impl InnerState {
 
     /// Consumes self into a Fastforwarder result. Panics if the state hasn't
     /// been captured yet — callers must check [`Self::has_captured_state`] first.
-    pub(super) fn into_fastforward_result(self) -> super::fastforwarder::FastforwardResult {
-        super::fastforwarder::FastforwardResult {
+    pub(super) fn into_stepper_result(self) -> super::StepperResult {
+        super::StepperResult {
             snapshot: self.captured_snapshot.expect("captured snapshot"),
             round_result: self.round_result,
             output_pairs: self.output_pairs,

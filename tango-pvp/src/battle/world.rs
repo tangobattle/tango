@@ -53,11 +53,11 @@ pub struct MgbaSimulator {
     /// Forward-only authoritative re-sim: runs settles in lockstep with the
     /// shadow and is never reloaded after seeding, mirroring the shadow's own
     /// forward-only discipline. Parked at the last settled tick between calls.
-    pub authoritative_ff: crate::stepper::Fastforwarder,
+    pub authoritative_ff: crate::stepper::Stepper,
     /// Throwaway speculative fork: reloaded from the settled checkpoint every
     /// frame and run forward with predicted remote packets. Never touches the
     /// shadow, so it can diverge freely without disturbing the trunk.
-    pub speculative_ff: crate::stepper::Fastforwarder,
+    pub speculative_ff: crate::stepper::Stepper,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     pub hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     /// The last remote packet a settle resolved — the seed `predict_rx` advances
@@ -92,7 +92,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
                 Ok(packet.clone())
             });
             self.speculative_ff
-                .fastforward(&base.core, inputs, base_tick, &base.outgoing, resolver)?
+                .run_until(&base.core, inputs, base_tick, &base.outgoing, resolver)?
         } else {
             // The trunk: co-simulate the opponent (shadow) over the local side's
             // just-produced packet, advancing forward-only in lockstep with it.
@@ -102,7 +102,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
             };
             let result = self
                 .authoritative_ff
-                .fastforward_resume(inputs, base_tick, &base.outgoing, resolver)?;
+                .resume_until(inputs, base_tick, &base.outgoing, resolver)?;
             // A settle defines the new last-confirmed remote packet for the next
             // speculative tail's prediction.
             if let Some((_local, remote)) = result.output_pairs.last() {

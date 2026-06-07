@@ -79,20 +79,15 @@ impl Round {
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
         let hooks = match_.local_hooks();
-        let authoritative_ff = crate::stepper::Fastforwarder::new(
+        let authoritative_ff = crate::stepper::Stepper::new(
             match_.rom(),
             hooks,
             match_.match_type(),
             self.local_player_index,
             Some(local_state.as_ref()),
         )?;
-        let speculative_ff = crate::stepper::Fastforwarder::new(
-            match_.rom(),
-            hooks,
-            match_.match_type(),
-            self.local_player_index,
-            None,
-        )?;
+        let speculative_ff =
+            crate::stepper::Stepper::new(match_.rom(), hooks, match_.match_type(), self.local_player_index, None)?;
         let simulator = Box::new(MgbaSimulator {
             authoritative_ff,
             speculative_ff,
