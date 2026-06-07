@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::input::{Input, PartialInput};
 
-use super::types::{BattleOutcome, RoundPhase, RoundResult};
+use super::{BattleOutcome, RoundPhase, RoundResult};
 
 type InputPair = (Input, Input);
 type PartialInputPair = (PartialInput, PartialInput);

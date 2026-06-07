@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex as SyncMutex};
 use tokio::sync::{watch, Mutex};
 
 use super::round::Round;
-use super::types::{MatchIdentity, ReplayConfig};
+use super::{MatchIdentity, ReplayConfig};
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
