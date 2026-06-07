@@ -123,7 +123,7 @@ pub fn run_prefetch(
     cancel: Arc<AtomicBool>,
     progress: Arc<AtomicU32>,
 ) -> anyhow::Result<()> {
-    let mut core = mgba::core::Core::new_gba("tango-prefetch")?;
+    let mut core = mgba::core::Core::new_gba("tango-prefetch", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
     core.as_mut()
         .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;

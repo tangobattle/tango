@@ -160,7 +160,13 @@ impl PvpSession {
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
 
-        let mut core = mgba::core::Core::new_gba("tango")?;
+        let mut core = mgba::core::Core::new_gba(
+            "tango",
+            &mgba::core::Options {
+                audio_sync: true,
+                ..Default::default()
+            },
+        )?;
         core.enable_video_buffer();
         core.as_mut()
             .load_rom(mgba::vfile::VFile::from_vec(local_rom.as_ref().clone()))?;

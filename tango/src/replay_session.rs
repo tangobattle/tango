@@ -48,7 +48,13 @@ impl ReplaySession {
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
-        let mut core = mgba::core::Core::new_gba("tango")?;
+        let mut core = mgba::core::Core::new_gba(
+            "tango",
+            &mgba::core::Options {
+                audio_sync: true,
+                ..Default::default()
+            },
+        )?;
         core.enable_video_buffer();
         core.as_mut()
             .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;

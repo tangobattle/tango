@@ -102,7 +102,7 @@ impl Shadow {
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
-        let mut core = mgba::core::Core::new_gba("tango")?;
+        let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
 
         core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
         core.as_mut()
@@ -142,7 +142,10 @@ impl Shadow {
         // input_applied and error are per-run scratch; clear so the next
         // apply_input / round-end run doesn't pick up stale values that don't
         // correspond to the just-restored core state.
-        self.state.0.input_applied.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.state
+            .0
+            .input_applied
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }

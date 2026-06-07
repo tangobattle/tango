@@ -31,8 +31,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use std::sync::Mutex;
 use sha2::{Digest, Sha256};
+use std::sync::Mutex;
 use tango_pvp::stepper::BattleOutcome;
 
 fn workspace_root() -> PathBuf {
@@ -216,7 +216,7 @@ fn compute_fingerprint(
     local_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
     remote_hooks: &'static (dyn tango_pvp::hooks::Hooks + Send + Sync),
 ) -> anyhow::Result<Fingerprint> {
-    let mut core = mgba::core::Core::new_gba("tango-test")?;
+    let mut core = mgba::core::Core::new_gba("tango-test", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
     core.as_mut()
         .load_rom(mgba::vfile::VFile::from_vec(local_rom.to_vec()))?;

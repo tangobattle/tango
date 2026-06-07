@@ -135,7 +135,13 @@ fn make_core_and_state(
     replay: &crate::replay::Replay,
     settings: &Settings,
 ) -> anyhow::Result<(mgba::core::Core, crate::stepper::State)> {
-    let mut core = mgba::core::Core::new_gba("tango")?;
+    let mut core = mgba::core::Core::new_gba(
+        "tango",
+        &mgba::core::Options {
+            audio_sync: true,
+            ..Default::default()
+        },
+    )?;
     core.enable_video_buffer();
 
     core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;

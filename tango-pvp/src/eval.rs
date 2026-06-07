@@ -4,7 +4,7 @@ pub async fn eval(
     hooks: &'static (dyn crate::hooks::Hooks + Sync + Send),
     extra_traps: impl FnOnce() -> Vec<crate::hooks::Trap> + Send + Sync,
 ) -> Result<(crate::stepper::RoundResult, Box<mgba::state::State>), anyhow::Error> {
-    let mut core = mgba::core::Core::new_gba("tango")?;
+    let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
 
     let vf = mgba::vfile::VFile::from_vec(rom.to_vec());
     core.as_mut().load_rom(vf)?;

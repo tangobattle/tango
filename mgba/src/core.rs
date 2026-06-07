@@ -18,8 +18,24 @@ pub struct Core {
 
 unsafe impl Send for Core {}
 
+pub struct Options {
+    pub sample_rate: u32,
+    pub video_sync: bool,
+    pub audio_sync: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            sample_rate: 48000,
+            video_sync: false,
+            audio_sync: false,
+        }
+    }
+}
+
 impl Core {
-    pub fn new_gba(config_name: &str) -> Result<Self, crate::Error> {
+    pub fn new_gba(config_name: &str, options: &Options) -> Result<Self, crate::Error> {
         let ptr = unsafe { mgba_sys::GBACoreCreate() };
         if ptr.is_null() {
             return Err(crate::Error::CallFailed("GBACoreCreate"));
@@ -28,9 +44,9 @@ impl Core {
             {
                 // TODO: Make this more generic maybe.
                 let opts = &mut ptr.as_mut().unwrap().opts;
-                opts.sampleRate = 48000;
-                opts.videoSync = false;
-                opts.audioSync = true;
+                opts.sampleRate = options.sample_rate as _;
+                opts.videoSync = options.video_sync;
+                opts.audioSync = options.audio_sync;
             }
 
             (*ptr).init.unwrap()(ptr);
