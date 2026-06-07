@@ -1,6 +1,6 @@
 //! Small iced widget helpers: icon-buttons (with tooltips), tab
 //! buttons, button styles (`neutral`, `list_item`), and a handful
-//! of HUD-chrome style fns (`hud_bar`, `hud_scanline`, `panel`,
+//! of HUD-chrome style fns (`hud_bar`, `hud_scanline_top`, `panel`,
 //! `body_surface`) used by main.rs and the tabs to give the app
 //! a more game-console / less generic-desktop look. Icon glyphs
 //! come straight from the `lucide-icons` crate — call sites pass
@@ -613,11 +613,31 @@ pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
-/// A 3-px-tall accent strip rendered under the HUD bar. Linear
-/// gradient from primary (left) to a slightly cooler tone (right)
-/// so the rule has motion — not a single flat color stripe across
-/// the window.
-pub fn hud_scanline<'a, M: 'a>() -> Element<'a, M> {
+/// The top accent strip, rendered under the HUD bar. 3-px tall,
+/// normally a left→right primary→cooler gradient so the rule has
+/// motion — not a single flat color stripe across the window.
+pub fn hud_scanline_top<'a, M: 'a>() -> Element<'a, M> {
+    hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::rainbow_flag_stops())))
+}
+
+/// The bottom-edge accent strip.
+pub fn hud_scanline_bottom<'a, M: 'a>() -> Element<'a, M> {
+    hud_scanline(crate::theme::is_gay_time().then(|| flag_background(&crate::theme::trans_flag_stops())))
+}
+
+/// A flat left→right linear gradient through `stops`, packaged as a
+/// `Background` ready to drop into a scanline override.
+fn flag_background(stops: &[(f32, iced::Color)]) -> iced::Background {
+    iced::Background::Gradient(iced::Gradient::Linear(stops.iter().fold(
+        iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2),
+        |grad, &(offset, color)| grad.add_stop(offset, color),
+    )))
+}
+
+/// Shared scanline body. `override_bg` replaces the fill when `Some`
+/// (e.g. a pride-flag gradient in June); when `None` it falls back to
+/// the usual primary→cooler accent rule derived from the live theme.
+fn hud_scanline<'a, M: 'a>(override_bg: Option<iced::Background>) -> Element<'a, M> {
     container(
         iced::widget::Space::new()
             .width(Length::Fill)
@@ -625,23 +645,26 @@ pub fn hud_scanline<'a, M: 'a>() -> Element<'a, M> {
     )
     .width(Length::Fill)
     .height(Length::Fixed(3.0))
-    .style(|theme: &Theme| {
-        let primary = theme.palette().primary;
-        // Cool the right edge by pulling primary toward a
-        // cyan-ish tone — keeps the rule from looking like a
-        // dumb solid green bar, gives it a console-trim vibe.
-        let right = iced::Color {
-            r: primary.r * 0.4,
-            g: primary.g * 0.85 + 0.15,
-            b: primary.b * 0.4 + 0.55,
-            a: 1.0,
-        };
-        iced::widget::container::Style {
-            background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+    .style(move |theme: &Theme| {
+        let background = override_bg.unwrap_or_else(|| {
+            let primary = theme.palette().primary;
+            // Cool the right edge by pulling primary toward a
+            // cyan-ish tone — keeps the rule from looking like a
+            // dumb solid green bar, gives it a console-trim vibe.
+            let right = iced::Color {
+                r: primary.r * 0.4,
+                g: primary.g * 0.85 + 0.15,
+                b: primary.b * 0.4 + 0.55,
+                a: 1.0,
+            };
+            iced::Background::Gradient(iced::Gradient::Linear(
                 iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2)
                     .add_stop(0.0, primary)
                     .add_stop(1.0, right),
-            ))),
+            ))
+        });
+        iced::widget::container::Style {
+            background: Some(background),
             ..Default::default()
         }
     })

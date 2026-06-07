@@ -1615,7 +1615,7 @@ pub fn view<'a>(
     // anchor regardless of session type.
     controls = controls.push(options_btn);
     layout = layout
-        .push(widgets::hud_scanline())
+        .push(widgets::hud_scanline_bottom())
         .push(container(controls).width(Fill).style(widgets::hud_bar));
 
     // Ellipsis-anchored options popover. Built as a top Stack

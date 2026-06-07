@@ -1013,7 +1013,7 @@ impl PlayState {
         // Selector strip + save-view body live inside a single
         // PANE_GAP-padded column so every pane in that area shares
         // the same inset from the window edges and gap from one
-        // another. The hud_scanline + bottom strip / lobby view
+        // another. The hud_scanline_bottom + bottom strip / lobby view
         // sit OUTSIDE that padding so they remain edge-to-edge
         // bottom bars.
         let inner = column![self.selector_strip(lang, scanners, config, rescanning), save_body,]
@@ -1025,7 +1025,7 @@ impl PlayState {
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
-        col = col.push(inner).push(widgets::hud_scanline());
+        col = col.push(inner).push(widgets::hud_scanline_bottom());
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby) the lobby_view IS the bottom band
         // — it carries the verdict/cancel/ready chrome. Otherwise

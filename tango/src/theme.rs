@@ -55,6 +55,35 @@ pub fn theme_for(config: &config::Config) -> Theme {
     }
 }
 
+pub fn is_gay_time() -> bool {
+    use chrono::Datelike;
+    chrono::Local::now().month() == 6
+}
+
+pub fn rainbow_flag_stops() -> [(f32, iced::Color); 6] {
+    [
+        (0.0 / 5.0, iced::Color::from_rgb8(0xe4, 0x03, 0x03)), // red
+        (1.0 / 5.0, iced::Color::from_rgb8(0xff, 0x8c, 0x00)), // orange
+        (2.0 / 5.0, iced::Color::from_rgb8(0xff, 0xed, 0x00)), // yellow
+        (3.0 / 5.0, iced::Color::from_rgb8(0x00, 0x80, 0x26)), // green
+        (4.0 / 5.0, iced::Color::from_rgb8(0x00, 0x4d, 0xff)), // blue
+        (5.0 / 5.0, iced::Color::from_rgb8(0x75, 0x07, 0x87)), // violet
+    ]
+}
+
+/// The trans flag's five stripes (blue / pink / white / pink / blue),
+/// left→right, as linear-gradient stops — the symmetric mirror means it
+/// reads the same flying either direction.
+pub fn trans_flag_stops() -> [(f32, iced::Color); 5] {
+    [
+        (0.00, iced::Color::from_rgb8(0x5b, 0xce, 0xfa)), // light blue
+        (0.25, iced::Color::from_rgb8(0xf5, 0xa9, 0xb8)), // pink
+        (0.50, iced::Color::from_rgb8(0xff, 0xff, 0xff)), // white
+        (0.75, iced::Color::from_rgb8(0xf5, 0xa9, 0xb8)), // pink
+        (1.00, iced::Color::from_rgb8(0x5b, 0xce, 0xfa)), // light blue
+    ]
+}
+
 /// The markdown widget's style for the given theme. iced's
 /// `markdown::Style::from(theme)` only derives colors — it leaves the body
 /// font at `Font::DEFAULT` (the system sans-serif) and code at the system

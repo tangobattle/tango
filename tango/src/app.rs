@@ -2449,7 +2449,7 @@ impl App {
         // a faint inner tint so the HUD bar visibly sits on top of
         // a "screen surface" rather than a flat sheet of pixels.
         let body_surface = container(body).width(Fill).height(Fill).style(widgets::body_surface);
-        column![top_bar(lang, self.tab), widgets::hud_scanline(), body_surface,]
+        column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
             .spacing(0)
             .width(Fill)
             .height(Fill)
