@@ -64,7 +64,6 @@ impl StepperCore {
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         local_player_index: u8,
-        initial_state: Option<&mgba::state::State>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -82,10 +81,6 @@ impl StepperCore {
         // cuts a large constant off the dominant cost. Set after reset() —
         // which zeroes frameskip — and it sticks (frameskip isn't serialized).
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
-
-        if let Some(initial_state) = initial_state {
-            core.as_mut().load_state(initial_state)?;
-        }
 
         Ok(StepperCore {
             core,
@@ -155,7 +150,12 @@ impl RunStepper {
         match_type: (u8, u8),
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
-        Ok(RunStepper(StepperCore::new(rom, hooks, match_type, local_player_index, None)?))
+        Ok(RunStepper(StepperCore::new(
+            rom,
+            hooks,
+            match_type,
+            local_player_index,
+        )?))
     }
 
     /// Cold start: load the seed state, then run the input window to capture.
@@ -187,13 +187,9 @@ impl ResumeStepper {
         local_player_index: u8,
         initial_state: &mgba::state::State,
     ) -> anyhow::Result<Self> {
-        Ok(ResumeStepper(StepperCore::new(
-            rom,
-            hooks,
-            match_type,
-            local_player_index,
-            Some(initial_state),
-        )?))
+        let mut core = StepperCore::new(rom, hooks, match_type, local_player_index)?;
+        core.core.as_mut().load_state(initial_state)?;
+        Ok(ResumeStepper(core))
     }
 
     /// Forward-only continuation for the authoritative settle core. The core is
