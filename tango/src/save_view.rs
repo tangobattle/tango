@@ -2,8 +2,8 @@ use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::i18n::t;
 use crate::selection::Loaded;
 use crate::widgets::{muted_color, muted_text_style};
-use iced::widget::{container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
-use sweeten::widget::{button, column, pick_list, row, text_input};
+use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
+use sweeten::widget::{column, pick_list, row, text_input};
 
 /// Save view is read-only — every interactive bit (NCP hover, chip
 /// hover) is handled by tooltip/canvas widgets that manage their own

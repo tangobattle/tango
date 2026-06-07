@@ -23,10 +23,10 @@ use crate::video::framebuffer::Effect;
 use crate::widgets;
 use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{container, stack, text};
+use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
-use sweeten::widget::{button, column, mouse_area, row};
+use sweeten::widget::{column, mouse_area, row};
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -696,7 +696,10 @@ struct Sparkline {
 impl Sparkline {
     fn view<'a>(self) -> Element<'a, Message> {
         // Fill the card's chart area; height is fixed so the row lays out cleanly.
-        Canvas::new(self).width(Length::Fill).height(Length::Fixed(SPARK_H)).into()
+        Canvas::new(self)
+            .width(Length::Fill)
+            .height(Length::Fixed(SPARK_H))
+            .into()
     }
 }
 
@@ -752,7 +755,13 @@ impl canvas::Program<Message> for Sparkline {
                         p.line_to(Point::new(x0, base));
                         p.close();
                     });
-                    frame.fill(&area, Color { a: 0.3, ..stat_tone_color(theme, tone) });
+                    frame.fill(
+                        &area,
+                        Color {
+                            a: 0.3,
+                            ..stat_tone_color(theme, tone)
+                        },
+                    );
                 }
             }
         }
@@ -764,7 +773,9 @@ impl canvas::Program<Message> for Sparkline {
             let zero_y = y_at(z);
             frame.stroke(
                 &Path::line(Point::new(0.0, zero_y), Point::new(w, zero_y)),
-                Stroke::default().with_color(Color { a: 0.22, ..text_color }).with_width(1.0),
+                Stroke::default()
+                    .with_color(Color { a: 0.22, ..text_color })
+                    .with_width(1.0),
             );
         }
 
@@ -875,7 +886,17 @@ fn metric_card<'a>(
         .back()
         .and_then(value)
         .unwrap_or_else(|| value_text("—".to_string(), Some(StatTone::Muted)));
-    telemetry_card(icon, caption, Sparkline { points, fill_under, zero }.view(), value)
+    telemetry_card(
+        icon,
+        caption,
+        Sparkline {
+            points,
+            fill_under,
+            zero,
+        }
+        .view(),
+        value,
+    )
 }
 
 /// Contents of the match-settings panel: a sparkline card per live metric
@@ -917,7 +938,10 @@ fn match_settings_content<'a>(
                 (yf, tone_for_skew(skew))
             })
         },
-        |s| s.round.map(|(skew, _)| value_text(fmt_skew(skew), Some(tone_for_skew(skew)))),
+        |s| {
+            s.round
+                .map(|(skew, _)| value_text(fmt_skew(skew), Some(tone_for_skew(skew))))
+        },
     );
 
     let depth_card = metric_card(
@@ -926,8 +950,14 @@ fn match_settings_content<'a>(
         true,
         Some(0.0),
         history,
-        |s| s.round.map(|(_, depth)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth))),
-        |s| s.round.map(|(_, depth)| value_text(fmt_depth(depth), Some(tone_for_depth(depth)))),
+        |s| {
+            s.round
+                .map(|(_, depth)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth)))
+        },
+        |s| {
+            s.round
+                .map(|(_, depth)| value_text(fmt_depth(depth), Some(tone_for_depth(depth))))
+        },
     );
 
     let ping_card = metric_card(
@@ -936,13 +966,18 @@ fn match_settings_content<'a>(
         true,
         Some(0.0),
         history,
-        |s| Some((s.ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32, tone_for_ping(s.ping_ms))),
+        |s| {
+            Some((
+                s.ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32,
+                tone_for_ping(s.ping_ms),
+            ))
+        },
         |s| Some(value_text(fmt_ping(s.ping_ms), Some(tone_for_ping(s.ping_ms)))),
     );
 
     // Faint rule separating the read-only metrics from the frame-delay knob.
-    let rule = container(iced::widget::Space::new().width(Fill).height(Length::Fixed(1.0))).style(
-        |theme: &iced::Theme| {
+    let rule =
+        container(iced::widget::Space::new().width(Fill).height(Length::Fixed(1.0))).style(|theme: &iced::Theme| {
             let p = theme.extended_palette();
             iced::widget::container::Style {
                 background: Some(iced::Background::Color(Color {
@@ -951,13 +986,19 @@ fn match_settings_content<'a>(
                 })),
                 ..Default::default()
             }
-        },
-    );
+        });
 
-    column![tps_card, skew_card, depth_card, ping_card, rule, frame_delay_control(lang, pvp)]
-        .spacing(8)
-        .width(Length::Fixed(PANEL_W))
-        .into()
+    column![
+        tps_card,
+        skew_card,
+        depth_card,
+        ping_card,
+        rule,
+        frame_delay_control(lang, pvp)
+    ]
+    .spacing(8)
+    .width(Length::Fixed(PANEL_W))
+    .into()
 }
 
 /// Semantic tone for a PvP telemetry value. The icon always rides
@@ -1111,8 +1152,11 @@ fn stat_divider<'a>() -> Element<'a, Message> {
 /// container) because the instrument panel is clickable: a subtle
 /// hover/press brighten marks it as the trigger for the match-settings
 /// popover. PvP-only.
-fn telemetry_plate_button(theme: &iced::Theme, status: sweeten::widget::button::Status) -> sweeten::widget::button::Style {
-    use sweeten::widget::button::Status;
+fn telemetry_plate_button(
+    theme: &iced::Theme,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
+    use iced::widget::button::Status;
     let p = theme.extended_palette();
     let text = theme.palette().text;
     let base = if p.is_dark { 0.06 } else { 0.05 };
@@ -1121,7 +1165,7 @@ fn telemetry_plate_button(theme: &iced::Theme, status: sweeten::widget::button::
         Status::Pressed => base + 0.10,
         _ => base,
     };
-    sweeten::widget::button::Style {
+    iced::widget::button::Style {
         background: Some(iced::Background::Color(iced::Color { a: fill, ..text })),
         text_color: text,
         border: iced::Border {
@@ -1227,7 +1271,7 @@ pub fn view<'a>(
         |icon: Icon,
          label: String,
          msg: Option<Message>,
-         style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
+         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
          -> Element<'a, Message> {
             let mut btn = button(icon.widget().size(CTRL_ICON))
                 .padding(CTRL_PAD)
@@ -1261,7 +1305,7 @@ pub fn view<'a>(
         |icon: Icon,
          label: String,
          msg: Message,
-         style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style|
+         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
          -> Element<'a, Message> { ctrl_icon_btn_maybe(icon, label, Some(msg), style) };
     let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
         ctrl_icon_btn_styled(icon, label, msg, widgets::neutral)
@@ -1274,7 +1318,7 @@ pub fn view<'a>(
     // disabled when the peer didn't enable reveal-setup.
     let self_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) if s.local_loaded.is_some() => {
-            let style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style =
+            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
                 if state.show_self_panel {
                     widgets::pvp_red_button
                 } else {
@@ -1292,7 +1336,7 @@ pub fn view<'a>(
     let opponent_toggle: Option<Element<'a, Message>> = match session {
         ActiveSession::PvP(s) => {
             let revealed = s.opponent_loaded.is_some();
-            let style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style =
+            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
                 if state.show_opponent_panel && revealed {
                     widgets::pvp_blue_button
                 } else {
@@ -1416,13 +1460,13 @@ pub fn view<'a>(
         // as a perfect circle (square padding + huge radius) so
         // it reads as a console transport button instead of a
         // generic pill.
-        let base_style: fn(&iced::Theme, sweeten::widget::button::Status) -> sweeten::widget::button::Style = if paused
+        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused
         {
             widgets::primary_button
         } else {
             widgets::neutral
         };
-        let play_pause_style = move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
+        let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
             let mut style = base_style(theme, status);
             style.border.radius = 999.0.into();
             style
@@ -1612,11 +1656,11 @@ pub fn view<'a>(
         // pink-tinted shadow.
         fn menu_row_style(
             theme: &iced::Theme,
-            status: sweeten::widget::button::Status,
+            status: iced::widget::button::Status,
             selected: bool,
             accent: iced::Color,
-        ) -> sweeten::widget::button::Style {
-            use sweeten::widget::button::Status;
+        ) -> iced::widget::button::Style {
+            use iced::widget::button::Status;
             let p = theme.extended_palette();
             let text = theme.palette().text;
             let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
@@ -1626,7 +1670,7 @@ pub fn view<'a>(
                 _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
                 _ => None,
             };
-            sweeten::widget::button::Style {
+            iced::widget::button::Style {
                 background: bg,
                 text_color: if selected { accent } else { text },
                 border: iced::Border {
@@ -1653,7 +1697,7 @@ pub fn view<'a>(
             button(content)
                 .padding([6, 10])
                 .width(iced::Length::Fixed(ROW_WIDTH))
-                .style(move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
+                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
                     let accent = tint.unwrap_or(theme.palette().primary);
                     menu_row_style(theme, status, false, accent)
                 })
@@ -1733,7 +1777,7 @@ pub fn view<'a>(
                 let btn = button(content)
                     .padding([6, 10])
                     .width(iced::Length::Fixed(ROW_WIDTH))
-                    .style(move |theme: &iced::Theme, status: sweeten::widget::button::Status| {
+                    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
                         menu_row_style(theme, status, selected, theme.palette().primary)
                     })
                     .on_press(Message::SetSpeed(v));
