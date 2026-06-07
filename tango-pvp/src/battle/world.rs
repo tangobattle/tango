@@ -9,8 +9,10 @@
 //!
 //! - [`MgbaWorld`] pins the engine's type axes: [`MgbaState`] (mgba save state
 //!   + our in-flight outgoing packet) and [`PartialInput`] (joyflags).
-//! - [`MgbaSimulator`] wraps the [`Fastforwarder`](crate::stepper::Fastforwarder)
-//!   and owns the shadow.
+//! - [`MgbaSimulator`] wraps the two stepper cores
+//!   ([`ResumeStepper`](crate::stepper::ResumeStepper) for settles,
+//!   [`RunStepper`](crate::stepper::RunStepper) for speculation) and owns the
+//!   shadow.
 //! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet is
 //!   the simulator's own business.
 //!
@@ -45,19 +47,23 @@ pub struct MgbaState {
 /// Per-tick remote-packet resolver handed to the fastforwarder.
 type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
-/// [`getgud::Simulator`] over the per-frame [`Fastforwarder`]. Owns the shadow
+/// [`getgud::Simulator`] over the two per-frame stepper cores. Owns the shadow
 /// and resolves each tick's remote packet itself: a settle (`speculative =
-/// false`) co-simulates the opponent and advances it; a speculative tail
-/// predicts packets via `predict_rx` and never touches the shadow.
+/// false`) co-simulates the opponent and advances it via [`resume_until`]; a
+/// speculative tail predicts packets via `predict_rx`, never touches the shadow,
+/// and reloads the settled checkpoint via [`run_until`].
+///
+/// [`resume_until`]: crate::stepper::ResumeStepper::resume_until
+/// [`run_until`]: crate::stepper::RunStepper::run_until
 pub struct MgbaSimulator {
     /// Forward-only authoritative re-sim: runs settles in lockstep with the
     /// shadow and is never reloaded after seeding, mirroring the shadow's own
     /// forward-only discipline. Parked at the last settled tick between calls.
-    pub authoritative_ff: crate::stepper::Stepper,
+    pub authoritative_ff: crate::stepper::ResumeStepper,
     /// Throwaway speculative fork: reloaded from the settled checkpoint every
     /// frame and run forward with predicted remote packets. Never touches the
     /// shadow, so it can diverge freely without disturbing the trunk.
-    pub speculative_ff: crate::stepper::Stepper,
+    pub speculative_ff: crate::stepper::RunStepper,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     pub hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     /// The last remote packet a settle resolved — the seed `predict_rx` advances

@@ -29,7 +29,7 @@ pub struct RoundResult {
     pub outcome: BattleOutcome,
 }
 
-/// Output of a single Fastforwarder run.
+/// Output of a single stepper run.
 pub struct StepperResult {
     /// State captured at `capture_tick`: the per-game stepper trap fires
     /// `main_read_joyflags` once the input window is exhausted and snapshots
@@ -44,11 +44,13 @@ pub struct StepperResult {
     pub output_pairs: Vec<(Input, Input)>,
 }
 
-/// Per-Match emulator dedicated to running the per-frame stepper traps over a
-/// known input window. Each [`fastforward`](Fastforwarder::fastforward) call
-/// loads a saved state, processes the input pairs, and returns a single fresh
-/// save snapshot at `capture_tick`.
-pub struct Stepper {
+/// Shared per-Match emulator machinery for the per-frame stepper traps: a
+/// dedicated headless core plus the drive loop that runs the trap set over a
+/// known input window and captures one boundary snapshot at `capture_tick`. The
+/// two public steppers wrap this and differ only in how they position the core
+/// before a run — [`RunStepper`] reloads a seed state each call; [`ResumeStepper`]
+/// never reloads and runs forward from where the previous call parked.
+struct StepperCore {
     core: mgba::core::Core,
     state: State,
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
@@ -56,8 +58,8 @@ pub struct Stepper {
     local_player_index: u8,
 }
 
-impl Stepper {
-    pub fn new(
+impl StepperCore {
+    fn new(
         rom: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
@@ -85,7 +87,7 @@ impl Stepper {
             core.as_mut().load_state(initial_state)?;
         }
 
-        Ok(Stepper {
+        Ok(StepperCore {
             core,
             state,
             hooks,
@@ -94,43 +96,11 @@ impl Stepper {
         })
     }
 
-    /// Cold start: load the seed state, then run the input window to capture.
-    pub fn run_until(
-        &mut self,
-        state: &mgba::state::State,
-        inputs: Vec<(PartialInput, PartialInput)>,
-        current_tick: u32,
-        last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
-    ) -> anyhow::Result<StepperResult> {
-        self.core.as_mut().load_state(state)?;
-        self.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
-        self.run_to_capture()
-    }
-
-    /// Forward-only continuation for the authoritative settle core. The core is
-    /// already parked at `current_tick` from the previous run's capture —
-    /// `end_run_loop` halts exactly at the boundary `main_read_joyflags` with r4
-    /// unset (see e.g. `game/bn6/stepper.rs`) — so there is NO `load_state`; we
-    /// just re-arm the next input window and run on. Sound only because settles
-    /// advance monotonically and never rewind: the caller must guarantee the
-    /// core is parked at `current_tick`.
-    pub fn resume_until(
-        &mut self,
-        inputs: Vec<(PartialInput, PartialInput)>,
-        current_tick: u32,
-        last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
-    ) -> anyhow::Result<StepperResult> {
-        self.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
-        self.run_to_capture()
-    }
-
     /// Install the input window and re-arm the per-game traps for a run.
     /// `prepare_for_fastforward` rewinds the PC to `main_read_joyflags` so the
     /// next `run_loop` re-fires the read at the parked position; the shadow
-    /// calls it on its warm core every `apply_input` (see `shadow.rs`), so it is
-    /// safe to call without a preceding `load_state`.
+    /// calls it on its warm core every `apply_input` (see `shadow/mod.rs`), so it
+    /// is safe to call without a preceding `load_state`.
     fn arm(
         &mut self,
         inputs: Vec<(PartialInput, PartialInput)>,
@@ -168,5 +138,79 @@ impl Stepper {
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
         }
+    }
+}
+
+/// Cold-start stepper: loads a seed save state and runs the input window from it
+/// on every call. Used for the throwaway speculative fork, which is reloaded
+/// from the settled checkpoint each frame and may diverge freely. Only supports
+/// [`run_until`](Self::run_until); it carries no seed state of its own, since
+/// every run supplies one.
+pub struct RunStepper(StepperCore);
+
+impl RunStepper {
+    pub fn new(
+        rom: &[u8],
+        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+        match_type: (u8, u8),
+        local_player_index: u8,
+    ) -> anyhow::Result<Self> {
+        Ok(RunStepper(StepperCore::new(rom, hooks, match_type, local_player_index, None)?))
+    }
+
+    /// Cold start: load the seed state, then run the input window to capture.
+    pub fn run_until(
+        &mut self,
+        state: &mgba::state::State,
+        inputs: Vec<(PartialInput, PartialInput)>,
+        current_tick: u32,
+        last_local_packet: &[u8],
+        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
+    ) -> anyhow::Result<StepperResult> {
+        self.0.core.as_mut().load_state(state)?;
+        self.0.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
+        self.0.run_to_capture()
+    }
+}
+
+/// Forward-only stepper: seeded once at construction and never reloaded, it runs
+/// each input window on from wherever the previous call parked the core. Used
+/// for the authoritative settle re-sim, which advances monotonically in lockstep
+/// with the shadow. Only supports [`resume_until`](Self::resume_until).
+pub struct ResumeStepper(StepperCore);
+
+impl ResumeStepper {
+    pub fn new(
+        rom: &[u8],
+        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
+        match_type: (u8, u8),
+        local_player_index: u8,
+        initial_state: &mgba::state::State,
+    ) -> anyhow::Result<Self> {
+        Ok(ResumeStepper(StepperCore::new(
+            rom,
+            hooks,
+            match_type,
+            local_player_index,
+            Some(initial_state),
+        )?))
+    }
+
+    /// Forward-only continuation for the authoritative settle core. The core is
+    /// already parked at `current_tick` from the previous run's capture —
+    /// `end_run_loop` halts exactly at the boundary `main_read_joyflags` with r4
+    /// unset (see e.g. `game/bn6/stepper.rs`) — so there is NO `load_state`; we
+    /// just re-arm the next input window and run on. Sound only because settles
+    /// advance monotonically and never rewind: the caller must guarantee the
+    /// core is parked at `current_tick`.
+    pub fn resume_until(
+        &mut self,
+        inputs: Vec<(PartialInput, PartialInput)>,
+        current_tick: u32,
+        last_local_packet: &[u8],
+        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
+    ) -> anyhow::Result<StepperResult> {
+        self.0.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
+        self.0.run_to_capture()
     }
 }

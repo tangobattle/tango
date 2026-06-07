@@ -14,10 +14,12 @@
 //!   step; `advance_until_first_committed_state` / `advance_until_round_end`
 //!   skip past round boundaries.
 //!
-//! - [`stepper`]: the per-frame battle simulator. Used in two modes:
-//!   `Fastforwarder` — replays a known input window from a saved state on
-//!   the primary side; `State` — drives replay-mode playback from boot.
-//!   Both modes share `InnerState` and the per-game `stepper_traps` set.
+//! - [`stepper`]: the per-frame battle simulator that replays a known input
+//!   window through the per-game `stepper_traps`. Two re-sim cores split the
+//!   work: `ResumeStepper` runs settles forward-only from where it last parked,
+//!   while `RunStepper` reloads a saved state to fork a throwaway speculative
+//!   tail. `State` drives replay-mode playback from boot. All share
+//!   `InnerState` and the `stepper_traps` set.
 //!
 //! - [`hooks`]: the trap framework. ROM PCs are registered with closures
 //!   (`Trap`) that fire on hit.
