@@ -91,18 +91,15 @@ impl StepperCore {
         })
     }
 
-    /// Install the input window and re-arm the per-game traps for a run.
-    /// `prepare_for_fastforward` rewinds the PC to `main_read_joyflags` so the
-    /// next `run_loop` re-fires the read at the parked position; the shadow
-    /// calls it on its warm core every `apply_input` (see `shadow/mod.rs`), so it
-    /// is safe to call without a preceding `load_state`.
-    fn arm(
+    /// Drive the core until the per-game stepper trap captures the boundary
+    /// snapshot, then return the run's result.
+    fn run(
         &mut self,
         inputs: Vec<(PartialInput, PartialInput)>,
         current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
-    ) {
+    ) -> anyhow::Result<StepperResult> {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
@@ -112,11 +109,7 @@ impl StepperCore {
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
-    }
 
-    /// Drive the core until the per-game stepper trap captures the boundary
-    /// snapshot, then return the run's result.
-    fn run_to_capture(&mut self) -> anyhow::Result<StepperResult> {
         loop {
             {
                 let mut guard = self.state.0.lock().unwrap();
@@ -168,8 +161,7 @@ impl RunStepper {
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<StepperResult> {
         self.0.core.as_mut().load_state(state)?;
-        self.0.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
-        self.0.run_to_capture()
+        self.0.run(inputs, current_tick, last_local_packet, apply_shadow_input)
     }
 }
 
@@ -206,7 +198,6 @@ impl ResumeStepper {
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<StepperResult> {
-        self.0.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
-        self.0.run_to_capture()
+        self.0.run(inputs, current_tick, last_local_packet, apply_shadow_input)
     }
 }
