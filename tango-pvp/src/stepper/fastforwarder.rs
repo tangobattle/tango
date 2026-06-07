@@ -63,6 +63,7 @@ impl Fastforwarder {
         })
     }
 
+    /// Cold start: load the seed state, then run the input window to capture.
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
@@ -72,8 +73,41 @@ impl Fastforwarder {
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<FastforwardResult> {
         self.core.as_mut().load_state(state)?;
-        self.hooks.prepare_for_fastforward(self.core.as_mut());
+        self.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
+        self.run_to_capture()
+    }
 
+    /// Forward-only continuation for the authoritative settle core. The core is
+    /// already parked at `current_tick` from the previous run's capture —
+    /// `end_run_loop` halts exactly at the boundary `main_read_joyflags` with r4
+    /// unset (see e.g. `game/bn6/stepper.rs`) — so there is NO `load_state`; we
+    /// just re-arm the next input window and run on. Sound only because settles
+    /// advance monotonically and never rewind: the caller must guarantee the
+    /// core is parked at `current_tick`.
+    pub fn fastforward_resume(
+        &mut self,
+        inputs: Vec<(PartialInput, PartialInput)>,
+        current_tick: u32,
+        last_local_packet: &[u8],
+        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
+    ) -> anyhow::Result<FastforwardResult> {
+        self.arm(inputs, current_tick, last_local_packet, apply_shadow_input);
+        self.run_to_capture()
+    }
+
+    /// Install the input window and re-arm the per-game traps for a run.
+    /// `prepare_for_fastforward` rewinds the PC to `main_read_joyflags` so the
+    /// next `run_loop` re-fires the read at the parked position; the shadow
+    /// calls it on its warm core every `apply_input` (see `shadow.rs`), so it is
+    /// safe to call without a preceding `load_state`.
+    fn arm(
+        &mut self,
+        inputs: Vec<(PartialInput, PartialInput)>,
+        current_tick: u32,
+        last_local_packet: &[u8],
+        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
+    ) {
+        self.hooks.prepare_for_fastforward(self.core.as_mut());
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
@@ -82,7 +116,11 @@ impl Fastforwarder {
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
+    }
 
+    /// Drive the core until the per-game stepper trap captures the boundary
+    /// snapshot, then return the run's result.
+    fn run_to_capture(&mut self) -> anyhow::Result<FastforwardResult> {
         loop {
             {
                 let mut guard = self.state.0.lock().unwrap();

@@ -50,12 +50,24 @@ type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<
 /// false`) co-simulates the opponent and advances it; a speculative tail
 /// predicts packets via `predict_rx` and never touches the shadow.
 pub struct MgbaSimulator {
-    pub ff: crate::stepper::Fastforwarder,
+    /// Forward-only authoritative re-sim: runs settles in lockstep with the
+    /// shadow and is never reloaded after seeding, mirroring the shadow's own
+    /// forward-only discipline. Parked at the last settled tick between calls.
+    pub authoritative_ff: crate::stepper::Fastforwarder,
+    /// Throwaway speculative fork: reloaded from the settled checkpoint every
+    /// frame and run forward with predicted remote packets. Never touches the
+    /// shadow, so it can diverge freely without disturbing the trunk.
+    pub speculative_ff: crate::stepper::Fastforwarder,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     pub hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     /// The last remote packet a settle resolved — the seed `predict_rx` advances
     /// from during a speculative tail.
     pub last_remote_packet: Vec<u8>,
+    /// Tick the `authoritative_ff` core is parked at, or `None` before the first
+    /// settle. A settle warm-continues when this equals the engine's seed tick;
+    /// otherwise it cold-seeds via `load_state`. The equality guard self-heals:
+    /// any discontinuity (round boundary, unexpected seed) just falls to cold.
+    pub authoritative_parked_tick: Option<u32>,
 }
 
 impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
@@ -66,24 +78,6 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         inputs: Vec<(PartialInput, PartialInput)>,
         speculative: bool,
     ) -> anyhow::Result<SimResult<MgbaWorld>> {
-        let resolver: Resolver = if speculative {
-            // Predicted packets: advance `predict_rx` from the last settled
-            // remote packet (returns-then-advances; never touches the shadow).
-            let hooks = self.hooks;
-            let mut packet = self.last_remote_packet.clone();
-            hooks.predict_rx(&mut packet);
-            Box::new(move |_tick, _ip| {
-                let out = packet.clone();
-                hooks.predict_rx(&mut packet);
-                Ok(out)
-            })
-        } else {
-            // Real packets: co-simulate the opponent over the local side's
-            // just-produced packet.
-            let shadow = self.shadow.clone();
-            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
-        };
-
         let input_count = inputs.len();
 
         // The fastforwarder advances through `inputs`, then captures poised at
@@ -91,21 +85,48 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         // stepping it — mirroring getgud's contract. The boundary tick's local
         // joyflags are not baked into the snapshot; the live core primes them
         // from `Frame::input` via `inject_joyflags_on_primary_snapshot`.
-        let result = self.ff.fastforward(
-            &base.core,
-            inputs,
-            base_tick,
-            &base.outgoing,
-            resolver,
-        )?;
-
-        // A settle defines the new last-confirmed remote packet for the next
-        // speculative tail's prediction.
-        if !speculative {
+        let result = if speculative {
+            // The fork: reload the settled state and run the tail with predicted
+            // packets. `predict_rx` advances from the last settled remote packet
+            // (returns-then-advances); never locks the shadow, so the throwaway
+            // tail can diverge without disturbing the authoritative core.
+            let hooks = self.hooks;
+            let mut packet = self.last_remote_packet.clone();
+            hooks.predict_rx(&mut packet);
+            let resolver: Resolver = Box::new(move |_tick, _ip| {
+                let out = packet.clone();
+                hooks.predict_rx(&mut packet);
+                Ok(out)
+            });
+            self.speculative_ff
+                .fastforward(&base.core, inputs, base_tick, &base.outgoing, resolver)?
+        } else {
+            // The trunk: co-simulate the opponent (shadow) over the local side's
+            // just-produced packet, advancing forward-only in lockstep with it.
+            let resolver: Resolver = {
+                let shadow = self.shadow.clone();
+                Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
+            };
+            let result = if self.authoritative_parked_tick == Some(base_tick) {
+                // Warm: the core is already parked at `base_tick` from the
+                // previous settle's capture — continue without reloading.
+                self.authoritative_ff
+                    .fastforward_resume(inputs, base_tick, &base.outgoing, resolver)?
+            } else {
+                // Cold: first settle of the round, or a discontinuity. Seed the
+                // core from the engine's settled checkpoint.
+                self.authoritative_ff
+                    .fastforward(&base.core, inputs, base_tick, &base.outgoing, resolver)?
+            };
+            // Capture parked the core at the new settled tick; warm next time.
+            self.authoritative_parked_tick = Some(result.snapshot.tick);
+            // A settle defines the new last-confirmed remote packet for the next
+            // speculative tail's prediction.
             if let Some((_local, remote)) = result.output_pairs.last() {
                 self.last_remote_packet = remote.packet.clone();
             }
-        }
+            result
+        };
 
         // `round_result.tick` is the absolute tick the round ended at, in the
         // same per-pair units as `base_tick`; turn it into a count of the pairs

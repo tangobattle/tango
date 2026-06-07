@@ -79,12 +79,17 @@ impl Round {
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
         let hooks = match_.local_hooks();
-        let ff = crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), self.local_player_index)?;
+        let authoritative_ff =
+            crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), self.local_player_index)?;
+        let speculative_ff =
+            crate::stepper::Fastforwarder::new(match_.rom(), hooks, match_.match_type(), self.local_player_index)?;
         let simulator = Box::new(MgbaSimulator {
-            ff,
+            authoritative_ff,
+            speculative_ff,
             shadow: match_.shadow_handle(),
             hooks,
             last_remote_packet: vec![0u8; hooks.packet_size()],
+            authoritative_parked_tick: None,
         });
         let predictor: Arc<dyn getgud::Predictor<MgbaWorld>> = Arc::new(MgbaPredictor);
         let logger: Box<dyn getgud::Logger<MgbaWorld>> = Box::new(ReplayLogger {
