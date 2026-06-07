@@ -233,11 +233,11 @@ impl shader::Primitive for Primitive {
 /// tracks the current framebuffer size.
 #[derive(Debug)]
 pub struct Pipeline {
-    /// Compiled pipelines, keyed by [`Effect::id`]. Populated lazily on first
+    /// Compiled pipeline, keyed by [`Effect::id`]. Populated lazily on first
     /// use (`ensure`) so only the effects actually selected pay their
     /// shader-compile cost — at startup that's just the pass-through, not the
     /// three large hqx tables.
-    compiled: std::collections::HashMap<&'static str, wgpu::RenderPipeline>,
+    compiled: Option<(&'static str, wgpu::RenderPipeline)>,
     /// Retained so `ensure` can build pipelines after `new`.
     pipeline_layout: wgpu::PipelineLayout,
     /// Render-pass target format, needed for the lazy pipeline builds.
@@ -299,7 +299,7 @@ impl shader::Pipeline for Pipeline {
 
         Self {
             // Built lazily in `ensure` as effects are selected.
-            compiled: std::collections::HashMap::new(),
+            compiled: None,
             pipeline_layout,
             target_format: format,
             bind_group_layout,
@@ -387,11 +387,11 @@ impl Pipeline {
     /// large hqx WGSL until the effect is first selected). Called from
     /// `prepare`, before `draw`.
     fn ensure(&mut self, device: &wgpu::Device, effect: &'static Effect) {
-        if self.compiled.contains_key(effect.id) {
+        if self.compiled.as_ref().map(|(id, _)| *id) == Some(effect.id) {
             return;
         }
         let pipeline = effect.build(device, &self.pipeline_layout, self.target_format);
-        self.compiled.insert(effect.id, pipeline);
+        self.compiled = Some((effect.id, pipeline));
     }
 
     /// Draw the framebuffer as a fullscreen triangle into iced's render
@@ -402,7 +402,7 @@ impl Pipeline {
             return;
         };
         // Built by `ensure` in `prepare`, which iced runs before `draw`.
-        let Some(pipeline) = self.compiled.get(effect.id) else {
+        let Some((_, pipeline)) = self.compiled.as_ref().filter(|(id, _)| *id == effect.id) else {
             return;
         };
         render_pass.set_pipeline(pipeline);
