@@ -2160,15 +2160,11 @@ fn lobby_view<'a>(
     )
     .width(Length::Fixed(160.0));
 
-    // "Suggest" button: legacy formula = one-way frames + 1 - 2,
-    // clamped to the slider range. Disabled until the first Pong
-    // gives us a latency reading — and unconditionally disabled
-    // when the controls are inert.
-    // Suggestion smooths over the per-second jitter with the median window
-    // rather than the raw `latest()` shown on the line — the recommended frame
-    // delay shouldn't jump with a single spiky Pong. Still gated on at least
-    // one Pong having landed (`latest()` is `Some`), so the counter has a real
-    // reading to take the median of.
+    // "Suggest" button: one-way frames + 1, clamped to the slider range. Reads
+    // the median window rather than the raw `latest()` shown on the line, so the
+    // recommendation doesn't jump with a single spiky Pong. Disabled when the
+    // controls are inert, and until the first Pong lands (`latest()` is `Some`)
+    // so the counter has a real reading to take the median of.
     let suggest_msg = if inert || lobby.latency_counter.latest().is_none() {
         None
     } else {

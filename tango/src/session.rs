@@ -616,9 +616,10 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
     let slider =
         iced::widget::slider(MIN_FRAME_DELAY..=MAX_FRAME_DELAY, fd, Message::SetFrameDelay).width(Length::Fill);
 
-    // "Suggest" button — same legacy formula as the lobby (one-way frames + 1 -
-    // 2, clamped to the slider range). Disabled until the first ping reading
-    // lands (`latency()` is `Some(ZERO)` until then).
+    // "Suggest" button — same formula as the lobby: one-way frames + 1,
+    // clamped to the slider range, off the median ping. Enabled whenever the
+    // link is live (`latency()` is `Some`); before the first ping that reads
+    // `Some(ZERO)`, which just suggests the minimum frame delay.
     let suggest_msg = match pvp.latency() {
         Some(rtt) => {
             let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
