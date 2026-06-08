@@ -71,10 +71,10 @@
 //!     fn step(
 //!         &mut self,
 //!         input: (i64, i64),
-//!     ) -> Result<Option<i64>, std::convert::Infallible> {
+//!     ) -> Result<(i64, bool), std::convert::Infallible> {
 //!         let (local, remote) = input;
 //!         self.state += local + remote;
-//!         Ok(Some(self.state))
+//!         Ok((self.state, false)) // never ends
 //!     }
 //! }
 //!

@@ -89,7 +89,7 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         Ok(())
     }
 
-    fn step(&mut self, input: (PartialInput, PartialInput)) -> anyhow::Result<Option<MgbaState>> {
+    fn step(&mut self, input: (PartialInput, PartialInput)) -> anyhow::Result<(MgbaState, bool)> {
         // Co-simulate the opponent for this tick: the resolver runs the shadow
         // forward over the (real or predicted) remote joyflags to derive the
         // remote packet. The shadow advances in lockstep with the stepper and is
@@ -103,24 +103,25 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
         let result = self.stepper.step(input, self.parked_tick, &last_outgoing, resolver)?;
         let shadow_snapshot = self.shadow.lock().unwrap().save_state()?;
 
-        // Advance the parked position even when ending — the cores have moved, so
-        // a later `restore` to an earlier tick must see a stale park and reload.
         self.parked_tick = result.snapshot.tick;
         self.last_outgoing = result.snapshot.packet.clone();
 
-        // The per-game round-end traps fire one tick after the round-end frame is
-        // captured, so the step that reports a round result is the first one past
-        // the live tail: there is no further live state to advance into.
-        if result.round_result.is_some() {
-            return Ok(None);
-        }
+        // The per-game round-end traps fire while running the round-ending tick's
+        // body, so the step that reports a round result marks the boundary after
+        // which input pairs are no longer part of the recorded round. The state
+        // itself is still valid (the post-round-end animation), and the engine
+        // keeps simulating it so the live core can reach the end.
+        let ended = result.round_result.is_some();
 
-        Ok(Some(MgbaState {
-            primary: result.snapshot.state,
-            outgoing: result.snapshot.packet,
-            shadow_snapshot,
-            tick: result.snapshot.tick,
-        }))
+        Ok((
+            MgbaState {
+                primary: result.snapshot.state,
+                outgoing: result.snapshot.packet,
+                shadow_snapshot,
+                tick: result.snapshot.tick,
+            },
+            ended,
+        ))
     }
 }
 

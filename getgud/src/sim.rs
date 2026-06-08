@@ -25,12 +25,13 @@ pub trait Simulator<W: World>: Send {
     /// Advance exactly one tick from the currently parked position by applying
     /// the `(local, remote)` `input` pair.
     ///
-    /// Returns the resulting snapshot, or `None` if the simulated world ended
-    /// (e.g. the round finished) during this step — i.e. there is no further
-    /// state to advance into. The session stops settling/speculating and stops
-    /// logging at the first `None`; the last `Some` snapshot is the terminal
-    /// frame to present.
-    fn step(&mut self, input: (W::Input, W::Input)) -> Result<Option<W::State>, W::Error>;
+    /// Returns the resulting snapshot and whether the round *ended* on this step
+    /// (the round-ending tick's body ran). The session keeps simulating **past** a
+    /// round end — the post-end frames are still real state, and the host's
+    /// presentation typically only detects the end a tick or two later — so it
+    /// does not stop on `true`; it only stops committing input pairs to the
+    /// [`Logger`] from that tick on.
+    fn step(&mut self, input: (W::Input, W::Input)) -> Result<(W::State, bool), W::Error>;
 }
 
 /// Guesses the remote player's next input from their most recent confirmed one.
