@@ -27,7 +27,7 @@ use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
 use sweeten::widget::{column, mouse_area, row};
-use tango_pvp::battle::{MAX_FRAME_DELAY, MIN_FRAME_DELAY};
+use tango_pvp::battle::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
 /// At most one of these can be active at a time: replay playback, or
@@ -621,11 +621,7 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
     // link is live (`latency()` is `Some`); before the first ping that reads
     // `Some(ZERO)`, which just suggests the minimum frame delay.
     let suggest_msg = match pvp.latency() {
-        Some(rtt) => {
-            let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
-            let d = (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
-            Some(Message::SetFrameDelay(d))
-        }
+        Some(rtt) => Some(Message::SetFrameDelay(suggest_frame_delay(rtt))),
         _ => None,
     };
     let suggest = widgets::icon_button_maybe(

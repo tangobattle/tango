@@ -7,7 +7,7 @@ use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, pick_list, row, text_input};
-use tango_pvp::battle::{MAX_FRAME_DELAY, MIN_FRAME_DELAY};
+use tango_pvp::battle::suggest_frame_delay;
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -2169,9 +2169,7 @@ fn lobby_view<'a>(
         None
     } else {
         let rtt = lobby.latency_counter.median();
-        let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
-        let d = (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32;
-        Some(Message::NetplaySetFrameDelay(d))
+        Some(Message::NetplaySetFrameDelay(suggest_frame_delay(rtt)))
     };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,

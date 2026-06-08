@@ -54,3 +54,8 @@ pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 /// clamp to this range.
 pub const MIN_FRAME_DELAY: u32 = 2;
 pub const MAX_FRAME_DELAY: u32 = 10;
+
+pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
+    let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;
+    (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32
+}
