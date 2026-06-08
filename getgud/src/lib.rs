@@ -109,6 +109,5 @@ mod input;
 mod session;
 mod world;
 
-pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
 pub use world::World;
