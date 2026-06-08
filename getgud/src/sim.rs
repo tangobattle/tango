@@ -1,52 +1,36 @@
 use crate::world::World;
 
-/// The outcome of a single [`Simulator::simulate`] call.
-pub struct SimResult<W: World> {
-    /// The new state after applying every input pair that was passed in.
-    pub state: W::State,
-
-    /// How many of the supplied input pairs the simulator considers *committed*
-    /// (i.e. final and safe to log / surface to gameplay systems).
-    ///
-    /// During an authoritative settle this is normally equal to the number of
-    /// inputs handed in. The session uses it to decide how many leading input
-    /// pairs to forward to the [`Logger`]; only the first `committed` pairs are
-    /// logged. Values larger than the input count are clamped.
-    pub committed: usize,
-}
-
-/// Advances game state by applying confirmed or predicted input pairs.
+/// Advances game state one tick at a time, with an explicit reload for rollback.
 ///
-/// This is the heart of the game-specific simulation and the one trait every
-/// game must implement with real logic. The session calls it in two modes:
+/// The session drives this in three patterns:
 ///
-/// * **Authoritative ("settle")** — `speculative == false`. The inputs are fully
-///   confirmed `(local, remote)` pairs. The resulting state becomes the new
-///   trusted baseline and the leading pairs are logged.
-/// * **Speculative ("tail")** — `speculative == true`. The leading pairs are
-///   confirmed but the trailing remote inputs are *predictions* (see
-///   [`Predictor`]). The result is shown to the player this frame and thrown
-///   away next frame, so it should avoid irreversible side effects.
+/// * **extend** — call [`step`](Simulator::step) alone to advance one tick from
+///   wherever the simulator is parked (the speculation frontier).
+/// * **rollback** — call [`restore`](Simulator::restore) to reload a saved
+///   state, then [`step`] once per tick to re-simulate forward with the
+///   corrected inputs.
+/// * **promote** — neither: a correct prediction needs no simulation, so the
+///   session simply reuses the snapshot it already captured.
 ///
-/// The same input must always produce the same output: rollback prediction only
-/// works if the simulation is deterministic.
+/// The simulator is parked at a tick at all times. [`restore`] sets the park to
+/// the restored state's tick; each [`step`] advances it by one. The same state +
+/// input must always produce the same output: rollback prediction only works if
+/// the simulation is deterministic.
 pub trait Simulator<W: World>: Send {
-    /// Apply `inputs` on top of `base` and return the resulting state.
+    /// Reload the simulator from `state`, positioning it to [`step`] that
+    /// state's tick next. Used to rewind before re-simulating a mispredicted
+    /// tail.
+    fn restore(&mut self, state: &W::State) -> Result<(), W::Error>;
+
+    /// Advance exactly one tick from the currently parked position by applying
+    /// the `(local, remote)` `input` pair.
     ///
-    /// * `base` — the state at `base_tick` to simulate forward from.
-    /// * `base_tick` — the tick `base` corresponds to (the first pair in
-    ///   `inputs` advances the world from `base_tick` to `base_tick + 1`).
-    /// * `inputs` — `(local, remote)` input pairs, one per tick to advance.
-    /// * `speculative` — `true` when some trailing remote inputs are predicted
-    ///   and the result is a throwaway presentation frame; `false` for an
-    ///   authoritative advance of the trusted state.
-    fn simulate(
-        &mut self,
-        base: &W::State,
-        base_tick: u32,
-        inputs: Vec<(W::Input, W::Input)>,
-        speculative: bool,
-    ) -> Result<SimResult<W>, W::Error>;
+    /// Returns the resulting snapshot, or `None` if the simulated world ended
+    /// (e.g. the round finished) during this step — i.e. there is no further
+    /// state to advance into. The session stops settling/speculating and stops
+    /// logging at the first `None`; the last `Some` snapshot is the terminal
+    /// frame to present.
+    fn step(&mut self, input: (W::Input, W::Input)) -> Result<Option<W::State>, W::Error>;
 }
 
 /// Guesses the remote player's next input from their most recent confirmed one.

@@ -68,33 +68,31 @@ impl Round {
     /// Build the rollback session from the round's first committed state, seeding
     /// the engine's settled checkpoint at tick 0. Called once per round from
     /// [`Match::record_first_commit`](super::Match::record_first_commit) when the
-    /// live core reaches the first commit tick. The heavy stepper cores
-    /// ([`ResumeStepper`](crate::stepper::ResumeStepper) and
-    /// [`RunStepper`](crate::stepper::RunStepper)) are built here rather than at
-    /// round start — they aren't needed until the first re-sim, which is
-    /// post-commit.
+    /// live core reaches the first commit tick. The heavy
+    /// [`Stepper`](crate::stepper::Stepper) is built here rather than at round
+    /// start — it isn't needed until the first re-sim, which is post-commit.
+    /// `shadow_snapshot` captures the opponent co-sim at its matching
+    /// first-committed state so a rollback to tick 0 rewinds both cores.
     pub(super) fn start_session(
         &mut self,
         match_: &super::Match,
         local_state: Box<mgba::state::State>,
         first_packet: &[u8],
+        shadow_snapshot: crate::shadow::ShadowSnapshot,
     ) -> anyhow::Result<()> {
         let hooks = match_.local_hooks();
-        let authoritative_ff = crate::stepper::ResumeStepper::new(
+        let stepper = crate::stepper::Stepper::new(
             match_.rom(),
             hooks,
             match_.match_type(),
             self.local_player_index,
             local_state.as_ref(),
         )?;
-        let speculative_ff =
-            crate::stepper::RunStepper::new(match_.rom(), hooks, match_.match_type(), self.local_player_index)?;
         let simulator = Box::new(MgbaSimulator {
-            authoritative_ff,
-            speculative_ff,
+            stepper,
             shadow: match_.shadow_handle(),
-            hooks,
-            last_remote_packet: vec![0u8; hooks.packet_size()],
+            parked_tick: 0,
+            last_outgoing: first_packet.to_vec(),
         });
         let predictor: Arc<dyn getgud::Predictor<MgbaWorld>> = Arc::new(MgbaPredictor);
         let logger: Box<dyn getgud::Logger<MgbaWorld>> = Box::new(ReplayLogger {
@@ -105,14 +103,26 @@ impl Round {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
             initial_remote: PartialInput { joyflags: 0 },
             initial_state: MgbaState {
-                core: local_state,
+                primary: local_state,
                 outgoing: first_packet.to_vec(),
+                shadow_snapshot,
+                tick: 0,
             },
             simulator,
             predictor,
             logger,
         }));
         Ok(())
+    }
+
+    /// The opponent co-sim snapshot at the authoritative settled tick, cloned for
+    /// re-anchoring the shared shadow before its round-end advance (the simulator
+    /// may have parked the shadow ahead on a speculative tick). `None` before the
+    /// first commit.
+    pub(super) fn settled_shadow_snapshot(&self) -> Option<crate::shadow::ShadowSnapshot> {
+        self.session
+            .as_ref()
+            .map(|s| s.settled_state().shadow_snapshot.clone())
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -146,13 +156,12 @@ impl Round {
         self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
     }
 
-    /// Speculative rollback depth shown in the UI: the positive side of the
-    /// engine's signed [`speculation_balance`](getgud::Session::speculation_balance),
-    /// floored at 0 (negative balance is headroom, which reads as no rollback risk).
-    pub fn speculation_depth(&self) -> u32 {
-        self.session
-            .as_ref()
-            .map_or(0, |s| s.speculation_balance().max(0) as u32)
+    /// Per-frame misprediction depth shown in the UI: how many speculative frames
+    /// the most recent step discarded and re-simulated because a confirmed remote
+    /// input contradicted the prediction. 0 on a clean frame; spikes on a
+    /// rollback. See [`misprediction_depth`](getgud::Session::misprediction_depth).
+    pub fn misprediction_depth(&self) -> u32 {
+        self.session.as_ref().map_or(0, |s| s.misprediction_depth())
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -190,7 +199,7 @@ impl Round {
         // would fold in the just-enqueued input and bias the skew up by one).
         let skew = session.skew();
         let frame = session.advance(PartialInput { joyflags })?;
-        core.load_state(&frame.state.core).expect("load present state");
+        core.load_state(&frame.state.primary).expect("load present state");
         // The snapshot is poised at the start of `frame.tick` with its local
         // joyflags register (r4) unset — the engine carries that input on the
         // frame instead of baking it in. Prime it now so the live core resumes

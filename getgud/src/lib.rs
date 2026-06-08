@@ -49,7 +49,7 @@
 //! ```
 //! use std::sync::Arc;
 //! use getgud::{
-//!     NullLogger, Predictor, Session, SessionParams, SimResult, Simulator, World,
+//!     NullLogger, Predictor, Session, SessionParams, Simulator, World,
 //! };
 //!
 //! // 1. Describe the game's types.
@@ -61,21 +61,20 @@
 //! }
 //!
 //! // 2. The simulation: fold each (local, remote) pair into the running total.
-//! struct Sim;
+//! //    It is parked at a state; `restore` reloads it, `step` advances it.
+//! struct Sim { state: i64 }
 //! impl Simulator<Counter> for Sim {
-//!     fn simulate(
+//!     fn restore(&mut self, state: &i64) -> Result<(), std::convert::Infallible> {
+//!         self.state = *state;
+//!         Ok(())
+//!     }
+//!     fn step(
 //!         &mut self,
-//!         base: &i64,
-//!         _base_tick: u32,
-//!         inputs: Vec<(i64, i64)>,
-//!         _speculative: bool,
-//!     ) -> Result<SimResult<Counter>, std::convert::Infallible> {
-//!         let mut state = *base;
-//!         let committed = inputs.len();
-//!         for (local, remote) in inputs {
-//!             state += local + remote;
-//!         }
-//!         Ok(SimResult { state, committed })
+//!         input: (i64, i64),
+//!     ) -> Result<Option<i64>, std::convert::Infallible> {
+//!         let (local, remote) = input;
+//!         self.state += local + remote;
+//!         Ok(Some(self.state))
 //!     }
 //! }
 //!
@@ -89,7 +88,7 @@
 //!     present_delay: 2,
 //!     initial_remote: 0,
 //!     initial_state: 0,
-//!     simulator: Box::new(Sim),
+//!     simulator: Box::new(Sim { state: 0 }),
 //!     predictor: Arc::new(Repeat),
 //!     logger: Box::new(NullLogger),
 //! });
@@ -122,5 +121,5 @@ mod world;
 
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
-pub use sim::{Logger, NullLogger, Predictor, SimResult, Simulator};
+pub use sim::{Logger, NullLogger, Predictor, Simulator};
 pub use world::World;

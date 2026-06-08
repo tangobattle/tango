@@ -19,7 +19,7 @@ pub struct Input {
 /// A committed input without its outgoing packet. Local inputs upgrade to
 /// [`Input`] once the fastforwarder pairs them with a packet via
 /// [`PartialInput::with_packet`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PartialInput {
     pub joyflags: u16,
 }

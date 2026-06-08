@@ -605,7 +605,7 @@ impl PvpSession {
         let round = round_state.as_ref()?;
         Some(RoundStats {
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
-            depth: round.speculation_depth(),
+            depth: round.misprediction_depth(),
         })
     }
 }
@@ -621,9 +621,9 @@ pub struct RoundStats {
     /// sync, positive when we're leading (and being slowed), and negative
     /// when the peer is leading.
     pub skew: i32,
-    /// Speculative rollback depth: how many frames past the last committed
-    /// input the live core ran on prediction this frame, and thus how far a
-    /// real remote packet can force a re-simulation.
+    /// Misprediction depth: how many speculative frames this frame discarded and
+    /// re-simulated because a confirmed remote input contradicted the prediction.
+    /// 0 on a clean frame; spikes mark the size of each rollback.
     pub depth: u32,
 }
 

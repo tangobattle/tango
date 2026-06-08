@@ -58,17 +58,34 @@ pub struct Frame<'a, W: World> {
     pub input: (W::Input, W::Input),
 }
 
+/// One speculatively-simulated tick, kept in a rolling buffer so a correct
+/// prediction can be promoted to settled with no re-simulation, and a wrong one
+/// can be rolled back to.
+struct Speculation<W: World> {
+    /// The tick this snapshot is poised at (one past the tick its `input`
+    /// advanced). `speculations[i].tick == settled_tick + 1 + i`.
+    tick: u32,
+    /// The bundled game state at the start of [`tick`](Self::tick).
+    state: W::State,
+    /// The `(real local, predicted remote)` pair that produced this snapshot.
+    /// The predicted-remote half is what a later confirmation is checked
+    /// against to decide promote-vs-rollback.
+    input: (W::Input, W::Input),
+}
+
 /// A single peer's view of a two-player rollback session.
 ///
 /// `Session` owns the local/remote input queues, the authoritative ("settled")
-/// state, and the speculative state shown to the player. The intended loop is:
+/// state, and a rolling buffer of speculative snapshots shown to the player. The
+/// intended loop is:
 ///
 /// 1. As remote packets arrive, call [`add_remote_input`](Session::add_remote_input).
 /// 2. Once per tick, read [`skew`](Session::skew) and feed it into your clock so
 ///    the two peers stay aligned, then call [`advance`](Session::advance) with
 ///    the local input. `advance` confirms any newly-matched ticks into the
-///    settled state, speculates forward with predicted remote input as needed,
-///    and returns a [`Frame`] to render.
+///    settled state — promoting the speculative snapshots whose prediction held
+///    and rolling back only where it didn't — extends speculation forward as
+///    needed, and returns a [`Frame`] to render.
 ///
 /// Construct one with [`Session::new`]. See the [crate-level docs](crate) for a
 /// complete example.
@@ -83,13 +100,39 @@ pub struct Session<W: World> {
 
     input_queue: Queue<W::Input>,
 
+    /// Number of confirmed `(local, remote)` pairs ever matched (cumulative).
+    /// Confirmed ticks are `0..commit_frontier`. Invariant:
+    /// `commit_frontier == settled_tick + settle_backlog.len()`.
     commit_frontier: u32,
     last_committed_remote: W::Input,
 
+    /// Confirmed pairs not yet folded into the settled state, in tick order
+    /// (covering ticks `settled_tick..commit_frontier`). They are held back
+    /// until the present target reaches them so the settled state never runs
+    /// past the frame being displayed.
     settle_backlog: VecDeque<(W::Input, W::Input)>,
+    /// The authoritative state, built only from confirmed-and-correct pairs.
     settled_state: W::State,
+    /// The tick `settled_state` is poised at (number of pairs folded in).
     settled_tick: u32,
-    speculative_state: Option<W::State>,
+    /// Rolling buffer of speculative snapshots covering `(settled_tick, …]`,
+    /// contiguous and in tick order. The simulator is parked at
+    /// `settled_tick + speculations.len()` (the speculation frontier).
+    speculations: VecDeque<Speculation<W>>,
+
+    /// Set once a *confirmed* settle step ends the round (returns `None`). The
+    /// settled state then freezes at the round-end tick and no further settling
+    /// or speculation runs — the host tears the session down when its live core
+    /// reaches the same point. A speculative round end never sets this (it might
+    /// be mispredicted); only real input does.
+    ended: bool,
+
+    /// How many speculative frames the most recent [`advance`](Session::advance)
+    /// discarded and re-simulated because a confirmed remote input didn't match
+    /// the prediction — i.e. the rollback depth for that frame, surfaced as a
+    /// telemetry signal via [`misprediction_depth`](Session::misprediction_depth).
+    /// 0 when the frame promoted cleanly or didn't settle.
+    last_rollback: u32,
 
     last_remote_tick_advantage: i16,
 }
@@ -115,10 +158,12 @@ impl<W: World> Session<W> {
             input_queue: Queue::new(),
             commit_frontier: 0,
             last_committed_remote: initial_remote,
-            settle_backlog: std::collections::VecDeque::new(),
+            settle_backlog: VecDeque::new(),
             settled_state: initial_state,
             settled_tick: 0,
-            speculative_state: None,
+            speculations: VecDeque::new(),
+            ended: false,
+            last_rollback: 0,
             last_remote_tick_advantage: 0,
         }
     }
@@ -141,6 +186,13 @@ impl<W: World> Session<W> {
         self.present_delay = present_delay;
     }
 
+    /// The authoritative settled state. Exposed so the host can read host-side
+    /// data bundled into the state (e.g. to re-anchor an auxiliary simulator at
+    /// round end). The engine treats it as opaque.
+    pub fn settled_state(&self) -> &W::State {
+        &self.settled_state
+    }
+
     /// Advance the simulation by one local tick and return the [`Frame`] to
     /// present.
     ///
@@ -148,13 +200,16 @@ impl<W: World> Session<W> {
     ///
     /// 1. enqueues `local_input`;
     /// 2. matches it against any buffered remote inputs and folds the newly
-    ///    confirmed ticks into the authoritative settled state (logging them);
+    ///    confirmed ticks into the authoritative settled state — promoting the
+    ///    speculative snapshots whose predicted remote matched (no re-sim) and
+    ///    rolling back to re-simulate where it didn't, logging confirmed pairs;
     /// 3. computes the present target (`frontier - present_delay`);
-    /// 4. if the target is beyond what's confirmed, simulates a throwaway
-    ///    speculative tail using [`Predictor`]-supplied remote inputs;
-    /// 5. returns the resulting state, tick, and the local/remote input pair at
-    ///    that tick. (Read [`skew`](Session::skew) *before* this call for the
-    ///    clock-sync hint covering the tick being advanced.)
+    /// 4. extends the speculative buffer forward to the target with
+    ///    [`Predictor`]-supplied remote inputs, reusing the snapshots already
+    ///    built (only the genuinely new ticks are simulated);
+    /// 5. returns the state, tick, and the local/remote input pair at that tick.
+    ///    (Read [`skew`](Session::skew) *before* this call for the clock-sync
+    ///    hint covering the tick being advanced.)
     ///
     /// # Errors
     ///
@@ -169,21 +224,41 @@ impl<W: World> Session<W> {
 
         let target = self.frontier.saturating_sub(self.present_delay);
 
-        let settled_target = target.min(self.commit_frontier.saturating_sub(1));
-        self.settle_to(settled_target)?;
+        // Per-frame rollback depth, recomputed by `settle_to` below.
+        self.last_rollback = 0;
+
+        // Once the round has ended the settled state is frozen; no more settling
+        // or speculation, just keep presenting the round-end frame until the host
+        // tears the session down.
+        if !self.ended {
+            // Fold confirmed pairs into the settled state, but never past the
+            // present target (so the settled state stays at or behind the frame
+            // we display). This may itself end the round.
+            self.settle_to(target.min(self.commit_frontier))?;
+        }
+
+        // Extend the speculative tail up to the present target with predicted
+        // remotes, reusing the snapshots already built. (Re-check `ended`: the
+        // settle above may have just ended the round.)
+        if !self.ended && target > self.settled_tick && self.commit_frontier > 0 {
+            self.speculate_to(target, &unmatched_locals)?;
+        }
 
         self.frontier += 1;
 
-        Ok(if target > settled_target && self.commit_frontier > 0 {
-            let (state, input) = self.speculate_tail(target, &unmatched_locals)?;
-            self.speculative_state = Some(state);
+        // Present the deepest speculation we built (its tick is `target`, or less
+        // if the round ended mid-tail). If there is none — no speculation needed,
+        // or the round ended before the first speculative tick — present the
+        // settled state instead.
+        Ok(if target > self.settled_tick && !self.speculations.is_empty() {
+            let spec = self.speculations.back().unwrap();
+            debug_assert!(spec.tick <= target);
             Frame {
-                tick: target,
-                state: self.speculative_state.as_ref().unwrap(),
-                input,
+                tick: spec.tick,
+                state: &spec.state,
+                input: spec.input.clone(),
             }
         } else {
-            self.speculative_state = None;
             let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
                 (
                     unmatched_locals[0].clone(),
@@ -267,6 +342,16 @@ impl<W: World> Session<W> {
         self.input_queue.lead().max(0) - self.present_delay as i32
     }
 
+    /// How many speculative frames the most recent [`advance`](Session::advance)
+    /// discarded and re-simulated because a confirmed remote input contradicted
+    /// the prediction — the instantaneous rollback depth for that frame. 0 when
+    /// the frame promoted its predictions cleanly (or didn't settle). A telemetry
+    /// signal: spikes mark mispredictions, unlike the steady-state
+    /// [`speculation_balance`](Session::speculation_balance).
+    pub fn misprediction_depth(&self) -> u32 {
+        self.last_rollback
+    }
+
     /// Record an input received from the remote peer.
     ///
     /// * `input` — the remote player's input for the next unmatched tick.
@@ -281,65 +366,339 @@ impl<W: World> Session<W> {
         self.last_remote_tick_advantage = tick_advantage;
     }
 
-    /// Authoritatively advance the settled state up to `target` by consuming
-    /// confirmed pairs from the backlog, logging them, and updating
-    /// `last_committed_remote` (the prediction seed). No-op if already settled to
-    /// or past `target`.
+    /// Fold confirmed pairs into the settled state up to `target`, promoting the
+    /// speculative snapshots whose predicted remote matched and rolling back to
+    /// re-simulate where it didn't. Logs confirmed pairs in tick order. Stops
+    /// early if the round ends (a step returns `None`), leaving the settled state
+    /// parked at the round-end tick. No-op if already settled to or past
+    /// `target`.
     fn settle_to(&mut self, target: u32) -> Result<(), W::Error> {
-        let seed_tick = self.settled_tick;
-        if target <= seed_tick {
+        let to_settle = target.saturating_sub(self.settled_tick) as usize;
+        if to_settle == 0 {
             return Ok(());
         }
+        debug_assert!(self.settle_backlog.len() >= to_settle);
 
-        let consumed = (target - seed_tick) as usize;
-        assert!(self.settle_backlog.len() > consumed);
-        let inputs: Vec<(W::Input, W::Input)> = self.settle_backlog.iter().take(consumed).cloned().collect();
-
-        let result = self.simulator.simulate(&self.settled_state, seed_tick, inputs, false)?;
-
-        let (_local, remote) = &self.settle_backlog[consumed - 1];
-        self.last_committed_remote = remote.clone();
-
-        for i in 0..result.committed.min(consumed) {
-            self.logger.log(&self.settle_backlog[i]);
-        }
-        for _ in 0..consumed {
-            self.settle_backlog.pop_front();
+        // Longest prefix of the confirmed pairs whose remote matches what we
+        // predicted speculatively — these can be promoted with no re-sim. A
+        // speculation only ever exists for a live tick (the round-ending step
+        // returns `None` and is never buffered), so the prefix is all loggable.
+        let mut promote = 0;
+        while promote < to_settle
+            && promote < self.speculations.len()
+            && self.speculations[promote].input.1 == self.settle_backlog[promote].1
+        {
+            promote += 1;
         }
 
-        self.settled_state = result.state;
-        self.settled_tick = target;
+        // Promote the correctly-predicted prefix: slide the settled cap up over
+        // the speculative snapshots, which are byte-exact because their predicted
+        // remote equalled the real one. The simulator is not touched.
+        for _ in 0..promote {
+            let spec = self.speculations.pop_front().unwrap();
+            let (local, remote) = self.settle_backlog.pop_front().unwrap();
+            assert_eq!(spec.tick, self.settled_tick + 1);
+            self.last_committed_remote = remote.clone();
+            self.logger.log(&(local, remote));
+            self.settled_state = spec.state;
+            self.settled_tick = spec.tick;
+        }
+
+        // Anything past the matched prefix descends from a wrong prediction (or
+        // was never speculated): discard the speculative tail and re-simulate the
+        // remaining confirmed pairs authoritatively, rewinding both this and the
+        // host's auxiliary cores via `restore`. A `None` here is the real round
+        // end — stop settling and leave the settled cap at the last live tick.
+        if promote < to_settle {
+            // The speculative tail we're throwing away — the rollback depth for
+            // this frame (0 when there was simply nothing speculated yet).
+            self.last_rollback = self.speculations.len() as u32;
+            self.speculations.clear();
+            self.simulator.restore(&self.settled_state)?;
+            for _ in promote..to_settle {
+                let (local, remote) = self.settle_backlog.front().expect("confirmed pair").clone();
+                let Some(state) = self.simulator.step((local.clone(), remote.clone()))? else {
+                    // Confirmed round end: freeze here and stop settling.
+                    self.ended = true;
+                    break;
+                };
+                self.settle_backlog.pop_front();
+                self.settled_tick += 1;
+                self.settled_state = state;
+                self.last_committed_remote = remote.clone();
+                self.logger.log(&(local, remote));
+            }
+        }
+
         Ok(())
     }
 
-    /// Simulate a throwaway tail from the settled cap up to `target`, using real
-    /// local inputs and predicted remote inputs, and return the speculative
-    /// state plus the `(local, predicted-remote)` input pair at `target`. Rebuilt
-    /// from scratch each frame, so mispredictions self-correct as real remote
-    /// inputs get settled.
-    fn speculate_tail(
-        &mut self,
-        target: u32,
-        unmatched_locals: &[W::Input],
-    ) -> Result<(W::State, (W::Input, W::Input)), W::Error> {
-        let seed_tick = self.settled_tick;
+    /// Extend the speculative buffer up to `target` using real local inputs and
+    /// predicted remote inputs, simulating only the ticks not already covered.
+    /// The simulator is parked at the speculation frontier, so each new tick is a
+    /// plain forward `step`. Stops early if a predicted step ends the round
+    /// (`None`): the round-end frame is the last one buffered and is *not*
+    /// committed — only a confirmed settle ends the round for real.
+    fn speculate_to(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(), W::Error> {
         assert_eq!(
-            seed_tick,
-            self.commit_frontier.saturating_sub(1),
-            "speculative tail seed must sit at the settled cap"
+            self.settled_tick, self.commit_frontier,
+            "speculation only runs once the settled cap has caught up to the confirmed frontier"
         );
+        // Re-anchor the simulator to the speculation frontier before extending. A
+        // predicted round end on a prior frame (`step` → `None`) leaves the core
+        // one tick *past* the buffer, so a plain resume would skip a tick; restore
+        // puts it back. A no-op when the core is already parked at the frontier
+        // (the common case), so this costs nothing then.
+        let frontier_state = match self.speculations.back() {
+            Some(spec) => &spec.state,
+            None => &self.settled_state,
+        };
+        self.simulator.restore(frontier_state)?;
 
-        let predicted = self.predictor.predict(&self.last_committed_remote);
-        let input_count = (target - seed_tick) as usize;
-        let mut inputs: Vec<(W::Input, W::Input)> = Vec::with_capacity(input_count);
-
-        inputs.push(self.settle_backlog[0].clone());
-        for local in &unmatched_locals[..input_count - 1] {
-            inputs.push((local.clone(), predicted.clone()));
+        let mut predicted = self.last_committed_remote.clone();
+        while self.settled_tick + self.speculations.len() as u32 + 1 <= target {
+            // `unmatched_locals[k]` is the local input for tick
+            // `commit_frontier + k`; here `commit_frontier == settled_tick`, so
+            // the local for the next speculative tick is at `speculations.len()`.
+            let local = unmatched_locals[self.speculations.len()].clone();
+            let tick = self.settled_tick + self.speculations.len() as u32 + 1;
+            predicted = self.predictor.predict(&predicted);
+            let Some(state) = self.simulator.step((local.clone(), predicted.clone()))? else {
+                break;
+            };
+            self.speculations.push_back(Speculation {
+                tick,
+                state,
+                input: (local, predicted.clone()),
+            });
         }
-        let local_input = unmatched_locals[input_count - 1].clone();
+        Ok(())
+    }
+}
 
-        let result = self.simulator.simulate(&self.settled_state, seed_tick, inputs, true)?;
-        Ok((result.state, (local_input, predicted)))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// A deterministic world whose state is the full ordered history of applied
+    /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
+    /// against a ground-truth fold of the confirmed inputs.
+    struct W;
+    impl World for W {
+        type Input = u8;
+        type State = Vec<(u8, u8)>;
+        type Error = std::convert::Infallible;
+    }
+
+    #[derive(Default)]
+    struct Counters {
+        restores: usize,
+        steps: usize,
+    }
+
+    /// `terminal_at` is the last live tick: a step whose resulting tick exceeds it
+    /// returns `None` (the round has ended). `restore` skips the reload when
+    /// already parked at the target tick, mirroring the real adapter, so the
+    /// rollback counter reflects only genuine rewinds.
+    struct Sim {
+        parked: Vec<(u8, u8)>,
+        counters: Arc<Mutex<Counters>>,
+        terminal_at: Option<u32>,
+    }
+    impl Simulator<W> for Sim {
+        fn restore(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
+            if self.parked.len() == state.len() {
+                return Ok(());
+            }
+            self.counters.lock().unwrap().restores += 1;
+            self.parked = state.clone();
+            Ok(())
+        }
+        fn step(&mut self, input: (u8, u8)) -> Result<Option<Vec<(u8, u8)>>, std::convert::Infallible> {
+            self.counters.lock().unwrap().steps += 1;
+            self.parked.push(input);
+            let resulting_tick = self.parked.len() as u32;
+            if self.terminal_at.is_some_and(|t| resulting_tick > t) {
+                return Ok(None);
+            }
+            Ok(Some(self.parked.clone()))
+        }
+    }
+
+    struct Repeat;
+    impl Predictor<W> for Repeat {
+        fn predict(&self, last: &u8) -> u8 {
+            *last
+        }
+    }
+
+    struct VecLogger(Arc<Mutex<Vec<(u8, u8)>>>);
+    impl Logger<W> for VecLogger {
+        fn log(&mut self, pair: &(u8, u8)) {
+            self.0.lock().unwrap().push(*pair);
+        }
+    }
+
+    fn truth(locals: &[u8], remotes: &[u8]) -> Vec<(u8, u8)> {
+        locals.iter().zip(remotes).map(|(&l, &r)| (l, r)).collect()
+    }
+
+    fn session(
+        present_delay: u32,
+        counters: Arc<Mutex<Counters>>,
+        logged: Arc<Mutex<Vec<(u8, u8)>>>,
+        terminal_at: Option<u32>,
+    ) -> Session<W> {
+        Session::new(SessionParams {
+            present_delay,
+            initial_remote: 0,
+            initial_state: vec![],
+            simulator: Box::new(Sim {
+                parked: vec![],
+                counters,
+                terminal_at,
+            }),
+            predictor: Arc::new(Repeat),
+            logger: Box::new(VecLogger(logged)),
+        })
+    }
+
+    /// With remote input arriving late and every prediction wrong (distinct
+    /// remotes, repeat-predictor), the settled state must stay a correct prefix of
+    /// the ground truth at every frame and end up exactly equal — i.e. rollback
+    /// re-simulation always corrects the mispredicted tail.
+    #[test]
+    fn settles_correctly_through_mispredictions() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let locals = [10u8, 11, 12, 13, 14, 15, 16, 17];
+        let remotes = [20u8, 21, 22, 23, 24, 25, 26, 27];
+        let truth = truth(&locals, &remotes);
+        let n = locals.len();
+        let remote_delay = 2;
+
+        let mut s = session(0, counters.clone(), logged.clone(), None);
+
+        // n real frames plus a couple to flush the present target to the end.
+        for i in 0..n + remote_delay {
+            if i >= remote_delay && i - remote_delay < n {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+            // The authoritative settled state is always a correct prefix of truth.
+            let st = s.settled_state();
+            assert_eq!(st.as_slice(), &truth[..st.len()], "settled diverged at frame {i}");
+        }
+
+        assert_eq!(
+            s.settled_state().as_slice(),
+            truth.as_slice(),
+            "did not settle the full round"
+        );
+        assert_eq!(
+            logged.lock().unwrap().as_slice(),
+            truth.as_slice(),
+            "logged the wrong pairs"
+        );
+        // Mispredictions actually happened, so rollback re-sim ran.
+        assert!(counters.lock().unwrap().restores > 0, "expected rollbacks");
+    }
+
+    /// When predictions hold (remote held constant so repeat-predict is right),
+    /// confirming a tick must promote the existing speculation with no extra
+    /// simulation: the total step count equals the number of distinct ticks ever
+    /// simulated, never re-running a tick that was already speculated correctly.
+    #[test]
+    fn correct_predictions_promote_without_resim() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        // Constant remote: predict(last) == next, so every speculation is right.
+        let locals = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        let remotes = [9u8; 8];
+        let truth = truth(&locals, &remotes);
+        let n = locals.len();
+        let remote_delay = 2;
+
+        let mut s = session(0, counters.clone(), logged.clone(), None);
+        for i in 0..n + remote_delay {
+            if i >= remote_delay && i - remote_delay < n {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+        }
+
+        assert_eq!(s.settled_state().as_slice(), truth.as_slice());
+        assert_eq!(logged.lock().unwrap().as_slice(), truth.as_slice());
+        // Each of the n ticks is simulated exactly once (as a speculation that is
+        // then promoted) — no tick is re-simulated, so steps == n. Extra dummy
+        // ticks may add a few more speculative steps, but never re-run a settled
+        // tick; the key invariant is no redundant re-sim of confirmed ticks.
+        let steps = counters.lock().unwrap().steps;
+        assert!(steps >= n, "every confirmed tick must be simulated at least once");
+        assert_eq!(
+            counters.lock().unwrap().restores,
+            0,
+            "correct predictions must not roll back"
+        );
+    }
+
+    /// When a step ends the round (`None`), the settled state freezes at the last
+    /// live tick and no pair past it is logged — even though more confirmed input
+    /// is available.
+    #[test]
+    fn round_end_freezes_settled_and_logging() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let locals = [10u8, 11, 12, 13, 14, 15];
+        let remotes = [20u8, 21, 22, 23, 24, 25];
+        let truth = truth(&locals, &remotes);
+        let n = locals.len();
+        let remote_delay = 2;
+        // Last live tick is 3: the step advancing into tick 4 returns None.
+        let mut s = session(0, counters.clone(), logged.clone(), Some(3));
+        for i in 0..n + remote_delay {
+            if i >= remote_delay && i - remote_delay < n {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+        }
+        // Settled stops at the round-end tick, and only pairs up to it are logged.
+        assert_eq!(s.settled_state().as_slice(), &truth[..3]);
+        assert_eq!(logged.lock().unwrap().as_slice(), &truth[..3]);
+    }
+
+    /// When predictions are correct, speculation reaches the round end first (a
+    /// `None` that advances the core one tick past the buffer). The settled state
+    /// must still never diverge from ground truth — the next extend re-anchors the
+    /// core to the speculation frontier instead of resuming from the wrong tick.
+    #[test]
+    fn speculative_round_end_does_not_desync() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let locals = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        // Constant remote → repeat-predict is always right, so speculation (which
+        // runs ahead of confirmation) hits the round end before settling does.
+        let remotes = [9u8; 8];
+        let truth = truth(&locals, &remotes);
+        let n = locals.len();
+        let remote_delay = 1;
+        let mut s = session(0, counters.clone(), logged.clone(), Some(4));
+        for i in 0..n + remote_delay {
+            if i >= remote_delay && i - remote_delay < n {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            s.advance(local).unwrap();
+            // The settled state is authoritative — it must never diverge, even
+            // though a speculative round end nudged the core past the buffer.
+            let st = s.settled_state();
+            assert_eq!(st.as_slice(), &truth[..st.len()], "settled diverged at frame {i}");
+        }
+        assert_eq!(s.settled_state().as_slice(), &truth[..4]);
+        assert_eq!(logged.lock().unwrap().as_slice(), &truth[..4]);
     }
 }

@@ -934,7 +934,7 @@ fn match_settings_content<'a>(
     );
 
     let depth_card = metric_card(
-        Icon::Layers2,
+        Icon::GitMergeConflict,
         t!(lang, "session-stat-depth"),
         true,
         Some(0.0),
@@ -1564,9 +1564,14 @@ pub fn view<'a>(
                 // drifting, red far out, by |skew| in frames.
                 cells.push(stat_cell(Icon::ArrowLeftRight, tone_for_skew(s.skew), fmt_skew(s.skew)));
 
-                // Rollback depth: lower = tighter prediction. Green when
-                // shallow, amber as it climbs, red when speculation runs deep.
-                cells.push(stat_cell(Icon::Layers2, tone_for_depth(s.depth), fmt_depth(s.depth)));
+                // Misprediction depth: 0 on a clean frame, spiking to the size of
+                // each rollback. Green when shallow, amber as it climbs, red when
+                // a frame discards and re-simulates deep.
+                cells.push(stat_cell(
+                    Icon::GitMergeConflict,
+                    tone_for_depth(s.depth),
+                    fmt_depth(s.depth),
+                ));
             }
 
             // Ping: latency band. The signal icon's bar strength tracks

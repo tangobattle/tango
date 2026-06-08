@@ -191,13 +191,15 @@ impl Shadow {
     }
 
     /// Inject the given input pair as the next shadow input, then run the
-    /// shadow forward until the per-game trap signals the input was applied:
-    /// the core has reached the next tick's `main_read_joyflags`, where the
-    /// trap calls `end_run_loop`. No snapshot/reload — `end_run_loop` parks the
-    /// core exactly at that boundary, and the shadow only ever advances forward
-    /// (speculation uses `predict_rx`, never the shadow), so there's nothing to
-    /// rewind. `expected_tick` is unused, kept only to match the resolver
-    /// callback signature. Returns the remote packet queued before this run.
+    /// shadow forward one tick from wherever it is parked, until the per-game
+    /// trap signals the input was applied: the core has reached the next tick's
+    /// `main_read_joyflags`, where the trap calls `end_run_loop`, which parks the
+    /// core exactly at that boundary. This call only ever advances; a rollback
+    /// rewinds the shadow beforehand via [`load_state`](Self::load_state) (the
+    /// rollback engine drives the primary and shadow cores in lockstep), so each
+    /// `apply_input` resumes from the rewound position. `expected_tick` is
+    /// unused, kept only to match the resolver callback signature. Returns the
+    /// remote packet queued before this run.
     pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();

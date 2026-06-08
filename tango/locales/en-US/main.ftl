@@ -100,7 +100,7 @@ session-back-to-session = Back to session
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (current/max)
 session-stat-skew = Skew
-session-stat-depth = Speculation depth
+session-stat-depth = Misprediction depth
 session-stat-ping = Network latency
 
 # Save view sub-tabs

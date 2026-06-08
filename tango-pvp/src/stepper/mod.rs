@@ -44,13 +44,17 @@ pub struct StepperResult {
     pub output_pairs: Vec<(Input, Input)>,
 }
 
-/// Shared per-Match emulator machinery for the per-frame stepper traps: a
-/// dedicated headless core plus the drive loop that runs the trap set over a
-/// known input window and captures one boundary snapshot at `capture_tick`. The
-/// two public steppers wrap this and differ only in how they position the core
-/// before a run — [`RunStepper`] reloads a seed state each call; [`ResumeStepper`]
-/// never reloads and runs forward from where the previous call parked.
-struct StepperCore {
+/// Single per-frame re-sim core for the rollback engine: a dedicated headless
+/// mgba core plus the drive loop that runs the per-game trap set one tick at a
+/// time, capturing a boundary snapshot at `capture_tick` each tick. It advances
+/// via [`step`](Self::step) and rewinds via [`restore`](Self::restore) only when
+/// the engine rolls back to re-simulate a mispredicted tail. In steady state —
+/// and after promotions — `step` resumes forward from wherever the previous call
+/// parked the core (`end_run_loop` halts exactly at the boundary
+/// `main_read_joyflags` with r4 unset; see e.g. `game/bn6/stepper.rs`), so no
+/// reload happens. Folds together what used to be two cores (a reload-each-frame
+/// speculative fork and a forward-only authoritative core).
+pub struct Stepper {
     core: mgba::core::Core,
     state: State,
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
@@ -58,12 +62,15 @@ struct StepperCore {
     local_player_index: u8,
 }
 
-impl StepperCore {
-    fn new(
+impl Stepper {
+    /// Build the stepper seeded at the round's first-committed state. The core
+    /// is then parked at that boundary, ready for the first [`step`](Self::step).
+    pub fn new(
         rom: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         match_type: (u8, u8),
         local_player_index: u8,
+        initial_state: &mgba::state::State,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -76,13 +83,15 @@ impl StepperCore {
         traps.extend(hooks.stepper_traps(state.clone()));
         core.set_traps(traps);
         core.as_mut().reset();
-        // Headless re-sim core: never rasterize. Its pixels are never shown,
-        // and the round re-runs the FF every frame, so skipping drawScanline
-        // cuts a large constant off the dominant cost. Set after reset() —
-        // which zeroes frameskip — and it sticks (frameskip isn't serialized).
+        // Headless re-sim core: never rasterize. Its pixels are never shown, so
+        // skipping drawScanline cuts a large constant off the dominant cost. Set
+        // after reset() — which zeroes frameskip — and it sticks (frameskip isn't
+        // serialized).
         core.as_mut().gba_mut().set_frameskip(i32::MAX);
 
-        Ok(StepperCore {
+        core.as_mut().load_state(initial_state)?;
+
+        Ok(Stepper {
             core,
             state,
             hooks,
@@ -91,11 +100,22 @@ impl StepperCore {
         })
     }
 
-    /// Drive the core until the per-game stepper trap captures the boundary
-    /// snapshot, then return the run's result.
-    fn run(
+    /// Rewind the core to `state` before a rollback re-sim. The caller positions
+    /// the shadow alongside.
+    pub fn restore(&mut self, state: &mgba::state::State) -> anyhow::Result<()> {
+        self.core.as_mut().load_state(state)?;
+        Ok(())
+    }
+
+    /// Advance exactly one tick from where the core is parked (`current_tick`),
+    /// applying `input` and capturing the boundary snapshot at `current_tick +
+    /// 1`. `last_local_packet` is this side's outgoing link packet at
+    /// `current_tick` (seeds the link exchange); `apply_shadow_input` resolves
+    /// the remote packet by co-simulating the shadow. Drives the core until the
+    /// per-game stepper trap captures the boundary snapshot.
+    pub fn step(
         &mut self,
-        inputs: Vec<(PartialInput, PartialInput)>,
+        input: (PartialInput, PartialInput),
         current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
@@ -104,7 +124,7 @@ impl StepperCore {
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
-            inputs,
+            vec![input],
             current_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
@@ -126,78 +146,5 @@ impl StepperCore {
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
         }
-    }
-}
-
-/// Cold-start stepper: loads a seed save state and runs the input window from it
-/// on every call. Used for the throwaway speculative fork, which is reloaded
-/// from the settled checkpoint each frame and may diverge freely. Only supports
-/// [`run_until`](Self::run_until); it carries no seed state of its own, since
-/// every run supplies one.
-pub struct RunStepper(StepperCore);
-
-impl RunStepper {
-    pub fn new(
-        rom: &[u8],
-        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        match_type: (u8, u8),
-        local_player_index: u8,
-    ) -> anyhow::Result<Self> {
-        Ok(RunStepper(StepperCore::new(
-            rom,
-            hooks,
-            match_type,
-            local_player_index,
-        )?))
-    }
-
-    /// Cold start: load the seed state, then run the input window to capture.
-    pub fn run_until(
-        &mut self,
-        state: &mgba::state::State,
-        inputs: Vec<(PartialInput, PartialInput)>,
-        current_tick: u32,
-        last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
-    ) -> anyhow::Result<StepperResult> {
-        self.0.core.as_mut().load_state(state)?;
-        self.0.run(inputs, current_tick, last_local_packet, apply_shadow_input)
-    }
-}
-
-/// Forward-only stepper: seeded once at construction and never reloaded, it runs
-/// each input window on from wherever the previous call parked the core. Used
-/// for the authoritative settle re-sim, which advances monotonically in lockstep
-/// with the shadow. Only supports [`resume_until`](Self::resume_until).
-pub struct ResumeStepper(StepperCore);
-
-impl ResumeStepper {
-    pub fn new(
-        rom: &[u8],
-        hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-        match_type: (u8, u8),
-        local_player_index: u8,
-        initial_state: &mgba::state::State,
-    ) -> anyhow::Result<Self> {
-        let mut core = StepperCore::new(rom, hooks, match_type, local_player_index)?;
-        core.core.as_mut().load_state(initial_state)?;
-        Ok(ResumeStepper(core))
-    }
-
-    /// Forward-only continuation for the authoritative settle core. The core is
-    /// already parked at `current_tick` from the previous run's capture —
-    /// `end_run_loop` halts exactly at the boundary `main_read_joyflags` with r4
-    /// unset (see e.g. `game/bn6/stepper.rs`) — so there is NO `load_state`; we
-    /// just re-arm the next input window and run on. Sound only because settles
-    /// advance monotonically and never rewind: the caller must guarantee the
-    /// core is parked at `current_tick`.
-    pub fn resume_until(
-        &mut self,
-        inputs: Vec<(PartialInput, PartialInput)>,
-        current_tick: u32,
-        last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
-    ) -> anyhow::Result<StepperResult> {
-        self.0.run(inputs, current_tick, last_local_packet, apply_shadow_input)
     }
 }

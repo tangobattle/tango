@@ -22,8 +22,10 @@ pub trait World: Sized + 'static {
     /// One player's input for a single tick.
     ///
     /// Must be cheap to [`Clone`] — the session clones inputs while matching
-    /// local and remote streams and while building speculative tails.
-    type Input: Clone + Send + 'static;
+    /// local and remote streams and while building speculative tails — and
+    /// [`PartialEq`], so a confirmed remote input can be checked against the one
+    /// that was predicted speculatively to decide promote-vs-rollback.
+    type Input: Clone + PartialEq + Send + 'static;
 
     /// The complete simulation state at a single tick.
     ///

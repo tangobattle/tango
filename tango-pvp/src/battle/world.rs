@@ -2,27 +2,29 @@
 //!
 //! getgud is plain rollback over an opaque state + input; everything
 //! link-cable lives here. The opponent's per-tick packets aren't on the wire,
-//! so [`MgbaSimulator`] derives them inside its run — by co-simulating the
-//! opponent (the [`Shadow`](crate::shadow::Shadow)) for a real settle, or by
-//! the per-game `predict_rx` for a throwaway speculative tail. The engine never
-//! sees a packet; it only flips `speculative`.
+//! so [`MgbaSimulator`] derives them inside each step by co-simulating the
+//! opponent (the [`Shadow`](crate::shadow::Shadow)) — for *both* confirmed
+//! settles and speculative ticks, driven by the engine's predicted-then-confirmed
+//! remote joyflags. Because the packet is always shadow-derived (never faked),
+//! a speculation whose predicted joyflags matched the real ones is byte-exact
+//! and the engine can promote it with no re-simulation; only a genuine
+//! misprediction triggers a [`restore`]+re-step rollback of both cores.
 //!
-//! - [`MgbaWorld`] pins the engine's type axes: [`MgbaState`] (mgba save state
-//!   + our in-flight outgoing packet) and [`PartialInput`] (joyflags).
-//! - [`MgbaSimulator`] wraps the two stepper cores
-//!   ([`ResumeStepper`](crate::stepper::ResumeStepper) for settles,
-//!   [`RunStepper`](crate::stepper::RunStepper) for speculation) and owns the
-//!   shadow.
-//! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet is
-//!   the simulator's own business.
+//! - [`MgbaWorld`] pins the engine's type axes: [`MgbaState`] (the primary +
+//!   shadow snapshots and our in-flight outgoing packet) and [`PartialInput`]
+//!   (joyflags).
+//! - [`MgbaSimulator`] wraps the single [`Stepper`](crate::stepper::Stepper)
+//!   core and owns the shadow.
+//! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet then
+//!   falls out of the shadow co-sim.
 //!
 //! The chosen display state is loaded into the live core — and the time-sync
 //! skew turned into a frame-rate target via [`Throttler`](super::throttler::Throttler)
 //! — by [`Round`](super::Round), not here.
+//!
+//! [`restore`]: crate::stepper::Stepper::restore
 
 use std::sync::{Arc, Mutex as SyncMutex};
-
-use getgud::SimResult;
 
 use crate::input::{Input, PartialInput};
 
@@ -36,108 +38,95 @@ impl getgud::World for MgbaWorld {
     type Error = anyhow::Error;
 }
 
-/// The engine's opaque checkpoint state: the mgba save state plus our own
-/// outgoing link-cable packet at that tick (needed to continue the exchange on
-/// resume). The engine treats this as a blob.
+/// The engine's opaque checkpoint state: the primary stepper's mgba save state,
+/// the shadow's snapshot (so a rollback rewinds the opponent co-sim in lockstep),
+/// our own outgoing link-cable packet at that tick (needed to continue the
+/// exchange on resume), and the tick the bundle is poised at. The engine treats
+/// this as a blob; the simulator reads `tick` to decide whether a `restore` is a
+/// real rewind or a no-op resume.
 pub struct MgbaState {
-    pub core: Box<mgba::state::State>,
+    pub primary: Box<mgba::state::State>,
     pub outgoing: Vec<u8>,
+    pub shadow_snapshot: crate::shadow::ShadowSnapshot,
+    pub tick: u32,
 }
 
-/// Per-tick remote-packet resolver handed to the fastforwarder.
+/// Per-tick remote-packet resolver handed to the stepper.
 type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
-/// [`getgud::Simulator`] over the two per-frame stepper cores. Owns the shadow
-/// and resolves each tick's remote packet itself: a settle (`speculative =
-/// false`) co-simulates the opponent and advances it via [`resume_until`]; a
-/// speculative tail predicts packets via `predict_rx`, never touches the shadow,
-/// and reloads the settled checkpoint via [`run_until`].
+/// [`getgud::Simulator`] over the single per-frame [`Stepper`] core plus the
+/// shadow. Every [`step`](getgud::Simulator::step) co-simulates the opponent for
+/// that tick (real packet from real-or-predicted remote joyflags) and captures a
+/// boundary snapshot of both cores. [`restore`](getgud::Simulator::restore)
+/// rewinds both cores to a saved bundle before a rollback re-sim — but is a no-op
+/// when the cores are already parked at that tick, so steady-state settles stay
+/// forward-only.
 ///
-/// [`resume_until`]: crate::stepper::ResumeStepper::resume_until
-/// [`run_until`]: crate::stepper::RunStepper::run_until
+/// [`Stepper`]: crate::stepper::Stepper
 pub struct MgbaSimulator {
-    /// Forward-only authoritative re-sim: runs settles in lockstep with the
-    /// shadow and is never reloaded after seeding, mirroring the shadow's own
-    /// forward-only discipline. Parked at the last settled tick between calls.
-    pub authoritative_ff: crate::stepper::ResumeStepper,
-    /// Throwaway speculative fork: reloaded from the settled checkpoint every
-    /// frame and run forward with predicted remote packets. Never touches the
-    /// shadow, so it can diverge freely without disturbing the trunk.
-    pub speculative_ff: crate::stepper::RunStepper,
+    pub stepper: crate::stepper::Stepper,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
-    pub hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    /// The last remote packet a settle resolved — the seed `predict_rx` advances
-    /// from during a speculative tail.
-    pub last_remote_packet: Vec<u8>,
+    /// The tick both cores are currently parked at.
+    pub parked_tick: u32,
+    /// This side's outgoing link packet at the parked tick — seeds the next
+    /// step's link exchange.
+    pub last_outgoing: Vec<u8>,
 }
 
 impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
-    fn simulate(
-        &mut self,
-        base: &MgbaState,
-        base_tick: u32,
-        inputs: Vec<(PartialInput, PartialInput)>,
-        speculative: bool,
-    ) -> anyhow::Result<SimResult<MgbaWorld>> {
-        let input_count = inputs.len();
+    fn restore(&mut self, state: &MgbaState) -> anyhow::Result<()> {
+        // Already parked here — either no speculation moved the cores since this
+        // tick settled, or every speculation up to it was promoted. The cores and
+        // `last_outgoing` already hold `state`, so skip the reloads; this keeps
+        // steady-state settles forward-only (no `load_state` per frame).
+        if self.parked_tick == state.tick {
+            return Ok(());
+        }
+        self.stepper.restore(&state.primary)?;
+        self.shadow.lock().unwrap().load_state(&state.shadow_snapshot)?;
+        self.parked_tick = state.tick;
+        self.last_outgoing = state.outgoing.clone();
+        Ok(())
+    }
 
-        // The fastforwarder advances through `inputs`, then captures poised at
-        // the start of the boundary tick (one past the last applied) without
-        // stepping it — mirroring getgud's contract. The boundary tick's local
-        // joyflags are not baked into the snapshot; the live core primes them
-        // from `Frame::input` via `inject_joyflags_on_primary_snapshot`.
-        let result = if speculative {
-            // The fork: reload the settled state and run the tail with predicted
-            // packets. `predict_rx` advances from the last settled remote packet
-            // (returns-then-advances); never locks the shadow, so the throwaway
-            // tail can diverge without disturbing the authoritative core.
-            let hooks = self.hooks;
-            let mut packet = self.last_remote_packet.clone();
-            let resolver: Resolver = Box::new(move |_tick, _ip| {
-                hooks.predict_rx(&mut packet);
-                Ok(packet.clone())
-            });
-            self.speculative_ff
-                .run_until(&base.core, inputs, base_tick, &base.outgoing, resolver)?
-        } else {
-            // The trunk: co-simulate the opponent (shadow) over the local side's
-            // just-produced packet, advancing forward-only in lockstep with it.
-            let resolver: Resolver = {
-                let shadow = self.shadow.clone();
-                Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
-            };
-            let result = self
-                .authoritative_ff
-                .resume_until(inputs, base_tick, &base.outgoing, resolver)?;
-            // A settle defines the new last-confirmed remote packet for the next
-            // speculative tail's prediction.
-            if let Some((_local, remote)) = result.output_pairs.last() {
-                self.last_remote_packet = remote.packet.clone();
-            }
-            result
+    fn step(&mut self, input: (PartialInput, PartialInput)) -> anyhow::Result<Option<MgbaState>> {
+        // Co-simulate the opponent for this tick: the resolver runs the shadow
+        // forward over the (real or predicted) remote joyflags to derive the
+        // remote packet. The shadow advances in lockstep with the stepper and is
+        // rewound by `restore`, so this is identical whether the tick is a
+        // confirmed settle or a speculative one.
+        let resolver: Resolver = {
+            let shadow = self.shadow.clone();
+            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
         };
+        let last_outgoing = self.last_outgoing.clone();
+        let result = self.stepper.step(input, self.parked_tick, &last_outgoing, resolver)?;
+        let shadow_snapshot = self.shadow.lock().unwrap().save_state()?;
 
-        // `round_result.tick` is the absolute tick the round ended at, in the
-        // same per-pair units as `base_tick`; turn it into a count of the pairs
-        // consumed before the end. Live (no result) means all of them.
-        let committed = match result.round_result {
-            Some(rr) => (rr.tick.saturating_sub(base_tick) as usize).min(input_count),
-            None => input_count,
-        };
+        // Advance the parked position even when ending — the cores have moved, so
+        // a later `restore` to an earlier tick must see a stale park and reload.
+        self.parked_tick = result.snapshot.tick;
+        self.last_outgoing = result.snapshot.packet.clone();
 
-        Ok(SimResult {
-            state: MgbaState {
-                core: result.snapshot.state,
-                outgoing: result.snapshot.packet,
-            },
-            committed,
-        })
+        // The per-game round-end traps fire one tick after the round-end frame is
+        // captured, so the step that reports a round result is the first one past
+        // the live tail: there is no further live state to advance into.
+        if result.round_result.is_some() {
+            return Ok(None);
+        }
+
+        Ok(Some(MgbaState {
+            primary: result.snapshot.state,
+            outgoing: result.snapshot.packet,
+            shadow_snapshot,
+            tick: result.snapshot.tick,
+        }))
     }
 }
 
 /// [`getgud::Predictor`]: the remote joyflags we assume hold during speculation
-/// — just the held keys (A/B), nothing transient. The packet half of the
-/// prediction lives in [`MgbaSimulator`].
+/// — just the held keys (A/B), nothing transient. The packet half then falls out
+/// of the shadow co-sim in [`MgbaSimulator::step`].
 pub struct MgbaPredictor;
 
 impl getgud::Predictor<MgbaWorld> for MgbaPredictor {

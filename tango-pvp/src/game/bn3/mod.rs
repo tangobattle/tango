@@ -1,5 +1,3 @@
-use byteorder::ByteOrder;
-
 mod common;
 mod munger;
 mod offsets;
@@ -55,11 +53,6 @@ impl crate::hooks::Hooks for Hooks {
 
     fn stepper_traps(&self, stepper_state: crate::stepper::State) -> Vec<crate::hooks::Trap> {
         stepper::traps(self, stepper_state)
-    }
-
-    fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u32(&rx[0x4..0x8]);
-        byteorder::LittleEndian::write_u32(&mut rx[0x4..0x8], tick + 1);
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

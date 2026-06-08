@@ -43,10 +43,6 @@ pub trait Hooks {
         completion_token: CompletionToken,
     ) -> Vec<Trap>;
 
-    fn packet_size(&self) -> usize {
-        0x10
-    }
-
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     /// Prime `core`'s local-joyflags register (r4) from `joyflags` after a
@@ -58,8 +54,6 @@ pub trait Hooks {
     /// run doesn't need this: `prepare_for_fastforward` rewinds its PC to
     /// `main_read_joyflags`, which re-primes r4 from the input window.)
     fn inject_joyflags_on_primary_snapshot(&self, core: mgba::core::CoreMutRef, joyflags: u16);
-
-    fn predict_rx(&self, _rx: &mut Vec<u8>) {}
 }
 
 pub fn hooks_for_gamedb_entry(

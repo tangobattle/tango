@@ -141,8 +141,15 @@ impl Match {
         local_state: Box<mgba::state::State>,
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
-        self.shadow.lock().unwrap().advance_until_first_committed_state()?;
-        round.start_session(self, local_state, first_packet)?;
+        // Advance the shadow to its first-committed state and snapshot it, so the
+        // session's tick-0 bundle holds both cores: a rollback to tick 0 rewinds
+        // the opponent co-sim alongside the primary.
+        let shadow_snapshot = {
+            let mut shadow = self.shadow.lock().unwrap();
+            shadow.advance_until_first_committed_state()?;
+            shadow.save_state()?
+        };
+        round.start_session(self, local_state, first_packet, shadow_snapshot)?;
         self.bump_round_progress();
         Ok(())
     }
@@ -153,14 +160,25 @@ impl Match {
     /// disambiguate subsequent inputs, and wakes our own receive loop so
     /// any straggler inputs for the just-ended round can be dropped.
     pub fn end_round(&self) -> anyhow::Result<()> {
-        {
+        let settled_shadow = {
             let mut round_state = self.round_state.blocking_lock();
             let Some(round) = round_state.take() else {
                 return Ok(());
             };
             log::info!("round ended at {:x}", round.frontier());
+            round.settled_shadow_snapshot()
+        };
+        {
+            let mut shadow = self.shadow.lock().unwrap();
+            // Re-anchor the shadow to the authoritative settled tick before its
+            // round-end advance. The simulator may have parked it ahead on a
+            // speculative tick; loading the settled snapshot reproduces the
+            // forward-only position `advance_until_round_end` expects.
+            if let Some(snapshot) = settled_shadow.as_ref() {
+                shadow.load_state(snapshot)?;
+            }
+            shadow.advance_until_round_end()?;
         }
-        self.shadow.lock().unwrap().advance_until_round_end()?;
         // Bump BEFORE sending so a racing remote-Input arrival is compared
         // against the up-to-date local_round_idx.
         self.local_round_idx.fetch_add(1, Ordering::Release);
