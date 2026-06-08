@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::input::PartialInput;
 
-use super::world::{MgbaSimulator, MgbaState, MgbaWorld};
+use super::world::{MgbaState, MgbaWorld};
 use super::EXPECTED_FPS;
 
 /// Per-side input-queue capacity.
@@ -88,14 +88,14 @@ impl Round {
             self.local_player_index,
             local_state.as_ref(),
         )?;
-        let simulator = Box::new(MgbaSimulator {
+        let world = MgbaWorld {
             stepper,
             shadow: match_.shadow_handle(),
             parked_tick: 0,
             last_outgoing: first_packet.to_vec(),
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
-        });
+        };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
             initial_remote: PartialInput { joyflags: 0 },
@@ -105,7 +105,7 @@ impl Round {
                 shadow_snapshot,
                 tick: 0,
             },
-            simulator,
+            world,
         }));
         Ok(())
     }

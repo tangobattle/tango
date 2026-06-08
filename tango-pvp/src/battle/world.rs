@@ -2,7 +2,7 @@
 //!
 //! getgud is plain rollback over an opaque state + input; everything
 //! link-cable lives here. The opponent's per-tick packets aren't on the wire,
-//! so [`MgbaSimulator`] derives them inside each step by co-simulating the
+//! so [`MgbaWorld`] derives them inside each step by co-simulating the
 //! opponent (the [`Shadow`](crate::shadow::Shadow)) — for *both* confirmed
 //! settles and speculative ticks, driven by the engine's predicted-then-confirmed
 //! remote joyflags. Because the packet is always shadow-derived (never faked),
@@ -10,13 +10,12 @@
 //! and the engine can promote it with no re-simulation; only a genuine
 //! misprediction triggers a [`restore`]+re-step rollback of both cores.
 //!
-//! - [`MgbaWorld`] pins the engine's type axes: [`MgbaState`] (the primary +
-//!   shadow snapshots and our in-flight outgoing packet) and [`PartialInput`]
-//!   (joyflags).
-//! - [`MgbaSimulator`] wraps the single [`Stepper`](crate::stepper::Stepper)
-//!   core and owns the shadow.
-//! - [`MgbaPredictor`] guesses the remote *joyflags* (held A/B); the packet then
-//!   falls out of the shadow co-sim.
+//! [`MgbaWorld`] is the single [`getgud::World`] implementation: it pins the
+//! engine's type axes — [`MgbaState`] (the primary + shadow snapshots and our
+//! in-flight outgoing packet) and [`PartialInput`] (joyflags) — wraps the single
+//! [`Stepper`](crate::stepper::Stepper) core, owns the shadow, and predicts the
+//! remote *joyflags* (held A/B) from which the packet falls out of the shadow
+//! co-sim.
 //!
 //! The chosen display state is loaded into the live core — and the time-sync
 //! skew turned into a frame-rate target via [`Throttler`](super::throttler::Throttler)
@@ -28,21 +27,11 @@ use std::sync::{Arc, Mutex as SyncMutex};
 
 use crate::input::{Input, PartialInput};
 
-/// Binds the engine's generic type axes to this crate's concrete types.
-pub struct MgbaWorld;
-
-impl getgud::World for MgbaWorld {
-    /// Joyflags — what's queued and what crosses the wire.
-    type Input = PartialInput;
-    type State = MgbaState;
-    type Error = anyhow::Error;
-}
-
 /// The engine's opaque checkpoint state: the primary stepper's mgba save state,
 /// the shadow's snapshot (so a rollback rewinds the opponent co-sim in lockstep),
 /// our own outgoing link-cable packet at that tick (needed to continue the
 /// exchange on resume), and the tick the bundle is poised at. The engine treats
-/// this as a blob; the simulator reads `tick` to decide whether a `restore` is a
+/// this as a blob; [`MgbaWorld`] reads `tick` to decide whether a `restore` is a
 /// real rewind or a no-op resume.
 pub struct MgbaState {
     pub primary: Box<mgba::state::State>,
@@ -54,16 +43,17 @@ pub struct MgbaState {
 /// Per-tick remote-packet resolver handed to the stepper.
 type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
-/// [`getgud::Simulator`] over the single per-frame [`Stepper`] core plus the
-/// shadow. Every [`step`](getgud::Simulator::step) co-simulates the opponent for
-/// that tick (real packet from real-or-predicted remote joyflags) and captures a
-/// boundary snapshot of both cores. [`restore`](getgud::Simulator::restore)
-/// rewinds both cores to a saved bundle before a rollback re-sim — but is a no-op
-/// when the cores are already parked at that tick, so steady-state settles stay
-/// forward-only.
+/// The single [`getgud::World`] implementation over the per-frame [`Stepper`]
+/// core plus the shadow. Pins the engine's type axes ([`MgbaState`] /
+/// [`PartialInput`]) and drives the simulation: every [`step`](getgud::World::step)
+/// co-simulates the opponent for that tick (real packet from real-or-predicted
+/// remote joyflags) and captures a boundary snapshot of both cores.
+/// [`restore`](getgud::World::restore) rewinds both cores to a saved bundle
+/// before a rollback re-sim — but is a no-op when the cores are already parked at
+/// that tick, so steady-state settles stay forward-only.
 ///
 /// [`Stepper`]: crate::stepper::Stepper
-pub struct MgbaSimulator {
+pub struct MgbaWorld {
     pub stepper: crate::stepper::Stepper,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     /// The tick both cores are currently parked at.
@@ -75,7 +65,12 @@ pub struct MgbaSimulator {
     pub local_player_index: u8,
 }
 
-impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
+impl getgud::World for MgbaWorld {
+    /// Joyflags — what's queued and what crosses the wire.
+    type Input = PartialInput;
+    type State = MgbaState;
+    type Error = anyhow::Error;
+
     fn restore(&mut self, state: &MgbaState) -> anyhow::Result<()> {
         // Already parked here — either no speculation moved the cores since this
         // tick settled, or every speculation up to it was promoted. The cores and

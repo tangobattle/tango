@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use crate::input::Queue;
-use crate::sim::Simulator;
 use crate::world::World;
 
 /// Everything needed to construct a [`Session`].
@@ -23,8 +22,8 @@ pub struct SessionParams<W: World> {
     /// The starting game state at tick 0.
     pub initial_state: W::State,
 
-    /// The game-specific simulation. See [`Simulator`].
-    pub simulator: Box<dyn Simulator<W>>,
+    /// The game-specific world that advances the simulation. See [`World`].
+    pub world: W,
 }
 
 /// The result of one [`Session::advance`] call: the state to present this
@@ -45,7 +44,7 @@ pub struct Frame<'a, W: World> {
     /// handy for presentation that should line up with the frame being shown
     /// (local audio, effects, UI). For a confirmed tick the remote half is the
     /// real input received from the peer; for a speculative tick it is the
-    /// [`Predictor`]-supplied guess used to build the frame.
+    /// [`predict`](World::predict)-supplied guess used to build the frame.
     pub input: (W::Input, W::Input),
 }
 
@@ -86,7 +85,7 @@ struct Speculation<W: World> {
 pub struct Session<W: World> {
     present_delay: u32,
 
-    simulator: Box<dyn Simulator<W>>,
+    world: W,
 
     local_frontier: u32,
 
@@ -135,12 +134,12 @@ impl<W: World> Session<W> {
             present_delay,
             initial_remote,
             initial_state,
-            simulator,
+            world,
         } = params;
 
         Self {
             present_delay,
-            simulator,
+            world,
             local_frontier: 0,
             input_queue: Queue::new(),
             confirm_frontier: 0,
@@ -192,8 +191,8 @@ impl<W: World> Session<W> {
     ///    rolling back to re-simulate where it didn't, logging confirmed pairs;
     /// 3. computes the present target (`frontier - present_delay`);
     /// 4. extends the speculative buffer forward to the target with
-    ///    [`Predictor`]-supplied remote inputs, reusing the snapshots already
-    ///    built (only the genuinely new ticks are simulated);
+    ///    [`predict`](World::predict)-supplied remote inputs, reusing the
+    ///    snapshots already built (only the genuinely new ticks are simulated);
     /// 5. returns the state, tick, and the local/remote input pair at that tick.
     ///    (Read [`skew`](Session::skew) *before* this call for the clock-sync
     ///    hint covering the tick being advanced.)
@@ -201,7 +200,7 @@ impl<W: World> Session<W> {
     /// # Errors
     ///
     /// Propagates any [`W::Error`](World::Error) returned by the
-    /// [`Simulator`](crate::Simulator).
+    /// [`World`](crate::World).
     pub fn advance(&mut self, local_input: W::Input) -> Result<Frame<'_, W>, W::Error> {
         self.input_queue.add_local_input(local_input);
 
@@ -241,7 +240,7 @@ impl<W: World> Session<W> {
             let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
                 (
                     unmatched_locals[0].clone(),
-                    self.simulator.predict(&self.last_confirmed_remote),
+                    self.world.predict(&self.last_confirmed_remote),
                 )
             });
             Frame {
@@ -393,10 +392,10 @@ impl<W: World> Session<W> {
             // this frame (0 when there was simply nothing speculated yet).
             self.last_misprediction_depth = self.speculations.len() as u32;
             self.speculations.clear();
-            self.simulator.restore(&self.settled_state)?;
+            self.world.restore(&self.settled_state)?;
             for _ in promote..to_settle {
                 let pair = self.settle_backlog.pop_front().unwrap();
-                let (state, ended) = self.simulator.step(pair.clone())?;
+                let (state, ended) = self.world.step(pair.clone())?;
                 self.settled_tick += 1;
                 self.settled_state = state;
                 self.last_confirmed_remote = pair.1.clone();
@@ -417,7 +416,7 @@ impl<W: World> Session<W> {
             self.terminal_reached = true;
         }
         if !self.terminal_reached {
-            self.simulator.log(pair);
+            self.world.log(pair);
         }
     }
 
@@ -437,8 +436,8 @@ impl<W: World> Session<W> {
             // the local for the next speculative tick is at `speculations.len()`.
             let local = unmatched_locals[self.speculations.len()].clone();
             let tick = self.settled_tick + self.speculations.len() as u32 + 1;
-            predicted = self.simulator.predict(&predicted);
-            let (state, ended) = self.simulator.step((local.clone(), predicted.clone()))?;
+            predicted = self.world.predict(&predicted);
+            let (state, ended) = self.world.step((local.clone(), predicted.clone()))?;
             self.speculations.push_back(Speculation {
                 tick,
                 state,
@@ -455,34 +454,32 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    /// A deterministic world whose state is the full ordered history of applied
-    /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
-    /// against a ground-truth fold of the confirmed inputs.
-    struct W;
-    impl World for W {
-        type Input = u8;
-        type State = Vec<(u8, u8)>;
-        type Error = std::convert::Infallible;
-    }
-
     #[derive(Default)]
     struct Counters {
         restores: usize,
         steps: usize,
     }
 
+    /// A deterministic world whose state is the full ordered history of applied
+    /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
+    /// against a ground-truth fold of the confirmed inputs.
+    ///
     /// `terminal_at` is the last live tick: a step whose resulting tick exceeds it
     /// reports `ended = true` (the round-ending tick) but keeps producing state.
     /// `restore` skips the reload when already parked at the target tick,
     /// mirroring the real adapter, so the rollback counter reflects only genuine
     /// rewinds.
-    struct Sim {
+    struct W {
         parked: Vec<(u8, u8)>,
         counters: Arc<Mutex<Counters>>,
         terminal_at: Option<u32>,
         logged: Arc<Mutex<Vec<(u8, u8)>>>,
     }
-    impl Simulator<W> for Sim {
+    impl World for W {
+        type Input = u8;
+        type State = Vec<(u8, u8)>;
+        type Error = std::convert::Infallible;
+
         fn restore(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
             if self.parked.len() == state.len() {
                 return Ok(());
@@ -521,12 +518,12 @@ mod tests {
             present_delay,
             initial_remote: 0,
             initial_state: vec![],
-            simulator: Box::new(Sim {
+            world: W {
                 parked: vec![],
                 counters,
                 terminal_at,
                 logged,
-            }),
+            },
         })
     }
 

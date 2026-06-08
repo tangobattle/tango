@@ -10,14 +10,15 @@
 //! their simulations aligned.
 //!
 //! The crate is generic over your game and contains no game logic itself. You
-//! provide four things:
+//! implement a single trait, [`World`], on the type that owns your simulation:
 //!
-//! | You implement        | Responsibility                                            |
-//! |----------------------|-----------------------------------------------------------|
-//! | [`World`]            | Names your `Input`, `State`, and `Error` types.           |
-//! | [`Simulator`]        | Advances `State` by applying input pairs (deterministically). |
-//! | [`Predictor`]        | Guesses the remote's next input from their last one.      |
-//! | [`Logger`] *(opt.)*  | Receives confirmed input pairs; use [`NullLogger`] to skip. |
+//! | [`World`] member              | Responsibility                                       |
+//! |-------------------------------|------------------------------------------------------|
+//! | `Input` / `State` / `Error`   | Names your input, state, and error types.            |
+//! | [`step`](World::step)         | Advances `State` by applying input pairs (deterministically). |
+//! | [`restore`](World::restore)   | Reloads a saved `State` to rewind before a rollback. |
+//! | [`predict`](World::predict)   | Guesses the remote's next input from their last one. |
+//! | [`log`](World::log)           | Receives confirmed input pairs.                      |
 //!
 //! # Model
 //!
@@ -47,24 +48,21 @@
 //! A toy world whose state is a single integer that each player's input nudges.
 //!
 //! ```
-//! use getgud::{Session, SessionParams, Simulator, World};
+//! use getgud::{Session, SessionParams, World};
 //!
-//! // 1. Describe the game's types.
-//! struct Counter;
+//! // A world whose state is a single integer that each player's input nudges.
+//! // It is parked at a state; `restore` reloads it, `step` advances it.
+//! struct Counter { state: i64 }
 //! impl World for Counter {
 //!     type Input = i64;
 //!     type State = i64;
 //!     type Error = std::convert::Infallible;
-//! }
 //!
-//! // 2. The simulation: fold each (local, remote) pair into the running total.
-//! //    It is parked at a state; `restore` reloads it, `step` advances it.
-//! struct Sim { state: i64 }
-//! impl Simulator<Counter> for Sim {
 //!     fn restore(&mut self, state: &i64) -> Result<(), std::convert::Infallible> {
 //!         self.state = *state;
 //!         Ok(())
 //!     }
+//!     // Fold each (local, remote) pair into the running total.
 //!     fn step(
 //!         &mut self,
 //!         input: (i64, i64),
@@ -83,7 +81,7 @@
 //!     present_delay: 2,
 //!     initial_remote: 0,
 //!     initial_state: 0,
-//!     simulator: Box::new(Sim { state: 0 }),
+//!     world: Counter { state: 0 },
 //! });
 //!
 //! // Drive ten ticks. Remote inputs arrive two frames late, so the session
@@ -104,15 +102,13 @@
 //!     let _ = (skew, frame.tick, frame.state, frame.input);
 //! }
 //!
-//! assert_eq!(session.frontier(), 10);
+//! assert_eq!(session.local_frontier(), 10);
 //! ```
 
 mod input;
 mod session;
-mod sim;
 mod world;
 
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
-pub use sim::Simulator;
 pub use world::World;
