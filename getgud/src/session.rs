@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use crate::input::Queue;
-use crate::sim::{Logger, Predictor, Simulator};
+use crate::sim::Simulator;
 use crate::world::World;
 
 /// Everything needed to construct a [`Session`].
@@ -26,14 +25,6 @@ pub struct SessionParams<W: World> {
 
     /// The game-specific simulation. See [`Simulator`].
     pub simulator: Box<dyn Simulator<W>>,
-
-    /// Strategy for guessing remote inputs that haven't arrived yet. See
-    /// [`Predictor`]. Held behind an [`Arc`] so it can be shared.
-    pub predictor: Arc<dyn Predictor<W>>,
-
-    /// Sink for confirmed input pairs. Use [`NullLogger`](crate::NullLogger) to
-    /// ignore them. See [`Logger`].
-    pub logger: Box<dyn Logger<W>>,
 }
 
 /// The result of one [`Session::advance`] call: the state to present this
@@ -96,8 +87,6 @@ pub struct Session<W: World> {
     present_delay: u32,
 
     simulator: Box<dyn Simulator<W>>,
-    predictor: Arc<dyn Predictor<W>>,
-    logger: Box<dyn Logger<W>>,
 
     frontier: u32,
 
@@ -147,15 +136,11 @@ impl<W: World> Session<W> {
             initial_remote,
             initial_state,
             simulator,
-            predictor,
-            logger,
         } = params;
 
         Self {
             present_delay,
             simulator,
-            predictor,
-            logger,
             frontier: 0,
             input_queue: Queue::new(),
             commit_frontier: 0,
@@ -256,7 +241,7 @@ impl<W: World> Session<W> {
             let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
                 (
                     unmatched_locals[0].clone(),
-                    self.predictor.predict(&self.last_committed_remote),
+                    self.simulator.predict(&self.last_committed_remote),
                 )
             });
             Frame {
@@ -432,7 +417,7 @@ impl<W: World> Session<W> {
             self.terminal_reached = true;
         }
         if !self.terminal_reached {
-            self.logger.log(pair);
+            self.simulator.log(pair);
         }
     }
 
@@ -452,7 +437,7 @@ impl<W: World> Session<W> {
             // the local for the next speculative tick is at `speculations.len()`.
             let local = unmatched_locals[self.speculations.len()].clone();
             let tick = self.settled_tick + self.speculations.len() as u32 + 1;
-            predicted = self.predictor.predict(&predicted);
+            predicted = self.simulator.predict(&predicted);
             let (state, ended) = self.simulator.step((local.clone(), predicted.clone()))?;
             self.speculations.push_back(Speculation {
                 tick,
@@ -468,7 +453,7 @@ impl<W: World> Session<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     /// A deterministic world whose state is the full ordered history of applied
     /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
@@ -495,6 +480,7 @@ mod tests {
         parked: Vec<(u8, u8)>,
         counters: Arc<Mutex<Counters>>,
         terminal_at: Option<u32>,
+        logged: Arc<Mutex<Vec<(u8, u8)>>>,
     }
     impl Simulator<W> for Sim {
         fn restore(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
@@ -512,19 +498,12 @@ mod tests {
             let ended = self.terminal_at == Some(resulting_tick);
             Ok((self.parked.clone(), ended))
         }
-    }
-
-    struct Repeat;
-    impl Predictor<W> for Repeat {
+        // Repeat-predict: assume the remote keeps doing what they were doing.
         fn predict(&self, last: &u8) -> u8 {
             *last
         }
-    }
-
-    struct VecLogger(Arc<Mutex<Vec<(u8, u8)>>>);
-    impl Logger<W> for VecLogger {
         fn log(&mut self, pair: &(u8, u8)) {
-            self.0.lock().unwrap().push(*pair);
+            self.logged.lock().unwrap().push(*pair);
         }
     }
 
@@ -546,9 +525,8 @@ mod tests {
                 parked: vec![],
                 counters,
                 terminal_at,
+                logged,
             }),
-            predictor: Arc::new(Repeat),
-            logger: Box::new(VecLogger(logged)),
         })
     }
 

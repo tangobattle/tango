@@ -47,10 +47,7 @@
 //! A toy world whose state is a single integer that each player's input nudges.
 //!
 //! ```
-//! use std::sync::Arc;
-//! use getgud::{
-//!     NullLogger, Predictor, Session, SessionParams, Simulator, World,
-//! };
+//! use getgud::{Session, SessionParams, Simulator, World};
 //!
 //! // 1. Describe the game's types.
 //! struct Counter;
@@ -76,12 +73,10 @@
 //!         self.state += local + remote;
 //!         Ok((self.state, false)) // never ends
 //!     }
-//! }
-//!
-//! // 3. Predict that the remote keeps repeating its last input.
-//! struct Repeat;
-//! impl Predictor<Counter> for Repeat {
+//!     // Predict that the remote keeps repeating its last input.
 //!     fn predict(&self, last_remote: &i64) -> i64 { *last_remote }
+//!     // This toy world doesn't record confirmed pairs.
+//!     fn log(&mut self, _pair: &(i64, i64)) {}
 //! }
 //!
 //! let mut session = Session::<Counter>::new(SessionParams {
@@ -89,8 +84,6 @@
 //!     initial_remote: 0,
 //!     initial_state: 0,
 //!     simulator: Box::new(Sim { state: 0 }),
-//!     predictor: Arc::new(Repeat),
-//!     logger: Box::new(NullLogger),
 //! });
 //!
 //! // Drive ten ticks. Remote inputs arrive two frames late, so the session
@@ -121,5 +114,5 @@ mod world;
 
 pub use input::Queue;
 pub use session::{Frame, Session, SessionParams};
-pub use sim::{Logger, NullLogger, Predictor, Simulator};
+pub use sim::Simulator;
 pub use world::World;

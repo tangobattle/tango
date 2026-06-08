@@ -29,41 +29,13 @@ pub trait Simulator<W: World>: Send {
     /// (the round-ending tick's body ran). The session keeps simulating **past** a
     /// round end — the post-end frames are still real state, and the host's
     /// presentation typically only detects the end a tick or two later — so it
-    /// does not stop on `true`; it only stops committing input pairs to the
-    /// [`Logger`] from that tick on.
+    /// does not stop on `true`; it only stops committing input pairs to
+    /// [`log`](Simulator::log) from that tick on.
     fn step(&mut self, input: (W::Input, W::Input)) -> Result<(W::State, bool), W::Error>;
-}
 
-/// Guesses the remote player's next input from their most recent confirmed one.
-///
-/// When local simulation runs ahead of the inputs that have arrived over the
-/// network, the session fills the gap with predictions so it can present a
-/// responsive frame. Mispredictions are corrected automatically: once the real
-/// remote input arrives it is settled into the authoritative state, replacing
-/// whatever was predicted.
-///
-/// The simplest useful predictor is "repeat the last input", which assumes the
-/// remote player keeps doing what they were doing.
-pub trait Predictor<W: World>: Send + Sync {
     /// Return the predicted remote input given the last confirmed remote input.
     fn predict(&self, last_remote: &W::Input) -> W::Input;
-}
 
-/// Receives confirmed input pairs as they become final.
-///
-/// The session calls [`log`](Logger::log) for each `(local, remote)` pair the
-/// moment it is settled into the authoritative state, in tick order. This is the
-/// hook for recording replays, sending confirmed inputs to a spectator/server,
-/// or building a desync-detection trail. Use [`NullLogger`] if you need none of
-/// that.
-pub trait Logger<W: World>: Send {
     /// Record a single confirmed `(local, remote)` input pair.
     fn log(&mut self, pair: &(W::Input, W::Input));
-}
-
-/// A [`Logger`] that discards everything. The default when you don't need logging.
-pub struct NullLogger;
-
-impl<W: World> Logger<W> for NullLogger {
-    fn log(&mut self, _pair: &(<W as World>::Input, <W as World>::Input)) {}
 }

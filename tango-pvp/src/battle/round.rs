@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::input::PartialInput;
 
-use super::world::{MgbaPredictor, MgbaSimulator, MgbaState, MgbaWorld, ReplayLogger};
+use super::world::{MgbaSimulator, MgbaState, MgbaWorld};
 use super::EXPECTED_FPS;
 
 /// Per-side input-queue capacity.
@@ -93,10 +93,7 @@ impl Round {
             shadow: match_.shadow_handle(),
             parked_tick: 0,
             last_outgoing: first_packet.to_vec(),
-        });
-        let predictor: Arc<dyn getgud::Predictor<MgbaWorld>> = Arc::new(MgbaPredictor);
-        let logger: Box<dyn getgud::Logger<MgbaWorld>> = Box::new(ReplayLogger {
-            writer: match_.replay_writer_handle(),
+            replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
         });
         self.session = Some(getgud::Session::new(getgud::SessionParams {
@@ -109,8 +106,6 @@ impl Round {
                 tick: 0,
             },
             simulator,
-            predictor,
-            logger,
         }));
         Ok(())
     }
@@ -120,9 +115,7 @@ impl Round {
     /// may have parked the shadow ahead on a speculative tick). `None` before the
     /// first commit.
     pub(super) fn settled_shadow_snapshot(&self) -> Option<crate::shadow::ShadowSnapshot> {
-        self.session
-            .as_ref()
-            .map(|s| s.settled_state().shadow_snapshot.clone())
+        self.session.as_ref().map(|s| s.settled_state().shadow_snapshot.clone())
     }
 
     pub fn local_player_index(&self) -> u8 {

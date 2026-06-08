@@ -71,6 +71,8 @@ pub struct MgbaSimulator {
     /// This side's outgoing link packet at the parked tick — seeds the next
     /// step's link exchange.
     pub last_outgoing: Vec<u8>,
+    pub replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
+    pub local_player_index: u8,
 }
 
 impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
@@ -123,32 +125,16 @@ impl getgud::Simulator<MgbaWorld> for MgbaSimulator {
             ended,
         ))
     }
-}
 
-/// [`getgud::Predictor`]: the remote joyflags we assume hold during speculation
-/// — just the held keys (A/B), nothing transient. The packet half then falls out
-/// of the shadow co-sim in [`MgbaSimulator::step`].
-pub struct MgbaPredictor;
-
-impl getgud::Predictor<MgbaWorld> for MgbaPredictor {
     fn predict(&self, last_remote: &PartialInput) -> PartialInput {
         const HELD_KEYS: u16 = mgba::input::keys::A as u16 | mgba::input::keys::B as u16;
         PartialInput {
             joyflags: last_remote.joyflags & HELD_KEYS,
         }
     }
-}
 
-/// [`getgud::Logger`] that logs committed joyflags into the replay file.
-/// Packets aren't stored — the playback stepper re-derives them.
-pub struct ReplayLogger {
-    pub writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
-    pub local_player_index: u8,
-}
-
-impl getgud::Logger<MgbaWorld> for ReplayLogger {
     fn log(&mut self, pair: &(PartialInput, PartialInput)) {
-        if let Some(writer) = self.writer.lock().unwrap().as_mut() {
+        if let Some(writer) = self.replay_writer.lock().unwrap().as_mut() {
             writer.write_input(self.local_player_index, pair).expect("write input");
         }
     }
