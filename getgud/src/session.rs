@@ -88,18 +88,18 @@ pub struct Session<W: World> {
 
     simulator: Box<dyn Simulator<W>>,
 
-    frontier: u32,
+    local_frontier: u32,
 
     input_queue: Queue<W::Input>,
 
     /// Number of confirmed `(local, remote)` pairs ever matched (cumulative).
-    /// Confirmed ticks are `0..commit_frontier`. Invariant:
-    /// `commit_frontier == settled_tick + settle_backlog.len()`.
-    commit_frontier: u32,
-    last_committed_remote: W::Input,
+    /// Confirmed ticks are `0..confirm_frontier`. Invariant:
+    /// `confirm_frontier == settled_tick + settle_backlog.len()`.
+    confirm_frontier: u32,
+    last_confirmed_remote: W::Input,
 
     /// Confirmed pairs not yet folded into the settled state, in tick order
-    /// (covering ticks `settled_tick..commit_frontier`). They are held back
+    /// (covering ticks `settled_tick..confirm_frontier`). They are held back
     /// until the present target reaches them so the settled state never runs
     /// past the frame being displayed.
     settle_backlog: VecDeque<(W::Input, W::Input)>,
@@ -123,7 +123,7 @@ pub struct Session<W: World> {
     /// the prediction — i.e. the rollback depth for that frame, surfaced as a
     /// telemetry signal via [`misprediction_depth`](Session::misprediction_depth).
     /// 0 when the frame promoted cleanly or didn't settle.
-    last_rollback: u32,
+    last_misprediction_depth: u32,
 
     last_remote_tick_advantage: i16,
 }
@@ -141,24 +141,24 @@ impl<W: World> Session<W> {
         Self {
             present_delay,
             simulator,
-            frontier: 0,
+            local_frontier: 0,
             input_queue: Queue::new(),
-            commit_frontier: 0,
-            last_committed_remote: initial_remote,
+            confirm_frontier: 0,
+            last_confirmed_remote: initial_remote,
             settle_backlog: VecDeque::new(),
             settled_state: initial_state,
             settled_tick: 0,
             speculations: VecDeque::new(),
             terminal_reached: false,
-            last_rollback: 0,
+            last_misprediction_depth: 0,
             last_remote_tick_advantage: 0,
         }
     }
 
     /// The local frontier: the number of ticks [`advance`](Session::advance) has
     /// been called, i.e. the newest local tick.
-    pub fn frontier(&self) -> u32 {
-        self.frontier
+    pub fn local_frontier(&self) -> u32 {
+        self.local_frontier
     }
 
     /// The current present delay — how many ticks behind the frontier frames are
@@ -206,32 +206,32 @@ impl<W: World> Session<W> {
         self.input_queue.add_local_input(local_input);
 
         let (committable, unmatched_locals) = self.input_queue.drain_matched();
-        self.commit_frontier += committable.len() as u32;
+        self.confirm_frontier += committable.len() as u32;
         self.settle_backlog.extend(committable);
 
-        let target = self.frontier.saturating_sub(self.present_delay);
+        let target = self.local_frontier.saturating_sub(self.present_delay);
 
         // Per-frame rollback depth, recomputed by `settle_to` below.
-        self.last_rollback = 0;
+        self.last_misprediction_depth = 0;
 
         // Fold confirmed pairs into the settled state, but never past the present
         // target (so the settled state stays at or behind the frame we display).
         // Settling continues through a round end — only logging stops there.
-        self.settle_to(target.min(self.commit_frontier))?;
+        self.settle_to(target.min(self.confirm_frontier))?;
 
         // Extend the speculative tail up to the present target with predicted
         // remotes, reusing the snapshots already built.
-        if target > self.settled_tick && self.commit_frontier > 0 {
+        if target > self.settled_tick && self.confirm_frontier > 0 {
             self.speculate_to(target, &unmatched_locals)?;
         }
 
-        self.frontier += 1;
+        self.local_frontier += 1;
 
         // Present the deepest speculation we built (tick == target). If there is
         // none — no speculation needed — present the settled state.
-        Ok(if target > self.settled_tick && self.commit_frontier > 0 {
+        Ok(if target > self.settled_tick && self.confirm_frontier > 0 {
             let spec = self.speculations.back().expect("speculative frame");
-            debug_assert_eq!(spec.tick, target);
+            assert_eq!(spec.tick, target);
             Frame {
                 tick: spec.tick,
                 state: &spec.state,
@@ -241,7 +241,7 @@ impl<W: World> Session<W> {
             let input = self.settle_backlog.front().cloned().unwrap_or_else(|| {
                 (
                     unmatched_locals[0].clone(),
-                    self.simulator.predict(&self.last_committed_remote),
+                    self.simulator.predict(&self.last_confirmed_remote),
                 )
             });
             Frame {
@@ -327,8 +327,8 @@ impl<W: World> Session<W> {
     /// the frame promoted its predictions cleanly (or didn't settle). A telemetry
     /// signal: spikes mark mispredictions, unlike the steady-state
     /// [`speculation_balance`](Session::speculation_balance).
-    pub fn misprediction_depth(&self) -> u32 {
-        self.last_rollback
+    pub fn last_misprediction_depth(&self) -> u32 {
+        self.last_misprediction_depth
     }
 
     /// Record an input received from the remote peer.
@@ -377,7 +377,7 @@ impl<W: World> Session<W> {
             let spec = self.speculations.pop_front().unwrap();
             let pair = self.settle_backlog.pop_front().unwrap();
             assert_eq!(spec.tick, self.settled_tick + 1);
-            self.last_committed_remote = pair.1.clone();
+            self.last_confirmed_remote = pair.1.clone();
             self.commit_pair(&pair, spec.terminal);
             self.settled_state = spec.state;
             self.settled_tick = spec.tick;
@@ -391,7 +391,7 @@ impl<W: World> Session<W> {
         if promote < to_settle {
             // The speculative tail we're throwing away — the rollback depth for
             // this frame (0 when there was simply nothing speculated yet).
-            self.last_rollback = self.speculations.len() as u32;
+            self.last_misprediction_depth = self.speculations.len() as u32;
             self.speculations.clear();
             self.simulator.restore(&self.settled_state)?;
             for _ in promote..to_settle {
@@ -399,7 +399,7 @@ impl<W: World> Session<W> {
                 let (state, ended) = self.simulator.step(pair.clone())?;
                 self.settled_tick += 1;
                 self.settled_state = state;
-                self.last_committed_remote = pair.1.clone();
+                self.last_confirmed_remote = pair.1.clone();
                 self.commit_pair(&pair, ended);
             }
         }
@@ -427,13 +427,13 @@ impl<W: World> Session<W> {
     /// plain forward `step`.
     fn speculate_to(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(), W::Error> {
         assert_eq!(
-            self.settled_tick, self.commit_frontier,
+            self.settled_tick, self.confirm_frontier,
             "speculation only runs once the settled cap has caught up to the confirmed frontier"
         );
-        let mut predicted = self.last_committed_remote.clone();
+        let mut predicted = self.last_confirmed_remote.clone();
         while self.settled_tick + self.speculations.len() as u32 + 1 <= target {
             // `unmatched_locals[k]` is the local input for tick
-            // `commit_frontier + k`; here `commit_frontier == settled_tick`, so
+            // `confirm_frontier + k`; here `confirm_frontier == settled_tick`, so
             // the local for the next speculative tick is at `speculations.len()`.
             let local = unmatched_locals[self.speculations.len()].clone();
             let tick = self.settled_tick + self.speculations.len() as u32 + 1;

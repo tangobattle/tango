@@ -125,7 +125,7 @@ impl Round {
     /// Netcode frontier — advances one per wall-frame via the live core's
     /// post-tick hook.
     pub(crate) fn frontier(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.frontier())
+        self.session.as_ref().map_or(0, |s| s.local_frontier())
     }
 
     /// Tick of the last `present_state` loaded into the live core (0 before any
@@ -154,7 +154,7 @@ impl Round {
     /// input contradicted the prediction. 0 on a clean frame; spikes on a
     /// rollback. See [`misprediction_depth`](getgud::Session::misprediction_depth).
     pub fn misprediction_depth(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.misprediction_depth())
+        self.session.as_ref().map_or(0, |s| s.last_misprediction_depth())
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
