@@ -155,7 +155,7 @@ session-back-to-session = Trở về phiên
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/giây (hiện tại/tối đa)
 session-stat-skew = Độ lệch
-session-stat-depth = Độ sâu suy đoán
+session-stat-depth = Độ sâu dự đoán sai
 session-stat-ping = Độ trễ mạng
 navi-style = Style
 folder-group = Nhóm theo chip

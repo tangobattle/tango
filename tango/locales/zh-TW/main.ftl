@@ -155,7 +155,7 @@ session-back-to-session = 返回對戰
 # PvP telemetry deck cell tooltips
 session-stat-tps = 每秒刻數（目前/上限）
 session-stat-skew = 偏移
-session-stat-depth = 預測深度
+session-stat-depth = 誤預測深度
 session-stat-ping = 網路延遲
 navi-style = 風格
 folder-group = 依晶片分組

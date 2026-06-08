@@ -159,7 +159,7 @@ session-back-to-session = Вернуться к сессии
 # PvP telemetry deck cell tooltips
 session-stat-tps = Тик/с (текущее/макс.)
 session-stat-skew = Смещение
-session-stat-depth = Глубина спекуляции
+session-stat-depth = Глубина ошибки предсказания
 session-stat-ping = Сетевая задержка
 navi-style = Стиль
 folder-group = Группировать по чипу
