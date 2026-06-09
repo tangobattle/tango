@@ -131,6 +131,23 @@ fn watch_replay_with(replay_file: &str, watch: &[u32], mut intervene: impl FnMut
     eprintln!("ran to tick {last}");
 }
 
+// Detect the family/variant of every ROM in TANGO_TEST_ROMS_DIR, so we can tell
+// whether two same-looking files map to different variants (different EWRAM).
+#[test]
+#[ignore]
+fn re_detect() {
+    for entry in std::fs::read_dir(roms_dir()).unwrap().flatten() {
+        let p = entry.path();
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if ext != "gba" && ext != "srl" {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&p) else { continue };
+        let det = tango_gamedb::detect(&bytes).map(|g| g.family_and_variant());
+        eprintln!("{:40} -> {:?}", p.file_name().unwrap().to_string_lossy(), det);
+    }
+}
+
 // Throwaway RE harness, not a regression test: needs TANGO_TEST_ROMS_DIR.
 #[test]
 #[ignore]
