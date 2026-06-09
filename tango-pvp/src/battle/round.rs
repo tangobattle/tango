@@ -114,8 +114,8 @@ impl Round {
     /// re-anchoring the shared shadow before its round-end advance (the simulator
     /// may have parked the shadow ahead on a speculative tick). `None` before the
     /// first commit.
-    pub(super) fn settled_shadow_snapshot(&self) -> Option<crate::shadow::ShadowSnapshot> {
-        self.session.as_ref().map(|s| s.settled_state().shadow_snapshot.clone())
+    pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
+        self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
     }
 
     pub fn local_player_index(&self) -> u8 {

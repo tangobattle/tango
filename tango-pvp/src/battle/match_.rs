@@ -166,7 +166,7 @@ impl Match {
                 return Ok(());
             };
             log::info!("round ended at {:x}", round.frontier());
-            round.settled_shadow_snapshot()
+            round.settled_shadow_snapshot().cloned()
         };
         {
             let mut shadow = self.shadow.lock().unwrap();
