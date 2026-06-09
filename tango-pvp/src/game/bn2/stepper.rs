@@ -145,6 +145,13 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
+            // The stepper's per-tick `InnerState` is recreated every step, so the
+            // chip-select timer lives in this closure (persists for the match),
+            // behind a RefCell for &mut access. PROTOTYPE: hardcoded limit +
+            // enabled only on the live fastforward path (replay leaves it
+            // disabled, so the golden suite stays byte-identical).
+            let custom_timer: std::cell::RefCell<Option<crate::custom_screen::CustomScreenTimer>> =
+                std::cell::RefCell::new(None);
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut state = stepper_state.lock_inner();
                 // In replay mode, do nothing until round_start_ret has fired.
@@ -157,6 +164,20 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
 
                 let current_tick = state.current_tick();
+
+                // Chip-select cap: pin the custom screen onto the close path
+                // (state write) — live fastforward only. BN2 needs no injected
+                // input, so re-sim reproduces the same close from the write.
+                if !state.is_replaying() {
+                    custom_timer
+                        .borrow_mut()
+                        .get_or_insert_with(|| {
+                            // PROTOTYPE: must match the match-config limit the
+                            // primary uses (hardcoded 60 at pvp_session).
+                            crate::custom_screen::CustomScreenTimer::new(Box::new(munger.clone()), 60)
+                        })
+                        .enforce(core, current_tick);
+                }
 
                 // Replay-mode-only first-commit hook. FF mode bypasses this
                 // (commit_frontier = u32::MAX there).

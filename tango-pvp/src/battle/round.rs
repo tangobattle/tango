@@ -49,6 +49,13 @@ pub struct Round {
     /// before the first load. Read by the per-game `round_post_increment_tick`
     /// traps via [`last_loaded_tick`](Self::last_loaded_tick).
     last_loaded_tick: u32,
+    /// Chip-select deliberation timer for this round, armed lazily by the
+    /// per-game primary trap (it supplies the [`CustomScreenHooks`] adapter).
+    /// `None` until armed; stays `None` all round if the match disabled it.
+    /// [`crate::custom_screen::CustomScreenHooks`].
+    custom_screen: Option<crate::custom_screen::CustomScreenTimer>,
+    /// The match's deliberation cap (`None` = disabled), copied at construction.
+    custom_screen_tick_limit: Option<u32>,
 }
 
 impl Round {
@@ -62,7 +69,40 @@ impl Round {
             primary_thread_handle: match_.primary_thread_handle(),
             throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
+            custom_screen: None,
+            custom_screen_tick_limit: match_.custom_screen_tick_limit(),
         }
+    }
+
+    /// True if the match enabled the chip-select timer and it hasn't been armed
+    /// yet — the per-game primary trap checks this to know when to call
+    /// [`arm_custom_screen`](Self::arm_custom_screen).
+    pub fn needs_custom_screen_armed(&self) -> bool {
+        self.custom_screen_tick_limit.is_some() && self.custom_screen.is_none()
+    }
+
+    /// Arm this round's chip-select timer with the game's [`CustomScreenHooks`]
+    /// adapter. No-op if the match disabled the timer.
+    pub fn arm_custom_screen(&mut self, game: Box<dyn crate::custom_screen::CustomScreenHooks + Send>) {
+        if let Some(limit) = self.custom_screen_tick_limit {
+            self.custom_screen = Some(crate::custom_screen::CustomScreenTimer::new(game, limit));
+        }
+    }
+
+    /// Run the chip-select timer one tick at this core's synced Tango tick
+    /// (`last_loaded_tick+1`, the tick about to be processed — equal to the
+    /// game's own tick, as the `round_post_increment_tick` checks assert).
+    /// Returns the confirm joyflags to OR into the local input this frame (`0`
+    /// when the timer is disabled/unarmed or not confirming).
+    pub fn enforce_custom_screen(&mut self, core: mgba::core::CoreMutRef) -> u16 {
+        let tick = self.last_loaded_tick + 1;
+        self.custom_screen.as_mut().map_or(0, |t| t.enforce(core, tick))
+    }
+
+    /// Battle ticks left in the custom screen, or `None` when not in it / the
+    /// timer is inactive. For the GUI countdown.
+    pub fn custom_screen_remaining(&self) -> Option<u32> {
+        self.custom_screen.as_ref().and_then(|t| t.remaining())
     }
 
     /// Build the rollback session from the round's first committed state, seeding

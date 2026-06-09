@@ -31,5 +31,12 @@ prost-build = "0.14"
 [dev-dependencies]
 sha2 = "0.10"
 
+# The `golden.rs -> golden/mod.rs` mod-convention refactor orphaned this target
+# (cargo only auto-discovers `tests/*.rs` or `tests/<dir>/main.rs`). Name it
+# explicitly so the determinism suite stays runnable.
+[[test]]
+name = "golden"
+path = "tests/golden/mod.rs"
+
 [lints]
 workspace = true

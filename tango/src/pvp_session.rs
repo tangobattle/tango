@@ -260,6 +260,8 @@ impl PvpSession {
             pre_match.is_offerer,
             local_player_index,
             rng.clone(),
+            // PROTOTYPE: chip-select cap; must match the Match's value above.
+            Some(60),
         )?;
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -281,6 +283,10 @@ impl PvpSession {
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             frame_delay.clone(),
+            // PROTOTYPE: chip-select deliberation cap, hardcoded to 60 ticks for
+            // now (must match the stepper's hardcoded value). `None` disables it.
+            // TODO: thread from agreed match settings.
+            Some(60),
         );
         *match_handle.try_lock().unwrap() = Some(inner_match.clone());
 
@@ -607,6 +613,15 @@ impl PvpSession {
             skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
             depth: round.misprediction_depth(),
         })
+    }
+
+    /// PROTOTYPE: ticks left in the chip-select deliberation timer, or `None`
+    /// when not in the custom screen / the timer is inactive. For the countdown
+    /// overlay; read off the live primary round.
+    pub fn custom_screen_remaining(&self) -> Option<u32> {
+        let match_ = self.match_handle.blocking_lock();
+        let round_state = match_.as_ref()?.lock_round_state();
+        round_state.as_ref()?.custom_screen_remaining()
     }
 }
 

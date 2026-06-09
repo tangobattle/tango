@@ -46,6 +46,7 @@ impl Shadow {
         is_offerer: bool,
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
+        custom_screen_tick_limit: Option<u32>,
     ) -> anyhow::Result<Self> {
         Self::new_from_sram(
             rom,
@@ -55,6 +56,7 @@ impl Shadow {
             is_offerer,
             local_player_index,
             rng,
+            custom_screen_tick_limit,
         )
     }
 
@@ -86,6 +88,9 @@ impl Shadow {
             replay.is_offerer,
             replay.local_player_index,
             rng,
+            // Replay reconstruction never runs the chip-select timer — its
+            // forced inputs (if any) are already baked into the recorded stream.
+            None,
         )
     }
 
@@ -101,6 +106,7 @@ impl Shadow {
         is_offerer: bool,
         local_player_index: u8,
         rng: rand_pcg::Mcg128Xsl64,
+        custom_screen_tick_limit: Option<u32>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
 
@@ -108,7 +114,7 @@ impl Shadow {
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(save_sram.to_vec()))?;
 
-        let state = State::new(match_type, is_offerer, local_player_index, rng);
+        let state = State::new(match_type, is_offerer, local_player_index, rng, custom_screen_tick_limit);
 
         hooks.patch(core.as_mut());
 

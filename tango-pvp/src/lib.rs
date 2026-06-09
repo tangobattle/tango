@@ -58,6 +58,7 @@
 //!    and advances the shadow past its matching round end.
 
 pub mod battle;
+pub mod custom_screen;
 pub mod eval;
 pub mod game;
 pub mod hooks;

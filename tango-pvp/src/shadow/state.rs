@@ -7,6 +7,9 @@ pub(super) struct InnerState {
     match_type: (u8, u8),
     is_offerer: bool,
     local_player_index: u8,
+    /// Chip-select deliberation cap, in battle ticks; `None` disables the timer
+    /// (e.g. replay reconstruction, so the golden suite stays byte-identical).
+    custom_screen_tick_limit: Option<u32>,
     pub(super) round_state: Mutex<RoundState>,
     pub(super) rng: Mutex<rand_pcg::Mcg128Xsl64>,
     pub(super) input_applied: AtomicBool,
@@ -19,11 +22,18 @@ pub(super) struct InnerState {
 pub struct State(pub(super) Arc<InnerState>);
 
 impl State {
-    pub fn new(match_type: (u8, u8), is_offerer: bool, local_player_index: u8, rng: rand_pcg::Mcg128Xsl64) -> State {
+    pub fn new(
+        match_type: (u8, u8),
+        is_offerer: bool,
+        local_player_index: u8,
+        rng: rand_pcg::Mcg128Xsl64,
+        custom_screen_tick_limit: Option<u32>,
+    ) -> State {
         State(Arc::new(InnerState {
             match_type,
             is_offerer,
             local_player_index,
+            custom_screen_tick_limit,
             rng: Mutex::new(rng),
             round_state: Mutex::new(RoundState {
                 round: None,
@@ -32,6 +42,10 @@ impl State {
             input_applied: AtomicBool::new(false),
             error: Mutex::new(None),
         }))
+    }
+
+    pub fn custom_screen_tick_limit(&self) -> Option<u32> {
+        self.0.custom_screen_tick_limit
     }
 
     pub fn match_type(&self) -> (u8, u8) {

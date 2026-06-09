@@ -110,6 +110,16 @@ pub(super) fn traps(
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
 
+                // Chip-select deliberation cap: when the match enables it, arm
+                // the timer (BN5's RAM adapter) and run it each tick. Over the
+                // limit it pins the screen onto the confirm path and returns the
+                // confirm (A) to OR into the local input below — the game then
+                // runs its own teardown. Same on shadow/stepper.
+                if round.needs_custom_screen_armed() {
+                    round.arm_custom_screen(Box::new(munger.clone()));
+                }
+                let confirm_joyflags = round.enforce_custom_screen(core);
+
                 // Verify before the first-commit branch: `has_committed_state`
                 // is false only on the very first trap fire (the game's just
                 // started, last_loaded == 0 hasn't been set by any
@@ -149,12 +159,9 @@ pub(super) fn traps(
                     );
                 }
 
-                if let Err(e) =
-                    crate::sync::block_on(round.add_local_input_and_fastforward(
-                        core,
-                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                    ))
-                {
+                let local_joyflags =
+                    (joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16) | confirm_joyflags;
+                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(core, local_joyflags)) {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }

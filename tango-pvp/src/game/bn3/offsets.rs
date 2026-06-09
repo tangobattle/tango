@@ -22,6 +22,15 @@ pub(super) struct EWRAMOffsets {
     pub(super) rng2_state: u32,
 
     pub(super) is_linking: u32,
+
+    /// Custom (chip-select) screen scene phase (battle struct `+1`): `== 8`
+    /// while the screen is up (through teardown), driving the timer.
+    pub(super) custom_screen_scene: u32,
+
+    /// Custom-screen sub-state machine (battle struct `+2`): 4 == selecting,
+    /// `== 8` once teardown has begun. Pinned to 4 (pops sub-dialogs) so the
+    /// injected Start lands on the chip-select handler.
+    pub(super) custom_screen_substate: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -160,6 +169,8 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     rng1_state:             0x02009730,
     rng2_state:             0x02009800,
     is_linking:             0x0203b36e,
+    custom_screen_scene:    0x02006ca1,
+    custom_screen_substate: 0x02006ca2,
 };
 
 #[derive(Clone, Copy)]

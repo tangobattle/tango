@@ -74,4 +74,23 @@ impl Munger {
     pub(super) fn packet_seqnum(&self, mut core: mgba::core::CoreMutRef) -> u32 {
         core.raw_read_32(self.offsets.ewram.packet_seqnum, -1)
     }
+
+    /// Custom (chip-select) screen scene phase. 2 == the screen is up (stays so
+    /// through teardown, so the timer keeps counting in any sub-dialog).
+    pub(super) fn custom_screen_scene(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.custom_screen_scene, -1) as u8
+    }
+
+    /// Custom-screen close sub-state. 8 == teardown has begun.
+    pub(super) fn custom_screen_substate(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.custom_screen_substate, -1) as u8
+    }
+
+    /// Force the chip-select screen closed. Unlike BN5/BN6, BN2's close needs no
+    /// cursor pin or injected button: writing the closing sub-state (8) makes the
+    /// game's own closing-state handler run the teardown standalone (commit chips
+    /// → animation → combat). Validated against the AE2E golden replay.
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.custom_screen_substate, -1, 8);
+    }
 }

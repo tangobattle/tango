@@ -1413,10 +1413,13 @@ pub fn view<'a>(
         }
     }
     let mut emu_stack = stack![backdrop, Element::from(content_row)];
-    // PROTOTYPE: chip-select deliberation countdown. -1 when not in the custom
-    // screen. Read straight from the live primary core (bn6 only for now).
-    let chip_ticks = tango_pvp::game::bn6::custom_screen_remaining();
-    if matches!(session, ActiveSession::PvP(_)) && chip_ticks >= 0 {
+    // PROTOTYPE: chip-select deliberation countdown, read off the live primary
+    // round (bn6 only for now). `None` when not in the custom screen.
+    let chip_ticks = match session {
+        ActiveSession::PvP(s) => s.custom_screen_remaining(),
+        _ => None,
+    };
+    if let Some(chip_ticks) = chip_ticks {
         let label = format!("CHIP TIME  {:.1}s  ({chip_ticks})", chip_ticks as f32 / 60.0);
         let color = if chip_ticks <= 180 {
             Color::from_rgb(1.0, 0.35, 0.35)

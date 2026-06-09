@@ -81,4 +81,25 @@ impl Munger {
     pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
         core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
     }
+
+    /// Custom (chip-select) screen scene phase. 8 == the screen is up (stays so
+    /// through teardown, so the timer keeps counting in any sub-dialog).
+    pub(super) fn custom_screen_scene(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.custom_screen_scene, -1) as u8
+    }
+
+    /// Custom-screen sub-state machine. 4 == selecting; 8 == teardown begun.
+    pub(super) fn custom_screen_substate(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.custom_screen_substate, -1) as u8
+    }
+
+    /// Pin the custom screen onto the confirm path. BN3 confirms with START
+    /// (which ignores the grid cursor), so there's no cursor to place; we just
+    /// force the sub-state to selecting (4) to pop out of any sub-dialog so the
+    /// injected Start lands on the chip-select handler, which runs the genuine
+    /// teardown (commit chips → animation → combat). Validated against the A6BE
+    /// golden replay.
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.custom_screen_substate, -1, 4);
+    }
 }

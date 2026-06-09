@@ -82,6 +82,13 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
+            // Timer lives in the closure (RefCell for &mut): the shadow's
+            // per-round state is cloned for snapshots, so it can't hold the
+            // (non-Clone) timer. Enabled only when the match set a limit (carried
+            // on the shadow's `InnerState`; replay reconstruction = None, so the
+            // golden suite stays byte-identical).
+            let custom_timer: std::cell::RefCell<Option<crate::custom_screen::CustomScreenTimer>> =
+                std::cell::RefCell::new(None);
             Box::new(move |mut core| {
                 let mut round_state = shadow_state.lock_round_state();
                 let Some(round) = round_state.round.as_mut() else {
@@ -111,6 +118,19 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     );
                     log::info!("shadow state committed on {}", round.current_tick());
                     return;
+                }
+
+                // Chip-select cap: pin the remote peer's screen onto the confirm
+                // path so the shadow predicts the remote's forced close instead
+                // of mispredicting it (rollback churn). The A confirm rides the
+                // remote's synced input.
+                if let Some(limit) = shadow_state.custom_screen_tick_limit() {
+                    custom_timer
+                        .borrow_mut()
+                        .get_or_insert_with(|| {
+                            crate::custom_screen::CustomScreenTimer::new(Box::new(munger.clone()), limit)
+                        })
+                        .enforce(core, round.current_tick());
                 }
 
                 let game_current_tick = munger.current_tick(core);

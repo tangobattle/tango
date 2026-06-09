@@ -96,4 +96,24 @@ impl Munger {
     pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
         core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
     }
+
+    /// Custom (chip-select) screen scene phase (`battle_subscene+0`). 4 == the
+    /// screen is up for the whole phase including teardown.
+    pub(super) fn battle_subscene(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene, -1) as u8
+    }
+
+    /// Custom-screen close sub-state (`battle_subscene+1`). 8 == teardown begun.
+    pub(super) fn custom_subphase(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene + 1, -1) as u8
+    }
+
+    /// Pin the custom screen onto the confirm path. BN4's confirm is reached by
+    /// opening the OK sub-menu (the state pressing Start produces) and pressing
+    /// A: write `battle_subscene+2 := 8` (OK menu open), then the caller injects
+    /// A — the game runs its genuine teardown (commit chips → animation →
+    /// combat). Validated end-to-end against the B4BE golden replay.
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.battle_subscene + 2, -1, 8); // 0x02036442 = OK menu open
+    }
 }

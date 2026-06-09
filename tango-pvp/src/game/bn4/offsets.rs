@@ -23,6 +23,12 @@ pub(super) struct EWRAMOffsets {
 
     /// The state of copying input data, usually returned by get_copy_data_input_state_ret.
     pub(super) copy_data_input_state: u32,
+
+    /// Custom (chip-select) screen sub-scene struct. `+0` is the scene phase
+    /// (4 == custom screen), `+1` the close sub-state (8 == teardown begun),
+    /// `+2` the OK-menu sub-state (writing 8 opens it, as pressing Start would).
+    /// Drives the chip-select deliberation timer.
+    pub(super) battle_subscene: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -143,6 +149,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     rng1_state:             0x020015d4,
     rng2_state:             0x02001790,
     copy_data_input_state:  0x0203f6d5,
+    battle_subscene:        0x02036440,
 };
 
 #[derive(Clone, Copy)]

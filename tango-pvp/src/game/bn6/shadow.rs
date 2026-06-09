@@ -1,6 +1,5 @@
 use crate::hooks::Trap;
 
-use super::custom_screen::{CustomScreenTimer, TICK_LIMIT};
 use super::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
@@ -86,7 +85,13 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
-            let custom_timer = CustomScreenTimer::new();
+            // Timer lives in the closure (RefCell for &mut): the shadow's
+            // per-round state is cloned for snapshots, so it can't hold the
+            // (non-Clone) timer. Enabled only when the match set a limit (the
+            // shadow's `InnerState` carries it; replay reconstruction = None, so
+            // the golden suite stays byte-identical).
+            let custom_timer: std::cell::RefCell<Option<crate::custom_screen::CustomScreenTimer>> =
+                std::cell::RefCell::new(None);
             Box::new(move |mut core| {
                 let mut round_state = shadow_state.lock_round_state();
                 let Some(round) = round_state.round.as_mut() else {
@@ -118,10 +123,18 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     return;
                 }
 
-                // Chip-select deliberation cap: same synced state write as the
-                // primary/stepper. The shadow simulates the remote peer, so it
-                // forces the remote player's ready flag.
-                custom_timer.enforce(&munger, core, TICK_LIMIT, round.remote_player_index() as u8);
+                // Chip-select cap: pin the remote peer's screen onto the confirm
+                // path so the shadow predicts the remote's forced close instead
+                // of mispredicting it (which would cause rollback churn). The A
+                // confirm rides the remote's synced input.
+                if let Some(limit) = shadow_state.custom_screen_tick_limit() {
+                    custom_timer
+                        .borrow_mut()
+                        .get_or_insert_with(|| {
+                            crate::custom_screen::CustomScreenTimer::new(Box::new(munger.clone()), limit)
+                        })
+                        .enforce(core, round.current_tick());
+                }
 
                 let game_current_tick = munger.current_tick(core);
                 if game_current_tick != round.current_tick() {

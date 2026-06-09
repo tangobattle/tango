@@ -1,6 +1,5 @@
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::custom_screen::{CustomScreenTimer, TICK_LIMIT};
 use super::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(
@@ -107,7 +106,6 @@ pub(super) fn traps(
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let match_ = match_.clone();
-            let custom_timer = CustomScreenTimer::new();
             Box::new(move |core| {
                 let guard = match_.blocking_lock();
                 let Some(match_) = guard.as_ref() else { return };
@@ -116,13 +114,15 @@ pub(super) fn traps(
                     return;
                 };
 
-                // Chip-select deliberation cap. Pins the custom screen onto the
-                // confirm path (state writes) and, once over the limit, has us OR
-                // the confirm (A) into the local input below — so the game runs
-                // its own teardown. Runs identically on shadow/stepper; the
-                // primary also publishes the GUI countdown.
-                let force_confirm =
-                    custom_timer.enforce_and_report(&munger, core, TICK_LIMIT, round.local_player_index() as u8);
+                // Chip-select deliberation cap. The round owns the timer; we
+                // arm it (supplying BN6's RAM adapter) and run it each tick. When
+                // over the limit it pins the screen onto the confirm path and
+                // tells us to OR the confirm (A) into the local input below — so
+                // the game runs its own teardown. Same on shadow/stepper.
+                if round.needs_custom_screen_armed() {
+                    round.arm_custom_screen(Box::new(munger.clone()));
+                }
+                let confirm_joyflags = round.enforce_custom_screen(core);
 
                 // Verify before the first-commit branch: `has_committed_state`
                 // is false only on the very first trap fire (the game's just
@@ -165,9 +165,7 @@ pub(super) fn traps(
                 }
 
                 let mut local_joyflags = joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16;
-                if force_confirm {
-                    local_joyflags |= super::custom_screen::CONFIRM_JOYFLAG;
-                }
+                local_joyflags |= confirm_joyflags;
                 if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(core, local_joyflags)) {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();

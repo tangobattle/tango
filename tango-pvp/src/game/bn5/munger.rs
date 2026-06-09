@@ -93,4 +93,30 @@ impl Munger {
     pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
         core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
     }
+
+    /// Custom (chip-select) screen scene phase (`battle_subscene+0`). 4 == the
+    /// chip-select screen is up for the whole phase including teardown.
+    pub(super) fn battle_subscene(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene, -1) as u8
+    }
+
+    /// Custom-screen state-machine sub-state (`battle_subscene+1`). 4 ==
+    /// selecting; 8 == the teardown/close has begun.
+    pub(super) fn custom_subphase(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene + 1, -1) as u8
+    }
+
+    /// Pin the custom-screen state machine onto the natural confirm path so the
+    /// game runs its own teardown (commit chips → close animation → combat).
+    /// BN5 is structurally identical to BN6 (validated against BRKE): the
+    /// selecting handler reads the grid cursor at `struct+7`; on A over the OK
+    /// cell it dispatches the teardown (`0x08024960`) which sets `struct+1 := 8`.
+    /// So force sub-state to selecting (4, pops out of any sub-dialog) and the
+    /// cursor onto OK (10); the caller injects A. NOTE: cursor index 10 = OK was
+    /// observed on BRKE — verify for the other BN5 variants.
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
+        let sub = self.offsets.ewram.battle_subscene;
+        core.raw_write_8(sub + 1, -1, 4); // 0x02036b11 = selecting state (exit dialogs)
+        core.raw_write_8(sub + 7, -1, 10); // 0x02036b17 = cursor on OK button
+    }
 }

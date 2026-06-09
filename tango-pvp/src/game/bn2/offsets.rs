@@ -20,6 +20,15 @@ pub(super) struct EWRAMOffsets {
 
     pub(super) is_linking: u32,
     pub(super) packet_seqnum: u32,
+
+    /// Custom (chip-select) screen scene phase: `== 2` while the screen is up
+    /// (through teardown), driving the deliberation timer.
+    pub(super) custom_screen_scene: u32,
+
+    /// Custom-screen close sub-state: `== 8` once teardown has begun. Writing 8
+    /// here is what forces the close — BN2's closing-state handler then runs the
+    /// teardown standalone (no cursor pin / injected button needed).
+    pub(super) custom_screen_substate: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -109,6 +118,8 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     rng_state:              0x02009080,
     is_linking:             0x0200eae0,
     packet_seqnum:          0x0200ea9c,
+    custom_screen_scene:    0x0200eb10,
+    custom_screen_substate: 0x0200eef0,
 };
 
 #[derive(Clone, Copy)]

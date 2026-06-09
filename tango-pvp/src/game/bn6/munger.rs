@@ -113,7 +113,7 @@ impl Munger {
     /// teardown with proper context. Verified end-to-end in the harness (closes to
     /// combat with real HP). NOTE: cursor index 10 = OK was observed on one BR6E
     /// layout — confirm it's layout-independent; JP/other ROMs need their own value.
-    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef, _player_index: u8) {
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
         let sub = self.offsets.ewram.battle_subscene;
         core.raw_write_8(sub + 1, -1, 4); // 0x020364c1 = selecting state (exit dialogs)
         core.raw_write_8(sub + 7, -1, 10); // 0x020364c7 = cursor on OK button

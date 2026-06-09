@@ -36,6 +36,10 @@ pub struct Match {
     /// mid-match (footer slider) and every round reads the current value each
     /// frame.
     frame_delay: Arc<AtomicU32>,
+    /// Chip-select deliberation cap, in battle ticks; `None` = the timer is
+    /// disabled for this match. Threaded to each round's
+    /// [`CustomScreenTimer`](crate::custom_screen::CustomScreenTimer).
+    custom_screen_tick_limit: Option<u32>,
 }
 
 impl Match {
@@ -50,6 +54,7 @@ impl Match {
         identity: MatchIdentity,
         replay: ReplayConfig,
         frame_delay: Arc<AtomicU32>,
+        custom_screen_tick_limit: Option<u32>,
     ) -> Arc<Self> {
         let (round_progress, _) = watch::channel(0);
         Arc::new(Self {
@@ -67,7 +72,12 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
+            custom_screen_tick_limit,
         })
+    }
+
+    pub(super) fn custom_screen_tick_limit(&self) -> Option<u32> {
+        self.custom_screen_tick_limit
     }
 
     pub(super) fn rom(&self) -> &[u8] {

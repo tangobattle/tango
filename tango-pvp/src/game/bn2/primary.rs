@@ -114,6 +114,16 @@ pub(super) fn traps(
                     return;
                 }
 
+                // Chip-select deliberation cap: when the match enables it, arm
+                // the timer (BN2's RAM adapter) and run it each tick. Over the
+                // limit it writes BN2's closing sub-state, which makes the game
+                // run its own teardown — no injected input needed (confirm is 0).
+                // Same on shadow/stepper.
+                if round.needs_custom_screen_armed() {
+                    round.arm_custom_screen(Box::new(munger.clone()));
+                }
+                let confirm_joyflags = round.enforce_custom_screen(core);
+
                 if !round.has_settled_snapshot() {
                     let mut rng = match_.lock_rng();
                     let shared_rng_state = generate_rng_state(&mut *rng);
@@ -125,12 +135,9 @@ pub(super) fn traps(
                     log::info!("primary rng state: {:08x}", munger.rng_state(core));
                 }
 
-                if let Err(e) =
-                    crate::sync::block_on(round.add_local_input_and_fastforward(
-                        core,
-                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                    ))
-                {
+                let local_joyflags =
+                    (joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16) | confirm_joyflags;
+                if let Err(e) = crate::sync::block_on(round.add_local_input_and_fastforward(core, local_joyflags)) {
                     log::error!("failed to add local input: {}", e);
                     match_.cancel();
                 }

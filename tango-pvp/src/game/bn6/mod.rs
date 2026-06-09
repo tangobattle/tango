@@ -7,12 +7,6 @@ mod rng;
 mod shadow;
 mod stepper;
 
-/// PROTOTYPE: battle ticks left in the custom (chip-select) screen for the live
-/// local view, or -1 when not in it. Read by the GUI countdown overlay.
-pub fn custom_screen_remaining() -> i32 {
-    custom_screen::DEBUG_REMAINING.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 pub struct Hooks {
     offsets: &'static offsets::Offsets,
 }
