@@ -32,7 +32,7 @@ pub struct Round {
     /// ones belong to a future round a racing peer has started.
     round_idx: u32,
     /// Handoff queue from the net receive task, shared with the Match.
-    remote_inputs: super::match_::SharedRemoteInputs,
+    remote_inputs: Arc<super::match_::RemoteInputs>,
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
@@ -207,31 +207,19 @@ impl Round {
         // The engine only consults remote inputs inside `advance`, so
         // draining here (instead of the net task pushing them the moment
         // they arrive) changes nothing about when they take effect.
-        {
-            let mut queue = self.remote_inputs.lock().unwrap();
-            while let Some(&(peer_round, _)) = queue.front() {
-                if peer_round < self.round_idx {
-                    // Stale tail from a round we already ended locally.
-                    queue.pop_front();
-                    continue;
-                }
-                if peer_round > self.round_idx {
-                    // The peer raced ahead; leave for the next round's drain.
-                    break;
-                }
-                let (_, input) = queue.pop_front().unwrap();
-                log::debug!("remote input: {:?}", input);
-                if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
-                    anyhow::bail!("remote overflowed our input buffer");
-                }
-                session.add_remote_input(
-                    PartialInput {
-                        joyflags: input.joyflags,
-                    },
-                    input.frame_advantage,
-                );
+        self.remote_inputs.drain(self.round_idx, |input| {
+            log::debug!("remote input: {:?}", input);
+            if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
+                anyhow::bail!("remote overflowed our input buffer");
             }
-        }
+            session.add_remote_input(
+                PartialInput {
+                    joyflags: input.joyflags,
+                },
+                input.frame_advantage,
+            );
+            Ok(())
+        })?;
 
         // Push the host-side live frame delay into the engine before stepping,
         // so a footer-slider change takes effect on this frame.

@@ -7,13 +7,83 @@ use tokio::sync::Mutex;
 use super::round::{Round, MAX_QUEUE_LENGTH};
 use super::{MatchIdentity, ReplayConfig};
 
-/// Inputs from the peer, tagged at receive time with the peer-round index
-/// they belong to. The net receive task pushes; the live round drains it at
-/// the top of every frame (which is also the only time the rollback engine
-/// looks at remote inputs, so this adds no latency). Entries tagged for an
-/// already-ended local round are dropped at drain; entries for a future
-/// round wait in place until that round starts.
-pub(super) type SharedRemoteInputs = Arc<SyncMutex<VecDeque<(u32, crate::net::Input)>>>;
+/// Handoff queue from the net receive task to the live round: inputs from
+/// the peer, tagged at receive time with the peer-round index they belong
+/// to. The net task pushes; the live round drains it at the top of every
+/// frame (which is also the only time the rollback engine looks at remote
+/// inputs, so this adds no latency). Entries tagged for an already-ended
+/// local round are dropped at drain; entries for a future round wait in
+/// place until that round starts.
+///
+/// Flow control: [`push`](RemoteInputs::push) suspends while the queue is
+/// full — the net task stops reading the socket, so an overactive peer
+/// backs up in their own send buffer instead of overflowing us. The drain
+/// stores a wake permit whenever it removes entries, so a parked push
+/// resumes by the next frame.
+#[derive(Default)]
+pub(super) struct RemoteInputs {
+    queue: SyncMutex<VecDeque<(u32, crate::net::Input)>>,
+    drained: tokio::sync::Notify,
+}
+
+impl RemoteInputs {
+    /// One round's worth of pipe depth. The peer can't legitimately get
+    /// further ahead than this: their own engine caps at
+    /// [`MAX_QUEUE_LENGTH`] unacknowledged local inputs.
+    const CAPACITY: usize = MAX_QUEUE_LENGTH;
+
+    /// Queue one input, waiting for space if the round is slow to drain
+    /// (e.g. we're still playing out a round the peer already finished).
+    pub(super) async fn push(&self, peer_round: u32, input: crate::net::Input) {
+        loop {
+            // Arm the wakeup BEFORE re-checking, so a drain that lands
+            // between the check and the await leaves a stored permit.
+            let notified = self.drained.notified();
+            if self.queue.lock().unwrap().len() < Self::CAPACITY {
+                break;
+            }
+            notified.await;
+        }
+        self.queue.lock().unwrap().push_back((peer_round, input));
+    }
+
+    /// Drain entries for local round `round_idx` into `f` (the engine
+    /// push): stale tags drop, future tags stay queued for the round
+    /// they belong to.
+    pub(super) fn drain(
+        &self,
+        round_idx: u32,
+        mut f: impl FnMut(crate::net::Input) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        let mut queue = self.queue.lock().unwrap();
+        let mut popped = false;
+        let result = loop {
+            match queue.front() {
+                Some(&(peer_round, _)) if peer_round < round_idx => {
+                    // Stale tail from a round we already ended locally.
+                    queue.pop_front();
+                    popped = true;
+                }
+                Some(&(peer_round, _)) if peer_round == round_idx => {
+                    let (_, input) = queue.pop_front().unwrap();
+                    popped = true;
+                    if let Err(e) = f(input) {
+                        break Err(e);
+                    }
+                }
+                // Empty, or the peer raced ahead — leave those for the
+                // next round's drain.
+                _ => break Ok(()),
+            }
+        };
+        if popped {
+            // Permit-storing notify: no lost wakeup if the push isn't
+            // parked yet.
+            self.drained.notify_one();
+        }
+        result
+    }
+}
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
@@ -34,7 +104,7 @@ pub struct Match {
     round_state: SyncMutex<Option<Round>>,
     primary_thread_handle: mgba::thread::Handle,
     /// Handoff queue from the net receive task to the live round.
-    remote_inputs: SharedRemoteInputs,
+    remote_inputs: Arc<RemoteInputs>,
     /// Count of local `end_round` calls. Each remote Input is tagged with
     /// `peer_round_idx` at receive time; each [`Round`] is stamped with this
     /// counter at creation, and drains only matching entries — a stale tail
@@ -76,7 +146,7 @@ impl Match {
             identity,
             round_state: SyncMutex::new(None),
             primary_thread_handle,
-            remote_inputs: SharedRemoteInputs::default(),
+            remote_inputs: Arc::default(),
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
@@ -116,7 +186,7 @@ impl Match {
         self.frame_delay.clone()
     }
 
-    pub(super) fn remote_inputs_handle(&self) -> SharedRemoteInputs {
+    pub(super) fn remote_inputs_handle(&self) -> Arc<RemoteInputs> {
         self.remote_inputs.clone()
     }
 
@@ -233,7 +303,9 @@ impl Match {
     /// Network receive loop. Pure producer: stamps each remote input with
     /// the peer-round it belongs to and queues it; the live round drains the
     /// queue each frame. Never touches round state, so it can't contend
-    /// with a trap mid-fastforward.
+    /// with a trap mid-fastforward. When the queue is full, `push` parks
+    /// this task — we stop reading the socket and the peer's sends back up
+    /// in their buffer, same flow control as before.
     pub async fn run(&self, mut receiver: Box<dyn crate::net::Receiver + Send + Sync>) -> anyhow::Result<()> {
         loop {
             match receiver.receive().await? {
@@ -242,16 +314,7 @@ impl Match {
                     // later EndOfRound still attaches to its original round,
                     // not whichever round the peer is in by drain time.
                     let peer_round = self.peer_round_idx.load(Ordering::Acquire);
-                    let mut queue = self.remote_inputs.lock().unwrap();
-                    // Generous bound: the engine itself holds at most
-                    // MAX_QUEUE_LENGTH per round; double that covers a peer
-                    // racing one whole round ahead. (The old design instead
-                    // stopped reading the socket while an input was held —
-                    // same outcome, the peer's sends back up.)
-                    if queue.len() >= MAX_QUEUE_LENGTH * 2 {
-                        anyhow::bail!("remote overflowed our input buffer");
-                    }
-                    queue.push_back((peer_round, input));
+                    self.remote_inputs.push(peer_round, input).await;
                 }
                 crate::net::Event::EndOfRound => {
                     self.peer_round_idx.fetch_add(1, Ordering::Release);
