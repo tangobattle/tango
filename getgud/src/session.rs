@@ -228,10 +228,14 @@ impl<W: World> Session<W> {
 
         self.local_frontier += 1;
 
-        // Present the deepest speculation we built (tick == target). If there is
-        // none — no speculation needed — present the settled state.
+        // Present the speculation at `target`. The buffer can reach *past* `target`
+        // when `present_delay` was just increased (shrinking `target`) since those
+        // deeper ticks were speculated, so index to `target` rather than taking the
+        // deepest snapshot — the surplus tail stays buffered for the frames where
+        // `target` climbs back to it (or is dropped wholesale on the next
+        // rollback). If there is no speculation, present the settled state.
         Ok(if target > self.settled_tick && self.confirm_frontier > 0 {
-            let spec = self.speculations.back().expect("speculative frame");
+            let spec = &self.speculations[(target - self.settled_tick - 1) as usize];
             assert_eq!(spec.tick, target);
             Frame {
                 tick: spec.tick,
@@ -672,5 +676,56 @@ mod tests {
         }
         assert_eq!(s.settled_state().as_slice(), truth.as_slice());
         assert_eq!(logged.lock().unwrap().as_slice(), &truth[..3]);
+    }
+
+    /// Raising `present_delay` mid-session shrinks `target` below the speculation
+    /// frontier already built, so the deepest buffered spec sits *past* the new
+    /// target. `advance` must present the spec at `target` (not the deepest) and
+    /// keep settling correctly — regression for a panic when the two diverged.
+    #[test]
+    fn present_delay_increase_presents_target_not_tail() {
+        let counters = Arc::new(Mutex::new(Counters::default()));
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        // Constant remote: every prediction holds, so the deep speculation tail is
+        // never cleared by a rollback — exactly the case that leaves the buffer
+        // longer than `target` after the delay bump.
+        let locals: Vec<u8> = (1..=24).collect();
+        let remotes = [9u8; 24];
+        let truth = truth(&locals, &remotes);
+        let n = locals.len();
+        // Remote lags far enough that even after the bump the settled cap stays
+        // behind `target` (so `advance` takes the speculating branch, not the
+        // settled one).
+        let remote_delay = 6;
+
+        // present_delay 0 first: speculation runs `remote_delay` ticks ahead of the
+        // settled cap, building a deep buffer.
+        let mut s = session(0, counters.clone(), logged.clone(), None);
+        for i in 0..12 {
+            if i >= remote_delay {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            s.advance(locals[i]).unwrap();
+        }
+
+        // Bump present_delay: `target` drops below the buffer frontier built above,
+        // so the deepest spec now sits past `target`. This used to panic on
+        // `assert_eq!(spec.tick, target)`.
+        s.set_present_delay(3);
+        for i in 12..n + remote_delay {
+            if i >= remote_delay && i - remote_delay < n {
+                s.add_remote_input(remotes[i - remote_delay], 0);
+            }
+            let local = if i < n { locals[i] } else { 99 };
+            let frame_tick = s.advance(local).unwrap().tick;
+            // Settled stays a correct prefix of ground truth, and the presented
+            // tick never runs behind the settled cap.
+            let st = s.settled_state();
+            assert_eq!(st.as_slice(), &truth[..st.len()], "settled diverged at frame {i}");
+            assert!(frame_tick >= st.len() as u32, "presented before settled at frame {i}");
+        }
+
+        assert_eq!(s.settled_state().as_slice(), truth.as_slice());
+        assert_eq!(logged.lock().unwrap().as_slice(), truth.as_slice());
     }
 }
