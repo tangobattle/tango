@@ -47,15 +47,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 stepper_state.local_player_index() as u32,
                 &local_packet.clone().try_into().unwrap(),
             );
-            let remote_packet = match stepper_state.apply_shadow_input((local.with_packet(local_packet), remote)) {
-                Ok(packet) => packet,
-                Err(e) => {
-                    // Surface through the stepper's error channel: the FF
-                    // drive loop aborts on it, and the live path turns that
-                    // into log + match cancel.
-                    stepper_state.set_anyhow_error(e);
-                    return;
-                }
+            // On failure the error is already on the stepper's error channel;
+            // the drive loop aborts on it.
+            let Some(remote_packet) = stepper_state.apply_shadow_input((local.with_packet(local_packet), remote))
+            else {
+                return;
             };
             munger.set_rx_packet(
                 core,

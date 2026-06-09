@@ -173,7 +173,7 @@ pub struct InnerState {
     match_type: (u8, u8),
     input_pairs: VecDeque<PartialInputPair>,
     output_pairs: Vec<InputPair>,
-    packet_source: Box<dyn super::RemotePacketSource>,
+    packet_source: Arc<dyn super::RemotePacketSource>,
     local_packet: Option<LocalPacket>,
     round_result: Option<RoundResult>,
     error: Option<anyhow::Error>,
@@ -248,7 +248,7 @@ impl InnerState {
         // shadow emulator over the recorded remote joyflag (carried in
         // `ip.remote.joyflags`); the shared Shadow handle is the
         // [`RemotePacketSource`](super::RemotePacketSource).
-        let packet_source: Box<dyn super::RemotePacketSource> = Box::new(shadow.clone());
+        let packet_source: Arc<dyn super::RemotePacketSource> = shadow.clone();
 
         // send_count = 0 either way: fresh starts at tick 0 with empty
         // output_pairs, and restore resets output_pairs to empty too — both
@@ -282,14 +282,14 @@ impl InnerState {
     }
 
     /// Construct an InnerState for a Fastforwarder run. Wired up by
-    /// [`super::Fastforwarder::fastforward`].
+    /// [`Stepper::step`](super::Stepper::step).
     pub(super) fn for_fastforward(
         match_type: (u8, u8),
         local_player_index: u8,
         inputs: Vec<PartialInputPair>,
         current_tick: u32,
         last_local_packet: Vec<u8>,
-        packet_source: Box<dyn super::RemotePacketSource>,
+        packet_source: Arc<dyn super::RemotePacketSource>,
     ) -> Self {
         // Run `inputs` one tick each, then capture at the boundary tick (one past
         // the last applied). By then the input window is exhausted, so the
@@ -504,12 +504,24 @@ impl InnerState {
 
     // ----- shadow input -----
 
-    pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
-        let remote_packet = self.packet_source.resolve(self.current_tick, input.clone())?;
-        let (local, remote) = input;
-        self.output_pairs
-            .push((local, remote.with_packet(remote_packet.clone())));
-        Ok(remote_packet)
+    /// Resolve the remote packet for the current tick by co-simulating the
+    /// shadow, recording the confirmed pair in `output_pairs`. On failure
+    /// the error goes straight into the stepper's error channel — which the
+    /// drive loops abort on — and this returns `None`; the per-game trap
+    /// just ends its fire.
+    pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> Option<Vec<u8>> {
+        match self.packet_source.resolve(self.current_tick, input.clone()) {
+            Ok(remote_packet) => {
+                let (local, remote) = input;
+                self.output_pairs
+                    .push((local, remote.with_packet(remote_packet.clone())));
+                Some(remote_packet)
+            }
+            Err(e) => {
+                self.set_anyhow_error(e);
+                None
+            }
+        }
     }
 
     /// Per-tick output pairs accumulated since the last round transition.
@@ -547,7 +559,7 @@ impl InnerState {
         });
         if let Some(shadow) = shadow_to_advance {
             if let Err(e) = shadow.lock().unwrap().advance_until_first_committed_state() {
-                self.error = Some(e);
+                self.set_anyhow_error(e);
             }
         }
     }
@@ -587,27 +599,17 @@ impl InnerState {
         self.fastforward().is_some_and(|ff| ff.captured.is_some())
     }
 
-    /// Consumes self into a Fastforwarder result, handing the packet source
-    /// back to the [`Stepper`](super::Stepper) for the next step. Panics if
-    /// not in Fastforwarder mode or the boundary hasn't been recorded yet —
-    /// callers must check [`Self::has_captured_snapshot`] first.
-    pub(super) fn into_stepper_result(self) -> (super::StepperResult, Box<dyn super::RemotePacketSource>) {
+    /// Consumes self into a Fastforwarder result. Panics if not in
+    /// Fastforwarder mode or the boundary hasn't been recorded yet — callers
+    /// must check [`Self::has_captured_snapshot`] first.
+    pub(super) fn into_stepper_result(self) -> super::StepperResult {
         let Mode::Fastforward(ff) = self.mode else {
             panic!("into_stepper_result is Fastforwarder-mode-only");
         };
-        (
-            super::StepperResult {
-                boundary: ff.captured.expect("captured boundary"),
-                round_result: self.round_result,
-            },
-            self.packet_source,
-        )
-    }
-
-    /// Consumes self, recovering just the packet source — the failure-path
-    /// counterpart of [`Self::into_stepper_result`].
-    pub(super) fn recover_packet_source(self) -> Box<dyn super::RemotePacketSource> {
-        self.packet_source
+        super::StepperResult {
+            boundary: ff.captured.expect("captured boundary"),
+            round_result: self.round_result,
+        }
     }
 
     // ----- round phase / outcome -----
@@ -647,7 +649,7 @@ impl InnerState {
         };
         if let Some(shadow) = shadow_to_advance {
             if let Err(e) = shadow.lock().unwrap().advance_until_round_end() {
-                self.error = Some(e);
+                self.set_anyhow_error(e);
             }
         }
     }
@@ -658,10 +660,10 @@ impl InnerState {
                 ff.ending = RoundPhase::Ended;
             }
             Mode::Replay(replay) => {
-                // Finished is sticky: the game may keep firing round-end
-                // traps in its post-replay limbo, and dropping back to
-                // RoundEnded would let round_start_ret pop a (nonexistent)
-                // next round.
+                // Finished is sticky so the terminal state stays obvious.
+                // (Not load-bearing: dropping back to RoundEnded would just
+                // be absorbed into Finished again at the next
+                // round_start_ret, since the queue is empty by then.)
                 if replay.phase != PlaybackPhase::Finished {
                     replay.phase = PlaybackPhase::RoundEnded;
                 }
@@ -745,7 +747,7 @@ impl InnerState {
             }
             PlaybackPhase::RoundEnded => match replay.next_rounds.pop_front() {
                 Some(round_inputs) => self.load_replay_round(round_inputs),
-                None => self.replay_mut().unwrap().phase = PlaybackPhase::Finished,
+                None => replay.phase = PlaybackPhase::Finished,
             },
             _ => {}
         }

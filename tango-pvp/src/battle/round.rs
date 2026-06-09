@@ -11,27 +11,21 @@ use super::EXPECTED_FPS;
 /// Per-side input-queue capacity.
 const MAX_QUEUE_LENGTH: usize = 120;
 
-/// Lifecycle of a [`Round`]'s rollback engine. A round is allocated at
-/// `round_start_ret`, but the engine can't be built until the live core
-/// reaches the round's first commit — the engine must be seeded with that
-/// state — so the round spends its early frames armed but not running.
-enum RoundStage {
-    /// Waiting for the first commit. Engine-metric accessors answer 0 and
-    /// remote inputs are held off (`Match::try_attach_remote_input` checks
-    /// [`Round::has_settled_snapshot`]).
-    Armed,
-    /// First commit reached; the rollback engine is live. Entered by
-    /// [`Round::start_session`] on the first `main_read_joyflags`.
-    Running { session: getgud::Session<MgbaWorld> },
-}
-
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
 /// mgba-specific I/O the engine deliberately knows nothing about — the network
 /// sender (for shipping the local input each frame) and the live core's thread
 /// handle (to restore the frame-rate target when the round ends).
 pub struct Round {
-    stage: RoundStage,
+    /// The rollback engine. A round is allocated at `round_start_ret`, but
+    /// the engine can't be built until the live core reaches the round's
+    /// first commit — it must be seeded with that state — so this is `None`
+    /// ("armed") for the round's early frames, until
+    /// [`start_session`](Round::start_session) runs on the first
+    /// `main_read_joyflags`. While armed, engine-metric accessors answer 0
+    /// and remote inputs are held off
+    /// ([`try_add_remote_input`](Round::try_add_remote_input)).
+    session: Option<getgud::Session<MgbaWorld>>,
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
@@ -65,7 +59,7 @@ pub struct Round {
 impl Round {
     pub(super) fn new(match_: &super::Match) -> Self {
         Self {
-            stage: RoundStage::Armed,
+            session: None,
             local_player_index: match_.local_player_index(),
             hooks: match_.local_hooks(),
             sender: match_.sender_handle(),
@@ -100,7 +94,7 @@ impl Round {
             local_state.as_ref(),
             // The shared shadow handle doubles as the stepper's remote-packet
             // source: each re-sim tick co-simulates the opponent through it.
-            Box::new(match_.shadow_handle()),
+            match_.shadow_handle(),
         )?;
         let world = MgbaWorld {
             stepper,
@@ -109,27 +103,18 @@ impl Round {
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
         };
-        self.stage = RoundStage::Running {
-            session: getgud::Session::new(getgud::SessionParams {
-                present_delay: self.frame_delay.load(Ordering::Relaxed),
-                initial_remote: PartialInput { joyflags: 0 },
-                initial_state: MgbaState {
-                    primary: local_state,
-                    outgoing: first_packet.to_vec(),
-                    shadow_snapshot,
-                    tick: 0,
-                },
-                world,
-            }),
-        };
+        self.session = Some(getgud::Session::new(getgud::SessionParams {
+            present_delay: self.frame_delay.load(Ordering::Relaxed),
+            initial_remote: PartialInput { joyflags: 0 },
+            initial_state: MgbaState {
+                primary: local_state,
+                outgoing: first_packet.to_vec(),
+                shadow_snapshot,
+                tick: 0,
+            },
+            world,
+        }));
         Ok(())
-    }
-
-    fn session(&self) -> Option<&getgud::Session<MgbaWorld>> {
-        match &self.stage {
-            RoundStage::Running { session } => Some(session),
-            RoundStage::Armed => None,
-        }
     }
 
     /// The opponent co-sim snapshot at the authoritative settled tick, cloned for
@@ -137,7 +122,7 @@ impl Round {
     /// may have parked the shadow ahead on a speculative tick). `None` before the
     /// first commit.
     pub(super) fn settled_shadow_snapshot(&self) -> Option<&crate::shadow::ShadowSnapshot> {
-        self.session().map(|s| &s.settled_state().shadow_snapshot)
+        self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -147,7 +132,7 @@ impl Round {
     /// Netcode frontier — advances one per wall-frame via the live core's
     /// post-tick hook.
     pub(crate) fn frontier(&self) -> u32 {
-        self.session().map_or(0, |s| s.local_frontier())
+        self.session.as_ref().map_or(0, |s| s.local_frontier())
     }
 
     /// Tick of the last `present_state` loaded into the live core (0 before any
@@ -160,15 +145,15 @@ impl Round {
     /// Whether the round has reached its first commit and the rollback session
     /// is live. Until then the round is armed but not yet running.
     pub fn has_settled_snapshot(&self) -> bool {
-        matches!(self.stage, RoundStage::Running { .. })
+        self.session.is_some()
     }
 
     pub fn local_frame_advantage(&self) -> i16 {
-        self.session().map_or(0, |s| s.local_tick_advantage())
+        self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
     }
 
     pub fn last_remote_frame_advantage(&self) -> i16 {
-        self.session().map_or(0, |s| s.last_remote_tick_advantage())
+        self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
     }
 
     /// Per-frame misprediction depth shown in the UI: how many speculative frames
@@ -176,7 +161,7 @@ impl Round {
     /// input contradicted the prediction. 0 on a clean frame; spikes on a
     /// rollback. See [`misprediction_depth`](getgud::Session::misprediction_depth).
     pub fn misprediction_depth(&self) -> u32 {
-        self.session().map_or(0, |s| s.last_misprediction_depth())
+        self.session.as_ref().map_or(0, |s| s.last_misprediction_depth())
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
@@ -202,7 +187,7 @@ impl Round {
         // calls `start_session` before this in the same trap fire. Bail (the
         // per-game trap logs + cancels the match) rather than panicking the
         // emulator thread if a game's traps ever fire out of order.
-        let RoundStage::Running { session } = &mut self.stage else {
+        let Some(session) = self.session.as_mut() else {
             anyhow::bail!("add_local_input_and_fastforward on an armed round (no first commit yet)");
         };
         if session.local_queue_length() >= MAX_QUEUE_LENGTH {
@@ -236,24 +221,25 @@ impl Round {
         Ok(())
     }
 
-    pub fn add_remote_input(&mut self, input: crate::net::Input) {
+    /// Attach a remote input if the engine is ready for it. `Ok(false)`
+    /// holds the input (round armed but pre-first-commit — the caller waits
+    /// for round progress and retries), `Ok(true)` queues it, and a full
+    /// queue is an error.
+    pub(super) fn try_add_remote_input(&mut self, input: crate::net::Input) -> anyhow::Result<bool> {
         log::debug!("remote input: {:?}", input);
-        // Unreachable in practice: the only caller checks
-        // has_settled_snapshot() under the same round lock.
-        let RoundStage::Running { session } = &mut self.stage else {
-            log::error!("add_remote_input on an armed round; dropping input");
-            return;
+        let Some(session) = self.session.as_mut() else {
+            return Ok(false);
         };
+        if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
+            anyhow::bail!("remote overflowed our input buffer");
+        }
         session.add_remote_input(
             PartialInput {
                 joyflags: input.joyflags,
             },
             input.frame_advantage,
         );
-    }
-
-    pub(super) fn can_add_remote_input(&self) -> bool {
-        self.session().is_some_and(|s| s.remote_queue_length() < MAX_QUEUE_LENGTH)
+        Ok(true)
     }
 }
 

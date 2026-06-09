@@ -8,6 +8,17 @@ pub(super) fn traps(
     match_: MatchHandle,
     completion_token: CompletionToken,
 ) -> Vec<Trap> {
+    // The game asks "am I player 2?" at two ROM sites; both get the same hook.
+    let make_is_p2_hook = || {
+        let match_ = match_.clone();
+        Box::new(move |mut core: mgba::core::CoreMutRef| {
+            let Some(match_) = match_.get() else { return };
+            let mut round_state = match_.lock_round_state();
+            let Some(round) = round_state.as_mut() else { return };
+            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+        })
+    };
+
     vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
@@ -21,40 +32,18 @@ pub(super) fn traps(
             let match_ = match_.clone();
             Box::new(move |_core| {
                 let Some(match_) = match_.get() else { return };
-                if let Err(e) = match_.end_round() {
-                    log::error!("end round failed: {e:#}");
-                    match_.cancel();
-                }
+                match_.end_round_or_cancel();
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
             let match_ = match_.clone();
             Box::new(move |_core| {
                 let Some(match_) = match_.get() else { return };
-                if let Err(e) = crate::sync::block_on(match_.start_round()) {
-                    log::error!("start round failed: {e:#}");
-                    match_.cancel();
-                }
+                match_.start_round_or_cancel();
             })
         }),
-        (hooks.offsets.rom.battle_is_p2_tst, {
-            let match_ = match_.clone();
-            Box::new(move |mut core| {
-                let Some(match_) = match_.get() else { return };
-                let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.as_mut() else { return };
-                core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
-            })
-        }),
-        (hooks.offsets.rom.link_is_p2_ret, {
-            let match_ = match_.clone();
-            Box::new(move |mut core| {
-                let Some(match_) = match_.get() else { return };
-                let mut round_state = match_.lock_round_state();
-                let Some(round) = round_state.as_mut() else { return };
-                core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
-            })
-        }),
+        (hooks.offsets.rom.battle_is_p2_tst, make_is_p2_hook()),
+        (hooks.offsets.rom.link_is_p2_ret, make_is_p2_hook()),
         (
             hooks.offsets.rom.handle_sio_entry,
             Box::new(move |core| {
@@ -98,7 +87,7 @@ pub(super) fn traps(
             Box::new(move |mut core| {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                munger.set_copy_data_input_state(core, if match_.get().is_some() { 2 } else { 4 });
+                munger.set_copy_data_input_state(core, if match_.is_set() { 2 } else { 4 });
             })
         }),
         (hooks.offsets.rom.main_read_joyflags, {
@@ -138,15 +127,7 @@ pub(super) fn traps(
                     // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
                     munger.set_current_tick(core, 0);
 
-                    let state = match core.save_state() {
-                        Ok(state) => state,
-                        Err(e) => {
-                            log::error!("save state for first commit failed: {e:#}");
-                            match_.cancel();
-                            return;
-                        }
-                    };
-                    if let Err(e) = match_.record_first_commit(round, state, &munger.tx_packet(core)) {
+                    if let Err(e) = match_.record_first_commit(round, core, &munger.tx_packet(core)) {
                         log::error!("record first commit failed: {e:#}");
                         match_.cancel();
                         return;

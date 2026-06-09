@@ -50,6 +50,12 @@ impl MatchHandle {
         self.0.read().unwrap().clone()
     }
 
+    /// True iff a match is installed. Cheaper than [`get`](Self::get) for
+    /// the per-frame traps that only test presence (no `Arc` clone+drop).
+    pub fn is_set(&self) -> bool {
+        self.0.read().unwrap().is_some()
+    }
+
     pub fn set(&self, match_: std::sync::Arc<crate::battle::Match>) {
         *self.0.write().unwrap() = Some(match_);
     }

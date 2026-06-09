@@ -141,9 +141,13 @@ impl Match {
     pub fn record_first_commit(
         &self,
         round: &mut Round,
-        local_state: Box<mgba::state::State>,
+        core: mgba::core::CoreMutRef,
         first_packet: &[u8],
     ) -> anyhow::Result<()> {
+        // Snapshot the live core at its first-committed state. Done here
+        // rather than at every per-game call site — the save is the same
+        // for all games.
+        let local_state = core.save_state()?;
         // Advance the shadow to its first-committed state and snapshot it, so the
         // session's tick-0 bundle holds both cores: a rollback to tick 0 rewinds
         // the opponent co-sim alongside the primary.
@@ -189,6 +193,25 @@ impl Match {
         crate::sync::block_on(async move { sender.lock().await.send_end_of_round().await })?;
         self.bump_round_progress();
         Ok(())
+    }
+
+    /// [`end_round`](Self::end_round) with the uniform primary-trap error
+    /// policy applied: a failure logs and cancels the match (a panic would
+    /// abort the process from trap context).
+    pub fn end_round_or_cancel(&self) {
+        if let Err(e) = self.end_round() {
+            log::error!("end round failed: {e:#}");
+            self.cancel();
+        }
+    }
+
+    /// [`start_round`](Self::start_round) for trap context: blocks on the
+    /// async body and applies the same log + cancel error policy.
+    pub fn start_round_or_cancel(self: &Arc<Self>) {
+        if let Err(e) = crate::sync::block_on(self.start_round()) {
+            log::error!("start round failed: {e:#}");
+            self.cancel();
+        }
     }
 
     fn bump_round_progress(&self) {
@@ -274,16 +297,9 @@ impl Match {
             // wait for the next round to spin up before delivering the input.
             return Ok(false);
         };
-        if !round.has_settled_snapshot() {
-            // Round started but hasn't reached its first commit.
-            return Ok(false);
-        }
-
-        if !round.can_add_remote_input() {
-            anyhow::bail!("remote overflowed our input buffer");
-        }
-        round.add_remote_input(input.clone());
-        Ok(true)
+        // The round decides for itself whether it can take the input yet
+        // (false while armed pre-first-commit).
+        round.try_add_remote_input(input.clone())
     }
 
     pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, Option<Round>> {

@@ -129,9 +129,10 @@ notes on each state machine — rather than forcing games into one shape.
   tick-mismatch checks that mean the simulation has already diverged and no
   recovery is meaningful.
 - Everything else trap-reachable reports instead of panicking: stepper and
-  shadow traps push into their state's **error channel**
-  (`set_anyhow_error`), which the drive loops poll and propagate; primary
-  traps **log + `Match::cancel()`**, which tears the session down cleanly.
+  shadow traps push into their state's **error channel** (`set_anyhow_error`
+  — `apply_shadow_input` does this internally and returns `None`), which the
+  drive loops poll and propagate; primary traps **log + `Match::cancel()`**,
+  written down once as the `Match::*_or_cancel` wrappers.
 
 ## Test coverage map
 

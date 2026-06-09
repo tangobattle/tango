@@ -17,12 +17,16 @@ pub(crate) use state::InnerState;
 /// This names a data flow that used to be an anonymous closure threaded
 /// through three layers: `MgbaWorld::step` → [`Stepper`] → per-game stepper
 /// trap (`InnerState::apply_shadow_input`) → `Shadow::apply_input`.
-pub trait RemotePacketSource: Send {
-    fn resolve(&mut self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>>;
+///
+/// `resolve` takes `&self` so the source can be held as a plain shared
+/// `Arc` everywhere it's needed (the production impl synchronizes
+/// internally via its mutex).
+pub trait RemotePacketSource: Send + Sync {
+    fn resolve(&self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>>;
 }
 
-impl RemotePacketSource for std::sync::Arc<std::sync::Mutex<crate::shadow::Shadow>> {
-    fn resolve(&mut self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+impl RemotePacketSource for std::sync::Mutex<crate::shadow::Shadow> {
+    fn resolve(&self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         self.lock().unwrap().apply_input(tick, pair)
     }
 }
@@ -94,11 +98,10 @@ pub struct Stepper {
     /// [`step`](Self::step) and reset by [`restore`](Self::restore). [`step`]
     /// re-sims from here, so the caller never threads the tick back in.
     parked_tick: u32,
-    /// Remote-packet source set at construction. Parked here between steps;
-    /// each [`step`](Self::step) moves it into the run state (where the
-    /// per-game traps reach it via `apply_shadow_input`) and recovers it when
-    /// the run ends. `None` only while a step is in flight.
-    packet_source: Option<Box<dyn RemotePacketSource>>,
+    /// Remote-packet source set at construction; each [`step`](Self::step)
+    /// hands a clone to its run state, where the per-game traps reach it via
+    /// `apply_shadow_input`.
+    packet_source: std::sync::Arc<dyn RemotePacketSource>,
 }
 
 impl Stepper {
@@ -111,7 +114,7 @@ impl Stepper {
         match_type: (u8, u8),
         local_player_index: u8,
         initial_state: &mgba::state::State,
-        packet_source: Box<dyn RemotePacketSource>,
+        packet_source: std::sync::Arc<dyn RemotePacketSource>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -139,7 +142,7 @@ impl Stepper {
             match_type,
             local_player_index,
             parked_tick: 0,
-            packet_source: Some(packet_source),
+            packet_source,
         })
     }
 
@@ -175,17 +178,16 @@ impl Stepper {
         last_local_packet: &[u8],
     ) -> anyhow::Result<StepperResult> {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
-        let packet_source = self.packet_source.take().expect("packet source parked between steps");
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
             vec![input],
             self.parked_tick,
             last_local_packet.to_vec(),
-            packet_source,
+            self.packet_source.clone(),
         ));
 
-        let (result, packet_source) = loop {
+        let result = loop {
             {
                 let mut guard = self.state.0.lock().unwrap();
                 let inner = guard.as_mut().unwrap();
@@ -197,13 +199,10 @@ impl Stepper {
             self.core.as_mut().run_loop();
             let mut guard = self.state.0.lock().unwrap();
             if let Some(err) = guard.as_mut().expect("state").take_error() {
-                // Park the source again even on failure so the stepper isn't
-                // left sourceless if the caller retries.
-                self.packet_source = guard.take().map(|inner| inner.recover_packet_source());
+                guard.take();
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
         };
-        self.packet_source = Some(packet_source);
 
         self.parked_tick = result.boundary.tick;
         Ok(result)

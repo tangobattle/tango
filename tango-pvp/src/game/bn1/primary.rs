@@ -16,16 +16,25 @@ pub(super) fn traps(
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-            let Some(_) = match_.get() else {
+            if !match_.is_set() {
                 core.gba_mut().cpu_mut().set_gpr(0, 0);
                 return;
-            };
+            }
             core.gba_mut().cpu_mut().set_gpr(0, 3);
 
             munger.set_rx_packet(core, 0, &INIT_RX);
             munger.set_rx_packet(core, 1, &INIT_RX);
         })
     };
+    // The game signals round end at two ROM sites; both get the same hook.
+    let make_round_ending_hook = || {
+        let match_ = match_.clone();
+        Box::new(move |_core: mgba::core::CoreMutRef| {
+            let Some(match_) = match_.get() else { return };
+            match_.end_round_or_cancel();
+        })
+    };
+
     vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
@@ -39,26 +48,8 @@ pub(super) fn traps(
                 completion_token.complete();
             }),
         ),
-        (hooks.offsets.rom.round_ending_entry1, {
-            let match_ = match_.clone();
-            Box::new(move |_core| {
-                let Some(match_) = match_.get() else { return };
-                if let Err(e) = match_.end_round() {
-                    log::error!("end round failed: {e:#}");
-                    match_.cancel();
-                }
-            })
-        }),
-        (hooks.offsets.rom.round_ending_entry2, {
-            let match_ = match_.clone();
-            Box::new(move |_core| {
-                let Some(match_) = match_.get() else { return };
-                if let Err(e) = match_.end_round() {
-                    log::error!("end round failed: {e:#}");
-                    match_.cancel();
-                }
-            })
-        }),
+        (hooks.offsets.rom.round_ending_entry1, make_round_ending_hook()),
+        (hooks.offsets.rom.round_ending_entry2, make_round_ending_hook()),
         (hooks.offsets.rom.round_start_entry, {
             let munger = hooks.munger();
             let match_ = match_.clone();
@@ -74,10 +65,7 @@ pub(super) fn traps(
             let match_ = match_.clone();
             Box::new(move |_core| {
                 let Some(match_) = match_.get() else { return };
-                if let Err(e) = crate::sync::block_on(match_.start_round()) {
-                    log::error!("start round failed: {e:#}");
-                    match_.cancel();
-                }
+                match_.start_round_or_cancel();
             })
         }),
         (hooks.offsets.rom.link_is_p2_ret, {
@@ -98,15 +86,7 @@ pub(super) fn traps(
                 let Some(round) = round_state.as_mut() else { return };
 
                 if !round.has_settled_snapshot() {
-                    let state = match core.save_state() {
-                        Ok(state) => state,
-                        Err(e) => {
-                            log::error!("save state for first commit failed: {e:#}");
-                            match_.cancel();
-                            return;
-                        }
-                    };
-                    if let Err(e) = match_.record_first_commit(round, state, &munger.tx_packet(core)) {
+                    if let Err(e) = match_.record_first_commit(round, core, &munger.tx_packet(core)) {
                         log::error!("record first commit failed: {e:#}");
                         match_.cancel();
                         return;
