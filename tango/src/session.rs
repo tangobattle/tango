@@ -1414,32 +1414,43 @@ pub fn view<'a>(
     }
     let mut emu_stack = stack![backdrop, Element::from(content_row)];
     // PROTOTYPE: chip-select deliberation countdown, read off the live primary
-    // round (bn6 only for now). `None` when not in the custom screen.
-    let chip_ticks = match session {
-        ActiveSession::PvP(s) => s.custom_screen_remaining(),
+    // round. `None` when there's no armed round. While debugging the live
+    // integration we also surface the armed-but-not-detecting state so it's
+    // obvious on screen whether the timer is running at all.
+    let chip_dbg = match session {
+        ActiveSession::PvP(s) => s.custom_screen_debug(),
         _ => None,
     };
-    if let Some(chip_ticks) = chip_ticks {
-        let label = format!("CHIP TIME  {:.1}s  ({chip_ticks})", chip_ticks as f32 / 60.0);
-        let color = if chip_ticks <= 180 {
-            Color::from_rgb(1.0, 0.35, 0.35)
-        } else {
-            Color::WHITE
+    if let Some((armed, remaining)) = chip_dbg {
+        let label_color = match remaining {
+            Some(t) => Some((
+                format!("CHIP TIME  {:.1}s  ({t})", t as f32 / 60.0),
+                if t <= 180 { Color::from_rgb(1.0, 0.35, 0.35) } else { Color::WHITE },
+            )),
+            // Armed but not in the custom screen: surface it while debugging the
+            // live integration so it's obvious the timer is running at all.
+            None if armed => Some((
+                "CHIP TIMER armed (no custom screen)".to_string(),
+                Color::from_rgb(0.6, 0.6, 0.6),
+            )),
+            None => None,
         };
-        let badge = container(text(label).size(26).color(color))
-            .padding([6, 14])
-            .style(|_: &Theme| container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
-                border: iced::border::rounded(6),
-                ..Default::default()
-            });
-        let overlay = container(badge)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Center)
-            .align_y(iced::alignment::Vertical::Top)
-            .padding(24);
-        emu_stack = emu_stack.push(Element::from(overlay));
+        if let Some((label, color)) = label_color {
+            let badge = container(text(label).size(26).color(color))
+                .padding([6, 14])
+                .style(|_: &Theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                    border: iced::border::rounded(6),
+                    ..Default::default()
+                });
+            let overlay = container(badge)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Top)
+                .padding(24);
+            emu_stack = emu_stack.push(Element::from(overlay));
+        }
     }
     let emu_pane: Element<'a, Message> = container(emu_stack).width(Fill).height(Fill).into();
     layout = layout.push(emu_pane);

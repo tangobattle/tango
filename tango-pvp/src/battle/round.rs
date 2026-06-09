@@ -99,6 +99,13 @@ impl Round {
         self.custom_screen.as_mut().map_or(0, |t| t.enforce(core, tick))
     }
 
+    /// PROTOTYPE diagnostic: whether the chip-select timer has been armed for
+    /// this round (the match enabled it and the primary trap supplied the
+    /// adapter). Lets the GUI show "armed but not detecting" vs "off".
+    pub fn custom_screen_armed(&self) -> bool {
+        self.custom_screen.is_some()
+    }
+
     /// Battle ticks left in the custom screen, or `None` when not in it / the
     /// timer is inactive. For the GUI countdown.
     pub fn custom_screen_remaining(&self) -> Option<u32> {

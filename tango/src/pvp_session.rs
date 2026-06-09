@@ -618,10 +618,14 @@ impl PvpSession {
     /// PROTOTYPE: ticks left in the chip-select deliberation timer, or `None`
     /// when not in the custom screen / the timer is inactive. For the countdown
     /// overlay; read off the live primary round.
-    pub fn custom_screen_remaining(&self) -> Option<u32> {
+    /// PROTOTYPE diagnostic: `(armed, remaining)` for the live round's chip-select
+    /// timer. `armed` distinguishes "timer is on but not detecting the custom
+    /// screen" from "no round / off", so the overlay can surface which.
+    pub fn custom_screen_debug(&self) -> Option<(bool, Option<u32>)> {
         let match_ = self.match_handle.blocking_lock();
         let round_state = match_.as_ref()?.lock_round_state();
-        round_state.as_ref()?.custom_screen_remaining()
+        let round = round_state.as_ref()?;
+        Some((round.custom_screen_armed(), round.custom_screen_remaining()))
     }
 }
 
