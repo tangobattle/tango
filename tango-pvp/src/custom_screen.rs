@@ -14,8 +14,8 @@
 //!
 //! What "pin" and "confirm" mean is per-game and lives behind the trait: BN5/BN6
 //! pin a grid cursor onto OK and confirm with A; BN4 opens the OK sub-menu and
-//! confirms with A; BN3 confirms with Start (cursor-independent); BN2 needs no
-//! button at all — writing its closing sub-state runs the teardown standalone.
+//! confirms with A; BN2 and BN3 need no button at all — writing their close /
+//! menu-confirm sub-state runs the teardown standalone.
 //!
 //! Determinism: the pin writes are a pure function of synced game state (the
 //! game's "in custom screen" flag + Tango's synced battle tick, passed in by
@@ -55,8 +55,8 @@ pub trait CustomScreenHooks {
 
     /// Joyflags the primary ORs into the local input to drive the confirm while
     /// enforcing (`0` for games that close purely on the pinned state). This is
-    /// per-game: A (`0x0001`) for BN1/4/5/6, Start (`0x0008`) for BN3, none for
-    /// BN2. Rides the synced input channel so every core sees it.
+    /// per-game: A (`0x0001`) for BN4/5/6; BN2 and BN3 close on their pinned
+    /// state alone (`0`). Rides the synced input channel so every core sees it.
     fn confirm_joyflags(&self) -> u16;
 }
 

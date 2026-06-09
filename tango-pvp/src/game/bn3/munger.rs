@@ -93,13 +93,23 @@ impl Munger {
         core.raw_read_8(self.offsets.ewram.custom_screen_substate, -1) as u8
     }
 
-    /// Pin the custom screen onto the confirm path. BN3 confirms with START
-    /// (which ignores the grid cursor), so there's no cursor to place; we just
-    /// force the sub-state to selecting (4) to pop out of any sub-dialog so the
-    /// injected Start lands on the chip-select handler, which runs the genuine
-    /// teardown (commit chips → animation → combat). Validated against the A6BE
-    /// golden replay.
+    /// Chip-select menu confirm state (`custom_screen_menu+1`). 0/4 while
+    /// selecting; ≥8 once OK has been confirmed (12 then animating to 8).
+    pub(super) fn custom_menu_confirm(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.custom_screen_menu + 1, -1) as u8
+    }
+
+    /// Force the chip-select screen closed. Unlike the older RE notes (which
+    /// suggested injecting Start), BN3's confirm can be driven purely by state:
+    /// pop any sub-dialog (sub-state → selecting) and write the menu's "OK
+    /// confirmed" value (`menu+1 := 12`). The game then runs its genuine confirm
+    /// chain — commit chips → 12→8 animation → `substate=8` → combat — exactly as
+    /// a real Start press would. Validated headlessly via the stepper timer
+    /// (closes to combat ahead of the recorded run). Written once: the timer's
+    /// `close_started` latch (see [`super::custom_screen`]) stops re-writing as
+    /// soon as `menu+1` reads ≥8, so the 12→8 animation isn't clobbered.
     pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef) {
-        core.raw_write_8(self.offsets.ewram.custom_screen_substate, -1, 4);
+        core.raw_write_8(self.offsets.ewram.custom_screen_substate, -1, 4); // pop sub-dialogs
+        core.raw_write_8(self.offsets.ewram.custom_screen_menu + 1, -1, 12); // OK confirmed
     }
 }

@@ -28,9 +28,14 @@ pub(super) struct EWRAMOffsets {
     pub(super) custom_screen_scene: u32,
 
     /// Custom-screen sub-state machine (battle struct `+2`): 4 == selecting,
-    /// `== 8` once teardown has begun. Pinned to 4 (pops sub-dialogs) so the
-    /// injected Start lands on the chip-select handler.
+    /// `== 8` once teardown has begun. Pinned to 4 to pop sub-dialogs.
     pub(super) custom_screen_substate: u32,
+
+    /// Chip-select menu struct. `+1` is the confirm/OK state: 0/4 while
+    /// selecting, 12 ("OK confirmed") the instant Start is pressed, then it
+    /// animates 12→8→0 as the teardown commits chips. Writing `+1 := 12` runs
+    /// the genuine confirm chain (commit → close) without injecting Start.
+    pub(super) custom_screen_menu: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -171,6 +176,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     is_linking:             0x0203b36e,
     custom_screen_scene:    0x02006ca1,
     custom_screen_substate: 0x02006ca2,
+    custom_screen_menu:     0x0200f7f0,
 };
 
 #[derive(Clone, Copy)]

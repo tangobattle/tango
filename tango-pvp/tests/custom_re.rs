@@ -34,15 +34,21 @@ fn discover_roms() -> HashMap<(&'static str, u8), Vec<u8>> {
 
 // Throwaway RE harness, not a regression test: needs TANGO_TEST_ROMS_DIR and
 // writes dumps to /tmp/re. Run explicitly with `--ignored` to re-derive offsets.
-#[test]
-#[ignore]
-fn re_dump() {
+//
+// Watches a window of EWRAM bytes across the opening chip-select screen and
+// prints, for every tick where any watched byte changes, the tick + all bytes.
+// Lets us confirm/locate the "in custom screen" flag for a given game by eye.
+fn watch_replay(replay_file: &str, watch: &[u32]) {
+    watch_replay_with(replay_file, watch, |_, _| {});
+}
+
+// Like watch_replay, but calls `intervene(abs_tick, core)` once per tick before
+// running the frame — lets us poke state mid-custom to validate a close
+// mechanism (does writing X actually tear the screen down?).
+fn watch_replay_with(replay_file: &str, watch: &[u32], mut intervene: impl FnMut(u32, &mut mgba::core::CoreMutRef)) {
     let roms = discover_roms();
-    let replay_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/golden/20260516051717-test123-bn6-vs-weenie-p1.tangoreplay"
-    );
-    let replay = tango_pvp::replay::Replay::decode(&mut std::fs::File::open(replay_path).unwrap()).unwrap();
+    let replay_path = format!("{}/tests/golden/{}", env!("CARGO_MANIFEST_DIR"), replay_file);
+    let replay = tango_pvp::replay::Replay::decode(&mut std::fs::File::open(&replay_path).unwrap()).unwrap();
 
     let local = replay.metadata.local_side.as_ref().unwrap().game_info.as_ref().unwrap();
     let remote = replay.metadata.remote_side.as_ref().unwrap().game_info.as_ref().unwrap();
@@ -92,8 +98,9 @@ fn re_dump() {
     traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
 
-    const MAX_TICK: u32 = 700;
+    const MAX_TICK: u32 = 900;
     let mut last: i64 = -1;
+    let mut prev: Vec<u8> = Vec::new();
     loop {
         let (abs_tick, round_idx, ended) = {
             let inner = stepper_state.lock_inner();
@@ -103,15 +110,117 @@ fn re_dump() {
             break;
         }
         if (abs_tick as i64) > last {
-            let subscene = core.as_mut().raw_read_8(0x020364c0, -1);
-            let subphase = core.as_mut().raw_read_8(0x020364c1, -1);
-            let combat_hp = core.as_mut().raw_read_8(0x02034a12, -1);
-            if (255..480).contains(&abs_tick) && abs_tick % 2 == 0 {
-                eprintln!("tick {abs_tick:3}  subscene={subscene} subphase={subphase} combat_hp={combat_hp}");
+            let now: Vec<u8> = watch.iter().map(|&a| core.as_mut().raw_read_8(a, -1)).collect();
+            if now != prev {
+                let cells: Vec<String> = watch
+                    .iter()
+                    .zip(&now)
+                    .map(|(a, v)| format!("{a:08x}={v:3}"))
+                    .collect();
+                eprintln!("tick {abs_tick:4}  {}", cells.join("  "));
+                prev = now;
             }
             last = abs_tick as i64;
+        }
+        {
+            let mut c = core.as_mut();
+            intervene(abs_tick, &mut c);
         }
         core.as_mut().run_frame();
     }
     eprintln!("ran to tick {last}");
+}
+
+// Throwaway RE harness, not a regression test: needs TANGO_TEST_ROMS_DIR.
+#[test]
+#[ignore]
+fn re_dump() {
+    watch_replay(
+        "20260516051717-test123-bn6-vs-weenie-p1.tangoreplay",
+        &[0x020364c0, 0x020364c1],
+    );
+}
+
+#[test]
+#[ignore]
+fn re_dump_bn2() {
+    // Agent claimed in_custom 0x0200eb10==2, close 0x0200eef0==8. Watch those
+    // plus neighbours to confirm/relocate.
+    watch_replay(
+        "20260516050012-test123-bn2-vs-weenie-p1.tangoreplay",
+        &[
+            0x0200eae0, // is_linking (known good anchor)
+            0x0200eb0f, 0x0200eb10, 0x0200eb11, 0x0200eb12, //
+            0x0200eeef, 0x0200eef0, 0x0200eef1,
+        ],
+    );
+}
+
+// Validate BN2's close: once we're well into the custom screen (eb10==2), write
+// the closing sub-state every tick like the timer would, and see whether the
+// screen actually tears down (eb10 leaves 2 → combat) ahead of the recorded run.
+#[test]
+#[ignore]
+fn re_close_bn2() {
+    let mut started: Option<u32> = None;
+    watch_replay_with(
+        "20260516050012-test123-bn2-vs-weenie-p1.tangoreplay",
+        &[0x0200eb10, 0x0200eef0],
+        move |tick, core| {
+            let scene = core.raw_read_8(0x0200eb10, -1);
+            if scene == 2 {
+                let open = *started.get_or_insert(tick);
+                if tick >= open + 30 {
+                    core.raw_write_8(0x0200eef0, -1, 8);
+                }
+            }
+        },
+    );
+}
+
+#[test]
+#[ignore]
+fn re_dump_bn3() {
+    // Agent claimed in_custom 0x02006ca1==8, close 0x02006ca2==8 (struct base
+    // 0x02006ca0). Watch the struct head.
+    watch_replay(
+        "20260516050145-test123-bn3-vs-weenie-p1.tangoreplay",
+        &[0x02006ca1, 0x02006ca2, 0x0200f7f0, 0x0200f7f1],
+    );
+}
+
+// Validate BN3's close. Like BN2, try the *direct* sub-state write (ca2=8)
+// once we're into the custom screen (ca1==8), and watch whether it tears down
+// (ca1 -> 12 combat) without injecting Start.
+#[test]
+#[ignore]
+fn re_close_bn3() {
+    let mut started: Option<u32> = None;
+    // RE_MODE selects what to poke; RE_HOLD=1 holds it every tick, else a short
+    // ~4-tick pulse (mimicking a button press) starting at open+30.
+    let mode = std::env::var("RE_MODE").unwrap_or_default();
+    let hold = std::env::var("RE_HOLD").as_deref() == Ok("1");
+    watch_replay_with(
+        "20260516050145-test123-bn3-vs-weenie-p1.tangoreplay",
+        &[0x02006ca1, 0x02006ca2, 0x0200f7f0, 0x0200f7f1],
+        move |tick, core| {
+            let scene = core.raw_read_8(0x02006ca1, -1);
+            if scene != 8 {
+                started = None; // reset so we anchor on the *real* custom window, not the early blip
+                return;
+            }
+            let open = *started.get_or_insert(tick);
+            let active = if hold { tick >= open + 30 } else { (open + 30..open + 34).contains(&tick) };
+            if active {
+                match mode.as_str() {
+                    "f7f0" => core.raw_write_8(0x0200f7f0, -1, 8),
+                    "f7f1" => core.raw_write_8(0x0200f7f1, -1, 12),
+                    "ca2" => core.raw_write_8(0x02006ca2, -1, 8),
+                    // default: replicate the timer — pin substate to selecting.
+                    // (Start can't be injected via a state poke; see re_close_bn3_start.)
+                    _ => core.raw_write_8(0x02006ca2, -1, 4),
+                }
+            }
+        },
+    );
 }
