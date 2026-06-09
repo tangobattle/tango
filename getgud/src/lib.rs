@@ -10,28 +10,32 @@
 //! their simulations aligned.
 //!
 //! The crate is generic over your game and contains no game logic itself. You
-//! implement a single trait, [`World`], on the type that owns your simulation:
+//! implement a single trait, [`World`], on the type that owns your live
+//! simulation:
 //!
-//! | [`World`] member              | Responsibility                                       |
-//! |-------------------------------|------------------------------------------------------|
-//! | `Input` / `State` / `Error`   | Names your input, state, and error types.            |
-//! | [`step`](World::step)         | Advances `State` by applying input pairs (deterministically). |
-//! | [`restore`](World::restore)   | Reloads a saved `State` to rewind before a rollback. |
-//! | [`predict`](World::predict)   | Guesses the remote's next input from their last one. |
-//! | [`log`](World::log)           | Receives confirmed input pairs.                      |
+//! | Member                            | Responsibility                                   |
+//! |-----------------------------------|--------------------------------------------------|
+//! | [`World`] `Input`/`State`/`Error` | Names your input, snapshot, and error types.     |
+//! | [`step`](World::step)             | Advances the live simulation one tick by an input pair, reporting round end (deterministically). |
+//! | [`save`](World::save)             | Snapshots the live simulation at the current tick. |
+//! | [`load`](World::load)             | Restores the live simulation to a snapshot, to rewind before a rollback. |
+//! | [`predict`](World::predict)       | Guesses the remote's next input from their last one. |
+//! | [`log`](World::log)               | Receives confirmed input pairs.                  |
 //!
 //! # Model
 //!
 //! * **Frontier** — the newest local tick; advances once per [`Session::advance`].
 //! * **Present delay** — how many ticks behind the frontier you present. Larger
 //!   means less prediction but more input latency; smaller is snappier but
-//!   speculates further. Tunable at runtime.
+//!   speculates further ahead. Tunable at runtime.
 //! * **Settled state** — the authoritative state built only from confirmed
 //!   `(local, remote)` input pairs. Inputs are logged as they settle.
 //! * **Speculative tail** — when the presented tick runs past the confirmed
-//!   region, the session simulates forward from the settled state using real
-//!   local inputs and predicted remote inputs. It is rebuilt from scratch every
-//!   frame, so a wrong prediction simply disappears once the true input settles.
+//!   region, the session steps forward from the settled state using real local
+//!   inputs and predicted remote inputs, saving each snapshot into a rolling
+//!   buffer. When the real remote inputs arrive, the snapshots whose prediction
+//!   held are promoted to settled with no re-simulation; only a mispredicted tail
+//!   is rolled back and re-stepped.
 //!
 //! # Per-tick loop
 //!
@@ -48,28 +52,27 @@
 //! A toy world whose state is a single integer that each player's input nudges.
 //!
 //! ```
-//! use getgud::{Session, SessionParams, World};
+//! use getgud::{RoundState, Session, SessionParams, World};
 //!
-//! // A world whose state is a single integer that each player's input nudges.
-//! // It is parked at a state; `restore` reloads it, `step` advances it.
-//! struct Counter { state: i64 }
+//! // A world whose live state is a single integer that each player's input nudges.
+//! struct Counter { total: i64 }
+//!
 //! impl World for Counter {
 //!     type Input = i64;
-//!     type State = i64;
+//!     type State = i64;   // the snapshot is just the running total
 //!     type Error = std::convert::Infallible;
 //!
-//!     fn restore(&mut self, state: &i64) -> Result<(), std::convert::Infallible> {
-//!         self.state = *state;
-//!         Ok(())
-//!     }
 //!     // Fold each (local, remote) pair into the running total.
-//!     fn step(
-//!         &mut self,
-//!         input: (i64, i64),
-//!     ) -> Result<(i64, bool), std::convert::Infallible> {
+//!     fn step(&mut self, input: (i64, i64)) -> Result<RoundState, std::convert::Infallible> {
 //!         let (local, remote) = input;
-//!         self.state += local + remote;
-//!         Ok((self.state, false)) // never ends
+//!         self.total += local + remote;
+//!         Ok(RoundState::Ongoing) // this toy round never ends
+//!     }
+//!     // Snapshot / restore the running total.
+//!     fn save(&mut self) -> Result<i64, std::convert::Infallible> { Ok(self.total) }
+//!     fn load(&mut self, state: &i64) -> Result<(), std::convert::Infallible> {
+//!         self.total = *state;
+//!         Ok(())
 //!     }
 //!     // Predict that the remote keeps repeating its last input.
 //!     fn predict(&self, last_remote: &i64) -> i64 { *last_remote }
@@ -81,7 +84,7 @@
 //!     present_delay: 2,
 //!     initial_remote: 0,
 //!     initial_state: 0,
-//!     world: Counter { state: 0 },
+//!     world: Counter { total: 0 },
 //! });
 //!
 //! // Drive ten ticks. Remote inputs arrive two frames late, so the session
@@ -110,4 +113,4 @@ mod session;
 mod world;
 
 pub use session::{Frame, Session, SessionParams};
-pub use world::World;
+pub use world::{RoundState, World};

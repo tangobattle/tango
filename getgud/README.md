@@ -3,68 +3,123 @@
 A small, dependency-free **rollback netcode** core for two-player deterministic
 games, in Rust.
 
-It handles the hard part of peer-to-peer netcode: confirming inputs, predicting
-the ones that haven't arrived, correcting mispredictions, and keeping the two
-peers' clocks in sync.
+It handles the hard part of peer-to-peer netcode: confirming the input pairs both
+peers agree on, predicting the remote inputs that haven't arrived yet, correcting
+those predictions once the real inputs land, and producing a clock-sync signal so
+the two peers keep their simulations aligned. The crate contains no game logic —
+you bring the simulation.
 
 ## API
 
-The crate is generic over a `World` you define.
+You implement one trait — `World` — on the type that owns your live simulation,
+then drive a `Session` once per tick.
 
-| Trait                 | Responsibility                                                  |
-|-----------------------|----------------------------------------------------------------|
-| `World`               | Names your `Input`, `State`, and `Error` types.                |
-| `Simulator`           | Advances `State` by applying input pairs — **deterministically**. |
-| `Predictor`           | Guesses the remote player's next input from their last one.     |
-| `Logger` *(optional)* | Receives confirmed input pairs (replays, spectators, desync checks). Use `NullLogger` to skip. |
+### `World`
 
-Determinism is the one hard requirement: identical inputs on identical state must
-yield identical state: rollback depends on it.
+A `World` is a *live* simulation parked at one tick, which the session can step,
+snapshot, and restore. It names the three types the crate is generic over
+(`Input`, `State`, `Error`) and supplies five methods:
+
+| Member                            | Responsibility                                                                                       |
+|-----------------------------------|------------------------------------------------------------------------------------------------------|
+| `Input` / `State` / `Error`       | Your per-tick input, snapshot, and error types. Use `Infallible` for `Error` if stepping can't fail. |
+| `step((local, remote)) -> RoundState` | Step the live simulation one tick from where it's parked, applying the pair, and report whether the round ended (`Ongoing` / `Ended`). **Must be deterministic.** |
+| `save() -> State`                 | Snapshot the live simulation at the tick it's parked at. The session keeps snapshots to present, to promote a correct prediction without re-simulating, and to reload on rollback. |
+| `load(&State)`                    | Restore the live simulation to a snapshot, parking it at that tick. Called to rewind before re-simulating a mispredicted tail. |
+| `predict(&last_remote) -> Input`  | Guess the remote's next input from its last confirmed one (e.g. "repeat the last input").             |
+| `log(&(local, remote))`           | Receive each confirmed `(local, remote)` pair, in tick order — for replays, spectating, or desync checks. Leave the body empty to ignore it. |
+
+`step` returns a `RoundState` rather than a snapshot: the snapshot comes from
+`save`, called only when the session actually needs to keep that tick. That split
+lets a rollback re-`step` through a corrected tail and `save` just its final
+state, instead of snapshotting every intermediate tick.
+
+`Input` must be `Clone + PartialEq` (predictions are compared against the real
+inputs to decide promote-vs-rollback); `State` and `Error` must be `Send +
+'static`.
+
+Determinism is the one hard requirement: the same snapshot loaded and stepped by
+the same input pair must always produce the same next state. Rollback depends on
+it.
 
 ## Operation
 
-Each peer runs a `Session`. Every tick you feed it the local input and any remote
-inputs that have arrived; it returns a `Frame` to render plus a `skew` for clock
-sync. Key terms:
+Each peer constructs one `Session` from
+`SessionParams { present_delay, initial_remote, initial_state, world }`. The
+per-tick loop:
 
-- **Frontier** — the newest local tick (`Session::advance` advances it).
-- **Present delay** — how many ticks behind the frontier you display. Larger =
-  less prediction, more latency; smaller = snappier, more speculation. Tunable at
-  runtime.
-- **Settled state** — authoritative state built only from confirmed
-  `(local, remote)` pairs; confirmed inputs are handed to the `Logger`.
-- **Speculative tail** — when the presented tick runs past confirmed input, the
-  session simulates forward with *predicted* remote inputs. It is rebuilt from the
-  settled state each tick, so mispredictions self-correct — no manual rollback.
-- **Skew** — each peer reports how far its frontier leads the remote input it has
-  received; the difference is the `skew` in every `Frame`. Positive means you're
-  ahead — stall a frame to converge.
+```text
+loop each tick:
+    while a remote packet arrived:
+        session.add_remote_input(remote_input, their_tick_advantage)
+    adjust_clock(session.skew());        // stall a frame when running ahead
+    let frame = session.advance(local_input)?;
+    render(frame.state);                 // also available: frame.tick, frame.input
+```
 
-Whether the session predicts depends on how far confirmed input has progressed
-relative to the presented tick. Both diagrams share `frontier` 9 and
+`advance` enqueues the local input, confirms every tick both peers now agree on,
+advances the displayed state, and returns a `Frame { tick, state, input }`. The
+clock-sync hint is read *separately* via `session.skew()` — and read it *before*
+`advance`, which enqueues this tick's local input.
+
+### Key terms
+
+- **Local frontier** — the newest local tick; `advance` bumps it by one.
+- **Present delay** — how many ticks behind the frontier you display
+  (`target = frontier − present_delay`). Larger = less prediction but more input
+  latency; smaller = snappier but speculates further. Tunable at runtime via
+  `set_present_delay`.
+- **Settled state** — the authoritative state, folded only from confirmed
+  `(local, remote)` pairs. Pairs are handed to `log` in tick order as they settle.
+- **Speculation** — when the display target runs past the last confirmed tick, the
+  session steps forward from the settled state with real local inputs and
+  `predict`-supplied remote inputs, `save`-ing each speculative snapshot into a
+  rolling buffer.
+- **Promote vs. rollback** — when a real remote input arrives, the session compares
+  it against what it predicted. The matching prefix is *promoted* to settled with
+  no re-simulation (those snapshots are already byte-exact); only from the first
+  misprediction on does it `load` and re-`step` the corrected inputs.
+  `last_misprediction_depth()` reports how deep the last rollback went.
+- **Skew** — clock sync. Each peer reports how far its local input leads the remote
+  input it has received (`local_tick_advantage`), ships that to the peer alongside
+  each input, and gets the peer's value back through `add_remote_input`. `skew()`
+  is the difference; positive means you're ahead — stall a frame to converge.
+
+### Round end
+
+`step` returns `RoundState::Ended` on the tick that ends the round. The session
+keeps simulating *past* that point — the post-end frames are real state the host
+presents a tick or two later — but stops handing pairs to `log` from the
+round-ending tick on.
+
+## Prediction vs. delay
+
+Whether the session speculates depends on how far confirmed input has progressed
+relative to the displayed tick. Both diagrams share `frontier` 9 and
 `present_delay` 3 (so `target` 6), differing only in how much remote input has
 arrived.
 
 **Prediction regime** — confirmed input lags the present, so `target` sits past
-the settled cap and the session speculates the gap:
+the last confirmed tick and the session speculates the gap:
 
 ```text
  tick  0   1   2   3   4   5   6   7   8   9
        ●───●───●───●───○───○───○───◌───◌───◌
                    │           │           │
                    │           │           └─ frontier (newest local tick)
-                   │           └─ target = frontier - present_delay
+                   │           └─ target = frontier − present_delay
                    │                (the frame you render)
-                   └─ settled cap (last tick confirmed by both)
+                   └─ last tick confirmed by both peers (settled)
 
    ●  confirmed  — real local + real remote, folded into settled state
-   ○  speculated — real local + predicted remote (rebuilt every tick)
-   ◌  buffered   — local input entered, not yet presented (= present_delay)
+   ○  speculated — real local + predicted remote, simulated up to the target
+                   (later promoted if the prediction held, else rolled back)
+   ◌  buffered   — local input entered, still past the target, not yet simulated
 ```
 
 **Delay regime** — confirmed input has caught up, so `target` is at or behind the
-settled cap and the rendered frame is already confirmed; no `Predictor` runs. A
-large enough `present_delay` (or low latency) keeps you here:
+last confirmed tick and the rendered frame is already confirmed; no prediction
+runs. A large enough `present_delay` (or low latency) keeps you here:
 
 ```text
  tick  0   1   2   3   4   5   6   7   8   9
@@ -72,8 +127,8 @@ large enough `present_delay` (or low latency) keeps you here:
                                │   │       │
                                │   │       └─ frontier (newest local tick)
                                │   └─ last confirmed tick
-                               └─ target (= settled cap) — confirmed frame you render
+                               └─ target — confirmed frame you render
 
    ●  confirmed — real local + real remote (settled state)
-   ◌  buffered  — local input entered, not yet presented
+   ◌  buffered  — local input entered, awaiting its remote
 ```

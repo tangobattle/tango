@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::input::Queue;
-use crate::world::World;
+use crate::world::{RoundState, World};
 
 /// Everything needed to construct a [`Session`].
 ///
@@ -61,9 +61,10 @@ struct Speculation<W: World> {
     /// The predicted-remote half is what a later confirmation is checked
     /// against to decide promote-vs-rollback.
     input: (W::Input, W::Input),
-    /// Whether the producing step ended the round; carried so a promotion applies
-    /// the logging clamp at the same point a rollback re-sim would.
-    terminal: bool,
+    /// The round-end signal returned by the [`step`](World::step) that produced
+    /// this snapshot, carried so a promotion applies the logging clamp at the same
+    /// point a rollback re-sim would.
+    round: RoundState,
 }
 
 /// A single peer's view of a two-player rollback session.
@@ -111,10 +112,11 @@ pub struct Session<W: World> {
     /// `settled_tick + speculations.len()` (the speculation frontier).
     speculations: VecDeque<Speculation<W>>,
 
-    /// Set once a confirmed (settled) step reports the round ended. From then on
-    /// no further input pairs are committed to the logger — but the simulation
-    /// keeps advancing through the post-round-end frames, since the host detects
-    /// the end from the presented state a tick or two later.
+    /// Set once a confirmed (settled) step ends the round (returns
+    /// [`RoundState::Ended`]). From then on no further input pairs are committed
+    /// to the logger — but the simulation keeps advancing through the
+    /// post-round-end frames, since the host detects the end from the presented
+    /// state a tick or two later.
     terminal_reached: bool,
 
     /// How many speculative frames the most recent [`advance`](Session::advance)
@@ -346,10 +348,9 @@ impl<W: World> Session<W> {
 
     /// Fold confirmed pairs into the settled state up to `target`, promoting the
     /// speculative snapshots whose predicted remote matched and rolling back to
-    /// re-simulate where it didn't. Logs confirmed pairs in tick order. Stops
-    /// early if the round ends (a step returns `None`), leaving the settled state
-    /// parked at the round-end tick. No-op if already settled to or past
-    /// `target`.
+    /// re-simulate where it didn't. Logs confirmed pairs in tick order. Settling
+    /// continues through a round end (the post-end frames are real state); only
+    /// logging clamps there. No-op if already settled to or past `target`.
     fn settle_to(&mut self, target: u32) -> Result<(), W::Error> {
         let to_settle = target.saturating_sub(self.settled_tick) as usize;
         if to_settle == 0 {
@@ -358,9 +359,7 @@ impl<W: World> Session<W> {
         debug_assert!(self.settle_backlog.len() >= to_settle);
 
         // Longest prefix of the confirmed pairs whose remote matches what we
-        // predicted speculatively — these can be promoted with no re-sim. A
-        // speculation only ever exists for a live tick (the round-ending step
-        // returns `None` and is never buffered), so the prefix is all loggable.
+        // predicted speculatively — these can be promoted with no re-sim.
         let mut promote = 0;
         while promote < to_settle
             && promote < self.speculations.len()
@@ -371,36 +370,38 @@ impl<W: World> Session<W> {
 
         // Promote the correctly-predicted prefix: slide the settled cap up over
         // the speculative snapshots, which are byte-exact because their predicted
-        // remote equalled the real one. The simulator is not touched.
+        // remote equalled the real one. The live simulation is not touched.
         for _ in 0..promote {
             let spec = self.speculations.pop_front().unwrap();
             let pair = self.settle_backlog.pop_front().unwrap();
             assert_eq!(spec.tick, self.settled_tick + 1);
             self.last_confirmed_remote = pair.1.clone();
-            self.commit_pair(&pair, spec.terminal);
             self.settled_state = spec.state;
             self.settled_tick = spec.tick;
+            self.commit_pair(&pair, spec.round);
         }
 
         // Anything past the matched prefix descends from a wrong prediction (or
         // was never speculated): discard the speculative tail and re-simulate the
         // remaining confirmed pairs authoritatively, rewinding both this and the
-        // host's auxiliary cores via `restore`. Settling continues through a round
-        // end (the post-end animation is real state); only logging stops there.
+        // host's auxiliary cores via `load`. Round-end comes back from `step`, so
+        // we re-step the whole corrected tail and `save` only its final tick.
+        // Settling continues through a round end (the post-end animation is real
+        // state); only logging stops there.
         if promote < to_settle {
             // The speculative tail we're throwing away — the rollback depth for
             // this frame (0 when there was simply nothing speculated yet).
             self.last_misprediction_depth = self.speculations.len() as u32;
             self.speculations.clear();
-            self.world.restore(&self.settled_state)?;
+            self.world.load(&self.settled_state)?;
             for _ in promote..to_settle {
                 let pair = self.settle_backlog.pop_front().unwrap();
-                let (state, ended) = self.world.step(pair.clone())?;
+                let round = self.world.step(pair.clone())?;
                 self.settled_tick += 1;
-                self.settled_state = state;
                 self.last_confirmed_remote = pair.1.clone();
-                self.commit_pair(&pair, ended);
+                self.commit_pair(&pair, round);
             }
+            self.settled_state = self.world.save()?;
         }
 
         debug_assert_eq!(self.settled_tick, target);
@@ -408,11 +409,12 @@ impl<W: World> Session<W> {
     }
 
     /// Forward a confirmed pair to the logger unless the round has already ended.
-    /// `ended` is the producing step's round-end flag; once any settled step ends
-    /// the round, this and every later pair are withheld (the post-round-end
-    /// frames are simulated but not part of the recorded round).
-    fn commit_pair(&mut self, pair: &(W::Input, W::Input), ended: bool) {
-        if ended {
+    /// `round` is the round-end signal of the [`step`](World::step) that produced
+    /// the pair's resulting tick; once any settled step ends the round, this and
+    /// every later pair are withheld (the post-round-end frames are simulated but
+    /// not part of the recorded round).
+    fn commit_pair(&mut self, pair: &(W::Input, W::Input), round: RoundState) {
+        if round == RoundState::Ended {
             self.terminal_reached = true;
         }
         if !self.terminal_reached {
@@ -422,8 +424,8 @@ impl<W: World> Session<W> {
 
     /// Extend the speculative buffer up to `target` using real local inputs and
     /// predicted remote inputs, simulating only the ticks not already covered.
-    /// The simulator is parked at the speculation frontier, so each new tick is a
-    /// plain forward `step`.
+    /// The live simulation is parked at the speculation frontier, so each new tick
+    /// is a plain forward [`step`](World::step) followed by a [`save`](World::save).
     fn speculate_to(&mut self, target: u32, unmatched_locals: &[W::Input]) -> Result<(), W::Error> {
         assert_eq!(
             self.settled_tick, self.confirm_frontier,
@@ -437,12 +439,13 @@ impl<W: World> Session<W> {
             let local = unmatched_locals[self.speculations.len()].clone();
             let tick = self.settled_tick + self.speculations.len() as u32 + 1;
             predicted = self.world.predict(&predicted);
-            let (state, ended) = self.world.step((local.clone(), predicted.clone()))?;
+            let round = self.world.step((local.clone(), predicted.clone()))?;
+            let state = self.world.save()?;
             self.speculations.push_back(Speculation {
                 tick,
                 state,
                 input: (local, predicted.clone()),
-                terminal: ended,
+                round,
             });
         }
         Ok(())
@@ -464,11 +467,11 @@ mod tests {
     /// `(local, remote)` pairs — so the settled state can be checked byte-for-byte
     /// against a ground-truth fold of the confirmed inputs.
     ///
-    /// `terminal_at` is the last live tick: a step whose resulting tick exceeds it
-    /// reports `ended = true` (the round-ending tick) but keeps producing state.
-    /// `restore` skips the reload when already parked at the target tick,
-    /// mirroring the real adapter, so the rollback counter reflects only genuine
-    /// rewinds.
+    /// `terminal_at` is the round-ending tick: the [`step`](World::step) whose
+    /// resulting tick equals it returns [`RoundState::Ended`], but the world keeps
+    /// producing state. `load` skips the reload when already parked at the target
+    /// tick, mirroring the real adapter, so the rollback counter reflects only
+    /// genuine rewinds.
     struct W {
         parked: Vec<(u8, u8)>,
         counters: Arc<Mutex<Counters>>,
@@ -480,20 +483,26 @@ mod tests {
         type State = Vec<(u8, u8)>;
         type Error = std::convert::Infallible;
 
-        fn restore(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
+        fn step(&mut self, input: (u8, u8)) -> Result<RoundState, std::convert::Infallible> {
+            self.counters.lock().unwrap().steps += 1;
+            self.parked.push(input);
+            let resulting_tick = self.parked.len() as u32;
+            Ok(if self.terminal_at == Some(resulting_tick) {
+                RoundState::Ended
+            } else {
+                RoundState::Ongoing
+            })
+        }
+        fn save(&mut self) -> Result<Vec<(u8, u8)>, std::convert::Infallible> {
+            Ok(self.parked.clone())
+        }
+        fn load(&mut self, state: &Vec<(u8, u8)>) -> Result<(), std::convert::Infallible> {
             if self.parked.len() == state.len() {
                 return Ok(());
             }
             self.counters.lock().unwrap().restores += 1;
             self.parked = state.clone();
             Ok(())
-        }
-        fn step(&mut self, input: (u8, u8)) -> Result<(Vec<(u8, u8)>, bool), std::convert::Infallible> {
-            self.counters.lock().unwrap().steps += 1;
-            self.parked.push(input);
-            let resulting_tick = self.parked.len() as u32;
-            let ended = self.terminal_at == Some(resulting_tick);
-            Ok((self.parked.clone(), ended))
         }
         // Repeat-predict: assume the remote keeps doing what they were doing.
         fn predict(&self, last: &u8) -> u8 {

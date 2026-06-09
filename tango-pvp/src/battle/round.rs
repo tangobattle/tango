@@ -95,6 +95,7 @@ impl Round {
             last_outgoing: first_packet.to_vec(),
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
+            captured: None,
         };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
