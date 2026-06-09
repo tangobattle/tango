@@ -1412,10 +1412,33 @@ pub fn view<'a>(
             content_row = content_row.push(container(pane).height(Fill).padding(widgets::PANE_PADDING));
         }
     }
-    let emu_pane: Element<'a, Message> = container(stack![backdrop, Element::from(content_row)])
-        .width(Fill)
-        .height(Fill)
-        .into();
+    let mut emu_stack = stack![backdrop, Element::from(content_row)];
+    // PROTOTYPE: chip-select deliberation countdown. -1 when not in the custom
+    // screen. Read straight from the live primary core (bn6 only for now).
+    let chip_ticks = tango_pvp::game::bn6::custom_screen_remaining();
+    if matches!(session, ActiveSession::PvP(_)) && chip_ticks >= 0 {
+        let label = format!("CHIP TIME  {:.1}s  ({chip_ticks})", chip_ticks as f32 / 60.0);
+        let color = if chip_ticks <= 180 {
+            Color::from_rgb(1.0, 0.35, 0.35)
+        } else {
+            Color::WHITE
+        };
+        let badge = container(text(label).size(26).color(color))
+            .padding([6, 14])
+            .style(|_: &Theme| container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                border: iced::border::rounded(6),
+                ..Default::default()
+            });
+        let overlay = container(badge)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(24);
+        emu_stack = emu_stack.push(Element::from(overlay));
+    }
+    let emu_pane: Element<'a, Message> = container(emu_stack).width(Fill).height(Fill).into();
     layout = layout.push(emu_pane);
 
     // Controls strip. Replay sessions get the full transport

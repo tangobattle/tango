@@ -79,4 +79,43 @@ impl Munger {
     pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
         core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
     }
+
+    /// Top-level battle sub-scene index. 4 == the custom (chip-select) screen.
+    pub(super) fn battle_subscene(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene, -1) as u8
+    }
+
+    /// Custom-screen state-machine sub-state (`battle_subscene+1`). 4 ==
+    /// selecting; 8 == the teardown/close has begun.
+    pub(super) fn custom_subphase(&self, mut core: mgba::core::CoreMutRef) -> u8 {
+        core.raw_read_8(self.offsets.ewram.battle_subscene + 1, -1) as u8
+    }
+
+    /// Latch one player's chip-select "ready" flag to the value the game writes
+    /// when that player presses OK: `battle_state + 0x14 + player_index`. Doing
+    /// Pin the custom-screen state machine onto the natural confirm path so the
+    /// game runs its *own* teardown (commit chips → close animation → combat).
+    ///
+    /// Watchpoint RE (BR6E) traced the close completely: the custom screen is a
+    /// nested jump-table state machine whose outer sub-state is `battle_subscene+1`
+    /// (`0x020364c1`); the selecting handler (`0x08028b74`) reads the menu cell
+    /// under the cursor (index at `struct+7`) and, on an A-press over the OK cell,
+    /// dispatches to the teardown (`0x08028d3a`) — which commits the selection and
+    /// sets `0x364c1 := 8` (close animation, ~60 frames → combat). There is no
+    /// decoupled close entry: setting output state (the `battle_state +0x14/+0x15`
+    /// "ready" flags, written by `copy_input_data` from the rx packets) never
+    /// closes, and PC-hijacking the teardown corrupts it (it needs the live
+    /// selecting-handler register context).
+    ///
+    /// So we drive the *real* confirm: force the sub-state to selecting (4) — which
+    /// pops out of any sub-dialog — and the cursor (`struct+7`) onto OK (10); the
+    /// caller injects A. The game's selecting handler then runs the genuine
+    /// teardown with proper context. Verified end-to-end in the harness (closes to
+    /// combat with real HP). NOTE: cursor index 10 = OK was observed on one BR6E
+    /// layout — confirm it's layout-independent; JP/other ROMs need their own value.
+    pub(super) fn force_close_custom_screen(&self, mut core: mgba::core::CoreMutRef, _player_index: u8) {
+        let sub = self.offsets.ewram.battle_subscene;
+        core.raw_write_8(sub + 1, -1, 4); // 0x020364c1 = selecting state (exit dialogs)
+        core.raw_write_8(sub + 7, -1, 10); // 0x020364c7 = cursor on OK button
+    }
 }

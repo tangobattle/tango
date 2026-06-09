@@ -29,6 +29,12 @@ pub(super) struct EWRAMOffsets {
 
     /// The state of copying input data, usually returned by get_copy_data_input_state_ret.
     pub(super) copy_data_input_state: u32,
+
+    /// Top-level battle sub-scene jump-table index (a byte): 0 = pre-battle/
+    /// intro, 4 = custom (chip-select) screen, 8 = combat. Stays 4 for the
+    /// *entire* chip-select phase including any sub-dialog, so it's a
+    /// bypass-proof "is the custom screen up" probe. (RE'd on BR5E; US layout.)
+    pub(super) battle_subscene: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -141,6 +147,7 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     rng1_state:             0x02001120,
     rng2_state:             0x020013f0,
     copy_data_input_state:  0x0203f7d9,
+    battle_subscene:        0x020364c0,
 };
 
 static EWRAM_OFFSETS_JP: EWRAMOffsets = EWRAMOffsets {

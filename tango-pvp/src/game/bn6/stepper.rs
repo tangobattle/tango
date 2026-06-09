@@ -1,6 +1,7 @@
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
+use super::custom_screen::{CustomScreenTimer, TICK_LIMIT};
 use super::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
@@ -92,6 +93,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
+            let custom_timer = CustomScreenTimer::new();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut state = stepper_state.lock_inner();
                 // PC 0x080003fa is a system-level joyflag read and fires in
@@ -137,6 +139,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
                 }
 
+                // Chip-select cap: pin the custom screen onto the confirm path
+                // (state writes). The confirm (A) rides the recorded local input
+                // — the primary OR'd it in before committing — so re-sim and
+                // replay reproduce the same close.
+                custom_timer.enforce(&munger, core, TICK_LIMIT, state.local_player_index() as u8);
                 // FF state capture. At `capture_tick` the input window is
                 // exhausted (all of `inputs` consumed), so there's no pair to
                 // peek: snapshot poised at the start of the tick with r4 left
