@@ -65,6 +65,21 @@ struct ReplayExtras {
     on_round_ended: Option<Box<dyn FnOnce() + Send>>,
 }
 
+/// The boundary recorded when the FF reaches `capture_tick`: just the tick and
+/// this side's outgoing packet. The matching mgba state is *not* stored — the
+/// core is left parked at the boundary and the caller materializes it on demand
+/// via [`Stepper::save`](super::Stepper::save), so a rollback that re-steps a
+/// whole tail saves only the one state it keeps. Returned to the caller as part
+/// of [`StepperResult`](super::StepperResult).
+pub struct CapturedBoundary {
+    /// The tick the boundary is poised at (the tick the game is about to process
+    /// next, one past the tick just simulated).
+    pub tick: u32,
+    /// This side's outgoing link packet at the boundary — seeds the next step's
+    /// link exchange.
+    pub packet: Vec<u8>,
+}
+
 pub struct InnerState {
     disable_bgm: bool,
     current_tick: u32,
@@ -79,16 +94,17 @@ pub struct InnerState {
     /// Fastforwarder mode (the per-game trap gates this branch on
     /// `is_replaying()` so the value is irrelevant there).
     commit_frontier: u32,
-    /// Tick at which the per-game stepper trap snapshots the state into
-    /// [`captured_snapshot`]. The input window is exhausted by then, so the
-    /// capturing `main_read_joyflags` finds no pair to peek and saves the state
-    /// poised at the start of `current_tick` with r4 left unset. The consumer
-    /// supplies the local joyflags: the live core via
-    /// `Hooks::inject_joyflags_on_primary_snapshot`, the next FF by re-priming r4
-    /// at its first `main_read_joyflags`. `u32::MAX` in replay mode so the
-    /// capture never fires.
+    /// Tick at which the per-game stepper trap halts the core at the boundary,
+    /// recording [`Self::captured`]. The input window is exhausted by then, so the
+    /// halting `main_read_joyflags` finds no pair to peek and leaves the core
+    /// poised at the start of `current_tick` with r4 left unset (the matching mgba
+    /// state is materialized on demand by
+    /// [`Stepper::save`](super::Stepper::save)). The consumer supplies the local
+    /// joyflags: the live core via `Hooks::inject_joyflags_on_primary_snapshot`,
+    /// the next FF by re-priming r4 at its first `main_read_joyflags`. `u32::MAX`
+    /// in replay mode so the capture never fires.
     capture_tick: u32,
-    captured_snapshot: Option<crate::battle::Snapshot>,
+    captured: Option<CapturedBoundary>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
@@ -188,7 +204,7 @@ impl InnerState {
             commit_frontier,
             // Replay mode never runs the FF capture branch.
             capture_tick: u32::MAX,
-            captured_snapshot: None,
+            captured: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -243,7 +259,7 @@ impl InnerState {
             // branch is gated on `is_replaying()`), so `commit_frontier` is unused.
             commit_frontier: u32::MAX,
             capture_tick,
-            captured_snapshot: None,
+            captured: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
@@ -424,7 +440,7 @@ impl InnerState {
     /// `apply_input` calls have a valid round_state). The local-packet
     /// `send_count` check guards against trap-ordering bugs. No state is
     /// stored here — the FF's single state capture happens at
-    /// [`Self::capture_tick`] via [`Self::set_captured_state`].
+    /// [`Self::capture_tick`] via [`Self::capture`].
     pub fn on_first_commit(&mut self) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
@@ -446,10 +462,13 @@ impl InnerState {
         }
     }
 
-    /// Capture the FF's single state snapshot. Called by per-game stepper traps
-    /// when `current_tick == capture_tick()`, poised at the start of the tick
-    /// with r4 (local joyflags) left unset for the consumer to inject.
-    pub fn capture(&mut self, state: Box<mgba::state::State>) {
+    /// Record the FF boundary. Called by per-game stepper traps when
+    /// `current_tick == capture_tick()`, poised at the start of the tick with r4
+    /// (local joyflags) left unset. Stores only the tick and outgoing packet; the
+    /// matching mgba state is materialized on demand by
+    /// [`Stepper::save`](super::Stepper::save) off the core, which the trap leaves
+    /// parked exactly here.
+    pub fn capture(&mut self) {
         let p = self.local_packet.clone().expect("local packet");
         let expected = self.output_pairs.len() as u32;
         if p.send_count != expected {
@@ -458,29 +477,28 @@ impl InnerState {
                 p.send_count, expected,
             );
         }
-        self.captured_snapshot = Some(crate::battle::Snapshot {
+        self.captured = Some(CapturedBoundary {
             tick: self.current_tick,
-            state,
             packet: p.packet,
         });
     }
 
-    /// True iff the FF state snapshot has been captured. The Fastforwarder
-    /// outer loop exits when this flips to true. Per-game stepper traps
-    /// (`copy_input_data_entry` in particular) gate on this to skip work
-    /// after capture: `run_loop`'s cycle budget often spills past the
-    /// trap-fire point that captured the state, and any
-    /// `apply_shadow_input` call from that spill would double-advance the
-    /// shadow for the captured tick — the bug that desync'd BN4/5/EXE45.
+    /// True iff the FF boundary has been recorded. The Fastforwarder outer loop
+    /// exits when this flips to true. Per-game stepper traps
+    /// (`copy_input_data_entry` in particular) gate on this to skip work after
+    /// capture: `run_loop`'s cycle budget often spills past the trap-fire point
+    /// that recorded the boundary, and any `apply_shadow_input` call from that
+    /// spill would double-advance the shadow for the captured tick — the bug that
+    /// desync'd BN4/5/EXE45.
     pub fn has_captured_snapshot(&self) -> bool {
-        self.captured_snapshot.is_some()
+        self.captured.is_some()
     }
 
-    /// Consumes self into a Fastforwarder result. Panics if the state hasn't
-    /// been captured yet — callers must check [`Self::has_captured_state`] first.
+    /// Consumes self into a Fastforwarder result. Panics if the boundary hasn't
+    /// been recorded yet — callers must check [`Self::has_captured_snapshot`] first.
     pub(super) fn into_stepper_result(self) -> super::StepperResult {
         super::StepperResult {
-            snapshot: self.captured_snapshot.expect("captured snapshot"),
+            boundary: self.captured.expect("captured boundary"),
             round_result: self.round_result,
             output_pairs: self.output_pairs,
         }
@@ -618,7 +636,7 @@ impl InnerState {
         self.output_pairs = vec![];
         // Replay mode never sets captured_state, so resetting here is just
         // defensive; included for symmetry with the other per-round fields.
-        self.captured_snapshot = None;
+        self.captured = None;
         self.round_result = None;
         self.phase = RoundPhase::InProgress;
     }

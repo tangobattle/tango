@@ -2,7 +2,7 @@ pub use crate::input::{Input, PartialInput};
 
 mod state;
 
-pub use state::{InnerState, ReplayCheckpoint, ReplaySnapshot, State};
+pub use state::{CapturedBoundary, InnerState, ReplayCheckpoint, ReplaySnapshot, State};
 
 /// Outcome of a single round, as detected by the per-game `round_end_*` traps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr)]
@@ -31,22 +31,28 @@ pub struct RoundResult {
 
 /// Output of a single stepper run.
 pub struct StepperResult {
-    /// State captured at `capture_tick`: the per-game stepper trap fires
-    /// `main_read_joyflags` once the input window is exhausted and snapshots
-    /// poised at the start of that tick, with r4 (local joyflags) left unset.
-    /// The consumer supplies it: the live core via
+    /// The boundary the run halted at: its tick and outgoing packet. The per-game
+    /// stepper trap fires `main_read_joyflags` once the input window is exhausted
+    /// and halts the core there (`end_run_loop`), poised at the start of that tick
+    /// with r4 (local joyflags) left unset.
+    ///
+    /// The matching mgba state is *not* bundled — [`Stepper::step`] leaves the
+    /// core parked at this boundary and the caller materializes the snapshot on
+    /// demand via [`Stepper::save`], so a rollback that re-steps a whole tail only
+    /// saves the one state it keeps. r4 is supplied by the consumer: the live core
+    /// via
     /// [`Hooks::inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot)
-    /// after loading the snapshot, and the next `fastforward` run by re-priming
-    /// r4 at its first `main_read_joyflags` (its PC is rewound there by
-    /// `prepare_for_fastforward`).
-    pub snapshot: crate::battle::Snapshot,
+    /// after loading the snapshot, and the next run by re-priming r4 at its first
+    /// `main_read_joyflags` (its PC is rewound there by `prepare_for_fastforward`).
+    pub boundary: CapturedBoundary,
     pub round_result: Option<RoundResult>,
     pub output_pairs: Vec<(Input, Input)>,
 }
 
 /// Single per-frame re-sim core for the rollback engine: a dedicated headless
 /// mgba core plus the drive loop that runs the per-game trap set one tick at a
-/// time, capturing a boundary snapshot at `capture_tick` each tick. It advances
+/// time, halting at the boundary tick (`capture_tick`) each tick — where the
+/// caller materializes the snapshot on demand via [`save`](Self::save). It advances
 /// via [`step`](Self::step) and rewinds via [`restore`](Self::restore) only when
 /// the engine rolls back to re-simulate a mispredicted tail. In steady state —
 /// and after promotions — `step` resumes forward from wherever the previous call
@@ -108,11 +114,12 @@ impl Stepper {
     }
 
     /// Advance exactly one tick from where the core is parked (`current_tick`),
-    /// applying `input` and capturing the boundary snapshot at `current_tick +
-    /// 1`. `last_local_packet` is this side's outgoing link packet at
-    /// `current_tick` (seeds the link exchange); `apply_shadow_input` resolves
-    /// the remote packet by co-simulating the shadow. Drives the core until the
-    /// per-game stepper trap captures the boundary snapshot.
+    /// applying `input` and halting at the boundary `current_tick + 1`.
+    /// `last_local_packet` is this side's outgoing link packet at `current_tick`
+    /// (seeds the link exchange); `apply_shadow_input` resolves the remote packet
+    /// by co-simulating the shadow. Drives the core until the per-game stepper
+    /// trap reaches the boundary and halts; call [`save`](Self::save) afterward to
+    /// snapshot the core there.
     pub fn step(
         &mut self,
         input: (PartialInput, PartialInput),
@@ -146,5 +153,17 @@ impl Stepper {
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
         }
+    }
+
+    /// Snapshot the core at the boundary the last [`step`](Self::step) parked it
+    /// at. `step` halts the core exactly at the capture boundary — the per-game
+    /// `main_read_joyflags` trap calls `end_run_loop` right there, with r4 unset —
+    /// so a save taken now is byte-identical to one taken inside that trap. The
+    /// engine folds the speculative and authoritative cores into this one, so the
+    /// parked core *is* the snapshot; deferring the save to here means a rollback
+    /// that re-steps N ticks only saves the one final state it keeps, not a state
+    /// per re-simulated tick.
+    pub fn save(&mut self) -> anyhow::Result<Box<mgba::state::State>> {
+        Ok(self.core.as_mut().save_state()?)
     }
 }

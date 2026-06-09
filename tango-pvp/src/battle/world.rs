@@ -47,8 +47,9 @@ type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<
 /// core plus the shadow. Pins the engine's type axes ([`MgbaState`] /
 /// [`PartialInput`]) and drives the simulation: every [`step`](getgud::World::step)
 /// co-simulates the opponent for that tick (real packet from real-or-predicted
-/// remote joyflags) and captures a boundary snapshot of both cores, which the
-/// next [`save`](getgud::World::save) hands back to the engine.
+/// remote joyflags) and leaves both cores parked at the resulting boundary;
+/// [`save`](getgud::World::save) then snapshots them on demand. Deferring the save
+/// means a rollback that re-steps N ticks only snapshots the final one.
 /// [`load`](getgud::World::load) rewinds both cores to a saved bundle before a
 /// rollback re-sim — but is a no-op when the cores are already parked at that
 /// tick, so steady-state settles stay forward-only.
@@ -60,17 +61,11 @@ pub struct MgbaWorld {
     /// The tick both cores are currently parked at.
     pub parked_tick: u32,
     /// This side's outgoing link packet at the parked tick — seeds the next
-    /// step's link exchange.
+    /// step's link exchange, and is the `outgoing` of a [`save`](getgud::World::save)
+    /// taken here.
     pub last_outgoing: Vec<u8>,
     pub replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     pub local_player_index: u8,
-    /// The boundary snapshot captured by the most recent [`step`](getgud::World::step),
-    /// handed back by the next [`save`](getgud::World::save). The stepper captures
-    /// the primary snapshot inherently while running the tick, and the shadow
-    /// snapshot must be taken at the same boundary (before any later step advances
-    /// the shadow), so both are bundled here in `step` rather than re-derived in
-    /// `save`.
-    pub captured: Option<MgbaState>,
 }
 
 impl getgud::World for MgbaWorld {
@@ -91,39 +86,36 @@ impl getgud::World for MgbaWorld {
         };
         let last_outgoing = self.last_outgoing.clone();
         let result = self.stepper.step(input, self.parked_tick, &last_outgoing, resolver)?;
-        let shadow_snapshot = self.shadow.lock().unwrap().save_state()?;
 
-        self.parked_tick = result.snapshot.tick;
-        self.last_outgoing = result.snapshot.packet.clone();
+        // Both cores are now parked at the boundary; record where, but don't
+        // snapshot — `save` does that on demand, so a re-stepped rollback tail
+        // doesn't pay a save_state per intermediate tick.
+        self.parked_tick = result.boundary.tick;
+        self.last_outgoing = result.boundary.packet;
 
         // The per-game round-end traps fire while running the round-ending tick's
         // body, so the step that reports a round result marks the boundary after
         // which input pairs are no longer part of the recorded round. The state
         // itself is still valid (the post-round-end animation), and the engine
         // keeps simulating it so the live core can reach the end.
-        let round = if result.round_result.is_some() {
+        Ok(if result.round_result.is_some() {
             getgud::RoundState::Ended
         } else {
             getgud::RoundState::Ongoing
-        };
-
-        // Stash the boundary snapshot of both cores; the next `save` hands it back.
-        self.captured = Some(MgbaState {
-            primary: result.snapshot.state,
-            outgoing: result.snapshot.packet,
-            shadow_snapshot,
-            tick: result.snapshot.tick,
-        });
-        Ok(round)
+        })
     }
 
     fn save(&mut self) -> anyhow::Result<MgbaState> {
-        // The most recent `step` captured the boundary snapshot of both cores;
-        // hand it over. The engine only ever `save`s the tick it just `step`ped,
-        // so there is always exactly one waiting.
-        self.captured
-            .take()
-            .ok_or_else(|| anyhow::format_err!("save called without a preceding step"))
+        // Snapshot both cores where the last `step` parked them. The stepper halts
+        // the primary exactly at the boundary (so this is byte-identical to a save
+        // taken inside the capture trap), and the shadow is parked at the same tick
+        // because `step` co-simulated it forward and nothing has advanced it since.
+        Ok(MgbaState {
+            primary: self.stepper.save()?,
+            outgoing: self.last_outgoing.clone(),
+            shadow_snapshot: self.shadow.lock().unwrap().save_state()?,
+            tick: self.parked_tick,
+        })
     }
 
     fn load(&mut self, state: &MgbaState) -> anyhow::Result<()> {

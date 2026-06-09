@@ -167,7 +167,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // there.
                 if current_tick == state.capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
-                    state.capture(core.save_state().expect("save captured state"));
+                    state.capture();
                     // Halt run_loop at the capture: its leftover cycle budget must
                     // not spill into copy_input_data_entry and double-advance the
                     // shadow for the captured tick.

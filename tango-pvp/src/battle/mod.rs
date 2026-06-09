@@ -31,20 +31,6 @@ pub struct ReplayConfig {
     pub writer: Option<crate::replay::Writer>,
 }
 
-/// Save snapshot from the FF, paired with the local emulator's outgoing
-/// link-cable packet at the moment of capture. Both Fastforwarder and replay
-/// use this.
-#[derive(Clone)]
-pub struct Snapshot {
-    pub state: Box<mgba::state::State>,
-    /// `game.current_tick` at the moment the snapshot was captured — i.e. the
-    /// tick the game is *about to process next*, an exclusive upper bound of
-    /// what's already been simulated. For `Round::settled_state` this is the
-    /// display target, capped at `commit_frontier − 1`.
-    pub tick: u32,
-    pub packet: Vec<u8>,
-}
-
 /// GBA video framerate in frames per second.
 pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
