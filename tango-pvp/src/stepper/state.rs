@@ -23,10 +23,14 @@ pub struct LocalPacket {
     packet: Vec<u8>,
 }
 
-/// Replay-mode-only fields. None in Fastforwarder mode, where the run is
-/// scoped to a single known input window with no inter-round transitions
-/// or game-driven RNG seeding.
+/// State for [`Mode::Replay`]: multi-round playback from boot, with
+/// game-driven RNG seeding at each round's first commit and shadow lifecycle
+/// driven at the round boundaries.
 struct ReplayExtras {
+    /// Tick at which the per-round first-commit hook fires (seeds RNG, sets
+    /// game tick to 0, advances shadow). Compared against `current_tick` by
+    /// [`InnerState::needs_replay_first_commit`].
+    commit_frontier: u32,
     /// Multi-round queue. When the running round ends, the next round here
     /// gets loaded automatically.
     next_rounds: VecDeque<Vec<PartialInputPair>>,
@@ -80,6 +84,37 @@ pub struct CapturedBoundary {
     pub packet: Vec<u8>,
 }
 
+/// State for [`Mode::Fastforward`]: a single re-sim run over a known input
+/// window, ending in a boundary capture at `capture_tick`.
+struct FastforwardExtras {
+    /// Tick at which the per-game stepper trap halts the core at the boundary,
+    /// recording [`Self::captured`]. The input window is exhausted by then, so the
+    /// halting `main_read_joyflags` finds no pair to peek and leaves the core
+    /// poised at the start of `current_tick` with r4 left unset (the matching mgba
+    /// state is materialized on demand by
+    /// [`Stepper::save`](super::Stepper::save)). The consumer supplies the local
+    /// joyflags: the live core via `Hooks::inject_joyflags_on_primary_snapshot`,
+    /// the next FF by re-priming r4 at its first `main_read_joyflags`.
+    capture_tick: u32,
+    captured: Option<CapturedBoundary>,
+}
+
+/// Which of the stepper's two jobs this state is driving. The per-game stepper
+/// traps serve both; they branch on [`InnerState::is_replaying`] and the
+/// mode-specific predicates ([`InnerState::needs_replay_first_commit`],
+/// [`InnerState::at_capture_tick`]) rather than inspecting this directly.
+enum Mode {
+    /// Replay playback from boot: one or more recorded rounds, no rollback.
+    /// Built by [`State::new`] and [`State::restore_replay_checkpoint`].
+    Replay(ReplayExtras),
+    /// One [`Stepper::step`](super::Stepper::step) for the rollback engine:
+    /// re-simulate exactly one known input window from a committed state and
+    /// capture the boundary at the end. Built by
+    /// [`InnerState::for_fastforward`]. No inter-round transitions or
+    /// game-driven RNG seeding happen here.
+    Fastforward(FastforwardExtras),
+}
+
 pub struct InnerState {
     disable_bgm: bool,
     current_tick: u32,
@@ -89,28 +124,10 @@ pub struct InnerState {
     output_pairs: Vec<InputPair>,
     apply_shadow_input: ApplyShadowInput,
     local_packet: Option<LocalPacket>,
-    /// Replay-mode-only: tick at which the per-round first-commit hook fires
-    /// (seeds RNG, sets game tick to 0, advances shadow). `u32::MAX` in
-    /// Fastforwarder mode (the per-game trap gates this branch on
-    /// `is_replaying()` so the value is irrelevant there).
-    commit_frontier: u32,
-    /// Tick at which the per-game stepper trap halts the core at the boundary,
-    /// recording [`Self::captured`]. The input window is exhausted by then, so the
-    /// halting `main_read_joyflags` finds no pair to peek and leaves the core
-    /// poised at the start of `current_tick` with r4 left unset (the matching mgba
-    /// state is materialized on demand by
-    /// [`Stepper::save`](super::Stepper::save)). The consumer supplies the local
-    /// joyflags: the live core via `Hooks::inject_joyflags_on_primary_snapshot`,
-    /// the next FF by re-priming r4 at its first `main_read_joyflags`. `u32::MAX`
-    /// in replay mode so the capture never fires.
-    capture_tick: u32,
-    captured: Option<CapturedBoundary>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
     error: Option<anyhow::Error>,
-
-    /// Replay-mode-only state. None in Fastforwarder mode.
-    replay: Option<ReplayExtras>,
+    mode: Mode,
 }
 
 /// Bundle of inputs to [`InnerState::for_replay`]. Used by both the fresh
@@ -201,14 +218,11 @@ impl InnerState {
             output_pairs: vec![],
             apply_shadow_input,
             local_packet,
-            commit_frontier,
-            // Replay mode never runs the FF capture branch.
-            capture_tick: u32::MAX,
-            captured: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
-            replay: Some(ReplayExtras {
+            mode: Mode::Replay(ReplayExtras {
+                commit_frontier,
                 next_rounds,
                 shadow,
                 rng,
@@ -255,15 +269,36 @@ impl InnerState {
                 send_count: 0,
                 packet: last_local_packet,
             }),
-            // FF mode bypasses the replay-mode first-commit hook (the trap
-            // branch is gated on `is_replaying()`), so `commit_frontier` is unused.
-            commit_frontier: u32::MAX,
-            capture_tick,
-            captured: None,
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
-            replay: None,
+            mode: Mode::Fastforward(FastforwardExtras {
+                capture_tick,
+                captured: None,
+            }),
+        }
+    }
+
+    // ----- mode access -----
+
+    fn replay(&self) -> Option<&ReplayExtras> {
+        match &self.mode {
+            Mode::Replay(replay) => Some(replay),
+            Mode::Fastforward(_) => None,
+        }
+    }
+
+    fn replay_mut(&mut self) -> Option<&mut ReplayExtras> {
+        match &mut self.mode {
+            Mode::Replay(replay) => Some(replay),
+            Mode::Fastforward(_) => None,
+        }
+    }
+
+    fn fastforward(&self) -> Option<&FastforwardExtras> {
+        match &self.mode {
+            Mode::Fastforward(ff) => Some(ff),
+            Mode::Replay(_) => None,
         }
     }
 
@@ -297,18 +332,29 @@ impl InnerState {
         1 - self.local_player_index
     }
 
-    // ----- tick / commit_frontier / capture_tick -----
+    // ----- tick / first-commit / capture predicates -----
 
     pub fn current_tick(&self) -> u32 {
         self.current_tick
     }
 
-    pub fn commit_frontier(&self) -> u32 {
-        self.commit_frontier
+    /// True iff this is a replay whose current round is active but hasn't
+    /// committed yet, and `current_tick` has reached the round's commit
+    /// frontier. Per-game `main_read_joyflags` traps gate the first-commit
+    /// hook (game RNG seeding + [`Self::on_first_commit`]) on this. Always
+    /// false in Fastforwarder mode.
+    pub fn needs_replay_first_commit(&self) -> bool {
+        self.replay().is_some_and(|replay| {
+            replay.round_active && !replay.has_committed_this_round && self.current_tick == replay.commit_frontier
+        })
     }
 
-    pub fn capture_tick(&self) -> u32 {
-        self.capture_tick
+    /// True iff this is a Fastforwarder run that has reached its boundary
+    /// tick — the input window is exhausted and the per-game trap should
+    /// record the boundary ([`Self::capture`]) and halt the core there.
+    /// Always false in replay mode.
+    pub fn at_capture_tick(&self) -> bool {
+        self.fastforward().is_some_and(|ff| self.current_tick == ff.capture_tick)
     }
 
     pub fn increment_current_tick(&mut self) {
@@ -317,7 +363,7 @@ impl InnerState {
         // menu transitions, and inter-round animations; we mustn't let
         // those bump current_tick past commit_frontier (= 0) before the round
         // actually starts. In Fastforwarder mode, every increment counts.
-        if let Some(replay) = self.replay.as_mut() {
+        if let Mode::Replay(replay) = &mut self.mode {
             if !replay.has_committed_this_round {
                 return;
             }
@@ -329,19 +375,19 @@ impl InnerState {
     /// Replay-mode monotonic tick counter across all queued rounds. 0 in
     /// Fastforwarder mode.
     pub fn absolute_tick(&self) -> u32 {
-        self.replay.as_ref().map_or(0, |r| r.absolute_tick)
+        self.replay().map_or(0, |r| r.absolute_tick)
     }
 
     /// Total ticks across all replay rounds, computed once at construction.
     /// 0 in Fastforwarder mode.
     pub fn total_replay_ticks(&self) -> u32 {
-        self.replay.as_ref().map_or(0, |r| r.total_replay_ticks)
+        self.replay().map_or(0, |r| r.total_replay_ticks)
     }
 
     /// Index of the round currently in progress (0-based). 0 in
     /// Fastforwarder mode.
     pub fn current_round_index(&self) -> u32 {
-        self.replay.as_ref().map_or(0, |r| r.current_round_index)
+        self.replay().map_or(0, |r| r.current_round_index)
     }
 
     // ----- input pair queue -----
@@ -361,8 +407,7 @@ impl InnerState {
     /// Inputs remaining across the current round and all queued future rounds.
     pub fn total_input_pairs_left(&self) -> usize {
         let queued = self
-            .replay
-            .as_ref()
+            .replay()
             .map_or(0, |r| r.next_rounds.iter().map(|round| round.len()).sum());
         self.input_pairs.len() + queued
     }
@@ -450,7 +495,7 @@ impl InnerState {
                 p.send_count, expected,
             );
         }
-        let shadow_to_advance = self.replay.as_mut().and_then(|replay| {
+        let shadow_to_advance = self.replay_mut().and_then(|replay| {
             let needs_advance = !replay.has_committed_this_round;
             replay.has_committed_this_round = true;
             needs_advance.then(|| replay.shadow.clone())
@@ -477,7 +522,10 @@ impl InnerState {
                 p.send_count, expected,
             );
         }
-        self.captured = Some(CapturedBoundary {
+        let Mode::Fastforward(ff) = &mut self.mode else {
+            panic!("capture is Fastforwarder-mode-only");
+        };
+        ff.captured = Some(CapturedBoundary {
             tick: self.current_tick,
             packet: p.packet,
         });
@@ -491,14 +539,18 @@ impl InnerState {
     /// spill would double-advance the shadow for the captured tick — the bug that
     /// desync'd BN4/5/EXE45.
     pub fn has_captured_snapshot(&self) -> bool {
-        self.captured.is_some()
+        self.fastforward().is_some_and(|ff| ff.captured.is_some())
     }
 
-    /// Consumes self into a Fastforwarder result. Panics if the boundary hasn't
-    /// been recorded yet — callers must check [`Self::has_captured_snapshot`] first.
+    /// Consumes self into a Fastforwarder result. Panics if not in
+    /// Fastforwarder mode or the boundary hasn't been recorded yet — callers
+    /// must check [`Self::has_captured_snapshot`] first.
     pub(super) fn into_stepper_result(self) -> super::StepperResult {
+        let Mode::Fastforward(ff) = self.mode else {
+            panic!("into_stepper_result is Fastforwarder-mode-only");
+        };
         super::StepperResult {
-            boundary: self.captured.expect("captured boundary"),
+            boundary: ff.captured.expect("captured boundary"),
             round_result: self.round_result,
         }
     }
@@ -523,7 +575,7 @@ impl InnerState {
         // which calls shadow.advance_until_round_end from its
         // round_ending_entry trap. Guarded so the multi-entry games
         // (BN1/BN2 fire two round_ending_entry traps) only advance once.
-        let shadow_to_advance = self.replay.as_mut().and_then(|replay| {
+        let shadow_to_advance = self.replay_mut().and_then(|replay| {
             if replay.shadow_round_ended {
                 None
             } else {
@@ -542,7 +594,7 @@ impl InnerState {
         self.phase = RoundPhase::Ended;
         // Replay-mode only: fire on_round_ended when the last queued round
         // ends. In Fastforwarder mode there's no callback to run.
-        if let Some(replay) = self.replay.as_mut() {
+        if let Some(replay) = self.replay_mut() {
             if replay.next_rounds.is_empty() {
                 if let Some(callback) = replay.on_round_ended.take() {
                     callback();
@@ -565,16 +617,16 @@ impl InnerState {
     // stepper traps can use them unconditionally.
 
     pub fn is_replaying(&self) -> bool {
-        self.replay.is_some()
+        matches!(self.mode, Mode::Replay(_))
     }
 
     /// Returns the replay-mode RNG, if this stepper is in replay mode.
     pub fn replay_rng(&self) -> Option<&SharedRng> {
-        self.replay.as_ref().map(|r| &r.rng)
+        self.replay().map(|r| &r.rng)
     }
 
     pub fn replay_is_offerer(&self) -> bool {
-        self.replay.as_ref().is_some_and(|r| r.is_offerer)
+        self.replay().is_some_and(|r| r.is_offerer)
     }
 
     /// True iff the current round has had its first commit. Used by per-game
@@ -582,13 +634,13 @@ impl InnerState {
     /// the game's tick during boot / inter-round animations in replay mode.
     /// Always false in Fastforwarder mode.
     pub fn has_committed_this_round(&self) -> bool {
-        self.replay.as_ref().is_some_and(|r| r.has_committed_this_round)
+        self.replay().is_some_and(|r| r.has_committed_this_round)
     }
 
     /// True iff round_start_ret has fired for the current round. In FF mode
     /// this is always true (FF resumes from a known committed state).
     pub fn round_active(&self) -> bool {
-        self.replay.as_ref().map_or(true, |r| r.round_active)
+        self.replay().map_or(true, |r| r.round_active)
     }
 
     // ----- replay-mode round transitions -----
@@ -601,17 +653,14 @@ impl InnerState {
     ///
     /// No-op in Fastforwarder mode.
     pub fn advance_to_next_replay_round_if_pending(&mut self) {
-        if self.replay.is_none() {
+        let ended = self.phase == RoundPhase::Ended;
+        let Some(replay) = self.replay_mut() else {
             return;
-        }
-        let next_round = if self.phase == RoundPhase::Ended {
-            self.replay.as_mut().unwrap().next_rounds.pop_front()
-        } else {
-            None
         };
+        let next_round = if ended { replay.next_rounds.pop_front() } else { None };
         match next_round {
             Some(round_inputs) => self.load_replay_round(round_inputs),
-            None => self.replay.as_mut().unwrap().round_active = true,
+            None => self.replay_mut().unwrap().round_active = true,
         }
     }
 
@@ -624,7 +673,7 @@ impl InnerState {
         self.local_packet = None;
 
         {
-            let replay = self.replay.as_mut().expect("load_replay_round in FF mode");
+            let replay = self.replay_mut().expect("load_replay_round in FF mode");
             replay.round_active = true;
             replay.current_round_index += 1;
             replay.has_committed_this_round = false;
@@ -633,9 +682,6 @@ impl InnerState {
 
         self.input_pairs = round_inputs.into_iter().collect();
         self.output_pairs = vec![];
-        // Replay mode never sets captured_state, so resetting here is just
-        // defensive; included for symmetry with the other per-round fields.
-        self.captured = None;
         self.round_result = None;
         self.phase = RoundPhase::InProgress;
     }
@@ -734,7 +780,7 @@ impl State {
     /// Returns None outside replay mode or before round_start_ret has fired.
     pub fn capture_replay_checkpoint(&self) -> Option<ReplayCheckpoint> {
         let inner = self.lock_inner();
-        let replay = inner.replay.as_ref()?;
+        let replay = inner.replay()?;
         if !replay.round_active {
             return None;
         }
@@ -763,17 +809,16 @@ impl State {
         let mut guard = self.0.lock().unwrap();
         let prev = guard.as_mut().ok_or_else(|| anyhow::anyhow!("stepper state missing"))?;
         let prev_replay = prev
-            .replay
-            .as_mut()
+            .replay_mut()
             .ok_or_else(|| anyhow::anyhow!("not in replay mode"))?;
 
         let on_round_ended = prev_replay.on_round_ended.take();
         let is_offerer = prev_replay.is_offerer;
         let total_replay_ticks = prev_replay.total_replay_ticks;
         let shadow = prev_replay.shadow.clone();
+        let commit_frontier = prev_replay.commit_frontier;
         let match_type = prev.match_type;
         let local_player_index = prev.local_player_index;
-        let commit_frontier = prev.commit_frontier;
         let disable_bgm = prev.disable_bgm;
 
         let round_idx = checkpoint.current_round_index as usize;

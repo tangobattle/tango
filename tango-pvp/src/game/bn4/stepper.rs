@@ -98,15 +98,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 if state.is_replaying() && !state.round_active() {
                     return;
                 }
-                let current_tick = state.current_tick();
-
-                // Replay-mode-only first-commit hook. FF mode bypasses this
-                // (commit_frontier = u32::MAX there).
-                if state.is_replaying()
-                    && current_tick == state.commit_frontier()
-                    && !state.has_committed_this_round()
-                    && state.round_active()
-                {
+                // Replay-mode-only first-commit hook; never fires in FF mode.
+                if state.needs_replay_first_commit() {
                     if let Some(rng) = state.replay_rng().cloned() {
                         let mut rng = rng.lock().unwrap();
                         let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
@@ -123,9 +116,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // unset. The consumer injects the local joyflags — the live
                 // primary via `inject_joyflags_on_primary_snapshot`, the next FF
                 // by re-priming r4 at its first `main_read_joyflags`.
-                // `capture_tick` is u32::MAX in replay mode, so this never fires
-                // there.
-                if current_tick == state.capture_tick() {
+                // Never fires in replay mode.
+                if state.at_capture_tick() {
                     state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.capture();
                     // Halt run_loop at the capture: its leftover cycle budget must
