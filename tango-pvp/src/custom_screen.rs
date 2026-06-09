@@ -58,6 +58,13 @@ pub trait CustomScreenHooks {
     /// per-game: A (`0x0001`) for BN4/5/6; BN2 and BN3 close on their pinned
     /// state alone (`0`). Rides the synced input channel so every core sees it.
     fn confirm_joyflags(&self) -> u16;
+
+    /// PROTOTYPE diagnostic: pack the raw RAM bytes [`in_custom_screen`] depends
+    /// on into a u32, so the GUI can surface what the live display core actually
+    /// reads when the timer claims it's not in the custom screen. Default `0`.
+    fn probe(&self, _core: mgba::core::CoreMutRef) -> u32 {
+        0
+    }
 }
 
 /// Default chip-select deliberation cap, in battle ticks (60/s). 600 ≈ 10s.
@@ -87,6 +94,9 @@ pub struct CustomScreenTimer {
     remaining: Option<u32>,
     /// PROTOTYPE diagnostic latch: log the "firing" line only once per screen.
     fired: bool,
+    /// PROTOTYPE diagnostic: last value of [`CustomScreenHooks::probe`] read on
+    /// the owning core, for the GUI readout.
+    probe: u32,
 }
 
 impl CustomScreenTimer {
@@ -98,6 +108,7 @@ impl CustomScreenTimer {
             closing: false,
             remaining: None,
             fired: false,
+            probe: 0,
         }
     }
 
@@ -110,6 +121,7 @@ impl CustomScreenTimer {
     /// alone). The stepper/shadow ignore the return — the confirm press is
     /// already in the recorded input stream.
     pub fn enforce(&mut self, core: mgba::core::CoreMutRef, tick: u32) -> u16 {
+        self.probe = self.game.probe(core);
         let confirm = if self.game.in_custom_screen(core) {
             self.advance(tick, self.game.close_started(core))
         } else {
@@ -127,6 +139,11 @@ impl CustomScreenTimer {
     /// countdown; updated by [`enforce`](Self::enforce).
     pub fn remaining(&self) -> Option<u32> {
         self.remaining
+    }
+
+    /// PROTOTYPE diagnostic: last [`CustomScreenHooks::probe`] value seen.
+    pub fn probe(&self) -> u32 {
+        self.probe
     }
 
     /// Timing core, split from the core reads so it can be unit-tested against a

@@ -618,14 +618,19 @@ impl PvpSession {
     /// PROTOTYPE: ticks left in the chip-select deliberation timer, or `None`
     /// when not in the custom screen / the timer is inactive. For the countdown
     /// overlay; read off the live primary round.
-    /// PROTOTYPE diagnostic: `(armed, remaining)` for the live round's chip-select
-    /// timer. `armed` distinguishes "timer is on but not detecting the custom
-    /// screen" from "no round / off", so the overlay can surface which.
-    pub fn custom_screen_debug(&self) -> Option<(bool, Option<u32>)> {
+    /// PROTOTYPE diagnostic: `(armed, remaining, probe)` for the live round's
+    /// chip-select timer. `armed` distinguishes "timer on but not detecting the
+    /// custom screen" from "no round / off"; `probe` is the raw RAM the live
+    /// display core reads, so we can see why detection isn't tripping.
+    pub fn custom_screen_debug(&self) -> Option<(bool, Option<u32>, u32)> {
         let match_ = self.match_handle.blocking_lock();
         let round_state = match_.as_ref()?.lock_round_state();
         let round = round_state.as_ref()?;
-        Some((round.custom_screen_armed(), round.custom_screen_remaining()))
+        Some((
+            round.custom_screen_armed(),
+            round.custom_screen_remaining(),
+            round.custom_screen_probe().unwrap_or(0),
+        ))
     }
 }
 

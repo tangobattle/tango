@@ -1421,16 +1421,18 @@ pub fn view<'a>(
         ActiveSession::PvP(s) => s.custom_screen_debug(),
         _ => None,
     };
-    if let Some((armed, remaining)) = chip_dbg {
+    if let Some((armed, remaining, probe)) = chip_dbg {
         let label_color = match remaining {
             Some(t) => Some((
                 format!("CHIP TIME  {:.1}s  ({t})", t as f32 / 60.0),
                 if t <= 180 { Color::from_rgb(1.0, 0.35, 0.35) } else { Color::WHITE },
             )),
-            // Armed but not in the custom screen: surface it while debugging the
-            // live integration so it's obvious the timer is running at all.
+            // Armed but not in the custom screen: surface the raw RAM probe while
+            // debugging the live integration so we can see what the display core
+            // actually reads (probe is packed per-game; 0x...XX low byte is the
+            // in_custom scene value).
             None if armed => Some((
-                "CHIP TIMER armed (no custom screen)".to_string(),
+                format!("CHIP TIMER armed — probe 0x{probe:08x}"),
                 Color::from_rgb(0.6, 0.6, 0.6),
             )),
             None => None,

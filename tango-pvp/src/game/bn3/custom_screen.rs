@@ -46,4 +46,12 @@ impl CustomScreenHooks for Munger {
         // BN3's close is driven entirely by the state write; no button needed.
         0
     }
+
+    fn probe(&self, core: mgba::core::CoreMutRef) -> u32 {
+        // byte0 = scene (0x02006ca1, ==8 in custom), byte1 = substate
+        // (0x02006ca2), byte2 = menu confirm (0x0200f7f1).
+        (self.custom_screen_scene(core) as u32)
+            | ((self.custom_screen_substate(core) as u32) << 8)
+            | ((self.custom_menu_confirm(core) as u32) << 16)
+    }
 }

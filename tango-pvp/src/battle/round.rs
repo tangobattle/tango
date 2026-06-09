@@ -106,6 +106,13 @@ impl Round {
         self.custom_screen.is_some()
     }
 
+    /// PROTOTYPE diagnostic: the raw RAM probe the timer last read on the live
+    /// display core (see [`crate::custom_screen::CustomScreenHooks::probe`]), or
+    /// `None` when unarmed.
+    pub fn custom_screen_probe(&self) -> Option<u32> {
+        self.custom_screen.as_ref().map(|t| t.probe())
+    }
+
     /// Battle ticks left in the custom screen, or `None` when not in it / the
     /// timer is inactive. For the GUI countdown.
     pub fn custom_screen_remaining(&self) -> Option<u32> {

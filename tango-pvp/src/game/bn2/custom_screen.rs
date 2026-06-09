@@ -35,4 +35,12 @@ impl CustomScreenHooks for Munger {
         // BN2 closes purely on the written sub-state; no button to inject.
         0
     }
+
+    fn probe(&self, core: mgba::core::CoreMutRef) -> u32 {
+        // byte0 = scene (0x0200eb10, ==2 in custom), byte1 = substate
+        // (0x0200eef0), byte2 = is_linking.
+        (self.custom_screen_scene(core) as u32)
+            | ((self.custom_screen_substate(core) as u32) << 8)
+            | ((self.is_linking(core) as u32) << 16)
+    }
 }
