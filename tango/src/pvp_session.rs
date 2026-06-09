@@ -598,12 +598,10 @@ impl PvpSession {
     /// (P1/P2, frame advantage). `None` between rounds or before
     /// the first round starts.
     pub fn round_stats(&self) -> Option<RoundStats> {
-        let match_ = self.match_handle.get()?;
-        let round_state = match_.lock_round_state();
-        let round = round_state.as_ref()?;
+        let metrics = self.match_handle.round_metrics()?;
         Some(RoundStats {
-            skew: round.local_frame_advantage() as i32 - round.last_remote_frame_advantage() as i32,
-            depth: round.misprediction_depth(),
+            skew: metrics.local_frame_advantage as i32 - metrics.remote_frame_advantage as i32,
+            depth: metrics.misprediction_depth,
         })
     }
 }

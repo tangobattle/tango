@@ -93,7 +93,13 @@ the per-game traps perform the transitions as the game executes.
 
 - **`hooks::MatchHandle`** — the slot primary traps reach the `Match`
   through. Traps `get()` a clone of the `Arc` under a momentary read lock
-  and hold no lock for their body.
+  and hold no lock for their body. The slot has two faces, enforced by
+  visibility: `get()`/`is_set()` are crate-private and yield a `TrapMatch`
+  view (rng, round state, round lifecycle, cancel — nothing else), so the
+  host can't reach trap API; the host's face is `set`/`clear`/
+  `round_metrics()`, and `Match`'s remaining `pub` surface is host
+  lifecycle only (`new`/`run`/`cancel`/`cancelled`/`finish_replay`).
+  `Round` is entirely crate-internal.
 
 ## Determinism invariants
 

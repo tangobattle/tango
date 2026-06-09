@@ -134,7 +134,7 @@ impl Round {
         self.session.as_ref().map(|s| &s.settled_state().shadow_snapshot)
     }
 
-    pub fn local_player_index(&self) -> u8 {
+    pub(crate) fn local_player_index(&self) -> u8 {
         self.local_player_index
     }
 
@@ -147,37 +147,34 @@ impl Round {
     /// Tick of the last `present_state` loaded into the live core (0 before any
     /// load). Per-game `round_post_increment_tick` traps compare the game's
     /// tick against this.
-    pub fn last_loaded_tick(&self) -> u32 {
+    pub(crate) fn last_loaded_tick(&self) -> u32 {
         self.last_loaded_tick
     }
 
     /// Whether the round has reached its first commit and the rollback session
     /// is live. Until then the round is armed but not yet running.
-    pub fn has_settled_snapshot(&self) -> bool {
+    pub(crate) fn has_settled_snapshot(&self) -> bool {
         self.session.is_some()
     }
 
-    pub fn local_frame_advantage(&self) -> i16 {
+    fn local_frame_advantage(&self) -> i16 {
         self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
     }
 
-    pub fn last_remote_frame_advantage(&self) -> i16 {
-        self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage())
-    }
-
-    /// Per-frame misprediction depth shown in the UI: how many speculative frames
-    /// the most recent step discarded and re-simulated because a confirmed remote
-    /// input contradicted the prediction. 0 on a clean frame; spikes on a
-    /// rollback. See [`misprediction_depth`](getgud::Session::misprediction_depth).
-    pub fn misprediction_depth(&self) -> u32 {
-        self.session.as_ref().map_or(0, |s| s.last_misprediction_depth())
+    /// Engine metrics for the host status bar; all zero while armed.
+    pub(super) fn metrics(&self) -> super::RoundMetrics {
+        super::RoundMetrics {
+            local_frame_advantage: self.local_frame_advantage(),
+            remote_frame_advantage: self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage()),
+            misprediction_depth: self.session.as_ref().map_or(0, |s| s.last_misprediction_depth()),
+        }
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
     /// local input over the network (with the engine's frame advantage), then
     /// advances the rollback engine one displayed frame, loading the chosen
     /// state into `core`.
-    pub async fn add_local_input_and_fastforward(
+    pub(crate) async fn add_local_input_and_fastforward(
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,

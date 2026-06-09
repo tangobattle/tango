@@ -14,8 +14,8 @@ mod round;
 mod throttler;
 mod world;
 
-pub use match_::Match;
-pub use round::Round;
+pub use match_::{Match, RoundMetrics};
+pub(crate) use round::Round;
 
 /// Match-wide identity. Both peers compute these to identical values from the
 /// shared protocol state, then carry them through Match → Shadow → Round.

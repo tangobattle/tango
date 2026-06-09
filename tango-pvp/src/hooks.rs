@@ -43,17 +43,26 @@ impl MatchHandle {
         Self::default()
     }
 
-    /// The live match, or `None` before [`set`](Self::set) / after
-    /// [`clear`](Self::clear). Traps treat `None` as "no match running" and
-    /// return early.
-    pub fn get(&self) -> Option<std::sync::Arc<crate::battle::Match>> {
-        self.0.read().unwrap().clone()
+    /// The live match as the traps see it, or `None` before
+    /// [`set`](Self::set) / after [`clear`](Self::clear). Traps treat `None`
+    /// as "no match running" and return early. Crate-private on purpose:
+    /// the host installs and clears the slot but goes through host-facing
+    /// API like [`round_metrics`](Self::round_metrics) to observe the match
+    /// — it never gets the trap view.
+    pub(crate) fn get(&self) -> Option<TrapMatch> {
+        self.0.read().unwrap().clone().map(TrapMatch)
     }
 
     /// True iff a match is installed. Cheaper than [`get`](Self::get) for
     /// the per-frame traps that only test presence (no `Arc` clone+drop).
-    pub fn is_set(&self) -> bool {
+    pub(crate) fn is_set(&self) -> bool {
         self.0.read().unwrap().is_some()
+    }
+
+    /// Host-facing: engine metrics of the live round, or `None` when no
+    /// match is installed / no round is running.
+    pub fn round_metrics(&self) -> Option<crate::battle::RoundMetrics> {
+        self.0.read().unwrap().as_ref()?.round_metrics()
     }
 
     pub fn set(&self, match_: std::sync::Arc<crate::battle::Match>) {
@@ -62,6 +71,52 @@ impl MatchHandle {
 
     pub fn clear(&self) {
         *self.0.write().unwrap() = None;
+    }
+}
+
+/// The per-game traps' view of the live match: exactly the methods trap
+/// bodies need, nothing from the host lifecycle (`run`, `finish_replay`,
+/// `Match::new`, ...). Only [`MatchHandle::get`] — itself crate-private —
+/// produces one, so the host crate can't reach this surface at all, and
+/// trap code can't reach the host's.
+pub(crate) struct TrapMatch(std::sync::Arc<crate::battle::Match>);
+
+impl TrapMatch {
+    pub(crate) fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<crate::battle::Round>> {
+        self.0.lock_round_state()
+    }
+
+    pub(crate) fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
+        self.0.lock_rng()
+    }
+
+    pub(crate) fn match_type(&self) -> (u8, u8) {
+        self.0.match_type()
+    }
+
+    pub(crate) fn is_offerer(&self) -> bool {
+        self.0.is_offerer()
+    }
+
+    pub(crate) fn record_first_commit(
+        &self,
+        round: &mut crate::battle::Round,
+        core: mgba::core::CoreMutRef,
+        first_packet: &[u8],
+    ) -> anyhow::Result<()> {
+        self.0.record_first_commit(round, core, first_packet)
+    }
+
+    pub(crate) fn end_round_or_cancel(&self) {
+        self.0.end_round_or_cancel()
+    }
+
+    pub(crate) fn start_round_or_cancel(&self) {
+        self.0.start_round_or_cancel()
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.0.cancel()
     }
 }
 

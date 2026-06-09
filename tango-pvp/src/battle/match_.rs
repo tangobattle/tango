@@ -85,6 +85,20 @@ impl RemoteInputs {
     }
 }
 
+/// Engine metrics for the live round, surfaced to the host for the status
+/// bar. All zero while the round is armed (pre first-commit).
+#[derive(Clone, Copy, Debug)]
+pub struct RoundMetrics {
+    /// How far our input frontier leads the inputs we've confirmed from the
+    /// peer, in frames.
+    pub local_frame_advantage: i16,
+    /// The peer's most recently reported view of the same, from their side.
+    pub remote_frame_advantage: i16,
+    /// Speculative frames the most recent step discarded and re-simulated
+    /// because a confirmed remote input contradicted the prediction.
+    pub misprediction_depth: u32,
+}
+
 /// Connection-level state for a single PvP match.
 pub struct Match {
     shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
@@ -195,6 +209,16 @@ impl Match {
         self.local_round_idx.load(Ordering::Acquire)
     }
 
+    /// Host-facing snapshot of the live round's engine metrics, for the
+    /// status bar. The host reads these through
+    /// [`MatchHandle::round_metrics`](crate::hooks::MatchHandle::round_metrics)
+    /// instead of locking round state — the round object itself is
+    /// trap-side API.
+    pub fn round_metrics(&self) -> Option<RoundMetrics> {
+        let round_state = self.round_state.lock().unwrap();
+        round_state.as_ref().map(|round| round.metrics())
+    }
+
     /// Picks the per-match local_player_index. Both peers must call this with
     /// the same shared RNG state at the same point in the protocol so they end
     /// up on opposite sides. Advances the RNG by one draw.
@@ -227,7 +251,7 @@ impl Match {
     /// Called from the primary main_read_joyflags trap when the live core
     /// reaches the round's first commit tick. Advances the shadow to its
     /// matching first commit and snapshots local state on the round.
-    pub fn record_first_commit(
+    pub(crate) fn record_first_commit(
         &self,
         round: &mut Round,
         core: mgba::core::CoreMutRef,
@@ -255,7 +279,7 @@ impl Match {
     /// disambiguate subsequent inputs. Straggler inputs for the just-ended
     /// round die in the queue: the next round drains only entries tagged
     /// with its own index.
-    pub fn end_round(&self) -> anyhow::Result<()> {
+    fn end_round(&self) -> anyhow::Result<()> {
         let settled_shadow = {
             let mut round_state = self.round_state.lock().unwrap();
             let Some(round) = round_state.take() else {
@@ -284,7 +308,7 @@ impl Match {
     /// [`end_round`](Self::end_round) with the uniform primary-trap error
     /// policy applied: a failure logs and cancels the match (a panic would
     /// abort the process from trap context).
-    pub fn end_round_or_cancel(&self) {
+    pub(crate) fn end_round_or_cancel(&self) {
         if let Err(e) = self.end_round() {
             log::error!("end round failed: {e:#}");
             self.cancel();
@@ -293,7 +317,7 @@ impl Match {
 
     /// [`start_round`](Self::start_round) for trap context, applying the
     /// same log + cancel error policy.
-    pub fn start_round_or_cancel(self: &Arc<Self>) {
+    pub(crate) fn start_round_or_cancel(self: &Arc<Self>) {
         if let Err(e) = self.start_round() {
             log::error!("start round failed: {e:#}");
             self.cancel();
@@ -323,24 +347,24 @@ impl Match {
         }
     }
 
-    pub fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<Round>> {
+    pub(crate) fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<Round>> {
         self.round_state.lock().unwrap()
     }
 
-    pub fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
+    pub(crate) fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
         self.rng.lock().unwrap()
     }
 
-    pub fn match_type(&self) -> (u8, u8) {
+    pub(crate) fn match_type(&self) -> (u8, u8) {
         self.identity.match_type
     }
 
-    pub fn is_offerer(&self) -> bool {
+    pub(crate) fn is_offerer(&self) -> bool {
         self.identity.is_offerer
     }
 
     /// Allocates a new [`Round`] in the round_state.
-    pub fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
+    fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().unwrap();
         log::info!(
             "starting round: local_player_index = {}",
