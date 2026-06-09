@@ -94,14 +94,20 @@ pub(super) fn traps(
             let match_ = match_.clone();
             Box::new(move |_core| {
                 let Some(match_) = match_.get() else { return };
-                match_.end_round().expect("end round");
+                if let Err(e) = match_.end_round() {
+                    log::error!("end round failed: {e:#}");
+                    match_.cancel();
+                }
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
             let match_ = match_.clone();
             Box::new(move |_core| {
                 let Some(match_) = match_.get() else { return };
-                crate::sync::block_on(match_.start_round()).expect("start round");
+                if let Err(e) = crate::sync::block_on(match_.start_round()) {
+                    log::error!("start round failed: {e:#}");
+                    match_.cancel();
+                }
             })
         }),
         (hooks.offsets.rom.battle_is_p2_ret, {
@@ -141,9 +147,19 @@ pub(super) fn traps(
                     let rng2_state = generate_rng2_state(&mut *rng);
                     munger.set_rng2_state(core, rng2_state);
 
-                    match_
-                        .record_first_commit(round, core.save_state().expect("save state"), &munger.tx_packet(core))
-                        .expect("record first commit");
+                    let state = match core.save_state() {
+                        Ok(state) => state,
+                        Err(e) => {
+                            log::error!("save state for first commit failed: {e:#}");
+                            match_.cancel();
+                            return;
+                        }
+                    };
+                    if let Err(e) = match_.record_first_commit(round, state, &munger.tx_packet(core)) {
+                        log::error!("record first commit failed: {e:#}");
+                        match_.cancel();
+                        return;
+                    }
                     log::info!(
                         "primary rng1 state: {:08x}, rng2 state: {:08x}",
                         munger.rng1_state(core),
