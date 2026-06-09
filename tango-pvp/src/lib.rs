@@ -1,5 +1,8 @@
 //! Rollback netcode for the PvP modes shared by all Battle Network games this
-//! project supports. The toplevel pieces:
+//! project supports. See `ARCHITECTURE.md` at the crate root for the full
+//! map: glossary, the three drive loops (primary / shadow / stepper), the
+//! engine state machines, determinism invariants, the error/panic policy,
+//! and the test-coverage map. The toplevel pieces:
 //!
 //! - [`battle`]: connection-level `Match` and per-round `Round`. The live
 //!   primary emulator drives these; `Match::start_round` allocates a Round,
