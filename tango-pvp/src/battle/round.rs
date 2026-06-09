@@ -9,7 +9,7 @@ use super::world::{MgbaState, MgbaWorld};
 use super::EXPECTED_FPS;
 
 /// Per-side input-queue capacity.
-const MAX_QUEUE_LENGTH: usize = 120;
+pub(super) const MAX_QUEUE_LENGTH: usize = 120;
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
@@ -26,6 +26,13 @@ pub struct Round {
     /// and remote inputs are held off
     /// ([`try_add_remote_input`](Round::try_add_remote_input)).
     session: Option<getgud::Session<MgbaWorld>>,
+    /// Which local round this is (count of locally-ended rounds at creation).
+    /// The drain below admits only queue entries tagged with this index:
+    /// smaller tags are stale tails from rounds we already closed, larger
+    /// ones belong to a future round a racing peer has started.
+    round_idx: u32,
+    /// Handoff queue from the net receive task, shared with the Match.
+    remote_inputs: super::match_::SharedRemoteInputs,
     /// This side's player index. A game/host concept, not the engine's — the
     /// per-game traps read it to drive p1/p2 register writes.
     local_player_index: u8,
@@ -60,6 +67,8 @@ impl Round {
     pub(super) fn new(match_: &super::Match) -> Self {
         Self {
             session: None,
+            round_idx: match_.current_local_round_idx(),
+            remote_inputs: match_.remote_inputs_handle(),
             local_player_index: match_.local_player_index(),
             hooks: match_.local_hooks(),
             sender: match_.sender_handle(),
@@ -194,6 +203,36 @@ impl Round {
             anyhow::bail!("local overflowed our input buffer");
         }
 
+        // Drain peer inputs that arrived since last frame into the engine.
+        // The engine only consults remote inputs inside `advance`, so
+        // draining here (instead of the net task pushing them the moment
+        // they arrive) changes nothing about when they take effect.
+        {
+            let mut queue = self.remote_inputs.lock().unwrap();
+            while let Some(&(peer_round, _)) = queue.front() {
+                if peer_round < self.round_idx {
+                    // Stale tail from a round we already ended locally.
+                    queue.pop_front();
+                    continue;
+                }
+                if peer_round > self.round_idx {
+                    // The peer raced ahead; leave for the next round's drain.
+                    break;
+                }
+                let (_, input) = queue.pop_front().unwrap();
+                log::debug!("remote input: {:?}", input);
+                if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
+                    anyhow::bail!("remote overflowed our input buffer");
+                }
+                session.add_remote_input(
+                    PartialInput {
+                        joyflags: input.joyflags,
+                    },
+                    input.frame_advantage,
+                );
+            }
+        }
+
         // Push the host-side live frame delay into the engine before stepping,
         // so a footer-slider change takes effect on this frame.
         session.set_present_delay(self.frame_delay.load(Ordering::Relaxed));
@@ -221,26 +260,6 @@ impl Round {
         Ok(())
     }
 
-    /// Attach a remote input if the engine is ready for it. `Ok(false)`
-    /// holds the input (round armed but pre-first-commit — the caller waits
-    /// for round progress and retries), `Ok(true)` queues it, and a full
-    /// queue is an error.
-    pub(super) fn try_add_remote_input(&mut self, input: crate::net::Input) -> anyhow::Result<bool> {
-        log::debug!("remote input: {:?}", input);
-        let Some(session) = self.session.as_mut() else {
-            return Ok(false);
-        };
-        if session.remote_queue_length() >= MAX_QUEUE_LENGTH {
-            anyhow::bail!("remote overflowed our input buffer");
-        }
-        session.add_remote_input(
-            PartialInput {
-                joyflags: input.joyflags,
-            },
-            input.frame_advantage,
-        );
-        Ok(true)
-    }
 }
 
 impl Drop for Round {

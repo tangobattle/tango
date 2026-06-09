@@ -1,10 +1,19 @@
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as SyncMutex};
 
-use tokio::sync::{watch, Mutex};
+use tokio::sync::Mutex;
 
-use super::round::Round;
+use super::round::{Round, MAX_QUEUE_LENGTH};
 use super::{MatchIdentity, ReplayConfig};
+
+/// Inputs from the peer, tagged at receive time with the peer-round index
+/// they belong to. The net receive task pushes; the live round drains it at
+/// the top of every frame (which is also the only time the rollback engine
+/// looks at remote inputs, so this adds no latency). Entries tagged for an
+/// already-ended local round are dropped at drain; entries for a future
+/// round wait in place until that round starts.
+pub(super) type SharedRemoteInputs = Arc<SyncMutex<VecDeque<(u32, crate::net::Input)>>>;
 
 /// Connection-level state for a single PvP match.
 pub struct Match {
@@ -18,16 +27,19 @@ pub struct Match {
     rng: SyncMutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     identity: MatchIdentity,
-    round_state: Mutex<Option<Round>>,
+    /// The in-progress round, if any. Locked only from the emulator thread
+    /// (traps) and the UI's stats scrape — the net receive task talks to the
+    /// round exclusively through [`SharedRemoteInputs`], which is what lets
+    /// this be a plain std mutex.
+    round_state: SyncMutex<Option<Round>>,
     primary_thread_handle: mgba::thread::Handle,
-    /// Bumped whenever the round lifecycle advances (start_round, first
-    /// commit, end_round). The network receive loop awaits changes on this
-    /// to know when it can hand a remote input off to the in-progress round.
-    round_progress: watch::Sender<u64>,
+    /// Handoff queue from the net receive task to the live round.
+    remote_inputs: SharedRemoteInputs,
     /// Count of local `end_round` calls. Each remote Input is tagged with
-    /// `peer_round_idx` at receive time; on attach we compare against this
-    /// counter so a stale tail from a round we've already closed gets
-    /// dropped and a peer who's raced ahead is held back until we catch up.
+    /// `peer_round_idx` at receive time; each [`Round`] is stamped with this
+    /// counter at creation, and drains only matching entries — a stale tail
+    /// from a round we've already closed gets dropped and a peer who's raced
+    /// ahead waits in the queue until we catch up.
     local_round_idx: AtomicU32,
     /// Count of `EndOfRound` packets received from the peer. Loaded at
     /// receive time to stamp each Input with the round it belongs to.
@@ -54,7 +66,6 @@ impl Match {
         replay: ReplayConfig,
         frame_delay: Arc<AtomicU32>,
     ) -> Arc<Self> {
-        let (round_progress, _) = watch::channel(0);
         Arc::new(Self {
             shadow: Arc::new(SyncMutex::new(shadow)),
             local_hooks,
@@ -63,9 +74,9 @@ impl Match {
             rng: SyncMutex::new(rng),
             cancellation_token,
             identity,
-            round_state: Mutex::new(None),
+            round_state: SyncMutex::new(None),
             primary_thread_handle,
-            round_progress,
+            remote_inputs: SharedRemoteInputs::default(),
             local_round_idx: AtomicU32::new(0),
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
@@ -105,6 +116,15 @@ impl Match {
         self.frame_delay.clone()
     }
 
+    pub(super) fn remote_inputs_handle(&self) -> SharedRemoteInputs {
+        self.remote_inputs.clone()
+    }
+
+    /// The local round counter a [`Round`] created right now belongs to.
+    pub(super) fn current_local_round_idx(&self) -> u32 {
+        self.local_round_idx.load(Ordering::Acquire)
+    }
+
     /// Picks the per-match local_player_index. Both peers must call this with
     /// the same shared RNG state at the same point in the protocol so they end
     /// up on opposite sides. Advances the RNG by one draw.
@@ -136,8 +156,7 @@ impl Match {
 
     /// Called from the primary main_read_joyflags trap when the live core
     /// reaches the round's first commit tick. Advances the shadow to its
-    /// matching first commit, snapshots local state on the round, and wakes
-    /// the network receive loop.
+    /// matching first commit and snapshots local state on the round.
     pub fn record_first_commit(
         &self,
         round: &mut Round,
@@ -157,18 +176,18 @@ impl Match {
             shadow.save_state()?
         };
         round.start_session(self, local_state, first_packet, shadow_snapshot)?;
-        self.bump_round_progress();
         Ok(())
     }
 
     /// Called from the primary round-ending trap. Tears down the in-progress
     /// round (if any), drives the shadow forward to its matching round end,
-    /// emits the `EndOfRound` marker so the peer's receive loop can
-    /// disambiguate subsequent inputs, and wakes our own receive loop so
-    /// any straggler inputs for the just-ended round can be dropped.
+    /// and emits the `EndOfRound` marker so the peer's receive loop can
+    /// disambiguate subsequent inputs. Straggler inputs for the just-ended
+    /// round die in the queue: the next round drains only entries tagged
+    /// with its own index.
     pub fn end_round(&self) -> anyhow::Result<()> {
         let settled_shadow = {
-            let mut round_state = self.round_state.blocking_lock();
+            let mut round_state = self.round_state.lock().unwrap();
             let Some(round) = round_state.take() else {
                 return Ok(());
             };
@@ -186,12 +205,9 @@ impl Match {
             }
             shadow.advance_until_round_end()?;
         }
-        // Bump BEFORE sending so a racing remote-Input arrival is compared
-        // against the up-to-date local_round_idx.
         self.local_round_idx.fetch_add(1, Ordering::Release);
         let sender = self.sender.clone();
         crate::sync::block_on(async move { sender.lock().await.send_end_of_round().await })?;
-        self.bump_round_progress();
         Ok(())
     }
 
@@ -205,105 +221,47 @@ impl Match {
         }
     }
 
-    /// [`start_round`](Self::start_round) for trap context: blocks on the
-    /// async body and applies the same log + cancel error policy.
+    /// [`start_round`](Self::start_round) for trap context, applying the
+    /// same log + cancel error policy.
     pub fn start_round_or_cancel(self: &Arc<Self>) {
-        if let Err(e) = crate::sync::block_on(self.start_round()) {
+        if let Err(e) = self.start_round() {
             log::error!("start round failed: {e:#}");
             self.cancel();
         }
     }
 
-    fn bump_round_progress(&self) {
-        self.round_progress.send_modify(|n| *n += 1);
-    }
-
-    /// Network receive loop: pulls events off the receiver and either
-    /// queues remote inputs into the in-progress round or bumps the
-    /// `peer_round_idx` counter (on `EndOfRound`). Blocks on round-progress
-    /// changes when the round isn't ready to accept inputs yet.
+    /// Network receive loop. Pure producer: stamps each remote input with
+    /// the peer-round it belongs to and queues it; the live round drains the
+    /// queue each frame. Never touches round state, so it can't contend
+    /// with a trap mid-fastforward.
     pub async fn run(&self, mut receiver: Box<dyn crate::net::Receiver + Send + Sync>) -> anyhow::Result<()> {
-        let mut progress = self.round_progress.subscribe();
         loop {
             match receiver.receive().await? {
                 crate::net::Event::Input(input) => {
-                    // Tag at receive time so a held input that arrived
-                    // before a later EndOfRound still attaches to its
-                    // original round, not whichever round the peer is
-                    // in by the time the deliver loop wakes up.
+                    // Tag at receive time so an input that arrived before a
+                    // later EndOfRound still attaches to its original round,
+                    // not whichever round the peer is in by drain time.
                     let peer_round = self.peer_round_idx.load(Ordering::Acquire);
-                    self.deliver_remote_input(&mut progress, input, peer_round).await?;
+                    let mut queue = self.remote_inputs.lock().unwrap();
+                    // Generous bound: the engine itself holds at most
+                    // MAX_QUEUE_LENGTH per round; double that covers a peer
+                    // racing one whole round ahead. (The old design instead
+                    // stopped reading the socket while an input was held —
+                    // same outcome, the peer's sends back up.)
+                    if queue.len() >= MAX_QUEUE_LENGTH * 2 {
+                        anyhow::bail!("remote overflowed our input buffer");
+                    }
+                    queue.push_back((peer_round, input));
                 }
                 crate::net::Event::EndOfRound => {
                     self.peer_round_idx.fetch_add(1, Ordering::Release);
-                    // Wake the deliver loop so any held inputs whose peer
-                    // round now matches a future local round get re-checked,
-                    // and stale-round drops happen promptly.
-                    self.bump_round_progress();
                 }
             }
         }
     }
 
-    /// Wait until we can attach `input` to the in-progress round, or drop
-    /// it if it belongs to a round we've already closed. Awaits
-    /// round-progress changes between attempts.
-    async fn deliver_remote_input(
-        &self,
-        progress: &mut watch::Receiver<u64>,
-        input: crate::net::Input,
-        peer_round: u32,
-    ) -> anyhow::Result<()> {
-        loop {
-            // Borrow-and-update marks the current value as "seen" so the next
-            // `changed().await` only fires on a genuinely later state.
-            progress.borrow_and_update();
-
-            if self.try_attach_remote_input(&input, peer_round).await? {
-                return Ok(());
-            }
-
-            if progress.changed().await.is_err() {
-                // Sender dropped — match is shutting down.
-                return Ok(());
-            }
-        }
-    }
-
-    /// Decide what to do with `input`, tagged with the peer's `peer_round`
-    /// at receive time:
-    /// - peer ended their round before we ended ours (`peer_round < local`):
-    ///   stale tail, drop.
-    /// - peer is in our current round (`peer_round == local`) and round
-    ///   state is ready: attach.
-    /// - otherwise: hold, wait for round progress.
-    async fn try_attach_remote_input(&self, input: &crate::net::Input, peer_round: u32) -> anyhow::Result<bool> {
-        let local_round = self.local_round_idx.load(Ordering::Acquire);
-        if peer_round < local_round {
-            // Tail-of-previous-round input that arrived after we already
-            // ended round-N locally. The round it belonged to is gone;
-            // discard rather than poisoning round-N+1's queue.
-            return Ok(true);
-        }
-        if peer_round > local_round {
-            // Peer raced ahead into a future round; hold until our local
-            // end_round catches up.
-            return Ok(false);
-        }
-
-        let mut round_state = self.round_state.lock().await;
-        let Some(round) = round_state.as_mut() else {
-            // Either before the first round has started or between rounds —
-            // wait for the next round to spin up before delivering the input.
-            return Ok(false);
-        };
-        // The round decides for itself whether it can take the input yet
-        // (false while armed pre-first-commit).
-        round.try_add_remote_input(input.clone())
-    }
-
-    pub fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, Option<Round>> {
-        self.round_state.blocking_lock()
+    pub fn lock_round_state(&self) -> std::sync::MutexGuard<'_, Option<Round>> {
+        self.round_state.lock().unwrap()
     }
 
     pub fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
@@ -318,10 +276,9 @@ impl Match {
         self.identity.is_offerer
     }
 
-    /// Allocates a new [`Round`] in the round_state and bumps round_progress
-    /// so the network receive loop wakes up to (re-)evaluate.
-    pub async fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
-        let mut round_state = self.round_state.lock().await;
+    /// Allocates a new [`Round`] in the round_state.
+    pub fn start_round(self: &Arc<Self>) -> anyhow::Result<()> {
+        let mut round_state = self.round_state.lock().unwrap();
         log::info!(
             "starting round: local_player_index = {}",
             self.identity.local_player_index
@@ -336,7 +293,6 @@ impl Match {
         log::info!("preparing round state");
 
         *round_state = Some(Round::new(self));
-        self.bump_round_progress();
         log::info!("round has started");
         Ok(())
     }
