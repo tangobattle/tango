@@ -58,11 +58,9 @@ type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<
 pub struct MgbaWorld {
     pub stepper: crate::stepper::Stepper,
     pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
-    /// The tick both cores are currently parked at.
-    pub parked_tick: u32,
     /// This side's outgoing link packet at the parked tick — seeds the next
     /// step's link exchange, and is the `outgoing` of a [`save`](getgud::World::save)
-    /// taken here.
+    /// taken here. (The parked tick itself is owned by the [`Stepper`].)
     pub last_outgoing: Vec<u8>,
     pub replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     pub local_player_index: u8,
@@ -85,12 +83,12 @@ impl getgud::World for MgbaWorld {
             Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
         };
         let last_outgoing = self.last_outgoing.clone();
-        let result = self.stepper.step(input, self.parked_tick, &last_outgoing, resolver)?;
+        let result = self.stepper.step(input, &last_outgoing, resolver)?;
 
-        // Both cores are now parked at the boundary; record where, but don't
-        // snapshot — `save` does that on demand, so a re-stepped rollback tail
-        // doesn't pay a save_state per intermediate tick.
-        self.parked_tick = result.boundary.tick;
+        // Both cores are now parked at the boundary (the stepper advanced its own
+        // parked tick); record the outgoing packet, but don't snapshot — `save`
+        // does that on demand, so a re-stepped rollback tail doesn't pay a
+        // save_state per intermediate tick.
         self.last_outgoing = result.boundary.packet;
 
         // The per-game round-end traps fire while running the round-ending tick's
@@ -110,26 +108,26 @@ impl getgud::World for MgbaWorld {
         // the primary exactly at the boundary (so this is byte-identical to a save
         // taken inside the capture trap), and the shadow is parked at the same tick
         // because `step` co-simulated it forward and nothing has advanced it since.
+        let (primary, tick) = self.stepper.save()?;
         Ok(MgbaState {
-            primary: self.stepper.save()?,
+            primary,
             outgoing: self.last_outgoing.clone(),
             shadow_snapshot: self.shadow.lock().unwrap().save_state()?,
-            tick: self.parked_tick,
+            tick,
         })
     }
 
     fn load(&mut self, state: &MgbaState) -> anyhow::Result<()> {
-        // Already parked here — either no speculation moved the cores since this
-        // tick settled, or every speculation up to it was promoted. The cores and
-        // `last_outgoing` already hold `state`, so skip the reloads; this keeps
-        // steady-state settles forward-only (no `load_state` per frame).
-        if self.parked_tick == state.tick {
-            return Ok(());
+        // `restore` no-ops (returns false) when the stepper is already parked at
+        // `state.tick` — either no speculation moved the cores since this tick
+        // settled, or every speculation up to it was promoted. By the lockstep
+        // invariant the shadow and `last_outgoing` already hold `state` too, so
+        // skip those reloads as well; this keeps steady-state settles
+        // forward-only (no `load_state` per frame).
+        if self.stepper.restore(&state.primary, state.tick)? {
+            self.shadow.lock().unwrap().load_state(&state.shadow_snapshot)?;
+            self.last_outgoing = state.outgoing.clone();
         }
-        self.stepper.restore(&state.primary)?;
-        self.shadow.lock().unwrap().load_state(&state.shadow_snapshot)?;
-        self.parked_tick = state.tick;
-        self.last_outgoing = state.outgoing.clone();
         Ok(())
     }
 

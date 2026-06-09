@@ -46,7 +46,6 @@ pub struct StepperResult {
     /// `main_read_joyflags` (its PC is rewound there by `prepare_for_fastforward`).
     pub boundary: CapturedBoundary,
     pub round_result: Option<RoundResult>,
-    pub output_pairs: Vec<(Input, Input)>,
 }
 
 /// Single per-frame re-sim core for the rollback engine: a dedicated headless
@@ -66,11 +65,16 @@ pub struct Stepper {
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     match_type: (u8, u8),
     local_player_index: u8,
+    /// The tick the core is currently parked at — advanced by one per
+    /// [`step`](Self::step) and reset by [`restore`](Self::restore). [`step`]
+    /// re-sims from here, so the caller never threads the tick back in.
+    parked_tick: u32,
 }
 
 impl Stepper {
-    /// Build the stepper seeded at the round's first-committed state. The core
-    /// is then parked at that boundary, ready for the first [`step`](Self::step).
+    /// Build the stepper seeded at the round's first-committed state — tick 0,
+    /// where the live core hands off. The core is then parked at that boundary,
+    /// ready for the first [`step`](Self::step).
     pub fn new(
         rom: &[u8],
         hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
@@ -103,27 +107,38 @@ impl Stepper {
             hooks,
             match_type,
             local_player_index,
+            parked_tick: 0,
         })
     }
 
-    /// Rewind the core to `state` before a rollback re-sim. The caller positions
-    /// the shadow alongside.
-    pub fn restore(&mut self, state: &mgba::state::State) -> anyhow::Result<()> {
+    /// Rewind the core to `state`, which is poised at `tick`, before a rollback
+    /// re-sim. The caller positions the shadow alongside.
+    ///
+    /// Returns `false` without touching the core when it's already parked at
+    /// `tick` — a re-sim that promoted every speculation up to here leaves the
+    /// core exactly where this `state` would put it, so the reload is skipped and
+    /// steady-state settles stay forward-only. The caller can mirror this: a
+    /// `false` means its own side state (shadow, outgoing packet) is already
+    /// current too.
+    pub fn restore(&mut self, state: &mgba::state::State, tick: u32) -> anyhow::Result<bool> {
+        if self.parked_tick == tick {
+            return Ok(false);
+        }
         self.core.as_mut().load_state(state)?;
-        Ok(())
+        self.parked_tick = tick;
+        Ok(true)
     }
 
-    /// Advance exactly one tick from where the core is parked (`current_tick`),
-    /// applying `input` and halting at the boundary `current_tick + 1`.
-    /// `last_local_packet` is this side's outgoing link packet at `current_tick`
-    /// (seeds the link exchange); `apply_shadow_input` resolves the remote packet
-    /// by co-simulating the shadow. Drives the core until the per-game stepper
-    /// trap reaches the boundary and halts; call [`save`](Self::save) afterward to
-    /// snapshot the core there.
+    /// Advance exactly one tick from where the core is parked, applying `input`
+    /// and halting at the next boundary (`parked_tick + 1`). `last_local_packet`
+    /// is this side's outgoing link packet at the parked tick (seeds the link
+    /// exchange); `apply_shadow_input` resolves the remote packet by co-simulating
+    /// the shadow. Drives the core until the per-game stepper trap reaches the
+    /// boundary and halts, advancing the parked tick; call [`save`](Self::save)
+    /// afterward to snapshot the core there.
     pub fn step(
         &mut self,
         input: (PartialInput, PartialInput),
-        current_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<StepperResult> {
@@ -132,17 +147,17 @@ impl Stepper {
             self.match_type,
             self.local_player_index,
             vec![input],
-            current_tick,
+            self.parked_tick,
             last_local_packet.to_vec(),
             apply_shadow_input,
         ));
 
-        loop {
+        let result = loop {
             {
                 let mut guard = self.state.0.lock().unwrap();
                 let inner = guard.as_mut().unwrap();
                 if inner.has_captured_snapshot() {
-                    return Ok(guard.take().expect("state").into_stepper_result());
+                    break guard.take().expect("state").into_stepper_result();
                 }
                 let _ = inner.take_error();
             }
@@ -152,7 +167,10 @@ impl Stepper {
                 guard.take();
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
-        }
+        };
+
+        self.parked_tick = result.boundary.tick;
+        Ok(result)
     }
 
     /// Snapshot the core at the boundary the last [`step`](Self::step) parked it
@@ -162,8 +180,9 @@ impl Stepper {
     /// engine folds the speculative and authoritative cores into this one, so the
     /// parked core *is* the snapshot; deferring the save to here means a rollback
     /// that re-steps N ticks only saves the one final state it keeps, not a state
-    /// per re-simulated tick.
-    pub fn save(&mut self) -> anyhow::Result<Box<mgba::state::State>> {
-        Ok(self.core.as_mut().save_state()?)
+    /// per re-simulated tick. Returns the snapshot bundled with the tick it's
+    /// poised at (the parked tick), so the caller can checkpoint both together.
+    pub fn save(&mut self) -> anyhow::Result<(Box<mgba::state::State>, u32)> {
+        Ok((self.core.as_mut().save_state()?, self.parked_tick))
     }
 }

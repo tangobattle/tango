@@ -91,7 +91,6 @@ impl Round {
         let world = MgbaWorld {
             stepper,
             shadow: match_.shadow_handle(),
-            parked_tick: 0,
             last_outgoing: first_packet.to_vec(),
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,

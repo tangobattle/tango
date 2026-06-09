@@ -500,7 +500,6 @@ impl InnerState {
         super::StepperResult {
             boundary: self.captured.expect("captured boundary"),
             round_result: self.round_result,
-            output_pairs: self.output_pairs,
         }
     }
 
