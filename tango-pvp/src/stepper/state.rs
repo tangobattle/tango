@@ -21,10 +21,70 @@ pub struct LocalPacket {
     packet: Vec<u8>,
 }
 
+/// Where replay playback is in its per-round lifecycle. One explicit machine
+/// instead of the old `round_active` + `has_committed_this_round` +
+/// `shadow_round_ended` booleans plus a shared `RoundPhase`:
+///
+/// ```text
+/// AwaitingRoundStart ──round_start_ret──► AwaitingFirstCommit
+/// AwaitingFirstCommit ──on_first_commit──► InRound          (+ shadow first-commit advance)
+/// (pre-ending) ──set_round_ending──► RoundEnding            (+ shadow round-end advance, on this edge only)
+/// RoundEnding ──set_round_ended──► RoundEnded               (bn2 defers this to match_end_ret)
+/// RoundEnded ──round_start_ret──► AwaitingFirstCommit       (next queued round loads)
+/// RoundEnded ──round_start_ret──► Finished                  (queue empty; game runs on, ticks frozen)
+/// ```
+///
+/// The shadow advances fire on the *edges*, which is what absorbs BN1/BN2's
+/// double `round_ending_entry` fires (second `set_round_ending` finds the
+/// phase already `RoundEnding` and does nothing) — the job the old
+/// `shadow_round_ended` flag did.
+#[derive(Clone, Copy, PartialEq)]
+enum PlaybackPhase {
+    /// Game hasn't reached `round_start_ret` for this round yet. The
+    /// pre-round `main_read_joyflags` fires (boot, menus, inter-round
+    /// animations) return early on this.
+    AwaitingRoundStart,
+    /// Round started; waiting for `current_tick` to reach the commit
+    /// frontier so the first-commit hook can seed RNG and anchor tick 0.
+    AwaitingFirstCommit,
+    InRound,
+    RoundEnding,
+    RoundEnded,
+    /// The game started another round but the replay queue is empty. Ticks
+    /// freeze and `is_round_ended()` stays true so the host's termination
+    /// polling fires; the game keeps running underneath.
+    Finished,
+}
+
+impl PlaybackPhase {
+    /// True from the first commit onward — the phases where game ticks count.
+    fn has_committed(self) -> bool {
+        matches!(
+            self,
+            PlaybackPhase::InRound | PlaybackPhase::RoundEnding | PlaybackPhase::RoundEnded | PlaybackPhase::Finished
+        )
+    }
+
+    /// True once `round_start_ret` has fired for the current round.
+    fn round_active(self) -> bool {
+        self != PlaybackPhase::AwaitingRoundStart
+    }
+
+    /// True once the round has begun ending (or has ended / finished).
+    fn has_ended_or_is_ending(self) -> bool {
+        matches!(
+            self,
+            PlaybackPhase::RoundEnding | PlaybackPhase::RoundEnded | PlaybackPhase::Finished
+        )
+    }
+}
+
 /// State for [`Mode::Replay`]: multi-round playback from boot, with
 /// game-driven RNG seeding at each round's first commit and shadow lifecycle
 /// driven at the round boundaries.
 struct ReplayExtras {
+    /// Per-round lifecycle. See [`PlaybackPhase`].
+    phase: PlaybackPhase,
     /// Tick at which the per-round first-commit hook fires (seeds RNG, sets
     /// game tick to 0, advances shadow). Compared against `current_tick` by
     /// [`InnerState::needs_replay_first_commit`].
@@ -41,18 +101,6 @@ struct ReplayExtras {
     rng: SharedRng,
     /// Per-game replay traps use this to pick the correct rng1 stream.
     is_offerer: bool,
-    /// Set true when `round_start_ret` has fired for the current round.
-    /// Gates first commit so RNG isn't seeded before battle init completes.
-    round_active: bool,
-    /// Set true at first on_first_commit for the current round; reset by
-    /// `load_replay_round` between replay rounds. Per-game traps gate the
-    /// first-commit hook on this so it only fires once per round.
-    has_committed_this_round: bool,
-    /// Set true once `advance_until_round_end` has been called on the shadow
-    /// for the current round; reset on `load_replay_round`. Guards against
-    /// firing the round-end advance twice (e.g. round_ending_entry1 and
-    /// round_ending_entry2 both triggering it in BN1/BN2).
-    shadow_round_ended: bool,
     /// Monotonic tick counter across all replay rounds. Equal to
     /// `sum(rounds[..current_round].len()) + current_tick` while a round is
     /// in progress. Used by the replay UI to drive the seek bar.
@@ -95,6 +143,11 @@ struct FastforwardExtras {
     /// the next FF by re-priming r4 at its first `main_read_joyflags`.
     capture_tick: u32,
     captured: Option<CapturedBoundary>,
+    /// Round-ending progression within this single re-sim window. The FF path
+    /// flows through the same `set_round_ending` / `is_round_ending` trap
+    /// gates as replay; [`InnerState::round_result`] is how the result
+    /// reaches the rollback engine.
+    ending: RoundPhase,
 }
 
 /// Which of the stepper's two jobs this state is driving. The per-game stepper
@@ -123,7 +176,6 @@ pub struct InnerState {
     packet_source: Box<dyn super::RemotePacketSource>,
     local_packet: Option<LocalPacket>,
     round_result: Option<RoundResult>,
-    phase: RoundPhase,
     error: Option<anyhow::Error>,
     mode: Mode,
 }
@@ -155,9 +207,11 @@ struct ReplayInit {
     /// Some — use the captured bytes from the checkpoint, since mid-round
     /// the active local_packet is whatever the previous send produced.
     local_packet_override: Option<Vec<u8>>,
-    round_active: bool,
-    has_committed_this_round: bool,
-    shadow_round_ended: bool,
+    /// Fresh start: [`PlaybackPhase::AwaitingRoundStart`]. Restore: derived
+    /// from the checkpoint's `has_committed_this_round` — never an ending
+    /// phase, so the shadow round-end advance can re-fire (the shadow
+    /// snapshot is restored alongside by the seek path).
+    phase: PlaybackPhase,
     disable_bgm: bool,
     on_round_ended: Option<Box<dyn FnOnce() + Send>>,
 }
@@ -180,9 +234,7 @@ impl InnerState {
             total_replay_ticks,
             current_tick_in_round,
             local_packet_override,
-            round_active,
-            has_committed_this_round,
-            shadow_round_ended,
+            phase,
             disable_bgm,
             on_round_ended,
         } = init;
@@ -213,17 +265,14 @@ impl InnerState {
             packet_source,
             local_packet,
             round_result: None,
-            phase: RoundPhase::InProgress,
             error: None,
             mode: Mode::Replay(ReplayExtras {
+                phase,
                 commit_frontier,
                 next_rounds,
                 shadow,
                 rng,
                 is_offerer,
-                round_active,
-                has_committed_this_round,
-                shadow_round_ended,
                 absolute_tick,
                 total_replay_ticks,
                 current_round_index,
@@ -264,11 +313,11 @@ impl InnerState {
                 packet: last_local_packet,
             }),
             round_result: None,
-            phase: RoundPhase::InProgress,
             error: None,
             mode: Mode::Fastforward(FastforwardExtras {
                 capture_tick,
                 captured: None,
+                ending: RoundPhase::InProgress,
             }),
         }
     }
@@ -339,7 +388,7 @@ impl InnerState {
     /// false in Fastforwarder mode.
     pub fn needs_replay_first_commit(&self) -> bool {
         self.replay().is_some_and(|replay| {
-            replay.round_active && !replay.has_committed_this_round && self.current_tick == replay.commit_frontier
+            replay.phase == PlaybackPhase::AwaitingFirstCommit && self.current_tick == replay.commit_frontier
         })
     }
 
@@ -358,7 +407,7 @@ impl InnerState {
         // those bump current_tick past commit_frontier (= 0) before the round
         // actually starts. In Fastforwarder mode, every increment counts.
         if let Mode::Replay(replay) = &mut self.mode {
-            if !replay.has_committed_this_round {
+            if !replay.phase.has_committed() {
                 return;
             }
             replay.absolute_tick += 1;
@@ -490,8 +539,10 @@ impl InnerState {
             );
         }
         let shadow_to_advance = self.replay_mut().and_then(|replay| {
-            let needs_advance = !replay.has_committed_this_round;
-            replay.has_committed_this_round = true;
+            let needs_advance = !replay.phase.has_committed();
+            if needs_advance {
+                replay.phase = PlaybackPhase::InRound;
+            }
             needs_advance.then(|| replay.shadow.clone())
         });
         if let Some(shadow) = shadow_to_advance {
@@ -573,20 +624,27 @@ impl InnerState {
     }
 
     pub fn set_round_ending(&mut self) {
-        self.phase = RoundPhase::Ending;
-        // Replay-mode only: drive the shadow forward to its matching
-        // round-end snapshot now. This mirrors Match::end_round in PvP,
-        // which calls shadow.advance_until_round_end from its
-        // round_ending_entry trap. Guarded so the multi-entry games
-        // (BN1/BN2 fire two round_ending_entry traps) only advance once.
-        let shadow_to_advance = self.replay_mut().and_then(|replay| {
-            if replay.shadow_round_ended {
+        let shadow_to_advance = match &mut self.mode {
+            Mode::Fastforward(ff) => {
+                ff.ending = RoundPhase::Ending;
                 None
-            } else {
-                replay.shadow_round_ended = true;
-                Some(replay.shadow.clone())
             }
-        });
+            Mode::Replay(replay) => {
+                // The shadow round-end advance fires on the edge into
+                // RoundEnding, which is what makes a second fire a no-op —
+                // the multi-entry games (BN1/BN2 fire two round_ending_entry
+                // traps) must only advance the shadow once. This mirrors
+                // Match::end_round in PvP, which calls
+                // shadow.advance_until_round_end from its round_ending_entry
+                // trap.
+                if replay.phase.has_ended_or_is_ending() {
+                    None
+                } else {
+                    replay.phase = PlaybackPhase::RoundEnding;
+                    Some(replay.shadow.clone())
+                }
+            }
+        };
         if let Some(shadow) = shadow_to_advance {
             if let Err(e) = shadow.lock().unwrap().advance_until_round_end() {
                 self.error = Some(e);
@@ -595,24 +653,42 @@ impl InnerState {
     }
 
     pub fn set_round_ended(&mut self) {
-        self.phase = RoundPhase::Ended;
-        // Replay-mode only: fire on_round_ended when the last queued round
-        // ends. In Fastforwarder mode there's no callback to run.
-        if let Some(replay) = self.replay_mut() {
-            if replay.next_rounds.is_empty() {
-                if let Some(callback) = replay.on_round_ended.take() {
-                    callback();
+        match &mut self.mode {
+            Mode::Fastforward(ff) => {
+                ff.ending = RoundPhase::Ended;
+            }
+            Mode::Replay(replay) => {
+                // Finished is sticky: the game may keep firing round-end
+                // traps in its post-replay limbo, and dropping back to
+                // RoundEnded would let round_start_ret pop a (nonexistent)
+                // next round.
+                if replay.phase != PlaybackPhase::Finished {
+                    replay.phase = PlaybackPhase::RoundEnded;
+                }
+                // Fire on_round_ended when the last queued round ends.
+                if replay.next_rounds.is_empty() {
+                    if let Some(callback) = replay.on_round_ended.take() {
+                        callback();
+                    }
                 }
             }
         }
     }
 
     pub fn is_round_ending(&self) -> bool {
-        self.phase == RoundPhase::Ending || self.phase == RoundPhase::Ended
+        match &self.mode {
+            Mode::Fastforward(ff) => ff.ending != RoundPhase::InProgress,
+            Mode::Replay(replay) => replay.phase.has_ended_or_is_ending(),
+        }
     }
 
     pub fn is_round_ended(&self) -> bool {
-        self.phase == RoundPhase::Ended
+        match &self.mode {
+            Mode::Fastforward(ff) => ff.ending == RoundPhase::Ended,
+            Mode::Replay(replay) => {
+                matches!(replay.phase, PlaybackPhase::RoundEnded | PlaybackPhase::Finished)
+            }
+        }
     }
 
     // ----- replay-mode accessors -----
@@ -638,37 +714,45 @@ impl InnerState {
     /// the game's tick during boot / inter-round animations in replay mode.
     /// Always false in Fastforwarder mode.
     pub fn has_committed_this_round(&self) -> bool {
-        self.replay().is_some_and(|r| r.has_committed_this_round)
+        self.replay().is_some_and(|r| r.phase.has_committed())
     }
 
     /// True iff round_start_ret has fired for the current round. In FF mode
     /// this is always true (FF resumes from a known committed state).
     pub fn round_active(&self) -> bool {
-        self.replay().map_or(true, |r| r.round_active)
+        self.replay().map_or(true, |r| r.phase.round_active())
     }
 
     // ----- replay-mode round transitions -----
 
-    /// Called by per-game replay traps from round_start_ret. If a previous
-    /// round just ended and another round is queued, load it. For the first
-    /// round (phase still InProgress), this is a no-op since the round was
-    /// loaded in [`State::new`]. Either way, marks the round as active so the
-    /// first-commit gate in main_read_joyflags can fire.
+    /// Called by per-game replay traps from round_start_ret.
+    ///
+    /// - `AwaitingRoundStart` (first round; inputs already loaded by
+    ///   [`State::new`]): advance to `AwaitingFirstCommit` so the
+    ///   first-commit gate in main_read_joyflags can fire.
+    /// - `RoundEnded`: load the next queued round, or freeze into
+    ///   `Finished` if the queue is empty.
+    /// - Anything else (spurious mid-round fire): no-op.
     ///
     /// No-op in Fastforwarder mode.
     pub fn advance_to_next_replay_round_if_pending(&mut self) {
-        let ended = self.phase == RoundPhase::Ended;
         let Some(replay) = self.replay_mut() else {
             return;
         };
-        let next_round = if ended { replay.next_rounds.pop_front() } else { None };
-        match next_round {
-            Some(round_inputs) => self.load_replay_round(round_inputs),
-            None => self.replay_mut().unwrap().round_active = true,
+        match replay.phase {
+            PlaybackPhase::AwaitingRoundStart => {
+                replay.phase = PlaybackPhase::AwaitingFirstCommit;
+            }
+            PlaybackPhase::RoundEnded => match replay.next_rounds.pop_front() {
+                Some(round_inputs) => self.load_replay_round(round_inputs),
+                None => self.replay_mut().unwrap().phase = PlaybackPhase::Finished,
+            },
+            _ => {}
         }
     }
 
-    /// Resets per-round state and loads the given round's inputs.
+    /// Resets per-round state, loads the given round's inputs, and arms the
+    /// new round at `AwaitingFirstCommit`.
     fn load_replay_round(&mut self, round_inputs: Vec<PartialInputPair>) {
         self.current_tick = 0;
         // local_packet is lazy-seeded by per-game traps before the first
@@ -678,16 +762,13 @@ impl InnerState {
 
         {
             let replay = self.replay_mut().expect("load_replay_round in FF mode");
-            replay.round_active = true;
+            replay.phase = PlaybackPhase::AwaitingFirstCommit;
             replay.current_round_index += 1;
-            replay.has_committed_this_round = false;
-            replay.shadow_round_ended = false;
         }
 
         self.input_pairs = round_inputs.into_iter().collect();
         self.output_pairs = vec![];
         self.round_result = None;
-        self.phase = RoundPhase::InProgress;
     }
 }
 
@@ -764,9 +845,7 @@ impl State {
             total_replay_ticks,
             current_tick_in_round: 0,
             local_packet_override: None,
-            round_active: false,
-            has_committed_this_round: false,
-            shadow_round_ended: false,
+            phase: PlaybackPhase::AwaitingRoundStart,
             disable_bgm: false,
             on_round_ended: Some(on_round_ended),
         });
@@ -785,7 +864,7 @@ impl State {
     pub fn capture_replay_checkpoint(&self) -> Option<ReplayCheckpoint> {
         let inner = self.lock_inner();
         let replay = inner.replay()?;
-        if !replay.round_active {
+        if !replay.phase.round_active() {
             return None;
         }
         let rng_state = replay.rng.lock().unwrap().clone();
@@ -793,7 +872,7 @@ impl State {
             absolute_tick: replay.absolute_tick,
             current_round_index: replay.current_round_index,
             current_tick_in_round: inner.current_tick,
-            has_committed_this_round: replay.has_committed_this_round,
+            has_committed_this_round: replay.phase.has_committed(),
             rng_state,
             local_packet: inner.local_packet.clone(),
             inputs_consumed: inner.output_pairs.len() as u32,
@@ -851,12 +930,15 @@ impl State {
             total_replay_ticks,
             current_tick_in_round: checkpoint.current_tick_in_round,
             local_packet_override: checkpoint.local_packet.as_ref().map(|lp| lp.packet.clone()),
-            round_active: true,
-            has_committed_this_round: checkpoint.has_committed_this_round,
-            // The shadow handle is shared across the swap; if the previous
-            // run already advanced shadow past the round-end for this
-            // round, leave that flag set so we don't double-advance.
-            shadow_round_ended: false,
+            // Never an ending phase: the seek path restores the shadow
+            // snapshot alongside this checkpoint, so the shadow round-end
+            // advance must be allowed to (re-)fire when playback reaches the
+            // round's end again.
+            phase: if checkpoint.has_committed_this_round {
+                PlaybackPhase::InRound
+            } else {
+                PlaybackPhase::AwaitingFirstCommit
+            },
             disable_bgm,
             on_round_ended,
         });

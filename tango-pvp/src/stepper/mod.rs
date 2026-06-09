@@ -2,7 +2,8 @@ pub use crate::input::{Input, PartialInput};
 
 mod state;
 
-pub use state::{CapturedBoundary, InnerState, ReplayCheckpoint, ReplaySnapshot, State};
+pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, State};
+pub(crate) use state::InnerState;
 
 /// Source of the remote peer's link packet for one tick of simulation.
 ///
@@ -35,8 +36,10 @@ pub enum BattleOutcome {
     Win = 1,
 }
 
-/// Phase tracking for the current round. Replay-mode round transitions and
-/// the per-game `is_round_ending` gates flip through these.
+/// Round-ending progression within a single Fastforwarder window. (Replay
+/// mode tracks its richer per-round lifecycle in its own `PlaybackPhase`;
+/// this one only answers the per-game `is_round_ending` / `is_round_ended`
+/// gates during a re-sim step.)
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum RoundPhase {
     InProgress,
