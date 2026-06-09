@@ -85,6 +85,8 @@ pub struct CustomScreenTimer {
     /// Cached ticks-remaining for [`remaining`](Self::remaining), updated each
     /// [`enforce`](Self::enforce); `None` while not in the custom screen.
     remaining: Option<u32>,
+    /// PROTOTYPE diagnostic latch: log the "firing" line only once per screen.
+    fired: bool,
 }
 
 impl CustomScreenTimer {
@@ -95,6 +97,7 @@ impl CustomScreenTimer {
             open_tick: None,
             closing: false,
             remaining: None,
+            fired: false,
         }
     }
 
@@ -129,19 +132,35 @@ impl CustomScreenTimer {
     /// Timing core, split from the core reads so it can be unit-tested against a
     /// captured timeline. Returns whether to drive the confirm.
     fn advance(&mut self, tick: u32, close_started: bool) -> bool {
-        let open = *self.open_tick.get_or_insert(tick);
+        let open = match self.open_tick {
+            Some(o) => o,
+            None => {
+                // PROTOTYPE diagnostic: one line when a core's timer first sees
+                // the custom screen, so a live retest shows whether detection
+                // engages per game.
+                log::info!("custom-screen timer: entered at tick {tick} (limit {})", self.limit);
+                self.open_tick = Some(tick);
+                tick
+            }
+        };
         let elapsed = tick.saturating_sub(open);
         if close_started {
             self.closing = true;
         }
         self.remaining = Some(self.limit.saturating_sub(elapsed));
-        elapsed >= self.limit && !self.closing
+        let fire = elapsed >= self.limit && !self.closing;
+        if fire && !self.fired {
+            log::info!("custom-screen timer: firing at tick {tick} (open {open}, elapsed {elapsed})");
+            self.fired = true;
+        }
+        fire
     }
 
     fn advance_idle(&mut self) -> bool {
         self.open_tick = None;
         self.closing = false;
         self.remaining = None;
+        self.fired = false;
         false
     }
 }
