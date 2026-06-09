@@ -16,23 +16,7 @@ pub async fn eval(
         return Err(anyhow::anyhow!("replay has no rounds"));
     }
 
-    let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
-    let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-
-    let shadow = crate::shadow::Shadow::new_for_replay(rom, replay, hooks)?;
-    let shadow = std::sync::Arc::new(std::sync::Mutex::new(shadow));
-
-    let stepper_state = crate::stepper::State::new(
-        match_type,
-        replay.local_player_index,
-        replay.rounds.clone(),
-        0,
-        replay.rng_seed,
-        replay.is_offerer,
-        total_replay_ticks,
-        shadow,
-        Box::new(|| {}),
-    );
+    let (stepper_state, _shadow) = crate::stepper::State::new_for_replay(replay, rom, hooks, Box::new(|| {}))?;
 
     hooks.patch(core.as_mut());
     {

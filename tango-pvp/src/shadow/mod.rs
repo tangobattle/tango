@@ -150,27 +150,38 @@ impl Shadow {
         Ok(())
     }
 
-    /// Run the shadow until the per-game traps mark this round's first
-    /// committed state. `end_run_loop` parks the core right there, so there's
-    /// nothing to load back — the next apply_input run continues from here.
-    pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
-        log::info!("advancing shadow until first committed state");
+    /// The shared drive-loop shape: run the core in bursts, draining the
+    /// trap error channel after each, until `done` observes the wanted
+    /// state transition. The per-game traps perform the transitions while
+    /// the core runs; this just polls for them.
+    fn run_core_until(&mut self, mut done: impl FnMut(&State) -> bool) -> anyhow::Result<()> {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().unwrap().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
+            if done(&self.state) {
+                return Ok(());
+            }
+        }
+    }
 
-            let mut round_state = self.state.lock_round_state();
+    /// Run the shadow until the per-game traps mark this round's first
+    /// committed state. `end_run_loop` parks the core right there, so there's
+    /// nothing to load back — the next apply_input run continues from here.
+    pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
+        log::info!("advancing shadow until first committed state");
+        self.run_core_until(|state| {
+            let mut round_state = state.lock_round_state();
             let Some(round) = round_state.round.as_mut() else {
-                continue;
+                return false;
             };
             if !round.has_first_committed_state() {
-                continue;
+                return false;
             }
             round.current_tick = 0;
-            return Ok(());
-        }
+            true
+        })
     }
 
     /// Run the shadow until `end_round` drops the round state. `end_run_loop`
@@ -179,15 +190,7 @@ impl Shadow {
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until round end");
         self.hooks.prepare_for_fastforward(self.core.as_mut());
-        loop {
-            self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().unwrap().take() {
-                return Err(anyhow::format_err!("shadow: {}", err));
-            }
-            if self.state.lock_round_state().round.is_none() {
-                return Ok(());
-            }
-        }
+        self.run_core_until(|state| state.lock_round_state().round.is_none())
     }
 
     /// Inject the given input pair as the next shadow input, then run the
@@ -217,16 +220,8 @@ impl Shadow {
         // actually applied its input.
         self.state.take_input_applied();
         self.hooks.prepare_for_fastforward(self.core.as_mut());
-        loop {
-            self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().unwrap().take() {
-                return Err(anyhow::format_err!("shadow: {}", err));
-            }
-            if !self.state.take_input_applied() {
-                continue;
-            }
-            let _ = expected_tick;
-            return Ok(pending_remote_packet);
-        }
+        self.run_core_until(|state| state.take_input_applied())?;
+        let _ = expected_tick;
+        Ok(pending_remote_packet)
     }
 }

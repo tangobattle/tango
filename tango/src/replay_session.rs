@@ -70,26 +70,16 @@ impl ReplaySession {
         }
         let replay_is_complete = replay.is_complete;
         let total_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
-        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
 
-        let remote_hooks = remote_game.hooks;
-        let shadow = Shadow::new_for_replay(remote_rom.as_ref(), &replay, remote_hooks)?;
-        let shadow = Arc::new(Mutex::new(shadow));
-
-        let stepper_state = tango_pvp::stepper::State::new(
-            match_type,
-            replay.local_player_index,
-            replay.rounds.clone(),
-            0,
-            replay.rng_seed,
-            replay.is_offerer,
-            total_ticks,
-            shadow.clone(),
+        let (stepper_state, shadow) = tango_pvp::stepper::State::new_for_replay(
+            &replay,
+            remote_rom.as_ref(),
+            remote_game.hooks,
             Box::new({
                 let completion_token = completion_token.clone();
                 move || completion_token.complete()
             }),
-        );
+        )?;
 
         let mut traps = hooks.common_traps();
         traps.extend(hooks.stepper_traps(stepper_state.clone()));

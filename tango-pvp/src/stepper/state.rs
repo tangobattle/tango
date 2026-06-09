@@ -9,7 +9,11 @@ type InputPair = (Input, Input);
 type PartialInputPair = (PartialInput, PartialInput);
 
 type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
-type SharedShadow = Arc<Mutex<crate::shadow::Shadow>>;
+
+/// Shared handle to the opponent co-sim. [`State::new_for_replay`] hands one
+/// out alongside the stepper state; the seek/prefetch paths keep it to
+/// snapshot and restore the shadow in lockstep with the stepper.
+pub type SharedShadow = Arc<Mutex<crate::shadow::Shadow>>;
 
 /// `local_packet`'s payload bundled with the send count at which a consumer
 /// should expect to see it. Setters record `output_pairs.len()` at the time
@@ -808,26 +812,31 @@ pub struct ReplaySnapshot {
 pub struct State(pub(super) Arc<Mutex<Option<InnerState>>>);
 
 impl State {
-    /// Construct a replay-mode stepper state covering one or more rounds.
-    /// Rounds are played back in order; `set_round_ended` advances to the
-    /// next one until the queue is empty, then fires `on_round_ended`.
-    /// `total_replay_ticks` is the input-pair count across the full replay
-    /// (used by the seek bar). `shadow` is the shadow emulator that
-    /// re-derives the remote peer's per-tick packets from the recorded
-    /// remote joyflags.
-    pub fn new(
-        match_type: (u8, u8),
-        local_player_index: u8,
-        rounds: Vec<Vec<PartialInputPair>>,
-        commit_frontier: u32,
-        rng_seed: [u8; 16],
-        is_offerer: bool,
-        total_replay_ticks: u32,
-        shadow: SharedShadow,
+    /// Build the playback pair for a recorded replay: the opponent co-sim
+    /// (a [`Shadow`](crate::shadow::Shadow) over `remote_rom`, which
+    /// re-derives the peer's per-tick packets from the recorded remote
+    /// joyflags) and a replay-mode stepper state covering all recorded
+    /// rounds. Everything else — match type, player index, RNG seed, tick
+    /// totals — is derived from the replay itself.
+    ///
+    /// This is the one way every playback consumer starts (viewer, export,
+    /// eval, prefetch, the golden suite). Rounds play back in order;
+    /// `set_round_ended` advances to the next until the queue is empty,
+    /// then `on_round_ended` fires.
+    pub fn new_for_replay(
+        replay: &crate::replay::Replay,
+        remote_rom: &[u8],
+        remote_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
         on_round_ended: Box<dyn FnOnce() + Send>,
-    ) -> State {
+    ) -> anyhow::Result<(State, SharedShadow)> {
+        let shadow = crate::shadow::Shadow::new_for_replay(remote_rom, replay, remote_hooks)?;
+        let shadow = Arc::new(Mutex::new(shadow));
+
+        let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum();
+        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
+
         use rand::SeedableRng;
-        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(rng_seed);
+        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(replay.rng_seed);
         // Match::new advances the shared rng by one bool draw before any
         // game traps fire (the polite-win pick). Stay in sync.
         let _ = rand::Rng::gen::<bool>(&mut rng);
@@ -835,12 +844,13 @@ impl State {
 
         let inner = InnerState::for_replay(ReplayInit {
             match_type,
-            local_player_index,
-            commit_frontier,
+            local_player_index: replay.local_player_index,
+            // Rounds commit at their first tick.
+            commit_frontier: 0,
             rng,
-            shadow,
-            is_offerer,
-            rounds: VecDeque::from(rounds),
+            shadow: shadow.clone(),
+            is_offerer: replay.is_offerer,
+            rounds: VecDeque::from(replay.rounds.clone()),
             inputs_consumed_in_current_round: 0,
             current_round_index: 0,
             absolute_tick: 0,
@@ -852,7 +862,7 @@ impl State {
             on_round_ended: Some(on_round_ended),
         });
 
-        State(Arc::new(Mutex::new(Some(inner))))
+        Ok((State(Arc::new(Mutex::new(Some(inner)))), shadow))
     }
 
     pub fn lock_inner(&self) -> InnerStateGuard<'_> {

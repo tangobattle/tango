@@ -2,7 +2,7 @@ pub use crate::input::{Input, PartialInput};
 
 mod state;
 
-pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, State};
+pub use state::{CapturedBoundary, ReplayCheckpoint, ReplaySnapshot, SharedShadow, State};
 pub(crate) use state::InnerState;
 
 /// Source of the remote peer's link packet for one tick of simulation.

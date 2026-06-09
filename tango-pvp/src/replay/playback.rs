@@ -135,23 +135,8 @@ pub fn run_prefetch(
 
     local_hooks.patch(core.as_mut());
 
-    let total_replay_ticks = replay.rounds.iter().map(|r| r.len() as u32).sum::<u32>();
-    let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-
-    let shadow = Shadow::new_for_replay(remote_rom, replay, remote_hooks)?;
-    let shadow = Arc::new(Mutex::new(shadow));
-
-    let stepper_state = stepper::State::new(
-        match_type,
-        replay.local_player_index,
-        replay.rounds.clone(),
-        0,
-        replay.rng_seed,
-        replay.is_offerer,
-        total_replay_ticks,
-        shadow.clone(),
-        Box::new(|| {}),
-    );
+    let (stepper_state, shadow) =
+        stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     let mut traps = local_hooks.common_traps();
     traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
@@ -161,9 +146,13 @@ pub fn run_prefetch(
             return Ok(());
         }
 
-        let (total_left, absolute_tick) = {
+        let (total_left, absolute_tick, total_replay_ticks) = {
             let inner = stepper_state.lock_inner();
-            (inner.total_input_pairs_left(), inner.absolute_tick())
+            (
+                inner.total_input_pairs_left(),
+                inner.absolute_tick(),
+                inner.total_replay_ticks(),
+            )
         };
         if total_left == 0 && absolute_tick > 0 {
             // Reached end-of-replay. Mark the bar fully buffered and exit —
