@@ -8,8 +8,6 @@ use super::{BattleOutcome, RoundPhase, RoundResult};
 type InputPair = (Input, Input);
 type PartialInputPair = (PartialInput, PartialInput);
 
-type ApplyShadowInput = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
-
 type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
 type SharedShadow = Arc<Mutex<crate::shadow::Shadow>>;
 
@@ -122,7 +120,7 @@ pub struct InnerState {
     match_type: (u8, u8),
     input_pairs: VecDeque<PartialInputPair>,
     output_pairs: Vec<InputPair>,
-    apply_shadow_input: ApplyShadowInput,
+    packet_source: Box<dyn super::RemotePacketSource>,
     local_packet: Option<LocalPacket>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
@@ -196,13 +194,9 @@ impl InnerState {
 
         // The remote packet for each tick is re-derived by running the
         // shadow emulator over the recorded remote joyflag (carried in
-        // `ip.remote.joyflags`). The shadow handles its own per-tick
-        // bookkeeping; this closure is just the bridge from the stepper's
-        // `apply_shadow_input` call into the Shadow handle.
-        let apply_shadow_input: ApplyShadowInput = {
-            let shadow = shadow.clone();
-            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
-        };
+        // `ip.remote.joyflags`); the shared Shadow handle is the
+        // [`RemotePacketSource`](super::RemotePacketSource).
+        let packet_source: Box<dyn super::RemotePacketSource> = Box::new(shadow.clone());
 
         // send_count = 0 either way: fresh starts at tick 0 with empty
         // output_pairs, and restore resets output_pairs to empty too — both
@@ -216,7 +210,7 @@ impl InnerState {
             match_type,
             input_pairs,
             output_pairs: vec![],
-            apply_shadow_input,
+            packet_source,
             local_packet,
             round_result: None,
             phase: RoundPhase::InProgress,
@@ -246,7 +240,7 @@ impl InnerState {
         inputs: Vec<PartialInputPair>,
         current_tick: u32,
         last_local_packet: Vec<u8>,
-        apply_shadow_input: ApplyShadowInput,
+        packet_source: Box<dyn super::RemotePacketSource>,
     ) -> Self {
         // Run `inputs` one tick each, then capture at the boundary tick (one past
         // the last applied). By then the input window is exhausted, so the
@@ -262,7 +256,7 @@ impl InnerState {
             match_type,
             input_pairs,
             output_pairs: vec![],
-            apply_shadow_input,
+            packet_source,
             local_packet: Some(LocalPacket {
                 // target_tick = output_pairs.len() at this send. We start at
                 // 0 (no sends yet) and the first send's check expects 0.
@@ -462,7 +456,7 @@ impl InnerState {
     // ----- shadow input -----
 
     pub fn apply_shadow_input(&mut self, input: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
-        let remote_packet = (self.apply_shadow_input)(self.current_tick, input.clone())?;
+        let remote_packet = self.packet_source.resolve(self.current_tick, input.clone())?;
         let (local, remote) = input;
         self.output_pairs
             .push((local, remote.with_packet(remote_packet.clone())));
@@ -542,17 +536,27 @@ impl InnerState {
         self.fastforward().is_some_and(|ff| ff.captured.is_some())
     }
 
-    /// Consumes self into a Fastforwarder result. Panics if not in
-    /// Fastforwarder mode or the boundary hasn't been recorded yet — callers
-    /// must check [`Self::has_captured_snapshot`] first.
-    pub(super) fn into_stepper_result(self) -> super::StepperResult {
+    /// Consumes self into a Fastforwarder result, handing the packet source
+    /// back to the [`Stepper`](super::Stepper) for the next step. Panics if
+    /// not in Fastforwarder mode or the boundary hasn't been recorded yet —
+    /// callers must check [`Self::has_captured_snapshot`] first.
+    pub(super) fn into_stepper_result(self) -> (super::StepperResult, Box<dyn super::RemotePacketSource>) {
         let Mode::Fastforward(ff) = self.mode else {
             panic!("into_stepper_result is Fastforwarder-mode-only");
         };
-        super::StepperResult {
-            boundary: ff.captured.expect("captured boundary"),
-            round_result: self.round_result,
-        }
+        (
+            super::StepperResult {
+                boundary: ff.captured.expect("captured boundary"),
+                round_result: self.round_result,
+            },
+            self.packet_source,
+        )
+    }
+
+    /// Consumes self, recovering just the packet source — the failure-path
+    /// counterpart of [`Self::into_stepper_result`].
+    pub(super) fn recover_packet_source(self) -> Box<dyn super::RemotePacketSource> {
+        self.packet_source
     }
 
     // ----- round phase / outcome -----

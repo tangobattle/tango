@@ -25,7 +25,7 @@
 
 use std::sync::{Arc, Mutex as SyncMutex};
 
-use crate::input::{Input, PartialInput};
+use crate::input::PartialInput;
 
 /// The engine's opaque checkpoint state: the primary stepper's mgba save state,
 /// the shadow's snapshot (so a rollback rewinds the opponent co-sim in lockstep),
@@ -39,9 +39,6 @@ pub struct MgbaState {
     pub shadow_snapshot: crate::shadow::ShadowSnapshot,
     pub tick: u32,
 }
-
-/// Per-tick remote-packet resolver handed to the stepper.
-type Resolver = Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>;
 
 /// The single [`getgud::World`] implementation over the per-frame [`Stepper`]
 /// core plus the shadow. Pins the engine's type axes ([`MgbaState`] /
@@ -73,17 +70,14 @@ impl getgud::World for MgbaWorld {
     type Error = anyhow::Error;
 
     fn step(&mut self, input: (PartialInput, PartialInput)) -> anyhow::Result<getgud::RoundState> {
-        // Co-simulate the opponent for this tick: the resolver runs the shadow
-        // forward over the (real or predicted) remote joyflags to derive the
-        // remote packet. The shadow advances in lockstep with the stepper and is
-        // rewound by `load`, so this is identical whether the tick is a confirmed
-        // settle or a speculative one.
-        let resolver: Resolver = {
-            let shadow = self.shadow.clone();
-            Box::new(move |tick, ip| shadow.lock().unwrap().apply_input(tick, ip))
-        };
-        let last_outgoing = self.last_outgoing.clone();
-        let result = self.stepper.step(input, &last_outgoing, resolver)?;
+        // Co-simulate the opponent for this tick: the stepper's
+        // [`RemotePacketSource`](crate::stepper::RemotePacketSource) — our shared
+        // shadow handle, set at construction — runs the shadow forward over the
+        // (real or predicted) remote joyflags to derive the remote packet. The
+        // shadow advances in lockstep with the stepper and is rewound by `load`,
+        // so this is identical whether the tick is a confirmed settle or a
+        // speculative one.
+        let result = self.stepper.step(input, &self.last_outgoing)?;
 
         // Both cores are now parked at the boundary (the stepper advanced its own
         // parked tick); record the outgoing packet, but don't snapshot — `save`

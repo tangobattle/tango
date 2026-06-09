@@ -87,6 +87,9 @@ impl Round {
             match_.match_type(),
             self.local_player_index,
             local_state.as_ref(),
+            // The shared shadow handle doubles as the stepper's remote-packet
+            // source: each re-sim tick co-simulates the opponent through it.
+            Box::new(match_.shadow_handle()),
         )?;
         let world = MgbaWorld {
             stepper,

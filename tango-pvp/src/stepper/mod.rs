@@ -4,6 +4,28 @@ mod state;
 
 pub use state::{CapturedBoundary, InnerState, ReplayCheckpoint, ReplaySnapshot, State};
 
+/// Source of the remote peer's link packet for one tick of simulation.
+///
+/// The stepper can only re-simulate this side of the link; the opponent's
+/// per-tick packets aren't on the wire, so each step asks this source to
+/// produce them. The production implementation is the shared
+/// [`Shadow`](crate::shadow::Shadow) co-sim: `resolve` runs the opponent's
+/// core forward one tick over the (real or predicted) remote joyflags in
+/// `pair` and returns the link packet the opponent's game emitted.
+///
+/// This names a data flow that used to be an anonymous closure threaded
+/// through three layers: `MgbaWorld::step` → [`Stepper`] → per-game stepper
+/// trap (`InnerState::apply_shadow_input`) → `Shadow::apply_input`.
+pub trait RemotePacketSource: Send {
+    fn resolve(&mut self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>>;
+}
+
+impl RemotePacketSource for std::sync::Arc<std::sync::Mutex<crate::shadow::Shadow>> {
+    fn resolve(&mut self, tick: u32, pair: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+        self.lock().unwrap().apply_input(tick, pair)
+    }
+}
+
 /// Outcome of a single round, as detected by the per-game `round_end_*` traps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde_repr::Serialize_repr)]
 #[repr(i8)]
@@ -69,6 +91,11 @@ pub struct Stepper {
     /// [`step`](Self::step) and reset by [`restore`](Self::restore). [`step`]
     /// re-sims from here, so the caller never threads the tick back in.
     parked_tick: u32,
+    /// Remote-packet source set at construction. Parked here between steps;
+    /// each [`step`](Self::step) moves it into the run state (where the
+    /// per-game traps reach it via `apply_shadow_input`) and recovers it when
+    /// the run ends. `None` only while a step is in flight.
+    packet_source: Option<Box<dyn RemotePacketSource>>,
 }
 
 impl Stepper {
@@ -81,6 +108,7 @@ impl Stepper {
         match_type: (u8, u8),
         local_player_index: u8,
         initial_state: &mgba::state::State,
+        packet_source: Box<dyn RemotePacketSource>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -108,6 +136,7 @@ impl Stepper {
             match_type,
             local_player_index,
             parked_tick: 0,
+            packet_source: Some(packet_source),
         })
     }
 
@@ -132,27 +161,28 @@ impl Stepper {
     /// Advance exactly one tick from where the core is parked, applying `input`
     /// and halting at the next boundary (`parked_tick + 1`). `last_local_packet`
     /// is this side's outgoing link packet at the parked tick (seeds the link
-    /// exchange); `apply_shadow_input` resolves the remote packet by co-simulating
-    /// the shadow. Drives the core until the per-game stepper trap reaches the
-    /// boundary and halts, advancing the parked tick; call [`save`](Self::save)
-    /// afterward to snapshot the core there.
+    /// exchange); the [`RemotePacketSource`] given at construction resolves the
+    /// remote packet by co-simulating the shadow. Drives the core until the
+    /// per-game stepper trap reaches the boundary and halts, advancing the
+    /// parked tick; call [`save`](Self::save) afterward to snapshot the core
+    /// there.
     pub fn step(
         &mut self,
         input: (PartialInput, PartialInput),
         last_local_packet: &[u8],
-        apply_shadow_input: Box<dyn FnMut(u32, (Input, PartialInput)) -> anyhow::Result<Vec<u8>> + Send>,
     ) -> anyhow::Result<StepperResult> {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
+        let packet_source = self.packet_source.take().expect("packet source parked between steps");
         *self.state.0.lock().unwrap() = Some(InnerState::for_fastforward(
             self.match_type,
             self.local_player_index,
             vec![input],
             self.parked_tick,
             last_local_packet.to_vec(),
-            apply_shadow_input,
+            packet_source,
         ));
 
-        let result = loop {
+        let (result, packet_source) = loop {
             {
                 let mut guard = self.state.0.lock().unwrap();
                 let inner = guard.as_mut().unwrap();
@@ -164,10 +194,13 @@ impl Stepper {
             self.core.as_mut().run_loop();
             let mut guard = self.state.0.lock().unwrap();
             if let Some(err) = guard.as_mut().expect("state").take_error() {
-                guard.take();
+                // Park the source again even on failure so the stepper isn't
+                // left sourceless if the caller retries.
+                self.packet_source = guard.take().map(|inner| inner.recover_packet_source());
                 return Err(anyhow::format_err!("replayer: {}", err));
             }
         };
+        self.packet_source = Some(packet_source);
 
         self.parked_tick = result.boundary.tick;
         Ok(result)
