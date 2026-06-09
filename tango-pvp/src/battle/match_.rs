@@ -12,7 +12,10 @@ pub struct Match {
     rom: Vec<u8>,
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
     sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
-    rng: Mutex<rand_pcg::Mcg128Xsl64>,
+    /// Shared match RNG (both peers hold the same stream and must draw in
+    /// lockstep). Only ever locked from trap closures on the emulator
+    /// thread, hence a plain std mutex.
+    rng: SyncMutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     identity: MatchIdentity,
     round_state: Mutex<Option<Round>>,
@@ -57,7 +60,7 @@ impl Match {
             local_hooks,
             rom,
             sender: Arc::new(Mutex::new(sender)),
-            rng: Mutex::new(rng),
+            rng: SyncMutex::new(rng),
             cancellation_token,
             identity,
             round_state: Mutex::new(None),
@@ -287,8 +290,8 @@ impl Match {
         self.round_state.blocking_lock()
     }
 
-    pub fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
-        self.rng.blocking_lock()
+    pub fn lock_rng(&self) -> std::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
+        self.rng.lock().unwrap()
     }
 
     pub fn match_type(&self) -> (u8, u8) {

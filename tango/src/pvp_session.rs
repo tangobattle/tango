@@ -90,9 +90,9 @@ pub struct PvpSession {
     _peer_conn: Option<datachannel_wrapper::PeerConnection>,
     /// Kept alive so the background `match_.run(receiver)` task
     /// has a referent. Cleared by that task when it exits. The UI
-    /// also locks this each tick to scrape the current round's
+    /// also reads this each tick to scrape the current round's
     /// player-index / queue-lengths for the status bar.
-    match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>>,
+    match_handle: tango_pvp::hooks::MatchHandle,
     pub link_code: String,
     pub remote_nickname: String,
     /// Opponent's fully-loaded selection (rom + parsed save +
@@ -187,8 +187,7 @@ impl PvpSession {
         let local_hooks = local_game.hooks;
         local_hooks.patch(core.as_mut());
 
-        let match_handle: Arc<tokio::sync::Mutex<Option<Arc<tango_pvp::battle::Match>>>> =
-            Arc::new(tokio::sync::Mutex::new(None));
+        let match_handle = tango_pvp::hooks::MatchHandle::new();
         let completion_token = tango_pvp::hooks::CompletionToken::new();
 
         // Hooks talk to the live Match via these traps —
@@ -282,7 +281,7 @@ impl PvpSession {
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             frame_delay.clone(),
         );
-        *match_handle.try_lock().unwrap() = Some(inner_match.clone());
+        match_handle.set(inner_match.clone());
 
         // Spawn the network receive loop. Holds inner_match alive
         // until the receiver errors (peer disconnected) or the
@@ -344,7 +343,7 @@ impl PvpSession {
                         log::error!("finish replay failed: {e}");
                     }
                 }
-                *match_handle.lock().await = None;
+                match_handle.clear();
             });
         }
 
@@ -599,8 +598,7 @@ impl PvpSession {
     /// (P1/P2, frame advantage). `None` between rounds or before
     /// the first round starts.
     pub fn round_stats(&self) -> Option<RoundStats> {
-        let match_ = self.match_handle.blocking_lock();
-        let match_ = match_.as_ref()?;
+        let match_ = self.match_handle.get()?;
         let round_state = match_.lock_round_state();
         let round = round_state.as_ref()?;
         Some(RoundStats {

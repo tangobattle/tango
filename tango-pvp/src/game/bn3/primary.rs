@@ -18,8 +18,7 @@ pub(super) fn traps(
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-            let match_ = match_.blocking_lock();
-            let Some(match_) = &*match_ else {
+            let Some(match_) = match_.get() else {
                 core.gba_mut().cpu_mut().set_gpr(0, 0);
                 return;
             };
@@ -52,8 +51,7 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut rng = match_.lock_rng();
 
                 // rng1 is the local rng, it should not be synced.
@@ -67,8 +65,7 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut rng = match_.lock_rng();
                 // The ROM bg generator reads rng2 (shared). Pre-seed
                 // it from the synced match RNG so both peers compute
@@ -96,24 +93,21 @@ pub(super) fn traps(
         (hooks.offsets.rom.round_ending_entry, {
             let match_ = match_.clone();
             Box::new(move |_core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 match_.end_round().expect("end round");
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
             let match_ = match_.clone();
             Box::new(move |_core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 crate::sync::block_on(match_.start_round()).expect("start round");
             })
         }),
         (hooks.offsets.rom.battle_is_p2_ret, {
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -122,8 +116,7 @@ pub(super) fn traps(
         (hooks.offsets.rom.link_is_p2_ret, {
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -133,8 +126,7 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
 

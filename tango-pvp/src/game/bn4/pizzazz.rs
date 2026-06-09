@@ -35,8 +35,7 @@ pub(super) fn primary_traps(hooks: &super::Hooks, match_: &MatchHandle) -> Vec<T
             (
                 addr,
                 Box::new(move |core: mgba::core::CoreMutRef| {
-                    let guard = match_.blocking_lock();
-                    let Some(match_) = guard.as_ref() else { return };
+                    let Some(match_) = match_.get() else { return };
                     if match_.match_type().1 != 1 {
                         return;
                     }

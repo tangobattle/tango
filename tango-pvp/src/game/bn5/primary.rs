@@ -13,32 +13,28 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 munger.start_battle_from_comm_menu(core, match_.match_type().0);
             })
         }),
         (hooks.offsets.rom.round_set_ending, {
             let match_ = match_.clone();
             Box::new(move |_core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 match_.end_round().expect("end round");
             })
         }),
         (hooks.offsets.rom.round_start_ret, {
             let match_ = match_.clone();
             Box::new(move |_core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 crate::sync::block_on(match_.start_round()).expect("start round");
             })
         }),
         (hooks.offsets.rom.battle_is_p2_tst, {
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -47,8 +43,7 @@ pub(super) fn traps(
         (hooks.offsets.rom.link_is_p2_ret, {
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
                 core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
@@ -67,8 +62,7 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |mut core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut rng = match_.lock_rng();
                 // Pre-seed rng1 (local, used for settings) and rng2
                 // (shared, used for background) so the ROM generator
@@ -98,15 +92,14 @@ pub(super) fn traps(
             Box::new(move |mut core| {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                munger.set_copy_data_input_state(core, if match_.blocking_lock().is_some() { 2 } else { 4 });
+                munger.set_copy_data_input_state(core, if match_.get().is_some() { 2 } else { 4 });
             })
         }),
         (hooks.offsets.rom.main_read_joyflags, {
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
 
@@ -164,8 +157,7 @@ pub(super) fn traps(
             let munger = hooks.munger();
             let match_ = match_.clone();
             Box::new(move |core| {
-                let guard = match_.blocking_lock();
-                let Some(match_) = guard.as_ref() else { return };
+                let Some(match_) = match_.get() else { return };
                 let mut round_state = match_.lock_round_state();
                 let Some(round) = round_state.as_mut() else { return };
                 if !round.has_settled_snapshot() {

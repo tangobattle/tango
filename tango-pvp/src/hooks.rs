@@ -25,7 +25,39 @@ impl CompletionToken {
 
 pub type Trap = (u32, Box<dyn Fn(mgba::core::CoreMutRef)>);
 
-pub type MatchHandle = std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<crate::battle::Match>>>>;
+/// Slot through which the per-game primary traps reach the live
+/// [`Match`](crate::battle::Match).
+///
+/// Traps are registered at core setup, before the Match exists, so the slot
+/// starts empty; the host session installs the Match once it's built
+/// ([`set`](Self::set)) and empties the slot at teardown
+/// ([`clear`](Self::clear)). Trap bodies call [`get`](Self::get), which
+/// clones the inner `Arc` under a momentary read lock — the trap then holds
+/// no lock at all, so a multi-millisecond fastforward inside a trap body
+/// can't stall a teardown waiting on the write lock.
+#[derive(Clone, Default)]
+pub struct MatchHandle(std::sync::Arc<std::sync::RwLock<Option<std::sync::Arc<crate::battle::Match>>>>);
+
+impl MatchHandle {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The live match, or `None` before [`set`](Self::set) / after
+    /// [`clear`](Self::clear). Traps treat `None` as "no match running" and
+    /// return early.
+    pub fn get(&self) -> Option<std::sync::Arc<crate::battle::Match>> {
+        self.0.read().unwrap().clone()
+    }
+
+    pub fn set(&self, match_: std::sync::Arc<crate::battle::Match>) {
+        *self.0.write().unwrap() = Some(match_);
+    }
+
+    pub fn clear(&self) {
+        *self.0.write().unwrap() = None;
+    }
+}
 
 pub trait Hooks {
     fn patch(&self, _core: mgba::core::CoreMutRef) {}
