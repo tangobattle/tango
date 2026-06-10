@@ -69,9 +69,7 @@ impl Backend {
             buf: Vec::new(),
         };
         let sdl = sdl_init::sdl().ok_or_else(|| anyhow::anyhow!("sdl not initialized"))?;
-        let audio = sdl
-            .audio()
-            .map_err(|e| anyhow::anyhow!("sdl audio subsystem: {e}"))?;
+        let audio = sdl.audio().map_err(|e| anyhow::anyhow!("sdl audio subsystem: {e}"))?;
         let stream_with_cb = audio
             .open_playback_stream(&spec, callback)
             .map_err(|e| anyhow::anyhow!("sdl open_playback_stream: {e}"))?;

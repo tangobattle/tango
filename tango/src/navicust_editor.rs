@@ -55,13 +55,19 @@ fn draw_part_outline(
                 frame.stroke(&Path::line(Point::new(x, y), Point::new(x + cell, y)), stroke.clone());
             }
             if !same(0, 1) {
-                frame.stroke(&Path::line(Point::new(x, y + cell), Point::new(x + cell, y + cell)), stroke.clone());
+                frame.stroke(
+                    &Path::line(Point::new(x, y + cell), Point::new(x + cell, y + cell)),
+                    stroke.clone(),
+                );
             }
             if !same(-1, 0) {
                 frame.stroke(&Path::line(Point::new(x, y), Point::new(x, y + cell)), stroke.clone());
             }
             if !same(1, 0) {
-                frame.stroke(&Path::line(Point::new(x + cell, y), Point::new(x + cell, y + cell)), stroke.clone());
+                frame.stroke(
+                    &Path::line(Point::new(x + cell, y), Point::new(x + cell, y + cell)),
+                    stroke.clone(),
+                );
             }
         }
     }
@@ -113,12 +119,21 @@ impl PartThumb {
             solid[3] = (solid[3] as f32 * 0.35) as u8;
             plus[3] = (plus[3] as f32 * 0.35) as u8;
         }
-        Some(PartThumb { cells, n: h, solid, plus, is_solid })
+        Some(PartThumb {
+            cells,
+            n: h,
+            solid,
+            plus,
+            is_solid,
+        })
     }
 
     pub fn view<M: 'static>(self) -> Element<'static, M> {
         let side = self.n as f32 * THUMB_PX;
-        Canvas::new(self).width(Length::Fixed(side)).height(Length::Fixed(side)).into()
+        Canvas::new(self)
+            .width(Length::Fixed(side))
+            .height(Length::Fixed(side))
+            .into()
     }
 }
 
@@ -153,7 +168,13 @@ impl<M> canvas::Program<M> for PartThumb {
         navicust::for_each_part_edge(
             &self.cells,
             self.is_solid,
-            |c, r| if own.contains(&(c, r)) { navicust::Adj::Own } else { navicust::Adj::Outside },
+            |c, r| {
+                if own.contains(&(c, r)) {
+                    navicust::Adj::Own
+                } else {
+                    navicust::Adj::Outside
+                }
+            },
             |mark| match mark {
                 navicust::PartMark::Edge { col, row, side, .. } => {
                     let ox = col as f32 * THUMB_PX;
@@ -243,7 +264,10 @@ impl EditorGrid {
 
     pub fn view(self) -> Element<'static, Msg> {
         let (w, h) = (self.width, self.height);
-        Canvas::new(self).width(Length::Fixed(w)).height(Length::Fixed(h)).into()
+        Canvas::new(self)
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h))
+            .into()
     }
 
     fn cell_at(&self, p: Point) -> Option<(usize, usize)> {
@@ -463,7 +487,10 @@ pub struct HoverState {
 impl HoverOutline {
     pub fn view<M: 'static>(self) -> Element<'static, M> {
         let (w, h) = (self.width, self.height);
-        Canvas::new(self).width(Length::Fixed(w)).height(Length::Fixed(h)).into()
+        Canvas::new(self)
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h))
+            .into()
     }
 
     fn cell_at(&self, p: Point) -> Option<(usize, usize)> {
@@ -481,7 +508,10 @@ impl HoverOutline {
         if col < 0 || row < 0 || col >= self.cols as isize || row >= self.rows as isize {
             return None;
         }
-        self.occupancy.get(row as usize * self.cols + col as usize).copied().flatten()
+        self.occupancy
+            .get(row as usize * self.cols + col as usize)
+            .copied()
+            .flatten()
     }
 }
 
