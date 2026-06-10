@@ -70,15 +70,22 @@ impl<F, G, H> Scrubber<F, G, H> {
         self
     }
 
+    /// Translate an x within the bar (0..width) to an absolute tick,
+    /// without the prefetch clamp — what the position *says*, not what
+    /// it can deliver. Lets hover handling tell "over the unloaded
+    /// region" apart from "over the watermark itself".
+    fn raw_tick_at_x(&self, x: f32, width: f32) -> u32 {
+        let pct = (x / width.max(1.0)).clamp(0.0, 1.0);
+        (pct * self.total.max(1) as f32).round() as u32
+    }
+
     /// Translate an x within the bar (0..width) to an absolute tick.
     /// Clamped to the prefetched range so a click past the loaded
     /// edge doesn't trigger a long stall while the rest decodes
     /// (the prefetcher is a background task; let it catch up
     /// before the user can scrub into uncached frames).
     fn tick_at_x(&self, x: f32, width: f32) -> u32 {
-        let pct = (x / width.max(1.0)).clamp(0.0, 1.0);
-        let raw = (pct * self.total.max(1) as f32).round() as u32;
-        raw.min(self.prefetched)
+        self.raw_tick_at_x(x, width).min(self.prefetched)
     }
 }
 
@@ -181,17 +188,19 @@ where
 
         // Ghost notch under the cursor while merely hovering — ties
         // the floating thumbnail preview to the exact spot a click
-        // would seek to (snapped to the tick and clamped to the
-        // prefetched range, same as a press).
+        // would seek to. Suppressed over the unloaded region, in step
+        // with the thumbnail (see the hover branch in `update`).
         if !state.dragging {
             if let Some(p) = cursor.position_in(bounds) {
-                let tick = self.tick_at_x(p.x, w);
-                let x = (tick as f32 / total).clamp(0.0, 1.0) * w;
-                frame.fill_rectangle(
-                    Point::new((x - notch_w / 2.0).round(), notch_top),
-                    Size::new(notch_w, notch_h),
-                    palette.primary.strong.color,
-                );
+                let tick = self.raw_tick_at_x(p.x, w);
+                if tick <= self.prefetched {
+                    let x = (tick as f32 / total).clamp(0.0, 1.0) * w;
+                    frame.fill_rectangle(
+                        Point::new((x - notch_w / 2.0).round(), notch_top),
+                        Size::new(notch_w, notch_h),
+                        palette.primary.strong.color,
+                    );
+                }
             }
         }
 
@@ -264,9 +273,15 @@ where
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
                 // Plain mouseover. Published per tick change (not per
                 // pixel) and NOT captured — hover is passive, and other
-                // widgets are entitled to see cursor movement.
-                if let Some(p) = inside {
-                    let tick = self.tick_at_x(p.x, bounds.width);
+                // widgets are entitled to see cursor movement. The
+                // unloaded region counts as "not hovering": unlike a
+                // press (which usefully pins the seek at the
+                // watermark), a preview there would show the watermark
+                // frame under a cursor that's pointing somewhere else.
+                let tick = inside
+                    .map(|p| self.raw_tick_at_x(p.x, bounds.width))
+                    .filter(|tick| *tick <= self.prefetched);
+                if let (Some(p), Some(tick)) = (inside, tick) {
                     if state.hovered == Some(tick) {
                         return None;
                     }
