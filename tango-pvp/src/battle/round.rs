@@ -1,8 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
-
 use crate::input::PartialInput;
 
 use super::world::{MgbaState, MgbaWorld};
@@ -40,10 +38,6 @@ pub struct Round {
     /// prime the loaded snapshot's local-joyflags register (r4) via
     /// [`inject_joyflags_on_primary_snapshot`](crate::hooks::Hooks::inject_joyflags_on_primary_snapshot).
     hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    /// Outbound network input channel. The engine no longer sends; we ship the
-    /// local input ourselves (with the engine's frame advantage attached)
-    /// before stepping it.
-    sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
     /// This side's live frame delay, owned by `PvpSession` and adjustable via
     /// the footer slider. Re-read into the engine each frame so a mid-round
     /// change takes effect on the next render. The engine itself just holds a
@@ -71,7 +65,6 @@ impl Round {
             remote_inputs: match_.remote_inputs_handle(),
             local_player_index: match_.local_player_index(),
             hooks: match_.local_hooks(),
-            sender: match_.sender_handle(),
             frame_delay: match_.frame_delay(),
             primary_thread_handle: match_.primary_thread_handle(),
             throttler: super::throttler::Throttler::new(),
@@ -171,16 +164,18 @@ impl Round {
     }
 
     /// Called once per `main_read_joyflags` fire on the live primary. Ships the
-    /// local input over the network (with the engine's frame advantage), then
-    /// advances the rollback engine one displayed frame, loading the chosen
-    /// state into `core`.
+    /// local input over `sender` (the match's outbound channel, with the
+    /// engine's frame advantage attached — the engine itself never sends),
+    /// then advances the rollback engine one displayed frame, loading the
+    /// chosen state into `core`.
     pub(crate) async fn add_local_input_and_fastforward(
         &mut self,
+        sender: &super::SenderMutex,
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
     ) -> anyhow::Result<()> {
         let frame_advantage = self.local_frame_advantage();
-        self.sender
+        sender
             .lock()
             .await
             .send(&crate::net::Event::Input(crate::net::Input {

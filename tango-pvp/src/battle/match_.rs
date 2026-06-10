@@ -99,12 +99,18 @@ pub struct RoundMetrics {
     pub misprediction_depth: u32,
 }
 
+/// The outbound network channel. Locked only from the emulator thread —
+/// primary traps shipping the per-frame input and `end_round` emitting the
+/// `EndOfRound` marker; the net task only receives. A tokio mutex because
+/// `send` awaits while the lock is held.
+pub(crate) type SenderMutex = Mutex<Box<dyn crate::net::Sender + Send + Sync>>;
+
 /// Connection-level state for a single PvP match.
 pub struct Match {
     shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
     rom: Vec<u8>,
     local_hooks: &'static (dyn crate::hooks::Hooks + Send + Sync),
-    sender: Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>>,
+    sender: SenderMutex,
     /// Shared match RNG (both peers hold the same stream and must draw in
     /// lockstep). Only ever locked from trap closures on the emulator
     /// thread, hence a plain std mutex.
@@ -154,7 +160,7 @@ impl Match {
             shadow: Arc::new(SyncMutex::new(shadow)),
             local_hooks,
             rom,
-            sender: Arc::new(Mutex::new(sender)),
+            sender: Mutex::new(sender),
             rng: SyncMutex::new(rng),
             cancellation_token,
             identity,
@@ -184,8 +190,8 @@ impl Match {
         self.shadow.clone()
     }
 
-    pub(super) fn sender_handle(&self) -> Arc<Mutex<Box<dyn crate::net::Sender + Send + Sync>>> {
-        self.sender.clone()
+    pub(crate) fn sender(&self) -> &SenderMutex {
+        &self.sender
     }
 
     pub(super) fn replay_writer_handle(&self) -> Arc<SyncMutex<Option<crate::replay::Writer>>> {
@@ -300,8 +306,7 @@ impl Match {
             shadow.advance_until_round_end()?;
         }
         self.local_round_idx.fetch_add(1, Ordering::Release);
-        let sender = self.sender.clone();
-        crate::sync::block_on(async move { sender.lock().await.send(&crate::net::Event::EndOfRound).await })?;
+        crate::sync::block_on(async { self.sender.lock().await.send(&crate::net::Event::EndOfRound).await })?;
         Ok(())
     }
 

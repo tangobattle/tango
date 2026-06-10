@@ -141,6 +141,7 @@ pub(super) fn traps(
 
                 if let Err(e) =
                     crate::sync::block_on(round.add_local_input_and_fastforward(
+                        match_.sender(),
                         core,
                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                     ))

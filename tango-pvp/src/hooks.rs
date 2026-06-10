@@ -90,6 +90,12 @@ impl TrapMatch {
         self.0.lock_rng()
     }
 
+    /// The match's outbound network channel, for
+    /// [`Round::add_local_input_and_fastforward`](crate::battle::Round::add_local_input_and_fastforward).
+    pub(crate) fn sender(&self) -> &crate::battle::SenderMutex {
+        self.0.sender()
+    }
+
     pub(crate) fn match_type(&self) -> (u8, u8) {
         self.0.match_type()
     }
