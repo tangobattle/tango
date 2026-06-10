@@ -200,24 +200,52 @@ impl LatencyCounter {
 
 /// `tango_pvp::net::Sender` adapter — forwards inputs as
 /// `Packet::Input` over the shared peer-connection Sender.
+///
+/// Events go through a bounded channel drained by a dedicated pump task
+/// rather than being shipped inline: `send` is called once per frame from
+/// the emulator thread's `main_read_joyflags` trap, and writing the wire
+/// there would make the frame wait on the shared sender mutex (contended
+/// by the receive task's ping/pong replies) and on the datachannel itself.
+/// A single pump preserves Input/EndOfRound ordering. The channel holds
+/// more events than the engine's own unacked-input cap (120), so under a
+/// genuinely stalled wire the engine's overflow bail still fires first —
+/// backpressure semantics are unchanged, only the per-frame latency is gone.
 pub struct PvpSender {
-    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+    tx: tokio::sync::mpsc::Sender<tango_pvp::net::Event>,
 }
 
 impl PvpSender {
     pub fn new(sender: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
-        Self { sender }
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(128);
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                let mut sender = sender.lock().await;
+                let result = match event {
+                    tango_pvp::net::Event::Input(input) => {
+                        sender.send_packet(&protocol::Packet::Input(input)).await
+                    }
+                    tango_pvp::net::Event::EndOfRound => sender.send_end_of_round().await,
+                };
+                if let Err(e) = result {
+                    // Dropping rx closes the channel; the next trap-side send
+                    // sees BrokenPipe and cancels the match, same as an inline
+                    // send failure would have.
+                    log::error!("pvp send pump: {e}");
+                    break;
+                }
+            }
+        });
+        Self { tx }
     }
 }
 
 #[async_trait::async_trait]
 impl tango_pvp::net::Sender for PvpSender {
     async fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
-        let mut sender = self.sender.lock().await;
-        match event {
-            tango_pvp::net::Event::Input(input) => sender.send_packet(&protocol::Packet::Input(input.clone())).await,
-            tango_pvp::net::Event::EndOfRound => sender.send_end_of_round().await,
-        }
+        self.tx
+            .send(event.clone())
+            .await
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pvp send pump terminated"))
     }
 }
 
