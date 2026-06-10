@@ -119,13 +119,20 @@ impl getgud::World for MgbaWorld {
         // the primary exactly at the boundary (so this is byte-identical to a save
         // taken inside the capture trap), and the shadow is parked at the same tick
         // because `step` co-simulated it forward and nothing has advanced it since.
+        // The shadow's save is queued on its worker first — it runs right after the
+        // in-flight tick run, overlapping the primary's save below — and collected
+        // after, so the two ~400KB snapshots are taken concurrently.
+        let buf = self.state_pool.pop().unwrap_or_else(mgba::state::State::new_uninit);
+        let pending_shadow = self.shadow.begin_save_state_reusing(buf)?;
         let buf = self.state_pool.pop().unwrap_or_else(mgba::state::State::new_uninit);
         let (primary, tick) = self.stepper.save_reusing(buf)?;
-        let buf = self.state_pool.pop().unwrap_or_else(mgba::state::State::new_uninit);
+        // Surface a failed shadow run before consuming the snapshot it would
+        // have corrupted.
+        self.shadow.join_pending()?;
         Ok(MgbaState {
             primary,
             outgoing: self.last_outgoing.clone(),
-            shadow_snapshot: self.shadow.save_state_reusing(buf)?,
+            shadow_snapshot: pending_shadow.wait()?,
             tick,
         })
     }

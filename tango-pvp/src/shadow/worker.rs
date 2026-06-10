@@ -35,10 +35,29 @@ use crate::input::{Input, PartialInput};
 
 use super::{Shadow, ShadowSnapshot};
 
-/// One queued "finish the shadow's tick" request. `done` reports the run's
-/// outcome back to whoever joins it.
-struct Job {
-    done: std::sync::mpsc::Sender<anyhow::Result<()>>,
+/// One queued unit of shadow work. Jobs run strictly in submission order,
+/// which is what lets a [`SaveState`](Job::SaveState) be queued without
+/// joining first: it executes after the in-flight tick run it snapshots.
+enum Job {
+    /// Complete the tick whose input [`Shadow::begin_apply_input`] queued.
+    FinishApplyInput {
+        done: std::sync::mpsc::Sender<anyhow::Result<()>>,
+    },
+    /// Snapshot the shadow at its parked boundary into `buf`.
+    SaveState {
+        buf: Box<std::mem::MaybeUninit<mgba::state::State>>,
+        done: std::sync::mpsc::Sender<anyhow::Result<ShadowSnapshot>>,
+    },
+}
+
+/// Handle to a [`SaveState`](Job::SaveState) job in flight on the worker.
+/// [`wait`](Self::wait) blocks until the snapshot is taken.
+pub struct PendingSnapshot(std::sync::mpsc::Receiver<anyhow::Result<ShadowSnapshot>>);
+
+impl PendingSnapshot {
+    pub fn wait(self) -> anyhow::Result<ShadowSnapshot> {
+        self.0.recv().map_err(|_| anyhow::format_err!("shadow worker is gone"))?
+    }
 }
 
 /// See the [module docs](self).
@@ -60,11 +79,17 @@ impl Worker {
             .spawn({
                 let shadow = shadow.clone();
                 move || {
+                    // A dropped `done` receiver just means nobody is waiting
+                    // yet; results sit in their channels until joined.
                     while let Ok(job) = job_rx.recv() {
-                        let result = shadow.lock().unwrap().finish_apply_input();
-                        // A dropped receiver just means nobody is waiting yet;
-                        // the result sits in the channel for join_pending.
-                        let _ = job.done.send(result);
+                        match job {
+                            Job::FinishApplyInput { done } => {
+                                let _ = done.send(shadow.lock().unwrap().finish_apply_input());
+                            }
+                            Job::SaveState { buf, done } => {
+                                let _ = done.send(shadow.lock().unwrap().save_state_reusing(buf));
+                            }
+                        }
                     }
                 }
             })
@@ -88,14 +113,24 @@ impl Worker {
         Ok(())
     }
 
-    /// Snapshot the shadow at the boundary its last run parked it at,
-    /// joining the in-flight run first.
-    pub fn save_state_reusing(
+    /// Queue a snapshot of the shadow at the boundary its in-flight run will
+    /// park it at. No join needed: jobs run in submission order, so the save
+    /// executes right after the tick run completes — on the worker thread,
+    /// overlapping whatever the caller does before
+    /// [`wait`](PendingSnapshot::wait)ing (the primary's own save). Call
+    /// [`join_pending`](Self::join_pending) before `wait` to surface a failed
+    /// run rather than consuming the snapshot it would have corrupted.
+    pub fn begin_save_state_reusing(
         &self,
         buf: Box<std::mem::MaybeUninit<mgba::state::State>>,
-    ) -> anyhow::Result<ShadowSnapshot> {
-        self.join_pending()?;
-        self.shadow.lock().unwrap().save_state_reusing(buf)
+    ) -> anyhow::Result<PendingSnapshot> {
+        let (done, done_rx) = std::sync::mpsc::channel();
+        self.jobs
+            .as_ref()
+            .expect("jobs channel lives until Drop")
+            .send(Job::SaveState { buf, done })
+            .map_err(|_| anyhow::format_err!("shadow worker is gone"))?;
+        Ok(PendingSnapshot(done_rx))
     }
 
     /// Rewind the shadow to `snapshot` before a rollback re-sim, joining the
@@ -118,7 +153,7 @@ impl crate::stepper::RemotePacketSource for Worker {
         self.jobs
             .as_ref()
             .expect("jobs channel lives until Drop")
-            .send(Job { done })
+            .send(Job::FinishApplyInput { done })
             .map_err(|_| anyhow::format_err!("shadow worker is gone"))?;
         *self.inflight.lock().unwrap() = Some(done_rx);
         Ok(packet)
