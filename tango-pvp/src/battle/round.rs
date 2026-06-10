@@ -88,19 +88,23 @@ impl Round {
         shadow_snapshot: crate::shadow::ShadowSnapshot,
     ) -> anyhow::Result<()> {
         let hooks = match_.local_hooks();
+        // Wrap the shared shadow in its concurrent driver for the round. As
+        // the stepper's remote-packet source it answers each re-sim tick's
+        // trap immediately (the packet is buffered by the shadow's previous
+        // run) and completes the shadow's own tick on its worker thread,
+        // overlapping the rest of the primary's tick.
+        let shadow = std::sync::Arc::new(crate::shadow::Worker::new(match_.shadow_handle()));
         let stepper = crate::stepper::Stepper::new(
             match_.rom(),
             hooks,
             match_.match_type(),
             self.local_player_index,
             local_state.as_ref(),
-            // The shared shadow handle doubles as the stepper's remote-packet
-            // source: each re-sim tick co-simulates the opponent through it.
-            match_.shadow_handle(),
+            shadow.clone(),
         )?;
         let world = MgbaWorld {
             stepper,
-            shadow: match_.shadow_handle(),
+            shadow,
             last_outgoing: first_packet.to_vec(),
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,

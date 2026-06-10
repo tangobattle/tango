@@ -9,9 +9,11 @@
 
 mod round;
 mod state;
+mod worker;
 
 pub use round::Round;
 pub use state::State;
+pub use worker::Worker;
 
 /// Captures the full shadow-side state for replay-mode seeking. The
 /// playback session pairs this with the stepper's `ReplayCheckpoint` +
@@ -214,24 +216,48 @@ impl Shadow {
     /// unused, kept only to match the resolver callback signature. Returns the
     /// remote packet queued before this run.
     pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
+        let pending_remote_packet = self.begin_apply_input(ip)?;
+        self.finish_apply_input()?;
+        let _ = expected_tick;
+        Ok(pending_remote_packet)
+    }
+
+    /// First half of [`apply_input`](Self::apply_input): queue `ip` as the
+    /// shadow's next input and return this tick's remote packet — which the
+    /// shadow's *previous* run buffered (`set_remote_packet` stamps it
+    /// `current_tick + 1`), so it is available before the core advances at
+    /// all. The core itself has not moved;
+    /// [`finish_apply_input`](Self::finish_apply_input) runs it forward to
+    /// consume the queued input (and buffer the *next* tick's packet). Split
+    /// out so the live path can hand the packet to the primary immediately
+    /// and run the shadow's tick concurrently on the [`Worker`].
+    pub fn begin_apply_input(&mut self, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
             let mut shared = self.state.lock();
             let round = shared.round.as_mut().expect("round");
             round.set_pending_shadow_input(ip);
             round.peek_remote_packet().expect("pending remote packet")
         };
-        // Discard any stale "input applied" signal before this run. The per-game
-        // trap sets it whenever `take_input_injected()` fires, which also happens
-        // outside apply_input — e.g. while `advance_until_round_end` runs the game
-        // through round-end link-cable exchanges. The old shared `applied_snapshot`
-        // signal was cleared by whichever of apply_input / advance_until_round_end
-        // `.take()`'d it; the split into `input_applied` lost that, so a leftover
-        // `true` would make the next round's first apply_input return before it
-        // actually applied its input.
+        // Discard any stale "input applied" signal before the coming run. The
+        // per-game trap sets it whenever `take_input_injected()` fires, which
+        // also happens outside apply_input — e.g. while
+        // `advance_until_round_end` runs the game through round-end link-cable
+        // exchanges. The old shared `applied_snapshot` signal was cleared by
+        // whichever of apply_input / advance_until_round_end `.take()`'d it;
+        // the split into `input_applied` lost that, so a leftover `true` would
+        // make the next round's first apply_input return before it actually
+        // applied its input. (Nothing runs the core between this clear and
+        // `finish_apply_input`, so clearing here covers the split path too.)
         self.state.take_input_applied();
-        self.hooks.prepare_for_fastforward(self.core.as_mut());
-        self.run_core_until(|state| state.take_input_applied())?;
-        let _ = expected_tick;
         Ok(pending_remote_packet)
+    }
+
+    /// Second half of [`apply_input`](Self::apply_input): run the shadow
+    /// forward from wherever it is parked until the per-game trap signals the
+    /// input queued by [`begin_apply_input`](Self::begin_apply_input) was
+    /// applied, parking the core at the next tick's boundary.
+    pub fn finish_apply_input(&mut self) -> anyhow::Result<()> {
+        self.hooks.prepare_for_fastforward(self.core.as_mut());
+        self.run_core_until(|state| state.take_input_applied())
     }
 }

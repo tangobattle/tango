@@ -54,7 +54,13 @@ pub struct MgbaState {
 /// [`Stepper`]: crate::stepper::Stepper
 pub struct MgbaWorld {
     pub stepper: crate::stepper::Stepper,
-    pub shadow: Arc<SyncMutex<crate::shadow::Shadow>>,
+    /// The opponent co-sim, behind its concurrent driver: each step's trap
+    /// hands the worker the tick's input pair and gets the (already-buffered)
+    /// remote packet back immediately, while the shadow's own tick runs on
+    /// the worker thread overlapping the rest of the primary's tick. The
+    /// `save`/`load` paths below go through the worker so they join the
+    /// in-flight run first.
+    pub shadow: Arc<crate::shadow::Worker>,
     /// This side's outgoing link packet at the parked tick — seeds the next
     /// step's link exchange, and is the `outgoing` of a [`save`](getgud::World::save)
     /// taken here. (The parked tick itself is owned by the [`Stepper`].)
@@ -119,7 +125,7 @@ impl getgud::World for MgbaWorld {
         Ok(MgbaState {
             primary,
             outgoing: self.last_outgoing.clone(),
-            shadow_snapshot: self.shadow.lock().unwrap().save_state_reusing(buf)?,
+            shadow_snapshot: self.shadow.save_state_reusing(buf)?,
             tick,
         })
     }
@@ -144,7 +150,7 @@ impl getgud::World for MgbaWorld {
         // skip those reloads as well; this keeps steady-state settles
         // forward-only (no `load_state` per frame).
         if self.stepper.restore(&state.primary, state.tick)? {
-            self.shadow.lock().unwrap().load_state(&state.shadow_snapshot)?;
+            self.shadow.load_state(&state.shadow_snapshot)?;
             self.last_outgoing = state.outgoing.clone();
         }
         Ok(())
