@@ -614,8 +614,9 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
     .width(Fill);
 
     // Slider fills the row; the value + wand take their natural sizes.
-    let slider =
-        iced::widget::slider(MIN_FRAME_DELAY..=MAX_FRAME_DELAY, fd, Message::SetFrameDelay).width(Length::Fill);
+    let slider = iced::widget::slider(MIN_FRAME_DELAY..=MAX_FRAME_DELAY, fd, Message::SetFrameDelay)
+        .style(widgets::chunky_slider)
+        .width(Length::Fill);
 
     // "Suggest" button — same formula as the lobby: one-way frames + 1,
     // clamped to the slider range, off the median ping. Enabled whenever the

@@ -195,7 +195,7 @@ impl PatchesState {
             top_row = top_row.push(
                 text(t!(lang, "patches-update-failed", error = err.clone()))
                     .size(TEXT_CAPTION)
-                    .style(text::danger),
+                    .style(widgets::danger_text_style),
             );
         }
 
@@ -284,7 +284,7 @@ impl PatchesState {
                 .on_press(Message::Selected((*name).clone())),
             );
         }
-        container(scrollable(list).height(Fill))
+        container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
             .width(Length::Fixed(280.0))
             .height(Fill)
             .style(widgets::pane)
@@ -452,9 +452,10 @@ impl PatchesState {
         // content but capped by the parent column's remaining
         // space — long readmes scroll inside, short ones don't
         // pad to the full page height.
-        let readme_pane = container(scrollable(
-            container(readme_body).padding(style::PANE_PADDING).width(Fill),
-        ))
+        let readme_pane = container(
+            scrollable(container(readme_body).padding(style::PANE_PADDING).width(Fill))
+                .style(widgets::chunky_scrollable),
+        )
         .width(Fill)
         .style(widgets::pane);
         column![meta_pane, readme_pane]

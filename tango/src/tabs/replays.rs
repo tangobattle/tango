@@ -569,7 +569,7 @@ impl ReplaysState {
         for (idx, r) in filtered.iter().enumerate() {
             list = list.push(self.replay_list_row(lang, r, idx));
         }
-        let left = container(scrollable(list).height(Fill))
+        let left = container(scrollable(list).style(widgets::chunky_scrollable).height(Fill))
             .width(Length::Fixed(360.0))
             .height(Fill)
             .style(widgets::pane);
@@ -1198,7 +1198,9 @@ fn export_panel<'a>(
                         // `girth()` is the secondary axis (height) and
                         // defaults to 30 px, which is the chunky look
                         // we don't want.
-                        iced::widget::progress_bar(0.0..=1.0, pct).girth(Length::Fixed(4.0)),
+                        iced::widget::progress_bar(0.0..=1.0, pct)
+                            .girth(Length::Fixed(4.0))
+                            .style(widgets::slim_progress_bar),
                         text(pct_label).size(TEXT_CAPTION).style(widgets::muted_text_style),
                         cancel_button,
                     ]
@@ -1253,7 +1255,7 @@ fn export_panel<'a>(
         };
         return container(column![body].padding(12))
             .width(Fill)
-            .style(iced::widget::container::bordered_box)
+            .style(widgets::panel)
             .into();
     }
     // Form path — there's no job for THIS replay (the `if let
@@ -1275,6 +1277,7 @@ fn export_panel<'a>(
     .size(TEXT_CAPTION)
     .style(widgets::muted_text_style);
     let scale_slider: Element<'a, Message> = iced::widget::slider(0..=10u8, settings.scale, Message::SetExportScale)
+        .style(widgets::chunky_slider)
         .width(Length::Fixed(140.0))
         .into();
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
@@ -1348,10 +1351,7 @@ fn export_panel<'a>(
         .spacing(16)
         .align_y(Alignment::End);
 
-    container(body.padding(12))
-        .width(Fill)
-        .style(iced::widget::container::bordered_box)
-        .into()
+    container(body.padding(12)).width(Fill).style(widgets::panel).into()
 }
 
 /// "Mega Man Battle Network 6" — family-only i18n lookup, matching

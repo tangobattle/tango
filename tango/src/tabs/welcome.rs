@@ -119,9 +119,7 @@ pub fn view<'a>(
         roms_block = roms_block.push(
             text(t!(lang, "welcome-step-roms-detected", count = roms_count as i64))
                 .size(TEXT_CAPTION)
-                .style(|theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().primary),
-                }),
+                .style(widgets::success_text_style),
         );
     }
 

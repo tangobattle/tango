@@ -141,11 +141,17 @@ fn editor_pane<'a>(
     header: impl Into<Element<'a, Action>>,
     body: impl Into<Element<'a, Action>>,
 ) -> Element<'a, Action> {
-    container(column![header.into(), scrollable(body.into()).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(crate::widgets::pane)
-        .into()
+    container(column![
+        header.into(),
+        scrollable(body.into())
+            .style(crate::widgets::chunky_scrollable)
+            .height(Fill)
+            .width(Fill)
+    ])
+    .width(Fill)
+    .height(Fill)
+    .style(crate::widgets::pane)
+    .into()
 }
 
 /// The editors' two-pane layout: working set on the left, library /
@@ -1290,7 +1296,10 @@ pub fn view<'a>(
     // they do the user can scroll past the visible window. The
     // per-instance id is what [`State::apply`] snaps to the top
     // on tab changes.
-    let body_scrollable = scrollable(body).id(state.body_scroll_id.clone()).width(Fill);
+    let body_scrollable = scrollable(body)
+        .id(state.body_scroll_id.clone())
+        .style(crate::widgets::chunky_scrollable)
+        .width(Fill);
     column![tab_pane, body_scrollable]
         .spacing(style::PANE_GAP)
         .width(Fill)
@@ -2915,10 +2924,7 @@ fn chip_row<M: 'static>(
     // column below so every row's letters line up cleanly with
     // the element / power / MB stats.
     let title: Element<'static, M> = if is_empty_slot {
-        text("—")
-            .size(TEXT_BODY)
-            .color(iced::Color::from_rgb8(0x60, 0x60, 0x60))
-            .into()
+        text("—").size(TEXT_BODY).style(muted_text_style).into()
     } else {
         text(name_text).size(TEXT_BODY).into()
     };
@@ -3991,11 +3997,17 @@ fn render_patch_card4s_edit<'a>(
     .width(Fill)
     .padding(style::HEADER_PADDING);
 
-    container(column![header, scrollable(rows).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane)
-        .into()
+    container(column![
+        header,
+        scrollable(rows)
+            .style(crate::widgets::chunky_scrollable)
+            .height(Fill)
+            .width(Fill)
+    ])
+    .width(Fill)
+    .height(Fill)
+    .style(widgets::pane)
+    .into()
 }
 
 // ---------- Auto Battle Data ----------
@@ -4339,9 +4351,23 @@ fn render_auto_battle_data_edit<'a>(
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
-    container(text(msg).size(TEXT_BODY))
-        .width(Fill)
-        .padding(crate::style::PANE_PADDING)
-        .style(crate::widgets::pane)
-        .into()
+    // Centered icon-over-message card rather than a bare line of
+    // text in the pane corner — the empty state is a whole-pane
+    // situation, so let it own the pane like one.
+    container(
+        column![
+            lucide_icons::Icon::FileQuestion
+                .widget()
+                .size(36.0)
+                .style(muted_text_style),
+            text(msg).size(crate::style::TEXT_HEADING).style(muted_text_style),
+        ]
+        .spacing(8)
+        .align_x(Alignment::Center),
+    )
+    .width(Fill)
+    .align_x(Alignment::Center)
+    .padding(32)
+    .style(crate::widgets::pane)
+    .into()
 }

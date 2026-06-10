@@ -2042,7 +2042,9 @@ fn lobby_side_card(
                 let bg = if ready {
                     theme.palette().primary
                 } else {
-                    iced::Color::from_rgb8(0x66, 0x66, 0x66)
+                    // Theme-aware "off" gray — a hardcoded mid-gray
+                    // disappears against the light theme's parchment.
+                    widgets::muted_color(theme)
                 };
                 iced::widget::container::Style {
                     background: Some(iced::Background::Color(bg)),

@@ -1067,6 +1067,145 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
     }
 }
 
+/// Chunky slider matching the button bevel: a thicker rounded rail
+/// whose filled side runs primary (brightening on hover / drag) and
+/// whose empty side is the neutral plate, plus a circular handle
+/// with the same white-tinted border as the CTA buttons so it reads
+/// as a physical thumb rather than iced's flat default dot.
+pub fn chunky_slider(theme: &Theme, status: iced::widget::slider::Status) -> iced::widget::slider::Style {
+    use iced::widget::slider::{Handle, HandleShape, Rail, Status, Style};
+    let p = theme.extended_palette();
+    let primary = theme.palette().primary;
+    let bg = theme.palette().background;
+    let text = theme.palette().text;
+    // Empty track: same plate recipe as the neutral button so the
+    // rail reads as part of the same widget family.
+    let track = if p.is_dark {
+        mix(bg, text, 0.16)
+    } else {
+        mix(bg, text, 0.18)
+    };
+    let (fill, grip, radius) = match status {
+        Status::Hovered => (
+            mix(primary, iced::Color::WHITE, 0.10),
+            mix(primary, iced::Color::WHITE, 0.18),
+            9.0,
+        ),
+        Status::Dragged => (
+            mix(primary, iced::Color::WHITE, 0.18),
+            mix(primary, iced::Color::WHITE, 0.28),
+            9.0,
+        ),
+        Status::Active => (primary, primary, 8.0),
+    };
+    Style {
+        rail: Rail {
+            backgrounds: (iced::Background::Color(fill), iced::Background::Color(track)),
+            width: 6.0,
+            border: iced::Border {
+                radius: 3.0.into(),
+                width: 0.0,
+                color: iced::Color::TRANSPARENT,
+            },
+        },
+        handle: Handle {
+            shape: HandleShape::Circle { radius },
+            background: iced::Background::Color(grip),
+            border_width: 2.0,
+            border_color: mix(primary, iced::Color::WHITE, 0.35),
+        },
+    }
+}
+
+/// Slim rounded scrollbar replacing iced's boxy default: no rail
+/// plate at rest, just a pill scroller that rides muted until the
+/// cursor reaches it, then lights up primary while hovered or
+/// dragged — the same "quiet until touched" register as the rest
+/// of the chrome.
+pub fn chunky_scrollable(theme: &Theme, status: iced::widget::scrollable::Status) -> iced::widget::scrollable::Style {
+    use iced::widget::scrollable::{Rail, Scroller, Status, Style};
+    let p = theme.extended_palette();
+    let primary = theme.palette().primary;
+    let bg = theme.palette().background;
+    let text = theme.palette().text;
+    let (v_lit, h_lit) = match status {
+        Status::Active { .. } => (false, false),
+        Status::Hovered {
+            is_vertical_scrollbar_hovered,
+            is_horizontal_scrollbar_hovered,
+            ..
+        } => (is_vertical_scrollbar_hovered, is_horizontal_scrollbar_hovered),
+        Status::Dragged {
+            is_vertical_scrollbar_dragged,
+            is_horizontal_scrollbar_dragged,
+            ..
+        } => (is_vertical_scrollbar_dragged, is_horizontal_scrollbar_dragged),
+    };
+    let rail = |lit: bool| Rail {
+        // Faint plate only under a lit scroller — at rest the rail
+        // disappears into the pane and only the thumb shows.
+        background: lit.then(|| iced::Background::Color(iced::Color { a: 0.06, ..text })),
+        border: iced::Border {
+            radius: 999.0.into(),
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
+        },
+        scroller: Scroller {
+            background: iced::Background::Color(if lit {
+                primary
+            } else {
+                mix(bg, text, if p.is_dark { 0.30 } else { 0.35 })
+            }),
+            border: iced::Border {
+                radius: 999.0.into(),
+                width: 0.0,
+                color: iced::Color::TRANSPARENT,
+            },
+        },
+    };
+    Style {
+        container: iced::widget::container::Style::default(),
+        vertical_rail: rail(v_lit),
+        horizontal_rail: rail(h_lit),
+        gap: None,
+        // Keep iced's stock auto-scroll puck but tint its arrow
+        // icons primary so even that overlay matches the chrome.
+        auto_scroll: iced::widget::scrollable::AutoScroll {
+            background: iced::Background::Color(iced::Color { a: 0.92, ..bg }),
+            border: iced::Border {
+                radius: 999.0.into(),
+                width: 1.0,
+                color: iced::Color { a: 0.6, ..primary },
+            },
+            shadow: iced::Shadow {
+                color: iced::Color {
+                    a: 0.5,
+                    ..iced::Color::BLACK
+                },
+                offset: iced::Vector::new(0.0, 1.0),
+                blur_radius: 4.0,
+            },
+            icon: primary,
+        },
+    }
+}
+
+/// Slim progress bar: faint text-tinted track + primary fill with
+/// pill-rounded ends. Pair with `.girth(Length::Fixed(4.0))` for
+/// the thin "loading strip" look used by the replay exporter.
+pub fn slim_progress_bar(theme: &Theme) -> iced::widget::progress_bar::Style {
+    let text = theme.palette().text;
+    iced::widget::progress_bar::Style {
+        background: iced::Background::Color(iced::Color { a: 0.12, ..text }),
+        bar: iced::Background::Color(theme.palette().primary),
+        border: iced::Border {
+            radius: 999.0.into(),
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
+        },
+    }
+}
+
 /// Full-height "VS" splitter: paints a near-vertical band in the
 /// body background color through the middle of its bounds so that,
 /// when layered behind a padded row of content via

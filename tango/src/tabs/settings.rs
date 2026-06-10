@@ -240,10 +240,15 @@ pub fn view<'a>(
     // Scrollable wraps the body once at the dispatch layer —
     // each settings_* pane returns a plain column with its own
     // inner padding so the scrollbar hugs the right edge.
-    let body_wrap = container(scrollable(body).width(Fill).height(Fill))
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    let body_wrap = container(
+        scrollable(body)
+            .style(widgets::chunky_scrollable)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .style(widgets::pane);
 
     let root = row![sidebar, body_wrap]
         .spacing(style::PANE_GAP)
@@ -362,8 +367,12 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
         row![
             // Bounded slider width — Fill would stretch all the way
             // across the pane, which looks silly for a volume bar.
-            container(iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged).step(0.01))
-                .width(Length::Fixed(220.0)),
+            container(
+                iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged)
+                    .step(0.01)
+                    .style(widgets::chunky_slider)
+            )
+            .width(Length::Fixed(220.0)),
             // Compact percent readout next to the track so the user
             // can see exactly where the slider sits.
             text(format!("{:.0}%", config.volume * 100.0)).size(TEXT_CAPTION),
@@ -517,11 +526,14 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         labeled::<Message>(
             t!(lang, "settings-netplay-frame-delay"),
             row![
-                container(iced::widget::slider(
-                    tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
-                    frame_delay,
-                    Message::FrameDelayChanged,
-                ))
+                container(
+                    iced::widget::slider(
+                        tango_pvp::battle::MIN_FRAME_DELAY..=tango_pvp::battle::MAX_FRAME_DELAY,
+                        frame_delay,
+                        Message::FrameDelayChanged,
+                    )
+                    .style(widgets::chunky_slider)
+                )
                 .width(Length::Fixed(220.0)),
                 // Compact numeric readout next to the track, mirroring the
                 // volume slider's percent display.
@@ -653,7 +665,7 @@ fn binding_chip<'a>(
         input::DescribeKind::Gamepad => Icon::Gamepad2,
     };
     // Primary-tinted rounded pill matching the rest of the
-    // app's chip + badge chrome. × button is subdued (neutral
+    // app's chip + badge chrome. × button is borderless (flat
     // chrome) so it doesn't shout against the small label.
     container(
         row![
@@ -661,7 +673,7 @@ fn binding_chip<'a>(
             text(label).size(TEXT_BODY),
             button(Icon::X.widget().size(TEXT_CAPTION))
                 .padding([2, 4])
-                .style(widgets::neutral)
+                .style(widgets::flat)
                 .on_press(Message::BindingRemove(key, idx)),
         ]
         .spacing(6)
