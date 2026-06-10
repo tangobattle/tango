@@ -1,8 +1,8 @@
 diff --git a/include/mgba/internal/gb/serialize.h b/include/mgba/internal/gb/serialize.h
-index 72fe9c436..1970546f6 100644
+index 72fe9c436..1c7ee7e27 100644
 --- a/include/mgba/internal/gb/serialize.h
 +++ b/include/mgba/internal/gb/serialize.h
-@@ -211,33 +211,99 @@ DECL_BIT(GBSerializedAudioFlags, Ch1SweepEnabled, 25);
+@@ -211,33 +211,105 @@ DECL_BIT(GBSerializedAudioFlags, Ch1SweepEnabled, 25);
  DECL_BIT(GBSerializedAudioFlags, Ch1SweepOccurred, 26);
  DECL_BIT(GBSerializedAudioFlags, Ch3Readable, 27);
  DECL_BIT(GBSerializedAudioFlags, SkipFrame, 28);
@@ -80,7 +80,13 @@ index 72fe9c436..1970546f6 100644
 +		// size is unchanged.
 +		uint16_t frequency;
 +		uint8_t duty;
-+		uint8_t reserved;
++		// ch3's/ch4's current output samples (parked in the square channels'
++		// spare bytes). The channels only refresh `sample` when their next
++		// wave/LFSR step comes due, so after a load the pre-load value keeps
++		// sounding until then — and the io-replay during deserialize actively
++		// clobbers it via GBAudioRun. ch1/ch2 need no slot: their sample is
++		// the invariant duty[index]*currentVolume, recomputed on load.
++		int8_t ch3Sample;
  		GBSerializedAudioSweep sweep;
  		uint32_t lastUpdate;
  	} ch1;
@@ -89,7 +95,7 @@ index 72fe9c436..1970546f6 100644
 -		int32_t reserved[2];
 +		uint16_t frequency;
 +		uint8_t duty;
-+		uint8_t reserved;
++		int8_t ch4Sample;
 +		// ch4's between-flush averaging accumulators (nSamples/samples) —
 +		// parked in ch2's spare slot because ch4's struct has none. They're
 +		// flushed every output sample, so int16 is ample.
@@ -106,7 +112,7 @@ index 72fe9c436..1970546f6 100644
  	} ch3;
  	struct {
 diff --git a/src/gb/audio.c b/src/gb/audio.c
-index 6a97d8bea..1aa0905d6 100644
+index 6a97d8bea..0cda89222 100644
 --- a/src/gb/audio.c
 +++ b/src/gb/audio.c
 @@ -996,6 +996,7 @@ void GBAudioPSGSerialize(const struct GBAudio* audio, struct GBSerializedPSGStat
@@ -117,7 +123,7 @@ index 6a97d8bea..1aa0905d6 100644
  	uint32_t ch4Flags = 0;
  
  	flags = GBSerializedAudioFlagsSetFrame(flags, audio->frame);
-@@ -1006,35 +1007,70 @@ void GBAudioPSGSerialize(const struct GBAudio* audio, struct GBSerializedPSGStat
+@@ -1006,35 +1007,72 @@ void GBAudioPSGSerialize(const struct GBAudio* audio, struct GBSerializedPSGStat
  	flags = GBSerializedAudioFlagsSetCh1Dead(flags, audio->ch1.envelope.dead);
  	flags = GBSerializedAudioFlagsSetCh1SweepEnabled(flags, audio->ch1.sweep.enable);
  	flags = GBSerializedAudioFlagsSetCh1SweepOccurred(flags, audio->ch1.sweep.occurred);
@@ -168,6 +174,7 @@ index 6a97d8bea..1aa0905d6 100644
 +	ch3Rate = GBSerializedAudioCh3RateSetSize(ch3Rate, audio->ch3.size);
 +	STORE_16LE(ch3Rate, 0, &state->ch3.rate);
 +	flags = GBSerializedAudioFlagsSetCh3Volume(flags, audio->ch3.volume);
++	state->ch1.ch3Sample = audio->ch3.sample;
  
  	flags = GBSerializedAudioFlagsSetCh4Volume(flags, audio->ch4.envelope.currentVolume);
  	flags = GBSerializedAudioFlagsSetCh4Dead(flags, audio->ch4.envelope.dead);
@@ -185,10 +192,11 @@ index 6a97d8bea..1aa0905d6 100644
  	STORE_32LE(audio->ch4.lastEvent, 0, &state->ch4.lastEvent);
 +	STORE_16LE(audio->ch4.nSamples, 0, &state->ch2.ch4NSamples);
 +	STORE_16LE(audio->ch4.samples, 0, &state->ch2.ch4Samples);
++	state->ch2.ch4Sample = audio->ch4.sample;
  
  	int32_t cycles = audio->ch4.ratio ? 2 * audio->ch4.ratio : 1;
  	cycles <<= audio->ch4.frequency;
-@@ -1049,7 +1085,9 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+@@ -1049,7 +1087,9 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
  	uint32_t sweep;
  	uint32_t ch1Flags = 0;
  	uint32_t ch2Flags = 0;
@@ -198,7 +206,7 @@ index 6a97d8bea..1aa0905d6 100644
  	uint32_t when;
  
  	audio->playingCh1 = !!(*audio->nr52 & 0x0001);
-@@ -1077,21 +1115,36 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+@@ -1077,21 +1117,42 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
  	if (!audio->ch1.sweep.time) {
  		audio->ch1.sweep.time = 8;
  	}
@@ -217,6 +225,11 @@ index 6a97d8bea..1aa0905d6 100644
 +	audio->ch1.envelope.stepTime = GBSerializedAudioEnvelopeGetSquareStepTime(ch1Flags);
 +	audio->ch1.envelope.direction = GBSerializedAudioEnvelopeGetSquareDirection(ch1Flags);
 +	audio->ch1.envelope.initialVolume = GBSerializedAudioEnvelopeGetSquareInitialVolume(ch1Flags);
++	// The channel only refreshes `sample` on its next duty edge, so the
++	// pre-load value (further clobbered by the io-replay's GBAudioRun calls)
++	// would keep sounding until then. duty/index/currentVolume are all
++	// restored above, so the output sample can be rebuilt exactly.
++	_updateSquareSample(&audio->ch1);
  
  	LOAD_32LE(ch2Flags, 0, &state->ch2.envelope);
  	audio->ch2.envelope.currentVolume = GBSerializedAudioFlagsGetCh2Volume(flags);
@@ -232,10 +245,11 @@ index 6a97d8bea..1aa0905d6 100644
 +	audio->ch2.envelope.stepTime = GBSerializedAudioEnvelopeGetSquareStepTime(ch2Flags);
 +	audio->ch2.envelope.direction = GBSerializedAudioEnvelopeGetSquareDirection(ch2Flags);
 +	audio->ch2.envelope.initialVolume = GBSerializedAudioEnvelopeGetSquareInitialVolume(ch2Flags);
++	_updateSquareSample(&audio->ch2);
  
  	audio->ch3.readable = GBSerializedAudioFlagsGetCh3Readable(flags);
  	// TODO: Big endian?
-@@ -1099,12 +1152,30 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+@@ -1099,12 +1160,32 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
  	LOAD_16LE(audio->ch3.length, 0, &state->ch3.length);
  	LOAD_32LE(audio->ch3.nextUpdate, 0, &state->ch3.nextEvent);
  	audio->ch3.nextUpdate += mTimingCurrentTime(audio->timing);
@@ -246,6 +260,7 @@ index 6a97d8bea..1aa0905d6 100644
 +	audio->ch3.bank = GBSerializedAudioCh3RateGetBank(ch3Rate);
 +	audio->ch3.size = GBSerializedAudioCh3RateGetSize(ch3Rate);
 +	audio->ch3.volume = GBSerializedAudioFlagsGetCh3Volume(flags);
++	audio->ch3.sample = state->ch1.ch3Sample;
  
  	LOAD_32LE(ch4Flags, 0, &state->ch4.envelope);
  	audio->ch4.envelope.currentVolume = GBSerializedAudioFlagsGetCh4Volume(flags);
@@ -263,10 +278,11 @@ index 6a97d8bea..1aa0905d6 100644
 +	audio->ch4.nSamples = ch4Acc;
 +	LOAD_16LE(ch4Acc, 0, &state->ch2.ch4Samples);
 +	audio->ch4.samples = ch4Acc;
++	audio->ch4.sample = state->ch2.ch4Sample;
  	LOAD_32LE(audio->ch4.lfsr, 0, &state->ch4.lfsr);
  	LOAD_32LE(audio->ch4.lastEvent, 0, &state->ch4.lastEvent);
  	LOAD_32LE(when, 0, &state->ch4.nextEvent);
-@@ -1118,8 +1189,6 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
+@@ -1118,8 +1199,6 @@ void GBAudioPSGDeserialize(struct GBAudio* audio, const struct GBSerializedPSGSt
  			audio->ch4.lastEvent = currentTime + (when & (cycles - 1)) - cycles;
  		}
  	}
