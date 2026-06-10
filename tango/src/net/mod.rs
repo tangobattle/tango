@@ -212,16 +212,12 @@ impl PvpSender {
 
 #[async_trait::async_trait]
 impl tango_pvp::net::Sender for PvpSender {
-    async fn send(&mut self, input: &tango_pvp::net::Input) -> std::io::Result<()> {
-        self.sender
-            .lock()
-            .await
-            .send_packet(&protocol::Packet::Input(input.clone()))
-            .await
-    }
-
-    async fn send_end_of_round(&mut self) -> std::io::Result<()> {
-        self.sender.lock().await.send_end_of_round().await
+    async fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
+        let mut sender = self.sender.lock().await;
+        match event {
+            tango_pvp::net::Event::Input(input) => sender.send_packet(&protocol::Packet::Input(input.clone())).await,
+            tango_pvp::net::Event::EndOfRound => sender.send_end_of_round().await,
+        }
     }
 }
 

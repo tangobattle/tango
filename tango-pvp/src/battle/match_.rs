@@ -301,7 +301,7 @@ impl Match {
         }
         self.local_round_idx.fetch_add(1, Ordering::Release);
         let sender = self.sender.clone();
-        crate::sync::block_on(async move { sender.lock().await.send_end_of_round().await })?;
+        crate::sync::block_on(async move { sender.lock().await.send(&crate::net::Event::EndOfRound).await })?;
         Ok(())
     }
 

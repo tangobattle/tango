@@ -183,10 +183,10 @@ impl Round {
         self.sender
             .lock()
             .await
-            .send(&crate::net::Input {
+            .send(&crate::net::Event::Input(crate::net::Input {
                 joyflags,
                 frame_advantage,
-            })
+            }))
             .await?;
 
         // The engine exists by now: the primary's first `main_read_joyflags`
@@ -244,7 +244,6 @@ impl Round {
             .set_fps_target(EXPECTED_FPS - slowdown);
         Ok(())
     }
-
 }
 
 impl Drop for Round {

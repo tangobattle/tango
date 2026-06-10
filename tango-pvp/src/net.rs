@@ -19,12 +19,7 @@ pub enum Event {
 
 #[async_trait::async_trait]
 pub trait Sender {
-    async fn send(&mut self, input: &Input) -> std::io::Result<()>;
-    /// Tell the peer our local round ended. Must be sent after the last
-    /// `send(input)` call for the just-finished round and before any
-    /// `send(input)` call for the next round, so the peer's receive loop
-    /// can use it as an in-order round-boundary marker.
-    async fn send_end_of_round(&mut self) -> std::io::Result<()>;
+    async fn send(&mut self, event: &Event) -> std::io::Result<()>;
 }
 
 #[async_trait::async_trait]
