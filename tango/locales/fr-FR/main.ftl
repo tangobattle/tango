@@ -129,6 +129,7 @@ folder-sort-element = Element
 folder-sort-mb = MB
 # Navi pane
 navi-id = Navi ID
+navi-link-navi = Link Navi
 navi-style-unset = (no style)
 navicust-grid-size = Grid: { $cols } × { $rows }
 navicust-parts = Installed parts
