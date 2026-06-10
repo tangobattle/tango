@@ -52,8 +52,9 @@ pub struct Round {
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
     /// Time-sync throttler. Its EMA state carries across frames;
-    /// `add_local_input_and_fastforward` feeds it the engine's skew each frame to
-    /// turn it into an fps target for the live core.
+    /// `add_local_input_and_fastforward` feeds it the engine's skew and
+    /// speculation balance each frame to turn them into an fps target for the
+    /// live core.
     throttler: super::throttler::Throttler,
     /// Tick of the last state loaded into the live core — the tick returned by
     /// the most recent [`Session::advance`](getgud::Session::advance), or 0
@@ -244,9 +245,9 @@ impl Round {
 
         // Frames presented with the lead still inside the present delay are
         // fully confirmed — running ahead by that much costs nothing, so the
-        // throttler forgives it instead of shaving fps the player can feel.
-        let headroom = (-session.speculation_balance()).max(0) as f32;
-        let slowdown = self.throttler.step(skew, headroom);
+        // throttler stays disengaged until the speculation balance crosses
+        // the boundary, instead of shaving fps the player can feel.
+        let slowdown = self.throttler.step(skew, session.speculation_balance());
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

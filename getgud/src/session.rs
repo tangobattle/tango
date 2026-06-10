@@ -319,9 +319,9 @@ impl<W: World> Session<W> {
     /// * negative — the frame is confirmed with `-balance` ticks of *headroom*
     ///   (speculation-free buffer) still to spend before speculation begins.
     ///
-    /// Clock-sync leniency keys off the negative range: a positive
+    /// Clock-sync leniency keys off the sign: a positive
     /// [`skew`](Session::skew) only starts costing presentation quality once the
-    /// balance reaches 0, so callers take `(-balance).max(0)` for the headroom.
+    /// balance reaches 0, so throttling callers gate engagement on it.
     pub fn speculation_balance(&self) -> i32 {
         self.input_queue.lead().max(0) - self.present_delay as i32
     }
