@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 // On targets where the C ABI defines `va_list` as a single-element array,
 // C decays it to a pointer when used as a function parameter, and bindgen
 // reflects that decay in function-pointer signatures (the `mLogger.log`
@@ -83,9 +85,9 @@ unsafe impl Send for Logger {}
 impl Logger {
     pub fn new() -> Logger {
         let log_filter = unsafe {
-            let mut log_filter = Box::new(std::mem::zeroed::<mgba_sys::mLogFilter>());
-            mgba_sys::mLogFilterInit(log_filter.as_mut() as *mut _);
-            log_filter
+            let mut log_filter = Box::new(MaybeUninit::<mgba_sys::mLogFilter>::zeroed());
+            mgba_sys::mLogFilterInit(log_filter.as_mut_ptr() as *mut _);
+            log_filter.assume_init()
         };
 
         Self {
