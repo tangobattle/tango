@@ -221,9 +221,7 @@ impl PvpSender {
             while let Some(event) = rx.recv().await {
                 let mut sender = sender.lock().await;
                 let result = match event {
-                    tango_pvp::net::Event::Input(input) => {
-                        sender.send_packet(&protocol::Packet::Input(input)).await
-                    }
+                    tango_pvp::net::Event::Input(input) => sender.send_packet(&protocol::Packet::Input(input)).await,
                     tango_pvp::net::Event::EndOfRound => sender.send_end_of_round().await,
                 };
                 if let Err(e) = result {

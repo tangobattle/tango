@@ -61,7 +61,18 @@ pub struct MgbaWorld {
     pub last_outgoing: Vec<u8>,
     pub replay_writer: Arc<SyncMutex<Option<crate::replay::Writer>>>,
     pub local_player_index: u8,
+    /// Spent ~400KB mgba state buffers harvested from snapshots the engine
+    /// discards ([`recycle`](getgud::World::recycle)), handed back out by
+    /// [`save`](getgud::World::save). In steady state every frame discards one
+    /// snapshot bundle and saves one, so the per-frame saves run entirely on
+    /// reused buffers instead of round-tripping the page allocator.
+    pub state_pool: Vec<Box<std::mem::MaybeUninit<mgba::state::State>>>,
 }
+
+/// Cap on pooled state buffers. The engine discards at most a speculation
+/// tail's worth in one frame (a rollback); anything past this is genuinely
+/// surplus and is returned to the allocator.
+const STATE_POOL_CAP: usize = 16;
 
 impl getgud::World for MgbaWorld {
     /// Joyflags — what's queued and what crosses the wire.
@@ -102,13 +113,27 @@ impl getgud::World for MgbaWorld {
         // the primary exactly at the boundary (so this is byte-identical to a save
         // taken inside the capture trap), and the shadow is parked at the same tick
         // because `step` co-simulated it forward and nothing has advanced it since.
-        let (primary, tick) = self.stepper.save()?;
+        let buf = self.state_pool.pop().unwrap_or_else(mgba::state::State::new_uninit);
+        let (primary, tick) = self.stepper.save_reusing(buf)?;
+        let buf = self.state_pool.pop().unwrap_or_else(mgba::state::State::new_uninit);
         Ok(MgbaState {
             primary,
             outgoing: self.last_outgoing.clone(),
-            shadow_snapshot: self.shadow.lock().unwrap().save_state()?,
+            shadow_snapshot: self.shadow.lock().unwrap().save_state_reusing(buf)?,
             tick,
         })
+    }
+
+    fn recycle(&mut self, state: MgbaState) {
+        let MgbaState {
+            primary, shadow_snapshot, ..
+        } = state;
+        for spent in [primary, shadow_snapshot.mgba_state] {
+            if self.state_pool.len() >= STATE_POOL_CAP {
+                break;
+            }
+            self.state_pool.push(mgba::state::State::into_uninit(spent));
+        }
     }
 
     fn load(&mut self, state: &MgbaState) -> anyhow::Result<()> {

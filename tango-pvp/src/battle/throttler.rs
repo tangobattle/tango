@@ -27,9 +27,13 @@ impl Throttler {
 
     /// Compute the slowdown to apply this frame, in fps below the base rate.
     /// `skew` is the raw integer frame difference
-    /// `local_advantage - remote_advantage`. The result is always in
+    /// `local_advantage - remote_advantage`. `headroom` is how many
+    /// speculation-free frames the present delay still absorbs (the engine's
+    /// `(-speculation_balance).max(0)`): while the lead fits inside the present
+    /// delay, running ahead costs no presentation quality, so that much of the
+    /// smoothed skew is forgiven before any throttling. The result is always in
     /// `[0, MAX_SLOWDOWN]` (0 = run at full speed).
-    pub(crate) fn step(&mut self, skew: i32) -> f32 {
+    pub(crate) fn step(&mut self, skew: i32, headroom: f32) -> f32 {
         let skew = skew as f32;
         let alpha = if skew > self.smoothed {
             ALPHA_SLOWDOWN
@@ -37,6 +41,6 @@ impl Throttler {
             ALPHA_SPEEDUP
         };
         self.smoothed = alpha * skew + (1.0 - alpha) * self.smoothed;
-        self.smoothed.clamp(0.0, MAX_SLOWDOWN)
+        (self.smoothed - headroom).clamp(0.0, MAX_SLOWDOWN)
     }
 }

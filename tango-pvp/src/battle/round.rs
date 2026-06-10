@@ -104,6 +104,7 @@ impl Round {
             last_outgoing: first_packet.to_vec(),
             replay_writer: match_.replay_writer_handle(),
             local_player_index: self.local_player_index,
+            state_pool: Vec::new(),
         };
         self.session = Some(getgud::Session::new(getgud::SessionParams {
             present_delay: self.frame_delay.load(Ordering::Relaxed),
@@ -232,7 +233,11 @@ impl Round {
         self.last_loaded_tick = frame.tick;
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
-        let slowdown = self.throttler.step(skew);
+        // Frames presented with the lead still inside the present delay are
+        // fully confirmed — running ahead by that much costs nothing, so the
+        // throttler forgives it instead of shaving fps the player can feel.
+        let headroom = (-session.speculation_balance()).max(0) as f32;
+        let slowdown = self.throttler.step(skew, headroom);
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
