@@ -169,42 +169,6 @@ fn make_core_and_state(
 
 const AUDIO_CHANNELS: usize = 2;
 
-/// Canonical BGR555 → RGBA8 expansion, indexed by the 15-bit value
-/// (`r | g << 5 | b << 10`): each channel scaled `c * 255 / 31`, alpha opaque.
-///
-/// The single source of truth for the conversion — both [`Bgr555::to_rgb888`]
-/// and [`bgr555_to_rgba8`] read from this table rather than recomputing it.
-static BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
-    let mut arr = [image::Rgba([0, 0, 0, 0]); 0x8000];
-    let mut i = 0u16;
-    while i < 0x8000 {
-        arr[i as usize] = tango_dataview::rom::Bgr555::new(i.to_le_bytes()).to_rgba8();
-        i += 1;
-    }
-    arr
-};
-
-/// Convert an mGBA `BGR5` framebuffer — what `COLOR_16_BIT` builds emit: one
-/// little-endian `u16` per pixel holding the GBA-native 15-bit color — into
-/// RGBA8.
-///
-/// `src` is 2 bytes per pixel and `dst` 4 bytes per pixel; conversion runs over
-/// whole pixels and stops when either buffer is exhausted. Backed by the same
-/// shared table [`Bgr555::to_rgb888`] uses to render ROM sprites and palettes,
-/// so emulated frames and in-app ROM imagery share identical colors, at one
-/// lookup per pixel. Alpha is forced opaque.
-fn bgr555_to_rgba8(src: &[u8], dst: &mut [u8]) {
-    for (s, d) in bytemuck::cast_slice::<u8, u16>(src)
-        .iter()
-        .zip(bytemuck::cast_slice_mut::<_, u32>(dst).iter_mut())
-    {
-        // Mask to 15 bits: bit 15 is unused in GBA BGR555 (mGBA emits 0), so
-        // this is a no-op on the value, but it lets the compiler prove the
-        // index is < 0x8000 and elide the per-pixel bounds check.
-        *d = bytemuck::cast(BGR555_RGBA8_LUT[(*s & 0x7fff) as usize].0);
-    }
-}
-
 fn run_frame<'a>(
     core: &mut mgba::core::Core,
     resampler: &mut mgba::audio::AudioResampler,
@@ -229,7 +193,7 @@ fn run_frame<'a>(
 
     let samples = &samples[..n * AUDIO_CHANNELS];
 
-    bgr555_to_rgba8(core.video_buffer().unwrap(), emu_vbuf);
+    tango_dataview::rom::bgr555_to_rgba8(core.video_buffer().unwrap(), emu_vbuf);
     samples
 }
 

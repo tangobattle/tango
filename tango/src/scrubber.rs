@@ -11,10 +11,10 @@ use iced::widget::canvas::{self, Canvas, Frame, Path};
 use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
 /// Where the cursor is resting on the bar, published through
-/// `on_hover`. Coordinates are absolute (window space) — the canvas is
-/// the only widget that knows where the bar landed in layout, and the
-/// caller's floating preview is positioned in the session view's
-/// full-window overlay stack, which shares that origin.
+/// `on_hover`. `x` is absolute (window space) — the canvas is the only
+/// widget that knows where the bar landed in layout, and the caller's
+/// floating preview is positioned in the session view's full-window
+/// overlay stack, which shares that origin.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HoverInfo {
     /// The tick a click here would seek to (snapped + clamped exactly
@@ -23,10 +23,6 @@ pub struct HoverInfo {
     pub tick: u32,
     /// Cursor x, clamped into the bar.
     pub x: f32,
-    /// The bar's own x extent, so a floating preview centered on `x`
-    /// can clamp itself to the bar's ends.
-    pub bar_x: f32,
-    pub bar_width: f32,
 }
 
 pub struct Scrubber<F, G, H> {
@@ -278,8 +274,6 @@ where
                     let info = HoverInfo {
                         tick,
                         x: bounds.x + p.x.clamp(0.0, bounds.width),
-                        bar_x: bounds.x,
-                        bar_width: bounds.width,
                     };
                     return Some(Action::publish((self.on_hover)(Some(info))));
                 } else if state.hovered.take().is_some() {

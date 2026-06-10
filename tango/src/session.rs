@@ -1980,68 +1980,69 @@ fn options_menu_overlay<'a>(
 /// heading: the frame-delay row already labels itself.
 /// Floating keyframe thumbnail + timestamp, hovering above the scrub
 /// bar while the cursor rests on it (replay-only). Centered on the
-/// cursor and clamped to the bar's extent, lifted to the same height
-/// as the bottom-anchored popovers. Pure presentation — no mouse
-/// handlers anywhere in the chain, so it never steals events from the
-/// transport below.
+/// cursor and clamped to the window edges (with a small margin so it
+/// never sits flush against the border), lifted to the same height as
+/// the bottom-anchored popovers. `responsive` is how the clamp learns
+/// the window width — the overlay layer spans the whole session view.
+/// Pure presentation — no mouse handlers anywhere in the chain, so it
+/// never steals events from the transport below.
 fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> Option<Element<'a, Message>> {
     session.as_replay()?;
     let h = state.scrub_hover?;
     let (_, handle) = state.scrub_thumb.as_ref()?;
+    let handle = handle.clone();
     // Native 240×160 at 0.75 — big enough to read the scene, small
     // enough not to feel like a second screen.
     const THUMB_W: f32 = 180.0;
     const THUMB_H: f32 = 120.0;
     const CARD_PAD: f32 = 4.0;
-    let img = iced::widget::image(handle.clone())
-        .width(Length::Fixed(THUMB_W))
-        .height(Length::Fixed(THUMB_H));
-    // Same numeral treatment as the transport's tick readouts so the
-    // hover timestamp reads as playback state.
-    let stamp = text(format_tick(h.tick))
-        .size(TEXT_CAPTION)
-        .font(iced::Font::MONOSPACE)
-        .style(|theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(theme.palette().primary),
-        });
-    let card = container(column![img, stamp].spacing(2).align_x(Alignment::Center))
-        .padding(CARD_PAD)
-        .style(widgets::panel);
-    // Center on the cursor, clamped so the card never spills past the
-    // bar's ends (which also keeps it inside the window).
-    let card_w = THUMB_W + CARD_PAD * 2.0;
-    let hi = (h.bar_x + h.bar_width - card_w).max(h.bar_x);
-    let left = (h.x - card_w / 2.0).clamp(h.bar_x, hi);
+    const EDGE_MARGIN: f32 = 8.0;
     Some(
-        container(card)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Left)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: POPOVER_LIFT,
-                left,
-            })
-            .into(),
+        iced::widget::responsive(move |size| {
+            let img = iced::widget::image(handle.clone())
+                .width(Length::Fixed(THUMB_W))
+                .height(Length::Fixed(THUMB_H));
+            // Same numeral treatment as the transport's tick readouts
+            // so the hover timestamp reads as playback state.
+            let stamp = text(format_tick(h.tick))
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .style(|theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().primary),
+                });
+            let card = container(column![img, stamp].spacing(2).align_x(Alignment::Center))
+                .padding(CARD_PAD)
+                .style(widgets::panel);
+            let card_w = THUMB_W + CARD_PAD * 2.0;
+            let hi = (size.width - EDGE_MARGIN - card_w).max(EDGE_MARGIN);
+            let left = (h.x - card_w / 2.0).clamp(EDGE_MARGIN.min(hi), hi);
+            container(card)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Left)
+                .align_y(iced::alignment::Vertical::Bottom)
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: POPOVER_LIFT,
+                    left,
+                })
+                .into()
+        })
+        .into(),
     )
 }
 
 /// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
 /// per pixel — see [`State`]'s `vbuf`) to an RGBA8 image handle for
-/// the hover thumbnail. CPU mirror of the GPU decode in
-/// `video/effects/common.wgsl`; at 240×160 it's cheap, and it only
-/// runs when the hovered keyframe changes.
+/// the hover thumbnail, via dataview's shared conversion — the same
+/// table that renders ROM sprites/palettes and replay video exports,
+/// and the CPU twin of the GPU decode in `video/effects/common.wgsl`.
+/// At 240×160 it's cheap, and it only runs when the hovered keyframe
+/// changes.
 fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
-    let mut rgba = Vec::with_capacity(framebuffer.len() * 2);
-    for px in framebuffer.chunks_exact(2) {
-        let raw = u16::from_le_bytes([px[0], px[1]]);
-        let r = ((raw & 0x1f) * 255 / 31) as u8;
-        let g = ((raw >> 5 & 0x1f) * 255 / 31) as u8;
-        let b = ((raw >> 10 & 0x1f) * 255 / 31) as u8;
-        rgba.extend_from_slice(&[r, g, b, 0xff]);
-    }
+    let mut rgba = vec![0u8; framebuffer.len() * 2];
+    tango_dataview::rom::bgr555_to_rgba8(framebuffer, &mut rgba);
     iced::widget::image::Handle::from_rgba(replay_session::SCREEN_WIDTH, replay_session::SCREEN_HEIGHT, rgba)
 }
 

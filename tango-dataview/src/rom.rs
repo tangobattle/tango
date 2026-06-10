@@ -405,6 +405,40 @@ impl Bgr555 {
 
 pub type Palette = [Bgr555; 16];
 
+/// Canonical BGR555 → RGBA8 expansion, indexed by the 15-bit value
+/// (`r | g << 5 | b << 10`). Built from [`Bgr555::to_rgba8`] at compile
+/// time so bulk conversion and per-color sprite/palette rendering can't
+/// drift apart.
+const BGR555_RGBA8_LUT: [image::Rgba<u8>; 0x8000] = {
+    let mut arr = [image::Rgba([0, 0, 0, 0]); 0x8000];
+    let mut i = 0u16;
+    while i < 0x8000 {
+        arr[i as usize] = Bgr555::new(i.to_le_bytes()).to_rgba8();
+        i += 1;
+    }
+    arr
+};
+
+/// Convert an mGBA `BGR5` framebuffer — what `COLOR_16_BIT` builds emit: one
+/// little-endian `u16` per pixel holding the GBA-native 15-bit color — into
+/// RGBA8.
+///
+/// `src` is 2 bytes per pixel and `dst` 4 bytes per pixel; conversion runs over
+/// whole pixels and stops when either buffer is exhausted. Backed by the same
+/// table [`Bgr555::to_rgba8`] feeds, so emulated frames and in-app ROM imagery
+/// share identical colors, at one lookup per pixel. Alpha is forced opaque.
+pub fn bgr555_to_rgba8(src: &[u8], dst: &mut [u8]) {
+    for (s, d) in bytemuck::cast_slice::<u8, u16>(src)
+        .iter()
+        .zip(bytemuck::cast_slice_mut::<_, u32>(dst).iter_mut())
+    {
+        // Mask to 15 bits: bit 15 is unused in GBA BGR555 (mGBA emits 0), so
+        // this is a no-op on the value, but it lets the compiler prove the
+        // index is < 0x8000 and elide the per-pixel bounds check.
+        *d = bytemuck::cast(BGR555_RGBA8_LUT[(*s & 0x7fff) as usize].0);
+    }
+}
+
 type PalettedImage = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
 
 pub const TILE_WIDTH: usize = 8;
