@@ -66,26 +66,26 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
-                let stepper_state = stepper_state.lock_inner();
-                let Some(rng) = stepper_state.replay_rng().cloned() else {
+                let mut stepper_state = stepper_state.lock_inner();
+                let is_offerer = stepper_state.replay_is_offerer();
+                let match_type = stepper_state.match_type();
+                let Some(rng) = stepper_state.replay_rng_mut() else {
                     return;
                 };
-                let mut rng = rng.lock().unwrap();
-                let rng1_state = pick_rng1_state(&mut *rng, stepper_state.replay_is_offerer());
+                let rng1_state = pick_rng1_state(rng, is_offerer);
                 munger.set_rng1_state(core, rng1_state);
-                munger.start_battle_from_comm_menu(core, bn3_match_type(&mut *rng, stepper_state.match_type()));
+                munger.start_battle_from_comm_menu(core, bn3_match_type(rng, match_type));
             })
         }),
         (hooks.offsets.rom.comm_menu_settings_entry, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
             Box::new(move |mut core| {
-                let stepper_state = stepper_state.lock_inner();
-                let Some(rng) = stepper_state.replay_rng().cloned() else {
+                let mut stepper_state = stepper_state.lock_inner();
+                let Some(rng) = stepper_state.replay_rng_mut() else {
                     return;
                 };
-                let mut rng = rng.lock().unwrap();
-                let r2_seed = generate_rng2_state(&mut *rng);
+                let r2_seed = generate_rng2_state(rng);
                 munger.set_rng2_state(core, r2_seed);
                 munger.select_battle_init_substate(core, 0x30);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
@@ -155,8 +155,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 // Replay-mode-only first-commit hook; never fires in FF mode.
                 if state.needs_replay_first_commit() {
-                    if let Some(rng) = state.replay_rng().cloned() {
-                        let rng2_state = generate_rng2_state(&mut *rng.lock().unwrap());
+                    if let Some(rng) = state.replay_rng_mut() {
+                        let rng2_state = generate_rng2_state(rng);
                         munger.set_rng2_state(core, rng2_state);
                     }
                     state.set_local_packet(munger.tx_packet(core).to_vec());

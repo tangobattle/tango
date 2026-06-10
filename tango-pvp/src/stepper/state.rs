@@ -8,8 +8,6 @@ use super::{BattleOutcome, RoundPhase, RoundResult};
 type InputPair = (Input, Input);
 type PartialInputPair = (PartialInput, PartialInput);
 
-type SharedRng = Arc<Mutex<rand_pcg::Mcg128Xsl64>>;
-
 /// Shared handle to the opponent co-sim. [`State::new_for_replay`] hands one
 /// out alongside the stepper state; the seek/prefetch paths keep it to
 /// snapshot and restore the shadow in lockstep with the stepper.
@@ -100,9 +98,10 @@ struct ReplayExtras {
     /// from the recorded remote joyflags. Driven through its own lifecycle
     /// methods at the round boundaries (first commit / round end).
     shadow: SharedShadow,
-    /// Replay's shared RNG, seeded from the replay's rng_seed and pre-advanced
-    /// to match `Match::new`'s draws.
-    rng: SharedRng,
+    /// Replay's match RNG, seeded from the replay's rng_seed and pre-advanced
+    /// to match `Match::new`'s draws. Only ever drawn from under the
+    /// [`InnerState`] lock (per-game stepper traps).
+    rng: rand_pcg::Mcg128Xsl64,
     /// Per-game replay traps use this to pick the correct rng1 stream.
     is_offerer: bool,
     /// Monotonic tick counter across all replay rounds. Equal to
@@ -191,7 +190,7 @@ struct ReplayInit {
     match_type: (u8, u8),
     local_player_index: u8,
     commit_frontier: u32,
-    rng: SharedRng,
+    rng: rand_pcg::Mcg128Xsl64,
     shadow: SharedShadow,
     is_offerer: bool,
     /// All remaining rounds, including the one currently in progress at
@@ -707,8 +706,8 @@ impl InnerState {
     }
 
     /// Returns the replay-mode RNG, if this stepper is in replay mode.
-    pub fn replay_rng(&self) -> Option<&SharedRng> {
-        self.replay().map(|r| &r.rng)
+    pub fn replay_rng_mut(&mut self) -> Option<&mut rand_pcg::Mcg128Xsl64> {
+        self.replay_mut().map(|r| &mut r.rng)
     }
 
     pub fn replay_is_offerer(&self) -> bool {
@@ -840,7 +839,6 @@ impl State {
         // Match::new advances the shared rng by one bool draw before any
         // game traps fire (the polite-win pick). Stay in sync.
         let _ = rand::Rng::gen::<bool>(&mut rng);
-        let rng = Arc::new(Mutex::new(rng));
 
         let inner = InnerState::for_replay(ReplayInit {
             match_type,
@@ -879,13 +877,12 @@ impl State {
         if !replay.phase.round_active() {
             return None;
         }
-        let rng_state = replay.rng.lock().unwrap().clone();
         Some(ReplayCheckpoint {
             absolute_tick: replay.absolute_tick,
             current_round_index: replay.current_round_index,
             current_tick_in_round: inner.current_tick,
             has_committed_this_round: replay.phase.has_committed(),
-            rng_state,
+            rng_state: replay.rng.clone(),
             local_packet: inner.local_packet.clone(),
             inputs_consumed: inner.output_pairs.len() as u32,
         })
@@ -926,13 +923,12 @@ impl State {
         }
 
         let rounds_from_current: VecDeque<Vec<PartialInputPair>> = rounds[round_idx..].iter().cloned().collect();
-        let rng = Arc::new(Mutex::new(checkpoint.rng_state.clone()));
 
         let new_inner = InnerState::for_replay(ReplayInit {
             match_type,
             local_player_index,
             commit_frontier,
-            rng,
+            rng: checkpoint.rng_state.clone(),
             shadow,
             is_offerer,
             rounds: rounds_from_current,

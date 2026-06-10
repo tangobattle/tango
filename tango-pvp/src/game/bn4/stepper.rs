@@ -17,12 +17,11 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
             Box::new(move |mut core| {
-                let stepper_state = stepper_state.lock_inner();
-                let Some(rng) = stepper_state.replay_rng().cloned() else {
+                let mut stepper_state = stepper_state.lock_inner();
+                let Some(rng) = stepper_state.replay_rng_mut() else {
                     return;
                 };
-                let mut rng = rng.lock().unwrap();
-                let seed = generate_rng2_state(&mut *rng);
+                let seed = generate_rng2_state(rng);
                 munger.set_rng1_state(core, seed);
                 munger.set_rng2_state(core, seed);
                 munger.select_battle_init_substate(core);
@@ -100,9 +99,9 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
                 // Replay-mode-only first-commit hook; never fires in FF mode.
                 if state.needs_replay_first_commit() {
-                    if let Some(rng) = state.replay_rng().cloned() {
-                        let mut rng = rng.lock().unwrap();
-                        let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, state.replay_is_offerer());
+                    let is_offerer = state.replay_is_offerer();
+                    if let Some(rng) = state.replay_rng_mut() {
+                        let (rng1_state, rng2_state) = pick_rng_states(rng, is_offerer);
                         munger.set_rng1_state(core, rng1_state);
                         munger.set_rng2_state(core, rng2_state);
                     }

@@ -74,11 +74,12 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
             Box::new(move |core| {
-                let Some(rng) = stepper_state.lock_inner().replay_rng().cloned() else {
+                let mut state = stepper_state.lock_inner();
+                let is_offerer = state.replay_is_offerer();
+                let Some(rng) = state.replay_rng_mut() else {
                     return;
                 };
-                let mut rng = rng.lock().unwrap();
-                let rng_state = pick_rng_state(&mut *rng, stepper_state.lock_inner().replay_is_offerer());
+                let rng_state = pick_rng_state(rng, is_offerer);
                 munger.set_rng_state(core, rng_state);
                 munger.set_frame_counter(core, rng_state as u16);
             })
