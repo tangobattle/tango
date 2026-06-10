@@ -12,7 +12,7 @@ use super::EXPECTED_FPS;
 /// against — anything queueing inputs upstream of the engine (e.g. the host's
 /// send pump) can hold a bit more than this and rely on the engine's bail
 /// firing first.
-pub const MAX_QUEUE_LENGTH: usize = 120;
+pub const MAX_QUEUE_LENGTH: usize = 5 * 60; // ~5 seconds
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
