@@ -17,6 +17,8 @@
 //! folds it into a small persistent trim, applied *outside* the engagement
 //! gate — rate matching is exactly the correction that must act while
 //! presentation is still free, before the lead reaches the boundary at all.
+//! The trim slowly leaks (see [`TRIM_LEAK`]), so a trim whose cause has
+//! gone away dies out instead of lingering for the rest of the match.
 
 /// EMA weight applied while skew is growing. τ ≈ 5 s rise (at 60 Hz).
 const ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
@@ -74,6 +76,16 @@ const TRIM_CORRECTION: f32 = 0.5;
 /// 60.00 Hz host against an audio-paced 59.73 Hz one is 0.27 fps) while
 /// bounding any estimator failure to an imperceptible rate change.
 const TRIM_MAX: f32 = 0.5;
+/// Per-window decay of the trim. Without it the two peers' trims have a
+/// conserved sum: one peer's extra slowness is the other's measured drift,
+/// so coupled estimators move by equal and opposite amounts each window, and
+/// an overshoot — a real gap that saturates the trim and then vanishes, say
+/// a vsync toggle — redistributes between the peers instead of decaying,
+/// parking both somewhere slow for the rest of the match. The leak drains
+/// that sum; real drift re-earns its trim against it, at the cost of a
+/// steady-state under-trim of TRIM_LEAK/TRIM_CORRECTION (0.02 fps — a
+/// boundary creep of ~2 ticks/min left for the fast loop to absorb).
+const TRIM_LEAK: f32 = 0.01;
 /// Nominal step rate for converting a per-step skew slope to fps. Only a gain
 /// factor inside a damped loop, so the nominal value is plenty.
 const STEPS_PER_SECOND: f32 = 60.0;
@@ -179,7 +191,8 @@ impl Throttler {
                 // rises as the peer's falls), hence the 2 in the conversion.
                 let residual_fps =
                     self.window_sum as f32 * STEPS_PER_SECOND / (2.0 * TRIM_WINDOW as f32);
-                self.trim = (self.trim + TRIM_CORRECTION * residual_fps).clamp(0.0, TRIM_MAX);
+                self.trim =
+                    (self.trim + TRIM_CORRECTION * residual_fps - TRIM_LEAK).clamp(0.0, TRIM_MAX);
                 self.window_sum = 0;
                 self.window_len = 0;
             }
@@ -384,6 +397,40 @@ mod tests {
         let end = run_drift(&mut t, 0.3, OPEN, 3_600, 60.0);
         assert!((t.trim - 0.3).abs() <= 0.05, "trim moved to {}", t.trim);
         assert!(end.abs() <= 5.0, "lead not drained: {end}");
+    }
+
+    /// The ceiling isn't sticky: when the gap vanishes, the trim unwinds —
+    /// being over-trimmed makes us trail, trailing keeps the fast loop
+    /// floored at zero, so the estimator keeps sampling and walks the trim
+    /// back down (helped along by the leak).
+    #[test]
+    fn ceiling_unwinds_when_the_gap_vanishes() {
+        let mut t = Throttler::new();
+        run_drift(&mut t, 5.0, -5, 3_600, 0.0);
+        assert_eq!(t.trim, TRIM_MAX);
+        run_drift(&mut t, 0.0, -5, 7_200, 0.0);
+        assert!(t.trim <= 0.05, "trim stuck at {}", t.trim);
+    }
+
+    /// Two coupled throttlers (the peer runs the same estimator), no real
+    /// pacing gap, ours starting over-trimmed at the ceiling. Each side reads
+    /// the other's trim as drift, and their window updates move the two trims
+    /// by equal and opposite amounts — a conserved sum that, without the
+    /// leak, parks the pair at 0.25/0.25 for the rest of the match. The leak
+    /// drains it: both sides bleed back to zero.
+    #[test]
+    fn coupled_overshoot_drains_instead_of_redistributing() {
+        let mut us = Throttler::new();
+        us.trim = TRIM_MAX;
+        let mut peer = Throttler::new();
+        let mut skew = 0.0f32;
+        for _ in 0..60_000 {
+            let su = us.step(skew.round() as i32, -5);
+            let sp = peer.step((-skew).round() as i32, -5);
+            skew += 2.0 * (sp - su) / 60.0;
+        }
+        assert!(us.trim <= 0.05, "our trim stuck at {}", us.trim);
+        assert!(peer.trim <= 0.05, "peer trim stuck at {}", peer.trim);
     }
 
     /// Round boundaries clear the fast loop's state but keep the learned
