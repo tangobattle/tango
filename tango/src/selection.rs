@@ -53,6 +53,11 @@ pub struct Loaded {
     pub chip_images: Vec<Option<(u32, u32, iced_image::Handle)>>,
     pub element_icons: HashMap<usize, iced_image::Handle>,
     pub navi_emblems: HashMap<usize, iced_image::Handle>,
+    /// Signature color per navi, extracted from its emblem pixels —
+    /// drives the Link Navi card's plate/glow tint. Missing when the
+    /// emblem is entirely monochrome (then the card falls back to a
+    /// neutral accent).
+    pub navi_accents: HashMap<usize, iced::Color>,
     /// Precomputed NaviCust grid image for the Navicust variant. None
     /// for LinkNavi games or when no navicust_layout is published.
     pub navicust_render: Option<NavicustRender>,
@@ -61,6 +66,12 @@ pub struct Loaded {
     /// handle)`. Indexed by part id; `None` = no shape / no color. Baked
     /// once here so the per-frame palette just clones handles.
     pub navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>>,
+    /// The same shape thumbnails trimmed to the shape's bounding box,
+    /// for the read-only Navi tab's installed-parts list — there the
+    /// thumb sits inline next to the part name, so the grid-sized
+    /// transparent margin the palette wants would just push the text
+    /// away. Indexed by part id like `navicust_part_icons`.
+    pub navicust_part_icons_cropped: Vec<Option<(u32, u32, iced_image::Handle)>>,
     /// Logos for the Cover tab, as `(width, height, handle)`. The
     /// loaded game's own variant comes first; any sibling variants in
     /// the family follow (so families with two logos — Gregar/Falzar
@@ -200,32 +211,55 @@ impl Loaded {
             }
         }
 
-        // Navi emblems for LinkNavi games: 15x15 from (1,0).
+        // Navi emblems for LinkNavi games: 15x15 from (1,0). The accent
+        // color (most prominent saturated pixel color) is pulled from the
+        // same crop for the Link Navi card's tinting.
         let mut navi_emblems = HashMap::new();
+        let mut navi_accents = HashMap::new();
         for id in 0..assets.num_navis() {
             if let Some(navi) = assets.navi(id) {
-                navi_emblems.insert(id, cropped_handle(&navi.emblem(), 1, 0, 15, 15));
+                let crop = image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image();
+                if let Some(accent) = emblem_accent(&crop) {
+                    navi_accents.insert(id, accent);
+                }
+                let (w, h) = crop.dimensions();
+                navi_emblems.insert(id, iced_image::Handle::from_rgba(w, h, crop.into_raw()));
             }
         }
 
         // Render the NaviCust grid once per save+game.
         let navicust_render = build_navicust_render(save.as_ref(), assets.as_ref(), game);
 
-        // Bake a shape thumbnail per navicust part for the editor palette.
+        // Bake a shape thumbnail per navicust part: the grid-sized block
+        // for the editor palette (aligned blocks), plus a bounding-box
+        // crop of the same render for the viewer's inline parts list.
         let mut navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>> =
             Vec::with_capacity(assets.num_navicust_parts());
+        let mut navicust_part_icons_cropped: Vec<Option<(u32, u32, iced_image::Handle)>> =
+            Vec::with_capacity(assets.num_navicust_parts());
         for id in 0..assets.num_navicust_parts() {
-            let icon = assets.navicust_part(id).and_then(|info| {
+            let imgs = assets.navicust_part(id).and_then(|info| {
                 let color = info.color()?;
                 let img = crate::navicust::render_part_thumb(
                     &info.compressed_bitmap().unwrap_or_else(|| info.uncompressed_bitmap()),
                     color,
                     info.is_solid(),
                 )?;
-                let (w, h) = (img.width(), img.height());
-                Some((w, h, iced_image::Handle::from_rgba(w, h, img.into_raw())))
+                let cropped = crop_to_opaque(&img);
+                Some((img, cropped))
             });
-            navicust_part_icons.push(icon);
+            let (full, cropped) = match imgs {
+                Some((full, cropped)) => (Some(full), cropped),
+                None => (None, None),
+            };
+            navicust_part_icons.push(full.map(|img| {
+                let (w, h) = (img.width(), img.height());
+                (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
+            }));
+            navicust_part_icons_cropped.push(cropped.map(|img| {
+                let (w, h) = (img.width(), img.height());
+                (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
+            }));
         }
 
         // Logos for the Cover tab. The loaded variant goes first; its
@@ -264,8 +298,10 @@ impl Loaded {
             chip_images,
             element_icons,
             navi_emblems,
+            navi_accents,
             navicust_render,
             navicust_part_icons,
+            navicust_part_icons_cropped,
             logos,
         }
     }
@@ -426,4 +462,47 @@ fn mask_rounded_corners(img: &mut image::RgbaImage, radius: u32) {
 fn cropped_handle(src: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> iced_image::Handle {
     let sub = image::imageops::crop_imm(src, x, y, w, h).to_image();
     iced_image::Handle::from_rgba(w, h, sub.into_raw())
+}
+
+/// Trim `img` to the bounding box of its non-transparent pixels.
+/// `None` for a fully transparent image.
+fn crop_to_opaque(img: &image::RgbaImage) -> Option<image::RgbaImage> {
+    let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0u32, 0u32);
+    for (x, y, p) in img.enumerate_pixels() {
+        if p.0[3] != 0 {
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+    }
+    (x0 != u32::MAX).then(|| image::imageops::crop_imm(img, x0, y0, x1 - x0 + 1, y1 - y0 + 1).to_image())
+}
+
+/// The emblem's signature color: every distinct opaque pixel color is
+/// scored by frequency, weighted toward saturated mid-to-bright tones so
+/// black outlines and white highlights (numerous but characterless) lose
+/// to the emblem's actual identity color. `None` when nothing scores —
+/// a fully transparent or pure black/white emblem.
+fn emblem_accent(img: &image::RgbaImage) -> Option<iced::Color> {
+    let mut counts: HashMap<[u8; 3], u32> = HashMap::new();
+    for p in img.pixels() {
+        if p.0[3] >= 0x80 {
+            *counts.entry([p.0[0], p.0[1], p.0[2]]).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter_map(|(rgb, n)| {
+            let max = rgb.iter().copied().max().unwrap() as f32 / 255.0;
+            let min = rgb.iter().copied().min().unwrap() as f32 / 255.0;
+            let saturation = if max > 0.0 { (max - min) / max } else { 0.0 };
+            // Saturation dominates; the small constant keeps a vivid-but-
+            // rare color from losing to a huge near-gray field, and the
+            // value factor zeroes out the black outline entirely.
+            let score = n as f32 * (saturation + 0.05) * max;
+            (score > 0.0).then_some((score, rgb))
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, rgb)| iced::Color::from_rgb8(rgb[0], rgb[1], rgb[2]))
 }

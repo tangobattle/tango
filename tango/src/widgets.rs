@@ -574,7 +574,7 @@ pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
 // daylight still get tango-shaped chrome rather than a generic
 // gray rectangle.
 
-fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
+pub fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
     iced::Color {
         r: a.r * (1.0 - t) + b.r * t,
         g: a.g * (1.0 - t) + b.g * t,

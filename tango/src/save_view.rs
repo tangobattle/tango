@@ -3264,29 +3264,92 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                 .navi(navi_id)
                 .and_then(|n| n.name())
                 .unwrap_or_else(|| format!("Navi #{navi_id}"));
+            // Plate/glow tint: the emblem's own signature color, with a
+            // neutral slate fallback for monochrome emblems.
+            let accent = loaded
+                .navi_accents
+                .get(&navi_id)
+                .copied()
+                .unwrap_or(iced::Color::from_rgb8(0x6b, 0x7a, 0x99));
+
+            // Emblem at an integer multiple of its 15px crop so the
+            // nearest-neighbor upscale lands on even pixels.
             let emblem: Element<'static, M> = loaded
                 .navi_emblems
                 .get(&navi_id)
                 .cloned()
                 .map(|h| {
                     Image::new(h)
-                        .width(Length::Fixed(64.0))
-                        .height(Length::Fixed(64.0))
+                        .width(Length::Fixed(90.0))
+                        .height(Length::Fixed(90.0))
                         .filter_method(iced_image::FilterMethod::Nearest)
                         .content_fit(ContentFit::Contain)
                         .into()
                 })
-                .unwrap_or_else(|| Space::new().height(Length::Fixed(64.0)).into());
-            container(
-                column![emblem, text(name).size(TEXT_DISPLAY)]
-                    .spacing(8)
-                    .align_x(Alignment::Center),
-            )
-            .width(Fill)
-            .align_x(Alignment::Center)
-            .padding(crate::style::PANE_PADDING)
-            .style(crate::widgets::pane)
-            .into()
+                .unwrap_or_else(|| Space::new().width(Length::Fixed(90.0)).height(Length::Fixed(90.0)).into());
+
+            // Circular plate behind the emblem: accent-tinted fill, a
+            // ring a shade brighter, and an accent glow lifting it off
+            // the pane.
+            let plate: Element<'static, M> = container(emblem)
+                .width(Length::Fixed(140.0))
+                .height(Length::Fixed(140.0))
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .style(move |theme: &iced::Theme| {
+                    let bg = theme.palette().background;
+                    container::Style {
+                        background: Some(iced::Background::Color(crate::widgets::mix(bg, accent, 0.22))),
+                        border: iced::Border {
+                            radius: 70.0.into(),
+                            width: 2.0,
+                            color: iced::Color { a: 0.8, ..accent },
+                        },
+                        shadow: iced::Shadow {
+                            color: iced::Color { a: 0.45, ..accent },
+                            offset: iced::Vector::new(0.0, 0.0),
+                            blur_radius: 26.0,
+                        },
+                        ..Default::default()
+                    }
+                })
+                .into();
+
+            let card = column![
+                plate,
+                column![
+                    text(name).size(TEXT_DISPLAY),
+                    text(t!(lang, "navi-link-navi"))
+                        .size(TEXT_CAPTION)
+                        .style(muted_text_style),
+                ]
+                .spacing(2)
+                .align_x(Alignment::Center),
+            ]
+            .spacing(16)
+            .align_x(Alignment::Center);
+
+            // The pane itself picks up a whisper of the accent, fading
+            // back to the standard plate color toward the bottom.
+            container(card)
+                .width(Fill)
+                .align_x(Alignment::Center)
+                .padding([28.0, crate::style::PANE_PADDING])
+                .style(move |theme: &iced::Theme| {
+                    let mut s = crate::widgets::pane(theme);
+                    if let Some(iced::Background::Color(plate_color)) = s.background {
+                        // Stop 0 sits at the bottom for a 0-radian linear
+                        // gradient, so the accent goes on stop 1 — the
+                        // tint halos the plate at the top of the card.
+                        s.background = Some(iced::Background::Gradient(iced::Gradient::Linear(
+                            iced::gradient::Linear::new(0.0)
+                                .add_stop(0.0, plate_color)
+                                .add_stop(1.0, crate::widgets::mix(plate_color, accent, 0.10)),
+                        )));
+                    }
+                    s
+                })
+                .into()
         }
         tango_dataview::save::NaviView::Navicust(v) => render_navicust(lang, loaded, v.as_ref()),
     }
@@ -3338,6 +3401,89 @@ fn navicust_installed_parts<M: 'static>(
         }
     }
     any.then(|| row![solid_col, plus_col].spacing(12).into())
+}
+
+/// The viewer's installed-parts panel, shown beside the grid: one row
+/// per part with its shape thumbnail (bounding-box crop, native pixel
+/// scale), its name badge, and its description inline. Solid parts
+/// first, then plus parts, keeping slot order within each group — the
+/// same ordering the badge strip used. `None` when nothing is
+/// installed.
+fn navicust_parts_panel<M: 'static>(
+    loaded: &Loaded,
+    v: &dyn tango_dataview::save::NavicustView,
+) -> Option<Element<'static, M>> {
+    let assets = loaded.assets.as_ref();
+    let mut solid_rows: Vec<Element<'static, M>> = vec![];
+    let mut plus_rows: Vec<Element<'static, M>> = vec![];
+    for i in 0..v.count() {
+        let Some(part) = v.navicust_part(i) else { continue };
+        let Some(info) = assets.navicust_part(part.id) else {
+            continue;
+        };
+        let part_name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+        let is_solid = info.is_solid();
+        let (solid_color, plus_color) = info.color().map(ncp_colors).unwrap_or((
+            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
+            iced::Color::from_rgb8(0x88, 0x88, 0x88),
+        ));
+        let bg = if is_solid { solid_color } else { plus_color };
+
+        // Shape thumb at its native baked scale (8 px per cell), centered
+        // in a fixed box so the name column lines up across rows. The
+        // largest shapes (5+ cells on a side) scale down to fit.
+        const THUMB_BOX: f32 = 40.0;
+        let thumb: Element<'static, M> = loaded
+            .navicust_part_icons_cropped
+            .get(part.id)
+            .and_then(|o| o.clone())
+            .map(|(w, h, handle)| {
+                Image::new(handle)
+                    .width(Length::Fixed((w as f32).min(THUMB_BOX)))
+                    .height(Length::Fixed((h as f32).min(THUMB_BOX)))
+                    .filter_method(iced_image::FilterMethod::Nearest)
+                    .content_fit(ContentFit::Contain)
+                    .into()
+            })
+            .unwrap_or_else(|| Space::new().into());
+        let thumb_box: Element<'static, M> = container(thumb)
+            .width(Length::Fixed(THUMB_BOX))
+            .height(Length::Fixed(THUMB_BOX))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .into();
+
+        let mut name_col = column![colored_badge_sized::<M>(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0])]
+            .spacing(3)
+            .align_x(Alignment::Start);
+        if let Some(desc) = info.description() {
+            // ROM descriptions keep the game's own textbox line breaks —
+            // they're authored to wrap there, so the text shrink-wraps to
+            // its natural width.
+            name_col = name_col.push(text(desc).size(TEXT_CAPTION).style(muted_text_style));
+        }
+
+        let row_el: Element<'static, M> = row![thumb_box, name_col].spacing(10).align_y(Alignment::Center).into();
+        if is_solid {
+            solid_rows.push(row_el);
+        } else {
+            plus_rows.push(row_el);
+        }
+    }
+    if solid_rows.is_empty() && plus_rows.is_empty() {
+        return None;
+    }
+    // Two top-aligned columns, like the badge strip this replaces:
+    // solid parts on the left, plus parts on the right.
+    let mut solid_col = column![].spacing(6);
+    for r in solid_rows {
+        solid_col = solid_col.push(r);
+    }
+    let mut plus_col = column![].spacing(6);
+    for r in plus_rows {
+        plus_col = plus_col.push(r);
+    }
+    Some(row![solid_col, plus_col].spacing(20).into())
 }
 
 fn render_navicust<M: 'static>(
@@ -3445,15 +3591,14 @@ fn render_navicust<M: 'static>(
 
     // Single pane sized to its contents — no "(none installed)"
     // fallback; an empty navicust shows just the rounded image with
-    // pane padding around it. `align_x(Center)` centers narrower rows
-    // (style header, parts list) horizontally inside the column's
-    // shrink-wrapped width without dragging in any Fill that would
-    // stretch the pane across the tab.
-    let mut content = column![].spacing(8).align_x(Alignment::Center);
-    content = content.push(grid_el);
-    // Installed-parts badges below the grid (shared with the editor).
-    if let Some(parts) = navicust_installed_parts::<M>(loaded, v) {
-        content = content.push(parts);
+    // pane padding around it. The installed-parts panel sits beside
+    // the grid (the tab is much wider than the grid), top-aligned
+    // with the grid body (the small padding eats the gap the image's
+    // baked-in margin leaves above the color bar). No Fill anywhere:
+    // that would stretch the pane across the tab.
+    let mut content = row![grid_el].spacing(20).align_y(Alignment::Start);
+    if let Some(parts) = navicust_parts_panel::<M>(loaded, v) {
+        content = content.push(container(parts).padding([14.0, 0.0]));
     }
 
     let _ = (cols, rows_n);
