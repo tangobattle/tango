@@ -1,5 +1,6 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::app::Scanners;
 use crate::i18n::t;
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::widgets;
 use crate::{config, replays, save_view};
 use iced::widget::space::horizontal as horizontal_space;
@@ -13,7 +14,8 @@ use unic_langid::LanguageIdentifier;
 pub enum Message {
     /// Picked a game from the Game filter dropdown. `None` =
     /// "All games".
-    GameFilterSelected(GameFilterOption),
+    /// `None` = "all games"; otherwise the ROM family (e.g. "bn6").
+    GameFilterSelected(Option<String>),
     /// Typed in the opponent-filter text input. Empty = no
     /// filter; otherwise a substring (case-insensitive) match
     /// against the remote side's nickname.
@@ -241,10 +243,7 @@ pub enum Effect {
     /// `Message::ExportStart`. `lossless` selects the default
     /// extension/filter: .mkv for lossless (libx264rgb + flac), .mp4
     /// for scaled exports.
-    OpenExportSaveDialog {
-        replay: std::path::PathBuf,
-        lossless: bool,
-    },
+    OpenExportSaveDialog { replay: std::path::PathBuf, lossless: bool },
     /// User confirmed an export. App decodes the replay, resolves
     /// hooks + ROMs, spawns the tango_pvp::replay::export task,
     /// and streams `Message::ExportProgress` / `ExportFinished`
@@ -269,8 +268,8 @@ impl ReplaysState {
     /// as a single optional [`Effect`].
     pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
         match msg {
-            Message::GameFilterSelected(o) => {
-                self.game_filter = o.pair;
+            Message::GameFilterSelected(pair) => {
+                self.game_filter = pair;
                 // Filter change can hide the current selection;
                 // drop the cached Loaded so the next interaction
                 // doesn't show a now-filtered-out detail panel.
@@ -562,12 +561,54 @@ impl ReplaysState {
         let replays_path = config.replays_path();
         let replays = scanners.replays.read();
 
-        // Top: game + opponent filter dropdowns. Options are
-        // derived from the distinct values seen across the
-        // scanned replays' local/remote metadata; "All …" is
-        // always the first option.
+        let top = self.filter_strip(lang, &replays, rescanning);
+
+        // Left list — AND of game + opponent + completeness filters.
+        let filtered: Vec<&replays::ScannedReplay> = replays.iter().filter(|r| self.matches_filters(r)).collect();
+        let mut list = column![].spacing(2).padding([8, 0]);
+        for (idx, r) in filtered.iter().enumerate() {
+            list = list.push(self.replay_list_row(lang, r, idx));
+        }
+        let left = container(scrollable(list).height(Fill))
+            .width(Length::Fixed(360.0))
+            .height(Fill)
+            .style(widgets::pane);
+
+        // Right panel: replay_detail returns a column of panes
+        // when something is selected; the empty-state collapses to
+        // a single centered pane.
+        let right: Element<'_, Message> = if let Some(r) = self
+            .selected
+            .as_ref()
+            .and_then(|sel_path| filtered.iter().find(|r| &r.path == sel_path))
+        {
+            replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
+        } else {
+            container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
+                .center(Fill)
+                .style(widgets::pane)
+                .into()
+        };
+
+        column![top, row![left, right].spacing(style::PANE_GAP).height(Fill),]
+            .spacing(style::PANE_GAP)
+            .padding(style::PANE_GAP)
+            .height(Fill)
+            .into()
+    }
+
+    /// Top strip: game + opponent filter dropdowns plus the
+    /// show-incomplete toggle and rescan button. Options are derived
+    /// from the distinct values seen across the scanned replays'
+    /// local/remote metadata; "All …" is always the first option.
+    fn filter_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        replays: &[replays::ScannedReplay],
+        rescanning: bool,
+    ) -> Element<'a, Message> {
         let all_games = t!(lang, "replays-filter-all-games");
-        let mut game_options = vec![GameFilterOption::all(all_games.clone())];
+        let mut game_options = vec![widgets::Choice::new(None, all_games.clone())];
         {
             use itertools::Itertools;
             // Dedupe by family only — the filter ignores variant,
@@ -583,15 +624,12 @@ impl ReplaysState {
             seen.sort();
             for family in seen {
                 let display = family_display_name(lang, &family, 0);
-                game_options.push(GameFilterOption {
-                    pair: Some(family),
-                    display,
-                });
+                game_options.push(widgets::Choice::new(Some(family), display));
             }
         }
         let selected_game = game_options
             .iter()
-            .find(|o| o.pair == self.game_filter)
+            .find(|o| o.value == self.game_filter)
             .cloned()
             .unwrap_or_else(|| game_options[0].clone());
         let show_incomplete_toggle = iced::widget::checkbox(self.show_incomplete)
@@ -600,11 +638,15 @@ impl ReplaysState {
             .size(TEXT_BODY)
             .text_size(TEXT_BODY)
             .style(widgets::chunky_checkbox);
-        let top = container(
+        container(
             row![
-                pick_list(game_options, Some(selected_game), Message::GameFilterSelected)
-                    .padding(STANDARD_PADDING)
-                    .style(widgets::chunky_pick_list),
+                pick_list(
+                    game_options,
+                    Some(selected_game),
+                    |o: widgets::Choice<Option<String>>| { Message::GameFilterSelected(o.value) }
+                )
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_pick_list),
                 text_input(&t!(lang, "replays-filter-opponent-placeholder"), &self.opponent_filter,)
                     .on_input(Message::OpponentFilterChanged)
                     .padding(STANDARD_PADDING)
@@ -622,244 +664,216 @@ impl ReplaysState {
             .spacing(8)
             .align_y(Alignment::Center),
         )
-        .padding(widgets::PANE_PADDING)
+        .padding(style::PANE_PADDING)
         .width(Fill)
-        .style(widgets::pane);
+        .style(widgets::pane)
+        .into()
+    }
 
-        // Left list — AND of game + opponent + completeness
-        // filters. Opponent match is case-insensitive substring
-        // (mirrors the text-input UX). Completeness only drops a
-        // row once its stats have actually loaded — unloaded
-        // entries pass through so a freshly-scanned replay isn't
-        // hidden during the lazy stats-worker window.
-        let game_filter = self.game_filter.as_ref();
-        let opp_needle = self.opponent_filter.trim().to_lowercase();
-        let show_incomplete = self.show_incomplete;
-        let filtered: Vec<&replays::ScannedReplay> = replays
-            .iter()
-            .filter(|r| {
-                let g_ok = game_filter
-                    .map(|family| {
-                        r.metadata
-                            .local_side
-                            .as_ref()
-                            .and_then(|s| s.game_info.as_ref())
-                            .map(|gi| gi.rom_family == *family)
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(true);
-                let o_ok = if opp_needle.is_empty() {
-                    true
-                } else {
-                    r.metadata
-                        .remote_side
-                        .as_ref()
-                        .map(|s| s.nickname.to_lowercase().contains(&opp_needle))
-                        .unwrap_or(false)
-                };
-                let c_ok = show_incomplete || self.stats.get(&r.path).map(|s| s.is_complete).unwrap_or(false);
-                g_ok && o_ok && c_ok
+    /// AND of the game + opponent + completeness filters. Opponent
+    /// match is case-insensitive substring (mirrors the text-input
+    /// UX). Completeness only drops a row once its stats have actually
+    /// loaded — unloaded entries pass through so a freshly-scanned
+    /// replay isn't hidden during the lazy stats-worker window.
+    fn matches_filters(&self, r: &replays::ScannedReplay) -> bool {
+        let g_ok = self
+            .game_filter
+            .as_ref()
+            .map(|family| {
+                r.metadata
+                    .local_side
+                    .as_ref()
+                    .and_then(|s| s.game_info.as_ref())
+                    .map(|gi| gi.rom_family == *family)
+                    .unwrap_or(false)
             })
-            .collect();
+            .unwrap_or(true);
+        let opp_needle = self.opponent_filter.trim().to_lowercase();
+        let o_ok = if opp_needle.is_empty() {
+            true
+        } else {
+            r.metadata
+                .remote_side
+                .as_ref()
+                .map(|s| s.nickname.to_lowercase().contains(&opp_needle))
+                .unwrap_or(false)
+        };
+        let c_ok = self.show_incomplete || self.stats.get(&r.path).map(|s| s.is_complete).unwrap_or(false);
+        g_ok && o_ok && c_ok
+    }
 
-        let mut list = column![].spacing(2).padding([8, 0]);
-        for (idx, r) in filtered.iter().enumerate() {
-            let md = &r.metadata;
-            let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
-            let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
+    /// One row of the replay list: timestamp + status glyph, the
+    /// "game @ code · nicknames" line, an optional stats line once the
+    /// lazy stats worker gets here, and a bottom progress strip while
+    /// an export render is in flight.
+    fn replay_list_row<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        r: &replays::ScannedReplay,
+        idx: usize,
+    ) -> Element<'a, Message> {
+        let md = &r.metadata;
+        let local_nick = md.local_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
+        let remote_nick = md.remote_side.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
 
-            let ts_str = std::time::UNIX_EPOCH
-                .checked_add(std::time::Duration::from_millis(md.ts))
-                .map(|t| {
-                    let dt: chrono::DateTime<chrono::Local> = t.into();
-                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+        let ts_str = std::time::UNIX_EPOCH
+            .checked_add(std::time::Duration::from_millis(md.ts))
+            .map(|t| {
+                let dt: chrono::DateTime<chrono::Local> = t.into();
+                dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            })
+            .unwrap_or_else(|| "(?)".to_string());
+
+        let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
+        let game_label = local_gi
+            .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
+            .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
+            .map(|g| crate::game::short_name(lang, g))
+            .or_else(|| local_gi.map(|g| g.rom_family.clone()))
+            .unwrap_or_default();
+        let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
+            link_code_display(lang, &md.link_code).into_owned()
+        } else {
+            format!("{local_nick} vs {remote_nick}")
+        };
+
+        let selected = self.selected.as_ref() == Some(&r.path);
+        // Right-edge status glyph: a clapperboard while a render
+        // is in flight, a green check on success, a red X on
+        // failure. In-flight renders additionally get a progress
+        // bar flush along the row's bottom edge (see
+        // `progress_strip`).
+        let job_state = self.job(&r.path);
+        let rendering = matches!(job_state, Some(j) if j.result.is_none());
+        let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
+        let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
+        let badge: Element<'_, Message> = if rendering {
+            container(
+                Icon::Clapperboard
+                    .widget()
+                    .style(|theme: &iced::Theme| iced::widget::text::Style {
+                        color: Some(theme.palette().primary),
+                    }),
+            )
+            .padding([0, 4])
+            .into()
+        } else if render_done_ok {
+            container(
+                Icon::Check
+                    .widget()
+                    .style(|theme: &iced::Theme| iced::widget::text::Style {
+                        color: Some(theme.palette().success),
+                    }),
+            )
+            .padding([0, 4])
+            .into()
+        } else if render_done_err {
+            container(Icon::X.widget().style(|theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(theme.palette().danger),
+            }))
+            .padding([0, 4])
+            .into()
+        } else {
+            Space::new().width(Length::Fixed(0.0)).into()
+        };
+        // Bottom progress strip. While an export is in flight we
+        // draw a full-width bar flush with the row's bottom edge
+        // (no label — the detail panel carries the percentage);
+        // otherwise we reserve the same height with an empty
+        // spacer so toggling the bar on never shifts row height.
+        let progress_strip: Element<'_, Message> = if rendering {
+            let pct = match job_state.filter(|j| j.total > 0) {
+                Some(j) => (j.completed as f32 / j.total as f32).clamp(0.0, 1.0),
+                None => 0.0,
+            };
+            iced::widget::progress_bar(0.0..=1.0, pct)
+                .girth(Length::Fixed(4.0))
+                .style(|theme: &iced::Theme| {
+                    iced::widget::progress_bar::Style {
+                        // Transparent track lets the row's own
+                        // background show through — so it matches
+                        // exactly, including the zebra stripe on
+                        // alternating rows. Only the filled portion
+                        // reads as progress. Square corners, no
+                        // border — a flush bottom-edge accent.
+                        background: iced::Background::Color(iced::Color::TRANSPARENT),
+                        bar: iced::Background::Color(theme.palette().primary),
+                        border: iced::Border {
+                            radius: 0.0.into(),
+                            width: 0.0,
+                            color: iced::Color::TRANSPARENT,
+                        },
+                    }
                 })
-                .unwrap_or_else(|| "(?)".to_string());
-
-            let local_gi = md.local_side.as_ref().and_then(|s| s.game_info.as_ref());
-            let game_label = local_gi
-                .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-                .and_then(|(family, variant)| tango_gamedb::find_by_family_and_variant(family, variant))
-                .map(|g| crate::game::short_name(lang, g))
-                .or_else(|| local_gi.map(|g| g.rom_family.clone()))
-                .unwrap_or_default();
-            let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
-                link_code_display(lang, &md.link_code).into_owned()
-            } else {
-                format!("{local_nick} vs {remote_nick}")
-            };
-
-            let selected = self.selected.as_ref() == Some(&r.path);
-            // Right-edge status glyph: a clapperboard while a render
-            // is in flight, a green check on success, a red X on
-            // failure. In-flight renders additionally get a progress
-            // bar flush along the row's bottom edge (see
-            // `progress_strip`).
-            let job_state = self.job(&r.path);
-            let rendering = matches!(job_state, Some(j) if j.result.is_none());
-            let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
-            let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
-            let badge: Element<'_, Message> = if rendering {
-                container(
-                    Icon::Clapperboard
-                        .widget()
-                        .style(|theme: &iced::Theme| iced::widget::text::Style {
-                            color: Some(theme.palette().primary),
-                        }),
-                )
-                .padding([0, 4])
                 .into()
-            } else if render_done_ok {
-                container(
-                    Icon::Check
-                        .widget()
-                        .style(|theme: &iced::Theme| iced::widget::text::Style {
-                            color: Some(theme.palette().success),
-                        }),
-                )
-                .padding([0, 4])
-                .into()
-            } else if render_done_err {
-                container(Icon::X.widget().style(|theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().danger),
-                }))
-                .padding([0, 4])
-                .into()
+        } else {
+            Space::new().height(Length::Fixed(4.0)).into()
+        };
+        // Match-type name (e.g. "Triple") for the stats line.
+        let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
+        let type_name = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+        // Stats line: "Triple (2 rounds) · 0:42" once the lazy
+        // stats worker gets here, with " · incomplete" tacked on
+        // when the recorded stream didn't reach END_OF_REPLAY.
+        // Composed from the per-locale match-type-value + the
+        // shared "incomplete" string so we don't carry a
+        // dedicated stats-line template just to glue them.
+        let stats = self.stats.get(&r.path);
+        let stats_line = stats.map(|s| {
+            let rounds = t!(lang, "replays-round-count", count = s.round_count as i64);
+            let mut parts = vec![type_name.clone(), rounds, format_duration(s.tick_count)];
+            if !s.is_complete {
+                parts.push(t!(lang, "replays-incomplete"));
+            }
+            parts.join(" · ")
+        });
+        let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
+        // Two static caption lines, optionally a third with
+        // duration / rounds / incomplete (only when stats
+        // have loaded for this row).
+        let mut text_col = column![
+            // Title line carries the status glyph pinned to its
+            // right. Keeping it on this fixed first line (rather
+            // than vertically centered across the whole row) means
+            // it never moves as the optional stats line loads or
+            // the glyph changes.
+            row![text(ts_str).size(TEXT_BODY), Space::new().width(Fill), badge].align_y(Alignment::Center),
+            text(format!(
+                "{game_label} @ {}  ·  {nick_pair}",
+                link_code_display(lang, &md.link_code)
+            ))
+            .size(TEXT_CAPTION)
+            .style(move |theme: &iced::Theme| if selected {
+                iced::widget::text::Style { color: None }
             } else {
-                Space::new().width(Length::Fixed(0.0)).into()
-            };
-            // Bottom progress strip. While an export is in flight we
-            // draw a full-width bar flush with the row's bottom edge
-            // (no label — the detail panel carries the percentage);
-            // otherwise we reserve the same height with an empty
-            // spacer so toggling the bar on never shifts row height.
-            let progress_strip: Element<'_, Message> = if rendering {
-                let pct = match job_state.filter(|j| j.total > 0) {
-                    Some(j) => (j.completed as f32 / j.total as f32).clamp(0.0, 1.0),
-                    None => 0.0,
-                };
-                iced::widget::progress_bar(0.0..=1.0, pct)
-                    .girth(Length::Fixed(4.0))
-                    .style(|theme: &iced::Theme| {
-                        iced::widget::progress_bar::Style {
-                            // Transparent track lets the row's own
-                            // background show through — so it matches
-                            // exactly, including the zebra stripe on
-                            // alternating rows. Only the filled portion
-                            // reads as progress. Square corners, no
-                            // border — a flush bottom-edge accent.
-                            background: iced::Background::Color(iced::Color::TRANSPARENT),
-                            bar: iced::Background::Color(theme.palette().primary),
-                            border: iced::Border {
-                                radius: 0.0.into(),
-                                width: 0.0,
-                                color: iced::Color::TRANSPARENT,
-                            },
-                        }
-                    })
-                    .into()
-            } else {
-                Space::new().height(Length::Fixed(4.0)).into()
-            };
-            // Match-type name (e.g. "Triple") for the stats line.
-            let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
-            let type_name = crate::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-            // Stats line: "Triple (2 rounds) · 0:42" once the lazy
-            // stats worker gets here, with " · incomplete" tacked on
-            // when the recorded stream didn't reach END_OF_REPLAY.
-            // Composed from the per-locale match-type-value + the
-            // shared "incomplete" string so we don't carry a
-            // dedicated stats-line template just to glue them.
-            let stats = self.stats.get(&r.path);
-            let stats_line = stats.map(|s| {
-                let rounds = t!(lang, "replays-round-count", count = s.round_count as i64);
-                let mut parts = vec![type_name.clone(), rounds, format_duration(s.tick_count)];
-                if !s.is_complete {
-                    parts.push(t!(lang, "replays-incomplete"));
-                }
-                parts.join(" · ")
-            });
-            let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
-            // Two static caption lines, optionally a third with
-            // duration / rounds / incomplete (only when stats
-            // have loaded for this row).
-            let mut text_col = column![
-                // Title line carries the status glyph pinned to its
-                // right. Keeping it on this fixed first line (rather
-                // than vertically centered across the whole row) means
-                // it never moves as the optional stats line loads or
-                // the glyph changes.
-                row![text(ts_str).size(TEXT_BODY), Space::new().width(Fill), badge]
-                    .align_y(Alignment::Center),
-                text(format!(
-                    "{game_label} @ {}  ·  {nick_pair}",
-                    link_code_display(lang, &md.link_code)
-                ))
-                .size(TEXT_CAPTION)
-                .style(move |theme: &iced::Theme| if selected {
+                widgets::muted_text_style(theme)
+            }),
+        ]
+        .spacing(2)
+        .width(Fill);
+        if let Some(line) = stats_line {
+            text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
+                if !is_complete {
+                    widgets::danger_text_style(theme)
+                } else if selected {
                     iced::widget::text::Style { color: None }
                 } else {
                     widgets::muted_text_style(theme)
-                }),
-            ]
-            .spacing(2)
-            .width(Fill);
-            if let Some(line) = stats_line {
-                text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
-                    if !is_complete {
-                        widgets::danger_text_style(theme)
-                    } else if selected {
-                        iced::widget::text::Style { color: None }
-                    } else {
-                        widgets::muted_text_style(theme)
-                    }
-                }));
-            }
-            list = list.push(
-                button(
-                    column![
-                        container(text_col)
-                            .padding([6, 10])
-                            .width(Fill),
-                        progress_strip,
-                    ]
-                    .width(Fill),
-                )
-                .padding(0)
-                .width(Fill)
-                .style(widgets::list_item(selected, idx))
-                .on_press(Message::Selected(r.path.clone())),
-            );
+                }
+            }));
         }
-        let left = container(scrollable(list).height(Fill))
-            .width(Length::Fixed(360.0))
-            .height(Fill)
-            .style(widgets::pane);
-
-        // Right panel: replay_detail returns a column of panes
-        // when something is selected; the empty-state collapses to
-        // a single centered pane.
-        let right: Element<'_, Message> = if let Some(sel_path) = self.selected.as_ref() {
-            if let Some(r) = filtered.iter().find(|r| &r.path == sel_path) {
-                replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
-            } else {
-                container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
-                    .center(Fill)
-                    .style(widgets::pane)
-                    .into()
-            }
-        } else {
-            container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
-                .center(Fill)
-                .style(widgets::pane)
-                .into()
-        };
-
-        column![top, row![left, right].spacing(widgets::PANE_GAP).height(Fill),]
-            .spacing(widgets::PANE_GAP)
-            .padding(widgets::PANE_GAP)
-            .height(Fill)
-            .into()
+        button(
+            column![
+                container(text_col).padding(style::ROW_PADDING).width(Fill),
+                progress_strip,
+            ]
+            .width(Fill),
+        )
+        .padding(0)
+        .width(Fill)
+        .style(widgets::list_item(selected, idx))
+        .on_press(Message::Selected(r.path.clone()))
+        .into()
     }
 }
 
@@ -1071,7 +1085,7 @@ fn replay_detail<'a>(
         .spacing(6),
     )
     .width(Fill)
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .style(widgets::pane);
 
     // Matchup pane: you-vs-opponent cards with a wide gap. The
@@ -1087,7 +1101,7 @@ fn replay_detail<'a>(
     .height(Length::Shrink);
     let matchup_pane = container(
         iced::widget::Stack::new()
-            .push(container(matchup_row).padding(widgets::PANE_PADDING).width(Fill))
+            .push(container(matchup_row).padding(style::PANE_PADDING).width(Fill))
             .push_under(widgets::vs_splitter()),
     )
     .width(Fill)
@@ -1104,39 +1118,17 @@ fn replay_detail<'a>(
                 .size(TEXT_CAPTION)
                 .style(widgets::muted_text_style),
         )
-        .padding(widgets::PANE_PADDING)
+        .padding(style::PANE_PADDING)
         .width(Fill)
         .style(widgets::pane)
         .into()
     };
 
     column![title_pane, matchup_pane, preview]
-        .spacing(widgets::PANE_GAP)
+        .spacing(style::PANE_GAP)
         .width(Fill)
         .height(Fill)
         .into()
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GameFilterOption {
-    /// `None` = "all games" sentinel; otherwise the ROM family
-    /// (e.g. "bn6"). Variant is intentionally not part of the
-    /// key — the filter groups Gregar + Falzar together.
-    pub pair: Option<String>,
-    pub display: String,
-}
-impl GameFilterOption {
-    fn all(label: String) -> Self {
-        Self {
-            pair: None,
-            display: label,
-        }
-    }
-}
-impl std::fmt::Display for GameFilterOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.display)
-    }
 }
 
 /// Inline export panel. Three-state body — the chrome (border +

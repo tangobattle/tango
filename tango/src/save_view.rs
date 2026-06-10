@@ -1,6 +1,6 @@
-use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::i18n::t;
 use crate::selection::Loaded;
+use crate::style::{self, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY};
 use crate::widgets::{muted_color, muted_text_style};
 use iced::widget::{button, container, image as iced_image, scrollable, stack, text, tooltip, Image, Space};
 use sweeten::widget::{column, pick_list, row, text_input};
@@ -63,25 +63,114 @@ impl LibrarySort {
     }
 }
 
-/// A `LibrarySort` paired with its localized label, for the sort
-/// pick_list — the picker renders options via `Display`, which can't
-/// reach the language, so the label is resolved up front.
+/// A sort mode paired with its localized label, for the editors' sort
+/// pick_lists — the picker renders options via `Display`, which can't
+/// reach the language, so the label is resolved up front. Equality is
+/// by mode so the picker can match the current selection.
 #[derive(Clone)]
-struct LibrarySortChoice {
-    sort: LibrarySort,
+struct SortChoice<S> {
+    sort: S,
     label: String,
 }
 
-impl PartialEq for LibrarySortChoice {
+impl<S: PartialEq> PartialEq for SortChoice<S> {
     fn eq(&self, other: &Self) -> bool {
         self.sort == other.sort
     }
 }
 
-impl std::fmt::Display for LibrarySortChoice {
+impl<S> std::fmt::Display for SortChoice<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
+}
+
+/// The filter box + sort picker strip shared by all four editor library
+/// panes (folder, navicust palette, patch cards, auto battle data).
+/// `search_placeholder` is the filter box's pre-resolved placeholder
+/// text (`t!` only takes literal keys, so the lookup stays at the call
+/// site); `sort_label` is the sort enum's `label` method.
+fn library_header<'a, S: Copy + PartialEq + 'static>(
+    lang: &LanguageIdentifier,
+    search_placeholder: String,
+    filter_value: &str,
+    on_filter: fn(String) -> Action,
+    sorts: &[S],
+    current: S,
+    sort_label: fn(S, &LanguageIdentifier) -> String,
+    on_sort: fn(S) -> Action,
+) -> Element<'a, Action> {
+    let filter_input = text_input(&search_placeholder, filter_value)
+        .on_input(on_filter)
+        .padding(style::CONTROL_PADDING)
+        .size(TEXT_BODY)
+        .width(Fill)
+        .style(crate::widgets::chunky_text_input);
+    let sort_options: Vec<SortChoice<S>> = sorts
+        .iter()
+        .map(|&sort| SortChoice {
+            sort,
+            label: sort_label(sort, lang),
+        })
+        .collect();
+    let sort_selected = sort_options.iter().find(|c| c.sort == current).cloned();
+    let sort_pick = pick_list(sort_options, sort_selected, move |c: SortChoice<S>| on_sort(c.sort))
+        .padding(style::CONTROL_PADDING)
+        .text_size(TEXT_BODY)
+        .style(crate::widgets::chunky_pick_list);
+    container(
+        row![
+            filter_input,
+            text(t!(lang, "save-edit-sort"))
+                .size(TEXT_CAPTION)
+                .style(muted_text_style),
+            sort_pick,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding(style::HEADER_PADDING)
+    .into()
+}
+
+/// One editor pane: a header strip pinned above a scrollable body, on
+/// the standard pane plate. Every pane in the four editors is this
+/// shape.
+fn editor_pane<'a>(
+    header: impl Into<Element<'a, Action>>,
+    body: impl Into<Element<'a, Action>>,
+) -> Element<'a, Action> {
+    container(column![header.into(), scrollable(body.into()).height(Fill).width(Fill)])
+        .width(Fill)
+        .height(Fill)
+        .style(crate::widgets::pane)
+        .into()
+}
+
+/// The editors' two-pane layout: working set on the left, library /
+/// palette on the right.
+fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> Element<'a, Action> {
+    row![left, right]
+        .spacing(style::PANE_GAP)
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+/// Caption text that turns danger-red when an editor budget is blown
+/// (folder class limits, patch-card MB, folder over-fill) and reads
+/// muted otherwise.
+fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
+    text(label)
+        .size(TEXT_CAPTION)
+        .style(move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(if over {
+                theme.palette().danger
+            } else {
+                muted_color(theme)
+            }),
+        })
 }
 
 /// The chips the player owns (their pack), as `(id, name, code)`, in
@@ -214,22 +303,6 @@ impl NavicustSort {
     }
 }
 
-#[derive(Clone)]
-struct NavicustSortChoice {
-    sort: NavicustSort,
-    label: String,
-}
-impl PartialEq for NavicustSortChoice {
-    fn eq(&self, other: &Self) -> bool {
-        self.sort == other.sort
-    }
-}
-impl std::fmt::Display for NavicustSortChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
-}
-
 /// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
 /// past this is blocked, and a freshly added card lands disabled if it
 /// wouldn't fit — so a committed save never exceeds the in-game limit.
@@ -253,22 +326,6 @@ impl PatchCard56Sort {
             PatchCard56Sort::Name => t!(lang, "patch-card-sort-name"),
             PatchCard56Sort::Mb => t!(lang, "patch-card-sort-mb"),
         }
-    }
-}
-
-#[derive(Clone)]
-struct PatchCard56SortChoice {
-    sort: PatchCard56Sort,
-    label: String,
-}
-impl PartialEq for PatchCard56SortChoice {
-    fn eq(&self, other: &Self) -> bool {
-        self.sort == other.sort
-    }
-}
-impl std::fmt::Display for PatchCard56SortChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
     }
 }
 
@@ -437,22 +494,6 @@ impl AutoBattleDataSort {
             AutoBattleDataSort::Name => t!(lang, "folder-sort-name"),
             AutoBattleDataSort::Used => t!(lang, "auto-battle-data-edit-used"),
         }
-    }
-}
-
-#[derive(Clone)]
-struct AutoBattleDataSortChoice {
-    sort: AutoBattleDataSort,
-    label: String,
-}
-impl PartialEq for AutoBattleDataSortChoice {
-    fn eq(&self, other: &Self) -> bool {
-        self.sort == other.sort
-    }
-}
-impl std::fmt::Display for AutoBattleDataSortChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
     }
 }
 
@@ -1197,7 +1238,7 @@ pub fn view<'a>(
     if folder_editing && active == Tab::Folder {
         let editor = render_folder_edit(lang, loaded, state);
         return column![tab_pane, editor]
-            .spacing(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
             .into();
@@ -1205,7 +1246,7 @@ pub fn view<'a>(
     if navicust_editing && active == Tab::Navi {
         let editor = render_navicust_edit(lang, loaded, state);
         return column![tab_pane, editor]
-            .spacing(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
             .into();
@@ -1213,7 +1254,7 @@ pub fn view<'a>(
     if patch_cards_editing && active == Tab::PatchCards {
         let editor = render_patch_cards_edit(lang, loaded, state);
         return column![tab_pane, editor]
-            .spacing(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
             .into();
@@ -1221,7 +1262,7 @@ pub fn view<'a>(
     if auto_battle_data_editing && active == Tab::AutoBattleData {
         let editor = render_auto_battle_data_edit(lang, loaded, state);
         return column![tab_pane, editor]
-            .spacing(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
             .into();
@@ -1232,7 +1273,7 @@ pub fn view<'a>(
     if active == Tab::Cover {
         let cover = render_cover::<Action>(lang, loaded);
         return column![tab_pane, cover]
-            .spacing(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
             .into();
@@ -1251,7 +1292,7 @@ pub fn view<'a>(
     // on tab changes.
     let body_scrollable = scrollable(body).id(state.body_scroll_id.clone()).width(Fill);
     column![tab_pane, body_scrollable]
-        .spacing(widgets::PANE_GAP)
+        .spacing(style::PANE_GAP)
         .width(Fill)
         .into()
 }
@@ -1709,7 +1750,7 @@ fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Elem
         .align_y(iced::alignment::Vertical::Center)
         // Extra breathing room above/below the logo(s); standard
         // horizontal inset.
-        .padding([crate::widgets::PANE_PADDING + 24.0, crate::widgets::PANE_PADDING + 24.0])
+        .padding([crate::style::PANE_PADDING + 24.0, crate::style::PANE_PADDING + 24.0])
         .style(crate::widgets::pane)
         .into()
 }
@@ -2069,20 +2110,15 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     );
     // "Folder" label, then a smaller count that turns red while the
     // folder is short of the 30 chips a legal folder needs.
-    let count = text(t!(
-        lang,
-        "folder-edit-count",
-        count = filled as i64,
-        limit = MAX_FOLDER_CHIPS
-    ))
-    .size(TEXT_CAPTION)
-    .style(move |theme: &iced::Theme| iced::widget::text::Style {
-        color: Some(if filled < MAX_FOLDER_CHIPS {
-            theme.palette().danger
-        } else {
-            muted_color(theme)
-        }),
-    });
+    let count = limit_caption(
+        t!(
+            lang,
+            "folder-edit-count",
+            count = filled as i64,
+            limit = MAX_FOLDER_CHIPS
+        ),
+        filled < MAX_FOLDER_CHIPS,
+    );
     let header_row = row![
         text(t!(lang, "folder-edit-folder")).size(TEXT_BODY),
         count,
@@ -2095,88 +2131,36 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
     // their caps (red when over) plus the Regular/Tag memory budgets.
     let stats_row = {
         let mut r = row![].spacing(12).align_y(Alignment::Center);
-        if let Some(limit) = limits.navi_limit {
-            let navi = text(t!(
-                lang,
-                "folder-edit-navi",
-                used = usage.navi as i64,
-                limit = limit as i64
-            ))
-            .size(TEXT_CAPTION)
-            .style({
-                let over = usage.navi > limit;
-                move |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(if over {
-                        theme.palette().danger
-                    } else {
-                        muted_color(theme)
-                    }),
-                }
-            });
-            r = r.push(navi);
-        }
-
-        if let Some(limit) = limits.mega_limit {
-            let mega = text(t!(
-                lang,
-                "folder-edit-mega",
-                used = usage.mega as i64,
-                limit = limit as i64
-            ))
-            .size(TEXT_CAPTION)
-            .style({
-                let over = usage.mega > limit;
-                move |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(if over {
-                        theme.palette().danger
-                    } else {
-                        muted_color(theme)
-                    }),
-                }
-            });
-            r = r.push(mega);
-        }
-
-        if let Some(limit) = limits.giga_limit {
-            let giga = text(t!(
-                lang,
-                "folder-edit-giga",
-                used = usage.giga as i64,
-                limit = limit as i64
-            ))
-            .size(TEXT_CAPTION)
-            .style({
-                let over = usage.giga > limit;
-                move |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(if over {
-                        theme.palette().danger
-                    } else {
-                        muted_color(theme)
-                    }),
-                }
-            });
-            r = r.push(giga);
-        }
-
-        if let Some(limit) = limits.dark_limit {
-            let dark = text(t!(
-                lang,
-                "folder-edit-dark",
-                used = usage.dark as i64,
-                limit = limit as i64
-            ))
-            .size(TEXT_CAPTION)
-            .style({
-                let over = usage.dark > limit;
-                move |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(if over {
-                        theme.palette().danger
-                    } else {
-                        muted_color(theme)
-                    }),
-                }
-            });
-            r = r.push(dark);
+        // Per-class usage vs cap, red when over. Labels are resolved
+        // up front so every `t!` key stays a literal.
+        let class_stats = [
+            limits.navi_limit.map(|l| {
+                (
+                    t!(lang, "folder-edit-navi", used = usage.navi as i64, limit = l as i64),
+                    usage.navi > l,
+                )
+            }),
+            limits.mega_limit.map(|l| {
+                (
+                    t!(lang, "folder-edit-mega", used = usage.mega as i64, limit = l as i64),
+                    usage.mega > l,
+                )
+            }),
+            limits.giga_limit.map(|l| {
+                (
+                    t!(lang, "folder-edit-giga", used = usage.giga as i64, limit = l as i64),
+                    usage.giga > l,
+                )
+            }),
+            limits.dark_limit.map(|l| {
+                (
+                    t!(lang, "folder-edit-dark", used = usage.dark as i64, limit = l as i64),
+                    usage.dark > l,
+                )
+            }),
+        ];
+        for (label, over) in class_stats.into_iter().flatten() {
+            r = r.push(limit_caption(label, over));
         }
         if let Some(reg) = limits.reg_memory {
             r = r.push(
@@ -2195,11 +2179,8 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         r
     };
     let header_col = column![header_row, stats_row].spacing(4);
-    let folder_header = container(header_col).width(Fill).padding([8, 12]);
-    let folder_pane = container(column![folder_header, scrollable(folder_list).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    let folder_header = container(header_col).width(Fill).padding(style::HEADER_PADDING);
+    let folder_pane = editor_pane(folder_header, folder_list);
 
     // ----- Right pane: the chip library -----
     let chips_have_mb = loaded.assets.chips_have_mb();
@@ -2216,49 +2197,17 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, addable));
         shown += 1;
     }
-    let filter_input = text_input(&t!(lang, "folder-edit-search"), &edit.library_filter)
-        .on_input(Action::LibraryFilterChanged)
-        .padding([5, 10])
-        .size(TEXT_BODY)
-        .width(Fill)
-        .style(widgets::chunky_text_input);
-    let sort_options: Vec<LibrarySortChoice> = LibrarySort::ALL
-        .iter()
-        .map(|&sort| LibrarySortChoice {
-            sort,
-            label: sort.label(lang),
-        })
-        .collect();
-    let sort_selected = sort_options.iter().find(|c| c.sort == state.library_sort).cloned();
-    let sort_pick = pick_list(sort_options, sort_selected, |c: LibrarySortChoice| {
-        Action::LibrarySortChanged(c.sort)
-    })
-    .padding([5, 10])
-    .text_size(TEXT_BODY)
-    .style(widgets::chunky_pick_list);
-    let lib_header = container(
-        row![
-            filter_input,
-            text(t!(lang, "save-edit-sort"))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            sort_pick,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding([8, 12]);
-    let library_pane = container(column![lib_header, scrollable(lib_list).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
-
-    row![folder_pane, library_pane]
-        .spacing(widgets::PANE_GAP)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let lib_header = library_header(
+        lang,
+        t!(lang, "folder-edit-search"),
+        &edit.library_filter,
+        Action::LibraryFilterChanged,
+        &LibrarySort::ALL,
+        state.library_sort,
+        LibrarySort::label,
+        Action::LibrarySortChanged,
+    );
+    editor_panes(folder_pane, editor_pane(lib_header, lib_list))
 }
 
 /// The palette thumbnail for part `id` at orientation `(rot, compressed)`.
@@ -2426,7 +2375,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         .align_y(Alignment::Center),
     )
     .width(Fill)
-    .padding([8, 12]);
+    .padding(style::HEADER_PADDING);
 
     let held_opt = edit.held_part;
 
@@ -2499,7 +2448,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
             .align_y(Alignment::Center);
         let selected = held_opt.map_or(false, |h| h.id == id);
         let mut pick = button(content)
-            .padding([6, 10])
+            .padding(style::ROW_PADDING)
             .width(Fill)
             .style(widgets::list_item(selected, row_idx));
         if !at_cap {
@@ -2507,39 +2456,16 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         }
         palette = palette.push(pick);
     }
-    let filter_input = text_input(&t!(lang, "navicust-edit-search"), &edit.navicust_filter)
-        .on_input(Action::NavicustFilterChanged)
-        .padding([5, 10])
-        .size(TEXT_BODY)
-        .width(Fill)
-        .style(widgets::chunky_text_input);
-    let sort_options: Vec<NavicustSortChoice> = NavicustSort::ALL
-        .iter()
-        .map(|&sort| NavicustSortChoice {
-            sort,
-            label: sort.label(lang),
-        })
-        .collect();
-    let sort_selected = sort_options.iter().find(|c| c.sort == state.navicust_sort).cloned();
-    let sort_pick = pick_list(sort_options, sort_selected, |c: NavicustSortChoice| {
-        Action::NavicustSortChanged(c.sort)
-    })
-    .padding([5, 10])
-    .text_size(TEXT_BODY)
-    .style(widgets::chunky_pick_list);
-    let parts_header = container(
-        row![
-            filter_input,
-            text(t!(lang, "save-edit-sort"))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            sort_pick,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding([8, 12]);
+    let parts_header = library_header(
+        lang,
+        t!(lang, "navicust-edit-search"),
+        &edit.navicust_filter,
+        Action::NavicustFilterChanged,
+        &NavicustSort::ALL,
+        state.navicust_sort,
+        NavicustSort::label,
+        Action::NavicustSortChanged,
+    );
 
     // Left pane: mirrors the read-only Navi view — the grid with the
     // installed ("picked") parts listed below it — and fills/expands to
@@ -2551,22 +2477,9 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
         grid_inner = grid_inner.push(parts);
     }
-    let grid_pane = container(column![grid_header, scrollable(grid_inner).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
 
-    // Right pane: the editing palette, filling the remaining width.
-    let palette_pane = container(column![parts_header, scrollable(palette).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
-
-    row![grid_pane, palette_pane]
-        .spacing(widgets::PANE_GAP)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    // Grid on the left, the editing palette filling the remaining width.
+    editor_panes(editor_pane(grid_header, grid_inner), editor_pane(parts_header, palette))
 }
 
 /// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
@@ -3365,7 +3278,7 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
             )
             .width(Fill)
             .align_x(Alignment::Center)
-            .padding(crate::widgets::PANE_PADDING)
+            .padding(crate::style::PANE_PADDING)
             .style(crate::widgets::pane)
             .into()
         }
@@ -3539,7 +3452,7 @@ fn render_navicust<M: 'static>(
 
     let _ = (cols, rows_n);
     container(content)
-        .padding(crate::widgets::PANE_PADDING)
+        .padding(crate::style::PANE_PADDING)
         .style(crate::widgets::pane)
         .into()
 }
@@ -3563,31 +3476,24 @@ fn render_patch_cards<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) ->
                     .and_then(|c| c.name())
                     .unwrap_or_else(|| format!("#{}", card.id));
                 let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-                let effects: Vec<_> = info.as_ref().map(|c| c.effects()).unwrap_or_default();
-
-                let name_text = patch_card_name(name, card.enabled);
-                let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style),].spacing(2);
-
-                let mut ability_col = column![].spacing(2);
-                for e in effects.iter().filter(|e| e.is_ability) {
-                    ability_col = ability_col.push(effect_badge(e, card.enabled));
-                }
-                let mut bug_col = column![].spacing(2);
-                for e in effects.iter().filter(|e| !e.is_ability) {
-                    bug_col = bug_col.push(effect_badge(e, card.enabled));
-                }
+                let [name_cell, ability_cell, bug_cell] =
+                    patch_card56_cells::<M>(loaded, &name, mb, card.enabled, card.id);
 
                 let row = row![
                     text(format!("{:>2}", i + 1))
                         .size(TEXT_CAPTION)
                         .width(Length::Fixed(24.0)),
-                    container(name_col).width(Length::Fill),
-                    container(ability_col).width(Length::Fixed(180.0)),
-                    container(bug_col).width(Length::Fixed(180.0)),
+                    name_cell,
+                    ability_cell,
+                    bug_cell,
                 ]
                 .spacing(8)
                 .align_y(Alignment::Start);
-                list = list.push(container(row).padding([6, 10]).style(crate::widgets::zebra_row(i)));
+                list = list.push(
+                    container(row)
+                        .padding(style::ROW_PADDING)
+                        .style(crate::widgets::zebra_row(i)),
+                );
             }
         }
         tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
@@ -3700,17 +3606,23 @@ fn patch_card_name<'a, M: 'a>(name: String, enabled: bool) -> Element<'a, M> {
 /// a vertical stack of [`effect_badge`]s). Greyed when `enabled` is false.
 /// Callers wrap these with a leading cell (index / add button) and, for the
 /// registered list, trailing edit controls.
-fn patch_card56_cells<'a>(loaded: &Loaded, name: &str, mb: u8, enabled: bool, id: usize) -> [Element<'a, Action>; 3] {
+fn patch_card56_cells<'a, M: 'static>(
+    loaded: &Loaded,
+    name: &str,
+    mb: u8,
+    enabled: bool,
+    id: usize,
+) -> [Element<'a, M>; 3] {
     let effects = loaded.assets.patch_card56(id).map(|c| c.effects()).unwrap_or_default();
     let name_text = patch_card_name(name.to_string(), enabled);
     let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style)].spacing(2);
     let mut ability_col = column![].spacing(2);
     for e in effects.iter().filter(|e| e.is_ability) {
-        ability_col = ability_col.push(effect_badge::<Action>(e, enabled));
+        ability_col = ability_col.push(effect_badge::<M>(e, enabled));
     }
     let mut bug_col = column![].spacing(2);
     for e in effects.iter().filter(|e| !e.is_ability) {
-        bug_col = bug_col.push(effect_badge::<Action>(e, enabled));
+        bug_col = bug_col.push(effect_badge::<M>(e, enabled));
     }
     [
         container(name_col).width(Length::Fill).into(),
@@ -3801,7 +3713,7 @@ fn patch_card56_library_row<'a>(
     // doubles as the palette's "click me" affordance.
     let mut b = button(row)
         .width(Fill)
-        .padding([6, 10])
+        .padding(style::ROW_PADDING)
         .style(crate::widgets::list_item(false, row_idx));
     if !list_full {
         b = b.on_press(Action::AddPatchCard56 { id });
@@ -3884,20 +3796,15 @@ fn render_patch_card56s_edit<'a>(
     );
     // MB total turns red if it somehow exceeds the limit (e.g. a save
     // imported over-budget); the editor itself never lets it go over.
-    let mb_text = text(t!(
-        lang,
-        "patch-card-edit-mb",
-        mb = enabled_mb as i64,
-        limit = MAX_PATCH_CARD56_MB
-    ))
-    .size(TEXT_CAPTION)
-    .style(move |theme: &iced::Theme| iced::widget::text::Style {
-        color: Some(if enabled_mb > MAX_PATCH_CARD56_MB {
-            theme.palette().danger
-        } else {
-            muted_color(theme)
-        }),
-    });
+    let mb_text = limit_caption(
+        t!(
+            lang,
+            "patch-card-edit-mb",
+            mb = enabled_mb as i64,
+            limit = MAX_PATCH_CARD56_MB
+        ),
+        enabled_mb > MAX_PATCH_CARD56_MB,
+    );
     let list_header = container(
         row![
             text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),
@@ -3912,11 +3819,8 @@ fn render_patch_card56s_edit<'a>(
         .align_y(Alignment::Center),
     )
     .width(Fill)
-    .padding([8, 12]);
-    let list_pane = container(column![list_header, scrollable(list_col).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    .padding(style::HEADER_PADDING);
+    let list_pane = editor_pane(list_header, list_col);
 
     // ----- Right pane: the card library -----
     let filter = edit.patch_card56_filter.to_lowercase();
@@ -3933,49 +3837,17 @@ fn render_patch_card56s_edit<'a>(
         lib_col = lib_col.push(patch_card56_library_row(loaded, id, name, mb, shown, list_full));
         shown += 1;
     }
-    let filter_input = text_input(&t!(lang, "patch-card-edit-search"), &edit.patch_card56_filter)
-        .on_input(Action::PatchCard56FilterChanged)
-        .padding([5, 10])
-        .size(TEXT_BODY)
-        .width(Fill)
-        .style(widgets::chunky_text_input);
-    let sort_options: Vec<PatchCard56SortChoice> = PatchCard56Sort::ALL
-        .iter()
-        .map(|&sort| PatchCard56SortChoice {
-            sort,
-            label: sort.label(lang),
-        })
-        .collect();
-    let sort_selected = sort_options.iter().find(|c| c.sort == state.patch_card56_sort).cloned();
-    let sort_pick = pick_list(sort_options, sort_selected, |c: PatchCard56SortChoice| {
-        Action::PatchCard56SortChanged(c.sort)
-    })
-    .padding([5, 10])
-    .text_size(TEXT_BODY)
-    .style(widgets::chunky_pick_list);
-    let lib_header = container(
-        row![
-            filter_input,
-            text(t!(lang, "save-edit-sort"))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            sort_pick,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding([8, 12]);
-    let library_pane = container(column![lib_header, scrollable(lib_col).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
-
-    row![list_pane, library_pane]
-        .spacing(widgets::PANE_GAP)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let lib_header = library_header(
+        lang,
+        t!(lang, "patch-card-edit-search"),
+        &edit.patch_card56_filter,
+        Action::PatchCard56FilterChanged,
+        &PatchCard56Sort::ALL,
+        state.patch_card56_sort,
+        PatchCard56Sort::label,
+        Action::PatchCard56SortChanged,
+    );
+    editor_panes(list_pane, editor_pane(lib_header, lib_col))
 }
 
 // ---------- BN4 patch cards ----------
@@ -4011,7 +3883,7 @@ fn patch_card4_slot_row<'a>(
         None => Action::RemovePatchCard4 { slot },
     })
     .width(Fill)
-    .padding([5, 10])
+    .padding(style::CONTROL_PADDING)
     .text_size(TEXT_BODY)
     .style(widgets::chunky_pick_list);
 
@@ -4117,7 +3989,7 @@ fn render_patch_card4s_edit<'a>(
         .align_y(Alignment::Center),
     )
     .width(Fill)
-    .padding([8, 12]);
+    .padding(style::HEADER_PADDING);
 
     container(column![header, scrollable(rows).height(Fill).width(Fill)])
         .width(Fill)
@@ -4170,7 +4042,7 @@ fn abd_grouped_section_rows<M: 'static>(
     runs: &[(Option<usize>, usize)],
     chips_have_mb: bool,
 ) -> Element<'static, M> {
-    let title_el = container(text(title).size(TEXT_BODY)).padding([8, 12]);
+    let title_el = container(text(title).size(TEXT_BODY)).padding(style::HEADER_PADDING);
     let mut col = column![title_el, Space::new().height(4)].spacing(1);
     let last_idx = runs.len().saturating_sub(1);
     for (idx, (id, count)) in runs.iter().enumerate() {
@@ -4209,7 +4081,7 @@ fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &Loade
 
     // Each section becomes its own pane so the outer scrollable in `view`
     // shows them as distinct demarcated regions.
-    let mut col = column![].spacing(crate::widgets::PANE_GAP).width(Fill);
+    let mut col = column![].spacing(crate::style::PANE_GAP).width(Fill);
     for (title, runs) in abd_grouped_sections(lang, &grouped) {
         let rows = abd_grouped_section_rows::<M>(loaded, title, &runs, chips_have_mb);
         col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
@@ -4389,7 +4261,12 @@ fn render_auto_battle_data_edit<'a>(
     let sections = abd_grouped_sections(lang, &grouped);
     let mut deck = column![].spacing(1).padding(0);
     for (title, runs) in &sections {
-        deck = deck.push(abd_grouped_section_rows::<Action>(loaded, title.clone(), runs, chips_have_mb));
+        deck = deck.push(abd_grouped_section_rows::<Action>(
+            loaded,
+            title.clone(),
+            runs,
+            chips_have_mb,
+        ));
     }
     // Distinct chips currently contributing to the deck (runs repeat the top
     // chips, so a raw slot count would overstate it).
@@ -4420,11 +4297,8 @@ fn render_auto_battle_data_edit<'a>(
         .align_y(Alignment::Center),
     )
     .width(Fill)
-    .padding([8, 12]);
-    let deck_pane = container(column![deck_header, scrollable(deck).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
+    .padding(style::HEADER_PADDING);
+    let deck_pane = editor_pane(deck_header, deck);
 
     // ----- Right pane: the chip library with editable use counts -----
     let mut lib = column![].spacing(1).padding(0);
@@ -4451,58 +4325,23 @@ fn render_auto_battle_data_edit<'a>(
             row_idx,
         ));
     }
-    let filter_input = text_input(&t!(lang, "folder-edit-search"), &edit.auto_battle_data_filter)
-        .on_input(Action::AutoBattleDataFilterChanged)
-        .padding([5, 10])
-        .size(TEXT_BODY)
-        .width(Fill)
-        .style(widgets::chunky_text_input);
-    let sort_options: Vec<AutoBattleDataSortChoice> = AutoBattleDataSort::ALL
-        .iter()
-        .map(|&sort| AutoBattleDataSortChoice {
-            sort,
-            label: sort.label(lang),
-        })
-        .collect();
-    let sort_selected = sort_options
-        .iter()
-        .find(|c| c.sort == state.auto_battle_data_sort)
-        .cloned();
-    let sort_pick = pick_list(sort_options, sort_selected, |c: AutoBattleDataSortChoice| {
-        Action::AutoBattleDataSortChanged(c.sort)
-    })
-    .padding([5, 10])
-    .text_size(TEXT_BODY)
-    .style(widgets::chunky_pick_list);
-    let lib_header = container(
-        row![
-            filter_input,
-            text(t!(lang, "save-edit-sort"))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            sort_pick,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding([8, 12]);
-    let library_pane = container(column![lib_header, scrollable(lib).height(Fill).width(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .style(widgets::pane);
-
-    row![deck_pane, library_pane]
-        .spacing(widgets::PANE_GAP)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let lib_header = library_header(
+        lang,
+        t!(lang, "folder-edit-search"),
+        &edit.auto_battle_data_filter,
+        Action::AutoBattleDataFilterChanged,
+        &AutoBattleDataSort::ALL,
+        state.auto_battle_data_sort,
+        AutoBattleDataSort::label,
+        Action::AutoBattleDataSortChanged,
+    );
+    editor_panes(deck_pane, editor_pane(lib_header, lib))
 }
 
 fn placeholder<M: 'static>(msg: String) -> Element<'static, M> {
     container(text(msg).size(TEXT_BODY))
         .width(Fill)
-        .padding(crate::widgets::PANE_PADDING)
+        .padding(crate::style::PANE_PADDING)
         .style(crate::widgets::pane)
         .into()
 }

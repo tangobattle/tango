@@ -91,8 +91,8 @@ pub fn trans_flag_stops() -> [(f32, iced::Color); 5] {
 /// so READMEs / the About panel match the rest of the UI.
 pub fn markdown_style(theme: &Theme) -> iced::widget::markdown::Style {
     let mut style = iced::widget::markdown::Style::from(theme);
-    style.font = crate::app::DEFAULT_FONT;
-    style.inline_code_font = crate::app::MONOSPACE_FONT;
-    style.code_block_font = crate::app::MONOSPACE_FONT;
+    style.font = crate::style::DEFAULT_FONT;
+    style.inline_code_font = crate::style::MONOSPACE_FONT;
+    style.code_block_font = crate::style::MONOSPACE_FONT;
     style
 }

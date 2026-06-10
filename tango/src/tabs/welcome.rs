@@ -1,7 +1,7 @@
-use crate::app::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::i18n::{t, SUPPORTED_LANGS};
-use crate::tabs::settings::labeled;
+use crate::style::{PRIMARY_PADDING, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_DISPLAY, TEXT_TITLE};
 use crate::widgets;
+use crate::widgets::labeled;
 use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;

@@ -1,7 +1,8 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
-use crate::i18n::t;
-use crate::widgets;
+use crate::app::Scanners;
 use crate::game;
+use crate::i18n::t;
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text};
 use iced::{Alignment, Element, Fill, Length};
@@ -150,6 +151,28 @@ impl PatchesState {
     ) -> Element<'a, Message> {
         let patches = scanners.patches.read();
 
+        let top = self.top_strip(lang, rescanning);
+        let left = self.patch_list(&patches, config);
+        let right: Element<'_, Message> =
+            if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
+                self.patch_detail(lang, config, name, patch)
+            } else {
+                container(text(t!(lang, "patches-select-prompt")).size(TEXT_BODY))
+                    .center(Fill)
+                    .style(widgets::pane)
+                    .into()
+            };
+
+        column![top, row![left, right].spacing(style::PANE_GAP).height(Fill),]
+            .spacing(style::PANE_GAP)
+            .padding(style::PANE_GAP)
+            .height(Fill)
+            .into()
+    }
+
+    /// Top strip: the search filter, the in-flight / failed update
+    /// status, and the update + rescan buttons.
+    fn top_strip<'a>(&'a self, lang: &'a LanguageIdentifier, rescanning: bool) -> Element<'a, Message> {
         let update_msg = if self.updating { None } else { Some(Message::Update) };
 
         // Search input replaces the "Installed: N" label. The
@@ -191,11 +214,21 @@ impl PatchesState {
                 STANDARD_PADDING,
             ));
 
-        let top = container(top_row)
-            .padding(widgets::PANE_PADDING)
+        container(top_row)
+            .padding(style::PANE_PADDING)
             .width(Fill)
-            .style(widgets::pane);
+            .style(widgets::pane)
+            .into()
+    }
 
+    /// Left sidebar: the searchable patch list, favorites first
+    /// (with a leading gold star — indicator only; the toggle lives
+    /// in the detail header).
+    fn patch_list<'a>(
+        &'a self,
+        patches: &crate::patch::PatchMap,
+        config: &crate::config::Config,
+    ) -> Element<'a, Message> {
         // Apply the search filter case-insensitively against both
         // the patch name (e.g. `bn6-foo`) and human title.
         let query = self.search.trim().to_lowercase();
@@ -216,9 +249,6 @@ impl PatchesState {
         for (idx, (name, patch)) in ordered_patches.iter().enumerate() {
             let selected = self.selected.as_deref() == Some(name.as_str());
             let is_fav = config.favorite_patches.contains(*name);
-            // Title row: title text with a leading filled gold
-            // star for favorites. Indicator only — the toggle
-            // lives in the detail header.
             let title_row: Element<'_, Message> = if is_fav {
                 row![
                     text("\u{2605}")
@@ -248,190 +278,188 @@ impl PatchesState {
                     ]
                     .spacing(2),
                 )
-                .padding([6, 10])
+                .padding(style::ROW_PADDING)
                 .width(Fill)
                 .style(widgets::list_item(selected, idx))
                 .on_press(Message::Selected((*name).clone())),
             );
         }
-        let left = container(scrollable(list).height(Fill))
+        container(scrollable(list).height(Fill))
             .width(Length::Fixed(280.0))
             .height(Fill)
-            .style(widgets::pane);
+            .style(widgets::pane)
+            .into()
+    }
 
-        let right: Element<_> = if let Some(patch) = self.selected.as_ref().and_then(|n| patches.get(n)) {
-            let mut versions: Vec<semver::Version> = patch.versions.keys().cloned().collect();
-            versions.sort_by(|a, b| b.cmp(a));
-            let selected_version = self
-                .version
-                .clone()
-                .filter(|v| patch.versions.contains_key(v))
-                .or_else(|| versions.first().cloned());
+    /// Right panel: the selected patch's header (favorite toggle,
+    /// title, version picker, open-folder), its key:value details,
+    /// and the scrollable markdown README beneath.
+    fn patch_detail<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        config: &crate::config::Config,
+        name: &str,
+        patch: &crate::patch::Patch,
+    ) -> Element<'a, Message> {
+        let mut versions: Vec<semver::Version> = patch.versions.keys().cloned().collect();
+        versions.sort_by(|a, b| b.cmp(a));
+        let selected_version = self
+            .version
+            .clone()
+            .filter(|v| patch.versions.contains_key(v))
+            .or_else(|| versions.first().cloned());
 
-            let version_info = selected_version.as_ref().and_then(|v| patch.versions.get(v)).cloned();
+        let version_info = selected_version.as_ref().and_then(|v| patch.versions.get(v)).cloned();
 
-            let supported_games_str = version_info
-                .as_ref()
-                .map(|v| {
-                    let mut names: Vec<String> =
-                        v.supported_games.iter().map(|g| game::display_name(lang, *g)).collect();
-                    names.sort();
-                    if names.is_empty() {
-                        "—".to_string()
-                    } else {
-                        names.join(", ")
-                    }
-                })
-                .unwrap_or_else(|| "—".to_string());
-
-            let netplay_compat = version_info
-                .as_ref()
-                .map(|v| v.netplay_compatibility.clone())
-                .unwrap_or_default();
-
-            // Favorite toggle lives in the detail header, styled
-            // as a flat icon-only affordance so it reads as a
-            // toggle indicator rather than a CTA. State is carried
-            // entirely by the glyph + color: filled gold "★" when
-            // favorite, hollow muted "☆" when not.
-            let is_fav = config.favorite_patches.contains(self.selected.as_ref().unwrap());
-            let favorite_toggle = {
-                let label = if is_fav {
-                    t!(lang, "patches-unfavorite")
+        let supported_games_str = version_info
+            .as_ref()
+            .map(|v| {
+                let mut names: Vec<String> = v.supported_games.iter().map(|g| game::display_name(lang, *g)).collect();
+                names.sort();
+                if names.is_empty() {
+                    "—".to_string()
                 } else {
-                    t!(lang, "patches-favorite")
-                };
-                let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
-                let star = text(glyph)
-                    .size(TEXT_TITLE)
-                    .style(move |theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(if is_fav {
-                            FAVORITE_GOLD
-                        } else {
-                            theme.extended_palette().background.weak.text
-                        }),
-                    });
-                let btn = button(star)
-                    .padding([4, 6])
-                    .style(widgets::flat)
-                    .on_press(Message::ToggleFavorite(self.selected.clone().unwrap()));
-                iced::widget::tooltip(
-                    btn,
-                    container(text(label).size(TEXT_CAPTION))
-                        .padding(6)
-                        .style(widgets::tooltip_chrome),
-                    iced::widget::tooltip::Position::Bottom,
-                )
-                .gap(4)
-            };
+                    names.join(", ")
+                }
+            })
+            .unwrap_or_else(|| "—".to_string());
 
-            // Title in a Fill container so a long patch name takes
-            // the leftover space and wraps naturally instead of
-            // squashing the version picker / folder button on
-            // the right. Default `Wrapping::Word` keeps it
-            // readable across multiple lines if it has to.
-            let header = row![
-                favorite_toggle,
-                container(text(patch.title.clone()).size(TEXT_TITLE))
-                    .padding([4, 0])
-                    .width(Fill),
-                pick_list(versions, selected_version, Message::VersionSelected)
-                    .padding(STANDARD_PADDING)
-                    .style(widgets::chunky_pick_list),
-                widgets::icon_button(
-                    Icon::FolderOpen,
-                    t!(lang, "patches-open-folder"),
-                    Message::OpenFolder(patch.path.clone()),
-                    STANDARD_PADDING,
-                ),
-            ]
-            .spacing(8)
-            // Top-align so the action buttons stay anchored when
-            // a long title wraps to multiple lines (Center would
-            // re-center them as the title grows).
-            .align_y(Alignment::Start);
+        let netplay_compat = version_info
+            .as_ref()
+            .map(|v| v.netplay_compatibility.clone())
+            .unwrap_or_default();
 
-            // Single key:value row helper — muted label, plain value,
-            // so the readable density matches the rest of the UI's
-            // caption rows (e.g. save list metadata).
-            let detail_row = |label: String, value: String| -> Element<'_, Message> {
-                row![
-                    text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                    text(value).size(TEXT_CAPTION),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center)
-                .into()
-            };
-
-            let mut details = column![].spacing(3);
-            if !patch.authors.is_empty() {
-                details = details.push(detail_row(
-                    t!(lang, "patches-details-authors"),
-                    patch.authors.join(", "),
-                ));
-            }
-            if let Some(license) = &patch.license {
-                details = details.push(detail_row(t!(lang, "patches-details-license"), license.clone()));
-            }
-            if let Some(source) = &patch.source {
-                details = details.push(detail_row(t!(lang, "patches-details-source"), source.clone()));
-            }
-            details = details.push(detail_row(t!(lang, "patches-details-games"), supported_games_str));
-            if !netplay_compat.is_empty() {
-                details = details.push(detail_row(t!(lang, "patches-netplay-compatibility"), netplay_compat));
-            }
-
-            // Markdown README, parsed and cached in self.readme_items.
-            // Pull the live Theme from `crate::theme::theme_for(config)`
-            // so link color tracks the active palette, and pin
-            // the body text to the app's TEXT_BODY size (default
-            // Settings::from would otherwise use 16 px and make
-            // the README visually heavier than the rest of the
-            // pane).
-            let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
-                text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
+        // Favorite toggle lives in the detail header, styled
+        // as a flat icon-only affordance so it reads as a
+        // toggle indicator rather than a CTA. State is carried
+        // entirely by the glyph + color: filled gold "★" when
+        // favorite, hollow muted "☆" when not.
+        let is_fav = config.favorite_patches.contains(name);
+        let favorite_toggle = {
+            let label = if is_fav {
+                t!(lang, "patches-unfavorite")
             } else {
-                let theme = crate::theme::theme_for(config);
-                let style = crate::theme::markdown_style(&theme);
-                iced::widget::markdown::view(
-                    &self.readme_items,
-                    iced::widget::markdown::Settings::with_text_size(TEXT_BODY, style),
-                )
-                .map(Message::ReadmeLinkClicked)
+                t!(lang, "patches-favorite")
             };
-
-            let meta_pane = container(column![header, details,].spacing(6))
-                .width(Fill)
-                .padding(widgets::PANE_PADDING)
-                .style(widgets::pane);
-            // README is flush with the pane edges (no outer
-            // padding) so the scrollbar hugs the pane; the markdown
-            // body has its own PANE_PADDING inset so the prose
-            // doesn't slam the pane wall. Pane height shrinks to
-            // content but capped by the parent column's remaining
-            // space — long readmes scroll inside, short ones don't
-            // pad to the full page height.
-            let readme_pane = container(scrollable(
-                container(readme_body).padding(widgets::PANE_PADDING).width(Fill),
-            ))
-            .width(Fill)
-            .style(widgets::pane);
-            column![meta_pane, readme_pane]
-                .spacing(widgets::PANE_GAP)
-                .width(Fill)
-                .height(Fill)
-                .into()
-        } else {
-            container(text(t!(lang, "patches-select-prompt")).size(TEXT_BODY))
-                .center(Fill)
-                .style(widgets::pane)
-                .into()
+            let glyph = if is_fav { "\u{2605}" } else { "\u{2606}" };
+            let star = text(glyph)
+                .size(TEXT_TITLE)
+                .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if is_fav {
+                        FAVORITE_GOLD
+                    } else {
+                        theme.extended_palette().background.weak.text
+                    }),
+                });
+            let btn = button(star)
+                .padding([4, 6])
+                .style(widgets::flat)
+                .on_press(Message::ToggleFavorite(name.to_string()));
+            iced::widget::tooltip(
+                btn,
+                container(text(label).size(TEXT_CAPTION))
+                    .padding(6)
+                    .style(widgets::tooltip_chrome),
+                iced::widget::tooltip::Position::Bottom,
+            )
+            .gap(4)
         };
 
-        column![top, row![left, right].spacing(widgets::PANE_GAP).height(Fill),]
-            .spacing(widgets::PANE_GAP)
-            .padding(widgets::PANE_GAP)
+        // Title in a Fill container so a long patch name takes
+        // the leftover space and wraps naturally instead of
+        // squashing the version picker / folder button on
+        // the right. Default `Wrapping::Word` keeps it
+        // readable across multiple lines if it has to.
+        let header = row![
+            favorite_toggle,
+            container(text(patch.title.clone()).size(TEXT_TITLE))
+                .padding([4, 0])
+                .width(Fill),
+            pick_list(versions, selected_version, Message::VersionSelected)
+                .padding(STANDARD_PADDING)
+                .style(widgets::chunky_pick_list),
+            widgets::icon_button(
+                Icon::FolderOpen,
+                t!(lang, "patches-open-folder"),
+                Message::OpenFolder(patch.path.clone()),
+                STANDARD_PADDING,
+            ),
+        ]
+        .spacing(8)
+        // Top-align so the action buttons stay anchored when
+        // a long title wraps to multiple lines (Center would
+        // re-center them as the title grows).
+        .align_y(Alignment::Start);
+
+        // Single key:value row helper — muted label, plain value,
+        // so the readable density matches the rest of the UI's
+        // caption rows (e.g. save list metadata).
+        let detail_row = |label: String, value: String| -> Element<'_, Message> {
+            row![
+                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                text(value).size(TEXT_CAPTION),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+        };
+
+        let mut details = column![].spacing(3);
+        if !patch.authors.is_empty() {
+            details = details.push(detail_row(
+                t!(lang, "patches-details-authors"),
+                patch.authors.join(", "),
+            ));
+        }
+        if let Some(license) = &patch.license {
+            details = details.push(detail_row(t!(lang, "patches-details-license"), license.clone()));
+        }
+        if let Some(source) = &patch.source {
+            details = details.push(detail_row(t!(lang, "patches-details-source"), source.clone()));
+        }
+        details = details.push(detail_row(t!(lang, "patches-details-games"), supported_games_str));
+        if !netplay_compat.is_empty() {
+            details = details.push(detail_row(t!(lang, "patches-netplay-compatibility"), netplay_compat));
+        }
+
+        // Markdown README, parsed and cached in self.readme_items.
+        // Pull the live Theme from `crate::theme::theme_for(config)`
+        // so link color tracks the active palette, and pin
+        // the body text to the app's TEXT_BODY size (default
+        // Settings::from would otherwise use 16 px and make
+        // the README visually heavier than the rest of the
+        // pane).
+        let readme_body: Element<'_, Message> = if self.readme_items.is_empty() {
+            text(t!(lang, "patches-readme-placeholder")).size(TEXT_CAPTION).into()
+        } else {
+            let theme = crate::theme::theme_for(config);
+            let style = crate::theme::markdown_style(&theme);
+            iced::widget::markdown::view(
+                &self.readme_items,
+                iced::widget::markdown::Settings::with_text_size(TEXT_BODY, style),
+            )
+            .map(Message::ReadmeLinkClicked)
+        };
+
+        let meta_pane = container(column![header, details,].spacing(6))
+            .width(Fill)
+            .padding(style::PANE_PADDING)
+            .style(widgets::pane);
+        // README is flush with the pane edges (no outer
+        // padding) so the scrollbar hugs the pane; the markdown
+        // body has its own PANE_PADDING inset so the prose
+        // doesn't slam the pane wall. Pane height shrinks to
+        // content but capped by the parent column's remaining
+        // space — long readmes scroll inside, short ones don't
+        // pad to the full page height.
+        let readme_pane = container(scrollable(
+            container(readme_body).padding(style::PANE_PADDING).width(Fill),
+        ))
+        .width(Fill)
+        .style(widgets::pane);
+        column![meta_pane, readme_pane]
+            .spacing(style::PANE_GAP)
+            .width(Fill)
             .height(Fill)
             .into()
     }

@@ -21,6 +21,7 @@ mod replays;
 mod rom;
 mod rom_overrides;
 mod save;
+mod save_edit;
 mod save_view;
 mod scanner;
 mod scrubber;
@@ -36,6 +37,7 @@ mod widgets;
 
 mod app;
 mod crash_log;
+mod style;
 mod theme;
 
 use app::App;
@@ -270,7 +272,7 @@ fn run_app() -> iced::Result {
         // Same constant the typographic scale + every markdown
         // Settings::with_text_size call uses, so the body text
         // size is in one place.
-        default_text_size: iced::Pixels(app::TEXT_BODY),
+        default_text_size: iced::Pixels(style::TEXT_BODY),
         vsync: false,
         ..iced::Settings::default()
     };
@@ -314,6 +316,6 @@ fn run_app() -> iced::Result {
         // faces, so we can default to the Latin Noto Sans and let
         // CJK / emoji glyphs come from the JP / SC / TC / Emoji
         // fonts above.
-        .default_font(app::DEFAULT_FONT)
+        .default_font(style::DEFAULT_FONT)
         .run()
 }

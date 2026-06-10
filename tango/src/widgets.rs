@@ -6,7 +6,7 @@
 //! come straight from the `lucide-icons` crate — call sites pass
 //! `Icon::Foo` directly.
 
-use crate::app::{TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
+use crate::style::{PANE_GAP, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::{button, container, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
@@ -276,6 +276,47 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     .into()
 }
 
+/// A pick_list option: a value paired with a pre-resolved display
+/// label. The picker renders options via `Display`, which can't reach
+/// the language or any other formatting context, so labels are built
+/// when the option list is constructed. Equality is by value only, so
+/// selection-matching survives label differences (e.g. a favorites
+/// star prefix).
+#[derive(Clone, Debug)]
+pub struct Choice<T> {
+    pub value: T,
+    pub label: String,
+}
+
+impl<T> Choice<T> {
+    pub fn new(value: T, label: impl Into<String>) -> Self {
+        Self {
+            value,
+            label: label.into(),
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for Choice<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl<T> std::fmt::Display for Choice<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// A caption label stacked over a control — the standard "form row"
+/// used by the settings and welcome screens.
+pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
+    sweeten::widget::column![text(label).size(TEXT_CAPTION).style(muted_text_style), ctrl.into(),]
+        .spacing(4)
+        .into()
+}
+
 /// Icon-plus-label button. Icon and label use distinct fonts
 /// (icon = lucide, label = app default), laid out as a row.
 pub fn labeled_icon_button<'a, M: Clone + 'a>(
@@ -436,14 +477,6 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
         }
     }
 }
-
-/// Standard internal padding for [`pane`] containers. Use this on
-/// `.padding(...)` so every demarcation pane has the same gap
-/// between its edge and its content.
-pub const PANE_PADDING: f32 = 12.0;
-/// Standard outer gap (column spacing / row spacing / outer padding)
-/// between sibling panes.
-pub const PANE_GAP: f32 = 8.0;
 
 /// Minimal "pane" demarcation — a barely-perceptible tinted plate
 /// with a small radius and no border or shadow. Used where we used
@@ -968,7 +1001,7 @@ pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style
 /// doesn't shift when toggling between enabled/disabled states.
 pub fn disabled_pick_list<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
     iced::widget::container(iced::widget::text(label.into()))
-        .padding(crate::app::STANDARD_PADDING)
+        .padding(crate::style::STANDARD_PADDING)
         .style(disabled_pick_list_style)
 }
 

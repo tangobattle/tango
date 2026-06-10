@@ -1,5 +1,6 @@
-use crate::app::{Scanners, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
+use crate::app::Scanners;
 use crate::i18n::t;
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::widgets;
 use crate::{config, game, rom, save_view, selection};
 use iced::widget::space::horizontal as horizontal_space;
@@ -16,7 +17,8 @@ use unic_langid::LanguageIdentifier;
 pub enum Message {
     LocalFamilySelected(FamilyOption),
     LocalSaveSelected(SaveOption),
-    LocalPatchSelected(PatchOption),
+    /// Real patch name; empty string is the "no patch" sentinel.
+    LocalPatchSelected(String),
     LocalPatchVersionSelected(semver::Version),
     SaveViewAction(save_view::Action),
     LinkCodeChanged(String),
@@ -164,21 +166,6 @@ impl SaveOption {
 }
 
 impl std::fmt::Display for SaveOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.display)
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct PatchOption {
-    /// Real patch name. Empty string is the "no patch" sentinel.
-    pub name: String,
-    /// Display string. Favorites are prefixed with "★ " so they're
-    /// visually distinct in the dropdown.
-    pub display: String,
-}
-
-impl std::fmt::Display for PatchOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
@@ -471,17 +458,17 @@ impl PlayState {
                 }
                 Some(Effect::SelectionChanged)
             }
-            Message::LocalPatchSelected(p) => {
-                if p.name.is_empty() {
+            Message::LocalPatchSelected(name) => {
+                if name.is_empty() {
                     self.local_patch = None;
                     self.local_patch_version = None;
                 } else {
                     let v = scanners
                         .patches
                         .read()
-                        .get(&p.name)
+                        .get(&name)
                         .and_then(|patch| patch.versions.keys().max().cloned());
-                    self.local_patch = Some(p.name);
+                    self.local_patch = Some(name);
                     self.local_patch_version = v;
                 }
                 if let Some(g) = self.local_game {
@@ -836,7 +823,8 @@ impl PlayState {
                 // pick (Confirm stays disabled until they do).
                 let options = creation_template_options(&config.language, self, scanners);
                 let (game, template) = if options.len() == 1 {
-                    (Some(options[0].game), Some(options[0].raw.clone()))
+                    let (game, raw) = options[0].value.clone();
+                    (Some(game), Some(raw))
                 } else {
                     (None, None)
                 };
@@ -1017,8 +1005,8 @@ impl PlayState {
         // sit OUTSIDE that padding so they remain edge-to-edge
         // bottom bars.
         let inner = column![self.selector_strip(lang, scanners, config, rescanning), save_body,]
-            .spacing(widgets::PANE_GAP)
-            .padding(widgets::PANE_GAP)
+            .spacing(style::PANE_GAP)
+            .padding(style::PANE_GAP)
             .height(Fill);
 
         let mut col = column![].width(Fill).height(Fill);
@@ -1097,44 +1085,16 @@ impl PlayState {
         config: &'a config::Config,
         rescanning: bool,
     ) -> Element<'a, Message> {
-        let roms = scanners.roms.read();
-        let saves = scanners.saves.read();
-
-        // Show every supported family, not just the ones we have a ROM
-        // for, so users can see what tango knows about. sweeten's
-        // `.disabled()` greys out families with no owned ROM; we
-        // stable-sort available families to the top (then own-region
-        // first, then by family string) so the live ones lead.
-        let mut families: Vec<&'static str> = Vec::new();
-        for g in tango_gamedb::GAMES.iter() {
-            let fam = g.family_and_variant().0;
-            if !families.contains(&fam) {
-                families.push(fam);
-            }
-        }
-        let mut family_options: Vec<FamilyOption> = families
-            .iter()
-            .map(|fam| FamilyOption {
-                family: fam,
-                display: game::family_display_name(lang, fam),
-                available: game::games_in_family(fam).any(|g| roms.contains_key(&g)),
-            })
-            .collect();
-        family_options.sort_by(|a, b| {
-            (!a.available)
-                .cmp(&(!b.available))
-                .then_with(|| {
-                    let ar = !game::family_matches_language(lang, a.family);
-                    let br = !game::family_matches_language(lang, b.family);
-                    ar.cmp(&br)
-                })
-                .then_with(|| a.family.cmp(b.family))
-        });
-
+        // Each option builder takes its own short scanner read —
+        // `creation_games`/`templates_for_game` (called from
+        // save_action_buttons and the NewSave branch below) re-read
+        // `scanners.roms` and `scanners.patches`, and `std::sync::RwLock`
+        // doesn't guarantee a same-thread nested read survives a queued
+        // writer, so no guard may be held across the save_row block.
+        let family_options = family_options(lang, scanners);
         let selected_family = self
             .local_family
             .and_then(|fam| family_options.iter().find(|opt| opt.family == fam).cloned());
-
         let game = pick_list(family_options, selected_family, Message::LocalFamilySelected)
             .disabled(|opts: &[FamilyOption]| opts.iter().map(|o| !o.available).collect())
             .placeholder(t!(lang, "play-no-game"))
@@ -1142,19 +1102,81 @@ impl PlayState {
             .width(Length::FillPortion(3))
             .style(widgets::chunky_pick_list);
 
+        let save_options = self.save_options(scanners, config);
+        let selected_save = self
+            .local_save
+            .as_ref()
+            .and_then(|p| save_options.iter().find(|s| &s.path == p).cloned());
+        let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
+            .disabled(|opts: &[SaveOption]| opts.iter().map(|o| !o.available).collect())
+            .placeholder(t!(lang, "play-no-save"))
+            .padding(STANDARD_PADDING)
+            .width(Length::Fill)
+            .style(widgets::chunky_pick_list);
+
+        let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
+        let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
+            Message::LocalPatchSelected(c.value)
+        })
+        .padding(STANDARD_PADDING)
+        .width(Length::FillPortion(2))
+        .style(widgets::chunky_pick_list);
+
+        // No patch selected (or none with matching versions) →
+        // render the shared disabled-dropdown placeholder so the
+        // version slot reads as locked-off instead of an empty
+        // picker users can still click.
+        let version_options = self.version_options(scanners);
+        let version: Element<'_, Message> = if version_options.is_empty() {
+            widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
+                .width(Length::Fixed(100.0))
+                .into()
+        } else {
+            pick_list(
+                version_options,
+                self.local_patch_version.clone(),
+                Message::LocalPatchVersionSelected,
+            )
+            .placeholder(t!(lang, "play-version-placeholder"))
+            .padding(STANDARD_PADDING)
+            .width(Length::Fixed(100.0))
+            .style(widgets::chunky_pick_list)
+            .into()
+        };
+
+        let refresh = widgets::icon_button_maybe(
+            Icon::RefreshCw,
+            t!(lang, "rescan"),
+            (!rescanning).then_some(Message::Rescan),
+            STANDARD_PADDING,
+        );
+
+        let game_row = row![game, patch, version, refresh]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        let save_row = self.save_action_row(lang, scanners, save.into());
+
+        container(column![game_row, save_row].spacing(6))
+            .padding(style::PANE_PADDING)
+            .width(Fill)
+            .style(widgets::pane)
+            .into()
+    }
+
+    /// Every save across the selected family's color variants,
+    /// intermingled. Each save is tagged with the concrete game it
+    /// resolves to and whether that game's ROM is owned (so the row
+    /// can grey out). A path appears under exactly one variant within
+    /// a family, but de-dup defensively. When a patch+version is
+    /// selected, saves whose variant the patch doesn't support are
+    /// hidden — you can't bring them into a patched match. (The picker
+    /// only offers patches that support the *current* variant, so the
+    /// selected save itself is never filtered out.)
+    fn save_options(&self, scanners: &Scanners, config: &config::Config) -> Vec<SaveOption> {
         let saves_path = config.saves_path();
-        // When a patch+version is selected, hide saves whose variant the
-        // patch doesn't support — you can't bring them into a patched
-        // match. Owned set so the patches guard drops before the family
-        // loop (and before the later patch read). The picker only offers
-        // patches that support the *current* variant, so the selected
-        // save itself is never filtered out.
         let patch_supported = patch_supported_games(self, scanners);
-        // Intermingle every save across the selected family's color
-        // variants. Each save is tagged with the concrete game it
-        // resolves to and whether that game's ROM is owned (so the row
-        // can grey out). A path appears under exactly one variant within
-        // a family, but de-dup defensively.
+        let roms = scanners.roms.read();
+        let saves = scanners.saves.read();
         let mut save_options: Vec<SaveOption> = Vec::new();
         if let Some(family) = self.local_family {
             let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
@@ -1193,25 +1215,23 @@ impl PlayState {
             }
             av.len().cmp(&bv.len())
         });
+        save_options
+    }
 
-        let selected_save = self
-            .local_save
-            .as_ref()
-            .and_then(|p| save_options.iter().find(|s| &s.path == p).cloned());
-
-        let save = pick_list(save_options, selected_save, Message::LocalSaveSelected)
-            .disabled(|opts: &[SaveOption]| opts.iter().map(|o| !o.available).collect())
-            .placeholder(t!(lang, "play-no-save"))
-            .padding(STANDARD_PADDING)
-            .width(Length::Fill)
-            .style(widgets::chunky_pick_list);
-
-        let no_patch_label = t!(lang, "play-no-patch");
+    /// Patch picker options (with the "no patch" sentinel first) and
+    /// the currently-selected entry. Shows every patch that targets
+    /// *any* variant in the selected family — not just the
+    /// currently-resolved variant — so the list is stable across save
+    /// switches. Picking a patch the current save can't run deselects
+    /// that save (see LocalPatchSelected). Favorites sort first (and
+    /// get a "★ " label prefix), alphabetical within each group.
+    fn patch_options(
+        &self,
+        lang: &LanguageIdentifier,
+        scanners: &Scanners,
+        config: &config::Config,
+    ) -> (Vec<widgets::Choice<String>>, Option<widgets::Choice<String>>) {
         let patches = scanners.patches.read();
-        // Show every patch that targets *any* variant in the selected
-        // family — not just the currently-resolved variant — so the list
-        // is stable across save switches. Picking a patch the current
-        // save can't run deselects that save (see LocalPatchSelected).
         let family_games: Vec<rom::GameRef> = self
             .local_family
             .map(|f| game::games_in_family(f).collect())
@@ -1225,37 +1245,34 @@ impl PlayState {
             })
             .map(|(n, _)| n.clone())
             .collect();
-        // Favorites first, alphabetical within each group.
         compatible_names.sort_by(|a, b| {
             let fa = config.favorite_patches.contains(a);
             let fb = config.favorite_patches.contains(b);
             fb.cmp(&fa).then_with(|| a.cmp(b))
         });
-        let no_patch_option = PatchOption {
-            name: String::new(),
-            display: no_patch_label.clone(),
-        };
-        let patch_options: Vec<PatchOption> = std::iter::once(no_patch_option.clone())
+        let no_patch_option = widgets::Choice::new(String::new(), t!(lang, "play-no-patch"));
+        let patch_options: Vec<widgets::Choice<String>> = std::iter::once(no_patch_option.clone())
             .chain(compatible_names.into_iter().map(|n| {
                 let display = if config.favorite_patches.contains(&n) {
                     format!("\u{2605} {n}")
                 } else {
                     n.clone()
                 };
-                PatchOption { name: n, display }
+                widgets::Choice::new(n, display)
             }))
             .collect();
         let selected_patch = match self.local_patch.as_ref() {
-            Some(n) => patch_options.iter().find(|o| &o.name == n).cloned(),
+            Some(n) => patch_options.iter().find(|o| &o.value == n).cloned(),
             None => Some(no_patch_option),
         };
-        let patch = pick_list(patch_options, selected_patch, Message::LocalPatchSelected)
-            .padding(STANDARD_PADDING)
-            .width(Length::FillPortion(2))
-            .style(widgets::chunky_pick_list);
+        (patch_options, selected_patch)
+    }
 
-        let version_options: Vec<semver::Version> = self
-            .local_patch
+    /// Versions of the selected patch that support the current game,
+    /// newest first. Empty when no patch is selected.
+    fn version_options(&self, scanners: &Scanners) -> Vec<semver::Version> {
+        let patches = scanners.patches.read();
+        self.local_patch
             .as_ref()
             .and_then(|n| patches.get(n))
             .map(|p| {
@@ -1269,53 +1286,22 @@ impl PlayState {
                 vs.sort_by(|a, b| b.cmp(a));
                 vs
             })
-            .unwrap_or_default();
-        // No patch selected (or none with matching versions) →
-        // render the shared disabled-dropdown placeholder so the
-        // version slot reads as locked-off instead of an empty
-        // picker users can still click.
-        let version: Element<'_, Message> = if version_options.is_empty() {
-            widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
-                .width(Length::Fixed(100.0))
-                .into()
-        } else {
-            pick_list(
-                version_options,
-                self.local_patch_version.clone(),
-                Message::LocalPatchVersionSelected,
-            )
-            .placeholder(t!(lang, "play-version-placeholder"))
-            .padding(STANDARD_PADDING)
-            .width(Length::Fixed(100.0))
-            .style(widgets::chunky_pick_list)
-            .into()
-        };
+            .unwrap_or_default()
+    }
 
-        let refresh = widgets::icon_button_maybe(
-            Icon::RefreshCw,
-            t!(lang, "rescan"),
-            (!rescanning).then_some(Message::Rescan),
-            STANDARD_PADDING,
-        );
-
-        let game_row = row![game, patch, version, refresh]
-            .spacing(8)
-            .align_y(Alignment::Center);
-
-        // Drop every scanner read held above before the save_row block —
-        // `creation_games`/`templates_for_game` (called from
-        // save_action_buttons and the NewSave branch) re-read
-        // `scanners.roms` and `scanners.patches`, and `std::sync::RwLock`
-        // doesn't guarantee a same-thread nested read survives a queued
-        // writer. Nothing below this point uses these guards directly.
-        drop(patches);
-        drop(saves);
-        drop(roms);
-
-        let save_row: Element<'_, Message> = match &self.save_action {
+    /// The strip's second row: the save picker + action buttons at
+    /// rest, or whichever rename / delete / create-from-template form
+    /// is in flight ([`SaveAction`]).
+    fn save_action_row<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        save_picker: Element<'a, Message>,
+    ) -> Element<'a, Message> {
+        match &self.save_action {
             SaveAction::None => {
                 let actions = self.save_action_buttons(lang, scanners);
-                row![save, actions].spacing(8).align_y(Alignment::Center).into()
+                row![save_picker, actions].spacing(8).align_y(Alignment::Center).into()
             }
             SaveAction::Renaming { draft } => row![
                 text_input(&t!(lang, "save-name-placeholder"), draft)
@@ -1372,7 +1358,7 @@ impl PlayState {
                 // user picks color + template in one go.
                 let options = creation_template_options(lang, self, scanners);
                 let selected = match (game, template) {
-                    (Some(g), Some(t)) => options.iter().find(|o| o.game == *g && &o.raw == t).cloned(),
+                    (Some(g), Some(t)) => options.iter().find(|o| o.value.0 == *g && &o.value.1 == t).cloned(),
                     _ => None,
                 };
                 let can_confirm = game.is_some() && template.is_some() && !draft.trim().is_empty();
@@ -1395,11 +1381,13 @@ impl PlayState {
                     .into()
                 };
                 row![
-                    pick_list(options, selected, |o| Message::SaveNewTemplateSelected(o.game, o.raw))
-                        .placeholder(t!(lang, "save-template-pick"))
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(180.0))
-                        .style(widgets::chunky_pick_list),
+                    pick_list(options, selected, |o: widgets::Choice<(rom::GameRef, String)>| {
+                        Message::SaveNewTemplateSelected(o.value.0, o.value.1)
+                    })
+                    .placeholder(t!(lang, "save-template-pick"))
+                    .padding(STANDARD_PADDING)
+                    .width(Length::Fixed(180.0))
+                    .style(widgets::chunky_pick_list),
                     text_input(&t!(lang, "save-name-placeholder"), draft)
                         .on_input(Message::SaveNewDraftChanged)
                         .on_submit(Message::SaveNewConfirm)
@@ -1418,13 +1406,7 @@ impl PlayState {
                 .align_y(Alignment::Center)
                 .into()
             }
-        };
-
-        container(column![game_row, save_row].spacing(6))
-            .padding(widgets::PANE_PADDING)
-            .width(Fill)
-            .style(widgets::pane)
-            .into()
+        }
     }
 
     fn save_action_buttons<'a>(&'a self, lang: &'a LanguageIdentifier, scanners: &'a Scanners) -> Element<'a, Message> {
@@ -1534,7 +1516,7 @@ impl PlayState {
             .align_y(Alignment::Center);
             let mut btn = button(label)
                 .padding(BOTTOM_CTA_PAD)
-                .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
                 .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
             if can_submit {
                 btn = btn.on_press(Message::FightPressed);
@@ -1555,13 +1537,13 @@ impl PlayState {
                 .width(Length::Fill)
                 .style(widgets::chunky_text_input),
         )
-        .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+        .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
         .width(Length::Fill)
         .into();
         let dice_button: Element<'a, Message> = iced::widget::tooltip(
             button(Icon::Dice5.widget().size(BOTTOM_SIZE))
                 .padding(BOTTOM_PAD)
-                .height(Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
                 .style(widgets::neutral)
                 .on_press(Message::LinkCodeRandom),
             container(text(t!(lang, "play-link-code-random")).size(TEXT_CAPTION))
@@ -1715,6 +1697,41 @@ fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
     draft
 }
 
+/// Every supported family — not just the ones we have a ROM for, so
+/// users can see what tango knows about. sweeten's `.disabled()` greys
+/// out families with no owned ROM; available families stable-sort to
+/// the top (then own-region first, then by family string) so the live
+/// ones lead.
+fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
+    let roms = scanners.roms.read();
+    let mut families: Vec<&'static str> = Vec::new();
+    for g in tango_gamedb::GAMES.iter() {
+        let fam = g.family_and_variant().0;
+        if !families.contains(&fam) {
+            families.push(fam);
+        }
+    }
+    let mut family_options: Vec<FamilyOption> = families
+        .iter()
+        .map(|fam| FamilyOption {
+            family: fam,
+            display: game::family_display_name(lang, fam),
+            available: game::games_in_family(fam).any(|g| roms.contains_key(&g)),
+        })
+        .collect();
+    family_options.sort_by(|a, b| {
+        (!a.available)
+            .cmp(&(!b.available))
+            .then_with(|| {
+                let ar = !game::family_matches_language(lang, a.family);
+                let br = !game::family_matches_language(lang, b.family);
+                ar.cmp(&br)
+            })
+            .then_with(|| a.family.cmp(b.family))
+    });
+    family_options
+}
+
 /// The set of games the currently-selected patch+version supports, or
 /// None when no patch (or no version) is selected — meaning "don't
 /// filter". Shared by the save list and the new-save template list so
@@ -1804,7 +1821,7 @@ fn creation_template_options(
     lang: &unic_langid::LanguageIdentifier,
     state: &PlayState,
     scanners: &Scanners,
-) -> Vec<SaveTemplateOption> {
+) -> Vec<widgets::Choice<(rom::GameRef, String)>> {
     let games = creation_games(state, scanners);
     let mut out = Vec::new();
     for g in games {
@@ -1815,7 +1832,7 @@ fn creation_template_options(
             scanners,
         ) {
             for name in tmpls.keys() {
-                out.push(SaveTemplateOption::new(lang, g, name));
+                out.push(save_template_choice(lang, g, name));
             }
         }
     }
@@ -1898,151 +1915,259 @@ fn lobby_view<'a>(
     handoff_pending: bool,
     frame_delay: u32,
 ) -> Element<'a, Message> {
-    // Compact "you / opponent" card — 2 lines max so the lobby
-    // strip can fit in ~220 px without losing the ready button.
-    // `ready` paints a green dot when that side has committed.
-    let side =
-        |label: String, settings: Option<&crate::net::protocol::Settings>, ready: bool| -> Element<'static, Message> {
-            // 14 px dot with a soft primary-tinted glow when the
-            // side is committed — reads as a "ready light" on a
-            // console panel rather than a flat status pip.
-            // Padded so the dot lines up with the nickname row of
-            // the column to its right — the inner side row is
-            // top-aligned (Alignment::Start) so the dot doesn't
-            // drift when the card grows from a 2-line placeholder
-            // to a 3-line populated card.
-            let dot_color = |ready: bool| -> Element<'static, Message> {
-                container(
-                    container(
-                        iced::widget::Space::new()
-                            .width(Length::Fixed(14.0))
-                            .height(Length::Fixed(14.0)),
-                    )
-                    .style(move |theme: &iced::Theme| {
-                        let bg = if ready {
-                            theme.palette().primary
-                        } else {
-                            iced::Color::from_rgb8(0x66, 0x66, 0x66)
-                        };
-                        iced::widget::container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            border: iced::Border {
-                                radius: 7.0.into(),
-                                ..Default::default()
-                            },
-                            shadow: if ready {
-                                iced::Shadow {
-                                    color: iced::Color {
-                                        a: 0.7,
-                                        ..theme.palette().primary
-                                    },
-                                    offset: iced::Vector::new(0.0, 0.0),
-                                    blur_radius: 10.0,
-                                }
-                            } else {
-                                iced::Shadow::default()
-                            },
-                            ..Default::default()
-                        }
-                    }),
-                )
-                .padding(iced::Padding {
-                    top: 20.0,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                })
-                .into()
-            };
-            let Some(settings) = settings else {
-                return container(
-                    row![
-                        dot_color(false),
-                        column![
-                            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                            text(t!(lang, "lobby-waiting"))
-                                .size(TEXT_TITLE)
-                                .style(widgets::muted_text_style),
-                        ]
-                        .spacing(2),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Start),
-                )
-                .width(Length::Fill)
-                .into();
-            };
-            let nickname = settings.nickname.clone();
-            let game_label = settings
-                .game_info
-                .as_ref()
-                .map(|gi| {
-                    let family = gi.family_and_variant.0.as_str();
-                    // Dynamic key (one per gamedb family) — bypass the
-                    // literal-only macro and hit the Fluent loader directly.
-                    use fluent_templates::Loader;
-                    crate::i18n::LOCALES
-                        .try_lookup(lang, &format!("game-{family}"))
-                        .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
-                })
-                .unwrap_or_else(|| t!(lang, "lobby-no-game"));
-            let patch = settings
-                .game_info
-                .as_ref()
-                .and_then(|gi| gi.patch.as_ref())
-                .map(|p| format!(" · {} v{}", p.name, p.version));
-            // Game line: "<game name> · <patch> · <match-type>" packed
-            // onto a single caption row so the card stays 2 lines tall.
-            // Match-type is meaningless without a game (no Game::match_types
-            // table to look the name up against), so omit it then.
-            let mut subline = game_label;
-            if let Some(p) = patch {
-                subline.push_str(&p);
-            }
-            if let Some(gi) = settings.game_info.as_ref() {
-                let mt = crate::game::match_type_name(
-                    lang,
-                    gi.family_and_variant.0.as_str(),
-                    settings.match_type.0,
-                    settings.match_type.1,
-                );
-                subline.push_str(&format!(" · {mt}"));
-            }
-            // Nickname is the marquee — title-sized, primary
-            // tinted when this side is ready so the card lights
-            // up visibly as commitment lands.
-            let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
-                |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().primary),
-                }
-            } else {
-                |_theme: &iced::Theme| iced::widget::text::Style { color: None }
-            };
-            container(
-                row![
-                    dot_color(ready),
-                    column![
-                        text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                        text(nickname).size(TEXT_TITLE).style(nickname_style),
-                        text(subline).size(TEXT_CAPTION),
-                    ]
-                    .spacing(2),
-                ]
-                .spacing(10)
-                .align_y(Alignment::Start),
-            )
-            .width(Length::Fill)
-            .into()
-        };
+    let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
+    // `inert` collapses Failed and handoff-pending — both are
+    // states where the lobby controls are still on screen but
+    // shouldn't accept input (Failed because the connection is
+    // gone, handoff-pending because the match is spinning up
+    // and the connection has been handed to the PvP session).
+    let inert = failed || handoff_pending;
 
-    // Pre-handshake we don't have a ping yet, but we always know
-    // the connection identifier — show that instead of the generic
-    // "Exchanging settings…" placeholder so the user sees the
-    // identifier they're matched on. Streamer privacy mode
-    // suppresses the matchmaking code so a viewer of the stream
-    // can't scrape it off the screen and crash the lobby; direct
-    // ports/addresses are equally sensitive on a public stream, so
-    // hide them too.
+    let header_line = lobby_header_line(lang, lobby, phase, streamer_mode);
+    let (verdict_line, compat_ok) = lobby_verdict(lang, lobby, phase, scanners);
+
+    // Settings stack on the left, Ready CTA floated to the right
+    // of the pane and bottom-aligned against the stack — mirrors
+    // the matchmaking screen's Fight button anchored to the
+    // bottom-right of the hud bar.
+    let mt_picker = lobby_match_type_picker(lang, local_game, lobby, inert);
+    let controls = row![
+        lobby_settings_rows(lang, lobby, mt_picker, frame_delay, inert),
+        lobby_ready_button(lang, lobby, failed, compat_ok, has_save),
+    ]
+    .spacing(12)
+    .align_y(Alignment::End);
+
+    // Leave-lobby (Disconnect) button. Top-right of the header —
+    // out of the way of the verdict line, and visually paired
+    // with the Ready CTA in the bottom-right of the lobby pane
+    // (same right edge, opposite corner). Disabled during the
+    // handoff window so the user can't tear down a lobby whose
+    // PvP session is already being built — clicking Disconnect
+    // there wouldn't actually cancel spawn_pvp, just leave the
+    // user confused when the match view pops up anyway.
+    let leave_button: Element<'a, Message> = {
+        let inner = row![Icon::LogOut.widget(), text(t!(lang, "play-cancel"))]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        let mut btn = button(inner).padding(STANDARD_PADDING).style(widgets::danger_button);
+        if !handoff_pending {
+            btn = btn.on_press(Message::NetplayDisconnect);
+        }
+        btn.into()
+    };
+
+    // Header row: verdict on the left, leave button on the right.
+    let mut header_text_col = column![].spacing(2);
+    if let Some(hl) = header_line {
+        header_text_col = header_text_col.push(hl);
+    }
+    header_text_col = header_text_col.push(verdict_line);
+    let header_row = row![header_text_col, horizontal_space(), leave_button]
+        .spacing(12)
+        .align_y(Alignment::Center);
+
+    // Sides row: you / opponent cards with a wide gap so the
+    // diagonal cut + VS badge from `widgets::vs_splitter` paints
+    // through the middle. The splitter canvas (which also paints
+    // the red/blue half tints) is layered *under* the row.
+    let sides_row = row![
+        lobby_side_card(
+            lang,
+            t!(lang, "play-you"),
+            Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
+            lobby.local_ready,
+        ),
+        lobby_side_card(
+            lang,
+            t!(lang, "play-opponent"),
+            lobby.remote.as_ref(),
+            lobby.remote_ready
+        ),
+    ]
+    .spacing(56)
+    // Top-align so the YOU slot doesn't bounce upward when the
+    // opponent's settings land and their card grows from a 2-line
+    // placeholder to a 3-line filled card.
+    .align_y(Alignment::Start);
+    let matchup_pane = container(
+        iced::widget::Stack::new()
+            .push(container(sides_row).padding(style::PANE_PADDING).width(Fill))
+            .push_under(widgets::vs_splitter()),
+    )
+    .width(Fill)
+    .style(widgets::pane);
+    let controls_pane = container(controls)
+        .padding(style::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane);
+    let header_pane = container(header_row)
+        .padding(style::PANE_PADDING)
+        .width(Fill)
+        .style(widgets::pane);
+    container(
+        column![header_pane, matchup_pane, controls_pane]
+            .spacing(style::PANE_GAP)
+            .padding(style::PANE_GAP),
+    )
+    .width(Fill)
+    .into()
+}
+
+/// Compact "you / opponent" card — 2 lines max so the lobby strip can
+/// fit in ~220 px without losing the ready button. `ready` paints a
+/// green dot when that side has committed.
+fn lobby_side_card(
+    lang: &LanguageIdentifier,
+    label: String,
+    settings: Option<&crate::net::protocol::Settings>,
+    ready: bool,
+) -> Element<'static, Message> {
+    // 14 px dot with a soft primary-tinted glow when the
+    // side is committed — reads as a "ready light" on a
+    // console panel rather than a flat status pip.
+    // Padded so the dot lines up with the nickname row of
+    // the column to its right — the inner side row is
+    // top-aligned (Alignment::Start) so the dot doesn't
+    // drift when the card grows from a 2-line placeholder
+    // to a 3-line populated card.
+    let dot_color = |ready: bool| -> Element<'static, Message> {
+        container(
+            container(
+                iced::widget::Space::new()
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0)),
+            )
+            .style(move |theme: &iced::Theme| {
+                let bg = if ready {
+                    theme.palette().primary
+                } else {
+                    iced::Color::from_rgb8(0x66, 0x66, 0x66)
+                };
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(bg)),
+                    border: iced::Border {
+                        radius: 7.0.into(),
+                        ..Default::default()
+                    },
+                    shadow: if ready {
+                        iced::Shadow {
+                            color: iced::Color {
+                                a: 0.7,
+                                ..theme.palette().primary
+                            },
+                            offset: iced::Vector::new(0.0, 0.0),
+                            blur_radius: 10.0,
+                        }
+                    } else {
+                        iced::Shadow::default()
+                    },
+                    ..Default::default()
+                }
+            }),
+        )
+        .padding(iced::Padding {
+            top: 20.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .into()
+    };
+    let Some(settings) = settings else {
+        return container(
+            row![
+                dot_color(false),
+                column![
+                    text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                    text(t!(lang, "lobby-waiting"))
+                        .size(TEXT_TITLE)
+                        .style(widgets::muted_text_style),
+                ]
+                .spacing(2),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Start),
+        )
+        .width(Length::Fill)
+        .into();
+    };
+    let nickname = settings.nickname.clone();
+    let game_label = settings
+        .game_info
+        .as_ref()
+        .map(|gi| {
+            let family = gi.family_and_variant.0.as_str();
+            // Dynamic key (one per gamedb family) — bypass the
+            // literal-only macro and hit the Fluent loader directly.
+            use fluent_templates::Loader;
+            crate::i18n::LOCALES
+                .try_lookup(lang, &format!("game-{family}"))
+                .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
+        })
+        .unwrap_or_else(|| t!(lang, "lobby-no-game"));
+    let patch = settings
+        .game_info
+        .as_ref()
+        .and_then(|gi| gi.patch.as_ref())
+        .map(|p| format!(" · {} v{}", p.name, p.version));
+    // Game line: "<game name> · <patch> · <match-type>" packed
+    // onto a single caption row so the card stays 2 lines tall.
+    // Match-type is meaningless without a game (no Game::match_types
+    // table to look the name up against), so omit it then.
+    let mut subline = game_label;
+    if let Some(p) = patch {
+        subline.push_str(&p);
+    }
+    if let Some(gi) = settings.game_info.as_ref() {
+        let mt = crate::game::match_type_name(
+            lang,
+            gi.family_and_variant.0.as_str(),
+            settings.match_type.0,
+            settings.match_type.1,
+        );
+        subline.push_str(&format!(" · {mt}"));
+    }
+    // Nickname is the marquee — title-sized, primary
+    // tinted when this side is ready so the card lights
+    // up visibly as commitment lands.
+    let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
+        |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(theme.palette().primary),
+        }
+    } else {
+        |_theme: &iced::Theme| iced::widget::text::Style { color: None }
+    };
+    container(
+        row![
+            dot_color(ready),
+            column![
+                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                text(nickname).size(TEXT_TITLE).style(nickname_style),
+                text(subline).size(TEXT_CAPTION),
+            ]
+            .spacing(2),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Start),
+    )
+    .width(Length::Fill)
+    .into()
+}
+
+/// The lobby header's status line: latency once Pongs are landing,
+/// otherwise the connection identifier (matchmaking code / direct
+/// host / direct target) so the user sees what they're matched on.
+/// Streamer privacy mode suppresses the identifier so a viewer of the
+/// stream can't scrape it off the screen and crash the lobby — and
+/// that's the only path to the "no latency, no identifier" `None`,
+/// so the caller just skips the line there.
+fn lobby_header_line<'a>(
+    lang: &LanguageIdentifier,
+    lobby: &'a crate::netplay::LobbyState,
+    phase: &'a crate::netplay::Phase,
+    streamer_mode: bool,
+) -> Option<Element<'a, Message>> {
     let ident: Option<&crate::netplay::LinkIdent> = if streamer_mode {
         None
     } else {
@@ -2053,11 +2178,7 @@ fn lobby_view<'a>(
             _ => None,
         }
     };
-    // Streamer mode is the only path that reaches the "no latency,
-    // no identifier" state (the identifier is always available
-    // otherwise); skip the header line entirely there rather than
-    // reserving a slot for it.
-    let header_line: Option<Element<'a, Message>> = if let Some(d) = lobby.latency_counter.latest() {
+    if let Some(d) = lobby.latency_counter.latest() {
         Some(
             text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
                 .size(TEXT_BODY)
@@ -2078,70 +2199,95 @@ fn lobby_view<'a>(
         Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
     } else {
         None
-    };
+    }
+}
 
-    // Match-type pick_list — options pulled from the current
-    // local game's Game::match_types() table (mode + subtype
-    // counts), labeled with the per-game Fluent strings via
-    // game::match_type_name. Renders an empty disabled pick_list
-    // when no game is selected (Game::match_types() can't be
-    // queried until we know the game) — gives the row a stable
-    // shape so the surrounding layout doesn't jump once the user
-    // picks a game.
-    let mt_picker: Element<'a, Message> = if let Some(g) = local_game {
-        let game_impl = crate::game::from_gamedb_entry(g);
-        let mt_table = game_impl.map(|gi| gi.match_types).unwrap_or(&[]);
-        let mut options = Vec::new();
-        for (mode, subtype_count) in mt_table.iter().enumerate() {
-            for sub in 0..*subtype_count {
-                options.push(MatchTypeOption {
-                    mode: mode as u8,
-                    subtype: sub as u8,
-                    label: crate::game::match_type_name(lang, g.family_and_variant().0, mode as u8, sub as u8),
-                });
-            }
-        }
-        let selected = options
-            .iter()
-            .find(|o| o.mode == lobby.match_type.0 && o.subtype == lobby.match_type.1)
-            .cloned();
-        // In Phase::Failed (or during the post-StartMatch handoff
-        // window, where the connection is already gone) the
-        // dropdown's on_change reroutes to Noop so picks are
-        // inert without touching layout.
-        let inert = matches!(phase, crate::netplay::Phase::Failed { .. }) || handoff_pending;
-        let on_change: fn((u8, u8)) -> Message = if inert {
-            |_| Message::Noop
-        } else {
-            Message::NetplaySetMatchType
-        };
-        if options.is_empty() {
-            text(t!(lang, "lobby-no-match-types"))
-                .style(widgets::muted_text_style)
-                .into()
-        } else {
-            pick_list(options, selected, move |o| on_change((o.mode, o.subtype)))
-                .padding(STANDARD_PADDING)
-                .style(crate::widgets::chunky_pick_list)
-                .into()
-        }
-    } else {
+/// Match-type pick_list — options pulled from the current local game's
+/// Game::match_types() table (mode + subtype counts), labeled with the
+/// per-game Fluent strings via game::match_type_name. Renders an empty
+/// disabled pick_list when no game is selected (Game::match_types()
+/// can't be queried until we know the game) — gives the row a stable
+/// shape so the surrounding layout doesn't jump once the user picks a
+/// game. When `inert`, picks reroute to Noop without touching layout.
+fn lobby_match_type_picker<'a>(
+    lang: &LanguageIdentifier,
+    local_game: Option<rom::GameRef>,
+    lobby: &'a crate::netplay::LobbyState,
+    inert: bool,
+) -> Element<'a, Message> {
+    let Some(g) = local_game else {
         let empty: Vec<MatchTypeOption> = Vec::new();
-        pick_list(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
+        return pick_list(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
             Message::NetplaySetMatchType((o.mode, o.subtype))
         })
         .padding(STANDARD_PADDING)
         .style(crate::widgets::chunky_pick_list)
+        .into();
+    };
+    let game_impl = crate::game::from_gamedb_entry(g);
+    let mt_table = game_impl.map(|gi| gi.match_types).unwrap_or(&[]);
+    let mut options = Vec::new();
+    for (mode, subtype_count) in mt_table.iter().enumerate() {
+        for sub in 0..*subtype_count {
+            options.push(MatchTypeOption {
+                mode: mode as u8,
+                subtype: sub as u8,
+                label: crate::game::match_type_name(lang, g.family_and_variant().0, mode as u8, sub as u8),
+            });
+        }
+    }
+    let selected = options
+        .iter()
+        .find(|o| o.mode == lobby.match_type.0 && o.subtype == lobby.match_type.1)
+        .cloned();
+    let on_change: fn((u8, u8)) -> Message = if inert {
+        |_| Message::Noop
+    } else {
+        Message::NetplaySetMatchType
+    };
+    if options.is_empty() {
+        text(t!(lang, "lobby-no-match-types"))
+            .style(widgets::muted_text_style)
+            .into()
+    } else {
+        pick_list(options, selected, move |o| on_change((o.mode, o.subtype)))
+            .padding(STANDARD_PADDING)
+            .style(crate::widgets::chunky_pick_list)
+            .into()
+    }
+}
+
+/// The lobby settings table — one stacked row per setting (match type /
+/// frame delay / reveal setup), each shaped `[fixed-width muted label]
+/// [control fills the rest]`. The identical row shape is what makes the
+/// block read as a single coherent settings group; visual weight
+/// differences between picker / slider / checkbox stop mattering
+/// because every control hangs off the same label column.
+fn lobby_settings_rows<'a>(
+    lang: &LanguageIdentifier,
+    lobby: &'a crate::netplay::LobbyState,
+    mt_picker: Element<'a, Message>,
+    frame_delay: u32,
+    inert: bool,
+) -> Element<'a, Message> {
+    let label_style: fn(&iced::Theme) -> iced::widget::text::Style = widgets::muted_text_style;
+    let setting_row = |label_el: Element<'a, Message>, control: Element<'a, Message>| -> Element<'a, Message> {
+        row![
+            container(label_el).width(Length::Fixed(140.0)),
+            container(control).width(Length::Fill),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center)
         .into()
     };
 
-    let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
-    // `inert` collapses Failed and handoff-pending — both are
-    // states where the lobby controls are still on screen but
-    // shouldn't accept input (Failed because the connection is
-    // gone, handoff-pending because the match is spinning up
-    // and the connection has been handed to the PvP session).
-    let inert = failed || handoff_pending;
+    let match_row = setting_row(
+        text(t!(lang, "lobby-match-type"))
+            .size(TEXT_BODY)
+            .style(label_style)
+            .into(),
+        mt_picker,
+    );
 
     // Frame delay slider — 2..=10 frames. Set here before the match; it's this
     // side's local frame delay (how far the display trails the netcode
@@ -2178,6 +2324,23 @@ fn lobby_view<'a>(
         STANDARD_PADDING,
     );
 
+    let delay_row = setting_row(
+        text(t!(lang, "settings-netplay-frame-delay"))
+            .size(TEXT_BODY)
+            .style(label_style)
+            .into(),
+        row![
+            id_slider,
+            text(format!("{}", frame_delay))
+                .size(TEXT_BODY)
+                .width(Length::Fixed(18.0)),
+            id_suggest,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .into(),
+    );
+
     // Reveal-setup checkbox. Mirrors the legacy app's
     // `play-details-reveal-setup` checkbox — each side picks
     // independently; the peer can see (read-only) what we picked
@@ -2197,49 +2360,6 @@ fn lobby_view<'a>(
         } else {
             (t!(lang, "lobby-reveal-peer-unknown"), widgets::muted_text_style)
         };
-
-    // Settings table — one stacked row per setting, each shaped
-    // `[fixed-width muted label] [control fills the rest]`. The
-    // identical row shape is what makes the block read as a
-    // single coherent settings group; visual weight differences
-    // between picker / slider / checkbox stop mattering because
-    // every control hangs off the same label column.
-    let label_style: fn(&iced::Theme) -> iced::widget::text::Style = widgets::muted_text_style;
-    let setting_row = |label_el: Element<'a, Message>, control: Element<'a, Message>| -> Element<'a, Message> {
-        row![
-            container(label_el).width(Length::Fixed(140.0)),
-            container(control).width(Length::Fill),
-        ]
-        .spacing(12)
-        .align_y(Alignment::Center)
-        .into()
-    };
-
-    let match_row = setting_row(
-        text(t!(lang, "lobby-match-type"))
-            .size(TEXT_BODY)
-            .style(label_style)
-            .into(),
-        mt_picker,
-    );
-
-    let delay_row = setting_row(
-        text(t!(lang, "settings-netplay-frame-delay"))
-            .size(TEXT_BODY)
-            .style(label_style)
-            .into(),
-        row![
-            id_slider,
-            text(format!("{}", frame_delay))
-                .size(TEXT_BODY)
-                .width(Length::Fixed(18.0)),
-            id_suggest,
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center)
-        .into(),
-    );
-
     let reveal_toggle = if inert {
         None
     } else {
@@ -2262,16 +2382,27 @@ fn lobby_view<'a>(
         .into(),
     );
 
-    // Status / verdict line. While the netplay attempt is still
-    // pre-Lobby (Connecting / Negotiating), this shows the
-    // connection progress so the user has something to read
-    // through the handshake. Once we're in Lobby with both
-    // sides' settings on hand, it switches to the compat
-    // verdict and gates the Ready button. Failed = sticky
-    // banner with the cause, dismissed by the Cancel button in
-    // the header.
+    column![match_row, delay_row, reveal_row]
+        .spacing(8)
+        .width(Length::Fill)
+        .into()
+}
+
+/// Status / verdict line + whether compat allows readying up. While
+/// the netplay attempt is still pre-Lobby (Connecting / Negotiating),
+/// this shows the connection progress so the user has something to
+/// read through the handshake. Once we're in Lobby with both sides'
+/// settings on hand, it switches to the compat verdict and gates the
+/// Ready button. Failed = sticky banner with the cause, dismissed by
+/// the Cancel button in the header.
+fn lobby_verdict<'a>(
+    lang: &LanguageIdentifier,
+    lobby: &'a crate::netplay::LobbyState,
+    phase: &'a crate::netplay::Phase,
+    scanners: &Scanners,
+) -> (Element<'a, Message>, bool) {
     use crate::netplay::Phase;
-    let (verdict_line, compat_ok): (Element<'a, Message>, bool) = match phase {
+    match phase {
         Phase::Failed { error } => {
             // Route the netplay error tag through Fluent so each
             // failure mode can carry its own translated copy.
@@ -2358,15 +2489,22 @@ fn lobby_view<'a>(
                 false,
             ),
         },
-    };
+    }
+}
 
-    // Big single toggle: Ready → Unready → Starting…, switching
-    // label + icon + color on click. Same button, same position;
-    // clicking it always does the obvious next thing (ready up,
-    // unready, or wait for match-start). A touch chunkier than
-    // the regular CTAs in the strip, but not so big that it
-    // blows the lobby layout — the glow shadow does the work of
-    // "look at me" instead.
+/// Big single toggle: Ready → Unready → Starting…, switching label +
+/// icon + color on click. Same button, same position; clicking it
+/// always does the obvious next thing (ready up, unready, or wait for
+/// match-start). A touch chunkier than the regular CTAs in the strip,
+/// but not so big that it blows the lobby layout — the glow shadow
+/// does the work of "look at me" instead.
+fn lobby_ready_button<'a>(
+    lang: &LanguageIdentifier,
+    lobby: &crate::netplay::LobbyState,
+    failed: bool,
+    compat_ok: bool,
+    has_save: bool,
+) -> Element<'a, Message> {
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
     let (ready_icon, ready_label, ready_msg, ready_palette): (Icon, String, Option<Message>, ReadyPalette) =
@@ -2405,103 +2543,17 @@ fn lobby_view<'a>(
     // Failed lobby: the only action is to dismiss via Cancel.
     // Force the Ready button off regardless of how the
     // pre-failure state looked.
-    let ready_msg = if matches!(phase, Phase::Failed { .. }) {
-        None
-    } else {
-        ready_msg
-    };
-    let ready_button: Element<'a, Message> = {
-        let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
-            .spacing(8)
-            .align_y(Alignment::Center);
-        let mut btn = button(label_widget)
-            .padding(READY_PAD)
-            .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, ready_palette));
-        if let Some(m) = ready_msg {
-            btn = btn.on_press(m);
-        }
-        btn.into()
-    };
-
-    // Settings stack on the left, Ready CTA floated to the right
-    // of the pane and bottom-aligned against the stack — mirrors
-    // the matchmaking screen's Fight button anchored to the
-    // bottom-right of the hud bar.
-    let controls = row![
-        column![match_row, delay_row, reveal_row].spacing(8).width(Length::Fill),
-        ready_button,
-    ]
-    .spacing(12)
-    .align_y(Alignment::End);
-
-    // Leave-lobby (Disconnect) button. Top-right of the header —
-    // out of the way of the verdict line, and visually paired
-    // with the Ready CTA in the bottom-right of the lobby pane
-    // (same right edge, opposite corner). Disabled during the
-    // handoff window so the user can't tear down a lobby whose
-    // PvP session is already being built — clicking Disconnect
-    // there wouldn't actually cancel spawn_pvp, just leave the
-    // user confused when the match view pops up anyway.
-    let leave_button: Element<'a, Message> = {
-        let inner = row![Icon::LogOut.widget(), text(t!(lang, "play-cancel"))]
-            .spacing(8)
-            .align_y(Alignment::Center);
-        let mut btn = button(inner).padding(STANDARD_PADDING).style(widgets::danger_button);
-        if !handoff_pending {
-            btn = btn.on_press(Message::NetplayDisconnect);
-        }
-        btn.into()
-    };
-
-    // Header row: verdict on the left, leave button on the right.
-    let mut header_text_col = column![].spacing(2);
-    if let Some(hl) = header_line {
-        header_text_col = header_text_col.push(hl);
-    }
-    header_text_col = header_text_col.push(verdict_line);
-    let header_row = row![header_text_col, horizontal_space(), leave_button]
-        .spacing(12)
+    let ready_msg = if failed { None } else { ready_msg };
+    let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
+        .spacing(8)
         .align_y(Alignment::Center);
-
-    // Sides row: you / opponent cards with a wide gap so the
-    // diagonal cut + VS badge from `widgets::vs_splitter` paints
-    // through the middle. The splitter canvas (which also paints
-    // the red/blue half tints) is layered *under* the row.
-    let sides_row = row![
-        side(
-            t!(lang, "play-you"),
-            Some(lobby.local.as_ref().unwrap_or(&local_fallback)),
-            lobby.local_ready,
-        ),
-        side(t!(lang, "play-opponent"), lobby.remote.as_ref(), lobby.remote_ready),
-    ]
-    .spacing(56)
-    // Top-align so the YOU slot doesn't bounce upward when the
-    // opponent's settings land and their card grows from a 2-line
-    // placeholder to a 3-line filled card.
-    .align_y(Alignment::Start);
-    let matchup_pane = container(
-        iced::widget::Stack::new()
-            .push(container(sides_row).padding(widgets::PANE_PADDING).width(Fill))
-            .push_under(widgets::vs_splitter()),
-    )
-    .width(Fill)
-    .style(widgets::pane);
-    let controls_pane = container(controls)
-        .padding(widgets::PANE_PADDING)
-        .width(Fill)
-        .style(widgets::pane);
-    let header_pane = container(header_row)
-        .padding(widgets::PANE_PADDING)
-        .width(Fill)
-        .style(widgets::pane);
-    container(
-        column![header_pane, matchup_pane, controls_pane]
-            .spacing(widgets::PANE_GAP)
-            .padding(widgets::PANE_GAP),
-    )
-    .width(Fill)
-    .into()
+    let mut btn = button(label_widget)
+        .padding(READY_PAD)
+        .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, ready_palette));
+    if let Some(m) = ready_msg {
+        btn = btn.on_press(m);
+    }
+    btn.into()
 }
 
 /// Bare localized template label (e.g. "Heat Guts"), without any
@@ -2528,47 +2580,20 @@ fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &st
 /// plus a raw template name, with a display label resolved via
 /// `game-<family>.save-<name>` (prefixed with the game name when the
 /// family has more than one owned variant).
-#[derive(Clone)]
-struct SaveTemplateOption {
-    /// The concrete variant this template creates a save for.
+/// A new-save template as a pick_list [`widgets::Choice`]. The value
+/// is `(variant, raw template name)` — the two together pick a unique
+/// creation target.
+fn save_template_choice(
+    lang: &unic_langid::LanguageIdentifier,
     game: rom::GameRef,
-    raw: String,
-    display: String,
-}
-
-impl SaveTemplateOption {
-    fn new(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, raw: &str) -> Self {
-        let label = template_label(lang, game.family_and_variant().0, raw);
-        // Always prefix with the short variant tag (e.g. "Blue – Heat
-        // Guts"), even for single-owned-variant or single-variant
-        // families, so the picker reads consistently.
-        let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
-        Self {
-            game,
-            raw: raw.to_string(),
-            display,
-        }
-    }
-}
-
-// Identity is (variant, template name) — the two together pick a unique
-// creation target.
-impl PartialEq for SaveTemplateOption {
-    fn eq(&self, other: &Self) -> bool {
-        self.game == other.game && self.raw == other.raw
-    }
-}
-impl Eq for SaveTemplateOption {}
-impl std::hash::Hash for SaveTemplateOption {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.game.hash(h);
-        self.raw.hash(h);
-    }
-}
-impl std::fmt::Display for SaveTemplateOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.display)
-    }
+    raw: &str,
+) -> widgets::Choice<(rom::GameRef, String)> {
+    let label = template_label(lang, game.family_and_variant().0, raw);
+    // Always prefix with the short variant tag (e.g. "Blue – Heat
+    // Guts"), even for single-owned-variant or single-variant
+    // families, so the picker reads consistently.
+    let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
+    widgets::Choice::new((game, raw.to_string()), display)
 }
 
 /// Which ready-button state we're painting. Drives

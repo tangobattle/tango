@@ -7,7 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
-use crate::app::{Scanners, TEXT_BODY, TEXT_CAPTION};
+use crate::app::Scanners;
 use crate::audio;
 use crate::config;
 use crate::game;
@@ -19,6 +19,7 @@ use crate::save_view;
 use crate::scrubber;
 use crate::selection;
 use crate::singleplayer_session;
+use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
 use crate::video::framebuffer::Effect;
 use crate::widgets;
 use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
@@ -628,7 +629,7 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::P
         Icon::Wand,
         t!(lang, "lobby-frame-delay-suggest"),
         suggest_msg,
-        crate::app::STANDARD_PADDING,
+        crate::style::STANDARD_PADDING,
     );
 
     let control = row![
@@ -1169,6 +1170,10 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
+/// Vertical clearance that floats a bottom-anchored popover just above
+/// the HUD bar (bar control height + strip padding + scanline + gap).
+const POPOVER_LIFT: f32 = crate::style::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
+
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
     state: &'a State,
@@ -1180,6 +1185,36 @@ pub fn view<'a>(
         return iced::widget::Space::new().width(Fill).height(Fill).into();
     };
 
+    let frame = framebuffer_view(state, fractional_scaling, effect);
+    let mut layout = column![].spacing(0).width(Fill).height(Fill);
+    layout = layout.push(emulator_body(lang, session, state, frame, hide_emulator_border));
+    layout = layout.push(widgets::hud_scanline_bottom()).push(
+        container(controls_strip(lang, session, state))
+            .width(Fill)
+            .style(widgets::hud_bar),
+    );
+
+    let mut stacked = stack![Element::from(layout)];
+    if let Some(o) = options_menu_overlay(lang, session, state) {
+        stacked = stacked.push(o);
+    }
+    if let Some(o) = match_settings_overlay(lang, session, state) {
+        stacked = stacked.push(o);
+    }
+    if let Some(o) = disconnect_overlay(lang, session, state) {
+        stacked = stacked.push(o);
+    }
+    stacked.into()
+}
+
+/// The live framebuffer, rendered through a custom wgpu shader widget
+/// (one persistent GPU texture, written in place each vblank) instead
+/// of a per-frame `image` handle. The shader fills the widget's
+/// bounds, so the widget is sized to the framebuffer rect — an exact
+/// integer multiple (crisp, the default) or a smooth aspect-fit —
+/// using `responsive` for the pane size both need. Before the first
+/// frame, a 1×1 black placeholder keeps the pane opaque.
+fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'static Effect) -> Element<'a, Message> {
     // Post-filter framebuffer dimensions. Drive the scale math below;
     // match the (w, h) `build_frame_pixels` stamps into the frame the
     // `framebuffer` shader uploads.
@@ -1190,14 +1225,7 @@ pub fn view<'a>(
     let img_w = (replay_session::SCREEN_WIDTH * scale) as f32;
     let img_h = (replay_session::SCREEN_HEIGHT * scale) as f32;
 
-    // The live framebuffer renders through a custom wgpu shader widget
-    // (one persistent GPU texture, written in place each vblank) instead
-    // of a per-frame `image` handle. The shader fills the widget's bounds,
-    // so we size the widget to the framebuffer rect here — an exact
-    // integer multiple (crisp, the default) or a smooth aspect-fit — using
-    // `responsive` for the pane size both need. Before the first frame, a
-    // 1×1 black placeholder keeps the pane opaque.
-    let frame: Element<'a, Message> = iced::widget::responsive(move |size| {
+    iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);
         let scale = if fractional_scaling {
             raw.max(0.0)
@@ -1243,8 +1271,89 @@ pub fn view<'a>(
             centered(framed.into())
         }
     })
-    .into();
+    .into()
+}
 
+/// Body: framebuffer + optional setup panes layered over the game's
+/// BNLC background art (cover-fit, crops as needed) or a pure-black
+/// backdrop when BNLC isn't installed. The backdrop spans the full
+/// body width so the setup panes float on top of the same bezel art.
+fn emulator_body<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+    frame: Element<'a, Message>,
+    hide_emulator_border: bool,
+) -> Element<'a, Message> {
+    let frame_container = container(frame).center(Fill);
+    let bnlc_bg = if hide_emulator_border {
+        None
+    } else {
+        background_handle(session.local_game())
+    };
+    let backdrop: Element<'a, Message> = match bnlc_bg {
+        Some(bg_handle) => iced::widget::image(bg_handle)
+            .width(Fill)
+            .height(Fill)
+            .content_fit(iced::ContentFit::Cover)
+            .into(),
+        None => container(iced::widget::Space::new().width(Fill).height(Fill))
+            .style(|_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::BLACK)),
+                ..Default::default()
+            })
+            .into(),
+    };
+
+    // Optional left/right setup panes for PvP. Each occupies a
+    // fixed width when shown; the emulator fills the rest of the
+    // row. The panes ride on top of the backdrop layer so the
+    // BNLC bezel art shows around their outer margins. Only the
+    // panes carry padding — the emulator itself still extends to
+    // the screen edges.
+    const SETUP_PANE_WIDTH: f32 = 420.0;
+    let setup_pane = |panel: Element<'a, Message>| -> Element<'a, Message> {
+        let pane = container(panel)
+            .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
+            .height(Fill)
+            .padding(style::PANE_PADDING)
+            .style(widgets::panel);
+        container(pane).height(Fill).padding(style::PANE_PADDING).into()
+    };
+    let mut content_row = row![].spacing(0).height(Fill).width(Fill);
+    if let ActiveSession::PvP(s) = session {
+        if state.show_self_panel && s.local_loaded.is_some() {
+            let me = s.local_loaded.as_ref().unwrap();
+            let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
+                .map(Message::SelfSaveViewAction);
+            content_row = content_row.push(setup_pane(panel));
+        }
+    }
+    content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
+    if let ActiveSession::PvP(s) = session {
+        if state.show_opponent_panel && s.opponent_loaded.is_some() {
+            let opponent = s.opponent_loaded.as_ref().unwrap();
+            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
+                .map(Message::OpponentSaveViewAction);
+            content_row = content_row.push(setup_pane(panel));
+        }
+    }
+    container(stack![backdrop, Element::from(content_row)])
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+/// Controls strip. Replay sessions get the full transport (play/pause
+/// + scrubber + speed); single-player + PvP get a thin strip with just
+/// the setup-panel toggles (PvP only) and the options trigger. The
+/// close action lives in the options popover so there's no separate
+/// header eating vertical space.
+fn controls_strip<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> sweeten::widget::Row<'a, Message> {
     // Controls-strip sizing: one icon size + padding so the
     // play/pause, settings, close, opponent-toggle buttons all
     // sit at the same height as the scrubber + speed picker.
@@ -1260,7 +1369,7 @@ pub fn view<'a>(
      -> Element<'a, Message> {
         let mut btn = button(icon.widget().size(CTRL_ICON))
             .padding(CTRL_PAD)
-            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
+            .height(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
             .style(style);
         if let Some(m) = msg {
             btn = btn.on_press(m);
@@ -1350,167 +1459,9 @@ pub fn view<'a>(
     // Disconnect for PvP).
     let options_btn = ctrl_icon_btn(Icon::Ellipsis, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
 
-    let mut layout = column![].spacing(0).width(Fill).height(Fill);
-
-    // Body: framebuffer + optional setup panes layered over the
-    // game's BNLC background art (cover-fit, crops as needed) or
-    // a pure-black backdrop when BNLC isn't installed. The
-    // backdrop spans the full body width so the setup panes
-    // float on top of the same bezel art.
-    let frame_container = container(frame).center(Fill);
-    let bnlc_bg = if hide_emulator_border {
-        None
-    } else {
-        background_handle(session.local_game())
-    };
-    let backdrop: Element<'a, Message> = match bnlc_bg {
-        Some(bg_handle) => iced::widget::image(bg_handle)
-            .width(Fill)
-            .height(Fill)
-            .content_fit(iced::ContentFit::Cover)
-            .into(),
-        None => container(iced::widget::Space::new().width(Fill).height(Fill))
-            .style(|_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::BLACK)),
-                ..Default::default()
-            })
-            .into(),
-    };
-
-    // Optional left/right setup panes for PvP. Each occupies a
-    // fixed width when shown; the emulator fills the rest of the
-    // row. The panes ride on top of the backdrop layer so the
-    // BNLC bezel art shows around their outer margins. Only the
-    // panes carry padding — the emulator itself still extends to
-    // the screen edges.
-    const SETUP_PANE_WIDTH: f32 = 420.0;
-    let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    if let ActiveSession::PvP(s) = session {
-        if state.show_self_panel && s.local_loaded.is_some() {
-            let me = s.local_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
-                .map(Message::SelfSaveViewAction);
-            let pane = container(panel)
-                .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
-                .height(Fill)
-                .padding(widgets::PANE_PADDING)
-                .style(widgets::panel);
-            content_row = content_row.push(container(pane).height(Fill).padding(widgets::PANE_PADDING));
-        }
-    }
-    content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if let ActiveSession::PvP(s) = session {
-        if state.show_opponent_panel && s.opponent_loaded.is_some() {
-            let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
-                .map(Message::OpponentSaveViewAction);
-            let pane = container(panel)
-                .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
-                .height(Fill)
-                .padding(widgets::PANE_PADDING)
-                .style(widgets::panel);
-            content_row = content_row.push(container(pane).height(Fill).padding(widgets::PANE_PADDING));
-        }
-    }
-    let emu_pane: Element<'a, Message> = container(stack![backdrop, Element::from(content_row)])
-        .width(Fill)
-        .height(Fill)
-        .into();
-    layout = layout.push(emu_pane);
-
-    // Controls strip. Replay sessions get the full transport
-    // (play/pause + scrubber + speed); single-player + PvP get a
-    // thin strip with just the opponent-panel toggle (PvP only)
-    // and the close button. Either way the close lives here so
-    // there's no separate header eating vertical space.
     let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
     if let Some(r) = session.as_replay() {
-        let total = r.total_ticks().max(1);
-        let cur = r.current_tick().min(total);
-        let prefetched = r.prefetch_progress().min(total);
-        let (play_pause_icon, play_pause_label, paused) = if r.is_paused() {
-            (Icon::Play, t!(lang, "playback-play"), true)
-        } else {
-            (Icon::Pause, t!(lang, "playback-pause"), false)
-        };
-        let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
-            .round_boundaries(r.round_boundaries())
-            .view();
-
-        // Play/Pause is the transport's centerpiece — promote to
-        // the primary-button style when paused (the affordance
-        // the user is most likely looking for at rest) and keep
-        // it neutral while playing. Either way it sits a notch
-        // bigger than the other strip controls and is rendered
-        // as a perfect circle (square padding + huge radius) so
-        // it reads as a console transport button instead of a
-        // generic pill.
-        let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
-            widgets::primary_button
-        } else {
-            widgets::neutral
-        };
-        let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let mut style = base_style(theme, status);
-            style.border.radius = 999.0.into();
-            style
-        };
-        // Square button sized to the shared bar-control height
-        // so the media bar lines up exactly with the play-tab
-        // link bar (both pin their interactive children to the
-        // same constant).
-        let play_pause_btn = iced::widget::tooltip(
-            button(
-                iced::widget::container(play_pause_icon.widget().size(18.0))
-                    .width(iced::Length::Fixed(20.0))
-                    .height(iced::Length::Fixed(20.0))
-                    .center(Fill),
-            )
-            .padding(0)
-            .width(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-            .height(iced::Length::Fixed(crate::app::BAR_CONTROL_HEIGHT))
-            .style(play_pause_style)
-            .on_press(Message::TogglePlay),
-            iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
-                .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4);
-
-        // Tick readouts: monospaced + bumped one tier above caption
-        // so they read as digital-clock numerals rather than
-        // metadata, primary-tinted so the eye picks them up as
-        // playback state.
-        let tick_style = |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(theme.palette().primary),
-        };
-        controls = controls
-            .push(play_pause_btn)
-            .push(
-                text(format_tick(cur))
-                    .size(14)
-                    .font(iced::Font::MONOSPACE)
-                    .style(tick_style),
-            )
-            .push(scrub)
-            .push(
-                text(format_tick(total))
-                    .size(14)
-                    .font(iced::Font::MONOSPACE)
-                    .style(widgets::muted_text_style),
-            );
+        controls = replay_transport(lang, r, controls);
     } else {
         // No transport widgets for SP/PvP. Drop the self-setup
         // toggle on the left (PvP-only) so it pairs visually with
@@ -1524,84 +1475,9 @@ pub fn view<'a>(
         // popover anchored on the telemetry plate (see below).
         controls = controls.push(horizontal_space());
     }
-    // PvP-only telemetry deck: P1/P2 tag, TPS, frame skew, rollback
-    // depth, ping — each metric drawn next to its current value,
-    // colored by health (green/amber/red), gathered into one
-    // hairline-divided plate. P1/P2 leads the cluster as an identity tag.
-    // Gate the whole deck on a live latency reading: `latency()` is `Some` while
-    // the link is up (even at 0 ms on LAN) and `None` the moment the remote
-    // drops — at which point the telemetry is frozen and meaningless, so the
-    // panel retires itself.
     if let ActiveSession::PvP(pvp) = session {
-        // Raw latest ping drives the plate — same `Some`/`None` link-up gate
-        // as `latency()`, but it shows the true current reading rather than the
-        // smoothed median (which is reserved for the frame-delay suggestion).
-        if let Some(latency) = pvp.latency_raw() {
-            let stats = pvp.round_stats();
-            let ping_ms = latency.as_millis();
-            let tps = pvp.tps();
-            let fps_target = pvp.fps_target();
-
-            let mut cells: Vec<Element<'a, Message>> = Vec::new();
-
-            // P1/P2 identity tag now leads the instrument cluster, inside
-            // the plate — it reads as the "which side am I" label sitting
-            // ahead of the live metrics. It's a match-level constant, so it
-            // shows whenever the panel is up — including between rounds, when
-            // there's no live `RoundStats`.
-            cells.push(player_cell(pvp.local_player_index()));
-
-            // TPS: current rate vs target — green at/near rate, amber as it
-            // dips, red when it falls well behind (visible netplay stutter).
-            cells.push(stat_cell(
-                Icon::Gauge,
-                tone_for_tps(tps, fps_target),
-                fmt_tps(tps, fps_target),
-            ));
-
-            if let Some(s) = stats {
-                // Skew: how tight the sync is — green near parity, amber
-                // drifting, red far out, by |skew| in frames.
-                cells.push(stat_cell(Icon::ArrowLeftRight, tone_for_skew(s.skew), fmt_skew(s.skew)));
-
-                // Misprediction depth: 0 on a clean frame, spiking to the size of
-                // each rollback. Green when shallow, amber as it climbs, red when
-                // a frame discards and re-simulates deep.
-                cells.push(stat_cell(
-                    Icon::GitMergeConflict,
-                    tone_for_depth(s.depth),
-                    fmt_depth(s.depth),
-                ));
-            }
-
-            // Ping: latency band. The signal icon's bar strength tracks
-            // the band too — full bars (SignalHigh) when ping is low,
-            // dropping to SignalLow as latency climbs.
-            let ping_icon = if ping_ms < 80 {
-                Icon::SignalHigh
-            } else if ping_ms < 140 {
-                Icon::SignalMedium
-            } else {
-                Icon::SignalLow
-            };
-            cells.push(stat_cell(ping_icon, tone_for_ping(ping_ms), fmt_ping(ping_ms)));
-
-            // Interleave hairline dividers into one flat plate. The plate is a
-            // button: clicking the instrument panel toggles the match-settings
-            // popover anchored above it.
-            let mut strip = row![].spacing(6).align_y(Alignment::Center);
-            for (i, cell) in cells.into_iter().enumerate() {
-                if i > 0 {
-                    strip = strip.push(stat_divider());
-                }
-                strip = strip.push(cell);
-            }
-            controls = controls.push(
-                button(strip)
-                    .padding([3, 9])
-                    .style(telemetry_plate_button)
-                    .on_press(Message::ToggleMatchSettings),
-            );
+        if let Some(plate) = telemetry_plate(pvp) {
+            controls = controls.push(plate);
         }
     }
     // Opponent setup-reveal toggle (PvP-only) sits to the left of
@@ -1614,230 +1490,412 @@ pub fn view<'a>(
     // commands (Settings, replay speed, Close / Disconnect). Always
     // last so the popover lands above a consistent right-edge
     // anchor regardless of session type.
-    controls = controls.push(options_btn);
-    layout = layout
-        .push(widgets::hud_scanline_bottom())
-        .push(container(controls).width(Fill).style(widgets::hud_bar));
+    controls.push(options_btn)
+}
 
-    // Ellipsis-anchored options popover. Built as a top Stack
-    // layer anchored above the HUD bar so it floats over the
-    // framebuffer without pushing the controls strip up. The
-    // menu owns its own dismiss — picking any item closes it;
-    // clicking the trigger again toggles it off.
-    //
-    // Content varies by session type:
-    //   Replay → Settings, Speed picker, Close
-    //   SP     → Settings, Close
-    //   PvP    → Settings, (red) Disconnect
-    let options_overlay: Option<Element<'a, Message>> = if state.show_options_menu {
-        // Row item width. Wider than the historical 120px speed
-        // picker so "Disconnect" + its icon sit on one line without
-        // wrapping in any locale.
-        const ROW_WIDTH: f32 = 160.0;
-        // Total popover width = row + the panel's 6px-each-side
-        // padding. Pinned explicitly so a Fill-width child (the
-        // divider) can't propagate through the popover container
-        // and stretch the menu out to the full bottom-right pane.
-        const POPOVER_WIDTH: f32 = ROW_WIDTH + 12.0;
-        // Menu-row hover/press/selected tints. Accent drives both
-        // the selected-text color and the wash behind hover/press —
-        // pass `palette.primary` for normal rows, the Disconnect red
-        // for the destructive row. Hover/press alphas are pushed
-        // high enough (0.28 / 0.45 on dark) that the red wash on
-        // the panel plate actually reads as red, not as a slightly
-        // pink-tinted shadow.
-        fn menu_row_style(
-            theme: &iced::Theme,
-            status: iced::widget::button::Status,
-            selected: bool,
-            accent: iced::Color,
-        ) -> iced::widget::button::Style {
-            use iced::widget::button::Status;
-            let p = theme.extended_palette();
-            let text = theme.palette().text;
-            let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
-            let bg = match status {
-                Status::Hovered => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
-                Status::Pressed => Some(tint(if p.is_dark { 0.45 } else { 0.35 })),
-                _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
-                _ => None,
-            };
-            iced::widget::button::Style {
-                background: bg,
-                text_color: if selected { accent } else { text },
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        }
-        // Build a "leading-icon + label" action row. `tint = None`
-        // uses the standard primary accent (hover/press wash only,
-        // label in normal text color); `Some(color)` swaps both the
-        // icon, the resting label color, AND the hover/press wash
-        // to the tint — used for Disconnect's danger red so the whole
-        // row reads as destructive before the user even hovers.
-        let action_row = |icon: Icon, label: String, msg: Message, tint: Option<iced::Color>| -> Element<'a, Message> {
-            let tinted_text_style = move |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(tint.unwrap_or_else(|| theme.palette().text)),
-            };
-            let icon_el: Element<'a, Message> = icon.widget().size(14.0).style(tinted_text_style).into();
-            let content = row![icon_el, text(label).size(14).style(tinted_text_style)]
-                .spacing(8)
-                .align_y(iced::Alignment::Center);
-            button(content)
-                .padding([6, 10])
-                .width(iced::Length::Fixed(ROW_WIDTH))
-                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                    let accent = tint.unwrap_or(theme.palette().primary);
-                    menu_row_style(theme, status, false, accent)
-                })
-                .on_press(msg)
-                .into()
-        };
-        // Thin divider between sections — text-tinted hairline so
-        // it reads as a separator rather than a hard line.
-        let divider = || -> Element<'a, Message> {
-            container(iced::widget::Space::new().width(Fill).height(iced::Length::Fixed(1.0)))
-                .width(Fill)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    let text = theme.palette().text;
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(iced::Color {
-                            a: if p.is_dark { 0.12 } else { 0.10 },
-                            ..text
-                        })),
-                        ..Default::default()
-                    }
-                })
-                .padding(iced::Padding {
-                    top: 0.0,
-                    right: 4.0,
-                    bottom: 0.0,
-                    left: 4.0,
-                })
-                .into()
-        };
-
-        let mut sections: Vec<Element<'a, Message>> = Vec::new();
-
-        // Replay-only: speed picker section, anchored at the top.
-        // The Settings + Close pair below sits as plain menu items
-        // separated by a divider so Settings reads as a sibling of
-        // Close, not a header for the Speed section above.
-        if let Some(r) = session.as_replay() {
-            let current = r.speed();
-            let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
-            // Section header: gauge icon + "Speed" label, both
-            // muted so the header reads as a category divider
-            // instead of a clickable row.
-            let header_row = row![
-                Icon::Gauge.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
-                text(t!(lang, "playback-speed"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::muted_text_style),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center);
-            let header = container(header_row).padding(iced::Padding {
-                top: 4.0,
-                right: 10.0,
-                bottom: 4.0,
-                left: 10.0,
-            });
-            let mut speed_col = column![header].spacing(1);
-            for &v in opts {
-                let selected = (v - current).abs() < 1e-3;
-                let label = if (v - v.trunc()).abs() < 1e-3 {
-                    format!("{}×", v as i32)
-                } else {
-                    format!("{:.1}×", v)
-                };
-                let check: Element<'a, Message> = if selected {
-                    Icon::Check.widget().size(14.0).into()
-                } else {
-                    iced::widget::Space::new()
-                        .width(iced::Length::Fixed(14.0))
-                        .height(iced::Length::Fixed(14.0))
-                        .into()
-                };
-                let content = row![check, text(label).size(14)]
-                    .spacing(8)
-                    .align_y(iced::Alignment::Center);
-                let btn = button(content)
-                    .padding([6, 10])
-                    .width(iced::Length::Fixed(ROW_WIDTH))
-                    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                        menu_row_style(theme, status, selected, theme.palette().primary)
-                    })
-                    .on_press(Message::SetSpeed(v));
-                speed_col = speed_col.push(btn);
-            }
-            sections.push(Element::from(speed_col));
-            sections.push(divider());
-        }
-
-        // Settings menu item. Cogwheel matches the trigger button —
-        // both refer to the same destination, so the icon doubles as
-        // a reinforcement instead of a new symbol.
-        sections.push(action_row(
-            Icon::Settings,
-            t!(lang, "tab-settings"),
-            Message::OpenSettings,
-            None,
-        ));
-
-        // Tear-down item. PvP gets the red Disconnect confirm gate;
-        // SP and Replay get a direct Close (no gate — neither path
-        // sacrifices game state on tear-down). Color matches
-        // `widgets::pvp_red_button` so the menu's destructive row,
-        // the confirm dialog's CTA, and the existing P1 toolbar
-        // accent all read as one family. No divider between
-        // Settings and the tear-down — they're sibling menu items.
-        let tear_down: Element<'a, Message> = match session {
-            ActiveSession::PvP(_) => action_row(
-                Icon::Unplug,
-                t!(lang, "playback-disconnect"),
-                Message::OpenDisconnectConfirm,
-                Some(iced::Color::from_rgb(0.85, 0.22, 0.28)),
-            ),
-            _ => action_row(Icon::X, t!(lang, "playback-close"), Message::Close, None),
-        };
-        sections.push(tear_down);
-
-        let body = column(sections).spacing(2);
-        let popover = container(body)
-            .padding(6)
-            .width(iced::Length::Fixed(POPOVER_WIDTH))
-            .style(widgets::panel);
-        let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
-        Some(
-            container(popover)
-                .width(Fill)
-                .height(Fill)
-                .align_x(iced::alignment::Horizontal::Right)
-                .align_y(iced::alignment::Vertical::Bottom)
-                .padding(iced::Padding {
-                    top: 0.0,
-                    right: 8.0,
-                    bottom: lift,
-                    left: 0.0,
-                })
-                .into(),
-        )
+/// The replay transport: circular play/pause, current tick, scrubber,
+/// total tick — pushed onto the strip in that order.
+fn replay_transport<'a>(
+    lang: &'a LanguageIdentifier,
+    r: &'a replay_session::ReplaySession,
+    controls: sweeten::widget::Row<'a, Message>,
+) -> sweeten::widget::Row<'a, Message> {
+    let total = r.total_ticks().max(1);
+    let cur = r.current_tick().min(total);
+    let prefetched = r.prefetch_progress().min(total);
+    let (play_pause_icon, play_pause_label, paused) = if r.is_paused() {
+        (Icon::Play, t!(lang, "playback-play"), true)
     } else {
-        None
+        (Icon::Pause, t!(lang, "playback-pause"), false)
+    };
+    let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
+        .round_boundaries(r.round_boundaries())
+        .view();
+
+    // Play/Pause is the transport's centerpiece — promote to
+    // the primary-button style when paused (the affordance
+    // the user is most likely looking for at rest) and keep
+    // it neutral while playing. Either way it sits a notch
+    // bigger than the other strip controls and is rendered
+    // as a perfect circle (square padding + huge radius) so
+    // it reads as a console transport button instead of a
+    // generic pill.
+    let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
+        widgets::primary_button
+    } else {
+        widgets::neutral
+    };
+    let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut style = base_style(theme, status);
+        style.border.radius = 999.0.into();
+        style
+    };
+    // Square button sized to the shared bar-control height
+    // so the media bar lines up exactly with the play-tab
+    // link bar (both pin their interactive children to the
+    // same constant).
+    let play_pause_btn = iced::widget::tooltip(
+        button(
+            iced::widget::container(play_pause_icon.widget().size(18.0))
+                .width(iced::Length::Fixed(20.0))
+                .height(iced::Length::Fixed(20.0))
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+        .height(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+        .style(play_pause_style)
+        .on_press(Message::TogglePlay),
+        iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
+            .padding(6)
+            .style(|theme: &iced::Theme| {
+                let p = theme.extended_palette();
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(p.background.strong.color)),
+                    text_color: Some(p.background.strong.text),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            }),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+
+    // Tick readouts: monospaced + bumped one tier above caption
+    // so they read as digital-clock numerals rather than
+    // metadata, primary-tinted so the eye picks them up as
+    // playback state.
+    let tick_style = |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(theme.palette().primary),
+    };
+    controls
+        .push(play_pause_btn)
+        .push(
+            text(format_tick(cur))
+                .size(14)
+                .font(iced::Font::MONOSPACE)
+                .style(tick_style),
+        )
+        .push(scrub)
+        .push(
+            text(format_tick(total))
+                .size(14)
+                .font(iced::Font::MONOSPACE)
+                .style(widgets::muted_text_style),
+        )
+}
+
+/// PvP-only telemetry deck: P1/P2 tag, TPS, frame skew, rollback
+/// depth, ping — each metric drawn next to its current value, colored
+/// by health (green/amber/red), gathered into one hairline-divided
+/// plate. The plate is a button: clicking the instrument panel toggles
+/// the match-settings popover anchored above it. Gated on a live
+/// latency reading: `latency_raw()` is `Some` while the link is up
+/// (even at 0 ms on LAN) and `None` the moment the remote drops — at
+/// which point the telemetry is frozen and meaningless, so the panel
+/// retires itself.
+fn telemetry_plate<'a>(pvp: &'a pvp_session::PvpSession) -> Option<Element<'a, Message>> {
+    // Raw latest ping drives the plate — same `Some`/`None` link-up gate
+    // as `latency()`, but it shows the true current reading rather than the
+    // smoothed median (which is reserved for the frame-delay suggestion).
+    let latency = pvp.latency_raw()?;
+    let stats = pvp.round_stats();
+    let ping_ms = latency.as_millis();
+    let tps = pvp.tps();
+    let fps_target = pvp.fps_target();
+
+    let mut cells: Vec<Element<'a, Message>> = Vec::new();
+
+    // P1/P2 identity tag leads the instrument cluster, inside the
+    // plate — it reads as the "which side am I" label sitting ahead of
+    // the live metrics. It's a match-level constant, so it shows
+    // whenever the panel is up — including between rounds, when
+    // there's no live `RoundStats`.
+    cells.push(player_cell(pvp.local_player_index()));
+
+    // TPS: current rate vs target — green at/near rate, amber as it
+    // dips, red when it falls well behind (visible netplay stutter).
+    cells.push(stat_cell(
+        Icon::Gauge,
+        tone_for_tps(tps, fps_target),
+        fmt_tps(tps, fps_target),
+    ));
+
+    if let Some(s) = stats {
+        // Skew: how tight the sync is — green near parity, amber
+        // drifting, red far out, by |skew| in frames.
+        cells.push(stat_cell(Icon::ArrowLeftRight, tone_for_skew(s.skew), fmt_skew(s.skew)));
+
+        // Misprediction depth: 0 on a clean frame, spiking to the size of
+        // each rollback. Green when shallow, amber as it climbs, red when
+        // a frame discards and re-simulates deep.
+        cells.push(stat_cell(
+            Icon::GitMergeConflict,
+            tone_for_depth(s.depth),
+            fmt_depth(s.depth),
+        ));
+    }
+
+    // Ping: latency band. The signal icon's bar strength tracks
+    // the band too — full bars (SignalHigh) when ping is low,
+    // dropping to SignalLow as latency climbs.
+    let ping_icon = if ping_ms < 80 {
+        Icon::SignalHigh
+    } else if ping_ms < 140 {
+        Icon::SignalMedium
+    } else {
+        Icon::SignalLow
+    };
+    cells.push(stat_cell(ping_icon, tone_for_ping(ping_ms), fmt_ping(ping_ms)));
+
+    // Interleave hairline dividers into one flat plate.
+    let mut strip = row![].spacing(6).align_y(Alignment::Center);
+    for (i, cell) in cells.into_iter().enumerate() {
+        if i > 0 {
+            strip = strip.push(stat_divider());
+        }
+        strip = strip.push(cell);
+    }
+    Some(
+        button(strip)
+            .padding([3, 9])
+            .style(telemetry_plate_button)
+            .on_press(Message::ToggleMatchSettings)
+            .into(),
+    )
+}
+
+/// Ellipsis-anchored options popover. Built as a top Stack layer
+/// anchored above the HUD bar so it floats over the framebuffer
+/// without pushing the controls strip up. The menu owns its own
+/// dismiss — picking any item closes it; clicking the trigger again
+/// toggles it off.
+///
+/// Content varies by session type:
+///   Replay → Settings, Speed picker, Close
+///   SP     → Settings, Close
+///   PvP    → Settings, (red) Disconnect
+fn options_menu_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Option<Element<'a, Message>> {
+    if !state.show_options_menu {
+        return None;
+    }
+    // Row item width. Wider than the historical 120px speed
+    // picker so "Disconnect" + its icon sit on one line without
+    // wrapping in any locale.
+    const ROW_WIDTH: f32 = 160.0;
+    // Total popover width = row + the panel's 6px-each-side
+    // padding. Pinned explicitly so a Fill-width child (the
+    // divider) can't propagate through the popover container
+    // and stretch the menu out to the full bottom-right pane.
+    const POPOVER_WIDTH: f32 = ROW_WIDTH + 12.0;
+    // Menu-row hover/press/selected tints. Accent drives both
+    // the selected-text color and the wash behind hover/press —
+    // pass `palette.primary` for normal rows, the Disconnect red
+    // for the destructive row. Hover/press alphas are pushed
+    // high enough (0.28 / 0.45 on dark) that the red wash on
+    // the panel plate actually reads as red, not as a slightly
+    // pink-tinted shadow.
+    fn menu_row_style(
+        theme: &iced::Theme,
+        status: iced::widget::button::Status,
+        selected: bool,
+        accent: iced::Color,
+    ) -> iced::widget::button::Style {
+        use iced::widget::button::Status;
+        let p = theme.extended_palette();
+        let text = theme.palette().text;
+        let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
+        let bg = match status {
+            Status::Hovered => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
+            Status::Pressed => Some(tint(if p.is_dark { 0.45 } else { 0.35 })),
+            _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
+            _ => None,
+        };
+        iced::widget::button::Style {
+            background: bg,
+            text_color: if selected { accent } else { text },
+            border: iced::Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+    // Build a "leading-icon + label" action row. `tint = None`
+    // uses the standard primary accent (hover/press wash only,
+    // label in normal text color); `Some(color)` swaps both the
+    // icon, the resting label color, AND the hover/press wash
+    // to the tint — used for Disconnect's danger red so the whole
+    // row reads as destructive before the user even hovers.
+    let action_row = |icon: Icon, label: String, msg: Message, tint: Option<iced::Color>| -> Element<'a, Message> {
+        let tinted_text_style = move |theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(tint.unwrap_or_else(|| theme.palette().text)),
+        };
+        let icon_el: Element<'a, Message> = icon.widget().size(14.0).style(tinted_text_style).into();
+        let content = row![icon_el, text(label).size(14).style(tinted_text_style)]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
+        button(content)
+            .padding(style::ROW_PADDING)
+            .width(iced::Length::Fixed(ROW_WIDTH))
+            .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let accent = tint.unwrap_or(theme.palette().primary);
+                menu_row_style(theme, status, false, accent)
+            })
+            .on_press(msg)
+            .into()
+    };
+    // Thin divider between sections — text-tinted hairline so
+    // it reads as a separator rather than a hard line.
+    let divider = || -> Element<'a, Message> {
+        container(iced::widget::Space::new().width(Fill).height(iced::Length::Fixed(1.0)))
+            .width(Fill)
+            .style(|theme: &iced::Theme| {
+                let p = theme.extended_palette();
+                let text = theme.palette().text;
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(iced::Color {
+                        a: if p.is_dark { 0.12 } else { 0.10 },
+                        ..text
+                    })),
+                    ..Default::default()
+                }
+            })
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 4.0,
+                bottom: 0.0,
+                left: 4.0,
+            })
+            .into()
     };
 
-    // Match-settings popover (PvP-only), anchored above the telemetry
-    // plate that triggers it. Currently holds just the live frame-delay
-    // control (moved here from the footer), but it's the home for any
-    // future in-match knobs. Like the options menu it owns no dismiss
-    // backdrop — clicking the plate again or pressing Esc closes it. No
-    // heading: the frame-delay row already labels itself.
-    let match_settings_overlay: Option<Element<'a, Message>> = match session {
+    let mut sections: Vec<Element<'a, Message>> = Vec::new();
+
+    // Replay-only: speed picker section, anchored at the top.
+    // The Settings + Close pair below sits as plain menu items
+    // separated by a divider so Settings reads as a sibling of
+    // Close, not a header for the Speed section above.
+    if let Some(r) = session.as_replay() {
+        let current = r.speed();
+        let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
+        // Section header: gauge icon + "Speed" label, both
+        // muted so the header reads as a category divider
+        // instead of a clickable row.
+        let header_row = row![
+            Icon::Gauge.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
+            text(t!(lang, "playback-speed"))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+        let header = container(header_row).padding(iced::Padding {
+            top: 4.0,
+            right: 10.0,
+            bottom: 4.0,
+            left: 10.0,
+        });
+        let mut speed_col = column![header].spacing(1);
+        for &v in opts {
+            let selected = (v - current).abs() < 1e-3;
+            let label = if (v - v.trunc()).abs() < 1e-3 {
+                format!("{}×", v as i32)
+            } else {
+                format!("{:.1}×", v)
+            };
+            let check: Element<'a, Message> = if selected {
+                Icon::Check.widget().size(14.0).into()
+            } else {
+                iced::widget::Space::new()
+                    .width(iced::Length::Fixed(14.0))
+                    .height(iced::Length::Fixed(14.0))
+                    .into()
+            };
+            let content = row![check, text(label).size(14)]
+                .spacing(8)
+                .align_y(iced::Alignment::Center);
+            let btn = button(content)
+                .padding(style::ROW_PADDING)
+                .width(iced::Length::Fixed(ROW_WIDTH))
+                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                    menu_row_style(theme, status, selected, theme.palette().primary)
+                })
+                .on_press(Message::SetSpeed(v));
+            speed_col = speed_col.push(btn);
+        }
+        sections.push(Element::from(speed_col));
+        sections.push(divider());
+    }
+
+    // Settings menu item. Cogwheel matches the trigger button —
+    // both refer to the same destination, so the icon doubles as
+    // a reinforcement instead of a new symbol.
+    sections.push(action_row(
+        Icon::Settings,
+        t!(lang, "tab-settings"),
+        Message::OpenSettings,
+        None,
+    ));
+
+    // Tear-down item. PvP gets the red Disconnect confirm gate;
+    // SP and Replay get a direct Close (no gate — neither path
+    // sacrifices game state on tear-down). Color matches
+    // `widgets::pvp_red_button` so the menu's destructive row,
+    // the confirm dialog's CTA, and the existing P1 toolbar
+    // accent all read as one family. No divider between
+    // Settings and the tear-down — they're sibling menu items.
+    let tear_down: Element<'a, Message> = match session {
+        ActiveSession::PvP(_) => action_row(
+            Icon::Unplug,
+            t!(lang, "playback-disconnect"),
+            Message::OpenDisconnectConfirm,
+            Some(iced::Color::from_rgb(0.85, 0.22, 0.28)),
+        ),
+        _ => action_row(Icon::X, t!(lang, "playback-close"), Message::Close, None),
+    };
+    sections.push(tear_down);
+
+    let body = column(sections).spacing(2);
+    let popover = container(body)
+        .padding(6)
+        .width(iced::Length::Fixed(POPOVER_WIDTH))
+        .style(widgets::panel);
+    Some(
+        container(popover)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 8.0,
+                bottom: POPOVER_LIFT,
+                left: 0.0,
+            })
+            .into(),
+    )
+}
+
+/// Match-settings popover (PvP-only), anchored above the telemetry
+/// plate that triggers it. Currently holds just the live frame-delay
+/// control (moved here from the footer), but it's the home for any
+/// future in-match knobs. Like the options menu it owns no dismiss
+/// backdrop — clicking the plate again or pressing Esc closes it. No
+/// heading: the frame-delay row already labels itself.
+fn match_settings_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Option<Element<'a, Message>> {
+    match session {
         ActiveSession::PvP(pvp) if state.show_match_settings && pvp.latency().is_some() => {
             let popover = container(match_settings_content(lang, pvp, &state.metric_history))
                 .padding(12)
@@ -1847,7 +1905,6 @@ pub fn view<'a>(
             // edge with the telemetry plate's: controls-container pad (8) +
             // options button + spacing (10) + opponent toggle + spacing
             // (10), where each button is CTRL_PAD·2 + CTRL_ICON ≈ 44 wide.
-            let lift = crate::app::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
             const PLATE_RIGHT_OFFSET: f32 = 8.0 + 44.0 + 10.0 + 44.0 + 10.0;
             Some(
                 container(popover)
@@ -1858,82 +1915,74 @@ pub fn view<'a>(
                     .padding(iced::Padding {
                         top: 0.0,
                         right: PLATE_RIGHT_OFFSET,
-                        bottom: lift,
+                        bottom: POPOVER_LIFT,
                         left: 0.0,
                     })
                     .into(),
             )
         }
         _ => None,
-    };
+    }
+}
 
-    // Disconnect confirmation modal (PvP-only). Centered panel with a
-    // dimmed click-to-dismiss backdrop — same shape as app.rs's
-    // in-session Settings modal so the two read as the same family
-    // of "this interrupts what you're doing" dialogs. Sits above
-    // the options popover in the stack so it covers the menu if
-    // the user somehow re-opened it.
-    let disconnect_overlay: Option<Element<'a, Message>> =
-        if state.show_disconnect_confirm && matches!(session, ActiveSession::PvP(_)) {
-            let title = text(t!(lang, "playback-disconnect-prompt")).size(TEXT_BODY + 4.0);
-            let body_text = text(t!(lang, "playback-disconnect-detail")).style(widgets::muted_text_style);
-            let cancel_btn = widgets::labeled_icon_button(
-                Icon::X,
-                t!(lang, "playback-cancel"),
-                Message::CloseDisconnectConfirm,
-                [8.0, 14.0],
-                widgets::neutral,
-            );
-            let disconnect_btn = widgets::labeled_icon_button(
-                Icon::Unplug,
-                t!(lang, "playback-disconnect"),
-                Message::Close,
-                [8.0, 14.0],
-                widgets::danger_button,
-            );
-            let buttons = row![horizontal_space(), cancel_btn, disconnect_btn]
-                .spacing(8)
-                .align_y(Alignment::Center);
-            let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
-                .width(iced::Length::Fixed(420.0))
-                .padding(20)
-                .style(widgets::panel);
-            // Swallow clicks on the panel's inert regions (title,
-            // body) so they don't fall through to the backdrop's
-            // dismiss-on-press handler. Buttons inside the panel
-            // still capture their own events.
-            let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
-            let placement = container(panel_swallow)
-                .width(Fill)
-                .height(Fill)
-                .align_x(iced::alignment::Horizontal::Center)
-                .align_y(iced::alignment::Vertical::Center);
-            let backdrop = mouse_area(
-                container(iced::widget::Space::new().width(Fill).height(Fill))
-                    .width(Fill)
-                    .height(Fill)
-                    .style(|_: &iced::Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                        ..Default::default()
-                    }),
-            )
-            .on_press(|_| Message::CloseDisconnectConfirm);
-            Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
-        } else {
-            None
-        };
-
-    let mut stacked = stack![Element::from(layout)];
-    if let Some(o) = options_overlay {
-        stacked = stacked.push(o);
+/// Disconnect confirmation modal (PvP-only). Centered panel with a
+/// dimmed click-to-dismiss backdrop — same shape as app.rs's
+/// in-session Settings modal so the two read as the same family
+/// of "this interrupts what you're doing" dialogs. Sits above
+/// the options popover in the stack so it covers the menu if
+/// the user somehow re-opened it.
+fn disconnect_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Option<Element<'a, Message>> {
+    if !(state.show_disconnect_confirm && matches!(session, ActiveSession::PvP(_))) {
+        return None;
     }
-    if let Some(o) = match_settings_overlay {
-        stacked = stacked.push(o);
-    }
-    if let Some(o) = disconnect_overlay {
-        stacked = stacked.push(o);
-    }
-    stacked.into()
+    let title = text(t!(lang, "playback-disconnect-prompt")).size(TEXT_BODY + 4.0);
+    let body_text = text(t!(lang, "playback-disconnect-detail")).style(widgets::muted_text_style);
+    let cancel_btn = widgets::labeled_icon_button(
+        Icon::X,
+        t!(lang, "playback-cancel"),
+        Message::CloseDisconnectConfirm,
+        [8.0, 14.0],
+        widgets::neutral,
+    );
+    let disconnect_btn = widgets::labeled_icon_button(
+        Icon::Unplug,
+        t!(lang, "playback-disconnect"),
+        Message::Close,
+        [8.0, 14.0],
+        widgets::danger_button,
+    );
+    let buttons = row![horizontal_space(), cancel_btn, disconnect_btn]
+        .spacing(8)
+        .align_y(Alignment::Center);
+    let panel = container(column![title, body_text, buttons].spacing(14).width(Fill))
+        .width(iced::Length::Fixed(420.0))
+        .padding(20)
+        .style(widgets::panel);
+    // Swallow clicks on the panel's inert regions (title,
+    // body) so they don't fall through to the backdrop's
+    // dismiss-on-press handler. Buttons inside the panel
+    // still capture their own events.
+    let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
+    let placement = container(panel_swallow)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center);
+    let backdrop = mouse_area(
+        container(iced::widget::Space::new().width(Fill).height(Fill))
+            .width(Fill)
+            .height(Fill)
+            .style(|_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
+                ..Default::default()
+            }),
+    )
+    .on_press(|_| Message::CloseDisconnectConfirm);
+    Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
 }
 
 /// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional

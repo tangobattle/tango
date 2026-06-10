@@ -1,6 +1,7 @@
-use crate::app::{STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
 use crate::i18n::{t, SUPPORTED_LANGS};
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION};
 use crate::widgets;
+use crate::widgets::{labeled, Choice};
 use crate::{config, input};
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
@@ -9,36 +10,16 @@ use lucide_icons::Icon;
 use sweeten::widget::{column, pick_list, row, text_input};
 use unic_langid::LanguageIdentifier;
 
-/// A [`config::ThemeMode`] paired with its localized label, for the theme
-/// pick_list — the picker renders options via `Display`, which can't reach
-/// the language, so the label is resolved up front (mirrors
-/// [`crate::i18n::LanguageChoice`]).
-#[derive(Clone)]
-struct ThemeChoice {
-    mode: config::ThemeMode,
-    label: String,
-}
-
-impl ThemeChoice {
-    fn new(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Self {
-        let label = match mode {
+/// A [`config::ThemeMode`] as a pick_list [`Choice`], labeled in the
+/// UI language (mirrors [`crate::i18n::LanguageChoice`]).
+fn theme_choice(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Choice<config::ThemeMode> {
+    Choice::new(
+        mode,
+        match mode {
             config::ThemeMode::Dark => t!(lang, "settings-theme-dark"),
             config::ThemeMode::Light => t!(lang, "settings-theme-light"),
-        };
-        Self { mode, label }
-    }
-}
-
-impl PartialEq for ThemeChoice {
-    fn eq(&self, other: &Self) -> bool {
-        self.mode == other.mode
-    }
-}
-
-impl std::fmt::Display for ThemeChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
+        },
+    )
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,8 +67,9 @@ pub enum Message {
     ToggleFractionalScaling(bool),
     ToggleHideEmulatorBorder(bool),
     ToggleFullscreen(bool),
-    ResolutionChanged(ResolutionChoice),
-    UiScaleChanged(UiScaleChoice),
+    /// New windowed size picked, as `(width, height)`.
+    ResolutionChanged((f32, f32)),
+    UiScaleChanged(f32),
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     VolumeChanged(f32),
@@ -165,8 +147,8 @@ impl State {
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
             Message::ToggleHideEmulatorBorder(b) => Some(ConfigChange::HideEmulatorBorder(b)),
             Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
-            Message::ResolutionChanged(c) => Some(ConfigChange::Resolution(c.width, c.height)),
-            Message::UiScaleChanged(c) => Some(ConfigChange::UiScale(c.0)),
+            Message::ResolutionChanged((w, h)) => Some(ConfigChange::Resolution(w, h)),
+            Message::UiScaleChanged(s) => Some(ConfigChange::UiScale(s)),
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
@@ -264,8 +246,8 @@ pub fn view<'a>(
         .style(widgets::pane);
 
     let root = row![sidebar, body_wrap]
-        .spacing(widgets::PANE_GAP)
-        .padding(widgets::PANE_GAP)
+        .spacing(style::PANE_GAP)
+        .padding(style::PANE_GAP)
         .width(Fill)
         .height(Fill);
 
@@ -306,17 +288,6 @@ pub fn view<'a>(
     }
 }
 
-/// Generic over Message so the welcome screen can use it too with its
-/// own Message type.
-pub fn labeled<'a, M: Clone + 'a>(label: String, ctrl: impl Into<Element<'a, M>>) -> Element<'a, M> {
-    column![
-        text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
-        ctrl.into(),
-    ]
-    .spacing(4)
-    .into()
-}
-
 fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
     column![
         labeled::<Message>(
@@ -345,13 +316,15 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         },),
         labeled::<Message>(t!(lang, "settings-theme"), {
             let options = vec![
-                ThemeChoice::new(lang, config::ThemeMode::Dark),
-                ThemeChoice::new(lang, config::ThemeMode::Light),
+                theme_choice(lang, config::ThemeMode::Dark),
+                theme_choice(lang, config::ThemeMode::Light),
             ];
-            let selected = options.iter().find(|c| c.mode == config.theme).cloned();
-            pick_list(options, selected, |c: ThemeChoice| Message::ThemeChanged(c.mode))
-                .padding(STANDARD_PADDING)
-                .style(widgets::chunky_pick_list)
+            let selected = options.iter().find(|c| c.value == config.theme).cloned();
+            pick_list(options, selected, |c: Choice<config::ThemeMode>| {
+                Message::ThemeChanged(c.value)
+            })
+            .padding(STANDARD_PADDING)
+            .style(widgets::chunky_pick_list)
         }),
         iced::widget::checkbox(config.streamer_mode)
             .label(t!(lang, "settings-streamer-mode"))
@@ -379,7 +352,7 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .into()
 }
 
@@ -399,22 +372,8 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
         .align_y(Alignment::Center),
     )]
     .spacing(14)
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .into()
-}
-
-/// Pick-list adapter for the video filter choice. `key` is the
-/// `config.video_filter` value (`""`, `"hq2x"`, …) and `display`
-/// is the human-readable label the dropdown shows.
-#[derive(Clone, PartialEq, Eq)]
-struct VideoFilterChoice {
-    key: String,
-    display: String,
-}
-impl std::fmt::Display for VideoFilterChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.display)
-    }
 }
 
 /// Standard windowed resolutions surfaced in the graphics settings
@@ -435,73 +394,57 @@ const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
     (3840, 2160),
 ];
 
-/// Pick-list adapter for a window resolution. PartialEq is exact
+/// A window resolution as a pick_list [`Choice`]. PartialEq is exact
 /// f32 — fine since the values come straight from
 /// `STANDARD_RESOLUTIONS` constants and matched by equality.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ResolutionChoice {
-    pub width: f32,
-    pub height: f32,
-}
-impl Eq for ResolutionChoice {}
-impl std::fmt::Display for ResolutionChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}×{}", self.width as u32, self.height as u32)
-    }
+fn resolution_choice(width: f32, height: f32) -> Choice<(f32, f32)> {
+    Choice::new((width, height), format!("{}×{}", width as u32, height as u32))
 }
 
 /// UI scale presets surfaced in the graphics-settings pick-list.
 /// Multiplies on top of the OS DPI scale.
 const UI_SCALE_PRESETS: &[f32] = &[0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-/// Pick-list adapter for the UI scale multiplier. `PartialEq` is
+/// A UI scale multiplier as a pick_list [`Choice`]. Integer percent —
+/// 25%-step decimals would just clutter the dropdown. `PartialEq` is
 /// exact on f32, which is fine since values come from the
 /// `UI_SCALE_PRESETS` constants and matched by equality.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct UiScaleChoice(pub f32);
-impl Eq for UiScaleChoice {}
-impl std::fmt::Display for UiScaleChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Print integer percent for the round 25%-step presets,
-        // 25%-step decimals would just clutter the dropdown.
-        write!(f, "{}%", (self.0 * 100.0).round() as u32)
-    }
+fn ui_scale_choice(scale: f32) -> Choice<f32> {
+    Choice::new(scale, format!("{}%", (scale * 100.0).round() as u32))
 }
 
 fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    let resolution_options: Vec<ResolutionChoice> = STANDARD_RESOLUTIONS
+    let resolution_options: Vec<Choice<(f32, f32)>> = STANDARD_RESOLUTIONS
         .iter()
-        .map(|(w, h)| ResolutionChoice {
-            width: *w as f32,
-            height: *h as f32,
-        })
+        .map(|&(w, h)| resolution_choice(w as f32, h as f32))
         .collect();
     // Match the current windowed size against the preset list so
     // the picker shows a selected value when it lines up exactly.
     // No match (custom drag-resized size) renders as blank.
-    let current_size = config
+    let selected_resolution = config
         .last_window_size
-        .map(|(w, h)| ResolutionChoice { width: w, height: h });
-    let selected_resolution = current_size.and_then(|cur| resolution_options.iter().find(|o| **o == cur).copied());
+        .and_then(|size| resolution_options.iter().find(|o| o.value == size).cloned());
     // Disable the window-size picker while fullscreen is on:
     // picking a sub-monitor size while fullscreen is meaningless
     // (the live window stays at monitor resolution). Render the
     // shared disabled-dropdown placeholder so it reads as the
     // same control family as the live picker.
     let window_size_picker: Element<'a, Message> = if config.fullscreen {
-        let label = selected_resolution.map(|r| r.to_string()).unwrap_or_else(|| "—".into());
+        let label = selected_resolution.map(|r| r.label).unwrap_or_else(|| "—".into());
         widgets::disabled_pick_list(label).into()
     } else {
-        pick_list(resolution_options, selected_resolution, Message::ResolutionChanged)
-            .padding(STANDARD_PADDING)
-            .style(widgets::chunky_pick_list)
-            .into()
+        pick_list(resolution_options, selected_resolution, |c: Choice<(f32, f32)>| {
+            Message::ResolutionChanged(c.value)
+        })
+        .padding(STANDARD_PADDING)
+        .style(widgets::chunky_pick_list)
+        .into()
     };
-    let ui_scale_options: Vec<UiScaleChoice> = UI_SCALE_PRESETS.iter().copied().map(UiScaleChoice).collect();
+    let ui_scale_options: Vec<Choice<f32>> = UI_SCALE_PRESETS.iter().copied().map(ui_scale_choice).collect();
     let selected_ui_scale = ui_scale_options
         .iter()
-        .find(|c| (c.0 - config.ui_scale).abs() < f32::EPSILON)
-        .copied();
+        .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
+        .cloned();
     column![
         // Label hovers over just the dropdown; the row beneath
         // it centers the fullscreen checkbox with the dropdown
@@ -523,21 +466,21 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
         .spacing(4),
         labeled::<Message>(
             t!(lang, "settings-ui-scale"),
-            pick_list(ui_scale_options, selected_ui_scale, Message::UiScaleChanged)
-                .padding(STANDARD_PADDING)
-                .style(widgets::chunky_pick_list),
+            pick_list(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
+                Message::UiScaleChanged(c.value)
+            })
+            .padding(STANDARD_PADDING)
+            .style(widgets::chunky_pick_list),
         ),
         labeled::<Message>(t!(lang, "settings-video-filter"), {
-            let options: Vec<VideoFilterChoice> = crate::video::effects::EFFECTS
+            // `value` is the `config.video_filter` key (`""`, `"hq2x"`, …).
+            let options: Vec<Choice<String>> = crate::video::effects::EFFECTS
                 .iter()
-                .map(|effect| VideoFilterChoice {
-                    key: effect.id.into(),
-                    display: effect.name.into(),
-                })
+                .map(|effect| Choice::new(effect.id.into(), effect.name))
                 .collect();
-            let selected = options.iter().find(|c| c.key == config.video_filter).cloned();
-            pick_list(options, selected, |c: VideoFilterChoice| {
-                Message::VideoFilterChanged(c.key)
+            let selected = options.iter().find(|c| c.value == config.video_filter).cloned();
+            pick_list(options, selected, |c: Choice<String>| {
+                Message::VideoFilterChanged(c.value)
             })
             .padding(STANDARD_PADDING)
             .style(widgets::chunky_pick_list)
@@ -552,7 +495,7 @@ fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a config::Confi
             .style(widgets::chunky_checkbox),
     ]
     .spacing(14)
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .into()
 }
 
@@ -589,7 +532,7 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         ),
     ]
     .spacing(14)
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .into()
 }
 
@@ -667,7 +610,7 @@ fn settings_input<'a>(
         // helper save_view uses for its chip table.
         col = col.push(
             container(row_inner)
-                .padding([8, 12])
+                .padding(style::HEADER_PADDING)
                 .width(Fill)
                 .style(widgets::zebra_row(idx)),
         );
@@ -803,7 +746,7 @@ fn settings_about<'a>(
     // the nav scanline at the top, the updater section
     // breathes at the page end, and link text doesn't slam
     // the left edge.
-    .padding(widgets::PANE_PADDING)
+    .padding(style::PANE_PADDING)
     .into()
 }
 
