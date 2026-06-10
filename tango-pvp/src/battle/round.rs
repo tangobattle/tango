@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex as SyncMutex};
+use std::sync::Arc;
 
 use crate::input::PartialInput;
 
@@ -51,12 +51,11 @@ pub struct Round {
     /// Handle to the live core's mgba thread, held so `Drop` can reset its
     /// `fps_target` when the round ends.
     primary_thread_handle: mgba::thread::Handle,
-    /// Handle to the match-owned time-sync throttler;
+    /// Time-sync throttler. Its EMA state carries across frames;
     /// `add_local_input_and_fastforward` feeds it the engine's skew and
     /// speculation balance each frame to turn them into an fps target for the
-    /// live core. Match-owned so its learned rate trim survives round
-    /// boundaries; `Round::new` clears the per-round transients.
-    throttler: Arc<SyncMutex<super::throttler::Throttler>>,
+    /// live core.
+    throttler: super::throttler::Throttler,
     /// Tick of the last state loaded into the live core — the tick returned by
     /// the most recent [`Session::advance`](getgud::Session::advance), or 0
     /// before the first load. Read by the per-game `round_post_increment_tick`
@@ -66,8 +65,6 @@ pub struct Round {
 
 impl Round {
     pub(super) fn new(match_: &super::Match) -> Self {
-        let throttler = match_.throttler();
-        throttler.lock().unwrap().reset_transients();
         Self {
             session: None,
             round_idx: match_.current_local_round_idx(),
@@ -76,7 +73,7 @@ impl Round {
             hooks: match_.local_hooks(),
             frame_delay: match_.frame_delay(),
             primary_thread_handle: match_.primary_thread_handle(),
-            throttler,
+            throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
         }
     }
@@ -251,11 +248,7 @@ impl Round {
         // quality, so the throttler stays disengaged until the speculation
         // balance crosses the boundary, instead of shaving fps the player
         // can feel.
-        let slowdown = self
-            .throttler
-            .lock()
-            .unwrap()
-            .step(skew, session.speculation_balance());
+        let slowdown = self.throttler.step(skew, session.speculation_balance());
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")

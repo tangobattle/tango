@@ -8,15 +8,6 @@
 //! so no fps is shaved. (It still costs CPU — the frontier speculates and
 //! re-sims mispredictions regardless of what's presented — but that's the
 //! frame path's budget, not the player's.)
-//!
-//! A second, much slower loop rate-matches the hosts. A persistent pacing
-//! mismatch between the two (timer- vs vsync- vs audio-clock-paced) would
-//! otherwise march the lead into the speculation boundary over and over,
-//! each pass tapping a brake the player can feel. The estimator reads the
-//! drift off the per-frame skew deltas while the fast loop is quiet and
-//! folds it into a small persistent trim, applied *outside* the engagement
-//! gate — rate matching is exactly the correction that must act while
-//! presentation is still free, before the lead reaches the boundary at all.
 
 /// EMA weight applied while skew is growing. τ ≈ 5 s rise (at 60 Hz).
 const ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
@@ -49,41 +40,9 @@ const MAX_SLOWDOWN: f32 = 30.0;
 /// re-engagement latency constant, while leaving enough negative range to
 /// absorb bursty-arrival flutter.
 const BALANCE_FLOOR: f32 = -(MAX_SLOWDOWN / ENGAGEMENT_SLOPE);
-/// Fast-loop output below which the trim estimator counts the loop as quiet
-/// and accepts skew samples. An intentional fast slowdown moves skew exactly
-/// the way clock drift does, so sampling while it acts would fold our own
-/// correction into the rate estimate; below this threshold the contamination
-/// is bounded and biased toward under-trimming (the safe direction).
-const TRIM_QUIET: f32 = 0.25;
-/// Largest per-frame skew delta the trim estimator accepts, in ticks. Real
-/// rate mismatch is far below a tick per frame, so it reaches the integer
-/// skew as occasional ±1 steps; bigger jumps are network bursts and stalls —
-/// symmetric flutter at best, a stall's one-sided swing at worst — and are
-/// excluded rather than averaged.
-const TRIM_DELTA_GUARD: i32 = 3;
-/// Accepted samples per trim-estimation window. The window's deltas telescope
-/// to a two-point slope of the skew level, so the noise is the level's
-/// endpoint flutter (a tick or two) against a signal that grows with window
-/// length: over 900 clean steps (~15 s), 0.3 fps of drift reads ≈ 9 ticks.
-const TRIM_WINDOW: u32 = 900;
-/// Fraction of each window's measured residual rate folded into the trim.
-/// Geometric convergence — the residual halves each window, ~45 s from a cold
-/// start — with enough damping that one noisy window moves the trim ≲0.05 fps.
-const TRIM_CORRECTION: f32 = 0.5;
-/// Trim ceiling, in fps. Sized to the plausible pacing gaps (a vsync-paced
-/// 60.00 Hz host against an audio-paced 59.73 Hz one is 0.27 fps) while
-/// bounding any estimator failure to an imperceptible rate change.
-const TRIM_MAX: f32 = 0.5;
-/// Nominal step rate for converting a per-step skew slope to fps. Only a gain
-/// factor inside a damped loop, so the nominal value is plenty.
-const STEPS_PER_SECOND: f32 = 60.0;
 
-/// Time-sync throttler. The [`Match`](super::Match) owns one for its whole
-/// lifetime and each [`Round`](super::Round) drives it: per-round state is
-/// cleared at round start ([`reset_transients`](Throttler::reset_transients)),
-/// then the engine's raw skew and speculation balance are fed to
-/// [`step`](Throttler::step) each frame. The learned rate trim is a property
-/// of the host pairing, not of any one round, and carries across rounds.
+/// Per-round time-sync throttler. [`Round`](super::Round) owns one and feeds it
+/// the engine's raw skew and speculation balance each frame.
 pub(crate) struct Throttler {
     /// Asymmetric-EMA-smoothed skew, carried across frames. Floored at zero:
     /// negative skew (the peer leading) would otherwise wind the average down —
@@ -100,17 +59,6 @@ pub(crate) struct Throttler {
     /// -present_delay, and the climb back through zero would hold the brake
     /// off well past the boundary crossing.
     smoothed_balance: f32,
-    /// Learned clock-rate trim, in fps below the base rate. Applied outside
-    /// the engagement gate every frame and kept across rounds; see the module
-    /// docs.
-    trim: f32,
-    /// Raw skew last step, for the trim estimator's per-step delta.
-    last_skew: i32,
-    /// Sum of accepted skew deltas in the current estimation window — the
-    /// telescoped change of the skew level over the window's clean samples.
-    window_sum: i32,
-    /// Count of accepted samples in the current estimation window.
-    window_len: u32,
 }
 
 impl Throttler {
@@ -118,23 +66,7 @@ impl Throttler {
         Self {
             smoothed: 0.0,
             smoothed_balance: 0.0,
-            trim: 0.0,
-            last_skew: 0,
-            window_sum: 0,
-            window_len: 0,
         }
-    }
-
-    /// Clear the per-round scratch — the fast loop's EMAs and the estimator's
-    /// half-filled window — keeping the learned rate trim. Called at round
-    /// start: skew and balance restart from fresh queues, but the hosts'
-    /// pacing mismatch is the same as it was last round.
-    pub(crate) fn reset_transients(&mut self) {
-        self.smoothed = 0.0;
-        self.smoothed_balance = 0.0;
-        self.last_skew = 0;
-        self.window_sum = 0;
-        self.window_len = 0;
     }
 
     /// Compute the slowdown to apply this frame, in fps below the base rate.
@@ -149,12 +81,9 @@ impl Throttler {
     /// running ahead costs no presentation quality — so the result is 0 no
     /// matter how large the skew. Past the boundary the permitted slowdown
     /// ramps up at ENGAGEMENT_SLOPE fps per tick of smoothed depth until the
-    /// smoothed skew takes over. On top of the gated fast slowdown rides the
-    /// persistent rate trim (see the module docs), so the result is always in
-    /// `[0, MAX_SLOWDOWN + TRIM_MAX]` (0 = run at full speed).
+    /// smoothed skew takes over. The result is always in `[0, MAX_SLOWDOWN]`
+    /// (0 = run at full speed).
     pub(crate) fn step(&mut self, skew: i32, speculation_balance: i32) -> f32 {
-        let delta = skew - self.last_skew;
-        self.last_skew = skew;
         let skew = skew as f32;
         let alpha = if skew > self.smoothed {
             ALPHA_SLOWDOWN
@@ -165,27 +94,9 @@ impl Throttler {
         self.smoothed_balance = (ALPHA_BALANCE * speculation_balance as f32
             + (1.0 - ALPHA_BALANCE) * self.smoothed_balance)
             .max(BALANCE_FLOOR);
-        let fast = (SKEW_TO_SLOWDOWN * self.smoothed)
+        (SKEW_TO_SLOWDOWN * self.smoothed)
             .min(ENGAGEMENT_SLOPE * self.smoothed_balance.max(0.0))
-            .clamp(0.0, MAX_SLOWDOWN);
-
-        // Rate-trim estimator: sample only while our own correction is quiet
-        // and the delta is plausibly drift rather than a burst.
-        if fast <= TRIM_QUIET && delta.abs() <= TRIM_DELTA_GUARD {
-            self.window_sum += delta;
-            self.window_len += 1;
-            if self.window_len == TRIM_WINDOW {
-                // A rate gap moves skew at twice its fps value (our advantage
-                // rises as the peer's falls), hence the 2 in the conversion.
-                let residual_fps =
-                    self.window_sum as f32 * STEPS_PER_SECOND / (2.0 * TRIM_WINDOW as f32);
-                self.trim = (self.trim + TRIM_CORRECTION * residual_fps).clamp(0.0, TRIM_MAX);
-                self.window_sum = 0;
-                self.window_len = 0;
-            }
-        }
-
-        fast + self.trim
+            .clamp(0.0, MAX_SLOWDOWN)
     }
 }
 
@@ -305,100 +216,5 @@ mod tests {
         let mut t = Throttler::new();
         let peak = (0..5_000).map(|_| t.step(1_000, OPEN)).fold(0.0f32, f32::max);
         assert_eq!(peak, MAX_SLOWDOWN);
-    }
-
-    /// Closed-loop drift sim: the peer's clock runs `gap` fps slower than
-    /// ours, so the raw skew integrates twice the *corrected* rate difference
-    /// (our advantage rises as the peer's falls). The throttler's own output
-    /// feeds back, closing the loop. Returns the final (fractional) skew.
-    fn run_drift(t: &mut Throttler, gap: f32, balance: i32, steps: u32, mut skew: f32) -> f32 {
-        for _ in 0..steps {
-            let slowdown = t.step(skew.round() as i32, balance);
-            skew += 2.0 * (gap - slowdown) / 60.0;
-        }
-        skew
-    }
-
-    /// A persistent 0.3 fps pacing gap with the lead inside the present delay
-    /// (fast loop gated off) gets rate-matched: after two minutes the trim has
-    /// converged on the gap and the skew has stopped marching.
-    #[test]
-    fn persistent_drift_gets_trimmed() {
-        let mut t = Throttler::new();
-        run_drift(&mut t, 0.3, -5, 7_200, 0.0);
-        assert!((t.trim - 0.3).abs() < 0.07, "trim {} after 2 min of 0.3 fps drift", t.trim);
-        let marched = run_drift(&mut t, 0.3, -5, 1_800, 0.0);
-        assert!(marched.abs() <= 5.0, "skew still marched {marched} ticks in 30 s");
-    }
-
-    /// A pacing gap past the trim ceiling saturates the trim at TRIM_MAX
-    /// instead of winding up beyond it.
-    #[test]
-    fn trim_is_clamped() {
-        let mut t = Throttler::new();
-        run_drift(&mut t, 5.0, -5, 3_600, 0.0);
-        assert_eq!(t.trim, TRIM_MAX);
-    }
-
-    /// Mean-zero skew flutter with no real drift must not inflate the trim:
-    /// each window telescopes to the level difference across it, so bounded
-    /// flutter reads as (at most) endpoint jitter.
-    #[test]
-    fn flutter_does_not_inflate_trim() {
-        let mut t = Throttler::new();
-        let level = [0, 1, 2, 1, 0, -1, 0];
-        for i in 0..20_000usize {
-            t.step(level[i % level.len()], -5);
-        }
-        assert!(t.trim <= 0.06, "trim wound up to {} on mean-zero flutter", t.trim);
-    }
-
-    /// A stall's skew swing — big per-frame deltas out, a long hold, big
-    /// deltas back — is excluded by the delta guard, not read as drift.
-    #[test]
-    fn stall_swings_are_not_read_as_drift() {
-        let mut t = Throttler::new();
-        run(&mut t, 0, -5, 1_000);
-        for i in 1..=10 {
-            t.step(9 * i, -5);
-        }
-        run(&mut t, 90, -5, 2_000);
-        // Checked before the recovery too: the out-swing alone must not have
-        // registered, not merely cancelled against the swing back.
-        assert_eq!(t.trim, 0.0);
-        for i in 1..=10 {
-            t.step(90 - 9 * i, -5);
-        }
-        run(&mut t, 0, -5, 2_000);
-        assert_eq!(t.trim, 0.0);
-    }
-
-    /// While the fast loop is braking it drags skew down just like drift
-    /// would, so those frames must not feed the estimator: a converged trim
-    /// survives a braking episode (a 60-tick lead drained at the boundary)
-    /// essentially unchanged.
-    #[test]
-    fn braking_episode_does_not_unlearn_the_trim() {
-        let mut t = Throttler::new();
-        t.trim = 0.3;
-        let end = run_drift(&mut t, 0.3, OPEN, 3_600, 60.0);
-        assert!((t.trim - 0.3).abs() <= 0.05, "trim moved to {}", t.trim);
-        assert!(end.abs() <= 5.0, "lead not drained: {end}");
-    }
-
-    /// Round boundaries clear the fast loop's state but keep the learned
-    /// trim — pacing mismatch belongs to the host pairing, not the round.
-    #[test]
-    fn reset_keeps_the_trim() {
-        let mut t = Throttler::new();
-        run_drift(&mut t, 0.3, -5, 7_200, 0.0);
-        let trim = t.trim;
-        assert!(trim > 0.2);
-        run(&mut t, 120, OPEN, 1_000); // wind the fast loop up
-        t.reset_transients();
-        assert_eq!(t.trim, trim);
-        // Fast loop quiet again from the first post-reset frame; only the
-        // trim remains in the output.
-        assert_eq!(t.step(0, -5), trim);
     }
 }

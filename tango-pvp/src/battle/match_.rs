@@ -141,12 +141,6 @@ pub struct Match {
     /// mid-match (footer slider) and every round reads the current value each
     /// frame.
     frame_delay: Arc<AtomicU32>,
-    /// Time-sync throttler, shared with each [`Round`]. Owned at the match
-    /// level because its learned rate trim is a property of the host pairing,
-    /// not of any one round — rounds clear the per-round transients at start
-    /// and keep the trim. Locked only from the emulator thread (the round's
-    /// per-frame trap), hence a plain std mutex.
-    throttler: Arc<SyncMutex<super::throttler::Throttler>>,
 }
 
 impl Match {
@@ -177,7 +171,6 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
-            throttler: Arc::new(SyncMutex::new(super::throttler::Throttler::new())),
         })
     }
 
@@ -211,10 +204,6 @@ impl Match {
 
     pub(super) fn frame_delay(&self) -> Arc<AtomicU32> {
         self.frame_delay.clone()
-    }
-
-    pub(super) fn throttler(&self) -> Arc<SyncMutex<super::throttler::Throttler>> {
-        self.throttler.clone()
     }
 
     pub(super) fn remote_inputs_handle(&self) -> Arc<RemoteInputs> {
