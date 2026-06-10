@@ -503,6 +503,29 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
+/// [`pane`] in its "something went wrong" register: same plate
+/// geometry, but the mix leans toward the palette's danger color
+/// and a danger-tinted border frames the region — the whole pane
+/// reads as an error surface rather than a neutral pane that
+/// happens to contain a red line of text. Used by the lobby header
+/// while netplay is in `Phase::Failed`.
+pub fn danger_pane(theme: &Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let bg = theme.palette().background;
+    let danger = p.danger.strong.color;
+    let plate = mix(bg, danger, 0.12);
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(plate)),
+        text_color: Some(p.background.weak.text),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: iced::Color { a: 0.45, ..danger },
+        },
+        ..Default::default()
+    }
+}
+
 /// Theme-aware muted text color: mix the palette's text into the
 /// background until the contrast drops to "secondary". Works on
 /// both light + dark themes — alpha-fading the text on a dark bg
