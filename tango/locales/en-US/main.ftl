@@ -51,6 +51,7 @@ empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
 empty-no-saves-title = No save files for this game
 empty-no-saves-body = Drop a .sav for this game into:
 play-no-patch = No patch
+play-patch-toggle = Use a patch…
 play-version-placeholder = —
 
 # Play bottom strip

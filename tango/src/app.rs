@@ -1954,12 +1954,18 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
             .padding([2, 8]),
             tab(Icon::Gamepad, t!(lang, "tab-play"), Tab::Play),
             tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
-            tab(Icon::Puzzle, t!(lang, "tab-patches"), Tab::Patches),
             horizontal_space(),
-            // Settings = low-emphasis utility tab. The gear glyph
-            // is already an interface convention, so the "Settings"
-            // text would be redundant; expose it as a hover
-            // tooltip instead.
+            // Patches + Settings = low-emphasis utility tabs.
+            // Patch management is an occasional maintenance chore,
+            // not a destination, so it doesn't get equal billing
+            // with Play/Replays — icon-only on the right, with the
+            // label exposed as a hover tooltip.
+            widgets::nav_icon_tab_button(
+                Icon::Puzzle,
+                t!(lang, "tab-patches"),
+                Message::TabSelected(Tab::Patches),
+                Tab::Patches == active,
+            ),
             widgets::nav_icon_tab_button(
                 Icon::Settings,
                 t!(lang, "tab-settings"),

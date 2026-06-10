@@ -356,14 +356,15 @@ pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: 
     tab_button_inner(icon, Some(label), msg, active, false)
 }
 
-/// Larger pill for the global top nav (Play / Replays / Patches).
+/// Larger pill for the global top nav (Play / Replays).
 /// TEXT_HEADING-sized icon + label so the chrome reads as the
 /// primary navigation for the whole app.
 pub fn nav_tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
     tab_button_inner(icon, Some(label), msg, active, true)
 }
 
-/// Icon-only variant of [`nav_tab_button`] for the Settings cog.
+/// Icon-only variant of [`nav_tab_button`] for the right-aligned
+/// utility tabs (Patches, Settings).
 pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     icon: Icon,
     tooltip_label: String,

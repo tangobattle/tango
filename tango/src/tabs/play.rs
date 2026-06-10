@@ -20,6 +20,10 @@ pub enum Message {
     /// Real patch name; empty string is the "no patch" sentinel.
     LocalPatchSelected(String),
     LocalPatchVersionSelected(semver::Version),
+    /// Unfold the collapsed patch/version pickers in the selector
+    /// strip. There's no explicit close message — picking "no patch"
+    /// folds them back up (see LocalPatchSelected).
+    PatchPickerOpened,
     SaveViewAction(save_view::Action),
     LinkCodeChanged(String),
     /// Fill the link-code input with a fresh random
@@ -182,6 +186,13 @@ pub struct PlayState {
     pub local_save: Option<std::path::PathBuf>,
     pub local_patch: Option<String>,
     pub local_patch_version: Option<semver::Version>,
+    /// Whether the patch/version pickers in the selector strip are
+    /// unfolded. Patching is a niche flow, so the pickers stay
+    /// collapsed behind a small toggle until the user opts in;
+    /// selecting "no patch" folds them away again. Not persisted —
+    /// an *active* patch always forces the pickers visible, so a
+    /// remembered patch selection survives without this flag.
+    pub patch_picker_open: bool,
     /// Persistent state for the embedded save view (active tab,
     /// folder grouping). Apply incoming `SaveViewAction`s via
     /// [`save_view::State::apply`].
@@ -235,6 +246,7 @@ impl Default for PlayState {
             local_save: None,
             local_patch: None,
             local_patch_version: None,
+            patch_picker_open: false,
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             link_code: String::new(),
@@ -458,10 +470,17 @@ impl PlayState {
                 }
                 Some(Effect::SelectionChanged)
             }
+            Message::PatchPickerOpened => {
+                self.patch_picker_open = true;
+                None
+            }
             Message::LocalPatchSelected(name) => {
                 if name.is_empty() {
                     self.local_patch = None;
                     self.local_patch_version = None;
+                    // Picking the sentinel doubles as "put the patch
+                    // controls away".
+                    self.patch_picker_open = false;
                 } else {
                     let v = scanners
                         .patches
@@ -1114,36 +1133,6 @@ impl PlayState {
             .width(Length::Fill)
             .style(widgets::chunky_pick_list);
 
-        let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
-        let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
-            Message::LocalPatchSelected(c.value)
-        })
-        .padding(STANDARD_PADDING)
-        .width(Length::FillPortion(2))
-        .style(widgets::chunky_pick_list);
-
-        // No patch selected (or none with matching versions) →
-        // render the shared disabled-dropdown placeholder so the
-        // version slot reads as locked-off instead of an empty
-        // picker users can still click.
-        let version_options = self.version_options(scanners);
-        let version: Element<'_, Message> = if version_options.is_empty() {
-            widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
-                .width(Length::Fixed(100.0))
-                .into()
-        } else {
-            pick_list(
-                version_options,
-                self.local_patch_version.clone(),
-                Message::LocalPatchVersionSelected,
-            )
-            .placeholder(t!(lang, "play-version-placeholder"))
-            .padding(STANDARD_PADDING)
-            .width(Length::Fixed(100.0))
-            .style(widgets::chunky_pick_list)
-            .into()
-        };
-
         let refresh = widgets::icon_button_maybe(
             Icon::RefreshCw,
             t!(lang, "rescan"),
@@ -1151,9 +1140,55 @@ impl PlayState {
             STANDARD_PADDING,
         );
 
-        let game_row = row![game, patch, version, refresh]
-            .spacing(8)
-            .align_y(Alignment::Center);
+        // Patch controls stay folded behind a small icon toggle
+        // until the user opts in (or a patch is already active) —
+        // patching is a niche flow that shouldn't share top billing
+        // with the game picker. With the pickers folded, the game
+        // picker's FillPortion is the only fill in the row, so it
+        // soaks up the freed width.
+        let game_row = if self.local_patch.is_some() || self.patch_picker_open {
+            let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
+            let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
+                Message::LocalPatchSelected(c.value)
+            })
+            .padding(STANDARD_PADDING)
+            .width(Length::FillPortion(2))
+            .style(widgets::chunky_pick_list);
+
+            // No patch selected (or none with matching versions) →
+            // render the shared disabled-dropdown placeholder so the
+            // version slot reads as locked-off instead of an empty
+            // picker users can still click.
+            let version_options = self.version_options(scanners);
+            let version: Element<'_, Message> = if version_options.is_empty() {
+                widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
+                    .width(Length::Fixed(100.0))
+                    .into()
+            } else {
+                pick_list(
+                    version_options,
+                    self.local_patch_version.clone(),
+                    Message::LocalPatchVersionSelected,
+                )
+                .placeholder(t!(lang, "play-version-placeholder"))
+                .padding(STANDARD_PADDING)
+                .width(Length::Fixed(100.0))
+                .style(widgets::chunky_pick_list)
+                .into()
+            };
+
+            row![game, patch, version, refresh]
+        } else {
+            let patch_toggle = widgets::icon_button(
+                Icon::Puzzle,
+                t!(lang, "play-patch-toggle"),
+                Message::PatchPickerOpened,
+                STANDARD_PADDING,
+            );
+            row![game, patch_toggle, refresh]
+        }
+        .spacing(8)
+        .align_y(Alignment::Center);
         let save_row = self.save_action_row(lang, scanners, save.into());
 
         container(column![game_row, save_row].spacing(6))
