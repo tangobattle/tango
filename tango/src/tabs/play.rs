@@ -1032,11 +1032,6 @@ impl PlayState {
                     streamer_mode,
                     netplay_handoff_pending,
                     config.frame_delay,
-                    // Failed-lobby Retry redials via FightPressed,
-                    // which re-resolves the link-code field — so the
-                    // button is only live while the field still
-                    // resolves to a dialable ident.
-                    resolve_link_ident(self.link_code.trim()).is_some(),
                 ))
                 .width(Fill),
             );
@@ -1905,10 +1900,9 @@ pub fn create_new_save(
 
 /// Lobby pane shown in the Play tab body while netplay is in
 /// `Phase::Lobby`. Two columns — you on the left, opponent on the
-/// right — plus a header (link code, connection-quality chip,
-/// Leave) + match-type + input-delay controls underneath. Settings
-/// round-trips asynchronously, so either side may be `None` for a
-/// tick.
+/// right — plus a latency line at the top + match-type + input-
+/// delay controls underneath. Settings round-trips asynchronously,
+/// so either side may be `None` for a tick.
 fn lobby_view<'a>(
     lang: &'a LanguageIdentifier,
     lobby: &'a crate::netplay::LobbyState,
@@ -1920,7 +1914,6 @@ fn lobby_view<'a>(
     streamer_mode: bool,
     handoff_pending: bool,
     frame_delay: u32,
-    can_retry: bool,
 ) -> Element<'a, Message> {
     let failed = matches!(phase, crate::netplay::Phase::Failed { .. });
     // `inert` collapses Failed and handoff-pending — both are
@@ -1930,7 +1923,7 @@ fn lobby_view<'a>(
     // and the connection has been handed to the PvP session).
     let inert = failed || handoff_pending;
 
-    let header_line = lobby_header_line(lang, phase, streamer_mode);
+    let header_line = lobby_header_line(lang, lobby, phase, streamer_mode);
     let (verdict_line, compat_ok) = lobby_verdict(lang, lobby, phase, scanners);
 
     // Settings stack on the left, Ready CTA floated to the right
@@ -1940,7 +1933,7 @@ fn lobby_view<'a>(
     let mt_picker = lobby_match_type_picker(lang, local_game, lobby, inert);
     let controls = row![
         lobby_settings_rows(lang, lobby, mt_picker, frame_delay, inert),
-        lobby_ready_button(lang, lobby, failed, compat_ok, has_save, can_retry),
+        lobby_ready_button(lang, lobby, failed, compat_ok, has_save),
     ]
     .spacing(12)
     .align_y(Alignment::End);
@@ -1964,20 +1957,15 @@ fn lobby_view<'a>(
         btn.into()
     };
 
-    // Header row: link code + verdict on the left, connection-
-    // quality chip and leave button on the right.
+    // Header row: verdict on the left, leave button on the right.
     let mut header_text_col = column![].spacing(2);
     if let Some(hl) = header_line {
         header_text_col = header_text_col.push(hl);
     }
     header_text_col = header_text_col.push(verdict_line);
-    let mut header_row = row![header_text_col, horizontal_space()]
+    let header_row = row![header_text_col, horizontal_space(), leave_button]
         .spacing(12)
         .align_y(Alignment::Center);
-    if let Some(chip) = lobby_latency_chip(lang, lobby) {
-        header_row = header_row.push(chip);
-    }
-    let header_row = header_row.push(leave_button);
 
     // Sides row: you / opponent cards with a wide gap so the
     // diagonal cut + VS badge from `widgets::vs_splitter` paints
@@ -2013,13 +2001,10 @@ fn lobby_view<'a>(
         .padding(style::PANE_PADDING)
         .width(Fill)
         .style(widgets::pane);
-    // Failed lobby trades the neutral header plate for the danger-
-    // tinted one — the band itself signals "this broke" before the
-    // user reads the verdict text.
     let header_pane = container(header_row)
         .padding(style::PANE_PADDING)
         .width(Fill)
-        .style(if failed { widgets::danger_pane } else { widgets::pane });
+        .style(widgets::pane);
     container(
         column![header_pane, matchup_pane, controls_pane]
             .spacing(style::PANE_GAP)
@@ -2172,124 +2157,51 @@ fn lobby_side_card(
     .into()
 }
 
-/// The lobby header's identity line: the connection identifier
-/// (matchmaking code / direct host / direct target) so the user
-/// sees what they're matched on. It stays up for the whole life of
-/// the lobby — "what code am I on" is how two players confirm
-/// they're dialing the same thing — while latency lives in the
-/// header's [`lobby_latency_chip`]. Streamer privacy mode
-/// suppresses the identifier so a viewer of the stream can't
-/// scrape it off the screen and crash the lobby.
+/// The lobby header's status line: latency once Pongs are landing,
+/// otherwise the connection identifier (matchmaking code / direct
+/// host / direct target) so the user sees what they're matched on.
+/// Streamer privacy mode suppresses the identifier so a viewer of the
+/// stream can't scrape it off the screen and crash the lobby — and
+/// that's the only path to the "no latency, no identifier" `None`,
+/// so the caller just skips the line there.
 fn lobby_header_line<'a>(
     lang: &LanguageIdentifier,
+    lobby: &'a crate::netplay::LobbyState,
     phase: &'a crate::netplay::Phase,
     streamer_mode: bool,
 ) -> Option<Element<'a, Message>> {
-    if streamer_mode {
-        return None;
-    }
-    let ident = match phase {
-        crate::netplay::Phase::Connecting { ident, .. }
-        | crate::netplay::Phase::Negotiating { ident }
-        | crate::netplay::Phase::Lobby { ident } => ident,
-        _ => return None,
-    };
-    use crate::netplay::{DirectRole, LinkIdent};
-    let label = match ident {
-        LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
-        LinkIdent::Direct(DirectRole::Host { port }) => {
-            t!(lang, "lobby-direct-host", port = port.to_string())
-        }
-        LinkIdent::Direct(DirectRole::Connect { addr }) => {
-            t!(lang, "lobby-direct-connect", target = addr.clone())
+    let ident: Option<&crate::netplay::LinkIdent> = if streamer_mode {
+        None
+    } else {
+        match phase {
+            crate::netplay::Phase::Connecting { ident, .. }
+            | crate::netplay::Phase::Negotiating { ident }
+            | crate::netplay::Phase::Lobby { ident } => Some(ident),
+            _ => None,
         }
     };
-    Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
-}
-
-/// Connection-quality chip for the lobby header: a bolt + live
-/// ping readout + five signal bars. `None` until the first Pong
-/// lands — pre-Lobby phases have no latency loop running, so the
-/// chip popping in is the visible "the wire is live" moment.
-///
-/// The readout shows `latest()` (the per-second sample) but the
-/// bars bucket on `median()`, so a single spiky Pong updates the
-/// number without making the meter flicker between buckets.
-fn lobby_latency_chip<'a>(
-    lang: &LanguageIdentifier,
-    lobby: &crate::netplay::LobbyState,
-) -> Option<Element<'a, Message>> {
-    let latest = lobby.latency_counter.latest()?;
-    let median_ms = lobby.latency_counter.median().as_millis();
-    // RTT buckets in ms — each step down is roughly another couple
-    // of frames on the suggested input delay.
-    let bars: usize = match median_ms {
-        0..=39 => 5,
-        40..=79 => 4,
-        80..=119 => 3,
-        120..=179 => 2,
-        _ => 1,
-    };
-    // Quality color: green while the connection is comfortably
-    // playable, amber when the suggested delay starts to sting,
-    // red when it's a slideshow. Amber is hardcoded — iced's
-    // palette has no "warning" slot — picked to stay legible on
-    // both the dark navy and light parchment backgrounds.
-    fn quality_color(theme: &iced::Theme, bars: usize) -> iced::Color {
-        match bars {
-            4..=5 => theme.extended_palette().success.strong.color,
-            2..=3 => iced::Color::from_rgb8(0xe0, 0x9f, 0x2d),
-            _ => theme.extended_palette().danger.strong.color,
-        }
-    }
-    // Phone-style signal meter: five bottom-aligned bars of rising
-    // height, lit up to the bucket.
-    let mut meter = row![].spacing(2).align_y(Alignment::End);
-    for i in 0..5 {
-        let lit = i < bars;
-        meter = meter.push(
-            container(
-                iced::widget::Space::new()
-                    .width(Length::Fixed(4.0))
-                    .height(Length::Fixed(5.0 + i as f32 * 2.5)),
-            )
-            .style(move |theme: &iced::Theme| {
-                let color = if lit {
-                    quality_color(theme, bars)
-                } else {
-                    // Unlit bars: faint text wash so the meter's
-                    // full extent stays readable on both themes.
-                    iced::Color {
-                        a: 0.18,
-                        ..theme.palette().text
-                    }
-                };
-                iced::widget::container::Style {
-                    background: Some(iced::Background::Color(color)),
-                    border: iced::Border {
-                        radius: 1.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            }),
-        );
-    }
-    Some(
-        row![
-            Icon::Zap
-                .widget()
+    if let Some(d) = lobby.latency_counter.latest() {
+        Some(
+            text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
                 .size(TEXT_BODY)
-                .style(move |theme: &iced::Theme| iced::widget::text::Style {
-                    color: Some(quality_color(theme, bars)),
-                }),
-            text(t!(lang, "lobby-latency", ms = latest.as_millis() as i64)).size(TEXT_BODY),
-            meter,
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into(),
-    )
+                .style(widgets::muted_text_style)
+                .into(),
+        )
+    } else if let Some(ident) = ident {
+        use crate::netplay::{DirectRole, LinkIdent};
+        let label = match ident {
+            LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
+            LinkIdent::Direct(DirectRole::Host { port }) => {
+                t!(lang, "lobby-direct-host", port = port.to_string())
+            }
+            LinkIdent::Direct(DirectRole::Connect { addr }) => {
+                t!(lang, "lobby-direct-connect", target = addr.clone())
+            }
+        };
+        Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
+    } else {
+        None
+    }
 }
 
 /// Match-type pick_list — options pulled from the current local game's
@@ -2396,22 +2308,16 @@ fn lobby_settings_rows<'a>(
     )
     .width(Length::Fixed(160.0));
 
-    // "Suggest" affordances: the wand applies one-way frames + 1,
-    // clamped to the slider range, and the caption next to it shows
-    // the same number so the wand's effect is predictable before
-    // clicking. Both read the median window rather than the raw
-    // `latest()` shown in the header chip, so the recommendation
-    // doesn't jump with a single spiky Pong; both wait for the first
-    // Pong (`latest()` is `Some`) so the counter has a real reading
-    // to take the median of. The wand is additionally disabled when
-    // the controls are inert.
-    let suggested = lobby
-        .latency_counter
-        .latest()
-        .map(|_| suggest_frame_delay(lobby.latency_counter.median()));
-    let suggest_msg = match suggested {
-        Some(n) if !inert => Some(Message::NetplaySetFrameDelay(n)),
-        _ => None,
+    // "Suggest" button: one-way frames + 1, clamped to the slider range. Reads
+    // the median window rather than the raw `latest()` shown on the line, so the
+    // recommendation doesn't jump with a single spiky Pong. Disabled when the
+    // controls are inert, and until the first Pong lands (`latest()` is `Some`)
+    // so the counter has a real reading to take the median of.
+    let suggest_msg = if inert || lobby.latency_counter.latest().is_none() {
+        None
+    } else {
+        let rtt = lobby.latency_counter.median();
+        Some(Message::NetplaySetFrameDelay(suggest_frame_delay(rtt)))
     };
     let id_suggest = widgets::icon_button_maybe(
         Icon::Wand,
@@ -2420,35 +2326,21 @@ fn lobby_settings_rows<'a>(
         STANDARD_PADDING,
     );
 
-    let mut delay_controls = row![
-        id_slider,
-        text(format!("{}", frame_delay))
-            .size(TEXT_BODY)
-            .width(Length::Fixed(18.0)),
-        id_suggest,
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-    if let Some(n) = suggested {
-        // Lights up green once the slider sits on the recommendation
-        // — the at-a-glance "you're good" state.
-        let style: fn(&iced::Theme) -> iced::widget::text::Style = if n == frame_delay {
-            widgets::success_text_style
-        } else {
-            widgets::muted_text_style
-        };
-        delay_controls = delay_controls.push(
-            text(t!(lang, "lobby-frame-delay-suggested", n = n as i64))
-                .size(TEXT_CAPTION)
-                .style(style),
-        );
-    }
     let delay_row = setting_row(
         text(t!(lang, "settings-netplay-frame-delay"))
             .size(TEXT_BODY)
             .style(label_style)
             .into(),
-        delay_controls.into(),
+        row![
+            id_slider,
+            text(format!("{}", frame_delay))
+                .size(TEXT_BODY)
+                .width(Length::Fixed(18.0)),
+            id_suggest,
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .into(),
     );
 
     // Reveal-setup checkbox. Mirrors the legacy app's
@@ -2605,35 +2497,20 @@ fn lobby_verdict<'a>(
 /// Big single toggle: Ready → Unready → Starting…, switching label +
 /// icon + color on click. Same button, same position; clicking it
 /// always does the obvious next thing (ready up, unready, or wait for
-/// match-start) — and in a failed lobby it becomes Retry, redialing
-/// the same code. A touch chunkier than the regular CTAs in the
-/// strip, but not so big that it blows the lobby layout — the glow
-/// shadow does the work of "look at me" instead.
+/// match-start). A touch chunkier than the regular CTAs in the strip,
+/// but not so big that it blows the lobby layout — the glow shadow
+/// does the work of "look at me" instead.
 fn lobby_ready_button<'a>(
     lang: &LanguageIdentifier,
     lobby: &crate::netplay::LobbyState,
     failed: bool,
     compat_ok: bool,
     has_save: bool,
-    can_retry: bool,
 ) -> Element<'a, Message> {
     const READY_TEXT: f32 = 16.0;
     const READY_PAD: [f32; 2] = [10.0, 22.0];
     let (ready_icon, ready_label, ready_msg, ready_palette): (Icon, String, Option<Message>, ReadyPalette) =
-        if failed {
-            // The connection is gone; the obvious next thing is to
-            // try the same code again. FightPressed re-resolves the
-            // link-code field — still holding the code this attempt
-            // was dialed with — so Retry is a one-click redial.
-            // Idle palette: this is the band's CTA now, and it
-            // should read as hot as the Ready button it replaces.
-            (
-                Icon::RefreshCw,
-                t!(lang, "lobby-retry"),
-                if can_retry { Some(Message::FightPressed) } else { None },
-                ReadyPalette::Idle,
-            )
-        } else if lobby.match_ready {
+        if lobby.match_ready {
             // Both committed — match is spinning up. Button is purely
             // a status indicator; no click target until the session
             // actually opens.
@@ -2665,6 +2542,10 @@ fn lobby_ready_button<'a>(
                 ReadyPalette::Idle,
             )
         };
+    // Failed lobby: the only action is to dismiss via Cancel.
+    // Force the Ready button off regardless of how the
+    // pre-failure state looked.
+    let ready_msg = if failed { None } else { ready_msg };
     let label_widget = row![ready_icon.widget().size(READY_TEXT), text(ready_label).size(READY_TEXT),]
         .spacing(8)
         .align_y(Alignment::Center);
