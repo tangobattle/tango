@@ -1378,18 +1378,7 @@ fn controls_strip<'a>(
             btn,
             iced::widget::container(text(label).size(TEXT_CAPTION))
                 .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
+                .style(widgets::tooltip_chrome),
             iced::widget::tooltip::Position::Top,
         )
         .gap(4)
@@ -1548,18 +1537,7 @@ fn replay_transport<'a>(
         .on_press(Message::TogglePlay),
         iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
             .padding(6)
-            .style(|theme: &iced::Theme| {
-                let p = theme.extended_palette();
-                iced::widget::container::Style {
-                    background: Some(iced::Background::Color(p.background.strong.color)),
-                    text_color: Some(p.background.strong.text),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            }),
+            .style(widgets::tooltip_chrome),
         iced::widget::tooltip::Position::Top,
     )
     .gap(4);
