@@ -803,6 +803,10 @@ pub struct ReplaySnapshot {
     pub checkpoint: ReplayCheckpoint,
     pub mgba_state: Box<mgba::state::State>,
     pub shadow_snapshot: crate::shadow::ShadowSnapshot,
+    /// The core's native-format video buffer at capture time. Blitted
+    /// straight into the display framebuffer as an instant, emulation-free
+    /// preview while the user drags the scrub bar.
+    pub framebuffer: Vec<u8>,
 }
 
 /// Shared handle to the [`InnerState`]. Per-game traps clone this and lock

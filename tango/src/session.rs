@@ -189,6 +189,19 @@ pub struct State {
     /// [`METRIC_HISTORY_LEN`]; cleared whenever the active session is not a
     /// live PvP match.
     pub metric_history: std::collections::VecDeque<MetricSample>,
+    /// Replay-only: `Some(tick)` while the user is dragging the scrub
+    /// bar, holding the currently previewed position. The transport
+    /// draws the playhead here instead of at the emulator's actual
+    /// tick, and the first preview of a drag pauses playback.
+    pub scrub_preview: Option<u32>,
+    /// Replay-only: whether playback was running when the scrub drag
+    /// started, so the commit can resume it once the seek lands.
+    pub scrub_resume: bool,
+    /// Replay-only: whether this drag has blitted a keyframe preview
+    /// yet. Until it has, the live frame is still on screen and beats
+    /// a farther keyframe; afterwards previews always blit (the live
+    /// frame is gone from the buffer).
+    pub scrub_blitted: bool,
 }
 
 impl Default for State {
@@ -214,6 +227,9 @@ impl Default for State {
             current_frame: None,
             frame_revision: 0,
             metric_history: std::collections::VecDeque::new(),
+            scrub_preview: None,
+            scrub_resume: false,
+            scrub_blitted: false,
         }
     }
 }
@@ -243,8 +259,15 @@ pub enum Message {
     Input(InputEvent),
     /// Toggle play/pause on a replay session. No-op for single-player.
     TogglePlay,
-    /// Drag the scrub bar — fires on every value change. Replay-only.
-    Seek(u32),
+    /// Scrub-bar drag in progress — fires per tick change while the
+    /// button is held. Pauses playback and blits the nearest prefetched
+    /// snapshot's framebuffer as an instant preview; the exact seek
+    /// waits for [`Message::ScrubCommit`]. Replay-only.
+    ScrubPreview(u32),
+    /// Scrub-bar drag released. Fires the real (asynchronous) seek to
+    /// the last previewed tick and resumes playback if it was running
+    /// when the drag started. Replay-only.
+    ScrubCommit(u32),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
@@ -338,6 +361,9 @@ impl State {
                 self.show_options_menu = false;
                 self.show_disconnect_confirm = false;
                 self.show_match_settings = false;
+                self.scrub_preview = None;
+                self.scrub_resume = false;
+                self.scrub_blitted = false;
             }
             Message::Input(ev) => {
                 match ev {
@@ -369,21 +395,49 @@ impl State {
             }
             Message::TogglePlay => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    // Play at end-of-replay: rewind to start and
-                    // play through again. Mirrors the behaviour you
-                    // get on any media player — "play" on a finished
-                    // track restarts it.
-                    let paused = s.is_paused();
-                    if paused && s.current_tick() >= s.total_ticks() {
-                        s.seek_to(0);
+                    if s.seek_will_resume() {
+                        // An in-flight seek is about to resume playback,
+                        // so the button shows "Pause" — honor the press
+                        // as one: land the seek, stay paused.
+                        s.cancel_seek_resume();
+                    } else {
+                        // Play at end-of-replay: rewind to start and
+                        // play through again. Mirrors the behaviour you
+                        // get on any media player — "play" on a finished
+                        // track restarts it. The seek is asynchronous, so
+                        // resuming is deferred to the chase landing —
+                        // unpausing here would run frames off the end
+                        // before the rewind starts.
+                        let paused = s.is_paused();
+                        if paused && s.current_tick() >= s.total_ticks() {
+                            s.seek_to(0, true);
+                        } else {
+                            s.set_paused(!paused);
+                        }
                     }
-                    s.set_paused(!paused);
                 }
             }
-            Message::Seek(target) => {
+            Message::ScrubPreview(target) => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    s.seek_to(target);
+                    // First event of a drag: freeze playback under the
+                    // cursor and remember whether to resume on commit.
+                    if self.scrub_preview.is_none() {
+                        self.scrub_resume = !s.is_paused();
+                        s.set_paused(true);
+                    }
+                    self.scrub_preview = Some(target);
+                    if s.scrub_preview(target, self.scrub_blitted) {
+                        self.scrub_blitted = true;
+                    }
                 }
+            }
+            Message::ScrubCommit(target) => {
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    s.seek_to(target, self.scrub_resume);
+                }
+                self.scrub_preview = None;
+                self.scrub_resume = false;
+                self.scrub_blitted = false;
             }
             Message::SetSpeed(factor) => {
                 self.show_options_menu = false;
@@ -1451,7 +1505,7 @@ fn controls_strip<'a>(
 
     let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
     if let Some(r) = session.as_replay() {
-        controls = replay_transport(lang, r, controls);
+        controls = replay_transport(lang, r, state, controls);
     } else {
         // No transport widgets for SP/PvP. Drop the self-setup
         // toggle on the left (PvP-only) so it pairs visually with
@@ -1488,17 +1542,31 @@ fn controls_strip<'a>(
 fn replay_transport<'a>(
     lang: &'a LanguageIdentifier,
     r: &'a replay_session::ReplaySession,
+    state: &State,
     controls: sweeten::widget::Row<'a, Message>,
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
-    let cur = r.current_tick().min(total);
+    // Playhead priority: the tick under an active drag, else the target
+    // of an in-flight seek (so the handle doesn't snap back while the
+    // chase catches up), else the emulator's actual position.
+    let cur = state
+        .scrub_preview
+        .or_else(|| r.pending_seek_target())
+        .unwrap_or_else(|| r.current_tick())
+        .min(total);
     let prefetched = r.prefetch_progress().min(total);
-    let (play_pause_icon, play_pause_label, paused) = if r.is_paused() {
+    // The mgba thread is paused for the duration of a scrub drag and
+    // the seek chase that follows it, but when playback resumes on
+    // landing the session is logically still *playing* — flipping the
+    // button to "Play" mid-scrub reads as a stuck pause.
+    let logically_playing =
+        (state.scrub_preview.is_some() && state.scrub_resume) || r.seek_will_resume();
+    let (play_pause_icon, play_pause_label, paused) = if r.is_paused() && !logically_playing {
         (Icon::Play, t!(lang, "playback-play"), true)
     } else {
         (Icon::Pause, t!(lang, "playback-pause"), false)
     };
-    let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::Seek)
+    let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::ScrubPreview, Message::ScrubCommit)
         .round_boundaries(r.round_boundaries())
         .view();
 

@@ -1,33 +1,41 @@
 //! Canvas-based scrub bar with overlays the stock `iced::widget::slider`
 //! can't render: a dimmer fill for the prefetched range and vertical
 //! tick marks at round boundaries. Mouse press + drag inside the bar
-//! emits the caller's seek message; release ends the drag.
+//! emits the caller's preview message per position change (deduped, so
+//! sub-pixel mouse moves don't spam); release emits the commit message
+//! with the last previewed tick and ends the drag.
 
 use iced::widget::canvas::{self, Canvas, Frame, Path};
 use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-pub struct Scrubber<F> {
+pub struct Scrubber<F, G> {
     current: u32,
     total: u32,
     prefetched: u32,
     round_boundaries: Vec<u32>,
     on_seek: F,
+    on_commit: G,
     height: f32,
 }
 
 #[derive(Default)]
 pub struct State {
     dragging: bool,
+    /// Last tick published through `on_seek` during this drag, so
+    /// repeated cursor moves over the same tick stay silent and the
+    /// commit lands exactly on the frame the user last previewed.
+    last_emitted: Option<u32>,
 }
 
-impl<F> Scrubber<F> {
-    pub fn new(current: u32, total: u32, prefetched: u32, on_seek: F) -> Self {
+impl<F, G> Scrubber<F, G> {
+    pub fn new(current: u32, total: u32, prefetched: u32, on_seek: F, on_commit: G) -> Self {
         Self {
             current,
             total,
             prefetched,
             round_boundaries: Vec::new(),
             on_seek,
+            on_commit,
             // Tall enough for the playhead handle to protrude
             // above + below the slim track without clipping.
             height: 22.0,
@@ -51,9 +59,10 @@ impl<F> Scrubber<F> {
     }
 }
 
-impl<F, M> Scrubber<F>
+impl<F, G, M> Scrubber<F, G>
 where
     F: 'static + Fn(u32) -> M,
+    G: 'static + Fn(u32) -> M,
     M: 'static,
 {
     pub fn view(self) -> Element<'static, M> {
@@ -65,9 +74,10 @@ where
     }
 }
 
-impl<F, M> canvas::Program<M> for Scrubber<F>
+impl<F, G, M> canvas::Program<M> for Scrubber<F, G>
 where
     F: Fn(u32) -> M,
+    G: Fn(u32) -> M,
 {
     type State = State;
 
@@ -175,13 +185,18 @@ where
                 if let Some(p) = inside {
                     state.dragging = true;
                     let target = self.tick_at_x(p.x, bounds.width);
+                    state.last_emitted = Some(target);
                     return Some(Action::publish((self.on_seek)(target)).and_capture());
                 }
             }
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 if state.dragging {
                     state.dragging = false;
-                    return Some(Action::capture());
+                    // Commit lands on the tick the user last saw
+                    // previewed, even when the release happens outside
+                    // the bar's bounds.
+                    let target = state.last_emitted.take().unwrap_or(self.current);
+                    return Some(Action::publish((self.on_commit)(target)).and_capture());
                 }
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) if state.dragging => {
@@ -193,6 +208,10 @@ where
                 if let Some(raw) = cursor.position() {
                     let relative_x = raw.x - bounds.x;
                     let target = self.tick_at_x(relative_x, bounds.width);
+                    if state.last_emitted == Some(target) {
+                        return Some(Action::capture());
+                    }
+                    state.last_emitted = Some(target);
                     return Some(Action::publish((self.on_seek)(target)).and_capture());
                 }
             }
