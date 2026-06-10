@@ -3,18 +3,40 @@
 //! tick marks at round boundaries. Mouse press + drag inside the bar
 //! emits the caller's preview message per position change (deduped, so
 //! sub-pixel mouse moves don't spam); release emits the commit message
-//! with the last previewed tick and ends the drag.
+//! with the last previewed tick and ends the drag. Plain mouseover
+//! (no button) emits the hover message per tick change so the caller
+//! can float a thumbnail preview above the bar.
 
 use iced::widget::canvas::{self, Canvas, Frame, Path};
 use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-pub struct Scrubber<F, G> {
+/// Where the cursor is resting on the bar, published through
+/// `on_hover`. Coordinates are absolute (window space) — the canvas is
+/// the only widget that knows where the bar landed in layout, and the
+/// caller's floating preview is positioned in the session view's
+/// full-window overlay stack, which shares that origin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HoverInfo {
+    /// The tick a click here would seek to (snapped + clamped exactly
+    /// like a press, so the preview never promises an unreachable
+    /// frame).
+    pub tick: u32,
+    /// Cursor x, clamped into the bar.
+    pub x: f32,
+    /// The bar's own x extent, so a floating preview centered on `x`
+    /// can clamp itself to the bar's ends.
+    pub bar_x: f32,
+    pub bar_width: f32,
+}
+
+pub struct Scrubber<F, G, H> {
     current: u32,
     total: u32,
     prefetched: u32,
     round_boundaries: Vec<u32>,
     on_seek: F,
     on_commit: G,
+    on_hover: H,
     height: f32,
 }
 
@@ -25,10 +47,14 @@ pub struct State {
     /// repeated cursor moves over the same tick stay silent and the
     /// commit lands exactly on the frame the user last previewed.
     last_emitted: Option<u32>,
+    /// Last tick published through `on_hover`, deduping mouseover the
+    /// same way `last_emitted` dedupes drags. `Some` also means a
+    /// trailing `on_hover(None)` is owed when the cursor leaves.
+    hovered: Option<u32>,
 }
 
-impl<F, G> Scrubber<F, G> {
-    pub fn new(current: u32, total: u32, prefetched: u32, on_seek: F, on_commit: G) -> Self {
+impl<F, G, H> Scrubber<F, G, H> {
+    pub fn new(current: u32, total: u32, prefetched: u32, on_seek: F, on_commit: G, on_hover: H) -> Self {
         Self {
             current,
             total,
@@ -36,6 +62,7 @@ impl<F, G> Scrubber<F, G> {
             round_boundaries: Vec::new(),
             on_seek,
             on_commit,
+            on_hover,
             // Tall enough for the playhead handle to protrude
             // above + below the slim track without clipping.
             height: 22.0,
@@ -59,10 +86,11 @@ impl<F, G> Scrubber<F, G> {
     }
 }
 
-impl<F, G, M> Scrubber<F, G>
+impl<F, G, H, M> Scrubber<F, G, H>
 where
     F: 'static + Fn(u32) -> M,
     G: 'static + Fn(u32) -> M,
+    H: 'static + Fn(Option<HoverInfo>) -> M,
     M: 'static,
 {
     pub fn view(self) -> Element<'static, M> {
@@ -74,10 +102,11 @@ where
     }
 }
 
-impl<F, G, M> canvas::Program<M> for Scrubber<F, G>
+impl<F, G, H, M> canvas::Program<M> for Scrubber<F, G, H>
 where
     F: Fn(u32) -> M,
     G: Fn(u32) -> M,
+    H: Fn(Option<HoverInfo>) -> M,
 {
     type State = State;
 
@@ -154,6 +183,22 @@ where
             );
         }
 
+        // Ghost notch under the cursor while merely hovering — ties
+        // the floating thumbnail preview to the exact spot a click
+        // would seek to (snapped to the tick and clamped to the
+        // prefetched range, same as a press).
+        if !state.dragging {
+            if let Some(p) = cursor.position_in(bounds) {
+                let tick = self.tick_at_x(p.x, w);
+                let x = (tick as f32 / total).clamp(0.0, 1.0) * w;
+                frame.fill_rectangle(
+                    Point::new((x - notch_w / 2.0).round(), notch_top),
+                    Size::new(notch_w, notch_h),
+                    palette.primary.strong.color,
+                );
+            }
+        }
+
         // Playhead: filled circle with a thin border, sized larger
         // than the track height so it sits proud of the bar. Grows
         // slightly while dragging / hovering for tactile feedback.
@@ -184,6 +229,11 @@ where
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if let Some(p) = inside {
                     state.dragging = true;
+                    // The session hides the hover preview when the drag's
+                    // first on_seek lands (the full-screen blit takes
+                    // over); dropping `hovered` here makes the first
+                    // post-release mouseover republish it.
+                    state.hovered = None;
                     let target = self.tick_at_x(p.x, bounds.width);
                     state.last_emitted = Some(target);
                     return Some(Action::publish((self.on_seek)(target)).and_capture());
@@ -213,6 +263,34 @@ where
                     }
                     state.last_emitted = Some(target);
                     return Some(Action::publish((self.on_seek)(target)).and_capture());
+                }
+            }
+            iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                // Plain mouseover. Published per tick change (not per
+                // pixel) and NOT captured — hover is passive, and other
+                // widgets are entitled to see cursor movement.
+                if let Some(p) = inside {
+                    let tick = self.tick_at_x(p.x, bounds.width);
+                    if state.hovered == Some(tick) {
+                        return None;
+                    }
+                    state.hovered = Some(tick);
+                    let info = HoverInfo {
+                        tick,
+                        x: bounds.x + p.x.clamp(0.0, bounds.width),
+                        bar_x: bounds.x,
+                        bar_width: bounds.width,
+                    };
+                    return Some(Action::publish((self.on_hover)(Some(info))));
+                } else if state.hovered.take().is_some() {
+                    return Some(Action::publish((self.on_hover)(None)));
+                }
+            }
+            iced::Event::Mouse(mouse::Event::CursorLeft) => {
+                // Cursor left the window entirely — no CursorMoved will
+                // follow to clear the hover.
+                if state.hovered.take().is_some() {
+                    return Some(Action::publish((self.on_hover)(None)));
                 }
             }
             _ => {}

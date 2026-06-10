@@ -311,6 +311,13 @@ impl ReplaySession {
         self.seek.clear_resume();
     }
 
+    /// The captured snapshot nearest `target`, if any — backs the hover
+    /// thumbnail above the scrub bar. The snapshot's framebuffer is
+    /// mgba-native BGR555, same as the shared display buffer.
+    pub fn nearest_snapshot(&self, target: u32) -> Option<std::sync::Arc<tango_pvp::stepper::ReplaySnapshot>> {
+        self.snapshots.nearest(target)
+    }
+
     /// Blit the captured framebuffer of the snapshot nearest `target`
     /// straight into the shared display buffer — instant, emulation-free
     /// feedback while the user drags the scrubber. The exact landing

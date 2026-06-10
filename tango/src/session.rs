@@ -202,6 +202,15 @@ pub struct State {
     /// a farther keyframe; afterwards previews always blit (the live
     /// frame is gone from the buffer).
     pub scrub_blitted: bool,
+    /// Replay-only: where the cursor is resting on the scrub bar,
+    /// driving the floating thumbnail card above it. `None` when the
+    /// cursor is off the bar — and during a drag, when the full-screen
+    /// blit preview supersedes it.
+    pub scrub_hover: Option<scrubber::HoverInfo>,
+    /// RGBA conversion of the snapshot behind the hover thumbnail,
+    /// keyed by the snapshot's absolute tick so cursor moves within
+    /// the same keyframe reuse the handle instead of re-converting.
+    pub scrub_thumb: Option<(u32, iced::widget::image::Handle)>,
 }
 
 impl Default for State {
@@ -230,6 +239,8 @@ impl Default for State {
             scrub_preview: None,
             scrub_resume: false,
             scrub_blitted: false,
+            scrub_hover: None,
+            scrub_thumb: None,
         }
     }
 }
@@ -268,6 +279,10 @@ pub enum Message {
     /// the last previewed tick and resumes playback if it was running
     /// when the drag started. Replay-only.
     ScrubCommit(u32),
+    /// Cursor moved onto / along the scrub bar (`Some`) or off it
+    /// (`None`) without a button held. Drives the floating keyframe
+    /// thumbnail above the bar. Replay-only.
+    ScrubHover(Option<scrubber::HoverInfo>),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
@@ -364,6 +379,8 @@ impl State {
                 self.scrub_preview = None;
                 self.scrub_resume = false;
                 self.scrub_blitted = false;
+                self.scrub_hover = None;
+                self.scrub_thumb = None;
             }
             Message::Input(ev) => {
                 match ev {
@@ -430,6 +447,9 @@ impl State {
                         self.scrub_blitted = true;
                     }
                 }
+                // The drag blits its keyframes to the main screen —
+                // the floating hover thumbnail is redundant under it.
+                self.scrub_hover = None;
             }
             Message::ScrubCommit(target) => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
@@ -438,6 +458,17 @@ impl State {
                 self.scrub_preview = None;
                 self.scrub_resume = false;
                 self.scrub_blitted = false;
+            }
+            Message::ScrubHover(hover) => {
+                self.scrub_hover = hover;
+                if let (Some(h), Some(s)) = (hover, self.active.as_ref().and_then(ActiveSession::as_replay)) {
+                    if let Some(snap) = s.nearest_snapshot(h.tick) {
+                        let snap_tick = snap.checkpoint.absolute_tick;
+                        if self.scrub_thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
+                            self.scrub_thumb = Some((snap_tick, thumbnail_handle(&snap.framebuffer)));
+                        }
+                    }
+                }
             }
             Message::SetSpeed(factor) => {
                 self.show_options_menu = false;
@@ -1250,6 +1281,9 @@ pub fn view<'a>(
     );
 
     let mut stacked = stack![Element::from(layout)];
+    if let Some(o) = scrub_thumbnail_overlay(session, state) {
+        stacked = stacked.push(o);
+    }
     if let Some(o) = options_menu_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
@@ -1566,9 +1600,16 @@ fn replay_transport<'a>(
     } else {
         (Icon::Pause, t!(lang, "playback-pause"), false)
     };
-    let scrub = scrubber::Scrubber::new(cur, total, prefetched, Message::ScrubPreview, Message::ScrubCommit)
-        .round_boundaries(r.round_boundaries())
-        .view();
+    let scrub = scrubber::Scrubber::new(
+        cur,
+        total,
+        prefetched,
+        Message::ScrubPreview,
+        Message::ScrubCommit,
+        Message::ScrubHover,
+    )
+    .round_boundaries(r.round_boundaries())
+    .view();
 
     // Play/Pause is the transport's centerpiece — promote to
     // the primary-button style when paused (the affordance
@@ -1937,6 +1978,73 @@ fn options_menu_overlay<'a>(
 /// future in-match knobs. Like the options menu it owns no dismiss
 /// backdrop — clicking the plate again or pressing Esc closes it. No
 /// heading: the frame-delay row already labels itself.
+/// Floating keyframe thumbnail + timestamp, hovering above the scrub
+/// bar while the cursor rests on it (replay-only). Centered on the
+/// cursor and clamped to the bar's extent, lifted to the same height
+/// as the bottom-anchored popovers. Pure presentation — no mouse
+/// handlers anywhere in the chain, so it never steals events from the
+/// transport below.
+fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> Option<Element<'a, Message>> {
+    session.as_replay()?;
+    let h = state.scrub_hover?;
+    let (_, handle) = state.scrub_thumb.as_ref()?;
+    // Native 240×160 at 0.75 — big enough to read the scene, small
+    // enough not to feel like a second screen.
+    const THUMB_W: f32 = 180.0;
+    const THUMB_H: f32 = 120.0;
+    const CARD_PAD: f32 = 4.0;
+    let img = iced::widget::image(handle.clone())
+        .width(Length::Fixed(THUMB_W))
+        .height(Length::Fixed(THUMB_H));
+    // Same numeral treatment as the transport's tick readouts so the
+    // hover timestamp reads as playback state.
+    let stamp = text(format_tick(h.tick))
+        .size(TEXT_CAPTION)
+        .font(iced::Font::MONOSPACE)
+        .style(|theme: &iced::Theme| iced::widget::text::Style {
+            color: Some(theme.palette().primary),
+        });
+    let card = container(column![img, stamp].spacing(2).align_x(Alignment::Center))
+        .padding(CARD_PAD)
+        .style(widgets::panel);
+    // Center on the cursor, clamped so the card never spills past the
+    // bar's ends (which also keeps it inside the window).
+    let card_w = THUMB_W + CARD_PAD * 2.0;
+    let hi = (h.bar_x + h.bar_width - card_w).max(h.bar_x);
+    let left = (h.x - card_w / 2.0).clamp(h.bar_x, hi);
+    Some(
+        container(card)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Left)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: POPOVER_LIFT,
+                left,
+            })
+            .into(),
+    )
+}
+
+/// Expand an mgba-native BGR555 framebuffer (one little-endian `u16`
+/// per pixel — see [`State`]'s `vbuf`) to an RGBA8 image handle for
+/// the hover thumbnail. CPU mirror of the GPU decode in
+/// `video/effects/common.wgsl`; at 240×160 it's cheap, and it only
+/// runs when the hovered keyframe changes.
+fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
+    let mut rgba = Vec::with_capacity(framebuffer.len() * 2);
+    for px in framebuffer.chunks_exact(2) {
+        let raw = u16::from_le_bytes([px[0], px[1]]);
+        let r = ((raw & 0x1f) * 255 / 31) as u8;
+        let g = ((raw >> 5 & 0x1f) * 255 / 31) as u8;
+        let b = ((raw >> 10 & 0x1f) * 255 / 31) as u8;
+        rgba.extend_from_slice(&[r, g, b, 0xff]);
+    }
+    iced::widget::image::Handle::from_rgba(replay_session::SCREEN_WIDTH, replay_session::SCREEN_HEIGHT, rgba)
+}
+
 fn match_settings_overlay<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
