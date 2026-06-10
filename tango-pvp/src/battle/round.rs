@@ -6,8 +6,13 @@ use crate::input::PartialInput;
 use super::world::{MgbaState, MgbaWorld};
 use super::EXPECTED_FPS;
 
-/// Per-side input-queue capacity.
-pub(super) const MAX_QUEUE_LENGTH: usize = 120;
+/// Per-side input-queue capacity: how many local inputs may sit unmatched
+/// against remote ones (and vice versa) before the engine bails and cancels
+/// the match. Public because it's the backpressure bound other layers size
+/// against — anything queueing inputs upstream of the engine (e.g. the host's
+/// send pump) can hold a bit more than this and rely on the engine's bail
+/// firing first.
+pub const MAX_QUEUE_LENGTH: usize = 120;
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the

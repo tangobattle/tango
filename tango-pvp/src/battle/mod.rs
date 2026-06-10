@@ -16,6 +16,7 @@ mod world;
 
 pub use match_::{Match, RoundMetrics};
 pub(crate) use match_::SenderMutex;
+pub use round::MAX_QUEUE_LENGTH;
 pub(crate) use round::Round;
 
 /// Match-wide identity. Both peers compute these to identical values from the

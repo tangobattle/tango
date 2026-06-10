@@ -198,25 +198,29 @@ impl LatencyCounter {
     }
 }
 
+/// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
+/// so that under a genuinely stalled wire the engine's overflow bail fires
+/// before the pump's channel ever blocks the frame — backpressure semantics
+/// match the old inline send. The slack on top covers the non-Input events
+/// interleaved into the same channel (one `EndOfRound` per round).
+const SEND_PUMP_DEPTH: usize = tango_pvp::battle::MAX_QUEUE_LENGTH + 8;
+
 /// `tango_pvp::net::Sender` adapter — forwards inputs as
 /// `Packet::Input` over the shared peer-connection Sender.
 ///
-/// Events go through a bounded channel drained by a dedicated pump task
-/// rather than being shipped inline: `send` is called once per frame from
-/// the emulator thread's `main_read_joyflags` trap, and writing the wire
-/// there would make the frame wait on the shared sender mutex (contended
-/// by the receive task's ping/pong replies) and on the datachannel itself.
-/// A single pump preserves Input/EndOfRound ordering. The channel holds
-/// more events than the engine's own unacked-input cap (120), so under a
-/// genuinely stalled wire the engine's overflow bail still fires first —
-/// backpressure semantics are unchanged, only the per-frame latency is gone.
+/// Events go through a bounded channel ([`SEND_PUMP_DEPTH`]) drained by a
+/// dedicated pump task rather than being shipped inline: `send` is called
+/// once per frame from the emulator thread's `main_read_joyflags` trap, and
+/// writing the wire there would make the frame wait on the shared sender
+/// mutex (contended by the receive task's ping/pong replies) and on the
+/// datachannel itself. A single pump preserves Input/EndOfRound ordering.
 pub struct PvpSender {
     tx: tokio::sync::mpsc::Sender<tango_pvp::net::Event>,
 }
 
 impl PvpSender {
     pub fn new(sender: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(128);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(SEND_PUMP_DEPTH);
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 let mut sender = sender.lock().await;
@@ -268,7 +272,7 @@ pub struct PvpReceiver {
     /// Session subscription wake. Pinged after `remote_ended` flips
     /// so `is_ended` is re-checked without waiting on the next
     /// vblank — by then the emu thread has already paused.
-    frame_notify: std::sync::Arc<tokio::sync::Notify>,
+    end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl PvpReceiver {
@@ -277,7 +281,7 @@ impl PvpReceiver {
         sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
         latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
         remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        frame_notify: std::sync::Arc<tokio::sync::Notify>,
+        end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
     ) -> Self {
         Self {
             receiver,
@@ -285,7 +289,7 @@ impl PvpReceiver {
             latency_counter,
             ping_timer: tokio::time::interval(PING_INTERVAL),
             remote_ended,
-            frame_notify,
+            end_of_match_notify,
         }
     }
 }
@@ -328,7 +332,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                             // any tail-end Input packets the remote
                             // already queued can still arrive.
                             self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
-                            self.frame_notify.notify_one();
+                            self.end_of_match_notify.notify_one();
                         }
                         p => {
                             return Err(std::io::Error::new(
