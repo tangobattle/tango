@@ -152,6 +152,11 @@ fn main() {
 
     let mut cfg = cmake::Config::new("mgba");
     cfg.define("LIBMGBA_ONLY", "on");
+    // The CPU dynarec (mgba's ENABLE_DYNAREC) defaults on for x86_64/arm64
+    // hosts and silently compiles out elsewhere; pin it on explicitly so a
+    // change of upstream defaults can't flip it without us noticing. Cores
+    // opt in at runtime via Core::set_dynarec_enabled.
+    cfg.define("ENABLE_DYNAREC", "on");
     for def in FORCED_DEFINES {
         cfg.cflag(format!("-D{def}"));
     }
