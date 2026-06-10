@@ -714,7 +714,12 @@ fn build_replay_writer(
     let local_sram = local_save.to_sram_dump();
     let remote_sram = remote_save.to_sram_dump();
     Ok(tango_pvp::replay::Writer::new(
-        file,
+        // Buffered: write_input runs on the emulator thread once per
+        // confirmed frame, and unbuffered it costs a few small write
+        // syscalls each time. The format already recovers truncated tails,
+        // so a hard crash losing the buffered tail of an (already
+        // incomplete) replay changes nothing; finish() flushes.
+        std::io::BufWriter::new(file),
         tango_pvp::replay::Metadata {
             ts: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
