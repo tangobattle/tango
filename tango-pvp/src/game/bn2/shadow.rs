@@ -12,8 +12,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let pc = core.as_ref().gba().cpu().thumb_pc();
             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-            let mut round_state = shadow_state.lock_round_state();
-            let round = match round_state.round.as_mut() {
+            let mut state = shadow_state.lock();
+            let round = match state.round.as_mut() {
                 Some(round) => round,
                 None => {
                     core.gba_mut().cpu_mut().set_gpr(0, 0);
@@ -54,8 +54,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |core| {
-                let mut rng = shadow_state.lock_rng();
-                let non_shared_rng_state = pick_rng_state(&mut *rng, !shadow_state.is_offerer());
+                let mut state = shadow_state.lock();
+                let non_shared_rng_state = pick_rng_state(&mut state.rng, !shadow_state.is_offerer());
                 munger.set_rng_state(core, non_shared_rng_state);
                 munger.start_battle_from_comm_menu(core);
             })
@@ -64,8 +64,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core| {
-                let mut rng = shadow_state.lock_rng();
-                let shared_rng_seed = generate_rng_state(&mut *rng);
+                let mut state = shadow_state.lock();
+                let shared_rng_seed = generate_rng_state(&mut state.rng);
                 munger.set_rng_state(core, shared_rng_seed);
                 munger.select_battle_init_substate(core, 0x2c);
                 let pc = core.as_ref().gba().cpu().thumb_pc();
@@ -90,8 +90,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         (hooks.offsets.rom.link_is_p2_ret, {
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else {
+                let mut state = shadow_state.lock();
+                let Some(round) = state.round.as_mut() else {
                     return;
                 };
                 core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
@@ -101,14 +101,14 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else {
+                let mut state = shadow_state.lock();
+                let state = &mut *state;
+                let Some(round) = state.round.as_mut() else {
                     return;
                 };
 
                 if !munger.is_linking(core) && !round.has_first_committed_state() {
-                    let mut rng = shadow_state.lock_rng();
-                    let shared_rng_state = generate_rng_state(&mut *rng);
+                    let shared_rng_state = generate_rng_state(&mut state.rng);
                     munger.set_rng_state(core, shared_rng_state);
                     return;
                 }
@@ -133,7 +133,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     // The input's been applied and the core has reached the next
                     // tick's read_joyflags; signal apply_input and stop here so
                     // run_loop parks the shadow exactly at that boundary.
-                    shadow_state.set_input_applied();
+                    state.input_applied = true;
                     core.end_run_loop();
                 }
             })
@@ -169,8 +169,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         (hooks.offsets.rom.round_call_jump_table_ret, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                let mut round_state = shadow_state.lock_round_state();
-                let Some(round) = round_state.round.as_mut() else {
+                let mut state = shadow_state.lock();
+                let Some(round) = state.round.as_mut() else {
                     return;
                 };
                 if !round.has_first_committed_state() {
@@ -182,31 +182,31 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         (hooks.offsets.rom.round_end_set_win, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                shadow_state.lock_round_state().set_result_is_in();
+                shadow_state.lock().result_is_in = true;
             })
         }),
         (hooks.offsets.rom.round_end_set_loss, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                shadow_state.lock_round_state().set_result_is_in();
+                shadow_state.lock().result_is_in = true;
             })
         }),
         (hooks.offsets.rom.round_end_damage_judge_set_win, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                shadow_state.lock_round_state().set_result_is_in();
+                shadow_state.lock().result_is_in = true;
             })
         }),
         (hooks.offsets.rom.round_end_damage_judge_set_loss, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                shadow_state.lock_round_state().set_result_is_in();
+                shadow_state.lock().result_is_in = true;
             })
         }),
         (hooks.offsets.rom.round_end_damage_judge_set_draw, {
             let shadow_state = shadow_state.clone();
             Box::new(move |_core| {
-                shadow_state.lock_round_state().set_result_is_in();
+                shadow_state.lock().result_is_in = true;
             })
         }),
     ]

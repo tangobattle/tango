@@ -5,12 +5,12 @@
 //!
 //! - [`State`] is the shared handle the per-game shadow traps lock to read
 //!   and modify the round state, RNG, and applied snapshots.
-//! - [`Round`] / [`RoundState`] hold the per-round mutable state.
+//! - [`Round`] holds the per-round mutable state.
 
 mod round;
 mod state;
 
-pub use round::{Round, RoundState};
+pub use round::Round;
 pub use state::State;
 
 /// Captures the full shadow-side state for replay-mode seeking. The
@@ -22,7 +22,8 @@ pub use state::State;
 pub struct ShadowSnapshot {
     pub mgba_state: Box<mgba::state::State>,
     pub rng: rand_pcg::Mcg128Xsl64,
-    pub round_state: RoundState,
+    pub round: Option<Round>,
+    pub result_is_in: bool,
 }
 
 use crate::input::{Input, PartialInput};
@@ -126,26 +127,26 @@ impl Shadow {
 
     pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {
         let mgba_state = self.core.as_mut().save_state()?;
-        let rng = self.state.0.rng.lock().unwrap().clone();
-        let round_state = self.state.0.round_state.lock().unwrap().clone();
+        let shared = self.state.lock();
         Ok(ShadowSnapshot {
             mgba_state,
-            rng,
-            round_state,
+            rng: shared.rng.clone(),
+            round: shared.round.clone(),
+            result_is_in: shared.result_is_in,
         })
     }
 
     pub fn load_state(&mut self, snapshot: &ShadowSnapshot) -> anyhow::Result<()> {
         self.core.as_mut().load_state(&snapshot.mgba_state)?;
-        *self.state.0.rng.lock().unwrap() = snapshot.rng.clone();
-        *self.state.0.round_state.lock().unwrap() = snapshot.round_state.clone();
+        let mut shared = self.state.lock();
+        shared.rng = snapshot.rng.clone();
+        shared.round = snapshot.round.clone();
+        shared.result_is_in = snapshot.result_is_in;
         // input_applied and error are per-run scratch; clear so the next
         // apply_input / round-end run doesn't pick up stale values that don't
         // correspond to the just-restored core state.
-        self.state
-            .0
-            .input_applied
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+        shared.input_applied = false;
+        drop(shared);
         *self.state.0.error.lock().unwrap() = None;
         Ok(())
     }
@@ -172,8 +173,8 @@ impl Shadow {
     pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until first committed state");
         self.run_core_until(|state| {
-            let mut round_state = state.lock_round_state();
-            let Some(round) = round_state.round.as_mut() else {
+            let mut shared = state.lock();
+            let Some(round) = shared.round.as_mut() else {
                 return false;
             };
             if !round.has_first_committed_state() {
@@ -190,7 +191,7 @@ impl Shadow {
     pub fn advance_until_round_end(&mut self) -> anyhow::Result<()> {
         log::info!("advancing shadow until round end");
         self.hooks.prepare_for_fastforward(self.core.as_mut());
-        self.run_core_until(|state| state.lock_round_state().round.is_none())
+        self.run_core_until(|state| state.lock().round.is_none())
     }
 
     /// Inject the given input pair as the next shadow input, then run the
@@ -205,8 +206,8 @@ impl Shadow {
     /// remote packet queued before this run.
     pub fn apply_input(&mut self, expected_tick: u32, ip: (Input, PartialInput)) -> anyhow::Result<Vec<u8>> {
         let pending_remote_packet = {
-            let mut round_state = self.state.lock_round_state();
-            let round = round_state.round.as_mut().expect("round");
+            let mut shared = self.state.lock();
+            let round = shared.round.as_mut().expect("round");
             round.set_pending_shadow_input(ip);
             round.peek_remote_packet().expect("pending remote packet")
         };

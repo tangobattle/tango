@@ -69,8 +69,9 @@ the per-game traps perform the transitions as the game executes.
 - **`shadow::round::Exchange`** (`Idle → Queued → (taken) → Applied`) — one
   link exchange through the shadow core, from `apply_input` queueing a tick's
   input to the per-game traps consuming it and buffering the next remote
-  packet. The completion wakeup (`input_applied`) is an atomic *outside* the
-  round state because traps raise it while holding the round lock.
+  packet. The shadow's mutable state (round, RNG, the `input_applied`
+  completion wakeup) lives behind one lock; the trap error channel sits
+  outside it so traps can report errors while holding `&mut Round` borrows.
   `pending_remote_packet` is a one-tick pipeline register: the packet
   returned for tick T was buffered during tick T−1's run.
 

@@ -41,9 +41,10 @@ pub(super) struct RemotePacket {
 ///
 /// The "exchange applied AND core parked at the next tick boundary" signal
 /// that [`Shadow::apply_input`](super::Shadow::apply_input)'s drive loop
-/// polls is deliberately NOT a variant here: the per-game traps raise it via
-/// [`State::set_input_applied`](super::State::set_input_applied) *while
-/// holding the round_state lock*, so it lives outside `Round` as an atomic.
+/// polls is deliberately NOT a variant here: it is the `input_applied` flag
+/// beside the round in the shadow's shared state — per-game traps raise it
+/// in the same locked scope that drives the exchange, and the drive loop
+/// polls it between run bursts.
 #[derive(Clone)]
 enum Exchange {
     Idle,
@@ -177,15 +178,3 @@ impl Round {
     }
 }
 
-/// Wraps the optional shadow round and the result-arrived flag.
-#[derive(Clone)]
-pub struct RoundState {
-    pub round: Option<Round>,
-    pub result_is_in: bool,
-}
-
-impl RoundState {
-    pub fn set_result_is_in(&mut self) {
-        self.result_is_in = true;
-    }
-}
