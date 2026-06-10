@@ -244,9 +244,10 @@ impl Round {
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
         // Frames presented with the lead still inside the present delay are
-        // fully confirmed — running ahead by that much costs nothing, so the
-        // throttler stays disengaged until the speculation balance crosses
-        // the boundary, instead of shaving fps the player can feel.
+        // fully confirmed — running ahead by that much costs no presentation
+        // quality, so the throttler stays disengaged until the speculation
+        // balance crosses the boundary, instead of shaving fps the player
+        // can feel.
         let slowdown = self.throttler.step(skew, session.speculation_balance());
         core.gba_mut()
             .sync_mut()

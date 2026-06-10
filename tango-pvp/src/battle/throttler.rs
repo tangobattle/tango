@@ -5,7 +5,9 @@
 //! rate and lets the leader ease back toward it. Throttling also only engages
 //! once the presented frame actually speculates past the present delay: while
 //! the lead still fits inside it, running ahead costs no presentation quality,
-//! so no fps is shaved.
+//! so no fps is shaved. (It still costs CPU — the frontier speculates and
+//! re-sims mispredictions regardless of what's presented — but that's the
+//! frame path's budget, not the player's.)
 
 /// EMA weight applied while skew is growing. τ ≈ 5 s rise (at 60 Hz).
 const ALPHA_SLOWDOWN: f32 = 1.0 / 300.0;
@@ -15,6 +17,11 @@ const ALPHA_SPEEDUP: f32 = 1.0 / 30.0;
 /// balance moves in bursts as remote inputs arrive, and smoothing it keeps
 /// that flutter out of the emitted fps target.
 const ALPHA_BALANCE: f32 = 1.0 / 30.0;
+/// Gain from smoothed skew to emitted slowdown, in fps shaved per tick of
+/// skew. At 1.0 the throttler is a proportional controller whose correction
+/// rate equals its error: a smoothed skew of S sheds lead at ~S ticks/s,
+/// converging exponentially with a ~1 s time constant once engaged.
+const SKEW_TO_SLOWDOWN: f32 = 1.0;
 /// Engagement ramp at the speculation boundary: fps of slowdown permitted per
 /// tick of smoothed speculative depth. Deliberately steep — the ramp decides
 /// *when* throttling engages (at the boundary, continuously), not how hard;
@@ -23,6 +30,16 @@ const ALPHA_BALANCE: f32 = 1.0 / 30.0;
 const ENGAGEMENT_SLOPE: f32 = 10.0;
 /// Slowdown ceiling, in fps below the base rate.
 const MAX_SLOWDOWN: f32 = 30.0;
+/// Floor on the smoothed speculation balance. Deep headroom (lead pinned well
+/// inside the present delay) would otherwise wind the balance EMA down toward
+/// -present_delay, and the climb back through zero would defer engagement past
+/// the boundary by however long the slider made it — the skew windup all over
+/// again, scaled by a user setting. The ramp saturates the slowdown ceiling at
+/// MAX_SLOWDOWN/ENGAGEMENT_SLOPE ticks of depth, so flooring at its mirror
+/// image keeps the gate's swing symmetric around the boundary and the
+/// re-engagement latency constant, while leaving enough negative range to
+/// absorb bursty-arrival flutter.
+const BALANCE_FLOOR: f32 = -(MAX_SLOWDOWN / ENGAGEMENT_SLOPE);
 
 /// Per-round time-sync throttler. [`Round`](super::Round) owns one and feeds it
 /// the engine's raw skew and speculation balance each frame.
@@ -37,7 +54,10 @@ pub(crate) struct Throttler {
     smoothed: f32,
     /// EMA-smoothed speculation balance. The raw balance jumps frame to frame
     /// as remote inputs arrive in bursts; gating engagement on the smoothed
-    /// value keeps that flutter out of the fps target.
+    /// value keeps that flutter out of the fps target. Floored at
+    /// [`BALANCE_FLOOR`]: deep headroom would otherwise wind it down toward
+    /// -present_delay, and the climb back through zero would hold the brake
+    /// off well past the boundary crossing.
     smoothed_balance: f32,
 }
 
@@ -52,8 +72,9 @@ impl Throttler {
     /// Compute the slowdown to apply this frame, in fps below the base rate.
     ///
     /// `skew` is the raw integer frame difference
-    /// `local_advantage - remote_advantage`; its asymmetric EMA sets the
-    /// slowdown magnitude. `speculation_balance` is the engine's signed
+    /// `local_advantage - remote_advantage`; its asymmetric EMA, scaled by
+    /// [`SKEW_TO_SLOWDOWN`], sets the slowdown magnitude. `speculation_balance`
+    /// is the engine's signed
     /// distance of the presented frame from the speculation boundary
     /// (`lead - present_delay`); its smoothed sign gates engagement. While the
     /// smoothed balance is negative the presented frame is fully confirmed —
@@ -70,9 +91,10 @@ impl Throttler {
             ALPHA_SPEEDUP
         };
         self.smoothed = (alpha * skew + (1.0 - alpha) * self.smoothed).max(0.0);
-        self.smoothed_balance =
-            ALPHA_BALANCE * speculation_balance as f32 + (1.0 - ALPHA_BALANCE) * self.smoothed_balance;
-        self.smoothed
+        self.smoothed_balance = (ALPHA_BALANCE * speculation_balance as f32
+            + (1.0 - ALPHA_BALANCE) * self.smoothed_balance)
+            .max(BALANCE_FLOOR);
+        (SKEW_TO_SLOWDOWN * self.smoothed)
             .min(ENGAGEMENT_SLOPE * self.smoothed_balance.max(0.0))
             .clamp(0.0, MAX_SLOWDOWN)
     }
@@ -153,6 +175,21 @@ mod tests {
         let mut t = Throttler::new();
         run(&mut t, 20, -2, 5_000);
         assert_eq!(t.step(20, -2), 0.0);
+        let n = frames_until(&mut t, 20, 2, 10.0);
+        assert!(n <= 60, "took {n} frames to engage past the boundary");
+    }
+
+    /// Regression: a long stretch of deep headroom (lead pinned far inside a
+    /// large present delay) must not defer engagement once the lead finally
+    /// crosses the boundary. Without the floor the balance EMA winds down
+    /// toward -30 here and the climb back through zero holds the brake off
+    /// for ~1.7 s instead of under a second.
+    #[test]
+    fn deep_headroom_does_not_delay_engagement() {
+        let mut t = Throttler::new();
+        // Saturate the skew EMA so the balance gate is what binds below.
+        run(&mut t, 20, OPEN, 5_000);
+        run(&mut t, 20, -30, 1_000);
         let n = frames_until(&mut t, 20, 2, 10.0);
         assert!(n <= 60, "took {n} frames to engage past the boundary");
     }
