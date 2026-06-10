@@ -126,7 +126,16 @@ impl Shadow {
     }
 
     pub fn save_state(&mut self) -> anyhow::Result<ShadowSnapshot> {
-        let mgba_state = self.core.as_mut().save_state()?;
+        self.save_state_reusing(mgba::state::State::new_uninit())
+    }
+
+    /// [`save_state`](Self::save_state), but writing the mgba state into a
+    /// recycled buffer instead of allocating a fresh one.
+    pub fn save_state_reusing(
+        &mut self,
+        buf: Box<std::mem::MaybeUninit<mgba::state::State>>,
+    ) -> anyhow::Result<ShadowSnapshot> {
+        let mgba_state = self.core.as_mut().save_state_reusing(buf)?;
         let shared = self.state.lock();
         Ok(ShadowSnapshot {
             mgba_state,

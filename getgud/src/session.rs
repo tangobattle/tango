@@ -380,7 +380,8 @@ impl<W: World> Session<W> {
             let pair = self.settle_backlog.pop_front().unwrap();
             assert_eq!(spec.tick, self.settled_tick + 1);
             self.last_confirmed_remote = pair.1.clone();
-            self.settled_state = spec.state;
+            let displaced = std::mem::replace(&mut self.settled_state, spec.state);
+            self.world.recycle(displaced);
             self.settled_tick = spec.tick;
             self.commit_pair(&pair, spec.round);
         }
@@ -396,7 +397,9 @@ impl<W: World> Session<W> {
             // The speculative tail we're throwing away — the rollback depth for
             // this frame (0 when there was simply nothing speculated yet).
             self.last_misprediction_depth = self.speculations.len() as u32;
-            self.speculations.clear();
+            for spec in self.speculations.drain(..) {
+                self.world.recycle(spec.state);
+            }
             self.world.load(&self.settled_state)?;
             for _ in promote..to_settle {
                 let pair = self.settle_backlog.pop_front().unwrap();
@@ -405,7 +408,9 @@ impl<W: World> Session<W> {
                 self.last_confirmed_remote = pair.1.clone();
                 self.commit_pair(&pair, round);
             }
-            self.settled_state = self.world.save()?;
+            let resettled = self.world.save()?;
+            let displaced = std::mem::replace(&mut self.settled_state, resettled);
+            self.world.recycle(displaced);
         }
 
         debug_assert_eq!(self.settled_tick, target);
@@ -465,6 +470,7 @@ mod tests {
     struct Counters {
         restores: usize,
         steps: usize,
+        recycles: usize,
     }
 
     /// A deterministic world whose state is the full ordered history of applied
@@ -511,6 +517,9 @@ mod tests {
         // Repeat-predict: assume the remote keeps doing what they were doing.
         fn predict(&self, last: &u8) -> u8 {
             *last
+        }
+        fn recycle(&mut self, _state: Vec<(u8, u8)>) {
+            self.counters.lock().unwrap().recycles += 1;
         }
         fn log(&mut self, pair: &(u8, u8)) {
             self.logged.lock().unwrap().push(*pair);
@@ -580,6 +589,9 @@ mod tests {
         );
         // Mispredictions actually happened, so rollback re-sim ran.
         assert!(counters.lock().unwrap().restores > 0, "expected rollbacks");
+        // Every discarded snapshot (cleared speculations, displaced settled
+        // states) must be offered back to the world for reuse.
+        assert!(counters.lock().unwrap().recycles > 0, "expected recycled states");
     }
 
     /// When predictions hold (remote held constant so repeat-predict is right),
@@ -618,6 +630,13 @@ mod tests {
             counters.lock().unwrap().restores,
             0,
             "correct predictions must not roll back"
+        );
+        // Each promotion displaces exactly one settled state, and with no
+        // rollbacks that's the only discard path: one recycle per settled tick.
+        assert_eq!(
+            counters.lock().unwrap().recycles,
+            s.settled_state().len(),
+            "every promotion must recycle the displaced settled state"
         );
     }
 

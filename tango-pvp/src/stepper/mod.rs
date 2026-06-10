@@ -218,6 +218,17 @@ impl Stepper {
     /// per re-simulated tick. Returns the snapshot bundled with the tick it's
     /// poised at (the parked tick), so the caller can checkpoint both together.
     pub fn save(&mut self) -> anyhow::Result<(Box<mgba::state::State>, u32)> {
-        Ok((self.core.as_mut().save_state()?, self.parked_tick))
+        self.save_reusing(mgba::state::State::new_uninit())
+    }
+
+    /// [`save`](Self::save), but writing into a recycled state buffer instead
+    /// of allocating a fresh one. The rollback engine discards a snapshot of
+    /// this size every promoted tick; reusing it keeps the per-frame save out
+    /// of the page allocator.
+    pub fn save_reusing(
+        &mut self,
+        buf: Box<std::mem::MaybeUninit<mgba::state::State>>,
+    ) -> anyhow::Result<(Box<mgba::state::State>, u32)> {
+        Ok((self.core.as_mut().save_state_reusing(buf)?, self.parked_tick))
     }
 }

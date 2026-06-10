@@ -112,6 +112,16 @@ pub trait World {
     /// Used to rewind before re-simulating a mispredicted tail.
     fn load(&mut self, state: &Self::State) -> Result<(), Self::Error>;
 
+    /// Take back ownership of a snapshot the session is discarding — an old
+    /// settled state displaced by a promotion, or a speculative tail thrown
+    /// away by a rollback. Purely an allocation-reuse hook: implementations
+    /// with large snapshots can pool the buffers and hand them back out from
+    /// [`save`](World::save) instead of allocating fresh ones every tick. The
+    /// default just drops the state.
+    fn recycle(&mut self, state: Self::State) {
+        let _ = state;
+    }
+
     /// Return the predicted remote input given the last confirmed remote input.
     fn predict(&self, last_remote: &Self::Input) -> Self::Input;
 

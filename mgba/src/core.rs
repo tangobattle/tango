@@ -246,9 +246,18 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn save_state(&self) -> Result<Box<state::State>, crate::Error> {
-        let mut state = state::State::new_uninit();
-        self.save_state_into(state.as_mut())?;
-        Ok(unsafe { state.assume_init() })
+        self.save_state_reusing(state::State::new_uninit())
+    }
+
+    /// [`save_state`](Self::save_state), but writing into a caller-provided
+    /// buffer (typically one recycled via [`state::State::into_uninit`])
+    /// instead of allocating a fresh ~400KB one.
+    pub fn save_state_reusing(
+        &self,
+        mut buf: Box<MaybeUninit<state::State>>,
+    ) -> Result<Box<state::State>, crate::Error> {
+        self.save_state_into(buf.as_mut())?;
+        Ok(unsafe { buf.assume_init() })
     }
 
     pub fn save_state_into<'b>(

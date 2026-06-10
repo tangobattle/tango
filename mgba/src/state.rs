@@ -61,6 +61,13 @@ impl State {
         }
     }
 
+    /// Demote a spent state box back to an uninitialized buffer so its
+    /// allocation can be reused by a later `save_state_into` — these are
+    /// ~400KB apiece, which is page-allocator territory on every platform.
+    pub fn into_uninit(state: Box<Self>) -> Box<std::mem::MaybeUninit<Self>> {
+        unsafe { Box::from_raw(Box::into_raw(state) as *mut _) }
+    }
+
     pub unsafe fn from_slice(slice: &[u8]) -> Box<Self> {
         let mut state = Self::new_uninit();
         std::slice::from_raw_parts_mut(state.as_mut_ptr() as *mut _, std::mem::size_of::<Self>())
