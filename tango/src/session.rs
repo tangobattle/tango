@@ -1409,11 +1409,11 @@ pub fn view<'a>(
     // used to be.
     let mut stacked = stack![Element::from(layout)];
     // A drawer pane mid-animation draws in iced's floating layer,
-    // above every base stack layer — there's no way to slot it
-    // between them. So while one is moving, the chrome it would
-    // inconsistently cover (telemetry corner, top-right commands)
-    // steps aside entirely and returns at rest: the drawer is
-    // simply "on top while in motion", in both directions.
+    // above every base stack layer — so for those moments the
+    // persistent chrome (telemetry corner, top-right commands) is
+    // hoisted into the floating layer too, where tree order puts
+    // it back on top of the moving pane. See `keep_above_drawers`
+    // for why it isn't hoisted permanently.
     let now = iced::time::Instant::now();
     let drawer_moving =
         state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
@@ -1425,9 +1425,10 @@ pub fn view<'a>(
         }
         // Every session: Settings + tear-down, top-right (PvP's
         // tear-down routes through the disconnect confirm).
-        if !drawer_moving {
-            stacked = stacked.push(corner_commands_overlay(lang, session, state));
-        }
+        stacked = stacked.push(keep_above_drawers(
+            corner_commands_overlay(lang, session, state),
+            drawer_moving,
+        ));
     }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
@@ -1435,10 +1436,8 @@ pub fn view<'a>(
     // PvP signal indicator / expanded telemetry graph, bottom-right.
     // Deliberately outside the floating-controls gate — connection
     // health stays glanceable even when the controls tuck away.
-    if !drawer_moving {
-        if let Some(o) = telemetry_overlay(lang, session, state) {
-            stacked = stacked.push(o);
-        }
+    if let Some(o) = telemetry_overlay(lang, session, state) {
+        stacked = stacked.push(keep_above_drawers(o, drawer_moving));
     }
     if let Some(o) = disconnect_overlay(lang, session, state) {
         stacked = stacked.push(o);
@@ -1699,6 +1698,23 @@ fn replay_bar<'a>(
     let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
     controls.push(speed_picker)
+}
+
+/// Hoist a persistent chrome layer into iced's floating layer —
+/// an invisible sub-pixel translation — so it keeps drawing above
+/// a drawer pane mid-animation (which floats, and floats render
+/// above every base stack layer; among floats, tree order wins,
+/// and these layers come after the drawer). Only applied while a
+/// drawer is actually moving: hoisted permanently, the chrome
+/// would also paint over the settings/disconnect modals.
+fn keep_above_drawers(el: Element<'_, Message>, drawer_moving: bool) -> Element<'_, Message> {
+    if drawer_moving {
+        iced::widget::float(el)
+            .translate(|_bounds, _viewport| iced::Vector::new(0.0, 0.001))
+            .into()
+    } else {
+        el
+    }
 }
 
 /// The unified session command cluster, top-right in every
