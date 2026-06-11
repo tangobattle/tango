@@ -61,6 +61,19 @@ pub struct State {
     /// (rather than as a `static`) because `markdown::Content`
     /// is `!Sync`.
     pub about: AboutMarkdown,
+    /// Entrance restarted on each section switch — the section
+    /// pane slides in vertically, mirroring the sidebar's order
+    /// (moving down the list enters from below, moving up from
+    /// above) the same way the top tabs mirror their horizontal
+    /// order. Owned here (not by the App's screen-enter
+    /// machinery) so it also plays inside the in-session settings
+    /// modal.
+    pub pane_enter: crate::anim::Enter,
+    /// Starting vertical offset for `pane_enter` — sign picked
+    /// from the direction of travel along the sidebar. The
+    /// `Default` of 0.0 is never seen: a direction is always set
+    /// before the first entrance starts.
+    pub pane_enter_dy: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -151,7 +164,15 @@ impl State {
     pub fn update(&mut self, msg: Message) -> Option<ConfigChange> {
         match msg {
             Message::TabSelected(t) => {
-                self.active_tab = t;
+                if self.active_tab != t {
+                    // The sidebar lists sections in declaration
+                    // order, so the discriminants double as
+                    // positions: moving down brings the pane in
+                    // from below, moving up from above.
+                    self.pane_enter_dy = if (t as u8) > (self.active_tab as u8) { 24.0 } else { -24.0 };
+                    self.active_tab = t;
+                    self.pane_enter.start(iced::time::Instant::now());
+                }
                 None
             }
             Message::LanguageSelected(l) => Some(ConfigChange::Language(l)),
@@ -207,11 +228,6 @@ pub fn view<'a>(
     config: &'a config::Config,
     state: &'a State,
     updater_status: crate::updater::Status,
-    // `Some(progress)` while a section-switch entrance is live:
-    // the section pane slides in from the right (away from the
-    // sidebar, so it never crosses over it) while the sidebar
-    // stays planted. Driven by the App's screen-enter animation.
-    pane_enter: Option<f32>,
 ) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
@@ -273,9 +289,10 @@ pub fn view<'a>(
     .width(Fill)
     .height(Fill)
     .style(widgets::pane);
-    // Section-switch entrance: just this pane glides in.
-    let body_wrap: Element<'a, Message> = match pane_enter {
-        Some(p) => crate::anim::slide_in(body_wrap, p, iced::Vector::new(24.0, 0.0)),
+    // Section-switch entrance: just this pane glides in,
+    // vertically along the direction of travel in the sidebar.
+    let body_wrap: Element<'a, Message> = match state.pane_enter.progress(iced::time::Instant::now()) {
+        Some(p) => crate::anim::slide_in(body_wrap, p, iced::Vector::new(0.0, state.pane_enter_dy)),
         None => body_wrap.into(),
     };
 

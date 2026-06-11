@@ -148,18 +148,23 @@ pub struct App {
     rescans_in_flight: u32,
     /// Entrance glide played on freshly-swapped content whenever
     /// the [`screen_key`] changes (tab switch, welcome → main,
-    /// session end, settings section). Restarted at 0 → 1 on each
-    /// trigger; `view` draws the new screen a few px below its
-    /// rest position and slides it up, so the swap reads as the
-    /// new screen arriving rather than a hard cut. (A fade was
-    /// tried first, but without subtree opacity it has to blank
-    /// to the background color for a frame — worse than the cut.)
+    /// session start/end). Restarted at 0 → 1 on each trigger;
+    /// `view` draws the new screen a few px off its rest position
+    /// and slides it in, so the swap reads as the new screen
+    /// arriving rather than a hard cut. (A fade was tried first,
+    /// but without subtree opacity it has to blank to the
+    /// background color for a frame — worse than the cut.)
     ///
     /// [`screen_key`]: App::screen_key
-    screen_enter: iced::animation::Animation<f32>,
+    screen_enter: anim::Enter,
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
+    /// Entrance for the Play tab's lobby band, restarted when a
+    /// netplay attempt starts — the band replaces the link-code
+    /// strip wholesale, so it slides up from the bottom edge
+    /// instead of popping into place.
+    lobby_enter: anim::Enter,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -171,10 +176,6 @@ enum EnterScope {
     /// forward in nav order), negative from the left (moving
     /// back).
     Body { dx: f32 },
-    /// Settings section switch: only the section pane slides in
-    /// (from the right, away from the sidebar); the sidebar and
-    /// the rest of the page stay planted.
-    SettingsPane,
     /// Welcome/session swaps: the whole window rises into place.
     Root,
 }
@@ -184,12 +185,14 @@ const PANE_SLIDE: f32 = 28.0;
 
 /// Identity of what `view` is fundamentally showing. Computed
 /// before and after every `update` dispatch; a change means the
-/// screen got swapped wholesale and triggers `screen_fade`.
+/// screen got swapped wholesale and triggers [`App::screen_enter`].
+/// (Settings sections and save-view sub-tabs animate themselves —
+/// their entrances live in their own state.)
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScreenKey {
     Welcome,
     Session,
-    Tabs(Tab, tabs::settings::SettingsTab),
+    Tabs(Tab),
 }
 
 impl App {
@@ -334,10 +337,11 @@ impl App {
             patch_autoupdater,
             updater,
             rescans_in_flight: 0,
-            // Starts at rest (no launch animation) — value() == 1.0
-            // and is_animating() == false until first triggered.
-            screen_enter: iced::animation::Animation::new(1.0),
+            // Start at rest (no launch animation) — progress 1.0
+            // and not animating until first triggered.
+            screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root,
+            lobby_enter: anim::Enter::default(),
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -719,24 +723,30 @@ impl App {
         } else if self.session.is_active() {
             ScreenKey::Session
         } else {
-            ScreenKey::Tabs(self.tab, self.settings.active_tab)
+            ScreenKey::Tabs(self.tab)
         }
     }
 
+    /// Whether the Play tab's bottom band is the lobby view (a
+    /// netplay attempt is in flight or handing off) rather than
+    /// the link-code strip. Mirrors `show_lobby` in the play
+    /// view; tracked across updates to trigger [`App::lobby_enter`].
+    fn lobby_band_on_screen(&self) -> bool {
+        matches!(
+            self.netplay.phase,
+            netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } | netplay::Phase::Lobby { .. }
+        ) || self.netplay.handoff_pending()
+    }
+
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
-        let before = self.screen_key();
+        let screen_before = self.screen_key();
+        let lobby_before = self.lobby_band_on_screen();
         let task = self.update_inner(message);
-        let after = self.screen_key();
-        // Session entry is deliberately a hard cut — the emulator
-        // boot is its own "transition", and transforming the live
-        // framebuffer shader mid-glide isn't worth the risk.
-        if before != after && after != ScreenKey::Session {
-            self.screen_enter = iced::animation::Animation::new(0.0)
-                .duration(anim::TRANSITION)
-                .easing(iced::animation::Easing::EaseOutCubic)
-                .go(1.0, iced::time::Instant::now());
-            self.screen_enter_scope = match (before, after) {
-                (ScreenKey::Tabs(t1, _), ScreenKey::Tabs(t2, _)) if t1 != t2 => {
+        let screen_after = self.screen_key();
+        if screen_before != screen_after {
+            self.screen_enter.start(iced::time::Instant::now());
+            self.screen_enter_scope = match (screen_before, screen_after) {
+                (ScreenKey::Tabs(t1), ScreenKey::Tabs(t2)) => {
                     // The nav strip lays the tabs out in declaration
                     // order, so the discriminants double as nav
                     // positions: moving right brings the new pane in
@@ -744,11 +754,11 @@ impl App {
                     let dx = if (t2 as u8) > (t1 as u8) { PANE_SLIDE } else { -PANE_SLIDE };
                     EnterScope::Body { dx }
                 }
-                // Same tab, different key — that's the settings
-                // section, the only sub-tab tracked in ScreenKey.
-                (ScreenKey::Tabs(..), ScreenKey::Tabs(..)) => EnterScope::SettingsPane,
                 _ => EnterScope::Root,
             };
+        }
+        if !lobby_before && self.lobby_band_on_screen() {
+            self.lobby_enter.start(iced::time::Instant::now());
         }
         task
     }
@@ -989,12 +999,13 @@ impl App {
             iced::window::events().map(|(id, ev)| Message::Window(id, ev)),
         ];
         // Per-frame redraw driver, alive only while something is
-        // actually moving: a screen entrance or session-overlay
-        // transition mid-flight, or the Play tab's pulsing
-        // connection-status line. The menu UI otherwise redraws
-        // on events only, so dropping this when idle is what keeps
-        // animations from costing 60 fps forever.
-        let now = iced::time::Instant::now();
+        // actually moving: any registered animation mid-flight
+        // (screen entrances, overlay transitions, pane enters —
+        // they all `kick` the shared registry when they start) or
+        // the Play tab's pulsing connection-status line. The menu
+        // UI otherwise redraws on events only, so dropping this
+        // when idle is what keeps animations from costing 60 fps
+        // forever.
         let waiting_pulse_on_screen = !self.session.is_active()
             && self.tab == Tab::Play
             && match &self.netplay.phase {
@@ -1006,7 +1017,7 @@ impl App {
                 }
                 _ => false,
             };
-        if self.screen_enter.is_animating(now) || self.session.anims_in_progress(now) || waiting_pulse_on_screen {
+        if anim::any_active() || waiting_pulse_on_screen {
             subs.push(iced::window::frames().map(|_| Message::AnimTick));
         }
         iced::Subscription::batch(subs)
@@ -1857,10 +1868,7 @@ impl App {
         // return (whole window or just the tab body, per
         // `screen_enter_scope`).
         let now = iced::time::Instant::now();
-        let enter = self
-            .screen_enter
-            .is_animating(now)
-            .then(|| self.screen_enter.interpolate_with(|v| v, now));
+        let enter = self.screen_enter.progress(now);
 
         // First-run gate: no main UI until the user picks a nickname.
         if self.config.nickname.is_none() {
@@ -1900,9 +1908,7 @@ impl App {
             // flight too, so the panel eases in and out.
             let composed: Element<'_, Message> = if self.session.settings_anim.visible(now) {
                 let progress = self.session.settings_anim.progress(now);
-                // No section-pane slide inside the modal — the
-                // whole panel already animates as one.
-                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)
+                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
                     .map(Message::Settings);
                 // Top header row carrying the X close button. The
                 // close is the only affordance for dismissing the
@@ -1964,6 +1970,13 @@ impl App {
                 .into()
             } else {
                 session_view
+            };
+            // Session entry rises in the same way leaving it does —
+            // the screen-enter trigger fires on both edges of the
+            // Session screen key.
+            let composed = match (enter, self.screen_enter_scope) {
+                (Some(p), EnterScope::Root) => entered(composed, Some(p)),
+                _ => composed,
             };
             return crate::input_capture::InputCapture::new(composed, |input| {
                 // Esc is reserved as the in-session escape/menu key —
@@ -2027,6 +2040,7 @@ impl App {
                     &self.netplay.lobby,
                     self.netplay.handoff_pending(),
                     rescanning,
+                    self.lobby_enter.progress(now),
                 )
                 .map(Message::Play),
             Tab::Replays => self
@@ -2037,20 +2051,8 @@ impl App {
                 .patches
                 .view(lang, &self.scanners, &self.config, rescanning)
                 .map(Message::Patches),
-            Tab::Settings => tabs::settings::view(
-                lang,
-                &self.config,
-                &self.settings,
-                self.updater.status_blocking(),
-                // Section switches slide just the section pane —
-                // the sidebar (and the rest of the page) stays put.
-                if self.screen_enter_scope == EnterScope::SettingsPane {
-                    enter
-                } else {
-                    None
-                },
-            )
-            .map(Message::Settings),
+            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
+                .map(Message::Settings),
         };
 
         // Body container picks up the palette background and adds

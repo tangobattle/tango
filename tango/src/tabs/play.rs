@@ -207,6 +207,10 @@ pub struct PlayState {
     /// they're handled by view-time button gating + inline hints,
     /// because graying out the action surface explains itself.
     pub last_error: Option<String>,
+    /// Entrance restarted when the patch controls fold or unfold —
+    /// the pickers (or the returning toggle button) pop into the
+    /// selector row instead of snapping.
+    pub patch_row_enter: crate::anim::Enter,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -251,6 +255,7 @@ impl Default for PlayState {
             save_action: SaveAction::None,
             link_code: String::new(),
             last_error: None,
+            patch_row_enter: crate::anim::Enter::default(),
         }
     }
 }
@@ -472,6 +477,7 @@ impl PlayState {
             }
             Message::PatchPickerOpened => {
                 self.patch_picker_open = true;
+                self.patch_row_enter.start(iced::time::Instant::now());
                 None
             }
             Message::LocalPatchSelected(name) => {
@@ -479,8 +485,10 @@ impl PlayState {
                     self.local_patch = None;
                     self.local_patch_version = None;
                     // Picking the sentinel doubles as "put the patch
-                    // controls away".
+                    // controls away" — the returning toggle button
+                    // gets the same entrance the pickers got.
                     self.patch_picker_open = false;
+                    self.patch_row_enter.start(iced::time::Instant::now());
                 } else {
                     let v = scanners
                         .patches
@@ -981,6 +989,10 @@ impl PlayState {
         netplay_lobby: &'a crate::netplay::LobbyState,
         netplay_handoff_pending: bool,
         rescanning: bool,
+        // `Some(progress)` while the lobby band's entrance is live
+        // (driven by the App, which sees the netplay phase flip) —
+        // the band slides up from the bottom edge.
+        lobby_enter: Option<f32>,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -1039,21 +1051,27 @@ impl PlayState {
         // the normal bottom_strip handles the link code + Fight
         // CTA.
         if show_lobby {
-            col = col.push(
-                container(lobby_view(
-                    lang,
-                    netplay_lobby,
-                    netplay_phase,
-                    self.local_game,
-                    scanners,
-                    loaded.is_some(),
-                    local_fallback,
-                    streamer_mode,
-                    netplay_handoff_pending,
-                    config.frame_delay,
-                ))
-                .width(Fill),
-            );
+            let band: Element<'a, Message> = container(lobby_view(
+                lang,
+                netplay_lobby,
+                netplay_phase,
+                self.local_game,
+                scanners,
+                loaded.is_some(),
+                local_fallback,
+                streamer_mode,
+                netplay_handoff_pending,
+                config.frame_delay,
+            ))
+            .width(Fill)
+            .into();
+            // Slide the band up from the bottom edge when the
+            // netplay attempt starts.
+            let band = match lobby_enter {
+                Some(p) => crate::anim::slide_in(band, p, iced::Vector::new(0.0, 24.0)),
+                None => band,
+            };
+            col = col.push(band);
         } else {
             col = col.push(self.bottom_strip(lang));
         }
@@ -1146,6 +1164,17 @@ impl PlayState {
         // with the game picker. With the pickers folded, the game
         // picker's FillPortion is the only fill in the row, so it
         // soaks up the freed width.
+        //
+        // Folding either way pops the arriving controls in (Float
+        // forwards the child's sizing, so the FillPortion layout is
+        // unaffected by the wrapper).
+        let patch_pop = self.patch_row_enter.progress(iced::time::Instant::now());
+        let pop = |el: Element<'a, Message>| -> Element<'a, Message> {
+            match patch_pop {
+                Some(p) => crate::anim::pop(el, p, 6.0),
+                None => el,
+            }
+        };
         let game_row = if self.local_patch.is_some() || self.patch_picker_open {
             let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
             let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
@@ -1177,7 +1206,7 @@ impl PlayState {
                 .into()
             };
 
-            row![game, patch, version, refresh]
+            row![game, pop(patch.into()), pop(version), refresh]
         } else {
             let patch_toggle = widgets::icon_button(
                 Icon::Puzzle,
@@ -1185,7 +1214,7 @@ impl PlayState {
                 Message::PatchPickerOpened,
                 STANDARD_PADDING,
             );
-            row![game, patch_toggle, refresh]
+            row![game, pop(patch_toggle), refresh]
         }
         .spacing(8)
         .align_y(Alignment::Center);
@@ -2036,10 +2065,25 @@ fn lobby_view<'a>(
         .padding(style::PANE_PADDING)
         .width(Fill)
         .style(widgets::pane);
+    // On failure the header pane (which carries the verdict line)
+    // picks up a faint red wash so a dead lobby reads as dead at a
+    // glance — quiet on purpose; the icon + danger text carry the
+    // message, the wash just sets the mood.
+    let header_style: fn(&iced::Theme) -> iced::widget::container::Style = if failed {
+        |theme: &iced::Theme| {
+            let danger = theme.extended_palette().danger.strong.color;
+            iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color { a: 0.08, ..danger })),
+                ..widgets::pane(theme)
+            }
+        }
+    } else {
+        widgets::pane
+    };
     let header_pane = container(header_row)
         .padding(style::PANE_PADDING)
         .width(Fill)
-        .style(widgets::pane);
+        .style(header_style);
     container(
         column![header_pane, matchup_pane, controls_pane]
             .spacing(style::PANE_GAP)
@@ -2471,10 +2515,19 @@ fn lobby_verdict<'a>(
                 ),
                 _ => t!(lang, "play-status-failed", error = error.clone()),
             };
-            (
-                text(label).size(TEXT_BODY).style(widgets::danger_text_style).into(),
-                false,
-            )
+            // The lobby is dead at this point but its chrome is
+            // still on screen — cue it with an alert icon next to
+            // the danger text and a faint red wash on the header
+            // pane (see `lobby_view`). Deliberately gentle: a loud
+            // border + oversized text read as more alarming than a
+            // failed handshake warrants.
+            let line = row![
+                Icon::AlertTriangle.widget().size(TEXT_BODY).style(widgets::danger_text_style),
+                text(label).size(TEXT_BODY).style(widgets::danger_text_style),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+            (line.into(), false)
         }
         Phase::Connecting {
             ident,

@@ -394,17 +394,6 @@ impl State {
         task
     }
 
-    /// Whether any overlay transition is mid-flight. The App's
-    /// subscription keeps `window::frames()` alive while true so
-    /// exits keep animating even when the emulator isn't pushing
-    /// frames (e.g. a paused replay).
-    pub fn anims_in_progress(&self, now: iced::time::Instant) -> bool {
-        self.settings_anim.is_animating(now)
-            || self.options_anim.is_animating(now)
-            || self.disconnect_anim.is_animating(now)
-            || self.match_settings_anim.is_animating(now)
-    }
-
     fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
         match msg {
             Message::Close => {

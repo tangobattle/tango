@@ -658,6 +658,14 @@ pub struct State {
     /// Sort order for the auto-battle-data chip library pane (persistent
     /// preference).
     pub auto_battle_data_sort: AutoBattleDataSort,
+    /// Entrance restarted on each sub-tab switch — the tab body
+    /// (and the per-tab extras in the strip's tail) slides in,
+    /// direction following the strip's order like the app's
+    /// top-level tabs.
+    pub enter: crate::anim::Enter,
+    /// Starting horizontal offset for `enter` — sign picked from
+    /// the direction of travel along the tab strip.
+    pub enter_dx: f32,
 }
 
 /// New index of an element originally at `i` after an ordered move that takes
@@ -731,6 +739,8 @@ impl State {
             navicust_sort: NavicustSort::Id,
             patch_card56_sort: PatchCard56Sort::Id,
             auto_battle_data_sort: AutoBattleDataSort::Id,
+            enter: crate::anim::Enter::default(),
+            enter_dx: 16.0,
         }
     }
 
@@ -820,7 +830,17 @@ impl State {
     pub fn apply(&mut self, action: &Action) -> iced::Task<Action> {
         match action {
             Action::SelectTab(t) => {
-                self.active_tab = Some(*t);
+                if self.active_tab != Some(*t) {
+                    // The strip lays tabs out in declaration order,
+                    // so the discriminants double as positions:
+                    // moving right enters from the right, moving
+                    // left from the left.
+                    if let Some(prev) = self.active_tab {
+                        self.enter_dx = if (*t as u8) > (prev as u8) { 16.0 } else { -16.0 };
+                    }
+                    self.active_tab = Some(*t);
+                    self.enter.start(iced::time::Instant::now());
+                }
                 iced::widget::operation::snap_to(
                     self.body_scroll_id.clone(),
                     iced::widget::scrollable::RelativeOffset::START,
@@ -1171,6 +1191,21 @@ pub fn view<'a>(
         .active_tab
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
+
+    // Sub-tab entrance: the tab body slides in along the
+    // direction of travel in the strip, and the per-tab extras in
+    // the strip's tail slide in with it. Only the extras move —
+    // the Play button next to them is a fixture of the strip, and
+    // re-animating a control that never went anywhere reads as a
+    // glitch.
+    let enter = state.enter.progress(iced::time::Instant::now());
+    let enter_dx = state.enter_dx;
+    let entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
+        match enter {
+            Some(p) => crate::anim::slide_in(el, p, iced::Vector::new(enter_dx, 0.0)),
+            None => el,
+        }
+    };
     // True while one of the in-place editors is open. Suppresses the
     // Play button (single-player would fight the open edit session) and
     // selects the editable body below.
@@ -1211,7 +1246,7 @@ pub fn view<'a>(
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
     if inline_actions {
         if let Some(extras) = tab_extras(lang, active, state, loaded, editable) {
-            tail = tail.push(extras);
+            tail = tail.push(entered(extras));
         }
     }
     if let Some(enabled) = play_button.filter(|_| !editing_session) {
@@ -1243,7 +1278,7 @@ pub fn view<'a>(
     // the shared Shrink-height body scrollable the read-only views use.
     if folder_editing && active == Tab::Folder {
         let editor = render_folder_edit(lang, loaded, state);
-        return column![tab_pane, editor]
+        return column![tab_pane, entered(editor)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1251,7 +1286,7 @@ pub fn view<'a>(
     }
     if navicust_editing && active == Tab::Navi {
         let editor = render_navicust_edit(lang, loaded, state);
-        return column![tab_pane, editor]
+        return column![tab_pane, entered(editor)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1259,7 +1294,7 @@ pub fn view<'a>(
     }
     if patch_cards_editing && active == Tab::PatchCards {
         let editor = render_patch_cards_edit(lang, loaded, state);
-        return column![tab_pane, editor]
+        return column![tab_pane, entered(editor)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1267,7 +1302,7 @@ pub fn view<'a>(
     }
     if auto_battle_data_editing && active == Tab::AutoBattleData {
         let editor = render_auto_battle_data_edit(lang, loaded, state);
-        return column![tab_pane, editor]
+        return column![tab_pane, entered(editor)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1278,7 +1313,7 @@ pub fn view<'a>(
     // the shrink-height body scrollable the other read-only views use.
     if active == Tab::Cover {
         let cover = render_cover::<Action>(lang, loaded);
-        return column![tab_pane, cover]
+        return column![tab_pane, entered(cover)]
             .spacing(style::PANE_GAP)
             .width(Fill)
             .height(Fill)
@@ -1300,7 +1335,7 @@ pub fn view<'a>(
         .id(state.body_scroll_id.clone())
         .style(crate::widgets::chunky_scrollable)
         .width(Fill);
-    column![tab_pane, body_scrollable]
+    column![tab_pane, entered(body_scrollable.into())]
         .spacing(style::PANE_GAP)
         .width(Fill)
         .into()

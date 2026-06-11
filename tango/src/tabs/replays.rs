@@ -218,6 +218,9 @@ pub struct ReplaysState {
     /// Missing entries just hide that line until the worker fills
     /// them in.
     pub stats: std::collections::HashMap<std::path::PathBuf, crate::replays::ReplayStats>,
+    /// Entrance restarted when a different replay is selected —
+    /// the detail panel slides in from the right.
+    pub detail_enter: crate::anim::Enter,
 }
 
 /// Side-effects the tab can't perform itself (because they touch
@@ -295,6 +298,9 @@ impl ReplaysState {
                 None
             }
             Message::Selected(p) => {
+                if self.selected.as_ref() != Some(&p) {
+                    self.detail_enter.start(iced::time::Instant::now());
+                }
                 self.selected = Some(p);
                 self.refresh_loaded(scanners, config);
                 self.sweep_idle_entries();
@@ -582,7 +588,13 @@ impl ReplaysState {
             .as_ref()
             .and_then(|sel_path| filtered.iter().find(|r| &r.path == sel_path))
         {
-            replay_detail(lang, r, &replays_path, self, scanners, netplay_active)
+            let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active);
+            // Selection entrance: the detail panel slides in from
+            // the right (away from the list it was picked from).
+            match self.detail_enter.progress(iced::time::Instant::now()) {
+                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(20.0, 0.0)),
+                None => detail,
+            }
         } else {
             container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
                 .center(Fill)

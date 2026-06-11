@@ -10,12 +10,82 @@
 use iced::animation::{Animation, Easing};
 use iced::time::Instant;
 use iced::Element;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::LazyLock;
 
 /// One duration for every show/hide transition in the app, so all
 /// the chrome moves at the same tempo. Short enough to never gate
 /// the user (an overlay is interactive the frame it appears — the
 /// motion is purely visual).
 pub const TRANSITION: std::time::Duration = std::time::Duration::from_millis(160);
+
+/// Process-wide animation clock base. Both the activity registry
+/// and [`pulse`] measure off it.
+static EPOCH: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
+
+/// Millis-since-[`EPOCH`] until which at least one animation is
+/// known to be running. Every animation starter bumps it via
+/// [`kick`]; `App::subscription` polls [`any_active`] to decide
+/// whether to keep the per-frame redraw subscription alive. A
+/// central registry instead of threading `is_animating` through
+/// every tab/state that owns an animation.
+static ACTIVE_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Register that an animation of `duration` just started, keeping
+/// per-frame redraws flowing until it (plus a small scheduling
+/// margin) has finished.
+pub fn kick(duration: std::time::Duration) {
+    let until = (EPOCH.elapsed() + duration + std::time::Duration::from_millis(80)).as_millis() as u64;
+    ACTIVE_UNTIL_MS.fetch_max(until, Ordering::Relaxed);
+}
+
+/// Whether any [`kick`]ed animation may still be in flight.
+pub fn any_active() -> bool {
+    (EPOCH.elapsed().as_millis() as u64) < ACTIVE_UNTIL_MS.load(Ordering::Relaxed)
+}
+
+/// A restartable 0 → 1 entrance animation. States keep one per
+/// thing that enters (a pane, a band, a row of controls), restart
+/// it with [`start`] when that thing (re)appears, and views shape
+/// the entrance with [`progress`]. `Default`s to at-rest so
+/// owning states can keep `#[derive(Default)]`.
+///
+/// [`start`]: Enter::start
+/// [`progress`]: Enter::progress
+#[derive(Debug, Clone)]
+pub struct Enter {
+    anim: Animation<f32>,
+}
+
+impl Default for Enter {
+    fn default() -> Self {
+        // At rest: progress 1.0, not animating.
+        Self {
+            anim: Animation::new(1.0),
+        }
+    }
+}
+
+impl Enter {
+    /// Restart the entrance at `now`, keeping redraws flowing
+    /// through the activity registry while it runs.
+    pub fn start(&mut self, now: Instant) {
+        kick(TRANSITION);
+        self.anim = Animation::new(0.0)
+            .duration(TRANSITION)
+            .easing(Easing::EaseOutCubic)
+            .go(1.0, now);
+    }
+
+    /// `Some(progress)` while mid-flight, `None` once at rest —
+    /// so views can skip the transform wrapper entirely outside
+    /// the entrance window.
+    pub fn progress(&self, now: Instant) -> Option<f32> {
+        self.anim
+            .is_animating(now)
+            .then(|| self.anim.interpolate_with(|v| v, now))
+    }
+}
 
 /// A show/hide animation around a boolean. The owning state keeps
 /// its plain `bool` as the source of truth and mirrors it in here
@@ -41,6 +111,7 @@ impl Transition {
     pub fn set(&mut self, shown: bool, now: Instant) {
         if self.anim.value() != shown {
             self.anim.go_mut(shown, now);
+            kick(TRANSITION);
         }
     }
 
@@ -53,10 +124,6 @@ impl Transition {
     /// The state the transition is heading toward.
     pub fn shown(&self) -> bool {
         self.anim.value()
-    }
-
-    pub fn is_animating(&self, now: Instant) -> bool {
-        self.anim.is_animating(now)
     }
 
     /// 0.0 = fully hidden, 1.0 = fully shown.
@@ -108,12 +175,10 @@ pub fn backdrop_style(alpha: f32) -> impl Fn(&iced::Theme) -> iced::widget::cont
 
 /// Slow sinusoidal pulse in [0, 1] for "something is alive"
 /// indicators (the connecting / waiting-for-opponent status
-/// lines). Stateless — phase comes off a process-wide epoch — so
-/// callers just sample it per frame; the App's subscription keeps
-/// frames coming while a pulsing line is on screen.
+/// lines). Stateless — phase comes off the process-wide epoch —
+/// so callers just sample it per frame; the App's subscription
+/// keeps frames coming while a pulsing line is on screen.
 pub fn pulse() -> f32 {
-    use std::sync::LazyLock;
-    static EPOCH: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
     const PERIOD_SECS: f32 = 1.6;
     let t = EPOCH.elapsed().as_secs_f32();
     0.5 - 0.5 * (t * std::f32::consts::TAU / PERIOD_SECS).cos()

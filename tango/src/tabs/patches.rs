@@ -43,6 +43,9 @@ pub struct PatchesState {
     /// Case-insensitive substring filter applied to the sidebar
     /// list (matches against patch name and title).
     pub search: String,
+    /// Entrance restarted when a different patch is selected —
+    /// the detail panel slides in from the right.
+    pub detail_enter: crate::anim::Enter,
 }
 
 /// Side-effects bubble-up. See [`crate::tabs::replays::Effect`]
@@ -78,6 +81,9 @@ impl PatchesState {
                     .read()
                     .get(&p)
                     .and_then(|patch| patch.versions.keys().max().cloned());
+                if self.selected.as_ref() != Some(&p) {
+                    self.detail_enter.start(iced::time::Instant::now());
+                }
                 self.selected = Some(p);
                 self.version = v;
                 self.refresh_readme(scanners);
@@ -155,7 +161,14 @@ impl PatchesState {
         let left = self.patch_list(&patches, config);
         let right: Element<'_, Message> =
             if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
-                self.patch_detail(lang, config, name, patch)
+                let detail = self.patch_detail(lang, config, name, patch);
+                // Selection entrance: the detail panel slides in
+                // from the right (away from the list it was picked
+                // from).
+                match self.detail_enter.progress(iced::time::Instant::now()) {
+                    Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(20.0, 0.0)),
+                    None => detail,
+                }
             } else {
                 container(text(t!(lang, "patches-select-prompt")).size(TEXT_BODY))
                     .center(Fill)
