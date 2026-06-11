@@ -1124,7 +1124,7 @@ fn match_settings_content<'a>(
     );
 
     let ping_card = metric_card(
-        Icon::SignalHigh,
+        Icon::ChevronsLeftRightEllipsis,
         t!(lang, "session-stat-ping"),
         true,
         Some(0.0),
@@ -2068,16 +2068,14 @@ fn replay_transport<'a>(
 /// (even at 0 ms on LAN) and `None` the moment the remote drops — at
 /// which point the telemetry is frozen and meaningless, so the panel
 /// retires itself.
-/// Latency band → signal-bars icon. Full bars when ping is low,
-/// dropping to one bar as latency climbs. Shared by the indicator
-/// chip and the graph panel's header.
-fn signal_icon(ping_ms: u128) -> Icon {
-    if ping_ms < 80 {
-        Icon::SignalHigh
-    } else if ping_ms < 140 {
-        Icon::SignalMedium
-    } else {
-        Icon::SignalLow
+/// Sync-skew band → signal-bars icon. Full bars at parity,
+/// dropping as the two sides drift apart — same bands as
+/// [`tone_for_skew`], so the bars and the tint always agree.
+fn signal_icon(skew: i32) -> Icon {
+    match skew.unsigned_abs() {
+        0..=3 => Icon::SignalHigh,
+        4..=7 => Icon::SignalMedium,
+        _ => Icon::SignalLow,
     }
 }
 
@@ -2098,8 +2096,7 @@ fn telemetry_overlay<'a>(
     };
     // Same link-up gate as `latency()`: nothing to show before the
     // first pong.
-    let latency = pvp.latency_raw()?;
-    let ping_ms = latency.as_millis();
+    pvp.latency_raw()?;
     let now = iced::time::Instant::now();
 
     let content: Element<'a, Message> = if state.match_settings_anim.visible(now) {
@@ -2168,10 +2165,18 @@ fn telemetry_overlay<'a>(
         .style(widgets::panel);
         anim::pop(panel, state.match_settings_anim.progress(now), 8.0)
     } else {
-        // Collapsed: just the signal bars, tinted by the latency
-        // band, with the live reading as a tooltip.
-        let icon = signal_icon(ping_ms);
-        let tone = tone_for_ping(ping_ms);
+        // Collapsed: signal bars showing the SYNC health — how far
+        // the two sides have drifted (skew) — with the live frame
+        // count as a tooltip. Between rounds there's no skew
+        // reading; ride muted full bars until the next one starts.
+        let (icon, tone, reading) = match pvp.round_stats() {
+            Some(stats) => (
+                signal_icon(stats.skew),
+                tone_for_skew(stats.skew),
+                format!("{:+}", stats.skew),
+            ),
+            None => (Icon::SignalHigh, StatTone::Muted, "—".to_string()),
+        };
         let icon_el = icon
             .widget()
             .size(18.0)
@@ -2184,10 +2189,7 @@ fn telemetry_overlay<'a>(
             .on_press(Message::ToggleMatchSettings);
         iced::widget::tooltip(
             chip,
-            // Plain formatting — fmt_ping's right-aligned padding is
-            // for the fixed-width sparkline readouts, and the stray
-            // spaces look wrong in a tooltip bubble.
-            container(text(format!("{ping_ms} ms")).size(TEXT_CAPTION))
+            container(text(reading).size(TEXT_CAPTION))
                 .padding(6)
                 .style(widgets::tooltip_chrome),
             iced::widget::tooltip::Position::Left,
