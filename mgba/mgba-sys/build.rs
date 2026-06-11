@@ -80,60 +80,6 @@ impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
     }
 }
 
-/// Apply every `.patch` under `mgba-sys/patches/` to the vendored mgba
-/// submodule tree, skipping any that's already applied. Uses `git apply`
-/// (assumed available — the submodule itself needs git to fetch). The
-/// patches sit on top of the submodule's pinned commit; on a submodule
-/// bump they'll either still apply or need regenerating against the new
-/// upstream.
-fn apply_patches() {
-    // Absolute paths without Path::canonicalize, which on Windows returns a
-    // `\\?\` UNC-prefixed form that `git.exe` can't parse.
-    let crate_dir = env::current_dir().expect("current_dir");
-    let mgba_dir = crate_dir.join("mgba");
-    let patches_dir = crate_dir.join("patches");
-    if !patches_dir.exists() {
-        return;
-    }
-
-    let mut entries: Vec<_> = std::fs::read_dir(&patches_dir)
-        .expect("read patches/")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("patch"))
-        .collect();
-    entries.sort_by_key(|e| e.path());
-
-    for entry in entries {
-        let patch_path = entry.path();
-        println!("cargo:rerun-if-changed={}", patch_path.display());
-
-        // `git apply --reverse --check` succeeds iff the forward patch is
-        // currently applied (we could undo it). If it succeeds the patch is
-        // already in place — nothing to do.
-        let already_applied = Command::new("git")
-            .args(["apply", "--reverse", "--check"])
-            .arg(&patch_path)
-            .current_dir(&mgba_dir)
-            .status()
-            .expect("git apply --reverse --check")
-            .success();
-        if already_applied {
-            continue;
-        }
-
-        // Apply forward. Fails loudly so a botched patch (e.g., after a
-        // submodule bump) doesn't silently produce a build with the wrong
-        // mgba behavior.
-        let status = Command::new("git")
-            .args(["apply"])
-            .arg(&patch_path)
-            .current_dir(&mgba_dir)
-            .status()
-            .expect("git apply");
-        assert!(status.success(), "failed to apply patch {}", patch_path.display());
-    }
-}
-
 /// Extra preprocessor defines forced onto the mgba build.
 ///
 /// `COLOR_16_BIT` switches mgba's `mColor` from 32-bit XBGR8 to the GBA-native
@@ -147,8 +93,6 @@ const FORCED_DEFINES: &[&str] = &["COLOR_16_BIT"];
 
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-
-    apply_patches();
 
     let mut cfg = cmake::Config::new("mgba");
     cfg.define("LIBMGBA_ONLY", "on");
