@@ -1417,10 +1417,10 @@ fn floating_controls<'a>(
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
     // Replay transport carries a Fill-width scrubber, so its bar
-    // spans the window; SP/PvP have a handful of buttons that sit
-    // in compact corner chips instead — see `corner_chips`.
+    // spans the window; PvP's setup toggles ride the screen edges
+    // as drawer handles instead — see `setup_handles_overlay`.
     let Some(r) = session.as_replay() else {
-        return corner_chips(lang, session, state, hide_progress);
+        return setup_handles_overlay(lang, session, state, hide_progress);
     };
     let panel = container(replay_bar(lang, r, state)).width(Fill).style(hud_chip_plate);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
@@ -1676,103 +1676,91 @@ fn corner_commands_overlay<'a>(
         .into()
 }
 
-/// SP/PvP floating controls: compact corner chips instead of a
-/// bar. The action buttons (PvP setup toggles + the options
-/// trigger) sit in a chip at the bottom-right; PvP's telemetry
-/// plate gets its own chip at the bottom-left. The game stays
-/// unobscured — the emulator is center-fit, so the corners only
-/// cover bezel art.
-fn corner_chips<'a>(
+/// PvP setup-panel handles, riding the screen edges they control:
+/// the red "my setup" handle vertically centered on the LEFT edge
+/// (the side its pane occupies), the blue opponent handle on the
+/// RIGHT. Each reads as a drawer handle — click to open/close the
+/// pane next to it — which is what makes the mapping legible;
+/// stacked in a corner they were just two anonymous icons. They
+/// ride the shared auto-hide, slipping out through their own
+/// edges. The opponent handle renders disabled when the peer
+/// didn't enable reveal-setup.
+fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
     state: &'a State,
     hide_progress: f32,
 ) -> Element<'a, Message> {
-    const CHIP_ICON: f32 = 16.0;
-    const CHIP_PAD: [f32; 2] = [6.0, 8.0];
+    let ActiveSession::PvP(pvp) = session else {
+        return iced::widget::Space::new().into();
+    };
 
-    let chip_btn_maybe = |icon: Icon,
-                          label: String,
-                          msg: Option<Message>,
-                          style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+    let handle = |icon: Icon,
+                  label: String,
+                  msg: Option<Message>,
+                  style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style,
+                  tip_side: iced::widget::tooltip::Position,
+                  slide_dx: f32|
      -> Element<'a, Message> {
-        let mut btn = button(icon.widget().size(CHIP_ICON)).padding(CHIP_PAD).style(style);
+        let mut btn = button(icon.widget().size(16.0))
+            // Taller than wide — a drawer pull, not a toolbar button.
+            .padding([14.0, 5.0])
+            .style(style);
         if let Some(m) = msg {
             btn = btn.on_press(m);
         }
-        iced::widget::tooltip(
+        let tip = iced::widget::tooltip(
             btn,
-            iced::widget::container(text(label).size(TEXT_CAPTION))
+            container(text(label).size(TEXT_CAPTION))
                 .padding(6)
                 .style(widgets::tooltip_chrome),
-            iced::widget::tooltip::Position::Top,
+            tip_side,
         )
-        .gap(4)
-        .into()
-    };
-
-    // One floating chip: hover pin + the shared hide slide. No
-    // wrapper plate — every button carries its own flat scrim
-    // (`telemetry_plate_button`), matching the top-right cluster.
-    let chip = move |content: Element<'a, Message>| -> Element<'a, Message> {
-        let pinned = iced::widget::mouse_area(content)
+        .gap(4);
+        let pinned = iced::widget::mouse_area(tip)
             .on_enter(Message::ControlsHovered(true))
             .on_exit(Message::ControlsHovered(false));
-        anim::slide_in(pinned, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE))
+        anim::slide_in(pinned, hide_progress, iced::Vector::new(slide_dx, 0.0))
     };
 
-    // Bottom-right chip: PvP setup toggles + the options trigger.
-    // Red = P1 (you), blue = P2 — same coding as the matchup
-    // pane's diagonal split. The opponent toggle renders disabled
-    // when the peer didn't enable reveal-setup.
-    let mut actions = row![].spacing(6).align_y(Alignment::Center);
-    if let ActiveSession::PvP(s) = session {
-        if s.local_loaded.is_some() {
-            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-                if state.show_self_panel {
-                    widgets::pvp_red_button
-                } else {
-                    telemetry_plate_button
-                };
-            actions = actions.push(chip_btn_maybe(
-                Icon::FileUser,
-                t!(lang, "session-self"),
-                Some(Message::ToggleSelfPanel),
-                style,
-            ));
-        }
-        let revealed = s.opponent_loaded.is_some();
+    let mut edges = row![].width(Fill).align_y(Alignment::Center);
+    if pvp.local_loaded.is_some() {
         let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-            if state.show_opponent_panel && revealed {
-                widgets::pvp_blue_button
+            if state.show_self_panel {
+                widgets::pvp_red_button
             } else {
                 telemetry_plate_button
             };
-        actions = actions.push(chip_btn_maybe(
+        edges = edges.push(handle(
             Icon::FileUser,
-            t!(lang, "session-opponent"),
-            revealed.then_some(Message::ToggleOpponentPanel),
+            t!(lang, "session-self"),
+            Some(Message::ToggleSelfPanel),
             style,
+            iced::widget::tooltip::Position::Right,
+            -56.0,
         ));
     }
-    let bottom = row![horizontal_space(), chip(actions.into())]
-        .spacing(6)
-        .align_y(Alignment::End)
-        .width(Fill);
+    edges = edges.push(horizontal_space());
+    let revealed = pvp.opponent_loaded.is_some();
+    let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+        if state.show_opponent_panel && revealed {
+            widgets::pvp_blue_button
+        } else {
+            telemetry_plate_button
+        };
+    edges = edges.push(handle(
+        Icon::FileUser,
+        t!(lang, "session-opponent"),
+        revealed.then_some(Message::ToggleOpponentPanel),
+        style,
+        iced::widget::tooltip::Position::Left,
+        56.0,
+    ));
 
-    // Right padding clears the telemetry signal indicator, which
-    // owns the bottom-right corner itself (separate layer so it
-    // can stay visible while these toggles auto-hide).
-    container(bottom)
+    container(edges)
         .width(Fill)
         .height(Fill)
-        .align_y(iced::alignment::Vertical::Bottom)
-        .padding(iced::Padding {
-            top: 12.0,
-            right: 12.0 + 32.0 + 6.0,
-            bottom: 12.0,
-            left: 12.0,
-        })
+        .align_y(iced::alignment::Vertical::Center)
         .into()
 }
 
