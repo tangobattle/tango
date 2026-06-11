@@ -828,19 +828,6 @@ pub fn danger_button(theme: &Theme, status: button::Status) -> button::Style {
     tinted_button(theme, status, theme.palette().danger)
 }
 
-/// P1 (red) accent — matches the matchup-pane diagonal split tints
-/// in `play_pane`. Used by the in-session "show my setup" toggle so
-/// the PvP toolbar reads as the same versus-coded family.
-pub fn pvp_red_button(theme: &Theme, status: button::Status) -> button::Style {
-    tinted_button(theme, status, iced::Color::from_rgb(0.85, 0.22, 0.28))
-}
-
-/// P2 (blue) accent — pairs with [`pvp_red_button`]. Used by the
-/// in-session "show opponent setup" toggle.
-pub fn pvp_blue_button(theme: &Theme, status: button::Status) -> button::Style {
-    tinted_button(theme, status, iced::Color::from_rgb(0.18, 0.40, 0.85))
-}
-
 /// Zebra row style for data tables. Odd rows get a faint text-
 /// tinted wash (alpha 0.05 dark / 0.04 light); even rows are
 /// transparent and show the pane plate. Flat — no rounded corners

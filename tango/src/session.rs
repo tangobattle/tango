@@ -1679,12 +1679,13 @@ fn corner_commands_overlay<'a>(
 /// PvP setup-panel handles, riding the screen edges they control:
 /// the red "my setup" handle vertically centered on the LEFT edge
 /// (the side its pane occupies), the blue opponent handle on the
-/// RIGHT. Each reads as a drawer handle — click to open/close the
-/// pane next to it — which is what makes the mapping legible;
-/// stacked in a corner they were just two anonymous icons. They
-/// ride the shared auto-hide, slipping out through their own
-/// edges. The opponent handle renders disabled when the peer
-/// didn't enable reveal-setup.
+/// RIGHT. Each is drawn as a tab emerging from its edge — square
+/// against the edge, rounded on the inner corners — with a
+/// chevron that points the way the click will move the drawer
+/// (inward to open, back out to close) tinted in the side's
+/// accent. They ride the shared auto-hide, slipping out through
+/// their own edges; the opponent handle renders disabled (muted,
+/// unclickable) until the peer enables reveal-setup.
 fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
@@ -1695,17 +1696,64 @@ fn setup_handles_overlay<'a>(
         return iced::widget::Space::new().into();
     };
 
-    let handle = |icon: Icon,
+    // `on_left`: which screen edge the tab grows out of.
+    let handle = |on_left: bool,
+                  open: bool,
+                  accent: Color,
                   label: String,
-                  msg: Option<Message>,
-                  style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style,
-                  tip_side: iced::widget::tooltip::Position,
-                  slide_dx: f32|
+                  msg: Option<Message>|
      -> Element<'a, Message> {
-        let mut btn = button(icon.widget().size(16.0))
-            // Taller than wide — a drawer pull, not a toolbar button.
-            .padding([14.0, 5.0])
-            .style(style);
+        // Open chevrons point back toward the edge (push the
+        // drawer shut), closed ones inward (pull it open).
+        let icon = match (on_left, open) {
+            (true, false) | (false, true) => Icon::ChevronRight,
+            (true, true) | (false, false) => Icon::ChevronLeft,
+        };
+        // Square against the edge, rounded inner corners.
+        let radius = if on_left {
+            iced::border::Radius {
+                top_left: 0.0,
+                top_right: 8.0,
+                bottom_right: 8.0,
+                bottom_left: 0.0,
+            }
+        } else {
+            iced::border::Radius {
+                top_left: 8.0,
+                top_right: 0.0,
+                bottom_right: 0.0,
+                bottom_left: 8.0,
+            }
+        };
+        let enabled = msg.is_some();
+        let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let mut st = if open {
+                // Lit accent plate while the pane is out.
+                widgets::tinted_button(theme, status, accent)
+            } else {
+                telemetry_plate_button(theme, status)
+            };
+            if !open {
+                // The chevron carries the side's identity even at
+                // rest; a disabled handle goes muted instead.
+                st.text_color = if enabled { accent } else { widgets::muted_color(theme) };
+            }
+            st.border.radius = radius;
+            // No glow shadow on a flush tab — it would paint a
+            // halo onto the screen edge.
+            st.shadow = iced::Shadow::default();
+            st
+        };
+        let mut btn = button(
+            container(icon.widget().size(14.0))
+                .width(Fill)
+                .height(Fill)
+                .center(Fill),
+        )
+        .padding(0)
+        .width(iced::Length::Fixed(18.0))
+        .height(iced::Length::Fixed(56.0))
+        .style(style);
         if let Some(m) = msg {
             btn = btn.on_press(m);
         }
@@ -1714,47 +1762,44 @@ fn setup_handles_overlay<'a>(
             container(text(label).size(TEXT_CAPTION))
                 .padding(6)
                 .style(widgets::tooltip_chrome),
-            tip_side,
+            if on_left {
+                iced::widget::tooltip::Position::Right
+            } else {
+                iced::widget::tooltip::Position::Left
+            },
         )
         .gap(4);
         let pinned = iced::widget::mouse_area(tip)
             .on_enter(Message::ControlsHovered(true))
             .on_exit(Message::ControlsHovered(false));
-        anim::slide_in(pinned, hide_progress, iced::Vector::new(slide_dx, 0.0))
+        anim::slide_in(
+            pinned,
+            hide_progress,
+            iced::Vector::new(if on_left { -28.0 } else { 28.0 }, 0.0),
+        )
     };
+
+    const FIELD_RED: Color = Color::from_rgb(0.85, 0.22, 0.28);
+    const FIELD_BLUE: Color = Color::from_rgb(0.18, 0.40, 0.85);
 
     let mut edges = row![].width(Fill).align_y(Alignment::Center);
     if pvp.local_loaded.is_some() {
-        let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-            if state.show_self_panel {
-                widgets::pvp_red_button
-            } else {
-                telemetry_plate_button
-            };
         edges = edges.push(handle(
-            Icon::FileUser,
+            true,
+            state.show_self_panel,
+            FIELD_RED,
             t!(lang, "session-self"),
             Some(Message::ToggleSelfPanel),
-            style,
-            iced::widget::tooltip::Position::Right,
-            -56.0,
         ));
     }
     edges = edges.push(horizontal_space());
     let revealed = pvp.opponent_loaded.is_some();
-    let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-        if state.show_opponent_panel && revealed {
-            widgets::pvp_blue_button
-        } else {
-            telemetry_plate_button
-        };
     edges = edges.push(handle(
-        Icon::FileUser,
+        false,
+        state.show_opponent_panel && revealed,
+        FIELD_BLUE,
         t!(lang, "session-opponent"),
         revealed.then_some(Message::ToggleOpponentPanel),
-        style,
-        iced::widget::tooltip::Position::Left,
-        56.0,
     ));
 
     container(edges)
