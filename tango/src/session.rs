@@ -1229,13 +1229,8 @@ fn tone_for_ping(ping_ms: u128) -> StatTone {
     }
 }
 
-// Value formatting, shared by the instrument-panel cells and the popover
-// sparkline readouts so the two always render a metric the same way.
+// Value formatting for the telemetry readouts.
 
-/// Current tps over the live cap, both to two decimals (e.g. `60.00/60.00`).
-fn fmt_tps(tps: f32, fps_target: f32) -> String {
-    format!("{:.2}/{:.2}", tps, fps_target)
-}
 /// Signed skew in a 3-wide field; bare `0` at parity reads calmer than `+0`.
 fn fmt_skew(skew: i32) -> String {
     if skew == 0 {
@@ -1271,35 +1266,6 @@ fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Messa
     ]
     .spacing(5)
     .align_y(Alignment::Center)
-    .into()
-}
-
-/// P1/P2 identity tag leading the instrument cluster. Plain
-/// monospaced text in the default color — the label tells you which
-/// side you are; it's not a metric, so it carries no tint.
-fn player_cell<'a>(player_index: u8) -> Element<'a, Message> {
-    let label = if player_index == 0 { "P1" } else { "P2" };
-    text(label).size(TEXT_BODY).font(iced::Font::MONOSPACE).into()
-}
-
-/// Hairline rule separating cells inside the telemetry deck.
-fn stat_divider<'a>() -> Element<'a, Message> {
-    container(
-        iced::widget::Space::new()
-            .width(Length::Fixed(1.0))
-            .height(Length::Fixed(15.0)),
-    )
-    .style(|theme: &iced::Theme| {
-        let p = theme.extended_palette();
-        let text = theme.palette().text;
-        iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color {
-                a: if p.is_dark { 0.16 } else { 0.13 },
-                ..text
-            })),
-            ..Default::default()
-        }
-    })
     .into()
 }
 
@@ -1386,7 +1352,10 @@ pub fn view<'a>(
     if let Some(o) = options_menu_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
-    if let Some(o) = match_settings_overlay(lang, session, state) {
+    // PvP signal indicator / expanded telemetry graph, top-right.
+    // Deliberately outside the floating-controls gate — connection
+    // health stays glanceable even when the controls tuck away.
+    if let Some(o) = telemetry_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
     if let Some(o) = disconnect_overlay(lang, session, state) {
@@ -1699,15 +1668,13 @@ fn corner_chips<'a>(
         widgets::neutral,
     ));
 
-    let mut bottom = row![].spacing(6).align_y(Alignment::End).width(Fill);
-    // Bottom-left chip: PvP telemetry plate (click opens the
-    // match-settings popover, which anchors above this corner).
-    if let ActiveSession::PvP(pvp) = session {
-        if let Some(plate) = telemetry_plate(pvp) {
-            bottom = bottom.push(chip(plate));
-        }
-    }
-    bottom = bottom.push(horizontal_space()).push(chip(actions.into()));
+    // Telemetry lives in the top-right signal indicator now (see
+    // `telemetry_overlay`), so the only chip down here is the
+    // bottom-right action cluster.
+    let bottom = row![horizontal_space(), chip(actions.into())]
+        .spacing(6)
+        .align_y(Alignment::End)
+        .width(Fill);
 
     container(bottom)
         .width(Fill)
@@ -1831,73 +1798,138 @@ fn replay_transport<'a>(
 /// (even at 0 ms on LAN) and `None` the moment the remote drops — at
 /// which point the telemetry is frozen and meaningless, so the panel
 /// retires itself.
-fn telemetry_plate<'a>(pvp: &'a pvp_session::PvpSession) -> Option<Element<'a, Message>> {
-    // Raw latest ping drives the plate — same `Some`/`None` link-up gate
-    // as `latency()`, but it shows the true current reading rather than the
-    // smoothed median (which is reserved for the frame-delay suggestion).
-    let latency = pvp.latency_raw()?;
-    let stats = pvp.round_stats();
-    let ping_ms = latency.as_millis();
-    let tps = pvp.tps();
-    let fps_target = pvp.fps_target();
-
-    let mut cells: Vec<Element<'a, Message>> = Vec::new();
-
-    // P1/P2 identity tag leads the instrument cluster, inside the
-    // plate — it reads as the "which side am I" label sitting ahead of
-    // the live metrics. It's a match-level constant, so it shows
-    // whenever the panel is up — including between rounds, when
-    // there's no live `RoundStats`.
-    cells.push(player_cell(pvp.local_player_index()));
-
-    // TPS: current rate vs target — green at/near rate, amber as it
-    // dips, red when it falls well behind (visible netplay stutter).
-    cells.push(stat_cell(
-        Icon::Gauge,
-        tone_for_tps(tps, fps_target),
-        fmt_tps(tps, fps_target),
-    ));
-
-    if let Some(s) = stats {
-        // Skew: how tight the sync is — green near parity, amber
-        // drifting, red far out, by |skew| in frames.
-        cells.push(stat_cell(Icon::ArrowLeftRight, tone_for_skew(s.skew), fmt_skew(s.skew)));
-
-        // Misprediction depth: 0 on a clean frame, spiking to the size of
-        // each rollback. Green when shallow, amber as it climbs, red when
-        // a frame discards and re-simulates deep.
-        cells.push(stat_cell(
-            Icon::GitMergeConflict,
-            tone_for_depth(s.depth),
-            fmt_depth(s.depth),
-        ));
-    }
-
-    // Ping: latency band. The signal icon's bar strength tracks
-    // the band too — full bars (SignalHigh) when ping is low,
-    // dropping to SignalLow as latency climbs.
-    let ping_icon = if ping_ms < 80 {
+/// Latency band → signal-bars icon. Full bars when ping is low,
+/// dropping to one bar as latency climbs. Shared by the indicator
+/// chip and the graph panel's header.
+fn signal_icon(ping_ms: u128) -> Icon {
+    if ping_ms < 80 {
         Icon::SignalHigh
     } else if ping_ms < 140 {
         Icon::SignalMedium
     } else {
         Icon::SignalLow
-    };
-    cells.push(stat_cell(ping_icon, tone_for_ping(ping_ms), fmt_ping(ping_ms)));
-
-    // Interleave hairline dividers into one flat plate.
-    let mut strip = row![].spacing(6).align_y(Alignment::Center);
-    for (i, cell) in cells.into_iter().enumerate() {
-        if i > 0 {
-            strip = strip.push(stat_divider());
-        }
-        strip = strip.push(cell);
     }
-    Some(
-        button(strip)
-            .padding([3, 9])
+}
+
+/// Top-right telemetry overlay (PvP-only). At rest it's a small,
+/// permanently-visible signal indicator — latency band as colored
+/// signal bars, deliberately outside the auto-hide group so
+/// connection health stays glanceable. Clicking it expands it in
+/// place into the full graph view (P1/P2 sides, metric
+/// sparklines, frame-delay knob); the chevron in the panel's
+/// header collapses it back (Esc works too).
+fn telemetry_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Option<Element<'a, Message>> {
+    let ActiveSession::PvP(pvp) = session else {
+        return None;
+    };
+    // Same link-up gate as `latency()`: nothing to show before the
+    // first pong.
+    let latency = pvp.latency_raw()?;
+    let ping_ms = latency.as_millis();
+    let now = iced::time::Instant::now();
+
+    let content: Element<'a, Message> = if state.match_settings_anim.visible(now) {
+        // Expanded graph view. Header mirrors the indicator's
+        // signal reading and carries the collapse chevron.
+        let collapse = button(Icon::ChevronUp.widget().size(14.0))
+            .padding([4.0, 8.0])
+            .style(widgets::neutral)
+            .on_press(Message::ToggleMatchSettings);
+        let header = row![
+            stat_cell(signal_icon(ping_ms), tone_for_ping(ping_ms), fmt_ping(ping_ms)),
+            horizontal_space(),
+            collapse,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        // P1/P2 sides: which seat each player occupies, color-coded
+        // like the matchup pane (red = P1, blue = P2).
+        let side = |label: &'static str, name: String, accent: Color| -> Element<'a, Message> {
+            let dot = container(
+                iced::widget::Space::new()
+                    .width(Length::Fixed(8.0))
+                    .height(Length::Fixed(8.0)),
+            )
+            .style(move |_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(accent)),
+                border: iced::Border {
+                    radius: 999.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+            row![
+                dot,
+                text(label).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
+                text(name).size(TEXT_CAPTION).style(widgets::muted_text_style),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .into()
+        };
+        let you = t!(lang, "play-you");
+        let opponent = pvp.remote_nickname.clone();
+        let (p1, p2) = if pvp.local_player_index() == 0 {
+            (you, opponent)
+        } else {
+            (opponent, you)
+        };
+        let players = row![
+            side("P1", p1, iced::Color::from_rgb(0.85, 0.22, 0.28)),
+            side("P2", p2, iced::Color::from_rgb(0.18, 0.40, 0.85)),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center);
+
+        let panel = container(
+            column![
+                header,
+                players,
+                match_settings_content(lang, pvp, &state.metric_history)
+            ]
+            .spacing(8),
+        )
+        .padding(12)
+        .style(widgets::panel);
+        anim::pop(panel, state.match_settings_anim.progress(now), 8.0)
+    } else {
+        // Collapsed: just the signal bars, tinted by the latency
+        // band, with the live reading as a tooltip.
+        let icon = signal_icon(ping_ms);
+        let tone = tone_for_ping(ping_ms);
+        let icon_el = icon
+            .widget()
+            .size(18.0)
+            .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                color: Some(stat_tone_color(theme, tone)),
+            });
+        let chip = button(icon_el)
+            .padding([5.0, 8.0])
             .style(telemetry_plate_button)
-            .on_press(Message::ToggleMatchSettings)
+            .on_press(Message::ToggleMatchSettings);
+        iced::widget::tooltip(
+            chip,
+            container(text(fmt_ping(ping_ms)).size(TEXT_CAPTION))
+                .padding(6)
+                .style(widgets::tooltip_chrome),
+            iced::widget::tooltip::Position::Left,
+        )
+        .gap(4)
+        .into()
+    };
+
+    Some(
+        container(content)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(12)
             .into(),
     )
 }
@@ -2202,39 +2234,6 @@ fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
     let mut rgba = vec![0u8; framebuffer.len() * 2];
     tango_dataview::rom::bgr555_to_rgba8(framebuffer, &mut rgba);
     iced::widget::image::Handle::from_rgba(replay_session::SCREEN_WIDTH, replay_session::SCREEN_HEIGHT, rgba)
-}
-
-fn match_settings_overlay<'a>(
-    lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
-    state: &'a State,
-) -> Option<Element<'a, Message>> {
-    let now = iced::time::Instant::now();
-    match session {
-        ActiveSession::PvP(pvp) if state.match_settings_anim.visible(now) && pvp.latency().is_some() => {
-            let popover = container(match_settings_content(lang, pvp, &state.metric_history))
-                .padding(12)
-                .style(widgets::panel);
-            let popover = anim::pop(popover, state.match_settings_anim.progress(now), 10.0);
-            // Anchored above its trigger — the telemetry chip in
-            // the bottom-LEFT corner.
-            Some(
-                container(popover)
-                    .width(Fill)
-                    .height(Fill)
-                    .align_x(iced::alignment::Horizontal::Left)
-                    .align_y(iced::alignment::Vertical::Bottom)
-                    .padding(iced::Padding {
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: CHIP_POPOVER_LIFT,
-                        left: 12.0,
-                    })
-                    .into(),
-            )
-        }
-        _ => None,
-    }
 }
 
 /// Disconnect confirmation modal (PvP-only). Centered panel with a
