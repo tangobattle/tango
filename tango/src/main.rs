@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+mod anim;
 mod audio;
 mod bnlc;
 mod config;

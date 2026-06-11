@@ -7,6 +7,7 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
+use crate::anim;
 use crate::app::Scanners;
 use crate::audio;
 use crate::config;
@@ -211,6 +212,16 @@ pub struct State {
     /// keyed by the snapshot's absolute tick so cursor moves within
     /// the same keyframe reuse the handle instead of re-converting.
     pub scrub_thumb: Option<(u32, iced::widget::image::Handle)>,
+    /// Show/hide animations mirroring the `show_*` overlay bools
+    /// above (which stay the source of truth). Re-synced after every
+    /// [`State::update`] call, so no individual handler has to
+    /// remember to drive them. Views render an overlay while its
+    /// transition is [`anim::Transition::visible`] and shape the
+    /// entrance/exit with its progress.
+    pub settings_anim: anim::Transition,
+    pub options_anim: anim::Transition,
+    pub disconnect_anim: anim::Transition,
+    pub match_settings_anim: anim::Transition,
 }
 
 impl Default for State {
@@ -241,6 +252,10 @@ impl Default for State {
             scrub_blitted: false,
             scrub_hover: None,
             scrub_thumb: None,
+            settings_anim: anim::Transition::new(false),
+            options_anim: anim::Transition::new(false),
+            disconnect_anim: anim::Transition::new(false),
+            match_settings_anim: anim::Transition::new(false),
         }
     }
 }
@@ -366,6 +381,31 @@ impl State {
     /// that should be scheduled (always Task::none today — kept for
     /// API parity with the other tabs).
     pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
+        let task = self.update_inner(msg, mapping, video_filter);
+        // Mirror the overlay bools into their transitions in one
+        // place — handlers above flip `show_*` freely and the
+        // animations follow, including the multi-flip paths (Esc
+        // peeling, mutual-exclusion closes).
+        let now = iced::time::Instant::now();
+        self.settings_anim.set(self.show_settings, now);
+        self.options_anim.set(self.show_options_menu, now);
+        self.disconnect_anim.set(self.show_disconnect_confirm, now);
+        self.match_settings_anim.set(self.show_match_settings, now);
+        task
+    }
+
+    /// Whether any overlay transition is mid-flight. The App's
+    /// subscription keeps `window::frames()` alive while true so
+    /// exits keep animating even when the emulator isn't pushing
+    /// frames (e.g. a paused replay).
+    pub fn anims_in_progress(&self, now: iced::time::Instant) -> bool {
+        self.settings_anim.is_animating(now)
+            || self.options_anim.is_animating(now)
+            || self.disconnect_anim.is_animating(now)
+            || self.match_settings_anim.is_animating(now)
+    }
+
+    fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
@@ -1771,7 +1811,10 @@ fn options_menu_overlay<'a>(
     session: &'a ActiveSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
-    if !state.show_options_menu {
+    // Render while the open/close transition is still in flight so
+    // the menu eases out instead of vanishing on the close frame.
+    let now = iced::time::Instant::now();
+    if !state.options_anim.visible(now) {
         return None;
     }
     // Row item width. Wider than the historical 120px speed
@@ -1956,6 +1999,8 @@ fn options_menu_overlay<'a>(
         .padding(6)
         .width(iced::Length::Fixed(POPOVER_WIDTH))
         .style(widgets::panel);
+    // Rise out of the trigger button below while scaling up.
+    let popover = anim::pop(popover, state.options_anim.progress(now), 10.0);
     Some(
         container(popover)
             .width(Fill)
@@ -2051,11 +2096,13 @@ fn match_settings_overlay<'a>(
     session: &'a ActiveSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
+    let now = iced::time::Instant::now();
     match session {
-        ActiveSession::PvP(pvp) if state.show_match_settings && pvp.latency().is_some() => {
+        ActiveSession::PvP(pvp) if state.match_settings_anim.visible(now) && pvp.latency().is_some() => {
             let popover = container(match_settings_content(lang, pvp, &state.metric_history))
                 .padding(12)
                 .style(widgets::panel);
+            let popover = anim::pop(popover, state.match_settings_anim.progress(now), 10.0);
             // Same lift as the options menu so the popover floats just
             // above the HUD bar. Right padding aligns the popover's right
             // edge with the telemetry plate's: controls-container pad (8) +
@@ -2092,9 +2139,11 @@ fn disconnect_overlay<'a>(
     session: &'a ActiveSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
-    if !(state.show_disconnect_confirm && matches!(session, ActiveSession::PvP(_))) {
+    let now = iced::time::Instant::now();
+    if !(state.disconnect_anim.visible(now) && matches!(session, ActiveSession::PvP(_))) {
         return None;
     }
+    let progress = state.disconnect_anim.progress(now);
     let title = text(t!(lang, "playback-disconnect-prompt")).size(TEXT_BODY + 4.0);
     let body_text = text(t!(lang, "playback-disconnect-detail")).style(widgets::muted_text_style);
     let cancel_btn = widgets::labeled_icon_button(
@@ -2122,22 +2171,24 @@ fn disconnect_overlay<'a>(
     // body) so they don't fall through to the backdrop's
     // dismiss-on-press handler. Buttons inside the panel
     // still capture their own events.
-    let panel_swallow = mouse_area(panel).on_press(|_| Message::NoOp);
+    let panel_swallow = mouse_area(anim::pop(panel, progress, 8.0)).on_press(|_| Message::NoOp);
     let placement = container(panel_swallow)
         .width(Fill)
         .height(Fill)
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center);
-    let backdrop = mouse_area(
+    // Backdrop dim fades with the panel; the dismiss handler is
+    // only armed while the modal is actually open so a click during
+    // the fade-out can't re-fire the close.
+    let mut backdrop = mouse_area(
         container(iced::widget::Space::new().width(Fill).height(Fill))
             .width(Fill)
             .height(Fill)
-            .style(|_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-                ..Default::default()
-            }),
-    )
-    .on_press(|_| Message::CloseDisconnectConfirm);
+            .style(anim::backdrop_style(0.55 * progress)),
+    );
+    if state.disconnect_anim.shown() {
+        backdrop = backdrop.on_press(|_| Message::CloseDisconnectConfirm);
+    }
     Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())
 }
 

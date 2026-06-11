@@ -2439,6 +2439,20 @@ fn lobby_verdict<'a>(
     scanners: &Scanners,
 ) -> (Element<'a, Message>, bool) {
     use crate::netplay::Phase;
+    // The in-flight statuses (connecting / waiting / negotiating /
+    // handshake) breathe between muted and primary-tinted so the
+    // line reads as "still working" rather than frozen. The App's
+    // subscription keeps per-frame redraws coming while one of
+    // these is on screen; terminal states (verdicts, failures)
+    // stay static.
+    let pulse = crate::anim::pulse();
+    let pulsing_style = move |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(widgets::mix(
+            widgets::muted_color(theme),
+            theme.palette().primary,
+            0.45 * pulse,
+        )),
+    };
     match phase {
         Phase::Failed { error } => {
             // Route the netplay error tag through Fluent so each
@@ -2476,10 +2490,7 @@ fn lobby_verdict<'a>(
                 }
                 _ => t!(lang, "play-status-connecting"),
             };
-            (
-                text(label).size(TEXT_BODY).style(widgets::muted_text_style).into(),
-                false,
-            )
+            (text(label).size(TEXT_BODY).style(pulsing_style).into(), false)
         }
         Phase::Connecting {
             waiting_for_opponent: true,
@@ -2487,14 +2498,14 @@ fn lobby_verdict<'a>(
         } => (
             text(t!(lang, "play-status-waiting-opponent"))
                 .size(TEXT_BODY)
-                .style(widgets::muted_text_style)
+                .style(pulsing_style)
                 .into(),
             false,
         ),
         Phase::Negotiating { .. } => (
             text(t!(lang, "play-status-negotiating"))
                 .size(TEXT_BODY)
-                .style(widgets::muted_text_style)
+                .style(pulsing_style)
                 .into(),
             false,
         ),
@@ -2521,7 +2532,7 @@ fn lobby_verdict<'a>(
             _ => (
                 text(t!(lang, "lobby-handshake"))
                     .size(TEXT_BODY)
-                    .style(widgets::muted_text_style)
+                    .style(pulsing_style)
                     .into(),
                 false,
             ),

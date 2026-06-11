@@ -16,7 +16,7 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    audio, config, discord, game, i18n, input, net, netplay, patch, pvp_session, replays, rom, save, selection,
+    anim, audio, config, discord, game, i18n, input, net, netplay, patch, pvp_session, replays, rom, save, selection,
     session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
@@ -146,6 +146,38 @@ pub struct App {
     /// patch autoupdater fires its own rescan separately from the
     /// user clicking the button).
     rescans_in_flight: u32,
+    /// Entrance glide played on freshly-swapped content whenever
+    /// the [`screen_key`] changes (tab switch, welcome → main,
+    /// session end, settings section). Restarted at 0 → 1 on each
+    /// trigger; `view` draws the new screen a few px below its
+    /// rest position and slides it up, so the swap reads as the
+    /// new screen arriving rather than a hard cut. (A fade was
+    /// tried first, but without subtree opacity it has to blank
+    /// to the background color for a frame — worse than the cut.)
+    ///
+    /// [`screen_key`]: App::screen_key
+    screen_enter: iced::animation::Animation<f32>,
+    /// What the current `screen_enter` moves: just the tab body
+    /// (tab/section switches, so the static top bar stays planted)
+    /// or the whole window (welcome/session swaps).
+    screen_enter_scope: EnterScope,
+}
+
+/// See [`App::screen_enter_scope`].
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EnterScope {
+    Body,
+    Root,
+}
+
+/// Identity of what `view` is fundamentally showing. Computed
+/// before and after every `update` dispatch; a change means the
+/// screen got swapped wholesale and triggers `screen_fade`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScreenKey {
+    Welcome,
+    Session,
+    Tabs(Tab, tabs::settings::SettingsTab),
 }
 
 impl App {
@@ -290,6 +322,10 @@ impl App {
             patch_autoupdater,
             updater,
             rescans_in_flight: 0,
+            // Starts at rest (no launch animation) — value() == 1.0
+            // and is_animating() == false until first triggered.
+            screen_enter: iced::animation::Animation::new(1.0),
+            screen_enter_scope: EnterScope::Root,
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -595,6 +631,11 @@ pub enum Message {
     /// settings-modal panel itself) to swallow clicks without
     /// triggering any state change.
     NoOp,
+    /// Emitted by the `window::frames()` subscription while a UI
+    /// animation is mid-flight. Carries no state change — its
+    /// only job is to drive another update → view pass so the
+    /// animation can sample a fresh `Instant`.
+    AnimTick,
     TabSelected(Tab),
     Play(tabs::play::Message),
     Patches(tabs::patches::Message),
@@ -657,9 +698,45 @@ impl App {
         t!(&self.config.language, "window-title")
     }
 
+    /// What `view` is fundamentally showing right now. A change
+    /// across an `update` dispatch means the screen was swapped
+    /// wholesale — the trigger for [`App::screen_enter`].
+    fn screen_key(&self) -> ScreenKey {
+        if self.config.nickname.is_none() {
+            ScreenKey::Welcome
+        } else if self.session.is_active() {
+            ScreenKey::Session
+        } else {
+            ScreenKey::Tabs(self.tab, self.settings.active_tab)
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
+        let before = self.screen_key();
+        let task = self.update_inner(message);
+        let after = self.screen_key();
+        // Session entry is deliberately a hard cut — the emulator
+        // boot is its own "transition", and transforming the live
+        // framebuffer shader mid-glide isn't worth the risk.
+        if before != after && after != ScreenKey::Session {
+            self.screen_enter = iced::animation::Animation::new(0.0)
+                .duration(anim::TRANSITION)
+                .easing(iced::animation::Easing::EaseOutCubic)
+                .go(1.0, iced::time::Instant::now());
+            // Tab/section switches keep the top bar static, so only
+            // glide the body; everything else swaps the whole window.
+            self.screen_enter_scope = match (before, after) {
+                (ScreenKey::Tabs(..), ScreenKey::Tabs(..)) => EnterScope::Body,
+                _ => EnterScope::Root,
+            };
+        }
+        task
+    }
+
+    fn update_inner(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::NoOp => iced::Task::none(),
+            Message::AnimTick => iced::Task::none(),
             Message::TabSelected(t) => {
                 self.tab = t;
                 iced::Task::none()
@@ -881,7 +958,7 @@ impl App {
     }
 
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        iced::Subscription::batch([
+        let mut subs = vec![
             session::subscription(&self.session).map(Message::Session),
             netplay::subscription(&self.netplay).map(Message::Netplay),
             // 1 Hz Discord refresh — cheap (compares activity for
@@ -890,7 +967,29 @@ impl App {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::DiscordTick),
             // Window events drive the geometry-persistence loop.
             iced::window::events().map(|(id, ev)| Message::Window(id, ev)),
-        ])
+        ];
+        // Per-frame redraw driver, alive only while something is
+        // actually moving: a screen entrance or session-overlay
+        // transition mid-flight, or the Play tab's pulsing
+        // connection-status line. The menu UI otherwise redraws
+        // on events only, so dropping this when idle is what keeps
+        // animations from costing 60 fps forever.
+        let now = iced::time::Instant::now();
+        let waiting_pulse_on_screen = !self.session.is_active()
+            && self.tab == Tab::Play
+            && match &self.netplay.phase {
+                netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } => true,
+                // The lobby's "waiting for opponent data" handshake
+                // line pulses too, until both sides' settings land.
+                netplay::Phase::Lobby { .. } => {
+                    self.netplay.lobby.local.is_none() || self.netplay.lobby.remote.is_none()
+                }
+                _ => false,
+            };
+        if self.screen_enter.is_animating(now) || self.session.anims_in_progress(now) || waiting_pulse_on_screen {
+            subs.push(iced::window::frames().map(|_| Message::AnimTick));
+        }
+        iced::Subscription::batch(subs)
     }
 
     /// Refresh Discord rich-presence + drain any Discord-initiated
@@ -1733,17 +1832,30 @@ impl App {
     pub fn view(&self) -> Element<'_, Message> {
         let lang = &self.config.language;
 
+        // Live entrance glide, `Some(progress)` while mid-flight.
+        // Sampled once here; the branches below wrap whatever they
+        // return (whole window or just the tab body, per
+        // `screen_enter_scope`).
+        let now = iced::time::Instant::now();
+        let enter = self
+            .screen_enter
+            .is_animating(now)
+            .then(|| self.screen_enter.interpolate_with(|v| v, now));
+
         // First-run gate: no main UI until the user picks a nickname.
         if self.config.nickname.is_none() {
             let roms_count = self.scanners.roms.read().len();
-            return tabs::welcome::view(
-                lang,
-                &self.welcome,
-                roms_count,
-                &self.config.roms_path(),
-                self.is_rescanning(),
-            )
-            .map(Message::Welcome);
+            return entered(
+                tabs::welcome::view(
+                    lang,
+                    &self.welcome,
+                    roms_count,
+                    &self.config.roms_path(),
+                    self.is_rescanning(),
+                )
+                .map(Message::Welcome),
+                enter,
+            );
         }
 
         if self.session.is_active() {
@@ -1764,7 +1876,10 @@ impl App {
             // In-session settings modal: floats centered over the
             // running session with a dimmed click-to-dismiss
             // backdrop. The emulator keeps running underneath.
-            let composed: Element<'_, Message> = if self.session.show_settings {
+            // Rendered while the open/close transition is in
+            // flight too, so the panel eases in and out.
+            let composed: Element<'_, Message> = if self.session.settings_anim.visible(now) {
+                let progress = self.session.settings_anim.progress(now);
                 let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
                     .map(Message::Settings);
                 // Top header row carrying the X close button. The
@@ -1797,7 +1912,8 @@ impl App {
                 // its inert regions (background, headings) get
                 // swallowed instead of falling through to the
                 // dismiss-on-press backdrop layer below.
-                let modal_panel_swallow = mouse_area(modal_panel).on_press(|_| Message::NoOp);
+                let modal_panel_swallow =
+                    mouse_area(anim::pop(modal_panel, progress, 12.0)).on_press(|_| Message::NoOp);
                 let placement = iced::widget::container(modal_panel_swallow)
                     .width(Fill)
                     .height(Fill)
@@ -1805,17 +1921,19 @@ impl App {
                     .align_y(iced::alignment::Vertical::Center);
                 // Backdrop — dim wash that also dismisses the
                 // modal on click. Captures the press so it
-                // doesn't reach the session HUD beneath.
-                let backdrop = mouse_area(
+                // doesn't reach the session HUD beneath. The dim
+                // fades with the panel, and the dismiss handler is
+                // only armed while the modal is actually open so a
+                // click mid-fade-out can't re-fire the close.
+                let mut backdrop = mouse_area(
                     iced::widget::container(iced::widget::Space::new().width(Fill).height(Fill))
                         .width(Fill)
                         .height(Fill)
-                        .style(|_: &iced::Theme| iced::widget::container::Style {
-                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.45))),
-                            ..Default::default()
-                        }),
-                )
-                .on_press(|_| Message::Session(session::Message::CloseSettings));
+                        .style(anim::backdrop_style(0.45 * progress)),
+                );
+                if self.session.settings_anim.shown() {
+                    backdrop = backdrop.on_press(|_| Message::Session(session::Message::CloseSettings));
+                }
                 iced::widget::stack![
                     Element::from(session_view),
                     Element::from(backdrop),
@@ -1904,12 +2022,31 @@ impl App {
         // Body container picks up the palette background and adds
         // a faint inner tint so the HUD bar visibly sits on top of
         // a "screen surface" rather than a flat sheet of pixels.
-        let body_surface = container(body).width(Fill).height(Fill).style(widgets::body_surface);
-        column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
-            .spacing(0)
-            .width(Fill)
-            .height(Fill)
-            .into()
+        // Tab/section switches glide just this surface (the top
+        // bar stays put); welcome/session swaps glide the whole
+        // window.
+        let body_enter = (self.screen_enter_scope == EnterScope::Body)
+            .then_some(enter)
+            .flatten();
+        let root_enter = (self.screen_enter_scope == EnterScope::Root)
+            .then_some(enter)
+            .flatten();
+        let body_surface = entered(
+            container(body)
+                .width(Fill)
+                .height(Fill)
+                .style(widgets::body_surface)
+                .into(),
+            body_enter,
+        );
+        entered(
+            column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
+                .spacing(0)
+                .width(Fill)
+                .height(Fill)
+                .into(),
+            root_enter,
+        )
     }
 
     pub fn theme(&self) -> Theme {
@@ -1924,6 +2061,16 @@ impl App {
     /// top of the OS DPI scale.
     pub fn scale_factor(&self) -> f32 {
         self.config.ui_scale
+    }
+}
+
+/// Apply the screen-entrance glide to `el` while one is live;
+/// pass-through otherwise. Drawing-only — layout and hit-testing
+/// stay at the rest position throughout.
+fn entered(el: Element<'_, Message>, progress: Option<f32>) -> Element<'_, Message> {
+    match progress {
+        Some(p) => anim::slide_in(el, p, 10.0),
+        None => el,
     }
 }
 
