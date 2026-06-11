@@ -157,13 +157,6 @@ pub struct State {
     /// (`Message::CloseSettings`). The emulator keeps running
     /// underneath; we just swap what `App::view` renders.
     pub show_settings: bool,
-    /// Ellipsis-anchored "more options" popover. The trigger lives
-    /// in every session type's controls strip; the contents vary
-    /// (replay gets the speed picker + Close; SP gets just
-    /// Settings + Close; PvP swaps Close for the red Disconnect
-    /// item). Closes when any item is picked, the session is
-    /// closed, or the trigger is toggled again.
-    pub show_options_menu: bool,
     /// PvP-only: the "are you sure?" modal that gates the
     /// Disconnect item in the options menu. Disconnect tears the
     /// session down mid-match (same as Close), so the confirm
@@ -232,7 +225,6 @@ pub struct State {
     /// transition is [`anim::Transition::visible`] and shape the
     /// entrance/exit with its progress.
     pub settings_anim: anim::Transition,
-    pub options_anim: anim::Transition,
     pub disconnect_anim: anim::Transition,
     pub match_settings_anim: anim::Transition,
 }
@@ -254,7 +246,6 @@ impl Default for State {
             input_held: crate::input::HeldState::default(),
             speed_up_engaged: false,
             show_settings: false,
-            show_options_menu: false,
             show_disconnect_confirm: false,
             show_match_settings: false,
             current_frame: None,
@@ -269,7 +260,6 @@ impl Default for State {
             controls_hovered: false,
             controls_anim: anim::Transition::new(true),
             settings_anim: anim::Transition::new(false),
-            options_anim: anim::Transition::new(false),
             disconnect_anim: anim::Transition::new(false),
             match_settings_anim: anim::Transition::new(false),
         }
@@ -326,8 +316,6 @@ pub enum Message {
     /// side's local frame delay on the running session; the App also persists it
     /// to config. No peer coordination — it's purely a local display lag.
     SetFrameDelay(u32),
-    /// Open/close the ellipsis-anchored options popover.
-    ToggleOptionsMenu,
     /// PvP-only: open/close the match-settings popover anchored on the
     /// telemetry plate (instrument panel). Mutually exclusive with the
     /// options menu.
@@ -410,7 +398,6 @@ impl State {
         // peeling, mutual-exclusion closes).
         let now = iced::time::Instant::now();
         self.settings_anim.set(self.show_settings, now);
-        self.options_anim.set(self.show_options_menu, now);
         self.disconnect_anim.set(self.show_disconnect_confirm, now);
         self.match_settings_anim.set(self.show_match_settings, now);
         // Floating controls auto-hide. The per-frame
@@ -426,7 +413,7 @@ impl State {
         // doesn't count: it lives in the permanently-visible
         // top-right indicator, independent of the HUD controls,
         // so leaving the graph open shouldn't pin the chips up.
-        let overlay_open = self.show_settings || self.show_options_menu || self.show_disconnect_confirm;
+        let overlay_open = self.show_settings || self.show_disconnect_confirm;
         let show_controls = self.controls_hovered
             || overlay_open
             || replay_paused
@@ -451,7 +438,6 @@ impl State {
                 }
                 self.active = None;
                 self.current_frame = None;
-                self.show_options_menu = false;
                 self.show_disconnect_confirm = false;
                 self.show_match_settings = false;
                 self.scrub_preview = None;
@@ -549,7 +535,6 @@ impl State {
                 }
             }
             Message::SetSpeed(factor) => {
-                self.show_options_menu = false;
                 match self.active.as_ref() {
                     Some(ActiveSession::Replay(s)) => s.set_speed(factor),
                     Some(ActiveSession::SinglePlayer(s)) => s.set_speed(factor),
@@ -568,23 +553,17 @@ impl State {
                     s.set_frame_delay(d);
                 }
             }
-            Message::ToggleOptionsMenu => {
-                self.show_options_menu = !self.show_options_menu;
-                // The two popovers share the bottom-right corner; never
-                // show both at once.
-                self.show_match_settings = false;
-            }
             Message::ToggleMatchSettings => {
-                // PvP-only: applied by the view's plate button. Toggle the
-                // popover and close the options menu so they don't overlap.
+                // PvP-only: applied by the signal indicator.
                 if let Some(ActiveSession::PvP(_)) = self.active.as_ref() {
                     self.show_match_settings = !self.show_match_settings;
-                    self.show_options_menu = false;
                 }
             }
             Message::EscPressed => {
-                // Peel overlays off top-down: the modal first, then the two
-                // bottom-right popovers, else fall through to toggling options.
+                // Peel overlays off top-down: the modal first, then the
+                // telemetry panel, else the session's tear-down — direct
+                // close for replay/SP, the disconnect confirm for PvP
+                // (ending a live match deserves the gate).
                 if self.show_settings {
                     self.show_settings = false;
                 } else if self.show_disconnect_confirm {
@@ -595,18 +574,12 @@ impl State {
                     self.active,
                     Some(ActiveSession::Replay(_)) | Some(ActiveSession::SinglePlayer(_))
                 ) {
-                    // Replay/SP have no options menu anymore (their
-                    // commands live in the bar + the floating
-                    // top-right cluster), so Esc goes straight to
-                    // closing. PvP keeps the menu — its tear-down
-                    // wants the disconnect confirm.
                     return self.update_inner(Message::Close, mapping, video_filter);
-                } else {
-                    self.show_options_menu = !self.show_options_menu;
+                } else if matches!(self.active, Some(ActiveSession::PvP(_))) {
+                    self.show_disconnect_confirm = true;
                 }
             }
             Message::OpenDisconnectConfirm => {
-                self.show_options_menu = false;
                 self.show_disconnect_confirm = true;
             }
             Message::CloseDisconnectConfirm => {
@@ -639,8 +612,6 @@ impl State {
             }
             Message::OpenSettings => {
                 self.show_settings = true;
-                self.show_options_menu = false;
-                self.show_match_settings = false;
             }
             Message::CloseSettings => {
                 self.show_settings = false;
@@ -660,7 +631,6 @@ impl State {
                     if session.is_ended() {
                         self.active = None;
                         self.current_frame = None;
-                        self.show_options_menu = false;
                         self.show_disconnect_confirm = false;
                         self.show_match_settings = false;
                     } else {
@@ -1366,11 +1336,6 @@ fn flat_pick_list(theme: &iced::Theme, status: sweeten::widget::pick_list::Statu
 /// + control height + plate border + gap).
 const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 2.0 + 6.0;
 
-/// Same idea as [`POPOVER_LIFT`] for the PvP corner chips, which
-/// are much shorter than the replay bar (margin + compact button
-/// incl. border + gap).
-const CHIP_POPOVER_LIFT: f32 = 12.0 + 30.0 + 6.0;
-
 /// How long the cursor has to sit still before the floating
 /// controls slide away.
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
@@ -1402,23 +1367,19 @@ pub fn view<'a>(
     // used to be.
     let mut stacked = stack![Element::from(layout)];
     if state.controls_anim.visible(iced::time::Instant::now()) {
-        // Replay: transport bar; PvP: corner chips. SP has nothing
-        // down here — its only commands are the top-right cluster.
+        // Replay: transport bar; PvP: setup-toggle chips. SP has
+        // nothing down here.
         if !matches!(session, ActiveSession::SinglePlayer(_)) {
             stacked = stacked.push(floating_controls(lang, session, state));
         }
-        // Replay + SP: Settings + Close, top-right.
-        if !matches!(session, ActiveSession::PvP(_)) {
-            stacked = stacked.push(corner_commands_overlay(lang, state));
-        }
+        // Every session: Settings + tear-down, top-right (PvP's
+        // tear-down routes through the disconnect confirm).
+        stacked = stacked.push(corner_commands_overlay(lang, session, state));
     }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
     }
-    if let Some(o) = options_menu_overlay(lang, session, state) {
-        stacked = stacked.push(o);
-    }
-    // PvP signal indicator / expanded telemetry graph, top-right.
+    // PvP signal indicator / expanded telemetry graph, bottom-right.
     // Deliberately outside the floating-controls gate — connection
     // health stays glanceable even when the controls tuck away.
     if let Some(o) = telemetry_overlay(lang, session, state) {
@@ -1650,14 +1611,17 @@ fn replay_bar<'a>(
     controls.push(speed_picker)
 }
 
-/// Replay/SP floating command cluster, top-right: the Settings
-/// gear and the Close button, broken out of the old options
-/// popover. Rides the same auto-hide transition as the rest of
-/// the controls, sliding up past the top edge when the cursor
-/// goes idle. (PvP keeps its ellipsis menu — its tear-down wants
-/// the disconnect confirm — and its top-right corner belongs to
-/// the telemetry indicator.)
-fn corner_commands_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Element<'a, Message> {
+/// The unified session command cluster, top-right in every
+/// session type: the Settings gear and the tear-down button —
+/// direct Close for replay/SP, the disconnect confirm for PvP.
+/// Rides the same auto-hide transition as the rest of the
+/// controls, sliding up past the top edge when the cursor goes
+/// idle.
+fn corner_commands_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
     let cmd = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
         let btn = button(icon.widget().size(16.0))
@@ -1674,9 +1638,17 @@ fn corner_commands_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -
         .gap(4)
         .into()
     };
+    let tear_down = match session {
+        ActiveSession::PvP(_) => cmd(
+            Icon::Unplug,
+            t!(lang, "playback-disconnect"),
+            Message::OpenDisconnectConfirm,
+        ),
+        _ => cmd(Icon::X, t!(lang, "playback-close"), Message::Close),
+    };
     let cluster = row![
         cmd(Icon::Settings, t!(lang, "tab-settings"), Message::OpenSettings),
-        cmd(Icon::X, t!(lang, "playback-close"), Message::Close),
+        tear_down,
     ]
     .spacing(6)
     .align_y(Alignment::Center);
@@ -1776,28 +1748,24 @@ fn corner_chips<'a>(
             style,
         ));
     }
-    // Options ellipsis last — the popover anchors above the
-    // bottom-right corner.
-    actions = actions.push(chip_btn_maybe(
-        Icon::Ellipsis,
-        t!(lang, "playback-options"),
-        Some(Message::ToggleOptionsMenu),
-        telemetry_plate_button,
-    ));
-
-    // Telemetry lives in the top-right signal indicator now (see
-    // `telemetry_overlay`), so the only chip down here is the
-    // bottom-right action cluster.
     let bottom = row![horizontal_space(), chip(actions.into())]
         .spacing(6)
         .align_y(Alignment::End)
         .width(Fill);
 
+    // Right padding clears the telemetry signal indicator, which
+    // owns the bottom-right corner itself (separate layer so it
+    // can stay visible while these toggles auto-hide).
     container(bottom)
         .width(Fill)
         .height(Fill)
         .align_y(iced::alignment::Vertical::Bottom)
-        .padding(12)
+        .padding(iced::Padding {
+            top: 12.0,
+            right: 12.0 + 32.0 + 6.0,
+            bottom: 12.0,
+            left: 12.0,
+        })
         .into()
 }
 
@@ -1929,11 +1897,11 @@ fn signal_icon(ping_ms: u128) -> Icon {
     }
 }
 
-/// Top-right telemetry overlay (PvP-only). At rest it's a small,
-/// permanently-visible signal indicator — latency band as colored
-/// signal bars, deliberately outside the auto-hide group so
-/// connection health stays glanceable. Clicking it expands it in
-/// place into the full graph view (P1/P2 sides, metric
+/// Bottom-right telemetry overlay (PvP-only). At rest it's a
+/// small, permanently-visible signal indicator — latency band as
+/// colored signal bars, deliberately outside the auto-hide group
+/// so connection health stays glanceable. Clicking it expands the
+/// full graph view above the corner (P1/P2 sides, metric
 /// sparklines, frame-delay knob); the chevron in the panel's
 /// header collapses it back (Esc works too).
 fn telemetry_overlay<'a>(
@@ -2049,179 +2017,8 @@ fn telemetry_overlay<'a>(
             .width(Fill)
             .height(Fill)
             .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Top)
-            .padding(12)
-            .into(),
-    )
-}
-
-/// Ellipsis-anchored options popover. Built as a top Stack layer
-/// anchored above the HUD bar so it floats over the framebuffer
-/// without pushing the controls strip up. The menu owns its own
-/// dismiss — picking any item closes it; clicking the trigger again
-/// toggles it off.
-///
-/// Content varies by session type:
-///   Replay → Settings, Speed picker, Close
-///   SP     → Settings, Close
-///   PvP    → Settings, (red) Disconnect
-fn options_menu_overlay<'a>(
-    lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
-    state: &'a State,
-) -> Option<Element<'a, Message>> {
-    // Render while the open/close transition is still in flight so
-    // the menu eases out instead of vanishing on the close frame.
-    let now = iced::time::Instant::now();
-    if !state.options_anim.visible(now) {
-        return None;
-    }
-    // Row item width. Wider than the historical 120px speed
-    // picker so "Disconnect" + its icon sit on one line without
-    // wrapping in any locale.
-    const ROW_WIDTH: f32 = 160.0;
-    // Total popover width = row + the panel's 6px-each-side
-    // padding. Pinned explicitly so a Fill-width child (the
-    // divider) can't propagate through the popover container
-    // and stretch the menu out to the full bottom-right pane.
-    const POPOVER_WIDTH: f32 = ROW_WIDTH + 12.0;
-    // Menu-row hover/press/selected tints. Accent drives both
-    // the selected-text color and the wash behind hover/press —
-    // pass `palette.primary` for normal rows, the Disconnect red
-    // for the destructive row. Hover/press alphas are pushed
-    // high enough (0.28 / 0.45 on dark) that the red wash on
-    // the panel plate actually reads as red, not as a slightly
-    // pink-tinted shadow.
-    fn menu_row_style(
-        theme: &iced::Theme,
-        status: iced::widget::button::Status,
-        selected: bool,
-        accent: iced::Color,
-    ) -> iced::widget::button::Style {
-        use iced::widget::button::Status;
-        let p = theme.extended_palette();
-        let text = theme.palette().text;
-        let tint = |a: f32| iced::Background::Color(iced::Color { a, ..accent });
-        let bg = match status {
-            Status::Hovered => Some(tint(if p.is_dark { 0.28 } else { 0.22 })),
-            Status::Pressed => Some(tint(if p.is_dark { 0.45 } else { 0.35 })),
-            _ if selected => Some(tint(if p.is_dark { 0.14 } else { 0.12 })),
-            _ => None,
-        };
-        iced::widget::button::Style {
-            background: bg,
-            text_color: if selected { accent } else { text },
-            border: iced::Border {
-                radius: 4.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-    // Build a "leading-icon + label" action row. `tint = None`
-    // uses the standard primary accent (hover/press wash only,
-    // label in normal text color); `Some(color)` swaps both the
-    // icon, the resting label color, AND the hover/press wash
-    // to the tint — used for Disconnect's danger red so the whole
-    // row reads as destructive before the user even hovers.
-    let action_row = |icon: Icon, label: String, msg: Message, tint: Option<iced::Color>| -> Element<'a, Message> {
-        let tinted_text_style = move |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(tint.unwrap_or_else(|| theme.palette().text)),
-        };
-        let icon_el: Element<'a, Message> = icon.widget().size(14.0).style(tinted_text_style).into();
-        let content = row![icon_el, text(label).size(14).style(tinted_text_style)]
-            .spacing(8)
-            .align_y(iced::Alignment::Center);
-        button(content)
-            .padding(style::ROW_PADDING)
-            .width(iced::Length::Fixed(ROW_WIDTH))
-            .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                let accent = tint.unwrap_or(theme.palette().primary);
-                menu_row_style(theme, status, false, accent)
-            })
-            .on_press(msg)
-            .into()
-    };
-    // Thin divider between sections — text-tinted hairline so
-    // it reads as a separator rather than a hard line.
-    let divider = || -> Element<'a, Message> {
-        container(iced::widget::Space::new().width(Fill).height(iced::Length::Fixed(1.0)))
-            .width(Fill)
-            .style(|theme: &iced::Theme| {
-                let p = theme.extended_palette();
-                let text = theme.palette().text;
-                iced::widget::container::Style {
-                    background: Some(iced::Background::Color(iced::Color {
-                        a: if p.is_dark { 0.12 } else { 0.10 },
-                        ..text
-                    })),
-                    ..Default::default()
-                }
-            })
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 4.0,
-                bottom: 0.0,
-                left: 4.0,
-            })
-            .into()
-    };
-
-    let mut sections: Vec<Element<'a, Message>> = Vec::new();
-
-    // The menu is PvP-only now — replays/SP broke their commands
-    // out into the bar + the top-right cluster.
-    let _ = divider;
-
-    // Settings menu item. Cogwheel matches the trigger button —
-    // both refer to the same destination, so the icon doubles as
-    // a reinforcement instead of a new symbol.
-    sections.push(action_row(
-        Icon::Settings,
-        t!(lang, "tab-settings"),
-        Message::OpenSettings,
-        None,
-    ));
-
-    // Tear-down item. PvP gets the red Disconnect confirm gate;
-    // SP and Replay get a direct Close (no gate — neither path
-    // sacrifices game state on tear-down). Color matches
-    // `widgets::pvp_red_button` so the menu's destructive row,
-    // the confirm dialog's CTA, and the existing P1 toolbar
-    // accent all read as one family. No divider between
-    // Settings and the tear-down — they're sibling menu items.
-    let tear_down: Element<'a, Message> = match session {
-        ActiveSession::PvP(_) => action_row(
-            Icon::Unplug,
-            t!(lang, "playback-disconnect"),
-            Message::OpenDisconnectConfirm,
-            Some(iced::Color::from_rgb(0.85, 0.22, 0.28)),
-        ),
-        _ => action_row(Icon::X, t!(lang, "playback-close"), Message::Close, None),
-    };
-    sections.push(tear_down);
-
-    let body = column(sections).spacing(2);
-    let popover = container(body)
-        .padding(6)
-        .width(iced::Length::Fixed(POPOVER_WIDTH))
-        .style(widgets::panel);
-    // Rise out of the trigger button below while scaling up.
-    let popover = anim::pop(popover, state.options_anim.progress(now), 10.0);
-    // Anchor above the bottom-right action chip (the menu only
-    // exists for PvP — replay/SP broke their commands out).
-    Some(
-        container(popover)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Right)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 12.0,
-                bottom: CHIP_POPOVER_LIFT,
-                left: 0.0,
-            })
+            .padding(12)
             .into(),
     )
 }
