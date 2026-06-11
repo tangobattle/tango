@@ -869,13 +869,14 @@ impl App {
                 }
                 // The active session may have mutated the user's
                 // save file on disk (single-player writes via
-                // mgba's RW VFile). On Close, drop the session
-                // first so mgba's thread joins + flushes its
-                // file handle, then re-scan saves + force a
-                // Loaded rebuild so the play tab's save view
-                // reflects the fresh on-disk SRAM.
-                let sp_closing = matches!(m, session::Message::Close)
-                    && matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
+                // mgba's RW VFile). When the session ends, drop it
+                // first so mgba's thread joins + flushes its file
+                // handle, then re-scan saves + force a Loaded
+                // rebuild so the play tab's save view reflects the
+                // fresh on-disk SRAM. Detected by the active-slot
+                // transition (not the Close message) because Esc
+                // closes SP sessions inside the session update.
+                let was_sp = matches!(self.session.active, Some(ActiveSession::SinglePlayer(_)));
                 // Snapshot "was PvP" before dispatch — PvP
                 // sessions can auto-tear-down inside
                 // `UpdateFramebuffer` (peer-end / disconnect /
@@ -891,7 +892,7 @@ impl App {
                 // followup forces a `loaded` rebuild past the
                 // same-key dedupe so the play tab's save view
                 // reflects the fresh on-disk SRAM.
-                let sp_rescan = if sp_closing {
+                let sp_rescan = if was_sp && self.session.active.is_none() {
                     self.rescan_off_thread(RescanFollowup::ForceRebuildLoaded)
                 } else {
                     iced::Task::none()

@@ -591,6 +591,16 @@ impl State {
                     self.show_disconnect_confirm = false;
                 } else if self.show_match_settings {
                     self.show_match_settings = false;
+                } else if matches!(
+                    self.active,
+                    Some(ActiveSession::Replay(_)) | Some(ActiveSession::SinglePlayer(_))
+                ) {
+                    // Replay/SP have no options menu anymore (their
+                    // commands live in the bar + the floating
+                    // top-right cluster), so Esc goes straight to
+                    // closing. PvP keeps the menu — its tear-down
+                    // wants the disconnect confirm.
+                    return self.update_inner(Message::Close, mapping, video_filter);
                 } else {
                     self.show_options_menu = !self.show_options_menu;
                 }
@@ -1329,7 +1339,15 @@ pub fn view<'a>(
     // used to be.
     let mut stacked = stack![Element::from(layout)];
     if state.controls_anim.visible(iced::time::Instant::now()) {
-        stacked = stacked.push(floating_controls(lang, session, state));
+        // Replay: transport bar; PvP: corner chips. SP has nothing
+        // down here — its only commands are the top-right cluster.
+        if !matches!(session, ActiveSession::SinglePlayer(_)) {
+            stacked = stacked.push(floating_controls(lang, session, state));
+        }
+        // Replay + SP: Settings + Close, top-right.
+        if !matches!(session, ActiveSession::PvP(_)) {
+            stacked = stacked.push(corner_commands_overlay(lang, state));
+        }
     }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
@@ -1541,28 +1559,84 @@ fn replay_bar<'a>(
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let options_btn: Element<'a, Message> = {
-        let btn = button(Icon::Ellipsis.widget().size(CTRL_ICON))
-            .padding(CTRL_PAD)
-            .height(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-            .style(widgets::neutral)
-            .on_press(Message::ToggleOptionsMenu);
+    // No ellipsis popover for replays — the speed picker sits
+    // directly in the bar, and Settings + Close float top-right
+    // (see `corner_commands_overlay`).
+    let _ = CTRL_ICON;
+    let _ = CTRL_PAD;
+    let current = r.speed();
+    let speed_options: Vec<widgets::Choice<u32>> = [0.5f32, 1.0, 2.0, 4.0]
+        .iter()
+        .map(|&v| {
+            let label = if (v - v.trunc()).abs() < 1e-3 {
+                format!("{}×", v as i32)
+            } else {
+                format!("{:.1}×", v)
+            };
+            widgets::Choice::new((v * 10.0) as u32, label)
+        })
+        .collect();
+    let selected = speed_options
+        .iter()
+        .find(|c| c.value == (current * 10.0) as u32)
+        .cloned();
+    let speed_picker = sweeten::widget::pick_list(speed_options, selected, |c: widgets::Choice<u32>| {
+        Message::SetSpeed(c.value as f32 / 10.0)
+    })
+    .padding([10.0, 14.0])
+    .width(Length::Fixed(90.0))
+    .style(widgets::chunky_pick_list);
+
+    let controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
+    let controls = replay_transport(lang, r, state, controls);
+    controls.push(speed_picker)
+}
+
+/// Replay/SP floating command cluster, top-right: the Settings
+/// gear and the Close button, broken out of the old options
+/// popover. Rides the same auto-hide transition as the rest of
+/// the controls, sliding up past the top edge when the cursor
+/// goes idle. (PvP keeps its ellipsis menu — its tear-down wants
+/// the disconnect confirm — and its top-right corner belongs to
+/// the telemetry indicator.)
+fn corner_commands_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Element<'a, Message> {
+    let now = iced::time::Instant::now();
+    let cmd = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
+        let btn = button(icon.widget().size(16.0))
+            .padding([6.0, 8.0])
+            .style(telemetry_plate_button)
+            .on_press(msg);
         iced::widget::tooltip(
             btn,
-            iced::widget::container(text(t!(lang, "playback-options")).size(TEXT_CAPTION))
+            container(text(label).size(TEXT_CAPTION))
                 .padding(6)
                 .style(widgets::tooltip_chrome),
-            iced::widget::tooltip::Position::Top,
+            iced::widget::tooltip::Position::Bottom,
         )
         .gap(4)
         .into()
     };
-
-    let controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
-    let controls = replay_transport(lang, r, state, controls);
-    // Options ellipsis last so the popover lands above a
-    // consistent right-edge anchor.
-    controls.push(options_btn)
+    let cluster = row![
+        cmd(Icon::Settings, t!(lang, "tab-settings"), Message::OpenSettings),
+        cmd(Icon::X, t!(lang, "playback-close"), Message::Close),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
+    let pinned = iced::widget::mouse_area(cluster)
+        .on_enter(Message::ControlsHovered(true))
+        .on_exit(Message::ControlsHovered(false));
+    let slid = anim::slide_in(
+        pinned,
+        state.controls_anim.progress(now),
+        iced::Vector::new(0.0, -CONTROLS_SLIDE),
+    );
+    container(slid)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .align_y(iced::alignment::Vertical::Top)
+        .padding(12)
+        .into()
 }
 
 /// SP/PvP floating controls: compact corner chips instead of a
@@ -1863,7 +1937,7 @@ fn telemetry_overlay<'a>(
         };
         let players = row![
             side(FIELD_RED, local_seat, t!(lang, "play-you")),
-            side(FIELD_BLUE, remote_seat, pvp.remote_nickname.clone()),
+            side(FIELD_BLUE, remote_seat, t!(lang, "play-opponent")),
         ]
         .spacing(12)
         .align_y(Alignment::Center);
@@ -2036,61 +2110,9 @@ fn options_menu_overlay<'a>(
 
     let mut sections: Vec<Element<'a, Message>> = Vec::new();
 
-    // Replay-only: speed picker section, anchored at the top.
-    // The Settings + Close pair below sits as plain menu items
-    // separated by a divider so Settings reads as a sibling of
-    // Close, not a header for the Speed section above.
-    if let Some(r) = session.as_replay() {
-        let current = r.speed();
-        let opts: &[f32] = &[0.5, 1.0, 2.0, 4.0];
-        // Section header: gauge icon + "Speed" label, both
-        // muted so the header reads as a category divider
-        // instead of a clickable row.
-        let header_row = row![
-            Icon::Gauge.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
-            text(t!(lang, "playback-speed"))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center);
-        let header = container(header_row).padding(iced::Padding {
-            top: 4.0,
-            right: 10.0,
-            bottom: 4.0,
-            left: 10.0,
-        });
-        let mut speed_col = column![header].spacing(1);
-        for &v in opts {
-            let selected = (v - current).abs() < 1e-3;
-            let label = if (v - v.trunc()).abs() < 1e-3 {
-                format!("{}×", v as i32)
-            } else {
-                format!("{:.1}×", v)
-            };
-            let check: Element<'a, Message> = if selected {
-                Icon::Check.widget().size(14.0).into()
-            } else {
-                iced::widget::Space::new()
-                    .width(iced::Length::Fixed(14.0))
-                    .height(iced::Length::Fixed(14.0))
-                    .into()
-            };
-            let content = row![check, text(label).size(14)]
-                .spacing(8)
-                .align_y(iced::Alignment::Center);
-            let btn = button(content)
-                .padding(style::ROW_PADDING)
-                .width(iced::Length::Fixed(ROW_WIDTH))
-                .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                    menu_row_style(theme, status, selected, theme.palette().primary)
-                })
-                .on_press(Message::SetSpeed(v));
-            speed_col = speed_col.push(btn);
-        }
-        sections.push(Element::from(speed_col));
-        sections.push(divider());
-    }
+    // The menu is PvP-only now — replays/SP broke their commands
+    // out into the bar + the top-right cluster.
+    let _ = divider;
 
     // Settings menu item. Cogwheel matches the trigger button —
     // both refer to the same destination, so the icon doubles as
