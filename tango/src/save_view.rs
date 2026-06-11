@@ -753,7 +753,7 @@ impl State {
             patch_card56_sort: PatchCard56Sort::Id,
             auto_battle_data_sort: AutoBattleDataSort::Id,
             enter: crate::anim::Enter::default(),
-            enter_from: iced::Vector::new(16.0, 0.0),
+            enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
             edit_anim: crate::anim::Transition::new(false),
         }
@@ -784,7 +784,7 @@ impl State {
         // Mode change, not navigation — the editor body rises in
         // while the Save / Cancel pair slides into the tail.
         let now = iced::time::Instant::now();
-        self.enter_from = iced::Vector::new(0.0, 12.0);
+        self.enter_from = iced::Vector::new(0.0, 20.0);
         self.enter.start(now);
         self.edit_anim.set(true, now);
     }
@@ -866,7 +866,7 @@ impl State {
                     // moving right enters from the right, moving
                     // left from the left.
                     if let Some(prev) = self.active_tab {
-                        let dx = if (*t as u8) > (prev as u8) { 16.0 } else { -16.0 };
+                        let dx = if (*t as u8) > (prev as u8) { 24.0 } else { -24.0 };
                         self.enter_from = iced::Vector::new(dx, 0.0);
                     }
                     self.prev_tab = self.active_tab;
@@ -890,7 +890,7 @@ impl State {
                 // Returning read-only body rises in (mirroring
                 // `enter_edit`) while Save / Cancel slide back out.
                 let now = iced::time::Instant::now();
-                self.enter_from = iced::Vector::new(0.0, 12.0);
+                self.enter_from = iced::Vector::new(0.0, 20.0);
                 self.enter.start(now);
                 self.edit_anim.set(false, now);
                 iced::Task::none()
@@ -1245,9 +1245,17 @@ pub fn view<'a>(
             None => el,
         }
     };
-    let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 16.0 };
+    // Tail buttons animate only when their content actually
+    // changed: a sub-tab switch (horizontal enter) or leaving edit
+    // mode (the extras were hidden behind Save / Cancel). A game/
+    // save swap rises the body in, but the strip's buttons are
+    // typically identical across saves — re-animating them there
+    // reads as a glitch.
+    let edit_exiting = !state.edit_anim.shown() && state.edit_anim.is_animating(now);
+    let tail_slide = enter.filter(|_| enter_from.x != 0.0 || edit_exiting);
+    let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
     let extras_entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
-        match enter {
+        match tail_slide {
             Some(p) => crate::anim::slide_in(el, p, iced::Vector::new(extras_dx, 0.0)),
             None => el,
         }
@@ -1303,7 +1311,7 @@ pub fn view<'a>(
             let mut buttons = edit_buttons(lang, loaded);
             if state.edit_anim.is_animating(now) {
                 buttons =
-                    crate::anim::slide_in(buttons, state.edit_anim.progress(now), iced::Vector::new(16.0, 0.0));
+                    crate::anim::slide_in(buttons, state.edit_anim.progress(now), iced::Vector::new(32.0, 0.0));
             }
             tail = tail.push(buttons);
         } else {

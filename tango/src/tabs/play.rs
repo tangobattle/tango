@@ -1104,13 +1104,13 @@ impl PlayState {
             .into();
         let group = if show_lobby || band_animating {
             if band_animating {
-                crate::anim::slide_in(group, lobby_band.progress(now), iced::Vector::new(0.0, 24.0))
+                crate::anim::slide_in(group, lobby_band.progress(now), iced::Vector::new(0.0, 48.0))
             } else {
                 group
             }
         } else {
             match bottom_strip_enter.progress(now) {
-                Some(p) => crate::anim::slide_in(group, p, iced::Vector::new(0.0, 12.0)),
+                Some(p) => crate::anim::slide_in(group, p, iced::Vector::new(0.0, 20.0)),
                 None => group,
             }
         };
@@ -1215,7 +1215,7 @@ impl PlayState {
         let sliding = self.patch_row.is_animating(now);
         let slide = |el: Element<'a, Message>| -> Element<'a, Message> {
             if sliding {
-                crate::anim::slide_in(el, self.patch_row.progress(now), iced::Vector::new(-16.0, 0.0))
+                crate::anim::slide_in(el, self.patch_row.progress(now), iced::Vector::new(-32.0, 0.0))
             } else {
                 el
             }

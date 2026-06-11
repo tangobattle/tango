@@ -778,7 +778,7 @@ impl App {
         // rise it in vertically (sub-tab switches slide it
         // horizontally instead; see save_view::State::apply).
         if selection_before != (self.play.local_game, self.play.local_save.clone()) {
-            self.play.save_view.enter_from = iced::Vector::new(0.0, 16.0);
+            self.play.save_view.enter_from = iced::Vector::new(0.0, 20.0);
             self.play.save_view.enter.start(now);
         }
         task

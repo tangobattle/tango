@@ -592,7 +592,7 @@ impl ReplaysState {
             // Selection entrance: the detail panel rises up into
             // place.
             match self.detail_enter.progress(iced::time::Instant::now()) {
-                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 16.0)),
+                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 28.0)),
                 None => detail,
             }
         } else {
