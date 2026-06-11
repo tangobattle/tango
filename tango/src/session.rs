@@ -1756,8 +1756,8 @@ fn corner_commands_overlay<'a>(
 /// chevron that points the way the click will move the drawer
 /// (inward to open, back out to close) tinted in the side's
 /// accent. They ride the shared auto-hide, slipping out through
-/// their own edges; the opponent handle renders disabled (muted,
-/// unclickable) until the peer enables reveal-setup.
+/// their own edges; the opponent handle isn't rendered at all
+/// until the peer enables reveal-setup.
 fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
@@ -1849,22 +1849,37 @@ fn setup_handles_overlay<'a>(
         let pinned = iced::widget::mouse_area(tip)
             .on_enter(Message::ControlsHovered(true))
             .on_exit(Message::ControlsHovered(false));
-        // One combined translation: ride the drawer's inner edge
-        // (its open progress × travel) plus the auto-hide slide
-        // through the screen edge — suppressed while the drawer is
-        // out at all, where a tab twitching toward the edge would
-        // read as a glitch (and the open drawer needs its close
-        // affordance anyway).
-        let ride = drawer_progress * SETUP_DRAWER_TRAVEL * if on_left { 1.0 } else { -1.0 };
+        // Riding the drawer's inner edge is LAYOUT (edge padding),
+        // not a Float translation: a floating element draws in
+        // iced's overlay layer above everything, so a permanently
+        // translated handle would sit on top of the settings /
+        // disconnect modals whenever a drawer is open.
+        let ride = drawer_progress * SETUP_DRAWER_TRAVEL;
+        let positioned: Element<'a, Message> = container(pinned)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: if on_left { 0.0 } else { ride },
+                bottom: 0.0,
+                left: if on_left { ride } else { 0.0 },
+            })
+            .into();
+        // The auto-hide slide through the screen edge stays a
+        // Float (it needs to go off-screen), but it's transient —
+        // suppressed entirely while the drawer is out at all,
+        // where a tab twitching toward the edge would read as a
+        // glitch (and an open drawer needs its close affordance).
         let hide = if drawer_progress > 0.0 {
             0.0
         } else {
             (1.0 - hide_progress) * if on_left { -28.0 } else { 28.0 }
         };
-        let offset = ride + hide;
-        iced::widget::float(pinned)
-            .translate(move |_bounds, _viewport| iced::Vector::new(offset, 0.0))
-            .into()
+        if hide == 0.0 {
+            positioned
+        } else {
+            iced::widget::float(positioned)
+                .translate(move |_bounds, _viewport| iced::Vector::new(hide, 0.0))
+                .into()
+        }
     };
 
     const FIELD_RED: Color = Color::from_rgb(0.85, 0.22, 0.28);
@@ -1882,19 +1897,18 @@ fn setup_handles_overlay<'a>(
         ));
     }
     edges = edges.push(horizontal_space());
-    let revealed = pvp.opponent_loaded.is_some();
-    edges = edges.push(handle(
-        false,
-        state.show_opponent_panel && revealed,
-        if revealed {
-            state.opponent_panel_anim.progress(now)
-        } else {
-            0.0
-        },
-        FIELD_BLUE,
-        t!(lang, "session-opponent"),
-        revealed.then_some(Message::ToggleOpponentPanel),
-    ));
+    // No tab at all when the peer isn't revealing — a permanently
+    // dead handle is just clutter on the edge.
+    if pvp.opponent_loaded.is_some() {
+        edges = edges.push(handle(
+            false,
+            state.show_opponent_panel,
+            state.opponent_panel_anim.progress(now),
+            FIELD_BLUE,
+            t!(lang, "session-opponent"),
+            Some(Message::ToggleOpponentPanel),
+        ));
+    }
 
     container(edges)
         .width(Fill)
