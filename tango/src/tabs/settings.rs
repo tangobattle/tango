@@ -207,6 +207,11 @@ pub fn view<'a>(
     config: &'a config::Config,
     state: &'a State,
     updater_status: crate::updater::Status,
+    // `Some(progress)` while a section-switch entrance is live:
+    // the section pane slides in from the right (away from the
+    // sidebar, so it never crosses over it) while the sidebar
+    // stays planted. Driven by the App's screen-enter animation.
+    pane_enter: Option<f32>,
 ) -> Element<'a, Message> {
     let active = state.active_tab;
     // Vertical tab strip on the left; selected pane on the right.
@@ -268,6 +273,11 @@ pub fn view<'a>(
     .width(Fill)
     .height(Fill)
     .style(widgets::pane);
+    // Section-switch entrance: just this pane glides in.
+    let body_wrap: Element<'a, Message> = match pane_enter {
+        Some(p) => crate::anim::slide_in(body_wrap, p, iced::Vector::new(24.0, 0.0)),
+        None => body_wrap.into(),
+    };
 
     let root = row![sidebar, body_wrap]
         .spacing(style::PANE_GAP)

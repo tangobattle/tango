@@ -157,18 +157,30 @@ pub struct App {
     ///
     /// [`screen_key`]: App::screen_key
     screen_enter: iced::animation::Animation<f32>,
-    /// What the current `screen_enter` moves: just the tab body
-    /// (tab/section switches, so the static top bar stays planted)
-    /// or the whole window (welcome/session swaps).
+    /// What the current `screen_enter` moves and which way — see
+    /// [`EnterScope`].
     screen_enter_scope: EnterScope,
 }
 
 /// See [`App::screen_enter_scope`].
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 enum EnterScope {
-    Body,
+    /// Top-level tab switch: the whole tab body slides in
+    /// horizontally while the top bar stays planted. `dx` is the
+    /// starting offset — positive enters from the right (moving
+    /// forward in nav order), negative from the left (moving
+    /// back).
+    Body { dx: f32 },
+    /// Settings section switch: only the section pane slides in
+    /// (from the right, away from the sidebar); the sidebar and
+    /// the rest of the page stay planted.
+    SettingsPane,
+    /// Welcome/session swaps: the whole window rises into place.
     Root,
 }
+
+/// How far a pane starts off-position when sliding in.
+const PANE_SLIDE: f32 = 28.0;
 
 /// Identity of what `view` is fundamentally showing. Computed
 /// before and after every `update` dispatch; a change means the
@@ -723,10 +735,18 @@ impl App {
                 .duration(anim::TRANSITION)
                 .easing(iced::animation::Easing::EaseOutCubic)
                 .go(1.0, iced::time::Instant::now());
-            // Tab/section switches keep the top bar static, so only
-            // glide the body; everything else swaps the whole window.
             self.screen_enter_scope = match (before, after) {
-                (ScreenKey::Tabs(..), ScreenKey::Tabs(..)) => EnterScope::Body,
+                (ScreenKey::Tabs(t1, _), ScreenKey::Tabs(t2, _)) if t1 != t2 => {
+                    // The nav strip lays the tabs out in declaration
+                    // order, so the discriminants double as nav
+                    // positions: moving right brings the new pane in
+                    // from the right, moving left from the left.
+                    let dx = if (t2 as u8) > (t1 as u8) { PANE_SLIDE } else { -PANE_SLIDE };
+                    EnterScope::Body { dx }
+                }
+                // Same tab, different key — that's the settings
+                // section, the only sub-tab tracked in ScreenKey.
+                (ScreenKey::Tabs(..), ScreenKey::Tabs(..)) => EnterScope::SettingsPane,
                 _ => EnterScope::Root,
             };
         }
@@ -1880,7 +1900,9 @@ impl App {
             // flight too, so the panel eases in and out.
             let composed: Element<'_, Message> = if self.session.settings_anim.visible(now) {
                 let progress = self.session.settings_anim.progress(now);
-                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
+                // No section-pane slide inside the modal — the
+                // whole panel already animates as one.
+                let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)
                     .map(Message::Settings);
                 // Top header row carrying the X close button. The
                 // close is the only affordance for dismissing the
@@ -2015,38 +2037,45 @@ impl App {
                 .patches
                 .view(lang, &self.scanners, &self.config, rescanning)
                 .map(Message::Patches),
-            Tab::Settings => tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
-                .map(Message::Settings),
+            Tab::Settings => tabs::settings::view(
+                lang,
+                &self.config,
+                &self.settings,
+                self.updater.status_blocking(),
+                // Section switches slide just the section pane —
+                // the sidebar (and the rest of the page) stays put.
+                if self.screen_enter_scope == EnterScope::SettingsPane {
+                    enter
+                } else {
+                    None
+                },
+            )
+            .map(Message::Settings),
         };
 
         // Body container picks up the palette background and adds
         // a faint inner tint so the HUD bar visibly sits on top of
         // a "screen surface" rather than a flat sheet of pixels.
-        // Tab/section switches glide just this surface (the top
+        // Tab switches slide just this surface sideways (the top
         // bar stays put); welcome/session swaps glide the whole
-        // window.
-        let body_enter = (self.screen_enter_scope == EnterScope::Body)
-            .then_some(enter)
-            .flatten();
-        let root_enter = (self.screen_enter_scope == EnterScope::Root)
-            .then_some(enter)
-            .flatten();
-        let body_surface = entered(
-            container(body)
-                .width(Fill)
-                .height(Fill)
-                .style(widgets::body_surface)
-                .into(),
-            body_enter,
-        );
-        entered(
-            column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
-                .spacing(0)
-                .width(Fill)
-                .height(Fill)
-                .into(),
-            root_enter,
-        )
+        // window up.
+        let mut body_surface: Element<'_, Message> = container(body)
+            .width(Fill)
+            .height(Fill)
+            .style(widgets::body_surface)
+            .into();
+        if let (Some(p), EnterScope::Body { dx }) = (enter, self.screen_enter_scope) {
+            body_surface = anim::slide_in(body_surface, p, iced::Vector::new(dx, 0.0));
+        }
+        let root: Element<'_, Message> = column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
+            .spacing(0)
+            .width(Fill)
+            .height(Fill)
+            .into();
+        match (enter, self.screen_enter_scope) {
+            (Some(p), EnterScope::Root) => entered(root, Some(p)),
+            _ => root,
+        }
     }
 
     pub fn theme(&self) -> Theme {
@@ -2064,12 +2093,12 @@ impl App {
     }
 }
 
-/// Apply the screen-entrance glide to `el` while one is live;
-/// pass-through otherwise. Drawing-only — layout and hit-testing
-/// stay at the rest position throughout.
+/// Apply the whole-window entrance glide (a short upward rise) to
+/// `el` while one is live; pass-through otherwise. Drawing-only —
+/// layout and hit-testing stay at the rest position throughout.
 fn entered(el: Element<'_, Message>, progress: Option<f32>) -> Element<'_, Message> {
     match progress {
-        Some(p) => anim::slide_in(el, p, 10.0),
+        Some(p) => anim::slide_in(el, p, iced::Vector::new(0.0, 10.0)),
         None => el,
     }
 }
