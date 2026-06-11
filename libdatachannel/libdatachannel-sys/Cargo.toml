@@ -1,0 +1,16 @@
+[package]
+name = "libdatachannel-sys"
+description = "Bindings to libdatachannel's C API"
+version = "0.24.3"
+edition = "2021"
+license = "MPL-2.0"
+exclude = ["libdatachannel/examples", "libdatachannel/deps/*/fuzzer", "libdatachannel/deps/*/test", "libdatachannel/deps/*/tests", "libdatachannel/deps/json"]
+
+[features]
+vendored = ["dep:openssl-src"]
+
+[build-dependencies]
+bindgen = "0.72"
+cmake = "0.1"
+cpp_build = "0.5"
+openssl-src = { version = "300", optional = true }

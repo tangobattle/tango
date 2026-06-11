@@ -1,0 +1,19 @@
+[package]
+name = "libdatachannel"
+description = "Rust wrapper for libdatachannel"
+version = "0.2.0+0.24.3"
+edition = "2021"
+license = "MIT"
+
+[features]
+vendored = ["libdatachannel-sys/vendored"]
+
+[dependencies]
+log = "0.4"
+libdatachannel-sys = { version = "0.24", path = "./libdatachannel-sys" }
+num-derive = "0.4"
+num-traits = "0.2"
+thiserror = "1"
+
+[dev-dependencies]
+test-log = "0.2"
