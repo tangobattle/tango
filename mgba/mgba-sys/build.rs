@@ -3,7 +3,6 @@ extern crate bindgen;
 use std::env;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Pull the `-D…` flags cmake fed to the mgba C compile out of whatever
 /// per-generator layout cmake produced this time:
@@ -156,7 +155,7 @@ fn main() {
         .clang_args(&["-Imgba/include", "-D__STDC_NO_THREADS__=1"])
         .clang_args(FORCED_DEFINES.iter().map(|def| format!("-D{def}")))
         .clang_args(flags)
-        // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .parse_callbacks(Box::new(ignored_macros))
         .generate()
         .expect("Unable to generate bindings");
