@@ -211,6 +211,14 @@ impl PeerConnection {
     pub fn add_remote_candidate(&mut self, cand: IceCandidate) -> Result<(), std::io::Error> {
         self.inner.add_remote_candidate(&cand.candidate).map_err(error_to_io)
     }
+
+    /// The selected ICE candidate pair as raw candidate strings,
+    /// `(local, remote)` — e.g. for telling a relayed (TURN)
+    /// connection from a direct one (`typ relay`). Errors until
+    /// the agent has picked a pair.
+    pub fn selected_candidate_pair(&self) -> Result<(String, String), std::io::Error> {
+        self.inner.selected_candidate_pair().map_err(error_to_io)
+    }
 }
 
 /// The lifecycle of a data channel as observed by the send side.

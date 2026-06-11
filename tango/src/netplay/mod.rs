@@ -177,6 +177,18 @@ pub struct LobbyState {
     /// triggers a re-default to Triple (when supported), while
     /// user-explicit picks for the SAME game stick.
     pub default_mt_for_game: Option<(String, u8)>,
+    /// How the transport actually flows, resolved once the wire
+    /// handshake completes: direct (peer-to-peer, incl. the raw
+    /// TCP path) or relayed through a TURN server. `None` when it
+    /// couldn't be determined.
+    pub connection_kind: Option<ConnectionKind>,
+}
+
+/// See [`LobbyState::connection_kind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionKind {
+    Direct,
+    Relayed,
 }
 
 impl Default for LobbyState {
@@ -194,6 +206,7 @@ impl Default for LobbyState {
             match_ready: false,
             remote_match_ready: false,
             default_mt_for_game: None,
+            connection_kind: None,
         }
     }
 }
@@ -509,6 +522,21 @@ impl State {
                     return iced::Task::none();
                 };
                 let sender = out.sender.clone();
+                // Resolve how the transport actually flows for the
+                // lobby's ping line. The raw-TCP path (no peer
+                // connection) is direct by construction; WebRTC
+                // reads the selected ICE pair — a `typ relay`
+                // candidate on either end means TURN.
+                self.lobby.connection_kind = match &out.peer_conn {
+                    None => Some(ConnectionKind::Direct),
+                    Some(pc) => pc.selected_candidate_pair().ok().map(|(local, remote)| {
+                        if local.contains("typ relay") || remote.contains("typ relay") {
+                            ConnectionKind::Relayed
+                        } else {
+                            ConnectionKind::Direct
+                        }
+                    }),
+                };
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
                     peer_conn: out.peer_conn,

@@ -2372,8 +2372,14 @@ fn lobby_header_line<'a>(
         }
     };
     if let Some(d) = lobby.latency_counter.latest() {
+        let ms = d.as_millis() as i64;
+        let label = match lobby.connection_kind {
+            Some(crate::netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
+            Some(crate::netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
+            None => t!(lang, "lobby-latency", ms = ms),
+        };
         Some(
-            text(t!(lang, "lobby-latency", ms = d.as_millis() as i64))
+            text(label)
                 .size(TEXT_BODY)
                 .style(widgets::muted_text_style)
                 .into(),
