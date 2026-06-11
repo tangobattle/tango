@@ -1274,14 +1274,18 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
     use iced::widget::button::Status;
     let p = theme.extended_palette();
     let text = theme.palette().text;
-    let base = if p.is_dark { 0.06 } else { 0.05 };
-    let fill = match status {
-        Status::Hovered => base + 0.06,
-        Status::Pressed => base + 0.10,
-        _ => base,
+    let bg = theme.palette().background;
+    // Mostly-opaque scrim in the page background color — same
+    // recipe as [`hud_chip_plate`], so every floating HUD button
+    // reads over live game pixels. Hover/press nudge the plate
+    // toward the text color.
+    let plate = match status {
+        Status::Hovered => widgets::mix(bg, text, 0.10),
+        Status::Pressed => widgets::mix(bg, text, 0.16),
+        _ => bg,
     };
     iced::widget::button::Style {
-        background: Some(iced::Background::Color(iced::Color { a: fill, ..text })),
+        background: Some(iced::Background::Color(iced::Color { a: 0.85, ..plate })),
         text_color: text,
         border: iced::Border {
             radius: 6.0.into(),
@@ -1362,10 +1366,10 @@ fn flat_pick_list(theme: &iced::Theme, status: sweeten::widget::pick_list::Statu
 /// + control height + plate border + gap).
 const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 2.0 + 6.0;
 
-/// Same idea as [`POPOVER_LIFT`] for the SP/PvP corner chips,
-/// which are much shorter than the replay bar (chip margin +
-/// chip padding + compact button + border + gap).
-const CHIP_POPOVER_LIFT: f32 = 12.0 + 8.0 + 32.0 + 4.0 + 6.0;
+/// Same idea as [`POPOVER_LIFT`] for the PvP corner chips, which
+/// are much shorter than the replay bar (margin + compact button
+/// incl. border + gap).
+const CHIP_POPOVER_LIFT: f32 = 12.0 + 30.0 + 6.0;
 
 /// How long the cursor has to sit still before the floating
 /// controls slide away.
@@ -1706,7 +1710,7 @@ fn corner_chips<'a>(
     hide_progress: f32,
 ) -> Element<'a, Message> {
     const CHIP_ICON: f32 = 16.0;
-    const CHIP_PAD: [f32; 2] = [8.0, 10.0];
+    const CHIP_PAD: [f32; 2] = [6.0, 8.0];
 
     let chip_btn_maybe = |icon: Icon,
                           label: String,
@@ -1728,11 +1732,11 @@ fn corner_chips<'a>(
         .into()
     };
 
-    // One floating chip: panel plate + hover pin + the shared
-    // hide slide.
+    // One floating chip: hover pin + the shared hide slide. No
+    // wrapper plate — every button carries its own flat scrim
+    // (`telemetry_plate_button`), matching the top-right cluster.
     let chip = move |content: Element<'a, Message>| -> Element<'a, Message> {
-        let panel = container(content).padding(4).style(widgets::panel);
-        let pinned = iced::widget::mouse_area(panel)
+        let pinned = iced::widget::mouse_area(content)
             .on_enter(Message::ControlsHovered(true))
             .on_exit(Message::ControlsHovered(false));
         anim::slide_in(pinned, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE))
@@ -1749,7 +1753,7 @@ fn corner_chips<'a>(
                 if state.show_self_panel {
                     widgets::pvp_red_button
                 } else {
-                    widgets::neutral
+                    telemetry_plate_button
                 };
             actions = actions.push(chip_btn_maybe(
                 Icon::FileUser,
@@ -1763,7 +1767,7 @@ fn corner_chips<'a>(
             if state.show_opponent_panel && revealed {
                 widgets::pvp_blue_button
             } else {
-                widgets::neutral
+                telemetry_plate_button
             };
         actions = actions.push(chip_btn_maybe(
             Icon::FileUser,
@@ -1778,7 +1782,7 @@ fn corner_chips<'a>(
         Icon::Ellipsis,
         t!(lang, "playback-options"),
         Some(Message::ToggleOptionsMenu),
-        widgets::neutral,
+        telemetry_plate_button,
     ));
 
     // Telemetry lives in the top-right signal indicator now (see
