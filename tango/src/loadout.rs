@@ -1,8 +1,7 @@
 //! The local loadout — which game family, save, and (optionally)
 //! patch the user is bringing to a match — hoisted to App level so
-//! every tab renders from one source of truth and the netplay
-//! settings-resend machinery doesn't have to reach into a tab's
-//! private state.
+//! the netplay settings-resend machinery doesn't have to reach into
+//! the Play tab's private state.
 //!
 //! The *identity* of a loadout is `(family, game, save)`. The patch
 //! is deliberately not part of that identity: it's an overlay,
@@ -35,14 +34,13 @@ pub struct Loadout {
     /// see the module docs; persisted per save, not globally.
     pub patch: Option<String>,
     pub patch_version: Option<semver::Version>,
-    /// Whether the patch/version pickers in the selector rows are
-    /// unfolded. Patching is a niche flow, so the pickers stay
-    /// collapsed behind a small toggle until the user opts in;
-    /// selecting "no patch" folds them away again. Not persisted —
-    /// an *active* patch always forces the pickers visible, so a
-    /// remembered patch selection survives without this flag. Shared
-    /// by both rows ([`game_row`] / [`compact_row`]), so the fold
-    /// state stays consistent across the Saves and Fight tabs.
+    /// Whether the patch/version pickers in the selector row
+    /// ([`game_row`]) are unfolded. Patching is a niche flow, so the
+    /// pickers stay collapsed behind a small toggle until the user
+    /// opts in; selecting "no patch" folds them away again. Not
+    /// persisted — an *active* patch always forces the pickers
+    /// visible, so a remembered patch selection survives without
+    /// this flag.
     pub patch_picker_open: bool,
     /// Show/hide transition for the expanded patch controls (patch +
     /// version pickers). Mirrors `patch.is_some() ||
@@ -676,13 +674,13 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 
 // ---------- Views ----------
 
-/// The full game row for the saves tab: family picker + foldable
-/// patch/version pickers + rescan button. The patch controls stay
-/// folded behind a small icon toggle until the user opts in (or a
-/// patch is already active) — in the saves tab, patching is a niche
-/// flow that shouldn't share top billing with the game picker. With
-/// the pickers folded, the game picker's FillPortion is the only fill
-/// in the row, so it soaks up the freed width.
+/// The full game row for the Play tab's selector strip: family
+/// picker, foldable patch/version pickers, rescan button. The patch
+/// controls stay folded behind a small icon toggle until the user
+/// opts in (or a patch is already active) — patching is a niche flow
+/// that shouldn't share top billing with the game picker. With the
+/// pickers folded, the game picker's FillPortion is the only fill in
+/// the row, so it soaks up the freed width.
 pub fn game_row<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
@@ -706,35 +704,14 @@ pub fn game_row<'a>(
     row_el.push(refresh).spacing(8).align_y(Alignment::Center).into()
 }
 
-/// The compact one-row loadout strip for the fight tab: family + save
-/// + the foldable patch segment (no rescan, no save management).
-/// Embedded above the lobby so switching what you bring — including
-/// unfolding the patch picker to match the opponent's patch — never
-/// requires leaving the lobby.
-pub fn compact_row<'a>(
-    loadout: &'a Loadout,
-    lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
-    config: &'a config::Config,
-) -> Element<'a, Message> {
-    let family = family_picker(loadout, lang, scanners).width(Length::FillPortion(3));
-    let save = save_picker(loadout, lang, scanners, config).width(Length::FillPortion(4));
-    let mut row_el = row![family, save];
-    for el in patch_fold_segment(loadout, lang, scanners, config, Length::FillPortion(3)) {
-        row_el = row_el.push(el);
-    }
-    row_el.spacing(8).align_y(Alignment::Center).into()
-}
-
-/// The foldable patch segment shared by [`game_row`] and
-/// [`compact_row`]: a small puzzle toggle at rest, the patch +
-/// version pickers once the user opts in (or a patch is already
-/// active). Folding either way fade-through morphs ONLY this segment
-/// — the toggle and the pickers swap through the pane plate,
-/// horizontally, while the row's other controls stay untouched.
-/// (They still reflow at the swap's midpoint, but the segment is
-/// fully dissolved there.) The fold state lives on the shared
-/// [`Loadout`], so opening it in one tab opens it in the other.
+/// The foldable patch segment of [`game_row`]: a small puzzle toggle
+/// at rest, the patch + version pickers once the user opts in (or a
+/// patch is already active). Folding either way fade-through morphs
+/// ONLY this segment — the toggle and the pickers swap through the
+/// pane plate, horizontally, while the row's other controls stay
+/// untouched. (They still reflow at the swap's midpoint, but the
+/// segment is fully dissolved there.) The fold state lives on the
+/// shared [`Loadout`].
 fn patch_fold_segment<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
@@ -781,7 +758,7 @@ fn family_picker<'a>(
         .style(widgets::chunky_pick_list)
 }
 
-/// The save picker on its own — the saves tab embeds it in its
+/// The save picker on its own — the Play tab embeds it in its
 /// save-action row (next to the rename / delete / new buttons), which
 /// is that tab's own furniture.
 pub fn save_picker<'a>(

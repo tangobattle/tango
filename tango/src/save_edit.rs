@@ -1,5 +1,5 @@
 //! In-memory appliers for the save editors' staged edits
-//! ([`tabs::saves::ChipEdit`] & friends): resolve against the ROM
+//! ([`tabs::play::ChipEdit`] & friends): resolve against the ROM
 //! assets, write through the dataview's mutable views, and rebuild
 //! any derived mirrors (anti-cheat folder/library, materialized auto
 //! battle data) so they stay in sync. No disk I/O — the commit path
@@ -8,15 +8,15 @@
 
 use crate::{selection, tabs};
 
-/// Apply one staged [`tabs::saves::ChipEdit`] to a loaded save's
+/// Apply one staged [`tabs::play::ChipEdit`] to a loaded save's
 /// equipped folder, in memory. Resolves chip-id/code against the ROM
 /// assets first (so the immutable borrows drop before the mutable chip
 /// view is taken), then writes via [`ChipsViewMut`] and rebuilds the
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
-pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::saves::ChipEdit) {
+pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
     use crate::save_view::MAX_FOLDER_CHIPS;
-    use tabs::saves::ChipEdit;
+    use tabs::play::ChipEdit;
     use tango_dataview::save::Chip;
 
     let folder_idx = match loaded.save.view_chips() {
@@ -234,14 +234,14 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::saves::ChipEd
     }
 }
 
-/// Apply one staged [`tabs::saves::NavicustEdit`] to a loaded save's
+/// Apply one staged [`tabs::play::NavicustEdit`] to a loaded save's
 /// navicust, in memory. Writes the part slots, then rebuilds the
 /// materialized WRAM grid cache so it stays in sync with the edit (and
 /// the editor's live color-bar preview reflects it). No disk I/O — the
 /// commit path only checksums and writes. A no-op on saves whose navi
 /// view isn't the (writable) Navicust variant.
-pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::saves::NavicustEdit) {
-    use tabs::saves::NavicustEdit;
+pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::NavicustEdit) {
+    use tabs::play::NavicustEdit;
     use tango_dataview::save::{NaviViewMut, NavicustPart};
 
     // Resolve any reads (empty-slot search, slot count) under an
@@ -325,15 +325,15 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::saves::Na
     }
 }
 
-/// Apply one staged [`tabs::saves::PatchCard56Edit`] to a loaded save's
+/// Apply one staged [`tabs::play::PatchCard56Edit`] to a loaded save's
 /// registered patch-card list, in memory. Reads the current list under an
 /// immutable borrow, computes the new list, rewrites the slots via
 /// [`PatchCard56sViewMut`], then rebuilds the anti-cheat mirror so it
 /// stays in sync with the edit. No disk I/O — the commit path only
 /// checksums and writes. A no-op on saves whose patch-card view isn't the
 /// (writable) PatchCard56s variant.
-pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::saves::PatchCard56Edit) {
-    use tabs::saves::PatchCard56Edit;
+pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard56Edit) {
+    use tabs::play::PatchCard56Edit;
     use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
 
     let cards: Vec<PatchCard> = match loaded.save.view_patch_cards() {
@@ -409,15 +409,15 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::saves
 /// Number of BN4 patch-card catalog slots (0A–0F).
 const NUM_PATCH_CARD4_SLOTS: usize = 6;
 
-/// Apply one staged [`tabs::saves::PatchCard4Edit`] to a loaded save's BN4
+/// Apply one staged [`tabs::play::PatchCard4Edit`] to a loaded save's BN4
 /// patch cards, in memory. BN4 is slot-based: every card belongs to one
 /// fixed catalog slot, so adding routes the card to its own `slot()`
 /// (replacing whatever was there). No MB budget, no list shifting. After
 /// writing it rebuilds the anti-cheat mirror so it stays in sync with the
 /// edit. No disk I/O — the commit path only checksums and writes. A no-op
 /// on saves whose patch-card view isn't the PatchCard4s variant.
-pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::saves::PatchCard4Edit) {
-    use tabs::saves::PatchCard4Edit;
+pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::play::PatchCard4Edit) {
+    use tabs::play::PatchCard4Edit;
     use tango_dataview::save::{PatchCard, PatchCardsView, PatchCardsViewMut};
 
     // Resolve the slot/card to write under immutable borrows first, so they
@@ -475,15 +475,15 @@ pub fn apply_patch_card4_edit(loaded: &mut selection::Loaded, edit: tabs::saves:
     }
 }
 
-/// Apply one staged [`tabs::saves::AutoBattleDataEdit`] to a loaded save's
+/// Apply one staged [`tabs::play::AutoBattleDataEdit`] to a loaded save's
 /// auto-battle data, in memory. The deck is derived from per-chip use
 /// counts, so each edit sets a count (or zeroes them all) and then
 /// rebuilds the materialized WRAM deck so the editor's live preview — which
 /// reads the materialized cache — reflects the change. No disk I/O; the
 /// commit path checksums and writes. A no-op on saves without a writable
 /// auto-battle-data view (only BN4/BN5 have one).
-pub fn apply_auto_battle_data_edit(loaded: &mut selection::Loaded, edit: tabs::saves::AutoBattleDataEdit) {
-    use tabs::saves::AutoBattleDataEdit;
+pub fn apply_auto_battle_data_edit(loaded: &mut selection::Loaded, edit: tabs::play::AutoBattleDataEdit) {
+    use tabs::play::AutoBattleDataEdit;
 
     match edit {
         AutoBattleDataEdit::SetUseCount { id, count } => {

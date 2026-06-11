@@ -25,8 +25,8 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::{Alignment, Element, Fill, Theme};
 use sweeten::widget::{column, mouse_area, row};
 use tabs::patches::PatchesState;
+use tabs::play::{create_new_save, duplicate_save, rename_save};
 use tabs::replays::ReplaysState;
-use tabs::saves::{create_new_save, duplicate_save, rename_save};
 use unic_langid::LanguageIdentifier;
 
 /// Push an RGBA image to the OS clipboard. iced's clipboard API
@@ -110,11 +110,10 @@ pub struct App {
     loaded: Option<selection::Loaded>,
 
     /// The local loadout (family / game / save + patch overlay) —
-    /// App-level so the Fight and Saves tabs render from one source
-    /// of truth and the lobby settings-resend sees every change.
+    /// App-level so the lobby settings-resend sees every change the
+    /// Play tab's selector makes.
     loadout: loadout::Loadout,
-    fight: tabs::fight::State,
-    saves: tabs::saves::State,
+    play: tabs::play::State,
     replays: ReplaysState,
     patches: PatchesState,
     settings: tabs::settings::State,
@@ -165,17 +164,17 @@ pub struct App {
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
-    /// Two-phase swap between the Fight tab's bodies (idle screen ↔
-    /// lobby) — mirrors [`App::lobby_on_screen`], synced after every
-    /// update. Runs two transition lengths with a linear ramp:
+    /// Two-phase swap between the Play tab's bottom bands (link-code
+    /// strip ↔ lobby) — mirrors [`App::lobby_on_screen`], synced after
+    /// every update. Runs two transition lengths with a linear ramp:
     /// the view spends the first half sinking + dissolving the
-    /// outgoing body into the page surface and the second half
+    /// outgoing band into the page surface and the second half
     /// rising + condensing the incoming one out of it, so the swap
-    /// reads as the idle screen turning into the lobby and back.
+    /// reads as the code strip turning into the lobby and back.
     lobby_swap: anim::Transition,
     /// The lobby's last live (phase, lobby) pair, frozen on the
     /// frame the lobby leaves the screen. The exiting half of the
-    /// body swap renders from this so the verdict (e.g. the failure
+    /// band swap renders from this so the verdict (e.g. the failure
     /// banner being dismissed) holds steady through the dissolve
     /// instead of flashing to the idle handshake line.
     lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState)>,
@@ -318,27 +317,18 @@ impl App {
             updater.set_enabled(true);
         }
 
-        // Start where the user can act: the Fight tab when a save is
-        // already selected, the Saves tab when they still need to set
-        // one up.
-        let mut starting_tab = if restored.save.is_some() {
-            Tab::Fight
-        } else {
-            Tab::Saves
-        };
-        let mut fight = tabs::fight::State::default();
+        let mut play = tabs::play::State::default();
         // CLI `Join <code>` (or Discord deep-link routed through
-        // the same channel) lands here — prefill the link code
-        // and start on the Fight tab so the user can hit Fight.
+        // the same channel) lands here — prefill the link code so
+        // the user can hit Fight straight away.
         let init_link_code = INIT_LINK_CODE.get().and_then(|c| c.clone());
         if let Some(code) = &init_link_code {
-            fight.link_code = code.clone();
-            starting_tab = Tab::Fight;
+            play.link_code = code.clone();
         }
 
         let mut app = Self {
             config,
-            tab: starting_tab,
+            tab: Tab::Play,
             welcome,
             settings: tabs::settings::State::default(),
             scanners,
@@ -346,8 +336,7 @@ impl App {
             _audio_backend: audio_backend,
             loaded: None,
             loadout: restored,
-            fight,
-            saves: tabs::saves::State::default(),
+            play,
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
             session: session::State::new(),
@@ -643,15 +632,14 @@ impl App {
         // Dropping the whole EditState clears every editor's scratch at
         // once. The commit path takes the early-return above and never
         // reaches here, so this only fires on a real selection change.
-        self.saves.save_view.clear_editing();
+        self.play.save_view.clear_editing();
     }
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     #[default]
-    Fight,
-    Saves,
+    Play,
     Replays,
     Patches,
     Settings,
@@ -672,8 +660,7 @@ pub enum Message {
     /// animation can sample a fresh `Instant`.
     AnimTick,
     TabSelected(Tab),
-    Fight(tabs::fight::Message),
-    Saves(tabs::saves::Message),
+    Play(tabs::play::Message),
     Patches(tabs::patches::Message),
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
@@ -747,11 +734,12 @@ impl App {
         }
     }
 
-    /// Whether the Fight tab's body is the lobby (a netplay attempt
-    /// is in flight, failed-but-not-dismissed, or handing off)
-    /// rather than the idle screen. Drives [`App::lobby_swap`] and
-    /// the nav badge on the Fight tab. `Failed` counts: the lobby
-    /// stays up as a sticky failure banner until the user cancels it.
+    /// Whether the Play tab's bottom band is the lobby (a netplay
+    /// attempt is in flight, failed-but-not-dismissed, or handing
+    /// off) rather than the link-code strip. Drives
+    /// [`App::lobby_swap`] and the nav badge on the Play tab.
+    /// `Failed` counts: the lobby stays up as a sticky failure
+    /// banner until the user cancels it.
     fn lobby_on_screen(&self) -> bool {
         matches!(
             self.netplay.phase,
@@ -792,9 +780,9 @@ impl App {
                 _ => EnterScope::Root,
             };
         }
-        // The Fight tab's body swap follows the netplay phase: the
-        // view morphs the idle screen into the lobby (and back) off
-        // this transition. When the lobby leaves, freeze its last
+        // The Play tab's band swap follows the netplay phase: the
+        // view morphs the link-code strip into the lobby (and back)
+        // off this transition. When the lobby leaves, freeze its last
         // live state for the exit half to render from.
         let lobby_after = self.lobby_on_screen();
         if let (Some(snap), false) = (lobby_live, lobby_after) {
@@ -810,8 +798,8 @@ impl App {
         // rise it in vertically (sub-tab switches slide it
         // horizontally instead; see save_view::State::apply).
         if selection_before != (self.loadout.game, self.loadout.save.clone()) {
-            self.saves.save_view.enter_from = iced::Vector::new(0.0, 20.0);
-            self.saves.save_view.enter.start(now);
+            self.play.save_view.enter_from = iced::Vector::new(0.0, 20.0);
+            self.play.save_view.enter.start(now);
         }
         task
     }
@@ -824,21 +812,17 @@ impl App {
                 self.tab = t;
                 iced::Task::none()
             }
-            // Loadout strip interactions from either tab route to the
-            // shared App-level Loadout — the tabs never see them.
+            // Loadout strip interactions route to the shared
+            // App-level Loadout — the tab never sees them.
             // Every dispatch below is followed by a Settings resend —
             // the netplay handler dedupes against the last-sent value
             // via `Settings: Eq`, so unchanged dispatches are free.
-            Message::Fight(tabs::fight::Message::Loadout(m)) | Message::Saves(tabs::saves::Message::Loadout(m)) => {
+            Message::Play(tabs::play::Message::Loadout(m)) => {
                 let task = self.update_loadout(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
-            Message::Fight(m) => {
-                let task = self.update_fight(m);
-                iced::Task::batch([task, self.resend_settings_if_lobby()])
-            }
-            Message::Saves(m) => {
-                let task = self.update_saves(m);
+            Message::Play(m) => {
+                let task = self.update_play(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
             Message::Patches(m) => self.update_patches(m),
@@ -996,7 +980,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
-                        self.fight.last_error = Some(format!("{e}"));
+                        self.play.last_error = Some(format!("{e}"));
                     }
                 }
                 // Drop the post-handoff lobby snapshot now that the
@@ -1059,12 +1043,12 @@ impl App {
         // actually moving: any registered animation mid-flight
         // (screen entrances, overlay transitions, pane enters —
         // they all `kick` the shared registry when they start) or
-        // the Fight tab's pulsing connection-status line. The menu
+        // the Play tab's pulsing connection-status line. The menu
         // UI otherwise redraws on events only, so dropping this
         // when idle is what keeps animations from costing 60 fps
         // forever.
         let waiting_pulse_on_screen = !self.session.is_active()
-            && self.tab == Tab::Fight
+            && self.tab == Tab::Play
             && match &self.netplay.phase {
                 netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } => true,
                 // The lobby's "waiting for opponent data" handshake
@@ -1093,12 +1077,12 @@ impl App {
 
         // Discord "Join Game" handoff: the peer accepted our
         // invite, Discord handed us their link code as the join
-        // secret. Drop it into the fight tab + jump to it.
+        // secret. Drop it into the play tab + jump to it.
         if self.discord.has_current_join_secret() {
             if let Some(secret) = self.discord.take_current_join_secret() {
                 log::info!("discord: accepted join with link code");
-                self.fight.link_code = secret;
-                self.tab = Tab::Fight;
+                self.play.link_code = secret;
+                self.tab = Tab::Play;
             }
         }
 
@@ -1167,13 +1151,15 @@ impl App {
         }
     }
 
-    fn update_fight(&mut self, msg: tabs::fight::Message) -> iced::Task<Message> {
-        let Some(effect) = self.fight.update(msg, &self.config) else {
+    fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
+        let Some(effect) = self
+            .play
+            .update(msg, &self.scanners, &self.config, self.loaded.as_ref(), &self.loadout)
+        else {
             return iced::Task::none();
         };
-        use tabs::fight::Effect as E;
+        use tabs::play::Effect as E;
         match effect {
-            E::CopyText(s) => iced::clipboard::write(s),
             E::SetFrameDelay(d) => {
                 // Lobby slider. Persisted to config; it's this side's local
                 // frame delay (snapshotted into the match at start, not
@@ -1232,18 +1218,6 @@ impl App {
                     .update(netplay::Message::Commit { save_sram })
                     .map(Message::Netplay)
             }
-        }
-    }
-
-    fn update_saves(&mut self, msg: tabs::saves::Message) -> iced::Task<Message> {
-        let Some(effect) = self
-            .saves
-            .update(msg, &self.scanners, &self.config, self.loaded.as_ref(), &self.loadout)
-        else {
-            return iced::Task::none();
-        };
-        use tabs::saves::Effect as E;
-        match effect {
             E::OpenPath(p) => {
                 if let Err(e) = open::that(&p) {
                     log::error!("open {}: {e}", p.display());
@@ -1273,7 +1247,7 @@ impl App {
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
-                        self.saves.last_error = Some(format!("{e}"));
+                        self.play.last_error = Some(format!("{e}"));
                     }
                 }
                 iced::Task::none()
@@ -1328,7 +1302,7 @@ impl App {
                 // user picked), which may differ from the currently
                 // selected one — so adopt it as the loadout's game too,
                 // keeping game/save consistent for `refresh_loaded`.
-                if let Some(template) = tabs::saves::creation_template(game, &template, &self.loadout, &self.scanners) {
+                if let Some(template) = tabs::play::creation_template(game, &template, &self.loadout, &self.scanners) {
                     match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
                         Ok(dst) => {
                             log::info!(
@@ -1462,7 +1436,7 @@ impl App {
                 self.refresh_loaded();
                 iced::Task::none()
             }
-            E::SaveViewTask(t) => t.map(Message::Saves),
+            E::SaveViewTask(t) => t.map(Message::Play),
         }
     }
 
@@ -2112,24 +2086,8 @@ impl App {
 
         let rescanning = self.is_rescanning();
         let body: Element<'_, Message> = match self.tab {
-            Tab::Fight => self
-                .fight
-                .view(
-                    lang,
-                    &self.loadout,
-                    &self.scanners,
-                    &self.config,
-                    self.loaded.is_some(),
-                    &self.netplay.phase,
-                    &self.netplay.lobby,
-                    self.netplay.handoff_pending(),
-                    self.config.streamer_mode,
-                    &self.lobby_swap,
-                    self.lobby_exit_snapshot.as_ref(),
-                )
-                .map(Message::Fight),
-            Tab::Saves => self
-                .saves
+            Tab::Play => self
+                .play
                 .view(
                     lang,
                     &self.scanners,
@@ -2138,9 +2096,13 @@ impl App {
                     self.config.streamer_mode,
                     &self.config,
                     &self.netplay.phase,
+                    &self.netplay.lobby,
+                    self.netplay.handoff_pending(),
                     rescanning,
+                    &self.lobby_swap,
+                    self.lobby_exit_snapshot.as_ref(),
                 )
-                .map(Message::Saves),
+                .map(Message::Play),
             Tab::Replays => self
                 .replays
                 .view(lang, &self.scanners, &self.config, &self.netplay.phase, rescanning)
@@ -2168,9 +2130,9 @@ impl App {
             body_surface = anim::slide_in(body_surface, p, iced::Vector::new(dx, 0.0));
         }
         // While a lobby is live and the user is on another tab, the
-        // Fight tab's nav pill carries a small attention dot so the
+        // Play tab's nav pill carries a small attention dot so the
         // open lobby isn't forgotten behind a tab switch.
-        let lobby_badge = self.lobby_on_screen() && self.tab != Tab::Fight;
+        let lobby_badge = self.lobby_on_screen() && self.tab != Tab::Play;
         let root: Element<'_, Message> = column![
             top_bar(lang, self.tab, lobby_badge),
             widgets::hud_scanline_top(),
@@ -2239,13 +2201,12 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool) -> Element
             )
             .padding([2, 8]),
             widgets::nav_tab_button_badged(
-                Icon::Swords,
-                t!(lang, "tab-fight"),
-                Message::TabSelected(Tab::Fight),
-                Tab::Fight == active,
+                Icon::Gamepad,
+                t!(lang, "tab-play"),
+                Message::TabSelected(Tab::Play),
+                Tab::Play == active,
                 lobby_badge,
             ),
-            tab(Icon::Save, t!(lang, "tab-saves"), Tab::Saves),
             tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
             horizontal_space(),
             // Patches + Settings = low-emphasis utility tabs.

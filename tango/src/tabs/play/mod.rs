@@ -1,8 +1,14 @@
-//! The Saves tab: the full loadout selector (family / save / patch
-//! pickers + save management) and the save viewer/editor. Netplay
-//! lives in [`crate::tabs::fight`]; the selection state itself is
-//! App-level ([`crate::loadout::Loadout`]) so the fight tab's lobby
-//! sees every change made here live.
+//! The Play tab: everything in one place. The full loadout selector
+//! (family / save / patch pickers + save management) and the save
+//! viewer/editor fill the body, and a netplay band rides the bottom —
+//! the link-code strip + Fight CTA when idle, the full lobby
+//! ([`lobby`]) once a connection attempt is in flight. The save view
+//! stays on screen through it all, so what you're bringing to the
+//! match is always visible (and switchable) even mid-lobby. The
+//! selection state itself is App-level ([`crate::loadout::Loadout`])
+//! so the lobby settings-resend sees every change made here live.
+
+mod lobby;
 
 use crate::app::Scanners;
 use crate::i18n::t;
@@ -24,6 +30,38 @@ pub enum Message {
     /// [`Loadout`] state — never reaches [`State::update`].
     Loadout(loadout::Message),
     SaveViewAction(save_view::Action),
+
+    LinkCodeChanged(String),
+    /// Fill the link-code input with a fresh random
+    /// adjective-word-noun handle from `randomcode::generate`.
+    LinkCodeRandom,
+    FightPressed,
+    Disconnect,
+    /// Lobby UI: user picked a different match type. App routes
+    /// this through netplay::Message::SetMatchType so the resend
+    /// machinery picks it up.
+    SetMatchType((u8, u8)),
+    /// Lobby UI: user dragged the frame-delay slider, OR pressed
+    /// the "suggest" button (which dispatches a value computed from the
+    /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
+    /// (same store the Settings-tab slider writes), not lobby-local state.
+    SetFrameDelay(u32),
+    /// Lobby UI: user toggled the reveal-setup checkbox.
+    SetRevealSetup(bool),
+    /// Lobby UI: user pressed Ready. App loads the local
+    /// save's raw SRAM, builds a NegotiatedState, and
+    /// dispatches netplay::Message::Commit.
+    Ready,
+    /// Lobby UI: user pressed Unready (Ready button while
+    /// already committed). Sends an Uncommit packet.
+    Unready,
+    /// Soft-disable sentinel for widgets that don't accept a
+    /// `None` handler in iced 0.14 (pick_list, slider). The
+    /// lobby reroutes match-type / frame-delay changes here in
+    /// Phase::Failed (and the selector strip during handoff) so
+    /// the controls render inert without touching layout. The
+    /// update handler drops it.
+    Noop,
 
     SaveOpenFolder,
     /// Open an arbitrary folder in the OS file manager. Used by
@@ -48,9 +86,10 @@ pub enum Message {
     DismissError,
 }
 
-// ---------- Saves tab state ----------
+// ---------- Play tab state ----------
 
 pub struct State {
+    pub link_code: String,
     /// Persistent state for the embedded save view (active tab,
     /// folder grouping). Apply incoming `SaveViewAction`s via
     /// [`save_view::State::apply`].
@@ -58,11 +97,11 @@ pub struct State {
     /// Inline state for the save-management actions (rename / delete).
     pub save_action: SaveAction,
     /// Last after-the-fact action failure (singleplayer launch
-    /// errored, …) — rendered as a dismissable banner at the top of
-    /// the tab. Pre-condition errors ("you need a save first") are
-    /// NOT funneled here; they're handled by view-time button gating
-    /// + inline hints, because graying out the action surface
-    /// explains itself.
+    /// errored, PvP session build failed, …) — rendered as a
+    /// dismissable banner at the top of the tab. Pre-condition errors
+    /// ("you need a save first") are NOT funneled here; they're
+    /// handled by view-time button gating + inline hints, because
+    /// graying out the action surface explains itself.
     pub last_error: Option<String>,
     /// Fade-through swap for the save-action row: the picker row
     /// morphs into whichever rename / delete / create form opens
@@ -107,6 +146,7 @@ pub enum SaveAction {
 impl Default for State {
     fn default() -> Self {
         Self {
+            link_code: String::new(),
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             last_error: None,
@@ -213,6 +253,19 @@ pub enum AutoBattleDataEdit {
 /// as an `Effect` for the caller to interpret.
 #[derive(Debug)]
 pub enum Effect {
+    /// Kick off netplay. The `LinkIdent` variant tells the app
+    /// handler whether to route via matchmaking signaling or direct
+    /// TCP transport.
+    Connect(crate::netplay::LinkIdent),
+    /// Forward verbatim to the netplay subsystem.
+    Netplay(crate::netplay::Message),
+    /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
+    /// this side's local frame delay (snapshotted into the match at
+    /// start, not negotiated with the peer), so there's nothing live to update.
+    SetFrameDelay(u32),
+    /// Lobby Ready — App reads the local save SRAM and
+    /// dispatches `netplay::Message::Commit`.
+    ReadyWithSave,
     /// `open::that(_)` on a file or folder.
     OpenPath(std::path::PathBuf),
     /// Copy plain text to the clipboard.
@@ -302,6 +355,41 @@ impl State {
             // Routed to the shared Loadout at App level before this
             // dispatch is reached.
             Message::Loadout(_) => None,
+            Message::LinkCodeChanged(s) => {
+                // Direct-TCP commands (/host, /connect) need slashes,
+                // spaces, dots, colons, brackets — pass them through.
+                let filtered: String = if s.starts_with('/') {
+                    s
+                } else {
+                    s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect()
+                };
+                self.link_code = filtered.chars().take(100).collect();
+                None
+            }
+            Message::LinkCodeRandom => {
+                self.link_code = crate::randomcode::generate(&config.language);
+                // Drop the freshly-generated code straight onto the
+                // clipboard so the user can paste it into chat
+                // without an extra select+copy round-trip.
+                Some(Effect::CopyText(self.link_code.clone()))
+            }
+            Message::FightPressed => {
+                // The Fight CTA is gated at the view layer to require
+                // a submittable link code, so reaching this handler
+                // without one is a stale message + safe to ignore.
+                let ident = resolve_link_ident(self.link_code.trim())?;
+                // Clear any leftover after-the-fact error from a prior
+                // attempt — the new attempt's outcome will replace it.
+                self.last_error = None;
+                Some(Effect::Connect(ident))
+            }
+            Message::Noop => None,
+            Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
+            Message::SetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
+            Message::SetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
+            Message::SetRevealSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v))),
+            Message::Ready => Some(Effect::ReadyWithSave),
+            Message::Unready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
             Message::SaveViewAction(action) => {
                 use save_view::Action as A;
                 let sv_task = self.save_view.apply(&action);
@@ -651,6 +739,7 @@ impl State {
 }
 
 impl State {
+    #[allow(clippy::too_many_arguments)]
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
@@ -660,16 +749,32 @@ impl State {
         streamer_mode: bool,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
+        netplay_lobby: &'a crate::netplay::LobbyState,
+        netplay_handoff_pending: bool,
         rescanning: bool,
+        // Two-phase swap between the bottom bands (link-code strip ↔
+        // lobby), driven by the App (which sees the netplay phase
+        // flip): first half sinks + dissolves the outgoing band,
+        // second half rises the incoming one out of the page surface.
+        bottom_swap: &'a crate::anim::Transition,
+        // The lobby's last live state, frozen by the App on the
+        // frame the band left — the exiting band renders from
+        // this so the verdict (e.g. the failure banner) doesn't
+        // flash to the idle handshake line mid-dissolve.
+        lobby_exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
     ) -> Element<'a, Message> {
         let save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
 
         // Selector strip + save-view body live inside a single
         // PANE_GAP-padded column so every pane in that area shares
         // the same inset from the window edges and gap from one
-        // another.
+        // another. The hud_scanline_bottom + bottom band sit OUTSIDE
+        // that padding so they remain edge-to-edge bottom bars.
+        // The strip goes inert during the handoff window: the PvP
+        // session is being built from the committed state and
+        // selection changes would only confuse.
         let inner = column![
-            self.selector_strip(lang, scanners, loadout, config, rescanning),
+            self.selector_strip(lang, scanners, loadout, config, rescanning, netplay_handoff_pending),
             save_body,
         ]
         .spacing(style::PANE_GAP)
@@ -681,6 +786,67 @@ impl State {
             col = col.push(widgets::error_banner(lang, err, Message::DismissError));
         }
         col = col.push(inner);
+        // While a netplay attempt is in flight (Connecting /
+        // Negotiating / Lobby, sticky Failed, handoff) the lobby IS
+        // the bottom band — it carries the versus cards, match
+        // settings, and the verdict/cancel/ready chrome, while the
+        // save view above stays visible. Otherwise the normal bottom
+        // strip handles the link code + Fight CTA.
+        //
+        // The swap between them is a two-phase morph on
+        // `bottom_swap`'s unified timeline: the outgoing band sinks
+        // while dissolving into the page surface, then the incoming
+        // one rises out of it — so the code strip reads as turning
+        // into the lobby and back, rather than one vanishing and the
+        // other arriving. The bottom HUD scanline is grouped into the
+        // moving band so it rides the motion instead of staying
+        // pinned above it.
+        let now = iced::time::Instant::now();
+        let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
+        let bottom: Element<'a, Message> = if render_lobby {
+            // While the band is on its way OUT, the live phase has
+            // already gone Idle (and the lobby may be wiped) — use
+            // the snapshot the App froze on the band's last live
+            // frame so the verdict doesn't flash mid-dissolve.
+            let (band_phase, band_lobby) = if !bottom_swap.shown() {
+                lobby_exit_snapshot
+                    .map(|(p, l)| (p, l))
+                    .unwrap_or((netplay_phase, netplay_lobby))
+            } else {
+                (netplay_phase, netplay_lobby)
+            };
+            // Synthesize the local side's Settings from the current
+            // loadout so the "You" slot fills in immediately —
+            // pre-Lobby phases haven't populated `lobby.local` yet,
+            // but everything it needs is already on hand locally.
+            // Same builder the netplay loop uses to ship settings on
+            // the wire, so the visible info during the handshake
+            // exactly matches what gets sent.
+            let local_fallback = loadout.make_local_settings(config, netplay_lobby, scanners);
+            lobby::Lobby {
+                lang,
+                state: band_lobby,
+                phase: band_phase,
+                local_game: loadout.game,
+                scanners,
+                has_save: loaded.is_some(),
+                local_fallback,
+                streamer_mode,
+                handoff_pending: netplay_handoff_pending,
+                frame_delay: config.frame_delay,
+            }
+            .view()
+        } else {
+            self.bottom_strip(lang)
+        };
+        let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
+        if let Some(phase) = swap {
+            let dist = if render_lobby { 48.0 } else { 24.0 };
+            group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, dist), |theme: &iced::Theme| {
+                theme.palette().background
+            });
+        }
+        col = col.push(group);
         col.into()
     }
 
@@ -729,12 +895,16 @@ impl State {
         loadout: &'a Loadout,
         config: &'a config::Config,
         rescanning: bool,
+        inert: bool,
     ) -> Element<'a, Message> {
-        let game_row: Element<'a, Message> =
-            loadout::game_row(loadout, lang, scanners, config, rescanning).map(Message::Loadout);
+        // Inert during the PvP handoff window — the loadout pickers
+        // reroute to Noop so a mid-spawn selection change can't
+        // contradict the committed state, without the strip changing
+        // shape.
+        let gate = move |m: loadout::Message| if inert { Message::Noop } else { Message::Loadout(m) };
+        let game_row: Element<'a, Message> = loadout::game_row(loadout, lang, scanners, config, rescanning).map(gate);
         let save_picker: Element<'a, Message> =
-            Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill))
-                .map(Message::Loadout);
+            Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
         let save_row = self.save_action_row(lang, scanners, loadout, save_picker);
 
         container(column![game_row, save_row].spacing(6))
@@ -981,6 +1151,90 @@ impl State {
             true,
         )
         .map(Message::SaveViewAction)
+    }
+
+    /// The idle bottom band: link-code input + Fight CTA. The lobby
+    /// band replaces this strip for every in-flight netplay phase, so
+    /// this strip is pure "enter a link code and fight" —
+    /// singleplayer lives in the save view's Play button.
+    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
+        const BOTTOM_SIZE: f32 = 15.0;
+        const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
+        const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
+        let can_submit = resolve_link_ident(self.link_code.trim()).is_some();
+        let fight_button: Element<'a, Message> = {
+            // Same chrome as the lobby's Ready button — both are
+            // "commit to a match" CTAs. ready_button_style for
+            // ReadyPalette::Idle falls back to neutral when the
+            // button is disabled, so the empty-link-code case
+            // renders as a plain greyed-out pill without a
+            // separate branch here.
+            let label = row![
+                Icon::Swords.widget().size(BOTTOM_SIZE),
+                text(t!(lang, "play-fight")).size(BOTTOM_SIZE),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+            let mut btn = button(label)
+                .padding(BOTTOM_CTA_PAD)
+                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+                .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
+            if can_submit {
+                btn = btn.on_press(Message::FightPressed);
+            }
+            btn.into()
+        };
+        // Link-code input fills all the slack between the dice
+        // button on its right and the row's left edge.
+        // text_input doesn't expose a `.height()` method, so we
+        // wrap it in a fixed-height container to match the
+        // surrounding controls.
+        let link_input: Element<'a, Message> = container(
+            text_input(&t!(lang, "play-link-code"), &self.link_code)
+                .on_input(Message::LinkCodeChanged)
+                .on_submit(Message::FightPressed)
+                .size(BOTTOM_SIZE)
+                .padding(BOTTOM_PAD)
+                .width(Length::Fill)
+                .style(widgets::chunky_text_input),
+        )
+        .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+        .width(Length::Fill)
+        .into();
+        let dice_button: Element<'a, Message> = iced::widget::tooltip(
+            button(Icon::Dice5.widget().size(BOTTOM_SIZE))
+                .padding(BOTTOM_PAD)
+                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+                .style(widgets::neutral)
+                .on_press(Message::LinkCodeRandom),
+            container(text(t!(lang, "play-link-code-random")).size(TEXT_CAPTION))
+                .padding(6)
+                .style(|theme: &iced::Theme| {
+                    let p = theme.extended_palette();
+                    iced::widget::container::Style {
+                        background: Some(iced::Background::Color(p.background.strong.color)),
+                        text_color: Some(p.background.strong.text),
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into();
+
+        container(
+            row![link_input, dice_button, fight_button]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .padding([10, 8]),
+        )
+        .width(Fill)
+        .style(widgets::hud_bar)
+        .into()
     }
 }
 
@@ -1299,4 +1553,177 @@ pub fn create_new_save(
     let sram = save.to_sram_dump();
     std::fs::write(&dst, sram)?;
     Ok(dst)
+}
+
+// ---------- "Commit to a match" CTA chrome ----------
+//
+// Shared between the bottom strip's Fight button and the lobby's
+// Ready toggle — both are the same "slam this to fight" affordance,
+// so they wear the same chrome.
+
+/// Which ready-button state we're painting. Drives
+/// [`ready_button_style`]'s color choice.
+#[derive(Clone, Copy)]
+enum ReadyPalette {
+    /// Pre-commit; the action is "ready up". Accent (primary) so
+    /// it reads as the call-to-action in the strip.
+    Idle,
+    /// Locally committed; the action is "unready". Neutral / gray —
+    /// the commitment isn't a celebration to surface in green;
+    /// what matters is the user can un-commit.
+    Committed,
+    /// Both committed; match is spinning up. Rendered as a passive
+    /// indicator: muted background, no click target, no border.
+    /// Caller sets `on_press = None` to match the disabled look.
+    Starting,
+}
+
+/// Custom style for the lobby's Ready toggle. Three discrete
+/// moods — each one its own visual register so a glance at the
+/// button tells the whole story of "where are we in the
+/// handshake".
+///
+/// * Idle      — primary_button on steroids: brighter gradient,
+///               huge primary glow, chunky 2 px border. This is
+///               the moment the user is supposed to slam the
+///               button, so it has to feel hot.
+/// * Committed — neutral beveled plate. We've ack'd locally and
+///               are waiting on the peer; the only useful action
+///               is to take it back, which is not a celebration.
+/// * Starting  — flat muted badge. Both sides committed; the
+///               button is now purely a status indicator with no
+///               click target.
+fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: ReadyPalette) -> button::Style {
+    let p = theme.extended_palette();
+    let primary = theme.palette().primary;
+    match palette {
+        ReadyPalette::Starting => button::Style {
+            background: Some(iced::Background::Color(p.background.weak.color)),
+            text_color: widgets::muted_color(theme),
+            border: iced::Border {
+                radius: 10.0.into(),
+                width: 1.0,
+                color: p.background.strong.color,
+            },
+            ..Default::default()
+        },
+        ReadyPalette::Committed => {
+            // Defer to the shared beveled neutral so the
+            // un-ready toggle looks like a sibling of the other
+            // chunky neutral buttons in the lobby strip.
+            crate::widgets::neutral(theme, status)
+        }
+        ReadyPalette::Idle => {
+            // Disabled state defers to the standard neutral
+            // button so it reads as a plainly-greyed-out button
+            // — the dim-primary-fill version this used to
+            // render looked like a corrupted variant of the
+            // lit-up state rather than a disabled affordance.
+            if matches!(status, button::Status::Disabled) {
+                return crate::widgets::neutral(theme, status);
+            }
+            // Inline expansion of the battle-button kernel with
+            // every dial cranked: bigger glow, brighter top stop,
+            // 2 px border so the button reads as a console
+            // affordance rather than a CSS rectangle.
+            let lighter = widgets::mix(primary, iced::Color::WHITE, 0.30);
+            let darker = widgets::mix(primary, iced::Color::BLACK, 0.25);
+            let (top, bottom, glow_alpha, offset_y, blur) = match status {
+                button::Status::Hovered => (
+                    widgets::mix(lighter, iced::Color::WHITE, 0.18),
+                    widgets::mix(primary, iced::Color::WHITE, 0.05),
+                    0.95,
+                    8.0,
+                    28.0,
+                ),
+                button::Status::Pressed => (darker, widgets::mix(darker, iced::Color::BLACK, 0.12), 0.35, 2.0, 14.0),
+                button::Status::Disabled => unreachable!("handled above"),
+                button::Status::Active => (lighter, darker, 0.75, 6.0, 22.0),
+            };
+            button::Style {
+                background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+                    iced::gradient::Linear::new(0.0)
+                        .add_stop(0.0, top)
+                        .add_stop(1.0, bottom),
+                ))),
+                text_color: iced::Color::WHITE,
+                border: iced::Border {
+                    radius: 10.0.into(),
+                    width: 2.0,
+                    color: widgets::mix(primary, iced::Color::WHITE, 0.45),
+                },
+                shadow: iced::Shadow {
+                    color: iced::Color {
+                        a: glow_alpha,
+                        ..primary
+                    },
+                    offset: iced::Vector::new(0.0, offset_y),
+                    blur_radius: blur,
+                },
+                snap: false,
+            }
+        }
+    }
+}
+
+// ---------- Link-code parsing ----------
+
+/// Resolve a trimmed link-code input into a submittable
+/// [`crate::netplay::LinkIdent`], or `None` if the input isn't
+/// submittable (empty, or a malformed `/`-prefixed direct command).
+fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
+    if input.is_empty() {
+        return None;
+    }
+    if input.starts_with('/') {
+        parse_direct_command(input).map(crate::netplay::LinkIdent::Direct)
+    } else {
+        Some(crate::netplay::LinkIdent::Matchmaking(input.to_string()))
+    }
+}
+
+/// Recognise the direct-TCP link-code commands the user can type
+/// in place of a matchmaking code:
+///
+/// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
+/// - `/host <port>`     — listen on the given port
+/// - `/connect <addr>`  — dial `<addr>`, appending the default
+///                        port if the user didn't specify one
+fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
+    // The leading slash is the disambiguator — without it, any
+    // input is a matchmaking link code (which can legitimately
+    // contain letters, digits, and the random-code separators).
+    if !input.starts_with('/') {
+        return None;
+    }
+    let mut parts = input.splitn(2, char::is_whitespace);
+    let cmd = parts.next().unwrap_or("");
+    let arg = parts.next().map(str::trim).unwrap_or("");
+    match cmd {
+        "/host" => {
+            let port = if arg.is_empty() {
+                crate::net::DEFAULT_LOCAL_PORT
+            } else {
+                arg.parse::<u16>().ok()?
+            };
+            Some(crate::netplay::DirectRole::Host { port })
+        }
+        "/connect" => {
+            if arg.is_empty() {
+                return None;
+            }
+            // Heuristic: if the user gave no colon (bare IP) or
+            // their input ends with the IPv6 closing bracket
+            // without a trailing colon, append the default port.
+            // We deliberately don't try to validate the address
+            // itself — TcpStream::connect's error surfaces well.
+            let addr = if arg.contains(':') && !arg.ends_with(']') {
+                arg.to_string()
+            } else {
+                format!("{arg}:{}", crate::net::DEFAULT_LOCAL_PORT)
+            };
+            Some(crate::netplay::DirectRole::Connect { addr })
+        }
+        _ => None,
+    }
 }

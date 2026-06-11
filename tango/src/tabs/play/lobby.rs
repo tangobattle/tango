@@ -1,9 +1,11 @@
-//! The lobby — the Fight tab's body while a netplay attempt is in
-//! flight. Three stacked panes: the header (status / verdict line +
-//! leave button), the matchup (you / opponent cards over the VS
-//! splitter), and the controls (match settings + Ready CTA).
+//! The lobby — the Play tab's bottom band while a netplay attempt is
+//! in flight, standing in for the link-code strip while the save view
+//! above stays visible. Three stacked panes: the header (status /
+//! verdict line + leave button), the matchup (you / opponent cards
+//! over the VS splitter), and the controls (match settings + Ready
+//! CTA).
 //!
-//! Everything renders off [`Lobby`], the per-frame bundle the Fight
+//! Everything renders off [`Lobby`], the per-frame bundle the Play
 //! tab assembles in [`super::State::view`], and [`Status`], the one
 //! derived lifecycle fact that keeps the verdict line and the Ready
 //! gate in agreement.
