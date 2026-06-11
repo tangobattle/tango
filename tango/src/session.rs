@@ -1408,15 +1408,26 @@ pub fn view<'a>(
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
     let mut stacked = stack![Element::from(layout)];
-    if state.controls_anim.visible(iced::time::Instant::now()) {
-        // Replay: transport bar; PvP: setup-toggle chips. SP has
-        // nothing down here.
+    // A drawer pane mid-animation draws in iced's floating layer,
+    // above every base stack layer — there's no way to slot it
+    // between them. So while one is moving, the chrome it would
+    // inconsistently cover (telemetry corner, top-right commands)
+    // steps aside entirely and returns at rest: the drawer is
+    // simply "on top while in motion", in both directions.
+    let now = iced::time::Instant::now();
+    let drawer_moving =
+        state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
+    if state.controls_anim.visible(now) {
+        // Replay: transport bar; PvP: setup-drawer edge handles.
+        // SP has nothing down here.
         if !matches!(session, ActiveSession::SinglePlayer(_)) {
             stacked = stacked.push(floating_controls(lang, session, state));
         }
         // Every session: Settings + tear-down, top-right (PvP's
         // tear-down routes through the disconnect confirm).
-        stacked = stacked.push(corner_commands_overlay(lang, session, state));
+        if !drawer_moving {
+            stacked = stacked.push(corner_commands_overlay(lang, session, state));
+        }
     }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
@@ -1424,8 +1435,10 @@ pub fn view<'a>(
     // PvP signal indicator / expanded telemetry graph, bottom-right.
     // Deliberately outside the floating-controls gate — connection
     // health stays glanceable even when the controls tuck away.
-    if let Some(o) = telemetry_overlay(lang, session, state) {
-        stacked = stacked.push(o);
+    if !drawer_moving {
+        if let Some(o) = telemetry_overlay(lang, session, state) {
+            stacked = stacked.push(o);
+        }
     }
     if let Some(o) = disconnect_overlay(lang, session, state) {
         stacked = stacked.push(o);
@@ -2209,9 +2222,10 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
                 .style(|theme: &iced::Theme| iced::widget::text::Style {
                     color: Some(theme.palette().primary),
                 });
+            // Same flat scrim plate as the transport bar below it.
             let card = container(column![img, stamp].spacing(2).align_x(Alignment::Center))
                 .padding(CARD_PAD)
-                .style(widgets::panel);
+                .style(hud_chip_plate);
             let card_w = THUMB_W + CARD_PAD * 2.0;
             let hi = (size.width - EDGE_MARGIN - card_w).max(EDGE_MARGIN);
             let left = (h.x - card_w / 2.0).clamp(EDGE_MARGIN.min(hi), hi);
