@@ -1638,9 +1638,12 @@ fn corner_commands_overlay<'a>(
         .gap(4)
         .into()
     };
+    // Same X in every session type — the tear-down reads as "close
+    // this session" everywhere; PvP just routes through the
+    // disconnect confirm (whose copy carries the unplug framing).
     let tear_down = match session {
         ActiveSession::PvP(_) => cmd(
-            Icon::Unplug,
+            Icon::X,
             t!(lang, "playback-disconnect"),
             Message::OpenDisconnectConfirm,
         ),
