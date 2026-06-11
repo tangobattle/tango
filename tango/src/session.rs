@@ -213,6 +213,13 @@ pub struct State {
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
     pub controls_hovered: bool,
+    /// Show/hide transitions for the PvP setup drawers — the side
+    /// panes slide in from their screen edges and the edge handles
+    /// ride the drawer's moving inner edge. Mirror the
+    /// `show_self_panel` / `show_opponent_panel` bools, synced
+    /// after every update.
+    pub self_panel_anim: anim::Transition,
+    pub opponent_panel_anim: anim::Transition,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
     /// the cursor rests on the bar, any overlay is open, a scrub
@@ -259,6 +266,8 @@ impl Default for State {
             last_mouse_move: std::time::Instant::now(),
             controls_hovered: false,
             controls_anim: anim::Transition::new(true),
+            self_panel_anim: anim::Transition::new(false),
+            opponent_panel_anim: anim::Transition::new(false),
             settings_anim: anim::Transition::new(false),
             disconnect_anim: anim::Transition::new(false),
             match_settings_anim: anim::Transition::new(false),
@@ -400,6 +409,8 @@ impl State {
         self.settings_anim.set(self.show_settings, now);
         self.disconnect_anim.set(self.show_disconnect_confirm, now);
         self.match_settings_anim.set(self.show_match_settings, now);
+        self.self_panel_anim.set(self.show_self_panel, now);
+        self.opponent_panel_anim.set(self.show_opponent_panel, now);
         // Floating controls auto-hide. The per-frame
         // UpdateFramebuffer messages re-run this, so the idle
         // timer expires without needing its own timer source; a
@@ -1345,6 +1356,15 @@ const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 2.0 + 6.0;
 /// controls slide away.
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
 
+/// Width of a PvP setup side pane (the save view inside the
+/// drawer).
+const SETUP_PANE_WIDTH: f32 = 420.0;
+
+/// Total travel of a setup drawer: the pane plus the padding
+/// around it — what the pane slides through on open/close and how
+/// far its edge handle rides inward.
+const SETUP_DRAWER_TRAVEL: f32 = SETUP_PANE_WIDTH + 2.0 * crate::style::PANE_PADDING;
+
 /// How far the floating controls sink when hiding — past the
 /// window's bottom edge (panel height + bottom margin, with a
 /// little extra for the drop shadow).
@@ -1543,31 +1563,45 @@ fn emulator_body<'a>(
     // BNLC bezel art shows around their outer margins. Only the
     // panes carry padding — the emulator itself still extends to
     // the screen edges.
-    const SETUP_PANE_WIDTH: f32 = 420.0;
-    let setup_pane = |panel: Element<'a, Message>| -> Element<'a, Message> {
+    //
+    // Open/close animates like a drawer: the pane keeps rendering
+    // through its transition, sliding in from (or back out
+    // through) its screen edge; the matching edge handle rides
+    // the drawer's inner edge (see `setup_handles_overlay`).
+    let now = iced::time::Instant::now();
+    let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
         let pane = container(panel)
             .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
             .height(Fill)
             .padding(style::PANE_PADDING)
             .style(widgets::panel);
-        container(pane).height(Fill).padding(style::PANE_PADDING).into()
+        let pane: Element<'a, Message> = container(pane).height(Fill).padding(style::PANE_PADDING).into();
+        anim::slide_in(pane, progress, iced::Vector::new(from_dx, 0.0))
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
     if let ActiveSession::PvP(s) = session {
-        if state.show_self_panel && s.local_loaded.is_some() {
+        if (state.show_self_panel || state.self_panel_anim.is_animating(now)) && s.local_loaded.is_some() {
             let me = s.local_loaded.as_ref().unwrap();
             let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
                 .map(Message::SelfSaveViewAction);
-            content_row = content_row.push(setup_pane(panel));
+            content_row = content_row.push(setup_pane(
+                panel,
+                -SETUP_DRAWER_TRAVEL,
+                state.self_panel_anim.progress(now),
+            ));
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
     if let ActiveSession::PvP(s) = session {
-        if state.show_opponent_panel && s.opponent_loaded.is_some() {
+        if (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) && s.opponent_loaded.is_some() {
             let opponent = s.opponent_loaded.as_ref().unwrap();
             let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
                 .map(Message::OpponentSaveViewAction);
-            content_row = content_row.push(setup_pane(panel));
+            content_row = content_row.push(setup_pane(
+                panel,
+                SETUP_DRAWER_TRAVEL,
+                state.opponent_panel_anim.progress(now),
+            ));
         }
     }
     container(stack![backdrop, Element::from(content_row)])
@@ -1696,9 +1730,14 @@ fn setup_handles_overlay<'a>(
         return iced::widget::Space::new().into();
     };
 
+    let now = iced::time::Instant::now();
+
     // `on_left`: which screen edge the tab grows out of.
+    // `drawer_progress`: how far the tab's drawer is out (0..1) —
+    // the tab rides the drawer's moving inner edge.
     let handle = |on_left: bool,
                   open: bool,
+                  drawer_progress: f32,
                   accent: Color,
                   label: String,
                   msg: Option<Message>|
@@ -1772,11 +1811,22 @@ fn setup_handles_overlay<'a>(
         let pinned = iced::widget::mouse_area(tip)
             .on_enter(Message::ControlsHovered(true))
             .on_exit(Message::ControlsHovered(false));
-        anim::slide_in(
-            pinned,
-            hide_progress,
-            iced::Vector::new(if on_left { -28.0 } else { 28.0 }, 0.0),
-        )
+        // One combined translation: ride the drawer's inner edge
+        // (its open progress × travel) plus the auto-hide slide
+        // through the screen edge — suppressed while the drawer is
+        // out at all, where a tab twitching toward the edge would
+        // read as a glitch (and the open drawer needs its close
+        // affordance anyway).
+        let ride = drawer_progress * SETUP_DRAWER_TRAVEL * if on_left { 1.0 } else { -1.0 };
+        let hide = if drawer_progress > 0.0 {
+            0.0
+        } else {
+            (1.0 - hide_progress) * if on_left { -28.0 } else { 28.0 }
+        };
+        let offset = ride + hide;
+        iced::widget::float(pinned)
+            .translate(move |_bounds, _viewport| iced::Vector::new(offset, 0.0))
+            .into()
     };
 
     const FIELD_RED: Color = Color::from_rgb(0.85, 0.22, 0.28);
@@ -1787,6 +1837,7 @@ fn setup_handles_overlay<'a>(
         edges = edges.push(handle(
             true,
             state.show_self_panel,
+            state.self_panel_anim.progress(now),
             FIELD_RED,
             t!(lang, "session-self"),
             Some(Message::ToggleSelfPanel),
@@ -1797,6 +1848,11 @@ fn setup_handles_overlay<'a>(
     edges = edges.push(handle(
         false,
         state.show_opponent_panel && revealed,
+        if revealed {
+            state.opponent_panel_anim.progress(now)
+        } else {
+            0.0
+        },
         FIELD_BLUE,
         t!(lang, "session-opponent"),
         revealed.then_some(Message::ToggleOpponentPanel),
