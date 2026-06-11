@@ -575,8 +575,13 @@ impl State {
                     Some(ActiveSession::Replay(_)) | Some(ActiveSession::SinglePlayer(_))
                 ) {
                     return self.update_inner(Message::Close, mapping, video_filter);
-                } else if matches!(self.active, Some(ActiveSession::PvP(_))) {
-                    self.show_disconnect_confirm = true;
+                } else if let Some(ActiveSession::PvP(pvp)) = &self.active {
+                    if pvp.latency().is_some() {
+                        self.show_disconnect_confirm = true;
+                    } else {
+                        // Link's already gone — nothing to confirm.
+                        return self.update_inner(Message::Close, mapping, video_filter);
+                    }
                 }
             }
             Message::OpenDisconnectConfirm => {
@@ -1638,17 +1643,16 @@ fn corner_commands_overlay<'a>(
         .gap(4)
         .into()
     };
-    // Same X in every session type — the tear-down reads as "close
-    // this session" everywhere; PvP just routes through the
-    // disconnect confirm (whose copy carries the unplug framing).
-    let tear_down = match session {
-        ActiveSession::PvP(_) => cmd(
-            Icon::X,
-            t!(lang, "playback-disconnect"),
-            Message::OpenDisconnectConfirm,
-        ),
-        _ => cmd(Icon::X, t!(lang, "playback-close"), Message::Close),
+    // Same X + "Close" tooltip in every session type. A live PvP
+    // match routes through the disconnect confirm (whose copy
+    // carries the unplug framing); once the link is already gone
+    // (`latency()` = None ⇒ remote dropped) there's nothing left
+    // to protect, so it closes directly.
+    let tear_down_msg = match session {
+        ActiveSession::PvP(pvp) if pvp.latency().is_some() => Message::OpenDisconnectConfirm,
+        _ => Message::Close,
     };
+    let tear_down = cmd(Icon::X, t!(lang, "playback-close"), tear_down_msg);
     let cluster = row![
         cmd(Icon::Settings, t!(lang, "tab-settings"), Message::OpenSettings),
         tear_down,
@@ -1931,7 +1935,7 @@ fn telemetry_overlay<'a>(
         // blue = the opponent's), so your row always leads with
         // the red dot; the seat assignment rides in the P1/P2
         // label next to it.
-        let collapse = button(Icon::ChevronUp.widget().size(14.0))
+        let collapse = button(Icon::ChevronDown.widget().size(14.0))
             .padding([4.0, 8.0])
             .style(widgets::neutral)
             .on_press(Message::ToggleMatchSettings);
