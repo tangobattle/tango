@@ -436,9 +436,14 @@ impl State {
 
     /// Reset the floating controls' idle timer — called by the App
     /// when a session starts so the bar greets the user visible
-    /// even if the mouse hasn't moved in a while.
+    /// even if the mouse hasn't moved in a while. Also clears the
+    /// hover pin: closing a session removes its widgets without
+    /// any `on_exit` firing (the cursor is usually ON the close
+    /// button), and a latched `controls_hovered` would pin the
+    /// next session's chrome on screen permanently.
     pub fn wake_controls(&mut self) {
         self.last_mouse_move = std::time::Instant::now();
+        self.controls_hovered = false;
     }
 
     fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
@@ -449,6 +454,7 @@ impl State {
                 }
                 self.active = None;
                 self.current_frame = None;
+                self.controls_hovered = false;
                 self.show_disconnect_confirm = false;
                 self.show_match_settings = false;
                 self.scrub_preview = None;
@@ -647,6 +653,7 @@ impl State {
                     if session.is_ended() {
                         self.active = None;
                         self.current_frame = None;
+                        self.controls_hovered = false;
                         self.show_disconnect_confirm = false;
                         self.show_match_settings = false;
                     } else {
