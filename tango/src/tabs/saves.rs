@@ -1,0 +1,1302 @@
+//! The Saves tab: the full loadout selector (family / save / patch
+//! pickers + save management) and the save viewer/editor. Netplay
+//! lives in [`crate::tabs::fight`]; the selection state itself is
+//! App-level ([`crate::loadout::Loadout`]) so the fight tab's lobby
+//! sees every change made here live.
+
+use crate::app::Scanners;
+use crate::i18n::t;
+use crate::loadout::{self, Loadout};
+use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
+use crate::widgets;
+use crate::{config, game, rom, save_view, selection};
+use iced::widget::{button, container, text, Space};
+use iced::{Alignment, Element, Fill, Length};
+use lucide_icons::Icon;
+use sweeten::widget::{column, pick_list, row, text_input};
+use unic_langid::LanguageIdentifier;
+
+// ---------- Messages ----------
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    /// Loadout strip interaction. Routed by the App to the shared
+    /// [`Loadout`] state — never reaches [`State::update`].
+    Loadout(loadout::Message),
+    SaveViewAction(save_view::Action),
+
+    SaveOpenFolder,
+    /// Open an arbitrary folder in the OS file manager. Used by
+    /// the no-saves / no-roms empty-state cards to give the user
+    /// a one-click jump into the right directory.
+    OpenSavesFolder(std::path::PathBuf),
+    SaveDuplicate,
+    SaveRenameStart,
+    SaveRenameDraftChanged(String),
+    SaveRenameConfirm,
+    SaveDeleteStart,
+    SaveDeleteConfirm,
+    SaveActionCancel,
+    SaveNewStart,
+    SaveNewDraftChanged(String),
+    /// (target variant, template name) — a template option fixes both,
+    /// since the family's variants each ship their own templates.
+    SaveNewTemplateSelected(rom::GameRef, String),
+    SaveNewConfirm,
+    /// User clicked × on the inline error banner; clears
+    /// `State::last_error`.
+    DismissError,
+}
+
+// ---------- Saves tab state ----------
+
+pub struct State {
+    /// Persistent state for the embedded save view (active tab,
+    /// folder grouping). Apply incoming `SaveViewAction`s via
+    /// [`save_view::State::apply`].
+    pub save_view: save_view::State,
+    /// Inline state for the save-management actions (rename / delete).
+    pub save_action: SaveAction,
+    /// Last after-the-fact action failure (singleplayer launch
+    /// errored, …) — rendered as a dismissable banner at the top of
+    /// the tab. Pre-condition errors ("you need a save first") are
+    /// NOT funneled here; they're handled by view-time button gating
+    /// + inline hints, because graying out the action surface
+    /// explains itself.
+    pub last_error: Option<String>,
+    /// Fade-through swap for the save-action row: the picker row
+    /// morphs into whichever rename / delete / create form opens
+    /// ([`State::save_action`]) and back.
+    pub save_form: crate::anim::Transition,
+    /// The form that was open before `save_action` reset to
+    /// `None`, frozen so the swap's exit half has something to
+    /// render (the live form — including the rename draft — is
+    /// already gone).
+    pub save_action_exit: SaveAction,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub enum SaveAction {
+    #[default]
+    None,
+    Renaming {
+        draft: String,
+    },
+    ConfirmDelete,
+    /// Creating a new save. `template` is the template name (empty
+    /// string is the default unnamed template); `draft` is the user's
+    /// chosen filename. `game` is the concrete variant the save is
+    /// created for — chosen together with the template, since within a
+    /// family the same template name exists per color (White/Blue), and
+    /// the new file must carry the right variant signature.
+    /// `template`/`game` stay `None` until the user picks (auto-selected
+    /// when only one option exists). The Confirm button is disabled in
+    /// that state — there's no "default" template to fall back on.
+    NewSave {
+        draft: String,
+        game: Option<rom::GameRef>,
+        template: Option<String>,
+        /// The auto-generated default we last wrote into `draft`. While
+        /// the user hasn't typed over it, switching templates regenerates
+        /// the suggestion; once they edit it, this is `None` and we leave
+        /// their value alone.
+        auto_default: Option<String>,
+    },
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            save_view: save_view::State::new(),
+            save_action: SaveAction::None,
+            last_error: None,
+            save_form: crate::anim::Transition::swap(false),
+            save_action_exit: SaveAction::None,
+        }
+    }
+}
+
+/// A single folder edit staged by the folder editor. Applied to the
+/// loaded save in memory by [`Effect::EditChips`]; not persisted to
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum ChipEdit {
+    /// Add chip `chip_id` with `code` to the first empty folder slot.
+    AddChip {
+        chip_id: usize,
+        code: tango_dataview::save::ChipCode,
+    },
+    /// Empty `slot`.
+    RemoveChip { slot: usize },
+    /// Reorder: move the chip at `from` to `to` (an ordered move that shifts
+    /// the chips in between). Both slots must be filled — the editor never
+    /// drags an empty slot or drops into a gap. REG/TAG slot pointers follow
+    /// the moved chips.
+    MoveChip { from: usize, to: usize },
+    /// Empty every folder slot (and clear REG/TAG).
+    ClearFolder,
+    /// Toggle `slot` as the folder's Regular chip (clear if already set).
+    ToggleRegular { slot: usize },
+    /// Set (or clear, with `None`) the folder's Tag chip pair.
+    SetTags(Option<[usize; 2]>),
+}
+
+/// A single navicust edit staged by the navicust editor. Applied to the
+/// loaded save in memory by [`Effect::EditNavicust`]; not persisted to
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum NavicustEdit {
+    /// Place a part into the first empty navicust slot.
+    AddPart(tango_dataview::save::NavicustPart),
+    /// Empty navicust slot `slot`.
+    RemovePart { slot: usize },
+    /// Remove every installed part.
+    ClearAll,
+}
+
+/// A single BN5/BN6 patch-card edit staged by the editor. Applied to the
+/// loaded save in memory by [`Effect::EditPatchCard56s`]; not persisted to
+/// disk until the user hits Save ([`Effect::SaveEditCommit`]).
+#[derive(Debug, Clone)]
+pub enum PatchCard56Edit {
+    /// Register patch card `id` (append to the list, enabled).
+    AddCard { id: usize },
+    /// Unregister the patch card in `slot` (shift the rest up).
+    RemoveCard { slot: usize },
+    /// Reorder: move the card at `from` to `to` (an ordered move that shifts
+    /// the cards in between). The registered list is dense, so both ends are
+    /// always valid.
+    MoveCard { from: usize, to: usize },
+    /// Toggle the patch card in `slot` between enabled and disabled.
+    ToggleCard { slot: usize },
+    /// Unregister every patch card.
+    ClearAll,
+}
+
+/// A single BN4 patch-card edit staged by the editor. Applied to the loaded
+/// save in memory by [`Effect::EditPatchCard4s`]; not persisted to disk
+/// until the user hits Save ([`Effect::SaveEditCommit`]). BN4 is slot-based:
+/// every card belongs to one fixed catalog slot (0A–0F), so adding a card
+/// installs it into its own slot (replacing whatever was there).
+#[derive(Debug, Clone)]
+pub enum PatchCard4Edit {
+    /// Install patch card `id` into its own catalog slot, enabled.
+    AddCard { id: usize },
+    /// Clear catalog slot `slot`.
+    RemoveCard { slot: usize },
+    /// Toggle slot `slot`'s card between enabled and disabled.
+    ToggleCard { slot: usize },
+    /// Clear every slot.
+    ClearAll,
+}
+
+/// A single auto-battle-data edit staged by the editor. Applied to the
+/// loaded save in memory by [`Effect::EditAutoBattleData`]; not persisted
+/// to disk until the user hits Save ([`Effect::SaveEditCommit`]). The deck
+/// is derived from per-chip use counts, so these set those counts; the
+/// applier rebuilds the materialized deck after each so the preview shows
+/// the change live.
+#[derive(Debug, Clone)]
+pub enum AutoBattleDataEdit {
+    /// Set chip `id`'s primary use count.
+    SetUseCount { id: usize, count: usize },
+    /// Set chip `id`'s secondary use count (Standard chips only).
+    SetSecondaryUseCount { id: usize, count: usize },
+    /// Zero every chip's use counts, emptying the deck.
+    ClearAll,
+}
+
+/// Side-effects bubble-up. Mirrors the [`crate::tabs::replays::Effect`]
+/// convention: pure UI-state mutations happen inside
+/// [`State::update`]; anything that requires App-level
+/// collaborators (session host, file system, clipboard) comes back
+/// as an `Effect` for the caller to interpret.
+#[derive(Debug)]
+pub enum Effect {
+    /// `open::that(_)` on a file or folder.
+    OpenPath(std::path::PathBuf),
+    /// Copy plain text to the clipboard.
+    CopyText(String),
+    /// Copy a raster image to the clipboard.
+    CopyImage(image::RgbaImage),
+    /// User pressed Play → start a single-player session from the
+    /// current selection.
+    StartSinglePlayer,
+    /// Duplicate the currently-selected save file.
+    SaveDuplicate,
+    /// Rename the currently-selected save to `new_stem` (no
+    /// extension; rename_save adds `.sav`).
+    SaveRename { new_stem: String },
+    /// Delete the currently-selected save file.
+    SaveDelete,
+    /// Create a fresh save in the saves dir from a bundled
+    /// template.
+    SaveNew {
+        name: String,
+        template: String,
+        /// The concrete variant to create the save for (a family can
+        /// have several owned-ROM variants). The handler looks up this
+        /// game's template and adopts it as the loadout's game.
+        game: rom::GameRef,
+    },
+    /// Task returned from save_view::State::apply. Generic pipe
+    /// so save_view-internal side effects (e.g. the scroll-to-top
+    /// snap on tab change) flow through without per-feature
+    /// Effect variants.
+    SaveViewTask(iced::Task<Message>),
+    /// Folder editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditChips(ChipEdit),
+    /// Navicust editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditNavicust(NavicustEdit),
+    /// BN5/BN6 patch-card editor: stage one edit into the loaded save in
+    /// memory (UI updates live; nothing hits disk yet).
+    EditPatchCard56s(PatchCard56Edit),
+    /// BN4 patch-card editor: stage one edit into the loaded save in memory
+    /// (UI updates live; nothing hits disk yet).
+    EditPatchCard4s(PatchCard4Edit),
+    /// Auto-battle-data editor: stage one edit into the loaded save in
+    /// memory (UI updates live; nothing hits disk yet).
+    EditAutoBattleData(AutoBattleDataEdit),
+    /// Global save editor: write every staged edit (folder + navicust +
+    /// patch cards + auto battle data) to the .sav on disk in one shot.
+    SaveEditCommit,
+    /// Global save editor: discard all staged edits, reloading the on-disk
+    /// original.
+    SaveEditCancel,
+}
+
+impl State {
+    /// Apply a tab message. See [`crate::tabs::replays::Effect`]
+    /// for the side-effect surface convention.
+    pub fn update(
+        &mut self,
+        msg: Message,
+        scanners: &Scanners,
+        config: &config::Config,
+        loaded: Option<&selection::Loaded>,
+        loadout: &Loadout,
+    ) -> Option<Effect> {
+        let action_before = self.save_action.clone();
+        let effect = self.update_inner(msg, scanners, config, loaded, loadout);
+        let now = iced::time::Instant::now();
+        // Freeze the closing form (with its draft) for the
+        // save-action swap's exit half to render.
+        if self.save_action == SaveAction::None && action_before != SaveAction::None {
+            self.save_action_exit = action_before;
+        }
+        self.save_form.set(self.save_action != SaveAction::None, now);
+        effect
+    }
+
+    fn update_inner(
+        &mut self,
+        msg: Message,
+        scanners: &Scanners,
+        config: &config::Config,
+        loaded: Option<&selection::Loaded>,
+        loadout: &Loadout,
+    ) -> Option<Effect> {
+        match msg {
+            // Routed to the shared Loadout at App level before this
+            // dispatch is reached.
+            Message::Loadout(_) => None,
+            Message::SaveViewAction(action) => {
+                use save_view::Action as A;
+                let sv_task = self.save_view.apply(&action);
+                match action {
+                    A::CopyTab(tab) => {
+                        let opts = save_view::RenderOpts {
+                            folder_grouped: self.save_view.folder_grouped,
+                        };
+                        loaded
+                            .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
+                            .map(Effect::CopyText)
+                    }
+                    A::CopyTabImage(tab) => loaded
+                        .and_then(|l| save_view::tab_as_image(tab, l))
+                        .map(Effect::CopyImage),
+                    A::PlayClicked => {
+                        // Clear stale error from a prior attempt; the
+                        // new launch's outcome takes its place.
+                        self.last_error = None;
+                        Some(Effect::StartSinglePlayer)
+                    }
+                    // ----- Folder editor -----
+                    // EnterEdit needs the read view to seed tag state +
+                    // build the per-slot chip pickers, so it touches
+                    // save_view state directly rather than emitting an
+                    // Effect.
+                    A::EnterEdit => {
+                        if let Some(l) = loaded {
+                            self.save_view.enter_edit(l);
+                        }
+                        None
+                    }
+                    // One global Save / Cancel for the whole save.
+                    A::SaveEdit => Some(Effect::SaveEditCommit),
+                    A::CancelEdit => Some(Effect::SaveEditCancel),
+                    A::AddChip { chip_id, code } => {
+                        // New chips are inserted at the top, sliding the
+                        // existing run down into the first empty slot — so
+                        // shift the staged TAG selection to match.
+                        if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
+                            let fi = v.equipped_folder_index();
+                            (0..save_view::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+                        }) {
+                            self.save_view.shift_tags_for_top_insert(gap);
+                        }
+                        Some(Effect::EditChips(ChipEdit::AddChip { chip_id, code }))
+                    }
+                    A::RemoveChip { slot } => {
+                        // Mirror the save-side compaction in the in-progress
+                        // tag selection (drop + shift), so the TAG toggles
+                        // stay aligned with the shifted chips.
+                        self.save_view.compact_tags(slot);
+                        Some(Effect::EditChips(ChipEdit::RemoveChip { slot }))
+                    }
+                    A::ReorderChips(ev) => {
+                        // Only a completed drop reorders; pick-up / cancel are
+                        // visual-only.
+                        use sweeten::widget::drag::DragEvent;
+                        let DragEvent::Dropped { index, target_index } = ev else {
+                            return None;
+                        };
+                        let from = index;
+                        // Live folder occupancy, to validate + resolve the drop.
+                        let Some(filled) = loaded.and_then(|l| l.save.view_chips()).map(|v| {
+                            let fi = v.equipped_folder_index();
+                            (0..save_view::MAX_FOLDER_CHIPS)
+                                .map(|i| v.chip(fi, i).is_some())
+                                .collect::<Vec<bool>>()
+                        }) else {
+                            return None;
+                        };
+                        // Can't drag an empty slot.
+                        if !filled.get(from).copied().unwrap_or(false) {
+                            return None;
+                        }
+                        // Dropping onto an empty slot drops the chip in at the
+                        // end of the packed list (the first empty slot above the
+                        // target = right after the last chip), never leaving a gap.
+                        let to = if filled.get(target_index).copied().unwrap_or(false) {
+                            target_index
+                        } else {
+                            match filled.iter().rposition(|&f| f) {
+                                Some(last) => last,
+                                None => return None,
+                            }
+                        };
+                        if from == to {
+                            return None;
+                        }
+                        // Keep the staged TAG selection aligned with the move.
+                        self.save_view.move_tags(from, to);
+                        Some(Effect::EditChips(ChipEdit::MoveChip { from, to }))
+                    }
+                    A::ClearFolder => {
+                        if let Some(e) = self.save_view.editing.as_mut() {
+                            e.tags.clear();
+                        }
+                        Some(Effect::EditChips(ChipEdit::ClearFolder))
+                    }
+                    A::ToggleRegular { slot } => Some(Effect::EditChips(ChipEdit::ToggleRegular { slot })),
+                    A::ToggleTag { slot } => {
+                        // `toggle_tag` updates the in-progress UI
+                        // selection and hands back the pair to commit
+                        // (Some([a,b]) at two, else None to clear).
+                        let pair = self.save_view.toggle_tag(slot);
+                        Some(Effect::EditChips(ChipEdit::SetTags(pair)))
+                    }
+                    // ----- Navicust editor -----
+                    A::PlaceHeld { col, row } => {
+                        // Build the part from the held state (already
+                        // folded by `apply`), then drop it so the cursor
+                        // is free again.
+                        let edit = self.save_view.editing.as_mut();
+                        let part = edit.and_then(|e| {
+                            let p = e.held_part.map(|h| tango_dataview::save::NavicustPart {
+                                id: h.id,
+                                col,
+                                row,
+                                rot: h.rot,
+                                compressed: h.compressed,
+                            });
+                            e.held_part = None;
+                            p
+                        });
+                        part.map(|p| Effect::EditNavicust(NavicustEdit::AddPart(p)))
+                    }
+                    A::PickUpInstalledPart { slot, col, row } => {
+                        // Read the part being removed so it becomes the
+                        // held part — the user can re-place / rotate it.
+                        let held = loaded.and_then(|l| {
+                            if let Some(tango_dataview::save::NaviView::Navicust(v)) = l.save.view_navi() {
+                                v.navicust_part(slot)
+                            } else {
+                                None
+                            }
+                        });
+                        if let (Some(p), Some(e)) = (held, self.save_view.editing.as_mut()) {
+                            // Grab the part at the clicked cell: store that
+                            // cell's offset from the part's center anchor
+                            // so it stays under the cursor while dragging.
+                            e.held_part = Some(save_view::HeldPart {
+                                id: p.id,
+                                rot: p.rot,
+                                compressed: p.compressed,
+                                grab_row: row as i8 - p.row as i8,
+                                grab_col: col as i8 - p.col as i8,
+                            });
+                            // Keep the picker entry in sync so picking is
+                            // consistent: the part now shows this rotation
+                            // / compression in the palette too.
+                            e.part_orient.insert(p.id, (p.rot, p.compressed));
+                        }
+                        Some(Effect::EditNavicust(NavicustEdit::RemovePart { slot }))
+                    }
+                    A::ClearNavicust => {
+                        if let Some(e) = self.save_view.editing.as_mut() {
+                            e.held_part = None;
+                        }
+                        Some(Effect::EditNavicust(NavicustEdit::ClearAll))
+                    }
+                    // ----- BN5/BN6 patch-card editor -----
+                    A::AddPatchCard56 { id } => Some(Effect::EditPatchCard56s(PatchCard56Edit::AddCard { id })),
+                    A::RemovePatchCard56 { slot } => {
+                        Some(Effect::EditPatchCard56s(PatchCard56Edit::RemoveCard { slot }))
+                    }
+                    A::TogglePatchCard56 { slot } => {
+                        Some(Effect::EditPatchCard56s(PatchCard56Edit::ToggleCard { slot }))
+                    }
+                    A::ClearPatchCard56s => Some(Effect::EditPatchCard56s(PatchCard56Edit::ClearAll)),
+                    A::ReorderPatchCard56s(ev) => {
+                        // Registered list is dense, so any drop is a valid
+                        // ordered move; pick-up / cancel are visual-only.
+                        use sweeten::widget::drag::DragEvent;
+                        match ev {
+                            DragEvent::Dropped { index, target_index } if index != target_index => {
+                                Some(Effect::EditPatchCard56s(PatchCard56Edit::MoveCard {
+                                    from: index,
+                                    to: target_index,
+                                }))
+                            }
+                            _ => None,
+                        }
+                    }
+                    // ----- BN4 patch-card editor -----
+                    A::AddPatchCard4 { id } => Some(Effect::EditPatchCard4s(PatchCard4Edit::AddCard { id })),
+                    A::RemovePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::RemoveCard { slot })),
+                    A::TogglePatchCard4 { slot } => Some(Effect::EditPatchCard4s(PatchCard4Edit::ToggleCard { slot })),
+                    A::ClearPatchCard4s => Some(Effect::EditPatchCard4s(PatchCard4Edit::ClearAll)),
+                    // ----- Auto Battle Data editor -----
+                    A::SetChipUseCount { id, count } => {
+                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetUseCount {
+                            id,
+                            count,
+                        }))
+                    }
+                    A::SetSecondaryChipUseCount { id, count } => {
+                        Some(Effect::EditAutoBattleData(AutoBattleDataEdit::SetSecondaryUseCount {
+                            id,
+                            count,
+                        }))
+                    }
+                    A::ClearAutoBattleData => Some(Effect::EditAutoBattleData(AutoBattleDataEdit::ClearAll)),
+                    _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
+                }
+            }
+            Message::DismissError => {
+                self.last_error = None;
+                None
+            }
+            Message::SaveOpenFolder => loadout
+                .save
+                .as_ref()
+                .and_then(|p| p.parent())
+                .map(|p| Effect::OpenPath(p.to_path_buf())),
+            Message::OpenSavesFolder(path) => Some(Effect::OpenPath(path)),
+            Message::SaveDuplicate => Some(Effect::SaveDuplicate),
+            Message::SaveRenameStart => {
+                let draft = loadout
+                    .save
+                    .as_ref()
+                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+                    .unwrap_or_default();
+                self.save_action = SaveAction::Renaming { draft };
+                None
+            }
+            Message::SaveRenameDraftChanged(s) => {
+                if let SaveAction::Renaming { draft } = &mut self.save_action {
+                    *draft = s;
+                }
+                None
+            }
+            Message::SaveRenameConfirm => {
+                let new_stem = if let SaveAction::Renaming { draft } = &self.save_action {
+                    draft.trim().to_string()
+                } else {
+                    String::new()
+                };
+                self.save_action = SaveAction::None;
+                if new_stem.is_empty() {
+                    None
+                } else {
+                    Some(Effect::SaveRename { new_stem })
+                }
+            }
+            Message::SaveDeleteStart => {
+                self.save_action = SaveAction::ConfirmDelete;
+                None
+            }
+            Message::SaveDeleteConfirm => {
+                self.save_action = SaveAction::None;
+                Some(Effect::SaveDelete)
+            }
+            Message::SaveActionCancel => {
+                self.save_action = SaveAction::None;
+                None
+            }
+            Message::SaveNewStart => {
+                let saves_dir = config.saves_path();
+                // Candidate (variant, template) options span every
+                // owned-ROM variant in the family — so you can bootstrap
+                // the first save of an empty family, and a dual-ROM owner
+                // can pick which color to create. Auto-select only when
+                // there's exactly one option; otherwise force an explicit
+                // pick (Confirm stays disabled until they do).
+                let options = creation_template_options(&config.language, loadout, scanners);
+                let (game, template) = if options.len() == 1 {
+                    let (game, raw) = options[0].value.clone();
+                    (Some(game), Some(raw))
+                } else {
+                    (None, None)
+                };
+                let draft = match game {
+                    Some(g) => {
+                        disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, g, template.as_deref()))
+                    }
+                    // No single default yet — seed the field from the
+                    // first creation variant (game name only) so it isn't
+                    // empty while the user picks a template.
+                    None => creation_games(loadout, scanners)
+                        .first()
+                        .map(|g| disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, *g, None)))
+                        .unwrap_or_else(|| "new save".to_string()),
+                };
+                self.save_action = SaveAction::NewSave {
+                    auto_default: Some(draft.clone()),
+                    draft,
+                    game,
+                    template,
+                };
+                None
+            }
+            Message::SaveNewDraftChanged(s) => {
+                if let SaveAction::NewSave {
+                    draft, auto_default, ..
+                } = &mut self.save_action
+                {
+                    if auto_default.as_deref() != Some(s.as_str()) {
+                        *auto_default = None;
+                    }
+                    *draft = s;
+                }
+                None
+            }
+            Message::SaveNewTemplateSelected(sel_game, name) => {
+                if let SaveAction::NewSave {
+                    draft,
+                    game,
+                    template,
+                    auto_default,
+                } = &mut self.save_action
+                {
+                    *game = Some(sel_game);
+                    *template = Some(name);
+                    if auto_default.as_deref() == Some(draft.as_str()) {
+                        let new_draft = disambiguate_save_name(
+                            &config.saves_path(),
+                            &suggest_save_name(&config.language, sel_game, template.as_deref()),
+                        );
+                        *draft = new_draft.clone();
+                        *auto_default = Some(new_draft);
+                    }
+                }
+                None
+            }
+            Message::SaveNewConfirm => {
+                let SaveAction::NewSave {
+                    draft,
+                    game: Some(game),
+                    template: Some(template),
+                    ..
+                } = &self.save_action
+                else {
+                    return None;
+                };
+                let game = *game;
+                let name = draft.trim().to_string();
+                let template = template.clone();
+                self.save_action = SaveAction::None;
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(Effect::SaveNew { name, template, game })
+                }
+            }
+        }
+    }
+}
+
+impl State {
+    pub fn view<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+        loaded: Option<&'a selection::Loaded>,
+        streamer_mode: bool,
+        config: &'a config::Config,
+        netplay_phase: &'a crate::netplay::Phase,
+        rescanning: bool,
+    ) -> Element<'a, Message> {
+        let save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
+
+        // Selector strip + save-view body live inside a single
+        // PANE_GAP-padded column so every pane in that area shares
+        // the same inset from the window edges and gap from one
+        // another.
+        let inner = column![
+            self.selector_strip(lang, scanners, loadout, config, rescanning),
+            save_body,
+        ]
+        .spacing(style::PANE_GAP)
+        .padding(style::PANE_GAP)
+        .height(Fill);
+
+        let mut col = column![].width(Fill).height(Fill);
+        if let Some(err) = &self.last_error {
+            col = col.push(widgets::error_banner(lang, err, Message::DismissError));
+        }
+        col = col.push(inner);
+        col.into()
+    }
+
+    /// Picks between the save view, an empty-state hint, or a "pick a
+    /// save" hint based on what the user has installed and selected.
+    fn body<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+        loaded: Option<&'a selection::Loaded>,
+        streamer_mode: bool,
+        config: &'a config::Config,
+        netplay_phase: &'a crate::netplay::Phase,
+    ) -> Element<'a, Message> {
+        // No ROMs at all: explain where to put them.
+        if scanners.roms.read().is_empty() {
+            let roms_path = config.roms_path();
+            return empty_state_card(
+                t!(lang, "empty-no-roms-title"),
+                vec![t!(lang, "empty-no-roms-body"), roms_path.display().to_string()],
+                Some((t!(lang, "save-open-folder"), roms_path)),
+            );
+        }
+        // Family selected but no save files anywhere in it.
+        if let Some(family) = loadout.family {
+            let saves = scanners.saves.read();
+            let has_saves =
+                game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
+            if !has_saves && loadout.save.is_none() {
+                let saves_path = config.saves_path();
+                return empty_state_card(
+                    t!(lang, "empty-no-saves-title"),
+                    vec![t!(lang, "empty-no-saves-body"), saves_path.display().to_string()],
+                    Some((t!(lang, "save-open-folder"), saves_path)),
+                );
+            }
+        }
+        self.save_view(lang, loaded, streamer_mode, netplay_phase)
+    }
+
+    fn selector_strip<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+        config: &'a config::Config,
+        rescanning: bool,
+    ) -> Element<'a, Message> {
+        let game_row: Element<'a, Message> =
+            loadout::game_row(loadout, lang, scanners, config, rescanning).map(Message::Loadout);
+        let save_picker: Element<'a, Message> =
+            Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill))
+                .map(Message::Loadout);
+        let save_row = self.save_action_row(lang, scanners, loadout, save_picker);
+
+        container(column![game_row, save_row].spacing(6))
+            .padding(style::PANE_PADDING)
+            .width(Fill)
+            .style(widgets::pane)
+            .into()
+    }
+
+    /// The strip's second row: the save picker + action buttons at
+    /// rest, or whichever rename / delete / create-from-template form
+    /// is in flight ([`SaveAction`]).
+    fn save_action_row<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+        save_picker: Element<'a, Message>,
+    ) -> Element<'a, Message> {
+        // The picker row fade-through morphs into whichever form
+        // opens and back — the swap hides the row's reflow at its
+        // fully-dissolved midpoint. While the form is on its way
+        // out it has already been reset to `None`, so the exit
+        // half renders the frozen copy.
+        let now = iced::time::Instant::now();
+        let (render_form, form_swap) = crate::anim::swap_phase(&self.save_form, now);
+        let action = if render_form && self.save_action == SaveAction::None {
+            &self.save_action_exit
+        } else {
+            &self.save_action
+        };
+        let mut row_el: Element<'a, Message> =
+            self.save_action_row_inner(lang, scanners, loadout, save_picker, render_form, action);
+        if let Some(phase) = form_swap {
+            row_el = crate::anim::swap_transform(row_el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
+        }
+        row_el
+    }
+
+    fn save_action_row_inner<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+        save_picker: Element<'a, Message>,
+        render_form: bool,
+        action: &'a SaveAction,
+    ) -> Element<'a, Message> {
+        if !render_form {
+            let actions = self.save_action_buttons(lang, scanners, loadout);
+            return row![save_picker, actions].spacing(8).align_y(Alignment::Center).into();
+        }
+        match action {
+            SaveAction::None => {
+                // Form side with nothing recorded (shouldn't happen
+                // — the exit snapshot is always set before the swap
+                // starts) — degrade to the picker row.
+                let actions = self.save_action_buttons(lang, scanners, loadout);
+                row![save_picker, actions].spacing(8).align_y(Alignment::Center).into()
+            }
+            // Cancel before Confirm — same order as the edit-mode
+            // Save / Cancel pair and the modal dialogs, so the
+            // primary action always sits at the row's end.
+            SaveAction::Renaming { draft } => row![
+                text_input(&t!(lang, "save-name-placeholder"), draft)
+                    .on_input(Message::SaveRenameDraftChanged)
+                    .on_submit(Message::SaveRenameConfirm)
+                    .style(widgets::chunky_text_input)
+                    .padding(STANDARD_PADDING)
+                    .width(Length::Fill),
+                widgets::icon_button(
+                    Icon::X,
+                    t!(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_PADDING,
+                ),
+                widgets::icon_button_styled(
+                    Icon::Check,
+                    t!(lang, "save-rename-confirm"),
+                    Some(Message::SaveRenameConfirm),
+                    STANDARD_PADDING,
+                    widgets::primary_button,
+                ),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
+            SaveAction::ConfirmDelete => row![
+                text(t!(lang, "save-delete-prompt"))
+                    .style(widgets::muted_text_style)
+                    .width(Length::Fill),
+                widgets::labeled_icon_button(
+                    Icon::Trash,
+                    t!(lang, "save-delete-confirm"),
+                    Message::SaveDeleteConfirm,
+                    STANDARD_PADDING,
+                    widgets::danger_button,
+                ),
+                widgets::icon_button(
+                    Icon::X,
+                    t!(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_PADDING,
+                ),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
+            SaveAction::NewSave {
+                draft, game, template, ..
+            } => {
+                // One option per (owned-ROM variant × template). Each
+                // carries the raw name plus a locale-aware label; when the
+                // family has more than one owned variant the label is
+                // prefixed with the game name ("White – Heat Guts") so the
+                // user picks color + template in one go.
+                let options = creation_template_options(lang, loadout, scanners);
+                let selected = match (game, template) {
+                    (Some(g), Some(t)) => options.iter().find(|o| o.value.0 == *g && &o.value.1 == t).cloned(),
+                    _ => None,
+                };
+                let can_confirm = game.is_some() && template.is_some() && !draft.trim().is_empty();
+                let confirm_btn = if can_confirm {
+                    widgets::labeled_icon_button(
+                        Icon::Check,
+                        t!(lang, "save-new-confirm"),
+                        Message::SaveNewConfirm,
+                        STANDARD_PADDING,
+                        widgets::primary_button,
+                    )
+                } else {
+                    button(
+                        row![Icon::Check.widget(), text(t!(lang, "save-new-confirm"))]
+                            .spacing(8)
+                            .align_y(Alignment::Center),
+                    )
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::neutral)
+                    .into()
+                };
+                row![
+                    pick_list(options, selected, |o: widgets::Choice<(rom::GameRef, String)>| {
+                        Message::SaveNewTemplateSelected(o.value.0, o.value.1)
+                    })
+                    .placeholder(t!(lang, "save-template-pick"))
+                    .padding(STANDARD_PADDING)
+                    .width(Length::Fixed(180.0))
+                    .style(widgets::chunky_pick_list),
+                    text_input(&t!(lang, "save-name-placeholder"), draft)
+                        .on_input(Message::SaveNewDraftChanged)
+                        .on_submit(Message::SaveNewConfirm)
+                        .padding(STANDARD_PADDING)
+                        .width(Length::Fill)
+                        .style(widgets::chunky_text_input),
+                    confirm_btn,
+                    widgets::icon_button(
+                        Icon::X,
+                        t!(lang, "save-action-cancel"),
+                        Message::SaveActionCancel,
+                        STANDARD_PADDING,
+                    ),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
+            }
+        }
+    }
+
+    fn save_action_buttons<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        loadout: &'a Loadout,
+    ) -> Element<'a, Message> {
+        let enabled = loadout.save.is_some();
+        let mk = |icon: Icon, label: String, msg: Message, on: bool| {
+            widgets::icon_button_maybe(icon, label, if on { Some(msg) } else { None }, STANDARD_PADDING)
+        };
+        // Destructive variant for Delete — flags it red so it
+        // doesn't look like just another toolbar action.
+        let mk_danger = |icon: Icon, label: String, msg: Message, on: bool| {
+            widgets::icon_button_styled(
+                icon,
+                label,
+                if on { Some(msg) } else { None },
+                STANDARD_PADDING,
+                widgets::danger_button,
+            )
+        };
+        // "New save" is enabled whenever the selected family has an
+        // owned-ROM variant that ships (bundled or patch) save templates
+        // — independent of whether a save is currently selected, so the
+        // first save of an empty family can still be created.
+        let can_new = creation_games(loadout, scanners).iter().any(|g| {
+            templates_for_game(*g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
+        });
+        row![
+            mk(Icon::FilePlus, t!(lang, "save-new"), Message::SaveNewStart, can_new),
+            mk(
+                Icon::FolderOpen,
+                t!(lang, "save-open-folder"),
+                Message::SaveOpenFolder,
+                enabled
+            ),
+            mk(Icon::Files, t!(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(
+                Icon::PencilLine,
+                t!(lang, "save-rename"),
+                Message::SaveRenameStart,
+                enabled
+            ),
+            mk_danger(Icon::Trash, t!(lang, "save-delete"), Message::SaveDeleteStart, enabled),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into()
+    }
+
+    fn save_view<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        loaded: Option<&'a selection::Loaded>,
+        streamer_mode: bool,
+        netplay_phase: &'a crate::netplay::Phase,
+    ) -> Element<'a, Message> {
+        let Some(loaded) = loaded else {
+            return container(text(t!(lang, "play-no-selection")).size(TEXT_BODY))
+                .center(Fill)
+                .into();
+        };
+        // Play button is the singleplayer entry point — disabled
+        // whenever a netplay attempt is anywhere in flight so it
+        // can't fight with the lobby for the same save/emulator slot.
+        let play_button = Some(matches!(netplay_phase, crate::netplay::Phase::Idle));
+        save_view::view(
+            lang,
+            loaded,
+            &self.save_view,
+            streamer_mode,
+            play_button,
+            true,
+            // The save editor is always available (no longer experimental).
+            true,
+        )
+        .map(Message::SaveViewAction)
+    }
+}
+
+// ---------- New-save template helpers ----------
+
+/// Localized "<game-variant> <template-display>" (or just "<game-variant>"
+/// when no template is chosen yet), with filesystem-unsafe characters
+/// stripped so it can be dropped straight into the new-save text field.
+/// Uses the full variant-aware display name so multi-version games like
+/// BN6 Gregar/Falzar get disambiguated.
+fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, template: Option<&str>) -> String {
+    let game_name = crate::game::display_name(lang, game);
+    let family = game.family_and_variant().0;
+    let name = match template {
+        Some(raw) => {
+            let label = template_label(lang, family, raw);
+            format!("{game_name} - {label}")
+        }
+        None => game_name,
+    };
+    sanitize_filename(&name)
+}
+
+fn sanitize_filename(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => ' ',
+            c if (c as u32) < 0x20 => ' ',
+            c => c,
+        })
+        .collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Appends ` 2`, ` 3`, ... to `base` until the resulting `<name>.sav`
+/// doesn't already exist in `saves_dir`. Gives up at 99 to avoid an
+/// unbounded scan if the directory is somehow saturated.
+fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
+    let mut draft = base.to_string();
+    for n in 2..100 {
+        if !saves_dir.join(format!("{draft}.sav")).exists() {
+            break;
+        }
+        draft = format!("{base} {n}");
+    }
+    draft
+}
+
+/// Owned-ROM games in the selected family, ascending variant order —
+/// the candidate targets for creating a new save. Empty when no family
+/// is selected or no ROM is owned. Independent of the resolved game, so
+/// the new-save flow works even before any save exists in the family.
+/// When a patch is selected, variants it doesn't support are dropped
+/// (so their templates don't show) — creating a save under an active
+/// patch is a patch-specific flow.
+fn creation_games(loadout: &Loadout, scanners: &Scanners) -> Vec<rom::GameRef> {
+    let Some(family) = loadout.family else {
+        return Vec::new();
+    };
+    let roms = scanners.roms.read();
+    let patch_supported = loadout::patch_supported_games(loadout, scanners);
+    game::games_in_family(family)
+        .filter(|g| roms.contains_key(g))
+        .filter(|g| patch_supported.as_ref().map(|s| s.contains(g)).unwrap_or(true))
+        .collect()
+}
+
+/// Save templates for one specific game (patch-provided override the
+/// bundled ones), keyed by template name (empty string = default).
+/// None when that game ships no templates.
+fn templates_for_game(
+    game: rom::GameRef,
+    patch_name: Option<&str>,
+    patch_version: Option<&semver::Version>,
+    scanners: &Scanners,
+) -> Option<indexmap::IndexMap<String, Box<dyn tango_dataview::save::Save + Send + Sync>>> {
+    // IndexMap (not BTreeMap) so templates iterate in declaration order
+    // — patch-provided first, then the game's bundled order — instead
+    // of alphabetically by raw key.
+    let mut out = indexmap::IndexMap::new();
+    if let (Some(patch_name), Some(version)) = (patch_name, patch_version) {
+        let patches = scanners.patches.read();
+        if let Some(patch) = patches.get(patch_name) {
+            if let Some(v) = patch.versions.get(version) {
+                if let Some(m) = v.save_templates.get(&game) {
+                    for (name, save) in m.iter() {
+                        out.insert(name.clone(), save.clone_box());
+                    }
+                }
+            }
+        }
+    }
+    // Fall back to bundled per-game templates registered via the Game
+    // trait. Patch templates take precedence: if a patch ships a
+    // "heat-guts" template, it overrides the built-in of the same name.
+    if let Some(game_impl) = game::from_gamedb_entry(game) {
+        for (name, save) in game_impl.save_templates.iter() {
+            out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Picker entries for the new-save dialog: every (owned-ROM variant ×
+/// template) across the selected family. Each label is prefixed with the
+/// short variant tag (e.g. "Blue – Heat Guts") in all cases.
+fn creation_template_options(
+    lang: &unic_langid::LanguageIdentifier,
+    loadout: &Loadout,
+    scanners: &Scanners,
+) -> Vec<widgets::Choice<(rom::GameRef, String)>> {
+    let games = creation_games(loadout, scanners);
+    let mut out = Vec::new();
+    for g in games {
+        if let Some(tmpls) = templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners) {
+            for name in tmpls.keys() {
+                out.push(save_template_choice(lang, g, name));
+            }
+        }
+    }
+    out
+}
+
+/// Resolve the actual template `Save` for a (game, template-name) pick —
+/// used by the App's SaveNew handler to materialize the file. Falls back
+/// to the default/first template if the exact name vanished.
+pub fn creation_template(
+    game: rom::GameRef,
+    template_name: &str,
+    loadout: &Loadout,
+    scanners: &Scanners,
+) -> Option<Box<dyn tango_dataview::save::Save + Send + Sync>> {
+    let tmpls = templates_for_game(game, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners)?;
+    tmpls
+        .get(template_name)
+        .or_else(|| tmpls.get(""))
+        .or_else(|| tmpls.values().next())
+        .map(|s| s.clone_box())
+}
+
+/// Bare localized template label (e.g. "Heat Guts"), without any
+/// variant prefix. Empty `raw` is the unnamed default-template file that
+/// patches ship as `<rom>_<rev>.sav`; the `.save-megaman` attr usually
+/// carries the right label for it.
+fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> String {
+    let key_suffix = if raw.is_empty() { "megaman" } else { raw };
+    // Dynamic key (one per family × template name) — bypass the
+    // literal-only macro and hit the Fluent loader directly.
+    use fluent_templates::Loader;
+    crate::i18n::LOCALES
+        .try_lookup(lang, &format!("game-{family}.save-{key_suffix}"))
+        .unwrap_or_else(|| {
+            if raw.is_empty() {
+                t!(lang, "save-template-default")
+            } else {
+                raw.to_string()
+            }
+        })
+}
+
+/// One entry in the "new save" template pick_list: a concrete variant
+/// plus a raw template name, with a display label resolved via
+/// `game-<family>.save-<name>` (prefixed with the game name when the
+/// family has more than one owned variant). The value is `(variant,
+/// raw template name)` — the two together pick a unique creation
+/// target.
+fn save_template_choice(
+    lang: &unic_langid::LanguageIdentifier,
+    game: rom::GameRef,
+    raw: &str,
+) -> widgets::Choice<(rom::GameRef, String)> {
+    let label = template_label(lang, game.family_and_variant().0, raw);
+    // Always prefix with the short variant tag (e.g. "Blue – Heat
+    // Guts"), even for single-owned-variant or single-variant
+    // families, so the picker reads consistently.
+    let display = format!("{} \u{2013} {}", crate::game::variant_short_name(lang, game), label);
+    widgets::Choice::new((game, raw.to_string()), display)
+}
+
+/// Centered card used for the no-roms / no-saves hints. Title is
+/// rendered larger, body lines stack underneath in muted text.
+/// When `folder` is provided, appends an "Open Folder" button —
+/// usually the same path as the body's last line, so the user
+/// can click straight through instead of copy-pasting it into
+/// their file manager.
+fn empty_state_card(
+    title: String,
+    body_lines: Vec<String>,
+    open_folder: Option<(String, std::path::PathBuf)>,
+) -> Element<'static, Message> {
+    let mut col = column![
+        // Lucide "info" glyph sized up so the card has a clear
+        // visual anchor — without it the empty state was just a
+        // floating title + paragraph, which read as a flash of
+        // text rather than a deliberate placeholder.
+        Icon::Info.widget().size(28.0),
+        text(title).size(TEXT_TITLE),
+    ]
+    .spacing(10)
+    .align_x(Alignment::Center);
+    for line in body_lines {
+        col = col.push(text(line).size(TEXT_CAPTION).style(widgets::muted_text_style));
+    }
+    if let Some((label, path)) = open_folder {
+        col = col.push(Space::new().height(4)).push(widgets::labeled_icon_button(
+            Icon::Folder,
+            label,
+            Message::OpenSavesFolder(path),
+            STANDARD_PADDING,
+            widgets::neutral,
+        ));
+    }
+    container(container(col.padding(28).max_width(520)).style(widgets::panel))
+        .padding(24)
+        .center(Fill)
+        .into()
+}
+
+// ---------- File-level save helpers ----------
+
+/// Copy `src` to a sibling file with " (copy)" inserted before the
+/// extension (with " (copy 2)", " (copy 3)", ... on collisions).
+pub fn duplicate_save(src: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+    let stem = src
+        .file_stem()
+        .ok_or_else(|| anyhow::anyhow!("save has no file stem"))?
+        .to_string_lossy()
+        .into_owned();
+    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
+
+    for n in 1..1000 {
+        let suffix = if n == 1 {
+            " (copy)".to_string()
+        } else {
+            format!(" (copy {n})")
+        };
+        let new_name = if let Some(ext) = &ext {
+            format!("{stem}{suffix}.{ext}")
+        } else {
+            format!("{stem}{suffix}")
+        };
+        let candidate = parent.join(new_name);
+        if !candidate.exists() {
+            std::fs::copy(src, &candidate)?;
+            return Ok(candidate);
+        }
+    }
+    anyhow::bail!("could not find unused name after 999 tries")
+}
+
+/// Rename `src` to use `new_stem` (extension preserved). Refuses
+/// path-traversal or empty names.
+pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std::path::PathBuf> {
+    if new_stem.is_empty() {
+        anyhow::bail!("empty save name");
+    }
+    if new_stem.contains('/') || new_stem.contains('\\') || new_stem.contains("..") {
+        anyhow::bail!("invalid save name");
+    }
+    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
+    let new_name = if let Some(ext) = ext {
+        format!("{new_stem}.{ext}")
+    } else {
+        new_stem.to_string()
+    };
+    let dst = parent.join(new_name);
+    if dst == src {
+        return Ok(dst);
+    }
+    if dst.exists() {
+        anyhow::bail!("destination already exists");
+    }
+    std::fs::rename(src, &dst)?;
+    Ok(dst)
+}
+
+/// Write a template's SRAM to `saves_dir/<name>.sav`. The filename is
+/// taken verbatim from `name` (trimmed); on collisions returns Err.
+///
+/// `rebuild_checksum()` is required before `to_sram_dump()` — without
+/// it the SRAM checksum is stale (computed at template-construction
+/// time, before this game-specific clone) and both the GBA game and
+/// Tango's `parse_save` reject the resulting file. The legacy app
+/// does the same in `gui/save_select_view.rs::create_new_save`.
+pub fn create_new_save(
+    saves_dir: &std::path::Path,
+    name: &str,
+    template: &dyn tango_dataview::save::Save,
+) -> anyhow::Result<std::path::PathBuf> {
+    let name = name.trim();
+    if name.is_empty() {
+        anyhow::bail!("empty save name");
+    }
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        anyhow::bail!("invalid save name");
+    }
+    let filename = if name.ends_with(".sav") {
+        name.to_string()
+    } else {
+        format!("{name}.sav")
+    };
+    let dst = saves_dir.join(filename);
+    if dst.exists() {
+        anyhow::bail!("destination already exists");
+    }
+    std::fs::create_dir_all(saves_dir)?;
+    let mut save = template.clone_box();
+    save.rebuild_checksum();
+    let sram = save.to_sram_dump();
+    std::fs::write(&dst, sram)?;
+    Ok(dst)
+}

@@ -21,10 +21,15 @@ discord-presence-in-lobby = In lobby
 discord-presence-in-progress = Match in progress
 
 # Top-bar tabs
-tab-play = Play
+tab-fight = Fight
+tab-saves = Saves
 tab-replays = Replays
 tab-patches = Patches
 tab-settings = Settings
+
+# Fight tab idle screen (future lobby browser home)
+fight-idle-title = Play online
+fight-idle-body = Enter a link code below and share it with your opponent — the match starts when you both hit Fight.
 
 # Play selectors
 play-no-game = No game selected

@@ -149,18 +149,42 @@ pub struct Config {
     /// `last_game` so a family selected with no owned ROM still restores.
     #[serde(default)]
     pub last_family: Option<String>,
-    pub last_patch: Option<String>,
-    pub last_patch_version: Option<semver::Version>,
-    /// Per-game-per-patch memory of the most recent save selection.
-    /// Key: `"family/variant/patch_name/patch_version"` (empty
-    /// `patch_name`/`patch_version` segments mean "raw ROM, no patch").
-    /// Value: forward-slash-separated path **relative to `data_path`**
-    /// (e.g. `"saves/bn6/MyMan.sav"`). Storing relative + slash-joined
-    /// keeps the config portable across machines and OSes. Consulted
-    /// whenever the active game or patch changes so the previously-used
-    /// save for that combination is restored.
+    /// Legacy (pre-loadout-model) global "last patch" selection. Read
+    /// once by [`Config::migrate`] to seed [`Config::last_patch_per_save`],
+    /// never written back.
+    #[serde(default, skip_serializing)]
+    last_patch: Option<String>,
+    /// See [`Config::last_patch`].
+    #[serde(default, skip_serializing)]
+    last_patch_version: Option<semver::Version>,
+    /// Legacy per-(game, patch) save memory, keyed
+    /// `"family/variant/patch_name/patch_version"`. Read once by
+    /// [`Config::migrate`] to seed `last_save_per_game` +
+    /// `last_patch_per_save`, never written back.
+    #[serde(default, skip_serializing)]
+    last_save_per_game_per_patch: std::collections::BTreeMap<String, String>,
+    /// Per-game memory of the most recent save selection. Key:
+    /// `"family/variant"` ([`game_key`]). Value: forward-slash-separated
+    /// path **relative to `data_path`** (e.g. `"saves/bn6/MyMan.sav"`).
+    /// Storing relative + slash-joined keeps the config portable across
+    /// machines and OSes. Consulted when the active game/family changes
+    /// so the previously-used save is restored. (The patch is no longer
+    /// part of the key — a save is the identity, and the patch hangs
+    /// off it via [`Config::last_patch_per_save`].)
     #[serde(default)]
-    pub last_save_per_game_per_patch: std::collections::BTreeMap<String, String>,
+    pub last_save_per_game: std::collections::BTreeMap<String, String>,
+    /// Per-save memory of the patch each save was last used with — the
+    /// patch is an *overlay* on a loadout (game + save), dynamically
+    /// selectable and remembered per save. Key: the save's data-relative
+    /// path (same convention as `last_save_per_game` values). Value:
+    /// `Some((patch_name, version))`, or `None` for "this save was last
+    /// used unpatched" — distinct from a missing entry (save never
+    /// selected), which lets the current patch carry over to brand-new
+    /// saves. Saves created from a patch's template are seeded with that
+    /// patch, encoding the intrinsic save↔patch association where one
+    /// exists.
+    #[serde(default)]
+    pub last_patch_per_save: std::collections::BTreeMap<String, Option<(String, semver::Version)>>,
     /// Names of patches the user has favorited — they sort to the top
     /// of pickers and get a star glyph next to their label.
     #[serde(default)]
@@ -235,6 +259,8 @@ impl Default for Config {
             last_patch: None,
             last_patch_version: None,
             last_save_per_game_per_patch: std::collections::BTreeMap::new(),
+            last_save_per_game: std::collections::BTreeMap::new(),
+            last_patch_per_save: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
@@ -345,6 +371,61 @@ impl Config {
             self.frame_delay = clamped;
             let _ = self.save();
         }
+
+        // Selection-memory model flip: the old config remembered saves
+        // per (game, patch) and the active patch globally; the new
+        // model remembers one save per game and the patch per save.
+        // Seed the new maps from the legacy ones once (the legacy
+        // fields are skip_serializing, so they vanish from disk on the
+        // next save).
+        if self.last_save_per_game.is_empty() && self.last_patch_per_save.is_empty() {
+            let mut migrated = false;
+            for (key, rel) in &self.last_save_per_game_per_patch {
+                // Key shape: "family/variant/patch_name/patch_version",
+                // empty patch segments meaning "no patch". Patch names
+                // can't contain '/' (they're scanner directory names),
+                // so the version is everything after the last slash.
+                let mut segs = key.splitn(3, '/');
+                let (Some(family), Some(variant)) = (segs.next(), segs.next()) else {
+                    continue;
+                };
+                migrated = true;
+                self.last_save_per_game
+                    .insert(format!("{family}/{variant}"), rel.clone());
+                if let Some((name, version)) = segs.next().and_then(|rest| rest.rsplit_once('/')) {
+                    if !name.is_empty() {
+                        if let Ok(v) = semver::Version::parse(version) {
+                            // A save filed under a patch key carries a real
+                            // association — let it overwrite a no-patch entry.
+                            self.last_patch_per_save
+                                .insert(rel.clone(), Some((name.to_string(), v)));
+                            continue;
+                        }
+                    }
+                    self.last_patch_per_save.entry(rel.clone()).or_insert(None);
+                }
+            }
+            // The globally-active legacy patch wins for the save it was
+            // restored alongside, mirroring what the old startup path
+            // would have resolved.
+            if let (Some((family, variant)), Some(name), Some(version)) =
+                (&self.last_game, &self.last_patch, &self.last_patch_version)
+            {
+                let legacy_key = format!("{family}/{variant}/{name}/{version}");
+                if let Some(rel) = self.last_save_per_game_per_patch.get(&legacy_key) {
+                    self.last_patch_per_save
+                        .insert(rel.clone(), Some((name.clone(), version.clone())));
+                }
+            }
+            if migrated {
+                log::info!(
+                    "migrated selection memory: {} save(s), {} patch association(s)",
+                    self.last_save_per_game.len(),
+                    self.last_patch_per_save.len(),
+                );
+                let _ = self.save();
+            }
+        }
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -362,20 +443,10 @@ impl Config {
     }
 }
 
-/// Build the lookup key used by `Config::last_save_per_game_per_patch`.
-/// Empty patch name + version mean "no patch" so a save chosen for the
-/// raw ROM doesn't collide with a save chosen under a patch.
-pub fn save_memory_key(
-    game: crate::rom::GameRef,
-    patch_name: Option<&str>,
-    patch_version: Option<&semver::Version>,
-) -> String {
+/// Build the lookup key used by `Config::last_save_per_game`.
+pub fn game_key(game: crate::rom::GameRef) -> String {
     let (family, variant) = game.family_and_variant();
-    format!(
-        "{family}/{variant}/{}/{}",
-        patch_name.unwrap_or(""),
-        patch_version.map(|v| v.to_string()).unwrap_or_default(),
-    )
+    format!("{family}/{variant}")
 }
 
 fn config_path() -> Option<std::path::PathBuf> {

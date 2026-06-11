@@ -10,6 +10,7 @@ mod gamepad;
 mod i18n;
 mod input;
 mod input_capture;
+mod loadout;
 mod navicust;
 mod navicust_editor;
 mod net;

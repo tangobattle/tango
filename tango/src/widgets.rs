@@ -353,14 +353,27 @@ pub fn labeled_icon_button_maybe<'a, M: Clone + 'a>(
 /// Body-text size, modest padding — meant to sit inside a pane
 /// without competing with the global top nav.
 pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, false)
+    tab_button_inner(icon, Some(label), msg, active, false, false)
 }
 
-/// Larger pill for the global top nav (Play / Replays).
+/// Larger pill for the global top nav (Fight / Saves / Replays).
 /// TEXT_HEADING-sized icon + label so the chrome reads as the
 /// primary navigation for the whole app.
 pub fn nav_tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, true)
+    tab_button_inner(icon, Some(label), msg, active, true, false)
+}
+
+/// [`nav_tab_button`] with an optional attention dot: a small
+/// primary-glow pip after the label, for "something is live on this
+/// tab while you're looking at another" (e.g. an open lobby).
+pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: String,
+    msg: M,
+    active: bool,
+    badge: bool,
+) -> Element<'a, M> {
+    tab_button_inner(icon, Some(label), msg, active, true, badge)
 }
 
 /// Icon-only variant of [`nav_tab_button`] for the right-aligned
@@ -371,7 +384,7 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
 ) -> Element<'a, M> {
-    let stacked = tab_button_inner(icon, None, msg, active, true);
+    let stacked = tab_button_inner(icon, None, msg, active, true, false);
     tooltip(
         stacked,
         container(text(tooltip_label).size(TEXT_CAPTION))
@@ -389,6 +402,7 @@ fn tab_button_inner<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
     large: bool,
+    badge: bool,
 ) -> Element<'a, M> {
     let icon_size = if large { TEXT_HEADING } else { TEXT_BODY };
     let mut content = row![icon.widget().size(icon_size)]
@@ -404,6 +418,28 @@ fn tab_button_inner<'a, M: Clone + 'a>(
             lbl = lbl.size(TEXT_HEADING);
         }
         content = content.push(lbl);
+    }
+    if badge {
+        // 7 px glowing pip — quiet, but visibly "live". Skipped on
+        // the active tab (the user is already looking at it).
+        content = content.push(
+            container(iced::widget::Space::new().width(7).height(7)).style(|theme: &Theme| {
+                let primary = theme.palette().primary;
+                container::Style {
+                    background: Some(iced::Background::Color(primary)),
+                    border: iced::Border {
+                        radius: 3.5.into(),
+                        ..Default::default()
+                    },
+                    shadow: iced::Shadow {
+                        color: iced::Color { a: 0.7, ..primary },
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 6.0,
+                    },
+                    ..Default::default()
+                }
+            }),
+        );
     }
     let padding = if large { [8.0, 18.0] } else { [6.0, 14.0] };
     button(content)
@@ -1370,4 +1406,50 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
     }
 
     Canvas::new(VsDiagonal).width(Length::Fill).height(Length::Fill).into()
+}
+
+/// Full-width inline banner for after-the-fact action failures
+/// (singleplayer launch, PvP session build). Softer styling than a
+/// hard-bordered chrome: a danger-tinted wash, rounded corners, an
+/// AlertTriangle glyph, danger-colored body text, and a quiet × the
+/// user can click to dismiss (`on_dismiss`). Callers also auto-clear
+/// on the next Fight or Play retry, so the user isn't forced into
+/// the × path.
+pub fn error_banner<'a, M: Clone + 'a>(
+    lang: &'a unic_langid::LanguageIdentifier,
+    err: &'a str,
+    on_dismiss: M,
+) -> Element<'a, M> {
+    container(
+        row![
+            Icon::AlertTriangle.widget(),
+            text(err.to_string()).size(TEXT_BODY).style(danger_text_style),
+            iced::widget::space::horizontal(),
+            icon_button(Icon::X, crate::t!(lang, "save-action-cancel"), on_dismiss, [4.0, 8.0],),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+    )
+    .width(Length::Fill)
+    .padding([8, 16])
+    .style(|theme: &Theme| {
+        let p = theme.extended_palette();
+        // Soft danger-tinted wash — readable against both light and
+        // dark themes without the hard border that made the old
+        // banner feel like an OS-level dialog.
+        let alpha = if p.is_dark { 0.18 } else { 0.10 };
+        container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: alpha,
+                ..p.danger.base.color
+            })),
+            text_color: Some(theme.palette().text),
+            border: iced::Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }

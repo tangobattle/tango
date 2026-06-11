@@ -16,8 +16,8 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    anim, audio, config, discord, game, i18n, input, net, netplay, patch, pvp_session, replays, rom, save, selection,
-    session, tabs, updater, widgets, INIT_LINK_CODE,
+    anim, audio, config, discord, game, i18n, input, loadout, net, netplay, patch, pvp_session, replays, rom, save,
+    selection, session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
 use iced::widget::container;
@@ -25,8 +25,8 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::{Alignment, Element, Fill, Theme};
 use sweeten::widget::{column, mouse_area, row};
 use tabs::patches::PatchesState;
-use tabs::play::{create_new_save, duplicate_save, rename_save, PlayState};
 use tabs::replays::ReplaysState;
+use tabs::saves::{create_new_save, duplicate_save, rename_save};
 use unic_langid::LanguageIdentifier;
 
 /// Push an RGBA image to the OS clipboard. iced's clipboard API
@@ -109,7 +109,12 @@ pub struct App {
     /// when game or save changes; per-frame view() borrows it.
     loaded: Option<selection::Loaded>,
 
-    play: PlayState,
+    /// The local loadout (family / game / save + patch overlay) —
+    /// App-level so the Fight and Saves tabs render from one source
+    /// of truth and the lobby settings-resend sees every change.
+    loadout: loadout::Loadout,
+    fight: tabs::fight::State,
+    saves: tabs::saves::State,
     replays: ReplaysState,
     patches: PatchesState,
     settings: tabs::settings::State,
@@ -160,21 +165,19 @@ pub struct App {
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
-    /// Two-phase swap between the Play tab's bottom bands —
-    /// mirrors [`App::lobby_band_on_screen`], synced after every
+    /// Two-phase swap between the Fight tab's bodies (idle screen ↔
+    /// lobby) — mirrors [`App::lobby_on_screen`], synced after every
     /// update. Runs two transition lengths with a linear ramp:
     /// the view spends the first half sinking + dissolving the
-    /// outgoing band (link-code strip or lobby) into the page
-    /// surface and the second half rising + condensing the
-    /// incoming one out of it, so the swap reads as the code
-    /// strip turning into the lobby and back.
-    bottom_swap: anim::Transition,
+    /// outgoing body into the page surface and the second half
+    /// rising + condensing the incoming one out of it, so the swap
+    /// reads as the idle screen turning into the lobby and back.
+    lobby_swap: anim::Transition,
     /// The lobby's last live (phase, lobby) pair, frozen on the
-    /// frame the band leaves the screen. The exiting half of the
-    /// bottom-band swap renders from this so the verdict (e.g.
-    /// the failure banner being dismissed) holds steady through
-    /// the dissolve instead of flashing to the idle handshake
-    /// line.
+    /// frame the lobby leaves the screen. The exiting half of the
+    /// body swap renders from this so the verdict (e.g. the failure
+    /// banner being dismissed) holds steady through the dissolve
+    /// instead of flashing to the idle handshake line.
     lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState)>,
 }
 
@@ -221,13 +224,13 @@ impl App {
             scanners.replays.read().len(),
         );
 
-        // Restore the last play selection from config, but only the bits
+        // Restore the last selection from config, but only the bits
         // that still resolve against the current scanners.
-        let mut play = PlayState::default();
+        let mut restored = loadout::Loadout::default();
         // Restore the selected family (drives the picker even when no
         // owned-ROM game resolves under it); falls back to the family of
         // `last_game` for configs written before `last_family` existed.
-        play.local_family = config
+        restored.family = config
             .last_family
             .as_deref()
             .and_then(game::family_static)
@@ -235,33 +238,9 @@ impl App {
         if let Some((family, variant)) = config.last_game.as_ref() {
             if let Some(game) = tango_gamedb::find_by_family_and_variant(family, *variant) {
                 if scanners.roms.read().contains_key(&game) {
-                    play.local_game = Some(game);
-                    play.local_family = Some(game.family_and_variant().0);
-                    if let Some(n) = config.last_patch.as_ref() {
-                        if let Some(p) = scanners.patches.read().get(n) {
-                            let v = config.last_patch_version.as_ref().and_then(|v| {
-                                if p.versions.contains_key(v)
-                                    && p.versions
-                                        .get(v)
-                                        .map(|vm| vm.supported_games.contains(&game))
-                                        .unwrap_or(false)
-                                {
-                                    Some(v.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                            if v.is_some() {
-                                play.local_patch = Some(n.clone());
-                                play.local_patch_version = v;
-                            }
-                        }
-                    }
-                    // Save restore happens after patch+version so the per-
-                    // (game, patch, version) memory key resolves correctly.
-                    let key =
-                        config::save_memory_key(game, play.local_patch.as_deref(), play.local_patch_version.as_ref());
-                    if let Some(rel) = config.last_save_per_game_per_patch.get(&key) {
+                    restored.game = Some(game);
+                    restored.family = Some(game.family_and_variant().0);
+                    if let Some(rel) = config.last_save_per_game.get(&config::game_key(game)) {
                         let abs = config.data_relative_to_absolute(rel);
                         if scanners
                             .saves
@@ -270,12 +249,32 @@ impl App {
                             .map(|v| v.iter().any(|s| s.path == abs))
                             .unwrap_or(false)
                         {
-                            play.local_save = Some(abs);
+                            restored.save = Some(abs);
+                            // The patch overlay hangs off the save — restore
+                            // whatever this save was last used with, if the
+                            // patch still exists and supports the variant.
+                            if let Some(Some((n, v))) = config.last_patch_per_save.get(rel) {
+                                let patches = scanners.patches.read();
+                                let ok = patches
+                                    .get(n)
+                                    .and_then(|p| p.versions.get(v))
+                                    .map(|vm| vm.supported_games.contains(&game))
+                                    .unwrap_or(false);
+                                if ok {
+                                    restored.patch = Some(n.clone());
+                                    restored.patch_version = Some(v.clone());
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+        // The patch row's swap transition has to start in the
+        // restored expanded state (a remembered patch keeps the
+        // pickers up) — constructed at rest so launch doesn't play
+        // a fold animation.
+        restored.patch_row = anim::Transition::swap(restored.patch.is_some());
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
         // Spin up the SDL audio backend once at startup with the
@@ -319,14 +318,22 @@ impl App {
             updater.set_enabled(true);
         }
 
+        // Start where the user can act: the Fight tab when a save is
+        // already selected, the Saves tab when they still need to set
+        // one up.
+        let mut starting_tab = if restored.save.is_some() {
+            Tab::Fight
+        } else {
+            Tab::Saves
+        };
+        let mut fight = tabs::fight::State::default();
         // CLI `Join <code>` (or Discord deep-link routed through
         // the same channel) lands here — prefill the link code
-        // and start on the Play tab so the user can hit Fight.
+        // and start on the Fight tab so the user can hit Fight.
         let init_link_code = INIT_LINK_CODE.get().and_then(|c| c.clone());
-        let mut starting_tab = Tab::default();
         if let Some(code) = &init_link_code {
-            play.link_code = code.clone();
-            starting_tab = Tab::Play;
+            fight.link_code = code.clone();
+            starting_tab = Tab::Fight;
         }
 
         let mut app = Self {
@@ -338,7 +345,9 @@ impl App {
             audio_binder,
             _audio_backend: audio_backend,
             loaded: None,
-            play,
+            loadout: restored,
+            fight,
+            saves: tabs::saves::State::default(),
             replays: ReplaysState::default(),
             patches: PatchesState::default(),
             session: session::State::new(),
@@ -352,14 +361,9 @@ impl App {
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root,
-            bottom_swap: anim::Transition::swap(false),
+            lobby_swap: anim::Transition::swap(false),
             lobby_exit_snapshot: None,
         };
-        // The patch row's swap transition has to start in the
-        // restored expanded state (a remembered patch keeps the
-        // pickers up) — constructed at rest so launch doesn't play
-        // a fold animation.
-        app.play.patch_row = anim::Transition::swap(app.play.local_patch.is_some());
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
         (app, stats_task)
@@ -415,26 +419,24 @@ impl App {
     }
 
     /// Record the current selection back to config; called after any
-    /// selection change so the next launch restores it. Save paths are
-    /// stored relative to `data_path` under a per-(game, patch,
-    /// version) key, so switching back to any prior combination
-    /// restores its save.
+    /// selection change so the next launch restores it. The save is
+    /// remembered per game, and the patch overlay per save — so every
+    /// save carries the patch it was last used with, including the
+    /// patch a template-created save was born under.
     fn persist_selection(&mut self) {
-        self.config.last_family = self.play.local_family.map(|f| f.to_string());
+        self.config.last_family = self.loadout.family.map(|f| f.to_string());
         self.config.last_game = self
-            .play
-            .local_game
+            .loadout
+            .game
             .map(|g| (g.family_and_variant().0.to_string(), g.family_and_variant().1));
-        self.config.last_patch = self.play.local_patch.clone();
-        self.config.last_patch_version = self.play.local_patch_version.clone();
-        if let (Some(g), Some(p)) = (self.play.local_game, self.play.local_save.as_ref()) {
+        if let (Some(g), Some(p)) = (self.loadout.game, self.loadout.save.as_ref()) {
             if let Some(rel) = self.config.data_relative_string(p) {
-                let key = config::save_memory_key(
-                    g,
-                    self.play.local_patch.as_deref(),
-                    self.play.local_patch_version.as_ref(),
-                );
-                self.config.last_save_per_game_per_patch.insert(key, rel);
+                self.config.last_save_per_game.insert(config::game_key(g), rel.clone());
+                let overlay = match (&self.loadout.patch, &self.loadout.patch_version) {
+                    (Some(n), Some(v)) => Some((n.clone(), v.clone())),
+                    _ => None,
+                };
+                self.config.last_patch_per_save.insert(rel, overlay);
             }
         }
         self.persist_config();
@@ -458,7 +460,7 @@ impl App {
     /// (cancel_and_renew wiped the lobby), on selection change,
     /// and defensively inside `resend_settings_if_lobby`.
     fn apply_default_match_type(&mut self) {
-        let Some(game) = self.play.local_game else { return };
+        let Some(game) = self.loadout.game else { return };
         let mt_table = game::from_gamedb_entry(game).map(|g| g.match_types).unwrap_or(&[]);
         let game_key = {
             let (fam, var) = game.family_and_variant();
@@ -553,19 +555,18 @@ impl App {
 
     /// Build a `protocol::Settings` packet from the App's current
     /// state: nickname from config, match_type defaults to (0, 0),
-    /// game_info from the Play tab's local selection, and the
-    /// available_games / available_patches lists from the scanners
-    /// so the peer can see what we have locally. Mirrors
-    /// `tango/src/gui/play_pane.rs::make_local_settings`.
+    /// game_info from the local loadout, and the available_games /
+    /// available_patches lists from the scanners so the peer can see
+    /// what we have locally.
     fn make_local_settings(&self) -> net::protocol::Settings {
-        self.play
+        self.loadout
             .make_local_settings(&self.config, &self.netplay.lobby, &self.scanners)
     }
 
     fn loaded_key(&self) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
-        let game = self.play.local_game?;
-        let save_path = self.play.local_save.clone()?;
-        let patch = match (&self.play.local_patch, &self.play.local_patch_version) {
+        let game = self.loadout.game?;
+        let save_path = self.loadout.save.clone()?;
+        let patch = match (&self.loadout.patch, &self.loadout.patch_version) {
             (Some(n), Some(v)) => Some((n.clone(), v.clone())),
             _ => None,
         };
@@ -605,7 +606,7 @@ impl App {
             drop(saves);
             drop(roms);
             drop(patches);
-            self.play.local_save = None;
+            self.loadout.save = None;
             return;
         };
         let save = scanned.save.clone_box();
@@ -642,14 +643,15 @@ impl App {
         // Dropping the whole EditState clears every editor's scratch at
         // once. The commit path takes the early-return above and never
         // reaches here, so this only fires on a real selection change.
-        self.play.save_view.clear_editing();
+        self.saves.save_view.clear_editing();
     }
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     #[default]
-    Play,
+    Fight,
+    Saves,
     Replays,
     Patches,
     Settings,
@@ -670,7 +672,8 @@ pub enum Message {
     /// animation can sample a fresh `Instant`.
     AnimTick,
     TabSelected(Tab),
-    Play(tabs::play::Message),
+    Fight(tabs::fight::Message),
+    Saves(tabs::saves::Message),
     Patches(tabs::patches::Message),
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
@@ -744,12 +747,12 @@ impl App {
         }
     }
 
-    /// Whether the Play tab's bottom band is the lobby view (a
-    /// netplay attempt is in flight, failed-but-not-dismissed, or
-    /// handing off) rather than the link-code strip. Drives
-    /// [`App::bottom_swap`]. `Failed` counts: the band stays up
-    /// as a sticky failure banner until the user cancels it.
-    fn lobby_band_on_screen(&self) -> bool {
+    /// Whether the Fight tab's body is the lobby (a netplay attempt
+    /// is in flight, failed-but-not-dismissed, or handing off)
+    /// rather than the idle screen. Drives [`App::lobby_swap`] and
+    /// the nav badge on the Fight tab. `Failed` counts: the lobby
+    /// stays up as a sticky failure banner until the user cancels it.
+    fn lobby_on_screen(&self) -> bool {
         matches!(
             self.netplay.phase,
             netplay::Phase::Connecting { .. }
@@ -761,13 +764,12 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
-        let selection_before = (self.play.local_game, self.play.local_save.clone());
-        // Candidate snapshot for the lobby band's exit animation —
-        // taken before dispatch (the handler about to run may
-        // reset the phase/lobby), kept only if the band actually
-        // left.
+        let selection_before = (self.loadout.game, self.loadout.save.clone());
+        // Candidate snapshot for the lobby's exit animation — taken
+        // before dispatch (the handler about to run may reset the
+        // phase/lobby), kept only if the lobby actually left.
         let lobby_live = self
-            .lobby_band_on_screen()
+            .lobby_on_screen()
             .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone()));
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
@@ -780,32 +782,36 @@ impl App {
                     // order, so the discriminants double as nav
                     // positions: moving right brings the new pane in
                     // from the right, moving left from the left.
-                    let dx = if (t2 as u8) > (t1 as u8) { PANE_SLIDE } else { -PANE_SLIDE };
+                    let dx = if (t2 as u8) > (t1 as u8) {
+                        PANE_SLIDE
+                    } else {
+                        -PANE_SLIDE
+                    };
                     EnterScope::Body { dx }
                 }
                 _ => EnterScope::Root,
             };
         }
-        // Bottom-band swap follows the netplay phase: the view
-        // morphs the link-code strip into the lobby band (and
-        // back) off this transition. When the band leaves, freeze
-        // its last live state for the exit half to render from.
-        let lobby_after = self.lobby_band_on_screen();
+        // The Fight tab's body swap follows the netplay phase: the
+        // view morphs the idle screen into the lobby (and back) off
+        // this transition. When the lobby leaves, freeze its last
+        // live state for the exit half to render from.
+        let lobby_after = self.lobby_on_screen();
         if let (Some(snap), false) = (lobby_live, lobby_after) {
             self.lobby_exit_snapshot = Some(snap);
         }
-        self.bottom_swap.set(lobby_after, now);
-        // Effect handlers in this module mutate `play.local_patch`
+        self.lobby_swap.set(lobby_after, now);
+        // Effect handlers in this module mutate `loadout.patch`
         // directly (e.g. save creation dropping an unsupported
         // patch) — re-sync the patch row's transition here too so
         // those paths animate like in-module ones.
-        self.play.sync_patch_row(now);
+        self.loadout.sync_patch_row(now);
         // A different game or save swaps the whole save-view body —
         // rise it in vertically (sub-tab switches slide it
         // horizontally instead; see save_view::State::apply).
-        if selection_before != (self.play.local_game, self.play.local_save.clone()) {
-            self.play.save_view.enter_from = iced::Vector::new(0.0, 20.0);
-            self.play.save_view.enter.start(now);
+        if selection_before != (self.loadout.game, self.loadout.save.clone()) {
+            self.saves.save_view.enter_from = iced::Vector::new(0.0, 20.0);
+            self.saves.save_view.enter.start(now);
         }
         task
     }
@@ -818,17 +824,21 @@ impl App {
                 self.tab = t;
                 iced::Task::none()
             }
-            // FightPressed branches to the netplay path when the user
-            // typed a link code. We special-case it here because
-            // update_play returns Task<play::Message>, not
-            Message::Play(m) => {
-                // Play tab handlers funnel through update_play +
-                // an Effect dispatch (including the netplay ones).
-                // Always follow with a Settings resend — the
-                // netplay handler dedupes against the last-sent
-                // value via `Settings: Eq`, so unchanged
-                // dispatches are free.
-                let task = self.update_play(m);
+            // Loadout strip interactions from either tab route to the
+            // shared App-level Loadout — the tabs never see them.
+            // Every dispatch below is followed by a Settings resend —
+            // the netplay handler dedupes against the last-sent value
+            // via `Settings: Eq`, so unchanged dispatches are free.
+            Message::Fight(tabs::fight::Message::Loadout(m)) | Message::Saves(tabs::saves::Message::Loadout(m)) => {
+                let task = self.update_loadout(m);
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
+            }
+            Message::Fight(m) => {
+                let task = self.update_fight(m);
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
+            }
+            Message::Saves(m) => {
+                let task = self.update_saves(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
             Message::Patches(m) => self.update_patches(m),
@@ -926,8 +936,8 @@ impl App {
                 let audio_binder = self.audio_binder.clone();
                 let frame_notify = self.session.frame_notify.clone();
                 let vbuf = self.session.vbuf.clone();
-                let local_game = self.play.local_game;
-                let local_patch = self.play.local_patch.clone().zip(self.play.local_patch_version.clone());
+                let local_game = self.loadout.game;
+                let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
                 iced::Task::perform(
                     async move {
                         let Some(local_game) = local_game else {
@@ -986,7 +996,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
-                        self.play.last_error = Some(format!("{e}"));
+                        self.fight.last_error = Some(format!("{e}"));
                     }
                 }
                 // Drop the post-handoff lobby snapshot now that the
@@ -1011,15 +1021,13 @@ impl App {
                     RescanFollowup::RefreshAndPickFirstSave => {
                         // Land on the next available save anywhere in the
                         // family (a sibling color variant is fine), not just
-                        // the deleted save's own game, and fix `local_game`
-                        // to whatever that save resolves to.
-                        if self.play.local_save.is_none() {
-                            if let Some(family) = self.play.local_family {
-                                if let Some((game, path)) =
-                                    tabs::play::first_available_family_save(&self.scanners, family)
+                        // the deleted save's own game, and fix the loadout's
+                        // game to whatever that save resolves to.
+                        if self.loadout.save.is_none() {
+                            if let Some(family) = self.loadout.family {
+                                if let Some((game, path)) = loadout::first_available_family_save(&self.scanners, family)
                                 {
-                                    self.play.local_game = Some(game);
-                                    self.play.local_save = Some(path);
+                                    self.loadout.select_save(game, path, &self.config, &self.scanners);
                                 }
                             }
                         }
@@ -1051,12 +1059,12 @@ impl App {
         // actually moving: any registered animation mid-flight
         // (screen entrances, overlay transitions, pane enters —
         // they all `kick` the shared registry when they start) or
-        // the Play tab's pulsing connection-status line. The menu
+        // the Fight tab's pulsing connection-status line. The menu
         // UI otherwise redraws on events only, so dropping this
         // when idle is what keeps animations from costing 60 fps
         // forever.
         let waiting_pulse_on_screen = !self.session.is_active()
-            && self.tab == Tab::Play
+            && self.tab == Tab::Fight
             && match &self.netplay.phase {
                 netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } => true,
                 // The lobby's "waiting for opponent data" handshake
@@ -1085,12 +1093,12 @@ impl App {
 
         // Discord "Join Game" handoff: the peer accepted our
         // invite, Discord handed us their link code as the join
-        // secret. Drop it into the play tab + jump to it.
+        // secret. Drop it into the fight tab + jump to it.
         if self.discord.has_current_join_secret() {
             if let Some(secret) = self.discord.take_current_join_secret() {
                 log::info!("discord: accepted join with link code");
-                self.play.link_code = secret;
-                self.tab = Tab::Play;
+                self.fight.link_code = secret;
+                self.tab = Tab::Fight;
             }
         }
 
@@ -1108,12 +1116,12 @@ impl App {
     ///   * Otherwise → make_base_activity(current game info)
     fn derive_discord_activity(&self) -> discord::activity::Activity {
         let lang = &self.config.language;
-        let game_info = self.play.local_game.map(|g| {
+        let game_info = self.loadout.game.map(|g| {
             let patch = self
-                .play
-                .local_patch
+                .loadout
+                .patch
                 .as_ref()
-                .zip(self.play.local_patch_version.as_ref())
+                .zip(self.loadout.patch_version.as_ref())
                 .map(|(n, v)| (n.as_str(), v));
             discord::make_game_info(g, patch, lang)
         });
@@ -1136,16 +1144,16 @@ impl App {
         }
     }
 
-    fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
-        let Some(effect) = self
-            .play
-            .update(msg, &self.scanners, &self.config, self.loaded.as_ref())
-        else {
+    /// Apply a loadout-strip message (from either tab) to the shared
+    /// App-level [`loadout::Loadout`] and run the selection-change
+    /// follow-ups. The caller batches a lobby settings-resend after
+    /// this, so a mid-lobby save/patch switch reaches the peer.
+    fn update_loadout(&mut self, msg: loadout::Message) -> iced::Task<Message> {
+        let Some(effect) = self.loadout.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
-        use tabs::play::Effect as E;
         match effect {
-            E::SelectionChanged => {
+            loadout::Effect::SelectionChanged => {
                 self.refresh_loaded();
                 self.persist_selection();
                 // Game might have just changed — if so, the lobby
@@ -1155,18 +1163,17 @@ impl App {
                 self.apply_default_match_type();
                 iced::Task::none()
             }
-            E::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
-            E::OpenPath(p) => {
-                if let Err(e) = open::that(&p) {
-                    log::error!("open {}: {e}", p.display());
-                }
-                iced::Task::none()
-            }
+            loadout::Effect::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
+        }
+    }
+
+    fn update_fight(&mut self, msg: tabs::fight::Message) -> iced::Task<Message> {
+        let Some(effect) = self.fight.update(msg, &self.config) else {
+            return iced::Task::none();
+        };
+        use tabs::fight::Effect as E;
+        match effect {
             E::CopyText(s) => iced::clipboard::write(s),
-            E::CopyImage(img) => {
-                copy_image_to_clipboard(img);
-                iced::Task::none()
-            }
             E::SetFrameDelay(d) => {
                 // Lobby slider. Persisted to config; it's this side's local
                 // frame delay (snapshotted into the match at start, not
@@ -1176,30 +1183,7 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
-            E::StartSinglePlayer => {
-                let Some(loaded) = self.loaded.as_ref() else {
-                    return iced::Task::none();
-                };
-                match session::spawn_singleplayer(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    self.session.frame_notify.clone(),
-                    self.session.vbuf.clone(),
-                    loaded,
-                ) {
-                    Ok(s) => {
-                        self.session.active = Some(ActiveSession::SinglePlayer(s));
-                        self.session.wake_controls();
-                    }
-                    Err(e) => {
-                        log::warn!("singleplayer start failed: {e}");
-                        self.play.last_error = Some(format!("{e}"));
-                    }
-                }
-                iced::Task::none()
-            }
-            E::NetplayConnect(ident) => {
+            E::Connect(ident) => {
                 let msg = match ident {
                     netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
                         link_code,
@@ -1229,14 +1213,14 @@ impl App {
                 // so the policy treats the pick as already
                 // having defaulted for this game.
                 if let netplay::Message::SetMatchType(_) = &m {
-                    if let Some(g) = self.play.local_game {
+                    if let Some(g) = self.loadout.game {
                         let (fam, var) = g.family_and_variant();
                         self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
                     }
                 }
                 self.netplay.update(m).map(Message::Netplay)
             }
-            E::NetplayReadyWithSave => {
+            E::ReadyWithSave => {
                 // View-time gating disables the Ready button when
                 // no save is loaded, so this is just defense in
                 // depth — fall through silently if reached.
@@ -1248,12 +1232,58 @@ impl App {
                     .update(netplay::Message::Commit { save_sram })
                     .map(Message::Netplay)
             }
+        }
+    }
+
+    fn update_saves(&mut self, msg: tabs::saves::Message) -> iced::Task<Message> {
+        let Some(effect) = self
+            .saves
+            .update(msg, &self.scanners, &self.config, self.loaded.as_ref(), &self.loadout)
+        else {
+            return iced::Task::none();
+        };
+        use tabs::saves::Effect as E;
+        match effect {
+            E::OpenPath(p) => {
+                if let Err(e) = open::that(&p) {
+                    log::error!("open {}: {e}", p.display());
+                }
+                iced::Task::none()
+            }
+            E::CopyText(s) => iced::clipboard::write(s),
+            E::CopyImage(img) => {
+                copy_image_to_clipboard(img);
+                iced::Task::none()
+            }
+            E::StartSinglePlayer => {
+                let Some(loaded) = self.loaded.as_ref() else {
+                    return iced::Task::none();
+                };
+                match session::spawn_singleplayer(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    self.session.frame_notify.clone(),
+                    self.session.vbuf.clone(),
+                    loaded,
+                ) {
+                    Ok(s) => {
+                        self.session.active = Some(ActiveSession::SinglePlayer(s));
+                        self.session.wake_controls();
+                    }
+                    Err(e) => {
+                        log::warn!("singleplayer start failed: {e}");
+                        self.saves.last_error = Some(format!("{e}"));
+                    }
+                }
+                iced::Task::none()
+            }
             E::SaveDuplicate => {
-                if let Some(src) = self.play.local_save.clone() {
+                if let Some(src) = self.loadout.save.clone() {
                     match duplicate_save(&src) {
                         Ok(dst) => {
                             log::info!("duplicated save: {}", dst.display());
-                            self.play.local_save = Some(dst);
+                            self.loadout.save = Some(dst);
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
@@ -1263,11 +1293,11 @@ impl App {
                 iced::Task::none()
             }
             E::SaveRename { new_stem } => {
-                if let Some(src) = self.play.local_save.clone() {
+                if let Some(src) = self.loadout.save.clone() {
                     match rename_save(&src, &new_stem) {
                         Ok(dst) => {
                             log::info!("renamed save: {} → {}", src.display(), dst.display());
-                            self.play.local_save = Some(dst);
+                            self.loadout.save = Some(dst);
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
@@ -1277,7 +1307,7 @@ impl App {
                 iced::Task::none()
             }
             E::SaveDelete => {
-                if let Some(src) = self.play.local_save.clone() {
+                if let Some(src) = self.loadout.save.clone() {
                     if let Err(e) = std::fs::remove_file(&src) {
                         log::error!("delete save: {e}");
                     } else {
@@ -1287,7 +1317,7 @@ impl App {
                     // "no save" while the rescan is in flight;
                     // PickFirstSave restores the first remaining
                     // entry once the scan finishes.
-                    self.play.local_save = None;
+                    self.loadout.save = None;
                     self.persist_selection();
                     return self.rescan_off_thread(RescanFollowup::RefreshAndPickFirstSave);
                 }
@@ -1296,9 +1326,9 @@ impl App {
             E::SaveNew { name, template, game } => {
                 // The new save is created for `game` (the variant the
                 // user picked), which may differ from the currently
-                // selected one — so adopt it as `local_game` too, keeping
-                // game/save consistent for `refresh_loaded`.
-                if let Some(template) = tabs::play::creation_template(game, &template, &self.play, &self.scanners) {
+                // selected one — so adopt it as the loadout's game too,
+                // keeping game/save consistent for `refresh_loaded`.
+                if let Some(template) = tabs::saves::creation_template(game, &template, &self.loadout, &self.scanners) {
                     match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
                         Ok(dst) => {
                             log::info!(
@@ -1310,13 +1340,16 @@ impl App {
                             // variants, so the patch normally still applies;
                             // drop it only if it somehow doesn't support the
                             // created variant.
-                            if !tabs::play::patch_supports(&self.play, &self.scanners, game) {
-                                self.play.local_patch = None;
-                                self.play.local_patch_version = None;
+                            if !loadout::patch_supports(&self.loadout, &self.scanners, game) {
+                                self.loadout.patch = None;
+                                self.loadout.patch_version = None;
                             }
-                            self.play.local_game = Some(game);
-                            self.play.local_family = Some(game.family_and_variant().0);
-                            self.play.local_save = Some(dst);
+                            self.loadout.game = Some(game);
+                            self.loadout.family = Some(game.family_and_variant().0);
+                            self.loadout.save = Some(dst);
+                            // Records the save→patch association too — a
+                            // template-created save is born remembering the
+                            // patch it was created under.
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
@@ -1429,7 +1462,7 @@ impl App {
                 self.refresh_loaded();
                 iced::Task::none()
             }
-            E::SaveViewTask(t) => t.map(Message::Play),
+            E::SaveViewTask(t) => t.map(Message::Saves),
         }
     }
 
@@ -2079,22 +2112,35 @@ impl App {
 
         let rescanning = self.is_rescanning();
         let body: Element<'_, Message> = match self.tab {
-            Tab::Play => self
-                .play
+            Tab::Fight => self
+                .fight
+                .view(
+                    lang,
+                    &self.loadout,
+                    &self.scanners,
+                    &self.config,
+                    self.loaded.is_some(),
+                    &self.netplay.phase,
+                    &self.netplay.lobby,
+                    self.netplay.handoff_pending(),
+                    self.config.streamer_mode,
+                    &self.lobby_swap,
+                    self.lobby_exit_snapshot.as_ref(),
+                )
+                .map(Message::Fight),
+            Tab::Saves => self
+                .saves
                 .view(
                     lang,
                     &self.scanners,
+                    &self.loadout,
                     self.loaded.as_ref(),
                     self.config.streamer_mode,
                     &self.config,
                     &self.netplay.phase,
-                    &self.netplay.lobby,
-                    self.netplay.handoff_pending(),
                     rescanning,
-                    &self.bottom_swap,
-                    self.lobby_exit_snapshot.as_ref(),
                 )
-                .map(Message::Play),
+                .map(Message::Saves),
             Tab::Replays => self
                 .replays
                 .view(lang, &self.scanners, &self.config, &self.netplay.phase, rescanning)
@@ -2121,11 +2167,19 @@ impl App {
         if let (Some(p), EnterScope::Body { dx }) = (enter, self.screen_enter_scope) {
             body_surface = anim::slide_in(body_surface, p, iced::Vector::new(dx, 0.0));
         }
-        let root: Element<'_, Message> = column![top_bar(lang, self.tab), widgets::hud_scanline_top(), body_surface,]
-            .spacing(0)
-            .width(Fill)
-            .height(Fill)
-            .into();
+        // While a lobby is live and the user is on another tab, the
+        // Fight tab's nav pill carries a small attention dot so the
+        // open lobby isn't forgotten behind a tab switch.
+        let lobby_badge = self.lobby_on_screen() && self.tab != Tab::Fight;
+        let root: Element<'_, Message> = column![
+            top_bar(lang, self.tab, lobby_badge),
+            widgets::hud_scanline_top(),
+            body_surface,
+        ]
+        .spacing(0)
+        .width(Fill)
+        .height(Fill)
+        .into();
         match (enter, self.screen_enter_scope) {
             (Some(p), EnterScope::Root) => entered(root, Some(p)),
             _ => root,
@@ -2157,7 +2211,7 @@ fn entered(el: Element<'_, Message>, progress: Option<f32>) -> Element<'_, Messa
     }
 }
 
-fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
+fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool) -> Element<'_, Message> {
     use iced::widget::image::{Handle, Image};
     use lucide_icons::Icon;
     use std::sync::LazyLock;
@@ -2184,7 +2238,14 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab) -> Element<'_, Message> {
                     .content_fit(iced::ContentFit::Contain),
             )
             .padding([2, 8]),
-            tab(Icon::Gamepad, t!(lang, "tab-play"), Tab::Play),
+            widgets::nav_tab_button_badged(
+                Icon::Swords,
+                t!(lang, "tab-fight"),
+                Message::TabSelected(Tab::Fight),
+                Tab::Fight == active,
+                lobby_badge,
+            ),
+            tab(Icon::Save, t!(lang, "tab-saves"), Tab::Saves),
             tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
             horizontal_space(),
             // Patches + Settings = low-emphasis utility tabs.
