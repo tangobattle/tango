@@ -1314,6 +1314,22 @@ fn hud_chip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
+/// Docked sidebar surface for the PvP setup drawers — flush with
+/// its screen edge, full height, square corners, no border or
+/// shadow. A near-opaque scrim in the page background so the save
+/// view inside stays readable over the bezel art without reading
+/// as a floating card.
+fn setup_sidebar_plate(theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color {
+            a: 0.95,
+            ..theme.palette().background
+        })),
+        text_color: Some(theme.palette().text),
+        ..Default::default()
+    }
+}
+
 /// Pick-list twin of [`telemetry_plate_button`] — flat translucent
 /// plate + hairline border instead of the chunky gradient, so the
 /// replay bar's speed picker reads as the same family as the
@@ -1360,10 +1376,11 @@ const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_milli
 /// drawer).
 const SETUP_PANE_WIDTH: f32 = 420.0;
 
-/// Total travel of a setup drawer: the pane plus the padding
-/// around it — what the pane slides through on open/close and how
-/// far its edge handle rides inward.
-const SETUP_DRAWER_TRAVEL: f32 = SETUP_PANE_WIDTH + 2.0 * crate::style::PANE_PADDING;
+/// Total travel of a setup drawer — what the sidebar slides
+/// through on open/close and how far its edge handle rides
+/// inward. Equal to the pane width: the sidebar docks flush with
+/// its screen edge.
+const SETUP_DRAWER_TRAVEL: f32 = SETUP_PANE_WIDTH;
 
 /// How far the floating controls sink when hiding — past the
 /// window's bottom edge (panel height + bottom margin, with a
@@ -1564,50 +1581,71 @@ fn emulator_body<'a>(
     // panes carry padding — the emulator itself still extends to
     // the screen edges.
     //
-    // Open/close animates like a drawer: the pane keeps rendering
-    // through its transition, sliding in from (or back out
-    // through) its screen edge; the matching edge handle rides
-    // the drawer's inner edge (see `setup_handles_overlay`).
+    // Open/close animates like a drawer, and the layout hands the
+    // space back eagerly: an OPEN pane sits in the content row
+    // (claiming its width while it slides in), but the moment it
+    // starts closing it leaves the row — the emulator expands
+    // right away — and the exit slide plays as an overlay gliding
+    // out over the reflowed body. The matching edge handle rides
+    // the drawer's inner edge either way (`setup_handles_overlay`).
     let now = iced::time::Instant::now();
     let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
+        // A docked sidebar, not a floating card: flush with its
+        // screen edge, full height, square corners — only the
+        // content carries padding.
         let pane = container(panel)
             .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
             .height(Fill)
             .padding(style::PANE_PADDING)
-            .style(widgets::panel);
-        let pane: Element<'a, Message> = container(pane).height(Fill).padding(style::PANE_PADDING).into();
+            .style(setup_sidebar_plate);
         anim::slide_in(pane, progress, iced::Vector::new(from_dx, 0.0))
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
+    let mut closing_panes: Vec<Element<'a, Message>> = Vec::new();
     if let ActiveSession::PvP(s) = session {
-        if (state.show_self_panel || state.self_panel_anim.is_animating(now)) && s.local_loaded.is_some() {
+        if s.local_loaded.is_some() && (state.show_self_panel || state.self_panel_anim.is_animating(now)) {
             let me = s.local_loaded.as_ref().unwrap();
             let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
                 .map(Message::SelfSaveViewAction);
-            content_row = content_row.push(setup_pane(
-                panel,
-                -SETUP_DRAWER_TRAVEL,
-                state.self_panel_anim.progress(now),
-            ));
+            let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel_anim.progress(now));
+            if state.show_self_panel {
+                content_row = content_row.push(pane);
+            } else {
+                closing_panes.push(
+                    container(pane)
+                        .width(Fill)
+                        .height(Fill)
+                        .align_x(iced::alignment::Horizontal::Left)
+                        .into(),
+                );
+            }
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
     if let ActiveSession::PvP(s) = session {
-        if (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) && s.opponent_loaded.is_some() {
+        if s.opponent_loaded.is_some() && (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) {
             let opponent = s.opponent_loaded.as_ref().unwrap();
             let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
                 .map(Message::OpponentSaveViewAction);
-            content_row = content_row.push(setup_pane(
-                panel,
-                SETUP_DRAWER_TRAVEL,
-                state.opponent_panel_anim.progress(now),
-            ));
+            let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel_anim.progress(now));
+            if state.show_opponent_panel {
+                content_row = content_row.push(pane);
+            } else {
+                closing_panes.push(
+                    container(pane)
+                        .width(Fill)
+                        .height(Fill)
+                        .align_x(iced::alignment::Horizontal::Right)
+                        .into(),
+                );
+            }
         }
     }
-    container(stack![backdrop, Element::from(content_row)])
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let mut body = stack![backdrop, Element::from(content_row)];
+    for pane in closing_panes {
+        body = body.push(pane);
+    }
+    container(body).width(Fill).height(Fill).into()
 }
 
 /// The replay bar's strip: full transport (play/pause + scrubber +
