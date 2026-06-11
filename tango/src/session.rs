@@ -1302,10 +1302,14 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
 fn hud_chip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     let text = theme.palette().text;
+    // A mostly-opaque scrim in the page background color — the
+    // chips' sheer text-tint wash is fine behind one icon, but
+    // the bar carries readouts and a scrubber over live game
+    // pixels, where it was too transparent to read against.
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color {
-            a: if p.is_dark { 0.06 } else { 0.05 },
-            ..text
+            a: 0.85,
+            ..theme.palette().background
         })),
         text_color: Some(text),
         border: iced::Border {
