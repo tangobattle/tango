@@ -755,7 +755,7 @@ impl State {
             enter: crate::anim::Enter::default(),
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
-            edit_anim: crate::anim::Transition::new(false),
+            edit_anim: crate::anim::Transition::swap(false),
         }
     }
 
@@ -1246,13 +1246,12 @@ pub fn view<'a>(
         }
     };
     // Tail buttons animate only when their content actually
-    // changed: a sub-tab switch (horizontal enter) or leaving edit
-    // mode (the extras were hidden behind Save / Cancel). A game/
-    // save swap rises the body in, but the strip's buttons are
-    // typically identical across saves — re-animating them there
-    // reads as a glitch.
-    let edit_exiting = !state.edit_anim.shown() && state.edit_anim.is_animating(now);
-    let tail_slide = enter.filter(|_| enter_from.x != 0.0 || edit_exiting);
+    // changed — a sub-tab switch (horizontal enter). A game/save
+    // swap rises the body in, but the strip's buttons are
+    // typically identical across saves, and re-animating them
+    // there reads as a glitch. Edit-mode toggles run their own
+    // two-phase swap below instead.
+    let tail_slide = enter.filter(|_| enter_from.x != 0.0);
     let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 24.0 };
     let extras_entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
         match tail_slide {
@@ -1260,10 +1259,11 @@ pub fn view<'a>(
             None => el,
         }
     };
-    // Save / Cancel visibility follows the edit-mode transition so
-    // the pair slides out on leaving edit mode instead of
-    // vanishing.
-    let edit_buttons_visible = editable && state.edit_anim.visible(now);
+    // Edit-mode tail morph: the per-tab extras and the Save /
+    // Cancel pair fade-through swap in both directions, so the
+    // Edit affordance visibly turns into Save / Cancel and back.
+    let (edit_side, edit_swap) = crate::anim::swap_phase(&state.edit_anim, now);
+    let render_edit_buttons = editable && edit_side;
     // True while one of the in-place editors is open. Suppresses the
     // Play button (single-player would fight the open edit session) and
     // selects the editable body below.
@@ -1303,22 +1303,21 @@ pub fn view<'a>(
     let tabs_only = tabs_only.wrap();
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
     if inline_actions {
-        if edit_buttons_visible {
+        // One half of the edit-mode morph, applied to whichever
+        // side is currently rendering.
+        let swapped = |el: Element<'a, Action>| -> Element<'a, Action> {
+            match edit_swap {
+                Some(phase) => {
+                    crate::anim::swap_transform(el, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color)
+                }
+                None => el,
+            }
+        };
+        if render_edit_buttons {
             // Save / Cancel are keyed on the mode, not the active
             // sub-tab — they stay planted while the user flips
-            // between editor tabs, and slide horizontally in/out
-            // when the mode toggles.
-            let mut buttons = edit_buttons(lang, loaded);
-            if state.edit_anim.is_animating(now) {
-                let p = state.edit_anim.progress(now);
-                if !state.edit_anim.shown() {
-                    // Exiting — dissolve into the pane plate while
-                    // sliding away instead of stopping dead.
-                    buttons = crate::anim::exit_fade(buttons, 1.0 - p, crate::widgets::plate_color);
-                }
-                buttons = crate::anim::slide_in(buttons, p, iced::Vector::new(32.0, 0.0));
-            }
-            tail = tail.push(buttons);
+            // between editor tabs.
+            tail = tail.push(swapped(edit_buttons(lang, loaded)));
         } else {
             // Per-control entrances: a control carried over from
             // the previous sub-tab (the copy button lives on most
@@ -1327,8 +1326,14 @@ pub fn view<'a>(
             let prev_kinds = state.prev_tab.map(|p| extra_kinds(p, loaded)).unwrap_or_default();
             for kind in extra_kinds(active, loaded) {
                 let el = render_extra(lang, state, active, kind);
-                let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
-                tail = tail.push(if carried { el } else { extras_entered(el) });
+                let el = if edit_swap.is_some() {
+                    swapped(el)
+                } else if enter_from.x != 0.0 && prev_kinds.contains(&kind) {
+                    el
+                } else {
+                    extras_entered(el)
+                };
+                tail = tail.push(el);
             }
             if tab_has_edit(active, loaded, editable) {
                 let edit_btn: Element<'a, Action> = widgets::labeled_icon_button(
@@ -1345,11 +1350,18 @@ pub fn view<'a>(
                 // whole-body swaps where everything is new.
                 let carried_over = enter_from.x != 0.0
                     && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
-                tail = tail.push(if carried_over { edit_btn } else { extras_entered(edit_btn) });
+                let el = if edit_swap.is_some() {
+                    swapped(edit_btn)
+                } else if carried_over {
+                    edit_btn
+                } else {
+                    extras_entered(edit_btn)
+                };
+                tail = tail.push(el);
             }
         }
     }
-    if let Some(enabled) = play_button.filter(|_| !editing_session && !edit_buttons_visible) {
+    if let Some(enabled) = play_button.filter(|_| !editing_session && !render_edit_buttons && edit_swap.is_none()) {
         use lucide_icons::Icon;
         let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
             .spacing(6)

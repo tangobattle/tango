@@ -257,7 +257,7 @@ impl Default for PlayState {
             save_action: SaveAction::None,
             link_code: String::new(),
             last_error: None,
-            patch_row: crate::anim::Transition::new(false),
+            patch_row: crate::anim::Transition::swap(false),
         }
     }
 }
@@ -447,11 +447,17 @@ impl PlayState {
         // transition in one place — several arms can collapse it
         // (family change, sentinel pick, save swap dropping an
         // unsupported patch) and the animation follows them all.
-        self.patch_row.set(
-            self.local_patch.is_some() || self.patch_picker_open,
-            iced::time::Instant::now(),
-        );
+        self.sync_patch_row(iced::time::Instant::now());
         effect
+    }
+
+    /// Drive [`PlayState::patch_row`] toward the current expanded
+    /// state. Called after every [`PlayState::update`], and by the
+    /// App after effect handlers that mutate `local_patch` outside
+    /// this module (save creation dropping an unsupported patch).
+    pub fn sync_patch_row(&mut self, now: iced::time::Instant) {
+        self.patch_row
+            .set(self.local_patch.is_some() || self.patch_picker_open, now);
     }
 
     fn update_inner(
@@ -1012,6 +1018,11 @@ impl PlayState {
         // sinks + dissolves the outgoing band, second half rises
         // the incoming one out of the page surface.
         bottom_swap: &'a crate::anim::Transition,
+        // The lobby's last live state, frozen by the App on the
+        // frame the band left — the exiting band renders from
+        // this so the verdict (e.g. the failure banner) doesn't
+        // flash to the idle handshake line mid-dissolve.
+        lobby_exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -1072,30 +1083,23 @@ impl PlayState {
         // scanline is grouped into the moving band so it rides
         // the motion instead of staying pinned above it.
         let now = iced::time::Instant::now();
-        let to_lobby = bottom_swap.shown();
-        // 0 → 1 over the whole swap regardless of direction.
-        let t = {
-            let p = bottom_swap.progress(now);
-            if to_lobby {
-                p
-            } else {
-                1.0 - p
-            }
-        };
-        let (render_lobby, swap_phase) = if !bottom_swap.is_animating(now) {
-            (to_lobby, None)
-        } else if t < 0.5 {
-            // First half: the outgoing band, on its way down.
-            (!to_lobby, Some((t * 2.0, false)))
-        } else {
-            // Second half: the incoming band, on its way up.
-            (to_lobby, Some((t * 2.0 - 1.0, true)))
-        };
+        let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
         let bottom: Element<'a, Message> = if render_lobby {
+            // While the band is on its way OUT, the live phase has
+            // already gone Idle (and the lobby may be wiped) — use
+            // the snapshot the App froze on the band's last live
+            // frame so the verdict doesn't flash mid-dissolve.
+            let (band_phase, band_lobby) = if !bottom_swap.shown() {
+                lobby_exit_snapshot
+                    .map(|(p, l)| (p, l))
+                    .unwrap_or((netplay_phase, netplay_lobby))
+            } else {
+                (netplay_phase, netplay_lobby)
+            };
             container(lobby_view(
                 lang,
-                netplay_lobby,
-                netplay_phase,
+                band_lobby,
+                band_phase,
                 self.local_game,
                 scanners,
                 loaded.is_some(),
@@ -1112,20 +1116,11 @@ impl PlayState {
         let mut group: Element<'a, Message> = iced::widget::column![widgets::hud_scanline_bottom(), bottom]
             .width(Fill)
             .into();
-        if let Some((q, entering)) = swap_phase {
-            use iced::animation::Easing;
+        if let Some(phase) = swap {
             let dist = if render_lobby { 48.0 } else { 24.0 };
-            if entering {
-                // Rise out of the page surface, wash dissolving off.
-                let e = Easing::EaseOutCubic.value(q);
-                group = crate::anim::exit_fade(group, 1.0 - e, |theme: &iced::Theme| theme.palette().background);
-                group = crate::anim::slide_in(group, e, iced::Vector::new(0.0, dist));
-            } else {
-                // Sink and dissolve into the page surface.
-                let e = Easing::EaseInCubic.value(q);
-                group = crate::anim::exit_fade(group, e, |theme: &iced::Theme| theme.palette().background);
-                group = crate::anim::slide_in(group, 1.0 - e, iced::Vector::new(0.0, dist));
-            }
+            group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, dist), |theme: &iced::Theme| {
+                theme.palette().background
+            });
         }
         col = col.push(group);
         col.into()
@@ -1218,30 +1213,15 @@ impl PlayState {
         // picker's FillPortion is the only fill in the row, so it
         // soaks up the freed width.
         //
-        // Unfolding slides the pickers in from the toggle's side;
-        // folding slides them back out, the row keeping its
-        // expanded shape until the exit finishes. (Float forwards
-        // the child's sizing, so the FillPortion layout is
-        // unaffected by the wrapper.)
+        // Folding either way reflows the whole row (the game
+        // picker resizes), so the swap is a two-phase fade-through
+        // of the entire row: the old shape sinks + dissolves into
+        // the pane plate, then the new shape rises out of it —
+        // the reflow lands at the fully-dissolved midpoint where
+        // it can't be seen.
         let now = iced::time::Instant::now();
-        let expanded = self.local_patch.is_some() || self.patch_picker_open;
-        let sliding = self.patch_row.is_animating(now);
-        let slide = |el: Element<'a, Message>| -> Element<'a, Message> {
-            if sliding {
-                let p = self.patch_row.progress(now);
-                let el = if self.patch_row.shown() {
-                    el
-                } else {
-                    // Exiting — dissolve into the pane plate while
-                    // sliding away instead of stopping dead.
-                    crate::anim::exit_fade(el, 1.0 - p, widgets::plate_color)
-                };
-                crate::anim::slide_in(el, p, iced::Vector::new(-32.0, 0.0))
-            } else {
-                el
-            }
-        };
-        let game_row = if expanded || sliding {
+        let (render_expanded, patch_swap) = crate::anim::swap_phase(&self.patch_row, now);
+        let game_row = if render_expanded {
             let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
             let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
                 Message::LocalPatchSelected(c.value)
@@ -1272,7 +1252,7 @@ impl PlayState {
                 .into()
             };
 
-            row![game, slide(patch.into()), slide(version), refresh]
+            row![game, patch, version, refresh]
         } else {
             let patch_toggle = widgets::icon_button(
                 Icon::Puzzle,
@@ -1284,6 +1264,10 @@ impl PlayState {
         }
         .spacing(8)
         .align_y(Alignment::Center);
+        let mut game_row: Element<'a, Message> = game_row.into();
+        if let Some(phase) = patch_swap {
+            game_row = crate::anim::swap_transform(game_row, phase, iced::Vector::new(0.0, 8.0), widgets::plate_color);
+        }
         let save_row = self.save_action_row(lang, scanners, save.into());
 
         container(column![game_row, save_row].spacing(6))
@@ -1433,6 +1417,9 @@ impl PlayState {
                 let actions = self.save_action_buttons(lang, scanners);
                 row![save_picker, actions].spacing(8).align_y(Alignment::Center).into()
             }
+            // Cancel before Confirm — same order as the edit-mode
+            // Save / Cancel pair and the modal dialogs, so the
+            // primary action always sits at the row's end.
             SaveAction::Renaming { draft } => row![
                 text_input(&t!(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
@@ -1440,18 +1427,18 @@ impl PlayState {
                     .style(widgets::chunky_text_input)
                     .padding(STANDARD_PADDING)
                     .width(Length::Fill),
+                widgets::icon_button(
+                    Icon::X,
+                    t!(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_PADDING,
+                ),
                 widgets::icon_button_styled(
                     Icon::Check,
                     t!(lang, "save-rename-confirm"),
                     Some(Message::SaveRenameConfirm),
                     STANDARD_PADDING,
                     widgets::primary_button,
-                ),
-                widgets::icon_button(
-                    Icon::X,
-                    t!(lang, "save-action-cancel"),
-                    Message::SaveActionCancel,
-                    STANDARD_PADDING,
                 ),
             ]
             .spacing(8)

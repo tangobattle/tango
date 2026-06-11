@@ -169,6 +169,13 @@ pub struct App {
     /// incoming one out of it, so the swap reads as the code
     /// strip turning into the lobby and back.
     bottom_swap: anim::Transition,
+    /// The lobby's last live (phase, lobby) pair, frozen on the
+    /// frame the band leaves the screen. The exiting half of the
+    /// bottom-band swap renders from this so the verdict (e.g.
+    /// the failure banner being dismissed) holds steady through
+    /// the dissolve instead of flashing to the idle handshake
+    /// line.
+    lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState)>,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -345,12 +352,14 @@ impl App {
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root,
-            bottom_swap: anim::Transition::with_duration(
-                false,
-                anim::TRANSITION * 2,
-                iced::animation::Easing::Linear,
-            ),
+            bottom_swap: anim::Transition::swap(false),
+            lobby_exit_snapshot: None,
         };
+        // The patch row's swap transition has to start in the
+        // restored expanded state (a remembered patch keeps the
+        // pickers up) — constructed at rest so launch doesn't play
+        // a fold animation.
+        app.play.patch_row = anim::Transition::swap(app.play.local_patch.is_some());
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
         (app, stats_task)
@@ -753,6 +762,13 @@ impl App {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
         let selection_before = (self.play.local_game, self.play.local_save.clone());
+        // Candidate snapshot for the lobby band's exit animation —
+        // taken before dispatch (the handler about to run may
+        // reset the phase/lobby), kept only if the band actually
+        // left.
+        let lobby_live = self
+            .lobby_band_on_screen()
+            .then(|| (self.netplay.phase.clone(), self.netplay.lobby.clone()));
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
@@ -772,8 +788,18 @@ impl App {
         }
         // Bottom-band swap follows the netplay phase: the view
         // morphs the link-code strip into the lobby band (and
-        // back) off this transition.
-        self.bottom_swap.set(self.lobby_band_on_screen(), now);
+        // back) off this transition. When the band leaves, freeze
+        // its last live state for the exit half to render from.
+        let lobby_after = self.lobby_band_on_screen();
+        if let (Some(snap), false) = (lobby_live, lobby_after) {
+            self.lobby_exit_snapshot = Some(snap);
+        }
+        self.bottom_swap.set(lobby_after, now);
+        // Effect handlers in this module mutate `play.local_patch`
+        // directly (e.g. save creation dropping an unsupported
+        // patch) — re-sync the patch row's transition here too so
+        // those paths animate like in-module ones.
+        self.play.sync_patch_row(now);
         // A different game or save swaps the whole save-view body —
         // rise it in vertically (sub-tab switches slide it
         // horizontally instead; see save_view::State::apply).
@@ -2062,6 +2088,7 @@ impl App {
                     self.netplay.handoff_pending(),
                     rescanning,
                     &self.bottom_swap,
+                    self.lobby_exit_snapshot.as_ref(),
                 )
                 .map(Message::Play),
             Tab::Replays => self

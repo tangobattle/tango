@@ -19,6 +19,11 @@ use std::sync::LazyLock;
 /// motion is purely visual).
 pub const TRANSITION: std::time::Duration = std::time::Duration::from_millis(160);
 
+/// Duration of a two-phase fade-through swap ([`Transition::swap`]
+/// + [`swap_phase`]): one [`TRANSITION`] for the outgoing half,
+/// one for the incoming half.
+pub const TRANSITION_SWAP: std::time::Duration = std::time::Duration::from_millis(320);
+
 /// Process-wide animation clock base. Both the activity registry
 /// and [`pulse`] measure off it.
 static EPOCH: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
@@ -117,10 +122,16 @@ impl Transition {
         Self::with_duration(shown, TRANSITION, Easing::EaseOutCubic)
     }
 
-    /// A [`Transition`] with a custom tempo/easing — e.g. the Play
-    /// tab's bottom-band swap runs two transition lengths with a
-    /// linear ramp because its view splits the timeline into an
-    /// exit half and an entrance half, easing each separately.
+    /// A [`Transition`] sized for a two-phase fade-through swap
+    /// (see [`swap_phase`]): two transition lengths with a linear
+    /// ramp, so the view can spend the first half on the outgoing
+    /// side and the second on the incoming one, easing each half
+    /// itself.
+    pub fn swap(shown: bool) -> Self {
+        Self::with_duration(shown, TRANSITION_SWAP, Easing::Linear)
+    }
+
+    /// A [`Transition`] with a custom tempo/easing.
     pub fn with_duration(shown: bool, duration: std::time::Duration, easing: Easing) -> Self {
         Self {
             anim: Animation::new(shown).duration(duration).easing(easing),
@@ -187,6 +198,47 @@ pub fn slide_in<'a, M: 'a>(content: impl Into<Element<'a, M>>, progress: f32, fr
     iced::widget::float(content)
         .translate(move |_bounds, _viewport| offset)
         .into()
+}
+
+/// Sample a two-phase fade-through swap driven by a
+/// [`Transition::swap`]: returns which side to render (`true` =
+/// the transition's "shown" side) and, while mid-swap, the eased
+/// progress of the current half plus whether it's the incoming
+/// half. The first half of the timeline shows the outgoing side
+/// accelerating away (ease-in), the second shows the incoming
+/// side settling in (ease-out); the midpoint is fully dissolved,
+/// so the layout change between the two sides happens behind the
+/// wash. Apply the returned phase with [`swap_transform`].
+pub fn swap_phase(transition: &Transition, now: Instant) -> (bool, Option<(f32, bool)>) {
+    let shown = transition.shown();
+    if !transition.is_animating(now) {
+        return (shown, None);
+    }
+    // Unified 0 → 1 timeline regardless of direction.
+    let p = transition.progress(now);
+    let t = if shown { p } else { 1.0 - p };
+    if t < 0.5 {
+        (!shown, Some((Easing::EaseInCubic.value(t * 2.0), false)))
+    } else {
+        (shown, Some((Easing::EaseOutCubic.value(t * 2.0 - 1.0), true)))
+    }
+}
+
+/// Apply one half of a [`swap_phase`] to the side being rendered:
+/// the outgoing half slides toward `from` while dissolving into
+/// `backdrop`, the incoming half rises out of it along the same
+/// axis.
+pub fn swap_transform<'a, M: 'a>(
+    el: Element<'a, M>,
+    (eased, entering): (f32, bool),
+    from: iced::Vector,
+    backdrop: impl Fn(&iced::Theme) -> iced::Color + 'a,
+) -> Element<'a, M> {
+    if entering {
+        slide_in(exit_fade(el, 1.0 - eased, backdrop), eased, from)
+    } else {
+        slide_in(exit_fade(el, eased, backdrop), 1.0 - eased, from)
+    }
 }
 
 /// Dissolve an exiting element into its backdrop: a wash in the
