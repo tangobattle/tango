@@ -210,9 +210,19 @@ pub struct PlayState {
     /// Show/hide transition for the expanded patch controls
     /// (patch + version pickers). Mirrors `local_patch.is_some()
     /// || patch_picker_open` (synced at the end of every
-    /// [`PlayState::update`]); the pickers slide in from the
-    /// toggle's side when unfolding and back out when folding.
+    /// [`PlayState::update`]); the selector row fade-through
+    /// morphs between its folded and expanded shapes.
     pub patch_row: crate::anim::Transition,
+    /// Fade-through swap for the save-action row: the picker row
+    /// morphs into whichever rename / delete / create form opens
+    /// ([`PlayState::save_action`]) and back. Synced alongside
+    /// `patch_row`.
+    pub save_form: crate::anim::Transition,
+    /// The form that was open before `save_action` reset to
+    /// `None`, frozen so the swap's exit half has something to
+    /// render (the live form — including the rename draft — is
+    /// already gone).
+    pub save_action_exit: SaveAction,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -258,6 +268,8 @@ impl Default for PlayState {
             link_code: String::new(),
             last_error: None,
             patch_row: crate::anim::Transition::swap(false),
+            save_form: crate::anim::Transition::swap(false),
+            save_action_exit: SaveAction::None,
         }
     }
 }
@@ -442,12 +454,20 @@ impl PlayState {
         config: &config::Config,
         loaded: Option<&selection::Loaded>,
     ) -> Option<Effect> {
+        let action_before = self.save_action.clone();
         let effect = self.update_inner(msg, scanners, config, loaded);
+        let now = iced::time::Instant::now();
         // Mirror the patch controls' expanded state into their
         // transition in one place — several arms can collapse it
         // (family change, sentinel pick, save swap dropping an
         // unsupported patch) and the animation follows them all.
-        self.sync_patch_row(iced::time::Instant::now());
+        self.sync_patch_row(now);
+        // Same for the save-action form swap; freeze the closing
+        // form (with its draft) for the exit half to render.
+        if self.save_action == SaveAction::None && action_before != SaveAction::None {
+            self.save_action_exit = action_before;
+        }
+        self.save_form.set(self.save_action != SaveAction::None, now);
         effect
     }
 
@@ -1266,7 +1286,10 @@ impl PlayState {
         .align_y(Alignment::Center);
         let mut game_row: Element<'a, Message> = game_row.into();
         if let Some(phase) = patch_swap {
-            game_row = crate::anim::swap_transform(game_row, phase, iced::Vector::new(0.0, 8.0), widgets::plate_color);
+            // Horizontal, matching the controls' left-to-right
+            // layout: the old row shape slips out to the right,
+            // the new one arrives from the right.
+            game_row = crate::anim::swap_transform(game_row, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
         }
         let save_row = self.save_action_row(lang, scanners, save.into());
 
@@ -1412,8 +1435,42 @@ impl PlayState {
         scanners: &'a Scanners,
         save_picker: Element<'a, Message>,
     ) -> Element<'a, Message> {
-        match &self.save_action {
+        // The picker row fade-through morphs into whichever form
+        // opens and back — the swap hides the row's reflow at its
+        // fully-dissolved midpoint. While the form is on its way
+        // out it has already been reset to `None`, so the exit
+        // half renders the frozen copy.
+        let now = iced::time::Instant::now();
+        let (render_form, form_swap) = crate::anim::swap_phase(&self.save_form, now);
+        let action = if render_form && self.save_action == SaveAction::None {
+            &self.save_action_exit
+        } else {
+            &self.save_action
+        };
+        let mut row_el: Element<'a, Message> = self.save_action_row_inner(lang, scanners, save_picker, render_form, action);
+        if let Some(phase) = form_swap {
+            row_el = crate::anim::swap_transform(row_el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
+        }
+        row_el
+    }
+
+    fn save_action_row_inner<'a>(
+        &'a self,
+        lang: &'a LanguageIdentifier,
+        scanners: &'a Scanners,
+        save_picker: Element<'a, Message>,
+        render_form: bool,
+        action: &'a SaveAction,
+    ) -> Element<'a, Message> {
+        if !render_form {
+            let actions = self.save_action_buttons(lang, scanners);
+            return row![save_picker, actions].spacing(8).align_y(Alignment::Center).into();
+        }
+        match action {
             SaveAction::None => {
+                // Form side with nothing recorded (shouldn't happen
+                // — the exit snapshot is always set before the swap
+                // starts) — degrade to the picker row.
                 let actions = self.save_action_buttons(lang, scanners);
                 row![save_picker, actions].spacing(8).align_y(Alignment::Center).into()
             }
