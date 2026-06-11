@@ -605,6 +605,15 @@ pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     }
 }
 
+/// Accent-tinted text — for "lit" indicators that belong to the
+/// primary glow language (ready nicknames, the lobby's reveal eye)
+/// rather than the success/danger semantic colors.
+pub fn primary_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
+    iced::widget::text::Style {
+        color: Some(theme.palette().primary),
+    }
+}
+
 pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     iced::widget::container::Style {

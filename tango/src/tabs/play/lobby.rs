@@ -579,12 +579,12 @@ fn gated<T>(inert: bool, live: fn(T) -> Message) -> fn(T) -> Message {
 
 /// Compact "you / opponent" card — a 2-line waiting placeholder that
 /// grows to 3 lines once that side's settings land. `ready` lights the
-/// dot and tints the nickname when that side has committed. A small
-/// green eye lights up next to the caption while that side is
-/// revealing their setup — the same indicator on both cards, so your
-/// own card (which lights when you tick the reveal checkbox) teaches
-/// what the opponent's means; `reveal_tip` is the side-appropriate
-/// sentence for its tooltip.
+/// dot and tints the nickname when that side has committed. An eye
+/// rides the nickname row while that side is revealing their setup —
+/// the same indicator on both cards, so your own card (which lights
+/// when you tick the reveal checkbox) teaches what the opponent's
+/// means; `reveal_tip` is the side-appropriate sentence for its
+/// tooltip.
 fn side_card(
     lang: &LanguageIdentifier,
     label: String,
@@ -610,16 +610,26 @@ fn side_card(
         .width(Length::Fill)
         .into();
     };
-    // Caption row: the side label, plus the reveal eye when lit. The
-    // eye appearing only appends to this row inside a Fill-width card
-    // — nothing else moves when a side flips the setting.
-    let mut caption_row = row![text(label).size(TEXT_CAPTION).style(widgets::muted_text_style)]
-        .spacing(6)
+    // Nickname is the marquee — title-sized, primary tinted when this
+    // side is ready so the card lights up visibly as commitment lands.
+    let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
+        widgets::primary_text_style
+    } else {
+        |_theme: &iced::Theme| iced::widget::text::Style { color: None }
+    };
+    // The reveal eye rides the nickname row at heading size, primary
+    // tinted — big enough to notice at a glance, and in the accent
+    // color the lobby's other "lit" cues use (the ready dot, the
+    // tinted nickname) so it doesn't fight the palette. The title-
+    // size nickname dominates the row's height, so the eye lighting
+    // up still moves nothing.
+    let mut name_row = row![text(settings.nickname.clone()).size(TEXT_TITLE).style(nickname_style)]
+        .spacing(8)
         .align_y(Alignment::Center);
     if settings.reveal_setup {
-        caption_row = caption_row.push(
+        name_row = name_row.push(
             iced::widget::tooltip(
-                Icon::Eye.widget().size(TEXT_CAPTION).style(widgets::success_text_style),
+                Icon::Eye.widget().size(TEXT_HEADING).style(widgets::primary_text_style),
                 container(text(reveal_tip).size(TEXT_CAPTION))
                     .padding(6)
                     .style(widgets::tooltip_chrome),
@@ -628,21 +638,12 @@ fn side_card(
             .gap(4),
         );
     }
-    // Nickname is the marquee — title-sized, primary tinted when this
-    // side is ready so the card lights up visibly as commitment lands.
-    let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
-        |theme: &iced::Theme| iced::widget::text::Style {
-            color: Some(theme.palette().primary),
-        }
-    } else {
-        |_theme: &iced::Theme| iced::widget::text::Style { color: None }
-    };
     container(
         row![
             ready_dot(ready),
             column![
-                caption_row,
-                text(settings.nickname.clone()).size(TEXT_TITLE).style(nickname_style),
+                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                name_row,
                 text(side_card_subline(lang, settings)).size(TEXT_CAPTION),
             ]
             .spacing(2),
