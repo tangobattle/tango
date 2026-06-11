@@ -2,11 +2,11 @@
 //! in flight, standing in for the link-code strip while the save view
 //! above stays visible. Two stacked panes, hero then console: the
 //! matchup (you / opponent cards over the VS splitter) and one
-//! command bar that reads left to right in the order the user thinks
-//! — what's happening (status / verdict, with the connection detail
+//! command bar underneath: Leave at the far-left exit door, then
+//! what's happening (status / verdict, with the connection detail
 //! tucked under it), what the terms are (the match settings cluster),
-//! then back out / commit (Leave + Ready). One home per kind of
-//! information; nothing in opposite corners.
+//! and the Ready CTA at the far right, where the idle strip parks its
+//! Fight button. One home per kind of information.
 //!
 //! Everything renders off [`Lobby`], the per-frame bundle the Play
 //! tab assembles in [`super::State::view`], and [`Status`], the one
@@ -29,13 +29,6 @@ use tango_pvp::battle::suggest_frame_delay;
 use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
-
-/// Shared height for the command bar's Leave / Ready pair — same
-/// trick as the idle strip's dice + Fight buttons: equal heights keep
-/// the pair reading as one aligned unit, while Ready stays the
-/// heavier of the two (bigger text, wider padding) because it's the
-/// CTA and Leave is just the exit.
-const ACTION_HEIGHT: f32 = crate::style::BAR_CONTROL_HEIGHT;
 
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
@@ -118,31 +111,27 @@ impl<'a> Lobby<'a> {
     }
 
     /// The command bar under the matchup: the one pane that gathers
-    /// everything the user reads and operates, laid out left to right
-    /// in reading order — status stack (verdict line + connection
-    /// detail), match settings cluster, then the Leave / Ready action
-    /// pair. On failure the pane picks up a faint red wash so a dead
-    /// lobby reads as dead at a glance — quiet on purpose; the icon +
-    /// danger text of the status line carry the message, the wash
-    /// just sets the mood.
+    /// everything the user reads and operates. Leave anchors the far
+    /// left — the exit sits by the exit door, well away from the
+    /// commit button — then the status stack (verdict line +
+    /// connection detail), the match settings cluster, and the Ready
+    /// CTA at the far right, where the idle strip parks its Fight
+    /// button. On failure the pane picks up a faint red wash so a
+    /// dead lobby reads as dead at a glance — quiet on purpose; the
+    /// icon + danger text of the status line carry the message, the
+    /// wash just sets the mood.
     fn command_pane(&self, status: &Status<'_>, compat_ok: bool) -> Element<'a, Message> {
         let mut status_col = column![self.status_line(status)].spacing(4);
         if let Some(line) = self.connection_line() {
             status_col = status_col.push(line);
         }
-        // Leave before Ready — cancel before primary, same order as
-        // the save-action forms and the modal dialogs, so the commit
-        // action always sits at the row's end (right where the idle
-        // strip parks its Fight CTA).
-        let actions = row![self.leave_button(), self.ready_button(compat_ok)]
-            .spacing(10)
-            .align_y(Alignment::Center);
         let bar = row![
+            self.leave_button(),
             // The status stack soaks up the slack so the settings +
-            // actions stay packed against the right edge.
+            // Ready stay packed against the right edge.
             container(status_col).width(Length::Fill),
             self.settings_cluster(),
-            actions,
+            self.ready_button(compat_ok),
         ]
         .spacing(24)
         .align_y(Alignment::Center);
@@ -280,25 +269,25 @@ impl<'a> Lobby<'a> {
         }
     }
 
-    /// Leave-lobby (Disconnect) button — the back-out half of the
-    /// action pair at the command bar's right end, just left of
-    /// Ready. Disabled during the handoff window so the user can't
-    /// tear down a lobby whose PvP session is already being built —
-    /// clicking Disconnect there wouldn't actually cancel spawn_pvp,
-    /// just leave the user confused when the match view pops up
-    /// anyway.
+    /// Leave-lobby (Disconnect) button — icon-only with a tooltip,
+    /// like the save row's danger Delete, anchored at the command
+    /// bar's far-left end so the escape hatch sits as far as possible
+    /// from the Ready CTA. Icon-only keeps it quiet next to the
+    /// labeled CTA while its content matches Ready's text size, so
+    /// the two still land at the same height. Disabled during the
+    /// handoff window so the user can't tear down a lobby whose PvP
+    /// session is already being built — clicking Disconnect there
+    /// wouldn't actually cancel spawn_pvp, just leave the user
+    /// confused when the match view pops up anyway.
     fn leave_button(&self) -> Element<'a, Message> {
-        let inner = row![Icon::LogOut.widget(), text(t!(self.lang, "play-cancel"))]
-            .spacing(8)
-            .align_y(Alignment::Center);
-        let mut btn = button(inner)
-            .padding(STANDARD_PADDING)
-            .height(Length::Fixed(ACTION_HEIGHT))
-            .style(widgets::danger_button);
-        if !self.handoff_pending {
-            btn = btn.on_press(Message::Disconnect);
-        }
-        btn.into()
+        let msg = (!self.handoff_pending).then_some(Message::Disconnect);
+        widgets::icon_button_styled(
+            Icon::LogOut,
+            t!(self.lang, "play-cancel"),
+            msg,
+            [10.0, 12.0],
+            widgets::danger_button,
+        )
     }
 
     /// Matchup pane: you / opponent cards with a wide gap so the
@@ -311,12 +300,14 @@ impl<'a> Lobby<'a> {
             side_card(
                 lang,
                 t!(lang, "play-you"),
+                t!(lang, "lobby-reveal-mine"),
                 Some(self.state.local.as_ref().unwrap_or(&self.local_fallback)),
                 self.state.local_ready,
             ),
             side_card(
                 lang,
                 t!(lang, "play-opponent"),
+                t!(lang, "lobby-reveal-peer-on"),
                 self.state.remote.as_ref(),
                 self.state.remote_ready
             ),
@@ -409,32 +400,10 @@ impl<'a> Lobby<'a> {
 
         // Reveal-setup checkbox. Mirrors the legacy app's
         // `play-details-reveal-setup` checkbox — each side picks
-        // independently. The peer's current flag is surfaced as a
-        // colored eye pip next to the checkbox (lit green when the
-        // peer is sharing, crossed red when not, crossed muted while
-        // unknown) with the full sentence in its tooltip — a glyph
-        // has one width in every state, so the opponent flipping the
-        // setting mid-lobby can't reflow the cluster the way the
-        // variable-length sentence did.
-        let (peer_icon, peer_style, peer_tip): (Icon, fn(&iced::Theme) -> iced::widget::text::Style, String) =
-            match self.state.remote.as_ref() {
-                Some(r) if r.reveal_setup => (Icon::Eye, widgets::success_text_style, t!(lang, "lobby-reveal-peer-on")),
-                Some(_) => (Icon::EyeOff, widgets::danger_text_style, t!(lang, "lobby-reveal-peer-off")),
-                None => (
-                    Icon::EyeOff,
-                    widgets::muted_text_style,
-                    t!(lang, "lobby-reveal-peer-unknown"),
-                ),
-            };
-        let peer_status: Element<'a, Message> = iced::widget::tooltip(
-            peer_icon.widget().size(TEXT_HEADING).style(peer_style),
-            container(text(peer_tip).size(TEXT_CAPTION))
-                .padding(6)
-                .style(widgets::tooltip_chrome),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4)
-        .into();
+        // independently. This is only YOUR toggle; what each side has
+        // picked shows as the eye on their matchup card (yours lights
+        // when you check this, which is what teaches the opponent's),
+        // so the cluster carries no peer state to reflow or decode.
         // Unlike the picker and slider, the checkbox does accept a
         // `None` handler, so inert gets the real disabled rendering
         // instead of the `gated` reroute.
@@ -445,16 +414,11 @@ impl<'a> Lobby<'a> {
         };
         let reveal_col = labeled(
             t!(lang, "lobby-reveal-mine"),
-            row![
-                iced::widget::checkbox(self.state.reveal_setup)
-                    .on_toggle_maybe(toggle)
-                    .size(TEXT_HEADING)
-                    .style(widgets::chunky_checkbox),
-                peer_status,
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .into(),
+            iced::widget::checkbox(self.state.reveal_setup)
+                .on_toggle_maybe(toggle)
+                .size(TEXT_HEADING)
+                .style(widgets::chunky_checkbox)
+                .into(),
         );
 
         // Top-align so the captions sit on one line like a table
@@ -562,7 +526,6 @@ impl<'a> Lobby<'a> {
             .align_y(Alignment::Center);
         let mut btn = button(label_widget)
             .padding(READY_PAD)
-            .height(Length::Fixed(ACTION_HEIGHT))
             .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
         if let Some(m) = msg {
             btn = btn.on_press(m);
@@ -616,10 +579,16 @@ fn gated<T>(inert: bool, live: fn(T) -> Message) -> fn(T) -> Message {
 
 /// Compact "you / opponent" card — a 2-line waiting placeholder that
 /// grows to 3 lines once that side's settings land. `ready` lights the
-/// dot and tints the nickname when that side has committed.
+/// dot and tints the nickname when that side has committed. A small
+/// green eye lights up next to the caption while that side is
+/// revealing their setup — the same indicator on both cards, so your
+/// own card (which lights when you tick the reveal checkbox) teaches
+/// what the opponent's means; `reveal_tip` is the side-appropriate
+/// sentence for its tooltip.
 fn side_card(
     lang: &LanguageIdentifier,
     label: String,
+    reveal_tip: String,
     settings: Option<&Settings>,
     ready: bool,
 ) -> Element<'static, Message> {
@@ -641,6 +610,24 @@ fn side_card(
         .width(Length::Fill)
         .into();
     };
+    // Caption row: the side label, plus the reveal eye when lit. The
+    // eye appearing only appends to this row inside a Fill-width card
+    // — nothing else moves when a side flips the setting.
+    let mut caption_row = row![text(label).size(TEXT_CAPTION).style(widgets::muted_text_style)]
+        .spacing(6)
+        .align_y(Alignment::Center);
+    if settings.reveal_setup {
+        caption_row = caption_row.push(
+            iced::widget::tooltip(
+                Icon::Eye.widget().size(TEXT_CAPTION).style(widgets::success_text_style),
+                container(text(reveal_tip).size(TEXT_CAPTION))
+                    .padding(6)
+                    .style(widgets::tooltip_chrome),
+                iced::widget::tooltip::Position::Top,
+            )
+            .gap(4),
+        );
+    }
     // Nickname is the marquee — title-sized, primary tinted when this
     // side is ready so the card lights up visibly as commitment lands.
     let nickname_style: fn(&iced::Theme) -> iced::widget::text::Style = if ready {
@@ -654,7 +641,7 @@ fn side_card(
         row![
             ready_dot(ready),
             column![
-                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                caption_row,
                 text(settings.nickname.clone()).size(TEXT_TITLE).style(nickname_style),
                 text(side_card_subline(lang, settings)).size(TEXT_CAPTION),
             ]
