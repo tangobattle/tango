@@ -1388,7 +1388,13 @@ pub fn view<'a>(
         stacked = stacked.push(o);
     }
     // Any cursor movement over the session wakes the controls.
-    mouse_area(stacked).on_move(|_| Message::MouseMoved).into()
+    // iced's mouse_area, not sweeten's: sweeten 0.14 gates all its
+    // enter/move/exit dispatches on the cursor being inside the
+    // bounds, which makes `on_exit` unreachable (the cursor is
+    // outside by definition when it fires).
+    iced::widget::mouse_area(stacked)
+        .on_move(|_| Message::MouseMoved)
+        .into()
 }
 
 /// The floating controls bar: the transport / toggles strip in a
@@ -1412,9 +1418,12 @@ fn floating_controls<'a>(
     if is_replay {
         panel = panel.width(Fill);
     }
-    let hover_pin = mouse_area(panel)
-        .on_enter(|_| Message::ControlsHovered(true))
-        .on_exit(|_| Message::ControlsHovered(false));
+    // iced's mouse_area — sweeten's `on_exit` never fires (see the
+    // note in `view`), which left the hover pin stuck and the bar
+    // permanently visible.
+    let hover_pin = iced::widget::mouse_area(panel)
+        .on_enter(Message::ControlsHovered(true))
+        .on_exit(Message::ControlsHovered(false));
     let slid = anim::slide_in(
         hover_pin,
         state.controls_anim.progress(now),
