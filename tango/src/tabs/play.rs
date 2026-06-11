@@ -1233,14 +1233,22 @@ impl PlayState {
         // picker's FillPortion is the only fill in the row, so it
         // soaks up the freed width.
         //
-        // Folding either way reflows the whole row (the game
-        // picker resizes), so the swap is a two-phase fade-through
-        // of the entire row: the old shape sinks + dissolves into
-        // the pane plate, then the new shape rises out of it —
-        // the reflow lands at the fully-dissolved midpoint where
-        // it can't be seen.
+        // Folding either way fade-through morphs ONLY the changing
+        // segment — the toggle button and the patch + version
+        // pickers swap through the pane plate, horizontally, while
+        // the game picker and refresh button stay untouched. (The
+        // game picker still reflows at the swap's midpoint, but
+        // the segment is fully dissolved there.)
         let now = iced::time::Instant::now();
         let (render_expanded, patch_swap) = crate::anim::swap_phase(&self.patch_row, now);
+        let swapped = |el: Element<'a, Message>| -> Element<'a, Message> {
+            match patch_swap {
+                Some(phase) => {
+                    crate::anim::swap_transform(el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color)
+                }
+                None => el,
+            }
+        };
         let game_row = if render_expanded {
             let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
             let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
@@ -1272,7 +1280,7 @@ impl PlayState {
                 .into()
             };
 
-            row![game, patch, version, refresh]
+            row![game, swapped(patch.into()), swapped(version), refresh]
         } else {
             let patch_toggle = widgets::icon_button(
                 Icon::Puzzle,
@@ -1280,17 +1288,11 @@ impl PlayState {
                 Message::PatchPickerOpened,
                 STANDARD_PADDING,
             );
-            row![game, patch_toggle, refresh]
+            row![game, swapped(patch_toggle), refresh]
         }
         .spacing(8)
         .align_y(Alignment::Center);
-        let mut game_row: Element<'a, Message> = game_row.into();
-        if let Some(phase) = patch_swap {
-            // Horizontal, matching the controls' left-to-right
-            // layout: the old row shape slips out to the right,
-            // the new one arrives from the right.
-            game_row = crate::anim::swap_transform(game_row, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color);
-        }
+        let game_row: Element<'a, Message> = game_row.into();
         let save_row = self.save_action_row(lang, scanners, save.into());
 
         container(column![game_row, save_row].spacing(6))

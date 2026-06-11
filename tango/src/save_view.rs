@@ -1301,39 +1301,37 @@ pub fn view<'a>(
         ));
     }
     let tabs_only = tabs_only.wrap();
-    let mut tail = row![].spacing(6).align_y(Alignment::Center);
-    if inline_actions {
-        // One half of the edit-mode morph, applied to whichever
-        // side is currently rendering.
-        let swapped = |el: Element<'a, Action>| -> Element<'a, Action> {
-            match edit_swap {
-                Some(phase) => {
-                    crate::anim::swap_transform(el, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color)
-                }
-                None => el,
-            }
-        };
-        if render_edit_buttons {
-            // Save / Cancel are keyed on the mode, not the active
-            // sub-tab — they stay planted while the user flips
-            // between editor tabs.
-            tail = tail.push(swapped(edit_buttons(lang, loaded)));
-        } else {
+    // The whole tail morphs as ONE unit between its two sides —
+    // (extras + Edit + Play) and (Save / Cancel) — so entering or
+    // leaving edit mode dissolves everything together. Animating
+    // only the extras left the Play button popping out instantly
+    // and the exiting controls shifting into its freed space.
+    let mut side = row![].spacing(6).align_y(Alignment::Center);
+    if render_edit_buttons {
+        // Save / Cancel are keyed on the mode, not the active
+        // sub-tab — they stay planted while the user flips
+        // between editor tabs.
+        if inline_actions {
+            side = side.push(edit_buttons(lang, loaded));
+        }
+    } else {
+        if inline_actions {
             // Per-control entrances: a control carried over from
             // the previous sub-tab (the copy button lives on most
             // tabs) stays anchored in the strip; only controls
-            // that actually appeared slide in.
+            // that actually appeared slide in. Suppressed while
+            // the edit-mode morph runs — the whole side is moving
+            // then.
             let prev_kinds = state.prev_tab.map(|p| extra_kinds(p, loaded)).unwrap_or_default();
             for kind in extra_kinds(active, loaded) {
                 let el = render_extra(lang, state, active, kind);
-                let el = if edit_swap.is_some() {
-                    swapped(el)
-                } else if enter_from.x != 0.0 && prev_kinds.contains(&kind) {
+                let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
+                let el = if edit_swap.is_some() || carried {
                     el
                 } else {
                     extras_entered(el)
                 };
-                tail = tail.push(el);
+                side = side.push(el);
             }
             if tab_has_edit(active, loaded, editable) {
                 let edit_btn: Element<'a, Action> = widgets::labeled_icon_button(
@@ -1350,29 +1348,31 @@ pub fn view<'a>(
                 // whole-body swaps where everything is new.
                 let carried_over = enter_from.x != 0.0
                     && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
-                let el = if edit_swap.is_some() {
-                    swapped(edit_btn)
-                } else if carried_over {
+                let el = if edit_swap.is_some() || carried_over {
                     edit_btn
                 } else {
                     extras_entered(edit_btn)
                 };
-                tail = tail.push(el);
+                side = side.push(el);
             }
         }
-    }
-    if let Some(enabled) = play_button.filter(|_| !editing_session && !render_edit_buttons && edit_swap.is_none()) {
-        use lucide_icons::Icon;
-        let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
-            .spacing(6)
-            .align_y(Alignment::Center);
-        let mut btn = button(label).padding([4, 10]);
-        if enabled {
-            btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
-        } else {
-            btn = btn.style(widgets::neutral);
+        if let Some(enabled) = play_button {
+            use lucide_icons::Icon;
+            let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
+                .spacing(6)
+                .align_y(Alignment::Center);
+            let mut btn = button(label).padding([4, 10]);
+            if enabled {
+                btn = btn.style(widgets::primary_button).on_press(Action::PlayClicked);
+            } else {
+                btn = btn.style(widgets::neutral);
+            }
+            side = side.push(btn);
         }
-        tail = tail.push(btn);
+    }
+    let mut tail: Element<'a, Action> = side.into();
+    if let Some(phase) = edit_swap {
+        tail = crate::anim::swap_transform(tail, phase, iced::Vector::new(32.0, 0.0), crate::widgets::plate_color);
     }
     let tab_row = row![
         container(tabs_only).width(Fill),
