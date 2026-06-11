@@ -252,8 +252,14 @@ struct ConnectionHandles {
 #[derive(Debug, Clone)]
 pub enum Message {
     /// User pressed Play with a link code. Kicks off the async
-    /// connect task.
-    Connect { link_code: String, endpoint: String },
+    /// connect task. `use_relay` is `config.relay_mode` at press
+    /// time, in the form `tango_signaling::connect` expects: `None`
+    /// = auto, `Some(true)` = relay only, `Some(false)` = never.
+    Connect {
+        link_code: String,
+        endpoint: String,
+        use_relay: Option<bool>,
+    },
     /// Direct-TCP local-play entry. Bypasses signaling + WebRTC
     /// entirely — runs the protocol-version negotiate handshake
     /// over a raw length-prefixed TCP connection (see
@@ -427,7 +433,11 @@ impl State {
     /// async follow-up.
     pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
         match msg {
-            Message::Connect { link_code, endpoint } => {
+            Message::Connect {
+                link_code,
+                endpoint,
+                use_relay,
+            } => {
                 self.cancel_and_renew();
                 self.phase = Phase::Connecting {
                     ident: LinkIdent::Matchmaking(link_code.clone()),
@@ -435,7 +445,7 @@ impl State {
                 };
                 let cancel = self.cancel.clone();
                 iced::Task::perform(
-                    run_signaling_connect(endpoint, link_code, cancel),
+                    run_signaling_connect(endpoint, link_code, use_relay, cancel),
                     map_signaling_hello_result,
                 )
             }
@@ -1141,15 +1151,18 @@ fn map_negotiate_result(result: Result<NegotiationOutput, AsyncError>) -> Messag
 async fn run_signaling_connect(
     endpoint: String,
     link_code: String,
+    use_relay: Option<bool>,
     cancel: CancellationToken,
 ) -> Result<SignalingHello, AsyncError> {
     let work = async {
         let connecting = tango_signaling::connect(
             &endpoint,
             &link_code,
-            // None = let the server pick: STUN by default, TURN
-            // when peers can't reach each other directly.
-            None,
+            // None = let ICE pick: direct when possible, TURN when
+            // peers can't reach each other. Some(true) = relay-only
+            // transport policy. Some(false) = drop the TURN servers,
+            // direct routes only.
+            use_relay,
             PROTOCOL_VERSION,
         )
         .await

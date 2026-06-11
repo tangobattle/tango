@@ -1024,6 +1024,7 @@ impl App {
                     netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
                         link_code,
                         endpoint: self.config.matchmaking_endpoint.clone(),
+                        use_relay: self.config.relay_mode.use_relay(),
                     },
                     netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
                 };
@@ -1612,6 +1613,7 @@ impl App {
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
+            C::RelayMode(m) => self.config.relay_mode = m,
             C::FrameDelay(v) => {
                 self.config.frame_delay =
                     v.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY)

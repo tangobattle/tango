@@ -57,6 +57,31 @@ pub enum ThemeMode {
     Dark,
 }
 
+/// Whether matchmaking connections may/must go through the TURN
+/// relay. `Auto` lets ICE pick the best route (direct when possible,
+/// relay as fallback); `Always` forces every candidate through the
+/// relay (`ice_transport_policy = Relay`); `Never` strips the TURN
+/// servers from the ICE config entirely, so only direct routes are
+/// attempted.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum RelayMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+impl RelayMode {
+    /// The `use_relay` argument `tango_signaling::connect` expects.
+    pub fn use_relay(self) -> Option<bool> {
+        match self {
+            RelayMode::Auto => None,
+            RelayMode::Always => Some(true),
+            RelayMode::Never => Some(false),
+        }
+    }
+}
+
 impl std::fmt::Display for ThemeMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -178,6 +203,10 @@ pub struct Config {
     /// with the peer); snapshotted into the match at start.
     #[serde(default = "default_frame_delay")]
     pub frame_delay: u32,
+    /// Relay (TURN) usage policy for matchmaking connections. See
+    /// [`RelayMode`]. Sampled at connect time.
+    #[serde(default)]
+    pub relay_mode: RelayMode,
 }
 
 impl Default for Config {
@@ -214,6 +243,7 @@ impl Default for Config {
             input_mapping: crate::input::Mapping::default(),
             volume: 1.0,
             frame_delay: default_frame_delay(),
+            relay_mode: RelayMode::default(),
         }
     }
 }

@@ -51,6 +51,7 @@ empty-no-roms-body = バトルネットワーク／ロックマンエグゼの .
 empty-no-saves-title = このゲームのセーブがありません
 empty-no-saves-body = このゲームの .sav ファイルを次の場所に置いてください：
 play-no-patch = パッチなし
+play-patch-toggle = パッチを使用…
 play-version-placeholder = —
 
 # Play bottom strip
@@ -79,6 +80,10 @@ lobby-direct-connect = { $target } に接続中
 lobby-handshake = 設定交換中…
 lobby-match-type = マッチタイプ
 settings-netplay-frame-delay = フレーム遅延
+settings-use-relay = リレーサーバーを使用
+settings-use-relay-auto = 自動
+settings-use-relay-always = 常に使用
+settings-use-relay-never = 使用しない
 lobby-frame-delay-suggest = Pingから推奨
 lobby-no-match-types = （このゲームには対戦モードがありません）
 lobby-pick-game-first = まずゲームを選んでください
@@ -120,6 +125,7 @@ save-copy-image = 画像をコピー
 
 # Navi pane
 navi-id = ナビID
+navi-link-navi = リンクナビ
 navi-style-unset = （スタイルなし）
 navicust-grid-size = グリッド: { $cols } × { $rows }
 navicust-parts = 設定済みパーツ

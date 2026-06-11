@@ -22,6 +22,19 @@ fn theme_choice(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Choice<co
     )
 }
 
+/// A [`config::RelayMode`] as a pick_list [`Choice`], labeled in the
+/// UI language.
+fn relay_mode_choice(lang: &LanguageIdentifier, mode: config::RelayMode) -> Choice<config::RelayMode> {
+    Choice::new(
+        mode,
+        match mode {
+            config::RelayMode::Auto => t!(lang, "settings-use-relay-auto"),
+            config::RelayMode::Always => t!(lang, "settings-use-relay-always"),
+            config::RelayMode::Never => t!(lang, "settings-use-relay-never"),
+        },
+    )
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     #[default]
@@ -61,6 +74,10 @@ pub enum Message {
     /// it's this side's local presentation lag, applied at the next match start
     /// (or live via the in-match footer slider).
     FrameDelayChanged(u32),
+    /// Relay (TURN) usage policy picked: auto / always / never.
+    /// Sampled at the next Connect; doesn't affect an in-flight
+    /// connection.
+    RelayModeChanged(config::RelayMode),
     PatchRepoChanged(String),
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
@@ -109,6 +126,7 @@ pub enum ConfigChange {
     StreamerMode(bool),
     MatchmakingEndpoint(String),
     FrameDelay(u32),
+    RelayMode(config::RelayMode),
     PatchRepo(String),
     PatchAutoupdate(bool),
     VideoFilter(String),
@@ -141,6 +159,7 @@ impl State {
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
+            Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
@@ -542,6 +561,19 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .spacing(12)
             .align_y(Alignment::Center),
         ),
+        labeled::<Message>(t!(lang, "settings-use-relay"), {
+            let options = vec![
+                relay_mode_choice(lang, config::RelayMode::Auto),
+                relay_mode_choice(lang, config::RelayMode::Always),
+                relay_mode_choice(lang, config::RelayMode::Never),
+            ];
+            let selected = options.iter().find(|c| c.value == config.relay_mode).cloned();
+            pick_list(options, selected, |c: Choice<config::RelayMode>| {
+                Message::RelayModeChanged(c.value)
+            })
+            .padding(STANDARD_PADDING)
+            .style(widgets::chunky_pick_list)
+        }),
     ]
     .spacing(14)
     .padding(style::PANE_PADDING)
