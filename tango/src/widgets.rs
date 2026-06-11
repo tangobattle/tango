@@ -488,11 +488,7 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
 /// breathing room across the app.
 pub fn pane(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
-    let bg = theme.palette().background;
-    let text = theme.palette().text;
-    // A 5% mix toward the foreground is enough contrast against the
-    // page bg to read as a region without competing with content.
-    let plate = mix(bg, text, 0.05);
+    let plate = plate_color(theme);
     iced::widget::container::Style {
         background: Some(iced::Background::Color(plate)),
         text_color: Some(p.background.weak.text),
@@ -502,6 +498,15 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
         },
         ..Default::default()
     }
+}
+
+/// The [`pane`] plate fill. Exposed so exit washes
+/// ([`crate::anim::exit_fade`]) can dissolve departing controls
+/// into the same color they sit on. A 5% mix toward the
+/// foreground is enough contrast against the page bg to read as a
+/// region without competing with content.
+pub fn plate_color(theme: &Theme) -> iced::Color {
+    mix(theme.palette().background, theme.palette().text, 0.05)
 }
 
 /// Theme-aware muted text color: mix the palette's text into the

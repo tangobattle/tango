@@ -109,12 +109,22 @@ impl Enter {
 #[derive(Debug, Clone)]
 pub struct Transition {
     anim: Animation<bool>,
+    duration: std::time::Duration,
 }
 
 impl Transition {
     pub fn new(shown: bool) -> Self {
+        Self::with_duration(shown, TRANSITION, Easing::EaseOutCubic)
+    }
+
+    /// A [`Transition`] with a custom tempo/easing — e.g. the Play
+    /// tab's bottom-band swap runs two transition lengths with a
+    /// linear ramp because its view splits the timeline into an
+    /// exit half and an entrance half, easing each separately.
+    pub fn with_duration(shown: bool, duration: std::time::Duration, easing: Easing) -> Self {
         Self {
-            anim: Animation::new(shown).duration(TRANSITION).easing(Easing::EaseOutCubic),
+            anim: Animation::new(shown).duration(duration).easing(easing),
+            duration,
         }
     }
 
@@ -123,7 +133,7 @@ impl Transition {
     pub fn set(&mut self, shown: bool, now: Instant) {
         if self.anim.value() != shown {
             self.anim.go_mut(shown, now);
-            kick(TRANSITION);
+            kick(self.duration);
         }
     }
 
@@ -177,6 +187,31 @@ pub fn slide_in<'a, M: 'a>(content: impl Into<Element<'a, M>>, progress: f32, fr
     iced::widget::float(content)
         .translate(move |_bounds, _viewport| offset)
         .into()
+}
+
+/// Dissolve an exiting element into its backdrop: a wash in the
+/// backdrop color stacked over the content, its alpha rising with
+/// `fade` (0 = untouched, 1 = fully dissolved). Pass the color of
+/// whatever sits behind the element (the window background, the
+/// pane plate) so "fully washed" and "gone" look identical — the
+/// exit slide then ends on nothing instead of stopping dead and
+/// vanishing. Passive: events keep flowing to the content.
+pub fn exit_fade<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    fade: f32,
+    backdrop: impl Fn(&iced::Theme) -> iced::Color + 'a,
+) -> Element<'a, M> {
+    let wash = iced::widget::container(iced::widget::Space::new().width(iced::Fill).height(iced::Fill))
+        .width(iced::Fill)
+        .height(iced::Fill)
+        .style(move |theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: fade.clamp(0.0, 1.0),
+                ..backdrop(theme)
+            })),
+            ..Default::default()
+        });
+    iced::widget::Stack::new().push(content.into()).push(wash).into()
 }
 
 /// Modal backdrop style — black wash at `alpha`. Call sites scale

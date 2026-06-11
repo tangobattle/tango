@@ -1310,13 +1310,25 @@ pub fn view<'a>(
             // when the mode toggles.
             let mut buttons = edit_buttons(lang, loaded);
             if state.edit_anim.is_animating(now) {
-                buttons =
-                    crate::anim::slide_in(buttons, state.edit_anim.progress(now), iced::Vector::new(32.0, 0.0));
+                let p = state.edit_anim.progress(now);
+                if !state.edit_anim.shown() {
+                    // Exiting — dissolve into the pane plate while
+                    // sliding away instead of stopping dead.
+                    buttons = crate::anim::exit_fade(buttons, 1.0 - p, crate::widgets::plate_color);
+                }
+                buttons = crate::anim::slide_in(buttons, p, iced::Vector::new(32.0, 0.0));
             }
             tail = tail.push(buttons);
         } else {
-            if let Some(extras) = tab_extras(lang, active, state, loaded) {
-                tail = tail.push(extras_entered(extras));
+            // Per-control entrances: a control carried over from
+            // the previous sub-tab (the copy button lives on most
+            // tabs) stays anchored in the strip; only controls
+            // that actually appeared slide in.
+            let prev_kinds = state.prev_tab.map(|p| extra_kinds(p, loaded)).unwrap_or_default();
+            for kind in extra_kinds(active, loaded) {
+                let el = render_extra(lang, state, active, kind);
+                let carried = enter_from.x != 0.0 && prev_kinds.contains(&kind);
+                tail = tail.push(if carried { el } else { extras_entered(el) });
             }
             if tab_has_edit(active, loaded, editable) {
                 let edit_btn: Element<'a, Action> = widgets::labeled_icon_button(
@@ -1496,69 +1508,69 @@ fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
         }
 }
 
-/// Per-tab extras (folder group-by toggle, copy button) shown on the
-/// right of the tab strip. `None` = tab has no extras. The Edit
-/// affordance is appended separately by the view — see
-/// [`tab_has_edit`].
-fn tab_extras<'a>(
-    lang: &'a LanguageIdentifier,
-    tab: Tab,
-    state: &'a State,
-    loaded: &'a Loaded,
-) -> Option<Element<'a, Action>> {
-    use crate::widgets;
-    use lucide_icons::Icon;
-    let copy_btn = |tab: Tab| -> Element<'a, Action> {
-        widgets::icon_button(
-            Icon::ClipboardCopy,
-            t!(lang, "save-copy"),
-            Action::CopyTab(tab),
-            [4.0, 10.0],
-        )
-    };
-    let copy_img_btn = |tab: Tab| -> Element<'a, Action> {
-        widgets::icon_button(
-            Icon::ImageDown,
-            t!(lang, "save-copy-image"),
-            Action::CopyTabImage(tab),
-            [4.0, 10.0],
-        )
-    };
+/// One control in the tab strip's tail. Identified per-kind (not
+/// per-row) so the view can keep a control that exists on both
+/// the previous and current sub-tab anchored in place instead of
+/// re-animating it — the copy button lives on most tabs and only
+/// its target changes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExtraKind {
+    /// Folder-only: the group-by-identity toggle.
+    FolderGroup,
+    /// Navi-only, and only for saves with an actual navicust grid
+    /// (LinkNavi BN4.5 navis have nothing to render): copy the
+    /// grid as an image.
+    CopyImage,
+    /// Copy the tab as text — present on every tab except Cover.
+    Copy,
+}
 
+/// The tail controls `tab` shows, in display order. The Edit
+/// affordance is tracked separately — see [`tab_has_edit`].
+fn extra_kinds(tab: Tab, loaded: &Loaded) -> Vec<ExtraKind> {
     match tab {
-        Tab::Folder => Some(
-            row![
-                iced::widget::checkbox(state.folder_grouped)
-                    .label(t!(lang, "folder-group"))
-                    .on_toggle(Action::ToggleFolderGrouped)
-                    .size(TEXT_BODY)
-                    .text_size(12)
-                    .style(crate::widgets::chunky_checkbox),
-                copy_btn(Tab::Folder),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center)
-            .into(),
-        ),
-        Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
-        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
+        Tab::Folder => vec![ExtraKind::FolderGroup, ExtraKind::Copy],
         Tab::Navi => {
-            // Copy-as-image only emits anything for Navicust saves
-            // (LinkNavi has no grid to render). Hide the button
-            // outright on non-navicust navis instead of leaving a
-            // dead affordance in the tab strip.
             let has_navicust = matches!(
                 loaded.save.view_navi(),
                 Some(tango_dataview::save::NaviView::Navicust(_))
             );
-            let mut tail = row![].spacing(6).align_y(iced::Alignment::Center);
             if has_navicust {
-                tail = tail.push(copy_img_btn(Tab::Navi));
+                vec![ExtraKind::CopyImage, ExtraKind::Copy]
+            } else {
+                vec![ExtraKind::Copy]
             }
-            tail = tail.push(copy_btn(Tab::Navi));
-            Some(tail.into())
         }
-        _ => None,
+        Tab::PatchCards | Tab::AutoBattleData => vec![ExtraKind::Copy],
+        Tab::Cover => vec![],
+    }
+}
+
+/// Build one tail control. `tab` parameterizes the copy actions'
+/// target.
+fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, kind: ExtraKind) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    match kind {
+        ExtraKind::FolderGroup => iced::widget::checkbox(state.folder_grouped)
+            .label(t!(lang, "folder-group"))
+            .on_toggle(Action::ToggleFolderGrouped)
+            .size(TEXT_BODY)
+            .text_size(12)
+            .style(crate::widgets::chunky_checkbox)
+            .into(),
+        ExtraKind::CopyImage => widgets::icon_button(
+            Icon::ImageDown,
+            t!(lang, "save-copy-image"),
+            Action::CopyTabImage(tab),
+            [4.0, 10.0],
+        ),
+        ExtraKind::Copy => widgets::icon_button(
+            Icon::ClipboardCopy,
+            t!(lang, "save-copy"),
+            Action::CopyTab(tab),
+            [4.0, 10.0],
+        ),
     }
 }
 

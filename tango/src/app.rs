@@ -160,17 +160,15 @@ pub struct App {
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
-    /// Show/hide transition for the Play tab's lobby band —
+    /// Two-phase swap between the Play tab's bottom bands —
     /// mirrors [`App::lobby_band_on_screen`], synced after every
-    /// update. The band (with the bottom HUD scanline riding its
-    /// top edge) slides up from the bottom edge when a netplay
-    /// attempt starts and back down when it ends.
-    lobby_band: anim::Transition,
-    /// Entrance for the link-code strip returning after the lobby
-    /// band slides away — started with a one-transition delay on
-    /// the band's falling edge so the strip rises in right as the
-    /// band finishes leaving.
-    bottom_strip_enter: anim::Enter,
+    /// update. Runs two transition lengths with a linear ramp:
+    /// the view spends the first half sinking + dissolving the
+    /// outgoing band (link-code strip or lobby) into the page
+    /// surface and the second half rising + condensing the
+    /// incoming one out of it, so the swap reads as the code
+    /// strip turning into the lobby and back.
+    bottom_swap: anim::Transition,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -347,8 +345,11 @@ impl App {
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root,
-            lobby_band: anim::Transition::new(false),
-            bottom_strip_enter: anim::Enter::default(),
+            bottom_swap: anim::Transition::with_duration(
+                false,
+                anim::TRANSITION * 2,
+                iced::animation::Easing::Linear,
+            ),
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -735,19 +736,22 @@ impl App {
     }
 
     /// Whether the Play tab's bottom band is the lobby view (a
-    /// netplay attempt is in flight or handing off) rather than
-    /// the link-code strip. Mirrors `show_lobby` in the play
-    /// view; tracked across updates to trigger [`App::lobby_enter`].
+    /// netplay attempt is in flight, failed-but-not-dismissed, or
+    /// handing off) rather than the link-code strip. Drives
+    /// [`App::bottom_swap`]. `Failed` counts: the band stays up
+    /// as a sticky failure banner until the user cancels it.
     fn lobby_band_on_screen(&self) -> bool {
         matches!(
             self.netplay.phase,
-            netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } | netplay::Phase::Lobby { .. }
+            netplay::Phase::Connecting { .. }
+                | netplay::Phase::Negotiating { .. }
+                | netplay::Phase::Lobby { .. }
+                | netplay::Phase::Failed { .. }
         ) || self.netplay.handoff_pending()
     }
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
-        let lobby_before = self.lobby_band_on_screen();
         let selection_before = (self.play.local_game, self.play.local_save.clone());
         let task = self.update_inner(message);
         let now = iced::time::Instant::now();
@@ -766,14 +770,10 @@ impl App {
                 _ => EnterScope::Root,
             };
         }
-        // Lobby band slides in/out on phase edges; once it has
-        // slid away, the returning link-code strip rises in (the
-        // delay chains the two so they don't overlap).
-        let lobby_after = self.lobby_band_on_screen();
-        self.lobby_band.set(lobby_after, now);
-        if lobby_before && !lobby_after {
-            self.bottom_strip_enter.start_delayed(now, anim::TRANSITION);
-        }
+        // Bottom-band swap follows the netplay phase: the view
+        // morphs the link-code strip into the lobby band (and
+        // back) off this transition.
+        self.bottom_swap.set(self.lobby_band_on_screen(), now);
         // A different game or save swaps the whole save-view body —
         // rise it in vertically (sub-tab switches slide it
         // horizontally instead; see save_view::State::apply).
@@ -2061,8 +2061,7 @@ impl App {
                     &self.netplay.lobby,
                     self.netplay.handoff_pending(),
                     rescanning,
-                    &self.lobby_band,
-                    &self.bottom_strip_enter,
+                    &self.bottom_swap,
                 )
                 .map(Message::Play),
             Tab::Replays => self

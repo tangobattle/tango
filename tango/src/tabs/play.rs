@@ -1007,13 +1007,11 @@ impl PlayState {
         netplay_lobby: &'a crate::netplay::LobbyState,
         netplay_handoff_pending: bool,
         rescanning: bool,
-        // Show/hide transition for the lobby band (driven by the
-        // App, which sees the netplay phase flip): the band slides
-        // up from the bottom edge on enter and back down on exit.
-        lobby_band: &'a crate::anim::Transition,
-        // Entrance for the link-code strip returning after the
-        // band leaves (delayed by the App so the two chain).
-        bottom_strip_enter: &'a crate::anim::Enter,
+        // Two-phase swap between the bottom bands (driven by the
+        // App, which sees the netplay phase flip): first half
+        // sinks + dissolves the outgoing band, second half rises
+        // the incoming one out of the page surface.
+        bottom_swap: &'a crate::anim::Transition,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -1022,24 +1020,17 @@ impl PlayState {
         // empty-state hints).
         // Lobby_view stands in for the bottom bar from the moment
         // a netplay attempt is in flight — Connecting, Negotiating,
-        // Lobby — so the user sees the versus screen + match
-        // settings + Cancel button immediately on submitting a
-        // link code, instead of staring at the singleplayer
-        // bottom bar through the handshake. The verdict line and
-        // opponent slot degrade gracefully when peer info isn't
-        // there yet.
-        // `handoff_pending` keeps the lobby strip visible while
-        // spawn_pvp builds the live session in the background —
-        // take_pre_match has dropped the connection but deliberately
-        // left phase/lobby state intact so this view doesn't flash
-        // to the singleplayer bottom strip.
-        let show_lobby = matches!(
-            netplay_phase,
-            crate::netplay::Phase::Connecting { .. }
-                | crate::netplay::Phase::Negotiating { .. }
-                | crate::netplay::Phase::Lobby { .. }
-                | crate::netplay::Phase::Failed { .. }
-        ) || netplay_handoff_pending;
+        // Lobby, sticky Failed — so the user sees the versus screen
+        // + match settings + Cancel button immediately on
+        // submitting a link code, instead of staring at the
+        // singleplayer bottom bar through the handshake. The
+        // verdict line and opponent slot degrade gracefully when
+        // peer info isn't there yet. Handoff keeps the lobby strip
+        // visible while spawn_pvp builds the live session in the
+        // background. Which band shows is read off `bottom_swap`
+        // (the App syncs it to the same phase predicate,
+        // `lobby_band_on_screen`) so the swap can animate — see
+        // the bottom-band block below.
         // Synthesize the local side's Settings from the play
         // tab's current selection so the "You" slot fills in
         // immediately — pre-Lobby phases haven't populated
@@ -1072,16 +1063,35 @@ impl PlayState {
         // the normal bottom_strip handles the link code + Fight
         // CTA.
         //
-        // The band keeps rendering while its exit transition runs
-        // so it slides back down instead of vanishing, and the
-        // bottom HUD scanline is grouped with whichever band is
-        // showing so it rides the motion instead of staying
-        // pinned above a band sliding underneath it. Once the
-        // band has left, the returning link-code strip rises in
-        // (the App delays its entrance to chain the two).
+        // The swap between them is a two-phase morph on
+        // `bottom_swap`'s unified timeline: the outgoing band
+        // sinks while dissolving into the page surface, then the
+        // incoming one rises out of it — so the code strip reads
+        // as turning into the lobby and back, rather than one
+        // vanishing and the other arriving. The bottom HUD
+        // scanline is grouped into the moving band so it rides
+        // the motion instead of staying pinned above it.
         let now = iced::time::Instant::now();
-        let band_animating = lobby_band.is_animating(now);
-        let bottom: Element<'a, Message> = if show_lobby || band_animating {
+        let to_lobby = bottom_swap.shown();
+        // 0 → 1 over the whole swap regardless of direction.
+        let t = {
+            let p = bottom_swap.progress(now);
+            if to_lobby {
+                p
+            } else {
+                1.0 - p
+            }
+        };
+        let (render_lobby, swap_phase) = if !bottom_swap.is_animating(now) {
+            (to_lobby, None)
+        } else if t < 0.5 {
+            // First half: the outgoing band, on its way down.
+            (!to_lobby, Some((t * 2.0, false)))
+        } else {
+            // Second half: the incoming band, on its way up.
+            (to_lobby, Some((t * 2.0 - 1.0, true)))
+        };
+        let bottom: Element<'a, Message> = if render_lobby {
             container(lobby_view(
                 lang,
                 netplay_lobby,
@@ -1099,21 +1109,24 @@ impl PlayState {
         } else {
             self.bottom_strip(lang)
         };
-        let group: Element<'a, Message> = iced::widget::column![widgets::hud_scanline_bottom(), bottom]
+        let mut group: Element<'a, Message> = iced::widget::column![widgets::hud_scanline_bottom(), bottom]
             .width(Fill)
             .into();
-        let group = if show_lobby || band_animating {
-            if band_animating {
-                crate::anim::slide_in(group, lobby_band.progress(now), iced::Vector::new(0.0, 48.0))
+        if let Some((q, entering)) = swap_phase {
+            use iced::animation::Easing;
+            let dist = if render_lobby { 48.0 } else { 24.0 };
+            if entering {
+                // Rise out of the page surface, wash dissolving off.
+                let e = Easing::EaseOutCubic.value(q);
+                group = crate::anim::exit_fade(group, 1.0 - e, |theme: &iced::Theme| theme.palette().background);
+                group = crate::anim::slide_in(group, e, iced::Vector::new(0.0, dist));
             } else {
-                group
+                // Sink and dissolve into the page surface.
+                let e = Easing::EaseInCubic.value(q);
+                group = crate::anim::exit_fade(group, e, |theme: &iced::Theme| theme.palette().background);
+                group = crate::anim::slide_in(group, 1.0 - e, iced::Vector::new(0.0, dist));
             }
-        } else {
-            match bottom_strip_enter.progress(now) {
-                Some(p) => crate::anim::slide_in(group, p, iced::Vector::new(0.0, 20.0)),
-                None => group,
-            }
-        };
+        }
         col = col.push(group);
         col.into()
     }
@@ -1215,7 +1228,15 @@ impl PlayState {
         let sliding = self.patch_row.is_animating(now);
         let slide = |el: Element<'a, Message>| -> Element<'a, Message> {
             if sliding {
-                crate::anim::slide_in(el, self.patch_row.progress(now), iced::Vector::new(-32.0, 0.0))
+                let p = self.patch_row.progress(now);
+                let el = if self.patch_row.shown() {
+                    el
+                } else {
+                    // Exiting — dissolve into the pane plate while
+                    // sliding away instead of stopping dead.
+                    crate::anim::exit_fade(el, 1.0 - p, widgets::plate_color)
+                };
+                crate::anim::slide_in(el, p, iced::Vector::new(-32.0, 0.0))
             } else {
                 el
             }
