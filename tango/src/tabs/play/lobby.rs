@@ -1,9 +1,12 @@
 //! The lobby — the Play tab's bottom band while a netplay attempt is
 //! in flight, standing in for the link-code strip while the save view
-//! above stays visible. Three stacked panes: the header (status /
-//! verdict line + leave button), the matchup (you / opponent cards
-//! over the VS splitter), and the controls (match settings + Ready
-//! CTA).
+//! above stays visible. Two stacked panes, hero then console: the
+//! matchup (you / opponent cards over the VS splitter) and one
+//! command bar that reads left to right in the order the user thinks
+//! — what's happening (status / verdict, with the connection detail
+//! tucked under it), what the terms are (the match settings cluster),
+//! then back out / commit (Leave + Ready). One home per kind of
+//! information; nothing in opposite corners.
 //!
 //! Everything renders off [`Lobby`], the per-frame bundle the Play
 //! tab assembles in [`super::State::view`], and [`Status`], the one
@@ -18,7 +21,6 @@ use crate::netplay::{self, Phase};
 use crate::rom;
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
 use crate::widgets;
-use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, text};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
@@ -53,11 +55,10 @@ impl<'a> Lobby<'a> {
     pub(super) fn view(self) -> Element<'a, Message> {
         let status = self.status();
         let compat_ok = status.compat_ok();
-        let header_pane = self.header_pane(&status);
         let matchup_pane = self.matchup_pane();
-        let controls_pane = self.controls_pane(compat_ok);
+        let command_pane = self.command_pane(&status, compat_ok);
         container(
-            column![header_pane, matchup_pane, controls_pane]
+            column![matchup_pane, command_pane]
                 .spacing(style::PANE_GAP)
                 .padding(style::PANE_GAP),
         )
@@ -109,20 +110,35 @@ impl<'a> Lobby<'a> {
         }
     }
 
-    /// Header pane: identifier / latency line + status line on the
-    /// left, leave button on the right. On failure the pane picks up a
-    /// faint red wash so a dead lobby reads as dead at a glance —
-    /// quiet on purpose; the icon + danger text of the status line
-    /// carry the message, the wash just sets the mood.
-    fn header_pane(&self, status: &Status<'_>) -> Element<'a, Message> {
-        let mut text_col = column![].spacing(2);
-        if let Some(line) = self.header_line() {
-            text_col = text_col.push(line);
+    /// The command bar under the matchup: the one pane that gathers
+    /// everything the user reads and operates, laid out left to right
+    /// in reading order — status stack (verdict line + connection
+    /// detail), match settings cluster, then the Leave / Ready action
+    /// pair. On failure the pane picks up a faint red wash so a dead
+    /// lobby reads as dead at a glance — quiet on purpose; the icon +
+    /// danger text of the status line carry the message, the wash
+    /// just sets the mood.
+    fn command_pane(&self, status: &Status<'_>, compat_ok: bool) -> Element<'a, Message> {
+        let mut status_col = column![self.status_line(status)].spacing(4);
+        if let Some(line) = self.connection_line() {
+            status_col = status_col.push(line);
         }
-        text_col = text_col.push(self.status_line(status));
-        let header_row = row![text_col, horizontal_space(), self.leave_button()]
-            .spacing(12)
+        // Leave before Ready — cancel before primary, same order as
+        // the save-action forms and the modal dialogs, so the commit
+        // action always sits at the row's end (right where the idle
+        // strip parks its Fight CTA).
+        let actions = row![self.leave_button(), self.ready_button(compat_ok)]
+            .spacing(10)
             .align_y(Alignment::Center);
+        let bar = row![
+            // The status stack soaks up the slack so the settings +
+            // actions stay packed against the right edge.
+            container(status_col).width(Length::Fill),
+            self.settings_cluster(),
+            actions,
+        ]
+        .spacing(24)
+        .align_y(Alignment::Center);
         let pane_style: fn(&iced::Theme) -> iced::widget::container::Style = if self.failed() {
             |theme: &iced::Theme| {
                 let danger = theme.extended_palette().danger.strong.color;
@@ -134,61 +150,68 @@ impl<'a> Lobby<'a> {
         } else {
             widgets::pane
         };
-        container(header_row)
+        container(bar)
             .padding(style::PANE_PADDING)
             .width(Fill)
             .style(pane_style)
             .into()
     }
 
-    /// The header's top line: latency once Pongs are landing,
-    /// otherwise the connection identifier (matchmaking code / direct
-    /// host / direct target) so the user sees what they're matched on.
+    /// Small muted line under the status: the connection identifier
+    /// (matchmaking code / direct host / direct target) plus, once
+    /// Pongs are landing, the measured latency — joined on one line so
+    /// the code doesn't vanish the moment the first ping lands.
     /// Streamer privacy mode suppresses the identifier so a viewer of
-    /// the stream can't scrape it off the screen and crash the lobby —
-    /// and that's the only path to the "no latency, no identifier"
-    /// `None`, so the header just skips the line there.
-    fn header_line(&self) -> Option<Element<'a, Message>> {
+    /// the stream can't scrape it off the screen and crash the lobby;
+    /// `None` only when neither half has anything to say yet.
+    fn connection_line(&self) -> Option<Element<'a, Message>> {
         let lang = self.lang;
-        let ident: Option<&netplay::LinkIdent> = if self.streamer_mode {
-            None
-        } else {
-            match self.phase {
+        let mut parts: Vec<String> = Vec::new();
+        if !self.streamer_mode {
+            use netplay::{DirectRole, LinkIdent};
+            let ident = match self.phase {
                 Phase::Connecting { ident, .. } | Phase::Negotiating { ident } | Phase::Lobby { ident } => Some(ident),
                 _ => None,
+            };
+            if let Some(ident) = ident {
+                parts.push(match ident {
+                    LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
+                    LinkIdent::Direct(DirectRole::Host { port }) => {
+                        t!(lang, "lobby-direct-host", port = port.to_string())
+                    }
+                    LinkIdent::Direct(DirectRole::Connect { addr }) => {
+                        t!(lang, "lobby-direct-connect", target = addr.clone())
+                    }
+                });
             }
-        };
+        }
         if let Some(d) = self.state.latency_counter.latest() {
             let ms = d.as_millis() as i64;
-            let label = match self.state.connection_kind {
+            parts.push(match self.state.connection_kind {
                 Some(netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
                 Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
                 None => t!(lang, "lobby-latency", ms = ms),
-            };
-            Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
-        } else if let Some(ident) = ident {
-            use netplay::{DirectRole, LinkIdent};
-            let label = match ident {
-                LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
-                LinkIdent::Direct(DirectRole::Host { port }) => {
-                    t!(lang, "lobby-direct-host", port = port.to_string())
-                }
-                LinkIdent::Direct(DirectRole::Connect { addr }) => {
-                    t!(lang, "lobby-direct-connect", target = addr.clone())
-                }
-            };
-            Some(text(label).size(TEXT_BODY).style(widgets::muted_text_style).into())
-        } else {
+            });
+        }
+        if parts.is_empty() {
             None
+        } else {
+            Some(
+                text(parts.join("  ·  "))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style)
+                    .into(),
+            )
         }
     }
 
-    /// The header's status / verdict line. The in-flight statuses
-    /// (connecting / waiting / negotiating / handshake) breathe
-    /// between muted and primary-tinted so the line reads as "still
-    /// working" rather than frozen — the App's subscription keeps
-    /// per-frame redraws coming while one of those is on screen;
-    /// terminal states (verdicts, failures) stay static.
+    /// The command bar's status / verdict line — the first thing in
+    /// reading order, since it answers "can we fight yet". The
+    /// in-flight statuses (connecting / waiting / negotiating /
+    /// handshake) breathe between muted and primary-tinted so the
+    /// line reads as "still working" rather than frozen — the App's
+    /// subscription keeps per-frame redraws coming while one of those
+    /// is on screen; terminal states (verdicts, failures) stay static.
     fn status_line(&self, status: &Status<'_>) -> Element<'a, Message> {
         let lang = self.lang;
         let pulse = crate::anim::pulse();
@@ -221,8 +244,8 @@ impl<'a> Lobby<'a> {
                 };
                 // The lobby is dead at this point but its chrome is
                 // still on screen — cue it with an alert icon next to
-                // the danger text and a faint red wash on the header
-                // pane (see [`Self::header_pane`]). Deliberately
+                // the danger text and a faint red wash on the command
+                // bar (see [`Self::command_pane`]). Deliberately
                 // gentle: a loud border + oversized text read as more
                 // alarming than a failed handshake warrants.
                 row![
@@ -260,14 +283,13 @@ impl<'a> Lobby<'a> {
         }
     }
 
-    /// Leave-lobby (Disconnect) button. Top-right of the header — out
-    /// of the way of the verdict line, and visually paired with the
-    /// Ready CTA in the bottom-right of the lobby (same right edge,
-    /// opposite corner). Disabled during the handoff window so the
-    /// user can't tear down a lobby whose PvP session is already being
-    /// built — clicking Disconnect there wouldn't actually cancel
-    /// spawn_pvp, just leave the user confused when the match view
-    /// pops up anyway.
+    /// Leave-lobby (Disconnect) button — the back-out half of the
+    /// action pair at the command bar's right end, just left of
+    /// Ready. Disabled during the handoff window so the user can't
+    /// tear down a lobby whose PvP session is already being built —
+    /// clicking Disconnect there wouldn't actually cancel spawn_pvp,
+    /// just leave the user confused when the match view pops up
+    /// anyway.
     fn leave_button(&self) -> Element<'a, Message> {
         let inner = row![Icon::LogOut.widget(), text(t!(self.lang, "play-cancel"))]
             .spacing(8)
@@ -314,42 +336,23 @@ impl<'a> Lobby<'a> {
         .into()
     }
 
-    /// Controls pane: settings stack on the left, Ready CTA floated to
-    /// the right of the pane and bottom-aligned against the stack —
-    /// mirrors the idle screen's Fight button anchored to the
-    /// bottom-right of the hud bar.
-    fn controls_pane(&self, compat_ok: bool) -> Element<'a, Message> {
-        let controls = row![self.settings_rows(), self.ready_button(compat_ok)]
-            .spacing(12)
-            .align_y(Alignment::End);
-        container(controls)
-            .padding(style::PANE_PADDING)
-            .width(Fill)
-            .style(widgets::pane)
-            .into()
-    }
-
-    /// The lobby settings table — one stacked row per setting (match
-    /// type / frame delay / reveal setup), each shaped `[fixed-width
-    /// muted label] [control fills the rest]`. The identical row shape
-    /// is what makes the block read as a single coherent settings
-    /// group; visual weight differences between picker / slider /
-    /// checkbox stop mattering because every control hangs off the
-    /// same label column.
-    fn settings_rows(&self) -> Element<'a, Message> {
+    /// The match settings, clustered as labeled columns — a muted
+    /// caption over each control, every setting the same shape so the
+    /// group reads as one coherent block between the status and the
+    /// actions. (These were stacked label/control rows when the lobby
+    /// filled a whole tab body; the band wants its height back, and
+    /// the caption-over-control shape keeps the settings scannable in
+    /// a single horizontal pass.)
+    fn settings_cluster(&self) -> Element<'a, Message> {
         let lang = self.lang;
         let inert = self.inert();
-        let setting_row = |label: String, control: Element<'a, Message>| -> Element<'a, Message> {
-            row![
-                container(text(label).size(TEXT_BODY).style(widgets::muted_text_style)).width(Length::Fixed(140.0)),
-                container(control).width(Length::Fill),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center)
-            .into()
+        let labeled = |label: String, control: Element<'a, Message>| -> Element<'a, Message> {
+            column![text(label).size(TEXT_CAPTION).style(widgets::muted_text_style), control]
+                .spacing(4)
+                .into()
         };
 
-        let match_row = setting_row(t!(lang, "lobby-match-type"), self.match_type_picker());
+        let match_col = labeled(t!(lang, "lobby-match-type"), self.match_type_picker());
 
         // Frame delay slider — 2..=10 frames. Set here before the
         // match; it's this side's local frame delay (how far the
@@ -364,8 +367,8 @@ impl<'a> Lobby<'a> {
         .width(Length::Fixed(160.0));
         // "Suggest" button: one-way frames + 1, clamped to the slider
         // range. Reads the median window rather than the raw `latest()`
-        // shown on the header line, so the recommendation doesn't jump
-        // with a single spiky Pong. Disabled when the controls are
+        // shown on the connection line, so the recommendation doesn't
+        // jump with a single spiky Pong. Disabled when the controls are
         // inert, and until the first Pong lands (`latest()` is `Some`)
         // so the counter has a real reading to take the median of.
         let suggest_msg = if inert || self.state.latency_counter.latest().is_none() {
@@ -380,7 +383,7 @@ impl<'a> Lobby<'a> {
             suggest_msg,
             STANDARD_PADDING,
         );
-        let delay_row = setting_row(
+        let delay_col = labeled(
             t!(lang, "settings-netplay-frame-delay"),
             row![
                 slider,
@@ -397,10 +400,10 @@ impl<'a> Lobby<'a> {
         // Reveal-setup checkbox. Mirrors the legacy app's
         // `play-details-reveal-setup` checkbox — each side picks
         // independently. The peer's current flag is surfaced as a
-        // standalone sentence next to the checkbox so the
-        // parens-stuffed label doesn't have to be locale-jammed into
-        // the checkbox text; its color follows the state: green when
-        // the peer is sharing, muted/red when not / unknown.
+        // colored sentence next to the checkbox (green when the peer
+        // is sharing, muted/red when not / unknown) so the
+        // parens-stuffed copy doesn't have to be locale-jammed into
+        // the checkbox text.
         let (peer_label, peer_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
             match self.state.remote.as_ref() {
                 Some(r) if r.reveal_setup => (t!(lang, "lobby-reveal-peer-on"), widgets::success_text_style),
@@ -415,7 +418,7 @@ impl<'a> Lobby<'a> {
         } else {
             Some(Message::SetRevealSetup as fn(bool) -> Message)
         };
-        let reveal_row = setting_row(
+        let reveal_col = labeled(
             t!(lang, "lobby-reveal-mine"),
             row![
                 iced::widget::checkbox(self.state.reveal_setup)
@@ -424,14 +427,16 @@ impl<'a> Lobby<'a> {
                     .style(widgets::chunky_checkbox),
                 text(peer_label).size(TEXT_CAPTION).style(peer_style),
             ]
-            .spacing(12)
+            .spacing(8)
             .align_y(Alignment::Center)
             .into(),
         );
 
-        column![match_row, delay_row, reveal_row]
-            .spacing(8)
-            .width(Length::Fill)
+        // Top-align so the captions sit on one line like a table
+        // header row, whatever each control's height is.
+        row![match_col, delay_col, reveal_col]
+            .spacing(20)
+            .align_y(Alignment::Start)
             .into()
     }
 
