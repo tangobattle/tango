@@ -1295,13 +1295,68 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
     }
 }
 
+/// Container twin of [`telemetry_plate_button`]'s resting plate —
+/// the flat translucent fill + hairline border the floating chips
+/// use, for surfaces that aren't buttons (the replay transport
+/// bar). Keeps every floating HUD piece in one visual family.
+fn hud_chip_plate(theme: &iced::Theme) -> iced::widget::container::Style {
+    let p = theme.extended_palette();
+    let text = theme.palette().text;
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color {
+            a: if p.is_dark { 0.06 } else { 0.05 },
+            ..text
+        })),
+        text_color: Some(text),
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: if p.is_dark { 0.10 } else { 0.08 },
+                ..text
+            },
+        },
+        ..Default::default()
+    }
+}
+
+/// Pick-list twin of [`telemetry_plate_button`] — flat translucent
+/// plate + hairline border instead of the chunky gradient, so the
+/// replay bar's speed picker reads as the same family as the
+/// floating chips around it.
+fn flat_pick_list(theme: &iced::Theme, status: sweeten::widget::pick_list::Status) -> sweeten::widget::pick_list::Style {
+    use sweeten::widget::pick_list::Status;
+    let p = theme.extended_palette();
+    let text = theme.palette().text;
+    let base = if p.is_dark { 0.06 } else { 0.05 };
+    let fill = match status {
+        Status::Hovered => base + 0.06,
+        Status::Opened { .. } => base + 0.10,
+        Status::Active => base,
+    };
+    sweeten::widget::pick_list::Style {
+        text_color: text,
+        placeholder_color: widgets::muted_color(theme),
+        handle_color: widgets::muted_color(theme),
+        background: iced::Background::Color(iced::Color { a: fill, ..text }),
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: iced::Color {
+                a: if p.is_dark { 0.10 } else { 0.08 },
+                ..text
+            },
+        },
+    }
+}
+
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
 /// Vertical clearance that floats a bottom-anchored popover just
-/// above the floating controls bar (bottom margin + strip padding
-/// + control height + panel border + gap).
-const POPOVER_LIFT: f32 = 12.0 + 20.0 + crate::style::BAR_CONTROL_HEIGHT + 4.0 + 6.0;
+/// above the replay transport bar (bottom margin + strip padding
+/// + control height + plate border + gap).
+const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 2.0 + 6.0;
 
 /// Same idea as [`POPOVER_LIFT`] for the SP/PvP corner chips,
 /// which are much shorter than the replay bar (chip margin +
@@ -1393,7 +1448,7 @@ fn floating_controls<'a>(
     let Some(r) = session.as_replay() else {
         return corner_chips(lang, session, state, hide_progress);
     };
-    let panel = container(replay_bar(lang, r, state)).width(Fill).style(widgets::panel);
+    let panel = container(replay_bar(lang, r, state)).width(Fill).style(hud_chip_plate);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
     // note in `view`), which left the hover pin stuck and the bar
     // permanently visible.
@@ -1556,14 +1611,9 @@ fn replay_bar<'a>(
     r: &'a replay_session::ReplaySession,
     state: &'a State,
 ) -> sweeten::widget::Row<'a, Message> {
-    const CTRL_ICON: f32 = 16.0;
-    const CTRL_PAD: [f32; 2] = [10.0, 14.0];
-
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
     // (see `corner_commands_overlay`).
-    let _ = CTRL_ICON;
-    let _ = CTRL_PAD;
     let current = r.speed();
     let speed_options: Vec<widgets::Choice<u32>> = [0.5f32, 1.0, 2.0, 4.0]
         .iter()
@@ -1583,11 +1633,11 @@ fn replay_bar<'a>(
     let speed_picker = sweeten::widget::pick_list(speed_options, selected, |c: widgets::Choice<u32>| {
         Message::SetSpeed(c.value as f32 / 10.0)
     })
-    .padding([10.0, 14.0])
-    .width(Length::Fixed(90.0))
-    .style(widgets::chunky_pick_list);
+    .padding([6.0, 10.0])
+    .width(Length::Fixed(78.0))
+    .style(flat_pick_list);
 
-    let controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
+    let controls = row![].spacing(10).align_y(Alignment::Center).padding([8, 8]);
     let controls = replay_transport(lang, r, state, controls);
     controls.push(speed_picker)
 }
@@ -1792,29 +1842,30 @@ fn replay_transport<'a>(
     // it reads as a console transport button instead of a
     // generic pill.
     let base_style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style = if paused {
+        // Paused keeps the one accent in the bar — Play is the
+        // affordance the user is looking for at rest.
         widgets::primary_button
     } else {
-        widgets::neutral
+        // Playing rides the same flat plate as the floating chips.
+        telemetry_plate_button
     };
     let play_pause_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
         let mut style = base_style(theme, status);
         style.border.radius = 999.0.into();
         style
     };
-    // Square button sized to the shared bar-control height
-    // so the media bar lines up exactly with the play-tab
-    // link bar (both pin their interactive children to the
-    // same constant).
+    // Compact circle, a notch bigger than the chip buttons so it
+    // still reads as the transport's centerpiece.
     let play_pause_btn = iced::widget::tooltip(
         button(
-            iced::widget::container(play_pause_icon.widget().size(18.0))
-                .width(iced::Length::Fixed(20.0))
-                .height(iced::Length::Fixed(20.0))
+            iced::widget::container(play_pause_icon.widget().size(16.0))
+                .width(iced::Length::Fixed(18.0))
+                .height(iced::Length::Fixed(18.0))
                 .center(Fill),
         )
         .padding(0)
-        .width(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-        .height(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
         .style(play_pause_style)
         .on_press(Message::TogglePlay),
         iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
@@ -2149,13 +2200,8 @@ fn options_menu_overlay<'a>(
         .style(widgets::panel);
     // Rise out of the trigger button below while scaling up.
     let popover = anim::pop(popover, state.options_anim.progress(now), 10.0);
-    // Anchor above the floating controls' bottom-right corner —
-    // the tall replay bar or the short SP/PvP action chip.
-    let lift = if session.as_replay().is_some() {
-        POPOVER_LIFT
-    } else {
-        CHIP_POPOVER_LIFT
-    };
+    // Anchor above the bottom-right action chip (the menu only
+    // exists for PvP — replay/SP broke their commands out).
     Some(
         container(popover)
             .width(Fill)
@@ -2165,7 +2211,7 @@ fn options_menu_overlay<'a>(
             .padding(iced::Padding {
                 top: 0.0,
                 right: 12.0,
-                bottom: lift,
+                bottom: CHIP_POPOVER_LIFT,
                 left: 0.0,
             })
             .into(),
