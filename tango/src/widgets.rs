@@ -353,19 +353,21 @@ pub fn labeled_icon_button_maybe<'a, M: Clone + 'a>(
 /// Body-text size, modest padding — meant to sit inside a pane
 /// without competing with the global top nav.
 pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, false, false)
+    tab_button_inner(icon, Some(label), msg, active, false, None)
 }
 
-/// Larger pill for the global top nav (Fight / Saves / Replays).
+/// Larger pill for the global top nav (Play / Replays).
 /// TEXT_HEADING-sized icon + label so the chrome reads as the
 /// primary navigation for the whole app.
 pub fn nav_tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, true, false)
+    tab_button_inner(icon, Some(label), msg, active, true, None)
 }
 
-/// [`nav_tab_button`] with an optional attention dot: a small
-/// primary-glow pip after the label, for "something is live on this
-/// tab while you're looking at another" (e.g. an open lobby).
+/// [`nav_tab_button`] with an attention dot: a small primary-glow pip
+/// after the label, for "something is live on this tab while you're
+/// looking at another" (e.g. an open lobby). The pip's slot is part
+/// of the pill whether or not it's lit, so the tab strip doesn't
+/// shift sideways the moment the dot turns on.
 pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
     icon: Icon,
     label: String,
@@ -373,7 +375,7 @@ pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
     active: bool,
     badge: bool,
 ) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, true, badge)
+    tab_button_inner(icon, Some(label), msg, active, true, Some(badge))
 }
 
 /// Icon-only variant of [`nav_tab_button`] for the right-aligned
@@ -384,7 +386,7 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
 ) -> Element<'a, M> {
-    let stacked = tab_button_inner(icon, None, msg, active, true, false);
+    let stacked = tab_button_inner(icon, None, msg, active, true, None);
     tooltip(
         stacked,
         container(text(tooltip_label).size(TEXT_CAPTION))
@@ -402,7 +404,10 @@ fn tab_button_inner<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
     large: bool,
-    badge: bool,
+    // `None` = no badge slot at all; `Some(lit)` = reserve the pip's
+    // slot either way and paint it only when lit, so the pill's width
+    // doesn't change (and shift the whole strip) when the dot flips.
+    badge: Option<bool>,
 ) -> Element<'a, M> {
     let icon_size = if large { TEXT_HEADING } else { TEXT_BODY };
     let mut content = row![icon.widget().size(icon_size)]
@@ -419,11 +424,16 @@ fn tab_button_inner<'a, M: Clone + 'a>(
         }
         content = content.push(lbl);
     }
-    if badge {
-        // 7 px glowing pip — quiet, but visibly "live". Skipped on
-        // the active tab (the user is already looking at it).
+    if let Some(lit) = badge {
+        // 7 px glowing pip — quiet, but visibly "live". Unlit (e.g.
+        // on the active tab, where the user is already looking) it
+        // renders as transparent space, keeping the pill's width
+        // steady.
         content = content.push(
-            container(iced::widget::Space::new().width(7).height(7)).style(|theme: &Theme| {
+            container(iced::widget::Space::new().width(7).height(7)).style(move |theme: &Theme| {
+                if !lit {
+                    return container::Style::default();
+                }
                 let primary = theme.palette().primary;
                 container::Style {
                     background: Some(iced::Background::Color(primary)),

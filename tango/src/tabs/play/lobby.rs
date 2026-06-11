@@ -30,6 +30,12 @@ use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
 
+/// Shared sizing for the command bar's Leave / Ready pair — same text
+/// size and padding on both so the action pair reads as one unit
+/// rather than two unrelated buttons.
+const ACTION_TEXT: f32 = 16.0;
+const ACTION_PAD: [f32; 2] = [10.0, 22.0];
+
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
 /// `None` for a tick.
@@ -157,24 +163,30 @@ impl<'a> Lobby<'a> {
             .into()
     }
 
-    /// Small muted line under the status: the connection identifier
-    /// (matchmaking code / direct host / direct target) plus, once
-    /// Pongs are landing, the measured latency — joined on one line so
-    /// the code doesn't vanish the moment the first ping lands.
-    /// Streamer privacy mode suppresses the identifier so a viewer of
-    /// the stream can't scrape it off the screen and crash the lobby;
-    /// `None` only when neither half has anything to say yet.
+    /// Small muted line under the status. While dialing (Connecting /
+    /// Negotiating) it's the connection identifier — matchmaking code
+    /// / direct host / direct target — so the user can read off what
+    /// they're matching on; once the connection is established the
+    /// code has done its job and the line becomes the live ping
+    /// instead. Streamer privacy mode suppresses the identifier so a
+    /// viewer of the stream can't scrape it off the screen and crash
+    /// the lobby; a failed lobby gets no line at all (the status line
+    /// carries the failure).
     fn connection_line(&self) -> Option<Element<'a, Message>> {
         let lang = self.lang;
-        let mut parts: Vec<String> = Vec::new();
-        if !self.streamer_mode {
-            use netplay::{DirectRole, LinkIdent};
-            let ident = match self.phase {
-                Phase::Connecting { ident, .. } | Phase::Negotiating { ident } | Phase::Lobby { ident } => Some(ident),
-                _ => None,
-            };
-            if let Some(ident) = ident {
-                parts.push(match ident {
+        let label = match self.phase {
+            Phase::Lobby { .. } => {
+                let d = self.state.latency_counter.latest()?;
+                let ms = d.as_millis() as i64;
+                match self.state.connection_kind {
+                    Some(netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
+                    Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
+                    None => t!(lang, "lobby-latency", ms = ms),
+                }
+            }
+            Phase::Connecting { ident, .. } | Phase::Negotiating { ident } if !self.streamer_mode => {
+                use netplay::{DirectRole, LinkIdent};
+                match ident {
                     LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
                     LinkIdent::Direct(DirectRole::Host { port }) => {
                         t!(lang, "lobby-direct-host", port = port.to_string())
@@ -182,27 +194,11 @@ impl<'a> Lobby<'a> {
                     LinkIdent::Direct(DirectRole::Connect { addr }) => {
                         t!(lang, "lobby-direct-connect", target = addr.clone())
                     }
-                });
+                }
             }
-        }
-        if let Some(d) = self.state.latency_counter.latest() {
-            let ms = d.as_millis() as i64;
-            parts.push(match self.state.connection_kind {
-                Some(netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
-                Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
-                None => t!(lang, "lobby-latency", ms = ms),
-            });
-        }
-        if parts.is_empty() {
-            None
-        } else {
-            Some(
-                text(parts.join("  ·  "))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::muted_text_style)
-                    .into(),
-            )
-        }
+            _ => return None,
+        };
+        Some(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style).into())
     }
 
     /// The command bar's status / verdict line — the first thing in
@@ -291,10 +287,13 @@ impl<'a> Lobby<'a> {
     /// just leave the user confused when the match view pops up
     /// anyway.
     fn leave_button(&self) -> Element<'a, Message> {
-        let inner = row![Icon::LogOut.widget(), text(t!(self.lang, "play-cancel"))]
-            .spacing(8)
-            .align_y(Alignment::Center);
-        let mut btn = button(inner).padding(STANDARD_PADDING).style(widgets::danger_button);
+        let inner = row![
+            Icon::LogOut.widget().size(ACTION_TEXT),
+            text(t!(self.lang, "play-cancel")).size(ACTION_TEXT),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+        let mut btn = button(inner).padding(ACTION_PAD).style(widgets::danger_button);
         if !self.handoff_pending {
             btn = btn.on_press(Message::Disconnect);
         }
@@ -346,10 +345,20 @@ impl<'a> Lobby<'a> {
     fn settings_cluster(&self) -> Element<'a, Message> {
         let lang = self.lang;
         let inert = self.inert();
+        // Caption on top, control centered in a fixed-height slot
+        // beneath — the slot is what keeps the short controls (the
+        // checkbox) on the same horizontal axis as the tall ones (the
+        // picker) instead of hugging their captions.
+        const CONTROL_SLOT: f32 = 36.0;
         let labeled = |label: String, control: Element<'a, Message>| -> Element<'a, Message> {
-            column![text(label).size(TEXT_CAPTION).style(widgets::muted_text_style), control]
-                .spacing(4)
-                .into()
+            column![
+                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                container(control)
+                    .height(Length::Fixed(CONTROL_SLOT))
+                    .align_y(iced::alignment::Vertical::Center),
+            ]
+            .spacing(4)
+            .into()
         };
 
         let match_col = labeled(t!(lang, "lobby-match-type"), self.match_type_picker());
@@ -493,8 +502,6 @@ impl<'a> Lobby<'a> {
     /// in the strip, but not so big that it blows the lobby layout —
     /// the glow shadow does the work of "look at me" instead.
     fn ready_button(&self, compat_ok: bool) -> Element<'a, Message> {
-        const READY_TEXT: f32 = 16.0;
-        const READY_PAD: [f32; 2] = [10.0, 22.0];
         let lang = self.lang;
         let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.state.match_ready {
             // Both committed — match is spinning up. Button is purely
@@ -532,11 +539,11 @@ impl<'a> Lobby<'a> {
         // Force the Ready button off regardless of how the
         // pre-failure state looked.
         let msg = if self.failed() { None } else { msg };
-        let label_widget = row![icon.widget().size(READY_TEXT), text(label).size(READY_TEXT)]
+        let label_widget = row![icon.widget().size(ACTION_TEXT), text(label).size(ACTION_TEXT)]
             .spacing(8)
             .align_y(Alignment::Center);
         let mut btn = button(label_widget)
-            .padding(READY_PAD)
+            .padding(ACTION_PAD)
             .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
         if let Some(m) = msg {
             btn = btn.on_press(m);
