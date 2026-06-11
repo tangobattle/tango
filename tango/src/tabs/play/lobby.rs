@@ -30,11 +30,12 @@ use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
 
-/// Shared sizing for the command bar's Leave / Ready pair — same text
-/// size and padding on both so the action pair reads as one unit
-/// rather than two unrelated buttons.
-const ACTION_TEXT: f32 = 16.0;
-const ACTION_PAD: [f32; 2] = [10.0, 22.0];
+/// Shared height for the command bar's Leave / Ready pair — same
+/// trick as the idle strip's dice + Fight buttons: equal heights keep
+/// the pair reading as one aligned unit, while Ready stays the
+/// heavier of the two (bigger text, wider padding) because it's the
+/// CTA and Leave is just the exit.
+const ACTION_HEIGHT: f32 = crate::style::BAR_CONTROL_HEIGHT;
 
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
@@ -287,13 +288,13 @@ impl<'a> Lobby<'a> {
     /// just leave the user confused when the match view pops up
     /// anyway.
     fn leave_button(&self) -> Element<'a, Message> {
-        let inner = row![
-            Icon::LogOut.widget().size(ACTION_TEXT),
-            text(t!(self.lang, "play-cancel")).size(ACTION_TEXT),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
-        let mut btn = button(inner).padding(ACTION_PAD).style(widgets::danger_button);
+        let inner = row![Icon::LogOut.widget(), text(t!(self.lang, "play-cancel"))]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        let mut btn = button(inner)
+            .padding(STANDARD_PADDING)
+            .height(Length::Fixed(ACTION_HEIGHT))
+            .style(widgets::danger_button);
         if !self.handoff_pending {
             btn = btn.on_press(Message::Disconnect);
         }
@@ -409,16 +410,31 @@ impl<'a> Lobby<'a> {
         // Reveal-setup checkbox. Mirrors the legacy app's
         // `play-details-reveal-setup` checkbox — each side picks
         // independently. The peer's current flag is surfaced as a
-        // colored sentence next to the checkbox (green when the peer
-        // is sharing, muted/red when not / unknown) so the
-        // parens-stuffed copy doesn't have to be locale-jammed into
-        // the checkbox text.
-        let (peer_label, peer_style): (String, fn(&iced::Theme) -> iced::widget::text::Style) =
+        // colored eye pip next to the checkbox (lit green when the
+        // peer is sharing, crossed red when not, crossed muted while
+        // unknown) with the full sentence in its tooltip — a glyph
+        // has one width in every state, so the opponent flipping the
+        // setting mid-lobby can't reflow the cluster the way the
+        // variable-length sentence did.
+        let (peer_icon, peer_style, peer_tip): (Icon, fn(&iced::Theme) -> iced::widget::text::Style, String) =
             match self.state.remote.as_ref() {
-                Some(r) if r.reveal_setup => (t!(lang, "lobby-reveal-peer-on"), widgets::success_text_style),
-                Some(_) => (t!(lang, "lobby-reveal-peer-off"), widgets::danger_text_style),
-                None => (t!(lang, "lobby-reveal-peer-unknown"), widgets::muted_text_style),
+                Some(r) if r.reveal_setup => (Icon::Eye, widgets::success_text_style, t!(lang, "lobby-reveal-peer-on")),
+                Some(_) => (Icon::EyeOff, widgets::danger_text_style, t!(lang, "lobby-reveal-peer-off")),
+                None => (
+                    Icon::EyeOff,
+                    widgets::muted_text_style,
+                    t!(lang, "lobby-reveal-peer-unknown"),
+                ),
             };
+        let peer_status: Element<'a, Message> = iced::widget::tooltip(
+            peer_icon.widget().size(TEXT_HEADING).style(peer_style),
+            container(text(peer_tip).size(TEXT_CAPTION))
+                .padding(6)
+                .style(widgets::tooltip_chrome),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into();
         // Unlike the picker and slider, the checkbox does accept a
         // `None` handler, so inert gets the real disabled rendering
         // instead of the `gated` reroute.
@@ -434,7 +450,7 @@ impl<'a> Lobby<'a> {
                     .on_toggle_maybe(toggle)
                     .size(TEXT_HEADING)
                     .style(widgets::chunky_checkbox),
-                text(peer_label).size(TEXT_CAPTION).style(peer_style),
+                peer_status,
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -502,6 +518,8 @@ impl<'a> Lobby<'a> {
     /// in the strip, but not so big that it blows the lobby layout —
     /// the glow shadow does the work of "look at me" instead.
     fn ready_button(&self, compat_ok: bool) -> Element<'a, Message> {
+        const READY_TEXT: f32 = 16.0;
+        const READY_PAD: [f32; 2] = [10.0, 22.0];
         let lang = self.lang;
         let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.state.match_ready {
             // Both committed — match is spinning up. Button is purely
@@ -539,11 +557,12 @@ impl<'a> Lobby<'a> {
         // Force the Ready button off regardless of how the
         // pre-failure state looked.
         let msg = if self.failed() { None } else { msg };
-        let label_widget = row![icon.widget().size(ACTION_TEXT), text(label).size(ACTION_TEXT)]
+        let label_widget = row![icon.widget().size(READY_TEXT), text(label).size(READY_TEXT)]
             .spacing(8)
             .align_y(Alignment::Center);
         let mut btn = button(label_widget)
-            .padding(ACTION_PAD)
+            .padding(READY_PAD)
+            .height(Length::Fixed(ACTION_HEIGHT))
             .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
         if let Some(m) = msg {
             btn = btn.on_press(m);

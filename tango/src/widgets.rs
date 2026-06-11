@@ -353,21 +353,22 @@ pub fn labeled_icon_button_maybe<'a, M: Clone + 'a>(
 /// Body-text size, modest padding — meant to sit inside a pane
 /// without competing with the global top nav.
 pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, false, None)
+    tab_button_inner(icon, Some(label), msg, active, false)
 }
 
 /// Larger pill for the global top nav (Play / Replays).
 /// TEXT_HEADING-sized icon + label so the chrome reads as the
 /// primary navigation for the whole app.
 pub fn nav_tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, true, None)
+    tab_button_inner(icon, Some(label), msg, active, true)
 }
 
 /// [`nav_tab_button`] with an attention dot: a small primary-glow pip
-/// after the label, for "something is live on this tab while you're
-/// looking at another" (e.g. an open lobby). The pip's slot is part
-/// of the pill whether or not it's lit, so the tab strip doesn't
-/// shift sideways the moment the dot turns on.
+/// floated over the pill's top-right corner, for "something is live
+/// on this tab while you're looking at another" (e.g. an open lobby).
+/// The pip is an overlay, not row content — it takes no layout space,
+/// so the pill is exactly [`nav_tab_button`]-sized whether the dot is
+/// lit, unlit, or never there, and the tab strip never shifts.
 pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
     icon: Icon,
     label: String,
@@ -375,7 +376,41 @@ pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
     active: bool,
     badge: bool,
 ) -> Element<'a, M> {
-    tab_button_inner(icon, Some(label), msg, active, true, Some(badge))
+    let pill = tab_button_inner(icon, Some(label), msg, active, true);
+    if !badge {
+        return pill;
+    }
+    // 7 px glowing pip in the pill's top-right corner. The Fill
+    // container resolves to the base layer's (the pill's) bounds —
+    // see iced's Stack sizing — so this floats inside the pill's
+    // own chrome.
+    let pip = container(iced::widget::Space::new().width(7).height(7)).style(|theme: &Theme| {
+        let primary = theme.palette().primary;
+        container::Style {
+            background: Some(iced::Background::Color(primary)),
+            border: iced::Border {
+                radius: 3.5.into(),
+                ..Default::default()
+            },
+            shadow: iced::Shadow {
+                color: iced::Color { a: 0.7, ..primary },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 6.0,
+            },
+            ..Default::default()
+        }
+    });
+    iced::widget::Stack::new()
+        .push(pill)
+        .push(
+            container(pip)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .align_y(iced::alignment::Vertical::Top)
+                .padding(4),
+        )
+        .into()
 }
 
 /// Icon-only variant of [`nav_tab_button`] for the right-aligned
@@ -386,7 +421,7 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
 ) -> Element<'a, M> {
-    let stacked = tab_button_inner(icon, None, msg, active, true, None);
+    let stacked = tab_button_inner(icon, None, msg, active, true);
     tooltip(
         stacked,
         container(text(tooltip_label).size(TEXT_CAPTION))
@@ -404,10 +439,6 @@ fn tab_button_inner<'a, M: Clone + 'a>(
     msg: M,
     active: bool,
     large: bool,
-    // `None` = no badge slot at all; `Some(lit)` = reserve the pip's
-    // slot either way and paint it only when lit, so the pill's width
-    // doesn't change (and shift the whole strip) when the dot flips.
-    badge: Option<bool>,
 ) -> Element<'a, M> {
     let icon_size = if large { TEXT_HEADING } else { TEXT_BODY };
     let mut content = row![icon.widget().size(icon_size)]
@@ -423,33 +454,6 @@ fn tab_button_inner<'a, M: Clone + 'a>(
             lbl = lbl.size(TEXT_HEADING);
         }
         content = content.push(lbl);
-    }
-    if let Some(lit) = badge {
-        // 7 px glowing pip — quiet, but visibly "live". Unlit (e.g.
-        // on the active tab, where the user is already looking) it
-        // renders as transparent space, keeping the pill's width
-        // steady.
-        content = content.push(
-            container(iced::widget::Space::new().width(7).height(7)).style(move |theme: &Theme| {
-                if !lit {
-                    return container::Style::default();
-                }
-                let primary = theme.palette().primary;
-                container::Style {
-                    background: Some(iced::Background::Color(primary)),
-                    border: iced::Border {
-                        radius: 3.5.into(),
-                        ..Default::default()
-                    },
-                    shadow: iced::Shadow {
-                        color: iced::Color { a: 0.7, ..primary },
-                        offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: 6.0,
-                    },
-                    ..Default::default()
-                }
-            }),
-        );
     }
     let padding = if large { [8.0, 18.0] } else { [6.0, 14.0] };
     button(content)
