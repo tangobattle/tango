@@ -589,10 +589,10 @@ impl ReplaysState {
             .and_then(|sel_path| filtered.iter().find(|r| &r.path == sel_path))
         {
             let detail = replay_detail(lang, r, &replays_path, self, scanners, netplay_active);
-            // Selection entrance: the detail panel slides in from
-            // the right (away from the list it was picked from).
+            // Selection entrance: the detail panel rises up into
+            // place.
             match self.detail_enter.progress(iced::time::Instant::now()) {
-                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(20.0, 0.0)),
+                Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 16.0)),
                 None => detail,
             }
         } else {

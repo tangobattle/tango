@@ -162,11 +162,10 @@ impl PatchesState {
         let right: Element<'_, Message> =
             if let Some((name, patch)) = self.selected.as_ref().and_then(|n| patches.get(n).map(|p| (n, p))) {
                 let detail = self.patch_detail(lang, config, name, patch);
-                // Selection entrance: the detail panel slides in
-                // from the right (away from the list it was picked
-                // from).
+                // Selection entrance: the detail panel rises up
+                // into place.
                 match self.detail_enter.progress(iced::time::Instant::now()) {
-                    Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(20.0, 0.0)),
+                    Some(p) => crate::anim::slide_in(detail, p, iced::Vector::new(0.0, 16.0)),
                     None => detail,
                 }
             } else {
