@@ -160,11 +160,17 @@ pub struct App {
     /// What the current `screen_enter` moves and which way — see
     /// [`EnterScope`].
     screen_enter_scope: EnterScope,
-    /// Entrance for the Play tab's lobby band, restarted when a
-    /// netplay attempt starts — the band replaces the link-code
-    /// strip wholesale, so it slides up from the bottom edge
-    /// instead of popping into place.
-    lobby_enter: anim::Enter,
+    /// Show/hide transition for the Play tab's lobby band —
+    /// mirrors [`App::lobby_band_on_screen`], synced after every
+    /// update. The band (with the bottom HUD scanline riding its
+    /// top edge) slides up from the bottom edge when a netplay
+    /// attempt starts and back down when it ends.
+    lobby_band: anim::Transition,
+    /// Entrance for the link-code strip returning after the lobby
+    /// band slides away — started with a one-transition delay on
+    /// the band's falling edge so the strip rises in right as the
+    /// band finishes leaving.
+    bottom_strip_enter: anim::Enter,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -341,7 +347,8 @@ impl App {
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
             screen_enter_scope: EnterScope::Root,
-            lobby_enter: anim::Enter::default(),
+            lobby_band: anim::Transition::new(false),
+            bottom_strip_enter: anim::Enter::default(),
         };
         app.refresh_loaded();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
@@ -625,7 +632,7 @@ impl App {
         // Dropping the whole EditState clears every editor's scratch at
         // once. The commit path takes the early-return above and never
         // reaches here, so this only fires on a real selection change.
-        self.play.save_view.editing = None;
+        self.play.save_view.clear_editing();
     }
 }
 
@@ -741,10 +748,12 @@ impl App {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
         let lobby_before = self.lobby_band_on_screen();
+        let selection_before = (self.play.local_game, self.play.local_save.clone());
         let task = self.update_inner(message);
+        let now = iced::time::Instant::now();
         let screen_after = self.screen_key();
         if screen_before != screen_after {
-            self.screen_enter.start(iced::time::Instant::now());
+            self.screen_enter.start(now);
             self.screen_enter_scope = match (screen_before, screen_after) {
                 (ScreenKey::Tabs(t1), ScreenKey::Tabs(t2)) => {
                     // The nav strip lays the tabs out in declaration
@@ -757,8 +766,20 @@ impl App {
                 _ => EnterScope::Root,
             };
         }
-        if !lobby_before && self.lobby_band_on_screen() {
-            self.lobby_enter.start(iced::time::Instant::now());
+        // Lobby band slides in/out on phase edges; once it has
+        // slid away, the returning link-code strip rises in (the
+        // delay chains the two so they don't overlap).
+        let lobby_after = self.lobby_band_on_screen();
+        self.lobby_band.set(lobby_after, now);
+        if lobby_before && !lobby_after {
+            self.bottom_strip_enter.start_delayed(now, anim::TRANSITION);
+        }
+        // A different game or save swaps the whole save-view body —
+        // rise it in vertically (sub-tab switches slide it
+        // horizontally instead; see save_view::State::apply).
+        if selection_before != (self.play.local_game, self.play.local_save.clone()) {
+            self.play.save_view.enter_from = iced::Vector::new(0.0, 16.0);
+            self.play.save_view.enter.start(now);
         }
         task
     }
@@ -2040,7 +2061,8 @@ impl App {
                     &self.netplay.lobby,
                     self.netplay.handoff_pending(),
                     rescanning,
-                    self.lobby_enter.progress(now),
+                    &self.lobby_band,
+                    &self.bottom_strip_enter,
                 )
                 .map(Message::Play),
             Tab::Replays => self

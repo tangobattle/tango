@@ -663,9 +663,22 @@ pub struct State {
     /// direction following the strip's order like the app's
     /// top-level tabs.
     pub enter: crate::anim::Enter,
-    /// Starting horizontal offset for `enter` — sign picked from
-    /// the direction of travel along the tab strip.
-    pub enter_dx: f32,
+    /// Starting offset for `enter`. Horizontal (sign following
+    /// the direction of travel along the strip) for sub-tab
+    /// switches; vertical for whole-body swaps (edit mode toggles,
+    /// a different game/save selected).
+    pub enter_from: iced::Vector,
+    /// The sub-tab that was active before the last [`Action::SelectTab`].
+    /// Lets the view tell whether a control in the strip's tail (the
+    /// Edit affordance) was already on screen on the previous tab and
+    /// skip re-animating it.
+    pub prev_tab: Option<Tab>,
+    /// Show/hide transition for the edit-mode Save / Cancel pair
+    /// in the strip's tail. They slide in horizontally when edit
+    /// mode opens and back out when it closes — and because this
+    /// is keyed on the mode (not the sub-tab), they stay planted
+    /// while the user flips between editor tabs.
+    pub edit_anim: crate::anim::Transition,
 }
 
 /// New index of an element originally at `i` after an ordered move that takes
@@ -740,7 +753,9 @@ impl State {
             patch_card56_sort: PatchCard56Sort::Id,
             auto_battle_data_sort: AutoBattleDataSort::Id,
             enter: crate::anim::Enter::default(),
-            enter_dx: 16.0,
+            enter_from: iced::Vector::new(16.0, 0.0),
+            prev_tab: None,
+            edit_anim: crate::anim::Transition::new(false),
         }
     }
 
@@ -766,6 +781,21 @@ impl State {
             .map(|[a, b]| vec![a, b])
             .unwrap_or_default();
         self.editing = Some(edit);
+        // Mode change, not navigation — the editor body rises in
+        // while the Save / Cancel pair slides into the tail.
+        let now = iced::time::Instant::now();
+        self.enter_from = iced::Vector::new(0.0, 12.0);
+        self.enter.start(now);
+        self.edit_anim.set(true, now);
+    }
+
+    /// Drop any in-progress edit without animation bookkeeping
+    /// beyond the exit transition — used by hosts that reset the
+    /// edit state out-of-band (e.g. the App when the loaded save
+    /// is swapped out from under the view).
+    pub fn clear_editing(&mut self) {
+        self.editing = None;
+        self.edit_anim.set(false, iced::time::Instant::now());
     }
 
     /// Toggle `slot` in the in-progress tag selection (capped at two).
@@ -836,8 +866,10 @@ impl State {
                     // moving right enters from the right, moving
                     // left from the left.
                     if let Some(prev) = self.active_tab {
-                        self.enter_dx = if (*t as u8) > (prev as u8) { 16.0 } else { -16.0 };
+                        let dx = if (*t as u8) > (prev as u8) { 16.0 } else { -16.0 };
+                        self.enter_from = iced::Vector::new(dx, 0.0);
                     }
+                    self.prev_tab = self.active_tab;
                     self.active_tab = Some(*t);
                     self.enter.start(iced::time::Instant::now());
                 }
@@ -855,6 +887,12 @@ impl State {
             // Dropping the whole EditState clears every editor's scratch.
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
+                // Returning read-only body rises in (mirroring
+                // `enter_edit`) while Save / Cancel slide back out.
+                let now = iced::time::Instant::now();
+                self.enter_from = iced::Vector::new(0.0, 12.0);
+                self.enter.start(now);
+                self.edit_anim.set(false, now);
                 iced::Task::none()
             }
             Action::LibraryFilterChanged(s) => {
@@ -1192,20 +1230,32 @@ pub fn view<'a>(
         .filter(|t| available.contains(t))
         .unwrap_or(available[0]);
 
-    // Sub-tab entrance: the tab body slides in along the
-    // direction of travel in the strip, and the per-tab extras in
-    // the strip's tail slide in with it. Only the extras move —
-    // the Play button next to them is a fixture of the strip, and
-    // re-animating a control that never went anywhere reads as a
-    // glitch.
-    let enter = state.enter.progress(iced::time::Instant::now());
-    let enter_dx = state.enter_dx;
+    // Body entrance — restarted on sub-tab switches (sliding
+    // along the strip's direction of travel), edit-mode toggles
+    // and game/save swaps (rising in vertically). The Play button
+    // in the strip's tail is a fixture and never animates;
+    // everything else in the tail slides horizontally only (these
+    // are controls in a fixed-height row, not part of the body).
+    let now = iced::time::Instant::now();
+    let enter = state.enter.progress(now);
+    let enter_from = state.enter_from;
     let entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
         match enter {
-            Some(p) => crate::anim::slide_in(el, p, iced::Vector::new(enter_dx, 0.0)),
+            Some(p) => crate::anim::slide_in(el, p, enter_from),
             None => el,
         }
     };
+    let extras_dx = if enter_from.x != 0.0 { enter_from.x } else { 16.0 };
+    let extras_entered = move |el: Element<'a, Action>| -> Element<'a, Action> {
+        match enter {
+            Some(p) => crate::anim::slide_in(el, p, iced::Vector::new(extras_dx, 0.0)),
+            None => el,
+        }
+    };
+    // Save / Cancel visibility follows the edit-mode transition so
+    // the pair slides out on leaving edit mode instead of
+    // vanishing.
+    let edit_buttons_visible = editable && state.edit_anim.visible(now);
     // True while one of the in-place editors is open. Suppresses the
     // Play button (single-player would fight the open edit session) and
     // selects the editable body below.
@@ -1245,11 +1295,41 @@ pub fn view<'a>(
     let tabs_only = tabs_only.wrap();
     let mut tail = row![].spacing(6).align_y(Alignment::Center);
     if inline_actions {
-        if let Some(extras) = tab_extras(lang, active, state, loaded, editable) {
-            tail = tail.push(entered(extras));
+        if edit_buttons_visible {
+            // Save / Cancel are keyed on the mode, not the active
+            // sub-tab — they stay planted while the user flips
+            // between editor tabs, and slide horizontally in/out
+            // when the mode toggles.
+            let mut buttons = edit_buttons(lang, loaded);
+            if state.edit_anim.is_animating(now) {
+                buttons =
+                    crate::anim::slide_in(buttons, state.edit_anim.progress(now), iced::Vector::new(16.0, 0.0));
+            }
+            tail = tail.push(buttons);
+        } else {
+            if let Some(extras) = tab_extras(lang, active, state, loaded) {
+                tail = tail.push(extras_entered(extras));
+            }
+            if tab_has_edit(active, loaded, editable) {
+                let edit_btn: Element<'a, Action> = widgets::labeled_icon_button(
+                    lucide_icons::Icon::Pencil,
+                    t!(lang, "save-edit"),
+                    Action::EnterEdit,
+                    [4.0, 10.0],
+                    widgets::neutral,
+                );
+                // If the previous tab had the Edit affordance too, the
+                // button never left the strip — re-animating it would
+                // read as a glitch. Only sub-tab switches (horizontal
+                // enters) can carry it over; vertical enters are
+                // whole-body swaps where everything is new.
+                let carried_over = enter_from.x != 0.0
+                    && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
+                tail = tail.push(if carried_over { edit_btn } else { extras_entered(edit_btn) });
+            }
         }
     }
-    if let Some(enabled) = play_button.filter(|_| !editing_session) {
+    if let Some(enabled) = play_button.filter(|_| !editing_session && !edit_buttons_visible) {
         use lucide_icons::Icon;
         let label = row![Icon::Play.widget(), text(t!(lang, "play-play"))]
             .spacing(6)
@@ -1341,14 +1421,82 @@ pub fn view<'a>(
         .into()
 }
 
+/// The global edit mode's Save / Cancel pair, shown in the tab
+/// strip's tail while edit mode is on (or sliding out). One pair
+/// for the whole save: they commit / discard the edits on *all*
+/// tabs at once. Save is gated on a legal folder when chips are
+/// editable — a full 30 chips with no folder-limit violations (an
+/// incomplete or over-limit folder can't be written over the
+/// save); navicust / patch-card layouts are always valid to write.
+fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element<'a, Action> {
+    use crate::widgets;
+    use lucide_icons::Icon;
+    let can_save = !loaded.chips_editable || {
+        let full = loaded.save.view_chips().map_or(true, |v| {
+            let folder = v.equipped_folder_index();
+            (0..MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
+        });
+        full && folder_limits_satisfied(loaded)
+    };
+    row![
+        widgets::labeled_icon_button(
+            Icon::X,
+            t!(lang, "save-edit-cancel"),
+            Action::CancelEdit,
+            [4.0, 10.0],
+            widgets::neutral,
+        ),
+        widgets::labeled_icon_button_maybe(
+            Icon::Check,
+            t!(lang, "save-edit-save"),
+            can_save.then_some(Action::SaveEdit),
+            [4.0, 10.0],
+            widgets::primary_button,
+        ),
+    ]
+    .spacing(6)
+    .align_y(iced::Alignment::Center)
+    .into()
+}
+
+/// Whether `tab` offers the Edit affordance for this save. Split
+/// from [`tab_extras`] so the view can keep the Edit button
+/// unanimated when a sub-tab switch carries it over.
+fn tab_has_edit(tab: Tab, loaded: &Loaded, editable: bool) -> bool {
+    editable
+        && match tab {
+            // Only saves with a writable chip view (BN4/5/6);
+            // `chips_editable` is the cached `view_chips_mut()`
+            // probe.
+            Tab::Folder => loaded.chips_editable,
+            // Only BN4/5/6 (writable navicust) — and only saves
+            // that actually have a navicust grid (LinkNavi BN4.5
+            // navis have nothing to edit).
+            Tab::Navi => {
+                loaded.navicust_editable
+                    && matches!(
+                        loaded.save.view_navi(),
+                        Some(tango_dataview::save::NaviView::Navicust(_))
+                    )
+            }
+            // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are
+            // both writable, each via its own editor.
+            Tab::PatchCards => loaded.patch_cards_editable,
+            // Only BN4/BN5 (writable auto-battle data).
+            Tab::AutoBattleData => loaded.auto_battle_data_editable,
+            _ => false,
+        }
+}
+
 /// Per-tab extras (folder group-by toggle, copy button) shown on the
-/// right of the tab strip. `None` = tab has no extras.
+/// right of the tab strip. `None` = tab has no extras. The Edit
+/// affordance is appended separately by the view — see
+/// [`tab_has_edit`].
 fn tab_extras<'a>(
     lang: &'a LanguageIdentifier,
     tab: Tab,
     state: &'a State,
     loaded: &'a Loaded,
-    editable: bool,
 ) -> Option<Element<'a, Action>> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -1369,46 +1517,9 @@ fn tab_extras<'a>(
         )
     };
 
-    // One global edit mode for the whole save: while it's on, every tab
-    // shows the same Save / Cancel, and they commit / discard the edits on
-    // *all* tabs at once. Save is gated on a legal folder when chips are
-    // editable — a full 30 chips with no folder-limit violations (an
-    // incomplete or over-limit folder can't be written over the save);
-    // navicust / patch-card layouts are always valid to write.
-    if editable && state.editing.is_some() {
-        let can_save = !loaded.chips_editable || {
-            let full = loaded.save.view_chips().map_or(true, |v| {
-                let folder = v.equipped_folder_index();
-                (0..MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
-            });
-            full && folder_limits_satisfied(loaded)
-        };
-        return Some(
-            row![
-                widgets::labeled_icon_button(
-                    Icon::X,
-                    t!(lang, "save-edit-cancel"),
-                    Action::CancelEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                ),
-                widgets::labeled_icon_button_maybe(
-                    Icon::Check,
-                    t!(lang, "save-edit-save"),
-                    can_save.then_some(Action::SaveEdit),
-                    [4.0, 10.0],
-                    widgets::primary_button,
-                ),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center)
-            .into(),
-        );
-    }
-
     match tab {
-        Tab::Folder => {
-            let mut r = row![
+        Tab::Folder => Some(
+            row![
                 iced::widget::checkbox(state.folder_grouped)
                     .label(t!(lang, "folder-group"))
                     .on_toggle(Action::ToggleFolderGrouped)
@@ -1418,54 +1529,11 @@ fn tab_extras<'a>(
                 copy_btn(Tab::Folder),
             ]
             .spacing(6)
-            .align_y(iced::Alignment::Center);
-            // Only saves with a writable chip view (BN4/5/6) get the
-            // Edit affordance; `chips_editable` is the cached
-            // `view_chips_mut().is_some()` probe.
-            if editable && loaded.chips_editable {
-                r = r.push(widgets::labeled_icon_button(
-                    Icon::Pencil,
-                    t!(lang, "save-edit"),
-                    Action::EnterEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                ));
-            }
-            Some(r.into())
-        }
-        Tab::PatchCards => {
-            let mut tail = row![copy_btn(Tab::PatchCards)]
-                .spacing(6)
-                .align_y(iced::Alignment::Center);
-            // BN4 (PatchCard4s) and BN5/BN6 (PatchCard56s) are both writable
-            // (each via its own editor); the Edit affordance covers both.
-            if editable && loaded.patch_cards_editable {
-                tail = tail.push(widgets::labeled_icon_button(
-                    Icon::Pencil,
-                    t!(lang, "save-edit"),
-                    Action::EnterEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                ));
-            }
-            Some(tail.into())
-        }
-        Tab::AutoBattleData => {
-            let mut tail = row![copy_btn(Tab::AutoBattleData)]
-                .spacing(6)
-                .align_y(iced::Alignment::Center);
-            // Only BN4/BN5 (writable auto-battle data) get the Edit affordance.
-            if editable && loaded.auto_battle_data_editable {
-                tail = tail.push(widgets::labeled_icon_button(
-                    Icon::Pencil,
-                    t!(lang, "save-edit"),
-                    Action::EnterEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                ));
-            }
-            Some(tail.into())
-        }
+            .align_y(iced::Alignment::Center)
+            .into(),
+        ),
+        Tab::PatchCards => Some(copy_btn(Tab::PatchCards)),
+        Tab::AutoBattleData => Some(copy_btn(Tab::AutoBattleData)),
         Tab::Navi => {
             // Copy-as-image only emits anything for Navicust saves
             // (LinkNavi has no grid to render). Hide the button
@@ -1480,16 +1548,6 @@ fn tab_extras<'a>(
                 tail = tail.push(copy_img_btn(Tab::Navi));
             }
             tail = tail.push(copy_btn(Tab::Navi));
-            // Only BN4/5/6 (writable navicust) get the Edit affordance.
-            if editable && loaded.navicust_editable && has_navicust {
-                tail = tail.push(widgets::labeled_icon_button(
-                    Icon::Pencil,
-                    t!(lang, "save-edit"),
-                    Action::EnterEdit,
-                    [4.0, 10.0],
-                    widgets::neutral,
-                ));
-            }
             Some(tail.into())
         }
         _ => None,

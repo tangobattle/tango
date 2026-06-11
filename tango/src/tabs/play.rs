@@ -207,10 +207,12 @@ pub struct PlayState {
     /// they're handled by view-time button gating + inline hints,
     /// because graying out the action surface explains itself.
     pub last_error: Option<String>,
-    /// Entrance restarted when the patch controls fold or unfold —
-    /// the pickers (or the returning toggle button) pop into the
-    /// selector row instead of snapping.
-    pub patch_row_enter: crate::anim::Enter,
+    /// Show/hide transition for the expanded patch controls
+    /// (patch + version pickers). Mirrors `local_patch.is_some()
+    /// || patch_picker_open` (synced at the end of every
+    /// [`PlayState::update`]); the pickers slide in from the
+    /// toggle's side when unfolding and back out when folding.
+    pub patch_row: crate::anim::Transition,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -255,7 +257,7 @@ impl Default for PlayState {
             save_action: SaveAction::None,
             link_code: String::new(),
             last_error: None,
-            patch_row_enter: crate::anim::Enter::default(),
+            patch_row: crate::anim::Transition::new(false),
         }
     }
 }
@@ -440,6 +442,25 @@ impl PlayState {
         config: &config::Config,
         loaded: Option<&selection::Loaded>,
     ) -> Option<Effect> {
+        let effect = self.update_inner(msg, scanners, config, loaded);
+        // Mirror the patch controls' expanded state into their
+        // transition in one place — several arms can collapse it
+        // (family change, sentinel pick, save swap dropping an
+        // unsupported patch) and the animation follows them all.
+        self.patch_row.set(
+            self.local_patch.is_some() || self.patch_picker_open,
+            iced::time::Instant::now(),
+        );
+        effect
+    }
+
+    fn update_inner(
+        &mut self,
+        msg: Message,
+        scanners: &Scanners,
+        config: &config::Config,
+        loaded: Option<&selection::Loaded>,
+    ) -> Option<Effect> {
         match msg {
             Message::LocalFamilySelected(f) => {
                 self.local_family = Some(f.family);
@@ -477,7 +498,6 @@ impl PlayState {
             }
             Message::PatchPickerOpened => {
                 self.patch_picker_open = true;
-                self.patch_row_enter.start(iced::time::Instant::now());
                 None
             }
             Message::LocalPatchSelected(name) => {
@@ -485,10 +505,8 @@ impl PlayState {
                     self.local_patch = None;
                     self.local_patch_version = None;
                     // Picking the sentinel doubles as "put the patch
-                    // controls away" — the returning toggle button
-                    // gets the same entrance the pickers got.
+                    // controls away".
                     self.patch_picker_open = false;
-                    self.patch_row_enter.start(iced::time::Instant::now());
                 } else {
                     let v = scanners
                         .patches
@@ -989,10 +1007,13 @@ impl PlayState {
         netplay_lobby: &'a crate::netplay::LobbyState,
         netplay_handoff_pending: bool,
         rescanning: bool,
-        // `Some(progress)` while the lobby band's entrance is live
-        // (driven by the App, which sees the netplay phase flip) —
-        // the band slides up from the bottom edge.
-        lobby_enter: Option<f32>,
+        // Show/hide transition for the lobby band (driven by the
+        // App, which sees the netplay phase flip): the band slides
+        // up from the bottom edge on enter and back down on exit.
+        lobby_band: &'a crate::anim::Transition,
+        // Entrance for the link-code strip returning after the
+        // band leaves (delayed by the App so the two chain).
+        bottom_strip_enter: &'a crate::anim::Enter,
     ) -> Element<'a, Message> {
         // In Lobby phase the body splits top/bottom — save view
         // on top so the user can keep eyeing what they brought to
@@ -1044,14 +1065,24 @@ impl PlayState {
         if let Some(err) = &self.last_error {
             col = col.push(error_banner(lang, err));
         }
-        col = col.push(inner).push(widgets::hud_scanline_bottom());
+        col = col.push(inner);
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby) the lobby_view IS the bottom band
         // — it carries the verdict/cancel/ready chrome. Otherwise
         // the normal bottom_strip handles the link code + Fight
         // CTA.
-        if show_lobby {
-            let band: Element<'a, Message> = container(lobby_view(
+        //
+        // The band keeps rendering while its exit transition runs
+        // so it slides back down instead of vanishing, and the
+        // bottom HUD scanline is grouped with whichever band is
+        // showing so it rides the motion instead of staying
+        // pinned above a band sliding underneath it. Once the
+        // band has left, the returning link-code strip rises in
+        // (the App delays its entrance to chain the two).
+        let now = iced::time::Instant::now();
+        let band_animating = lobby_band.is_animating(now);
+        let bottom: Element<'a, Message> = if show_lobby || band_animating {
+            container(lobby_view(
                 lang,
                 netplay_lobby,
                 netplay_phase,
@@ -1064,17 +1095,26 @@ impl PlayState {
                 config.frame_delay,
             ))
             .width(Fill)
-            .into();
-            // Slide the band up from the bottom edge when the
-            // netplay attempt starts.
-            let band = match lobby_enter {
-                Some(p) => crate::anim::slide_in(band, p, iced::Vector::new(0.0, 24.0)),
-                None => band,
-            };
-            col = col.push(band);
+            .into()
         } else {
-            col = col.push(self.bottom_strip(lang));
-        }
+            self.bottom_strip(lang)
+        };
+        let group: Element<'a, Message> = iced::widget::column![widgets::hud_scanline_bottom(), bottom]
+            .width(Fill)
+            .into();
+        let group = if show_lobby || band_animating {
+            if band_animating {
+                crate::anim::slide_in(group, lobby_band.progress(now), iced::Vector::new(0.0, 24.0))
+            } else {
+                group
+            }
+        } else {
+            match bottom_strip_enter.progress(now) {
+                Some(p) => crate::anim::slide_in(group, p, iced::Vector::new(0.0, 12.0)),
+                None => group,
+            }
+        };
+        col = col.push(group);
         col.into()
     }
 
@@ -1165,17 +1205,22 @@ impl PlayState {
         // picker's FillPortion is the only fill in the row, so it
         // soaks up the freed width.
         //
-        // Folding either way pops the arriving controls in (Float
-        // forwards the child's sizing, so the FillPortion layout is
-        // unaffected by the wrapper).
-        let patch_pop = self.patch_row_enter.progress(iced::time::Instant::now());
-        let pop = |el: Element<'a, Message>| -> Element<'a, Message> {
-            match patch_pop {
-                Some(p) => crate::anim::pop(el, p, 6.0),
-                None => el,
+        // Unfolding slides the pickers in from the toggle's side;
+        // folding slides them back out, the row keeping its
+        // expanded shape until the exit finishes. (Float forwards
+        // the child's sizing, so the FillPortion layout is
+        // unaffected by the wrapper.)
+        let now = iced::time::Instant::now();
+        let expanded = self.local_patch.is_some() || self.patch_picker_open;
+        let sliding = self.patch_row.is_animating(now);
+        let slide = |el: Element<'a, Message>| -> Element<'a, Message> {
+            if sliding {
+                crate::anim::slide_in(el, self.patch_row.progress(now), iced::Vector::new(-16.0, 0.0))
+            } else {
+                el
             }
         };
-        let game_row = if self.local_patch.is_some() || self.patch_picker_open {
+        let game_row = if expanded || sliding {
             let (patch_options, selected_patch) = self.patch_options(lang, scanners, config);
             let patch = pick_list(patch_options, selected_patch, |c: widgets::Choice<String>| {
                 Message::LocalPatchSelected(c.value)
@@ -1206,7 +1251,7 @@ impl PlayState {
                 .into()
             };
 
-            row![game, pop(patch.into()), pop(version), refresh]
+            row![game, slide(patch.into()), slide(version), refresh]
         } else {
             let patch_toggle = widgets::icon_button(
                 Icon::Puzzle,
@@ -1214,7 +1259,7 @@ impl PlayState {
                 Message::PatchPickerOpened,
                 STANDARD_PADDING,
             );
-            row![game, pop(patch_toggle), refresh]
+            row![game, patch_toggle, refresh]
         }
         .spacing(8)
         .align_y(Alignment::Center);

@@ -70,9 +70,21 @@ impl Enter {
     /// Restart the entrance at `now`, keeping redraws flowing
     /// through the activity registry while it runs.
     pub fn start(&mut self, now: Instant) {
-        kick(TRANSITION);
+        self.start_delayed(now, std::time::Duration::ZERO);
+    }
+
+    /// [`start`], but holding at progress 0 for `delay` first.
+    /// Used to chain an entrance after some exit finishes (e.g.
+    /// the bottom strip rising in once the lobby band has slid
+    /// away) — there's no completion callback to hook, so the
+    /// follow-up is scheduled up front.
+    ///
+    /// [`start`]: Enter::start
+    pub fn start_delayed(&mut self, now: Instant, delay: std::time::Duration) {
+        kick(TRANSITION + delay);
         self.anim = Animation::new(0.0)
             .duration(TRANSITION)
+            .delay(delay)
             .easing(Easing::EaseOutCubic)
             .go(1.0, now);
     }
@@ -124,6 +136,10 @@ impl Transition {
     /// The state the transition is heading toward.
     pub fn shown(&self) -> bool {
         self.anim.value()
+    }
+
+    pub fn is_animating(&self, now: Instant) -> bool {
+        self.anim.is_animating(now)
     }
 
     /// 0.0 = fully hidden, 1.0 = fully shown.
