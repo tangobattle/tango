@@ -66,19 +66,6 @@ fn extract_from_vcxproj(path: &Path) -> Option<Vec<String>> {
     None
 }
 
-#[derive(Debug)]
-struct IgnoreMacros(std::collections::HashSet<String>);
-
-impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
-    fn will_parse_macro(&self, name: &str) -> bindgen::callbacks::MacroParsingBehavior {
-        if self.0.contains(name) {
-            bindgen::callbacks::MacroParsingBehavior::Ignore
-        } else {
-            bindgen::callbacks::MacroParsingBehavior::Default
-        }
-    }
-}
-
 /// Extra preprocessor defines forced onto the mgba build.
 ///
 /// `COLOR_16_BIT` switches mgba's `mColor` from 32-bit XBGR8 to the GBA-native
@@ -129,34 +116,27 @@ fn main() {
     // default of re-running on any package change — so track build.rs itself,
     // or edits to FORCED_DEFINES (e.g. toggling COLOR_16_BIT) won't take effect.
     println!("cargo:rerun-if-changed=build.rs");
-    let ignored_macros = IgnoreMacros(
-        vec![
-            "FP_INFINITE".into(),
-            "FP_NAN".into(),
-            "FP_NORMAL".into(),
-            "FP_SUBNORMAL".into(),
-            "FP_ZERO".into(),
-            "FP_INT_UPWARD".into(),
-            "FP_INT_DOWNWARD".into(),
-            "FP_INT_TOWARDZERO".into(),
-            "FP_INT_TONEARESTFROMZERO".into(),
-            "FP_INT_TONEAREST".into(),
-            "IPPORT_RESERVED".into(),
-        ]
-        .into_iter()
-        .collect(),
-    );
 
     let build_dir = mgba_dst.join("build");
     let flags = extract_c_defines(&build_dir).expect("could not extract C_DEFINES from cmake build");
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
+        .blocklist_item("FP_INFINITE")
+        .blocklist_item("FP_NAN")
+        .blocklist_item("FP_NORMAL")
+        .blocklist_item("FP_SUBNORMAL")
+        .blocklist_item("FP_ZERO")
+        .blocklist_item("FP_INT_UPWARD")
+        .blocklist_item("FP_INT_DOWNWARD")
+        .blocklist_item("FP_INT_TOWARDZERO")
+        .blocklist_item("FP_INT_TONEARESTFROMZERO")
+        .blocklist_item("FP_INT_TONEAREST")
+        .blocklist_item("IPPORT_RESERVED")
         .clang_args(&["-Imgba/include", "-D__STDC_NO_THREADS__=1"])
         .clang_args(FORCED_DEFINES.iter().map(|def| format!("-D{def}")))
         .clang_args(flags)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .parse_callbacks(Box::new(ignored_macros))
         .generate()
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
