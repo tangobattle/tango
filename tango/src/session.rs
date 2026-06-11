@@ -422,8 +422,11 @@ impl State {
             .as_ref()
             .and_then(ActiveSession::as_replay)
             .map_or(false, |r| r.is_paused());
-        let overlay_open =
-            self.show_settings || self.show_options_menu || self.show_disconnect_confirm || self.show_match_settings;
+        // The telemetry panel (show_match_settings) deliberately
+        // doesn't count: it lives in the permanently-visible
+        // top-right indicator, independent of the HUD controls,
+        // so leaving the graph open shouldn't pin the chips up.
+        let overlay_open = self.show_settings || self.show_options_menu || self.show_disconnect_confirm;
         let show_controls = self.controls_hovered
             || overlay_open
             || replay_paused
@@ -1251,24 +1254,6 @@ fn fmt_ping(ping_ms: u128) -> String {
 /// One telemetry cell: a label `icon` and the current `value`, both
 /// color-coded by the health `tone`. The full metric name lives in the
 /// match-settings panel's captions, so the cell carries no hover tooltip.
-fn stat_cell<'a>(icon: Icon, tone: StatTone, value: String) -> Element<'a, Message> {
-    // Only the value carries the health tint; the icon always rides muted so
-    // color reads as "this number means something", not decoration.
-    let tone_style = move |theme: &iced::Theme| iced::widget::text::Style {
-        color: Some(stat_tone_color(theme, tone)),
-    };
-    row![
-        icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
-        text(value)
-            .size(TEXT_BODY)
-            .font(iced::Font::MONOSPACE)
-            .style(tone_style),
-    ]
-    .spacing(5)
-    .align_y(Alignment::Center)
-    .into()
-}
-
 /// Flat plate behind the telemetry deck — a faint fill + hairline
 /// border so the readout reads as one grouped module without drawing
 /// attention to itself. Realized as a button style (not a static
@@ -1833,23 +1818,20 @@ fn telemetry_overlay<'a>(
     let now = iced::time::Instant::now();
 
     let content: Element<'a, Message> = if state.match_settings_anim.visible(now) {
-        // Expanded graph view. Header mirrors the indicator's
-        // signal reading and carries the collapse chevron.
+        // Expanded graph view. The header carries the players and
+        // the collapse chevron — no latency readout here, the ping
+        // sparkline below already shows it.
+        //
+        // The red/blue dots are FIELD sides (same coding as the
+        // setup toggles and the matchup pane: red = your half,
+        // blue = the opponent's), so your row always leads with
+        // the red dot; the seat assignment rides in the P1/P2
+        // label next to it.
         let collapse = button(Icon::ChevronUp.widget().size(14.0))
             .padding([4.0, 8.0])
             .style(widgets::neutral)
             .on_press(Message::ToggleMatchSettings);
-        let header = row![
-            stat_cell(signal_icon(ping_ms), tone_for_ping(ping_ms), fmt_ping(ping_ms)),
-            horizontal_space(),
-            collapse,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
-
-        // P1/P2 sides: which seat each player occupies, color-coded
-        // like the matchup pane (red = P1, blue = P2).
-        let side = |label: &'static str, name: String, accent: Color| -> Element<'a, Message> {
+        let side = |accent: Color, seat: &'static str, name: String| -> Element<'a, Message> {
             let dot = container(
                 iced::widget::Space::new()
                     .width(Length::Fixed(8.0))
@@ -1865,34 +1847,37 @@ fn telemetry_overlay<'a>(
             });
             row![
                 dot,
-                text(label).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
+                text(seat).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
                 text(name).size(TEXT_CAPTION).style(widgets::muted_text_style),
             ]
-            .spacing(5)
+            .spacing(4)
             .align_y(Alignment::Center)
             .into()
         };
-        let you = t!(lang, "play-you");
-        let opponent = pvp.remote_nickname.clone();
-        let (p1, p2) = if pvp.local_player_index() == 0 {
-            (you, opponent)
+        const FIELD_RED: Color = Color::from_rgb(0.85, 0.22, 0.28);
+        const FIELD_BLUE: Color = Color::from_rgb(0.18, 0.40, 0.85);
+        let (local_seat, remote_seat) = if pvp.local_player_index() == 0 {
+            ("P1", "P2")
         } else {
-            (opponent, you)
+            ("P2", "P1")
         };
         let players = row![
-            side("P1", p1, iced::Color::from_rgb(0.85, 0.22, 0.28)),
-            side("P2", p2, iced::Color::from_rgb(0.18, 0.40, 0.85)),
+            side(FIELD_RED, local_seat, t!(lang, "play-you")),
+            side(FIELD_BLUE, remote_seat, pvp.remote_nickname.clone()),
         ]
-        .spacing(14)
+        .spacing(12)
         .align_y(Alignment::Center);
+        let header = row![players, horizontal_space(), collapse]
+            .spacing(8)
+            .align_y(Alignment::Center);
 
+        // Pin the column to the cards' width — the Fill spacer in
+        // the header would otherwise stretch the panel out to the
+        // whole window.
         let panel = container(
-            column![
-                header,
-                players,
-                match_settings_content(lang, pvp, &state.metric_history)
-            ]
-            .spacing(8),
+            column![header, match_settings_content(lang, pvp, &state.metric_history)]
+                .spacing(8)
+                .width(Length::Fixed(PANEL_W)),
         )
         .padding(12)
         .style(widgets::panel);
@@ -1914,7 +1899,10 @@ fn telemetry_overlay<'a>(
             .on_press(Message::ToggleMatchSettings);
         iced::widget::tooltip(
             chip,
-            container(text(fmt_ping(ping_ms)).size(TEXT_CAPTION))
+            // Plain formatting — fmt_ping's right-aligned padding is
+            // for the fixed-width sparkline readouts, and the stray
+            // spaces look wrong in a tooltip bubble.
+            container(text(format!("{ping_ms} ms")).size(TEXT_CAPTION))
                 .padding(6)
                 .style(widgets::tooltip_chrome),
             iced::widget::tooltip::Position::Left,
