@@ -1342,6 +1342,11 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
 /// + control height + panel border + gap).
 const POPOVER_LIFT: f32 = 12.0 + 20.0 + crate::style::BAR_CONTROL_HEIGHT + 4.0 + 6.0;
 
+/// Same idea as [`POPOVER_LIFT`] for the SP/PvP corner chips,
+/// which are much shorter than the replay bar (chip margin +
+/// chip padding + compact button + border + gap).
+const CHIP_POPOVER_LIFT: f32 = 12.0 + 8.0 + 32.0 + 4.0 + 6.0;
+
 /// How long the cursor has to sit still before the floating
 /// controls slide away.
 const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
@@ -1409,26 +1414,21 @@ fn floating_controls<'a>(
     state: &'a State,
 ) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
-    let strip = controls_strip(lang, session, state);
+    let hide_progress = state.controls_anim.progress(now);
     // Replay transport carries a Fill-width scrubber, so its bar
-    // spans the window; SP/PvP have a handful of buttons and sit
-    // as a centered pill.
-    let is_replay = session.as_replay().is_some();
-    let mut panel = container(strip).style(widgets::panel);
-    if is_replay {
-        panel = panel.width(Fill);
-    }
+    // spans the window; SP/PvP have a handful of buttons that sit
+    // in compact corner chips instead — see `corner_chips`.
+    let Some(r) = session.as_replay() else {
+        return corner_chips(lang, session, state, hide_progress);
+    };
+    let panel = container(replay_bar(lang, r, state)).width(Fill).style(widgets::panel);
     // iced's mouse_area — sweeten's `on_exit` never fires (see the
     // note in `view`), which left the hover pin stuck and the bar
     // permanently visible.
     let hover_pin = iced::widget::mouse_area(panel)
         .on_enter(Message::ControlsHovered(true))
         .on_exit(Message::ControlsHovered(false));
-    let slid = anim::slide_in(
-        hover_pin,
-        state.controls_anim.progress(now),
-        iced::Vector::new(0.0, CONTROLS_SLIDE),
-    );
+    let slid = anim::slide_in(hover_pin, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE));
     container(slid)
         .width(Fill)
         .height(Fill)
@@ -1575,33 +1575,63 @@ fn emulator_body<'a>(
         .into()
 }
 
-/// Controls strip. Replay sessions get the full transport (play/pause
-/// + scrubber + speed); single-player + PvP get a thin strip with just
-/// the setup-panel toggles (PvP only) and the options trigger. The
-/// close action lives in the options popover so there's no separate
-/// header eating vertical space.
-fn controls_strip<'a>(
+/// The replay bar's strip: full transport (play/pause + scrubber +
+/// tick readouts) plus the options trigger, at the chunky
+/// BAR_CONTROL_HEIGHT sizing. SP/PvP don't use this — their few
+/// controls live in compact corner chips ([`corner_chips`]).
+fn replay_bar<'a>(
     lang: &'a LanguageIdentifier,
-    session: &'a ActiveSession,
+    r: &'a replay_session::ReplaySession,
     state: &'a State,
 ) -> sweeten::widget::Row<'a, Message> {
-    // Controls-strip sizing: one icon size + padding so the
-    // play/pause, settings, close, opponent-toggle buttons all
-    // sit at the same height as the scrubber + speed picker.
-    // Matches the play-tab bottom bar so the chrome reads as
-    // family across screens.
     const CTRL_ICON: f32 = 16.0;
     const CTRL_PAD: [f32; 2] = [10.0, 14.0];
 
-    let ctrl_icon_btn_maybe = |icon: Icon,
-                               label: String,
-                               msg: Option<Message>,
-                               style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
-     -> Element<'a, Message> {
-        let mut btn = button(icon.widget().size(CTRL_ICON))
+    let options_btn: Element<'a, Message> = {
+        let btn = button(Icon::Ellipsis.widget().size(CTRL_ICON))
             .padding(CTRL_PAD)
             .height(iced::Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-            .style(style);
+            .style(widgets::neutral)
+            .on_press(Message::ToggleOptionsMenu);
+        iced::widget::tooltip(
+            btn,
+            iced::widget::container(text(t!(lang, "playback-options")).size(TEXT_CAPTION))
+                .padding(6)
+                .style(widgets::tooltip_chrome),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    };
+
+    let controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
+    let controls = replay_transport(lang, r, state, controls);
+    // Options ellipsis last so the popover lands above a
+    // consistent right-edge anchor.
+    controls.push(options_btn)
+}
+
+/// SP/PvP floating controls: compact corner chips instead of a
+/// bar. The action buttons (PvP setup toggles + the options
+/// trigger) sit in a chip at the bottom-right; PvP's telemetry
+/// plate gets its own chip at the bottom-left. The game stays
+/// unobscured — the emulator is center-fit, so the corners only
+/// cover bezel art.
+fn corner_chips<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+    hide_progress: f32,
+) -> Element<'a, Message> {
+    const CHIP_ICON: f32 = 16.0;
+    const CHIP_PAD: [f32; 2] = [8.0, 10.0];
+
+    let chip_btn_maybe = |icon: Icon,
+                          label: String,
+                          msg: Option<Message>,
+                          style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+     -> Element<'a, Message> {
+        let mut btn = button(icon.widget().size(CHIP_ICON)).padding(CHIP_PAD).style(style);
         if let Some(m) = msg {
             btn = btn.on_press(m);
         }
@@ -1615,102 +1645,76 @@ fn controls_strip<'a>(
         .gap(4)
         .into()
     };
-    let ctrl_icon_btn_styled =
-        |icon: Icon,
-         label: String,
-         msg: Message,
-         style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
-         -> Element<'a, Message> { ctrl_icon_btn_maybe(icon, label, Some(msg), style) };
-    let ctrl_icon_btn = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
-        ctrl_icon_btn_styled(icon, label, msg, widgets::neutral)
+
+    // One floating chip: panel plate + hover pin + the shared
+    // hide slide.
+    let chip = move |content: Element<'a, Message>| -> Element<'a, Message> {
+        let panel = container(content).padding(4).style(widgets::panel);
+        let pinned = iced::widget::mouse_area(panel)
+            .on_enter(Message::ControlsHovered(true))
+            .on_exit(Message::ControlsHovered(false));
+        anim::slide_in(pinned, hide_progress, iced::Vector::new(0.0, CONTROLS_SLIDE))
     };
 
-    // PvP-only: red "show my setup" toggle (left of the controls
-    // strip) and blue "show opponent's setup" toggle (right).
-    // Color-coded like the matchup-pane diagonal split — red = P1,
-    // blue = P2. Opponent toggle is always rendered for PvP; it's
-    // disabled when the peer didn't enable reveal-setup.
-    let self_toggle: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(s) if s.local_loaded.is_some() => {
+    // Bottom-right chip: PvP setup toggles + the options trigger.
+    // Red = P1 (you), blue = P2 — same coding as the matchup
+    // pane's diagonal split. The opponent toggle renders disabled
+    // when the peer didn't enable reveal-setup.
+    let mut actions = row![].spacing(6).align_y(Alignment::Center);
+    if let ActiveSession::PvP(s) = session {
+        if s.local_loaded.is_some() {
             let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
                 if state.show_self_panel {
                     widgets::pvp_red_button
                 } else {
                     widgets::neutral
                 };
-            Some(ctrl_icon_btn_styled(
+            actions = actions.push(chip_btn_maybe(
                 Icon::FileUser,
                 t!(lang, "session-self"),
-                Message::ToggleSelfPanel,
+                Some(Message::ToggleSelfPanel),
                 style,
-            ))
+            ));
         }
-        _ => None,
-    };
-    let opponent_toggle: Option<Element<'a, Message>> = match session {
-        ActiveSession::PvP(s) => {
-            let revealed = s.opponent_loaded.is_some();
-            let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
-                if state.show_opponent_panel && revealed {
-                    widgets::pvp_blue_button
-                } else {
-                    widgets::neutral
-                };
-            let msg = if revealed {
-                Some(Message::ToggleOpponentPanel)
+        let revealed = s.opponent_loaded.is_some();
+        let style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style =
+            if state.show_opponent_panel && revealed {
+                widgets::pvp_blue_button
             } else {
-                None
+                widgets::neutral
             };
-            Some(ctrl_icon_btn_maybe(
-                Icon::FileUser,
-                t!(lang, "session-opponent"),
-                msg,
-                style,
-            ))
-        }
-        _ => None,
-    };
-    // "More options" trigger for the unified popover. Ellipsis
-    // rather than a cogwheel so it doesn't visually duplicate the
-    // Settings item INSIDE the popover (which uses the cogwheel).
-    // Same widget across all session types — Replay puts a speed
-    // picker in the popover body, SP/PvP don't; all three surface
-    // Settings + a tear-down item (Close for SP/Replay, red
-    // Disconnect for PvP).
-    let options_btn = ctrl_icon_btn(Icon::Ellipsis, t!(lang, "playback-options"), Message::ToggleOptionsMenu);
-
-    let mut controls = row![].spacing(10).align_y(Alignment::Center).padding([10, 8]);
-    if let Some(r) = session.as_replay() {
-        controls = replay_transport(lang, r, state, controls);
-    } else {
-        // No transport widgets for SP/PvP. Drop the self-setup
-        // toggle on the left (PvP-only) so it pairs visually with
-        // the right-anchored opponent toggle, then push a spacer
-        // so the rest of the strip (metrics, opponent, options)
-        // hugs the right edge.
-        if let Some(t) = self_toggle {
-            controls = controls.push(t);
-        }
-        // Frame delay used to live here; it now rides in the match-settings
-        // popover anchored on the telemetry plate (see below).
-        controls = controls.push(horizontal_space());
+        actions = actions.push(chip_btn_maybe(
+            Icon::FileUser,
+            t!(lang, "session-opponent"),
+            revealed.then_some(Message::ToggleOpponentPanel),
+            style,
+        ));
     }
+    // Options ellipsis last — the popover anchors above the
+    // bottom-right corner.
+    actions = actions.push(chip_btn_maybe(
+        Icon::Ellipsis,
+        t!(lang, "playback-options"),
+        Some(Message::ToggleOptionsMenu),
+        widgets::neutral,
+    ));
+
+    let mut bottom = row![].spacing(6).align_y(Alignment::End).width(Fill);
+    // Bottom-left chip: PvP telemetry plate (click opens the
+    // match-settings popover, which anchors above this corner).
     if let ActiveSession::PvP(pvp) = session {
         if let Some(plate) = telemetry_plate(pvp) {
-            controls = controls.push(plate);
+            bottom = bottom.push(chip(plate));
         }
     }
-    // Opponent setup-reveal toggle (PvP-only) sits to the left of
-    // the options trigger so the ellipsis stays the rightmost
-    // item — the popover anchors above it.
-    if let Some(toggle) = opponent_toggle {
-        controls = controls.push(toggle);
-    }
-    // Options ellipsis is the unified entry point to session-level
-    // commands (Settings, replay speed, Close / Disconnect). Always
-    // last so the popover lands above a consistent right-edge
-    // anchor regardless of session type.
-    controls.push(options_btn)
+    bottom = bottom.push(horizontal_space()).push(chip(actions.into()));
+
+    container(bottom)
+        .width(Fill)
+        .height(Fill)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(12)
+        .into()
 }
 
 /// The replay transport: circular play/pause, current tick, scrubber,
@@ -2103,6 +2107,13 @@ fn options_menu_overlay<'a>(
         .style(widgets::panel);
     // Rise out of the trigger button below while scaling up.
     let popover = anim::pop(popover, state.options_anim.progress(now), 10.0);
+    // Anchor above the floating controls' bottom-right corner —
+    // the tall replay bar or the short SP/PvP action chip.
+    let lift = if session.as_replay().is_some() {
+        POPOVER_LIFT
+    } else {
+        CHIP_POPOVER_LIFT
+    };
     Some(
         container(popover)
             .width(Fill)
@@ -2111,8 +2122,8 @@ fn options_menu_overlay<'a>(
             .align_y(iced::alignment::Vertical::Bottom)
             .padding(iced::Padding {
                 top: 0.0,
-                right: 8.0,
-                bottom: POPOVER_LIFT,
+                right: 12.0,
+                bottom: lift,
                 left: 0.0,
             })
             .into(),
@@ -2205,23 +2216,19 @@ fn match_settings_overlay<'a>(
                 .padding(12)
                 .style(widgets::panel);
             let popover = anim::pop(popover, state.match_settings_anim.progress(now), 10.0);
-            // Same lift as the options menu so the popover floats just
-            // above the HUD bar. Right padding aligns the popover's right
-            // edge with the telemetry plate's: controls-container pad (8) +
-            // options button + spacing (10) + opponent toggle + spacing
-            // (10), where each button is CTRL_PAD·2 + CTRL_ICON ≈ 44 wide.
-            const PLATE_RIGHT_OFFSET: f32 = 8.0 + 44.0 + 10.0 + 44.0 + 10.0;
+            // Anchored above its trigger — the telemetry chip in
+            // the bottom-LEFT corner.
             Some(
                 container(popover)
                     .width(Fill)
                     .height(Fill)
-                    .align_x(iced::alignment::Horizontal::Right)
+                    .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Bottom)
                     .padding(iced::Padding {
                         top: 0.0,
-                        right: PLATE_RIGHT_OFFSET,
-                        bottom: POPOVER_LIFT,
-                        left: 0.0,
+                        right: 0.0,
+                        bottom: CHIP_POPOVER_LIFT,
+                        left: 12.0,
                     })
                     .into(),
             )
