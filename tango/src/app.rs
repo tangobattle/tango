@@ -981,6 +981,7 @@ impl App {
                         let has_opponent_panel = session.opponent_loaded.is_some();
                         self.session.active = Some(ActiveSession::PvP(session));
                         self.session.show_opponent_panel = has_opponent_panel;
+                        self.session.wake_controls();
                     }
                     Err(e) => {
                         log::error!("pvp session build failed: {e}");
@@ -1188,6 +1189,7 @@ impl App {
                 ) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::SinglePlayer(s));
+                        self.session.wake_controls();
                     }
                     Err(e) => {
                         log::warn!("singleplayer start failed: {e}");
@@ -1486,6 +1488,7 @@ impl App {
                 ) {
                     Ok(s) => {
                         self.session.active = Some(ActiveSession::Replay(s));
+                        self.session.wake_controls();
                     }
                     Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
                 }

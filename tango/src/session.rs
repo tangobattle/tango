@@ -212,6 +212,19 @@ pub struct State {
     /// keyed by the snapshot's absolute tick so cursor moves within
     /// the same keyframe reuse the handle instead of re-converting.
     pub scrub_thumb: Option<(u32, iced::widget::image::Handle)>,
+    /// Wall-clock of the last cursor movement over the session
+    /// view — drives the floating controls' auto-hide. Bumped by
+    /// [`Message::MouseMoved`] and on session start
+    /// ([`State::wake_controls`]).
+    pub last_mouse_move: std::time::Instant,
+    /// Cursor is currently over the floating controls bar — pins
+    /// it visible regardless of the idle timer.
+    pub controls_hovered: bool,
+    /// Show/hide transition for the floating controls bar. Synced
+    /// after every update: shown while the mouse moved recently,
+    /// the cursor rests on the bar, any overlay is open, a scrub
+    /// is in flight, or a replay is paused.
+    pub controls_anim: anim::Transition,
     /// Show/hide animations mirroring the `show_*` overlay bools
     /// above (which stay the source of truth). Re-synced after every
     /// [`State::update`] call, so no individual handler has to
@@ -252,6 +265,9 @@ impl Default for State {
             scrub_blitted: false,
             scrub_hover: None,
             scrub_thumb: None,
+            last_mouse_move: std::time::Instant::now(),
+            controls_hovered: false,
+            controls_anim: anim::Transition::new(true),
             settings_anim: anim::Transition::new(false),
             options_anim: anim::Transition::new(false),
             disconnect_anim: anim::Transition::new(false),
@@ -277,6 +293,12 @@ impl State {
 pub enum Message {
     /// Close the session and return to the previous tab.
     Close,
+    /// Cursor moved anywhere over the session view. Resets the
+    /// floating controls' idle timer.
+    MouseMoved,
+    /// Cursor entered (`true`) / left (`false`) the floating
+    /// controls bar. While inside, the bar never auto-hides.
+    ControlsHovered(bool),
     /// Raw input event from the keyboard or a gamepad. The
     /// handler updates the held-state set, resolves the user's
     /// Mapping into joyflags, and pushes them to the active
@@ -391,7 +413,31 @@ impl State {
         self.options_anim.set(self.show_options_menu, now);
         self.disconnect_anim.set(self.show_disconnect_confirm, now);
         self.match_settings_anim.set(self.show_match_settings, now);
+        // Floating controls auto-hide. The per-frame
+        // UpdateFramebuffer messages re-run this, so the idle
+        // timer expires without needing its own timer source; a
+        // paused replay (no frames) pins the bar visible anyway.
+        let replay_paused = self
+            .active
+            .as_ref()
+            .and_then(ActiveSession::as_replay)
+            .map_or(false, |r| r.is_paused());
+        let overlay_open =
+            self.show_settings || self.show_options_menu || self.show_disconnect_confirm || self.show_match_settings;
+        let show_controls = self.controls_hovered
+            || overlay_open
+            || replay_paused
+            || self.scrub_preview.is_some()
+            || self.last_mouse_move.elapsed() < CONTROLS_HIDE_AFTER;
+        self.controls_anim.set(show_controls, now);
         task
+    }
+
+    /// Reset the floating controls' idle timer — called by the App
+    /// when a session starts so the bar greets the user visible
+    /// even if the mouse hasn't moved in a while.
+    pub fn wake_controls(&mut self) {
+        self.last_mouse_move = std::time::Instant::now();
     }
 
     fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
@@ -552,6 +598,12 @@ impl State {
             }
             Message::CloseDisconnectConfirm => {
                 self.show_disconnect_confirm = false;
+            }
+            Message::MouseMoved => {
+                self.last_mouse_move = std::time::Instant::now();
+            }
+            Message::ControlsHovered(h) => {
+                self.controls_hovered = h;
             }
             Message::NoOp => {}
             Message::ToggleOpponentPanel => {
@@ -1285,9 +1337,19 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
 /// Render the active session — framebuffer, header, and (for replays
 /// only) the transport row with play/pause + scrubber + prefetch %.
 /// Pass the App's `session: State` borrow.
-/// Vertical clearance that floats a bottom-anchored popover just above
-/// the HUD bar (bar control height + strip padding + scanline + gap).
-const POPOVER_LIFT: f32 = crate::style::BAR_CONTROL_HEIGHT + 20.0 + 3.0 + 6.0;
+/// Vertical clearance that floats a bottom-anchored popover just
+/// above the floating controls bar (bottom margin + strip padding
+/// + control height + panel border + gap).
+const POPOVER_LIFT: f32 = 12.0 + 20.0 + crate::style::BAR_CONTROL_HEIGHT + 4.0 + 6.0;
+
+/// How long the cursor has to sit still before the floating
+/// controls slide away.
+const CONTROLS_HIDE_AFTER: std::time::Duration = std::time::Duration::from_millis(2500);
+
+/// How far the floating controls sink when hiding — past the
+/// window's bottom edge (panel height + bottom margin, with a
+/// little extra for the drop shadow).
+const CONTROLS_SLIDE: f32 = 90.0;
 
 pub fn view<'a>(
     lang: &'a LanguageIdentifier,
@@ -1303,13 +1365,16 @@ pub fn view<'a>(
     let frame = framebuffer_view(state, fractional_scaling, effect);
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
     layout = layout.push(emulator_body(lang, session, state, frame, hide_emulator_border));
-    layout = layout.push(widgets::hud_scanline_bottom()).push(
-        container(controls_strip(lang, session, state))
-            .width(Fill)
-            .style(widgets::hud_bar),
-    );
 
+    // The controls live in a floating bar over the emulator (no
+    // reserved bottom strip), sliding away after the cursor sits
+    // still — see `floating_controls`. When fully hidden it isn't
+    // in the tree at all, so no invisible buttons linger where it
+    // used to be.
     let mut stacked = stack![Element::from(layout)];
+    if state.controls_anim.visible(iced::time::Instant::now()) {
+        stacked = stacked.push(floating_controls(lang, session, state));
+    }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
     }
@@ -1322,7 +1387,46 @@ pub fn view<'a>(
     if let Some(o) = disconnect_overlay(lang, session, state) {
         stacked = stacked.push(o);
     }
-    stacked.into()
+    // Any cursor movement over the session wakes the controls.
+    mouse_area(stacked).on_move(|_| Message::MouseMoved).into()
+}
+
+/// The floating controls bar: the transport / toggles strip in a
+/// [`widgets::panel`] plate, bottom-anchored over the emulator.
+/// Hiding slides it past the window's bottom edge — iced has no
+/// subtree opacity to fade with, but fully clearing the edge
+/// reads the same. The bar's own hover pin keeps it up while the
+/// cursor rests on it.
+fn floating_controls<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Element<'a, Message> {
+    let now = iced::time::Instant::now();
+    let strip = controls_strip(lang, session, state);
+    // Replay transport carries a Fill-width scrubber, so its bar
+    // spans the window; SP/PvP have a handful of buttons and sit
+    // as a centered pill.
+    let is_replay = session.as_replay().is_some();
+    let mut panel = container(strip).style(widgets::panel);
+    if is_replay {
+        panel = panel.width(Fill);
+    }
+    let hover_pin = mouse_area(panel)
+        .on_enter(|_| Message::ControlsHovered(true))
+        .on_exit(|_| Message::ControlsHovered(false));
+    let slid = anim::slide_in(
+        hover_pin,
+        state.controls_anim.progress(now),
+        iced::Vector::new(0.0, CONTROLS_SLIDE),
+    );
+    container(slid)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(12)
+        .into()
 }
 
 /// The live framebuffer, rendered through a custom wgpu shader widget
