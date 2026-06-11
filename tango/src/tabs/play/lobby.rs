@@ -30,6 +30,17 @@ use unic_langid::LanguageIdentifier;
 
 use super::{ready_button_style, Message, ReadyPalette};
 
+/// Command-bar metrics. A labeled settings column — one caption line
+/// over a fixed control slot — is the tallest content in the live
+/// bar, so its total defines the bar's height; the Leave button
+/// (present in every state, including the failed lobby where the
+/// settings and Ready are gone) rides in a wrapper pinned to the same
+/// total, so the bar never changes height when the lobby dies.
+const SETTING_CAPTION_LINE: f32 = 16.0;
+const SETTING_GAP: f32 = 4.0;
+const CONTROL_SLOT: f32 = 36.0;
+const COMMAND_BAR_CONTENT: f32 = SETTING_CAPTION_LINE + SETTING_GAP + CONTROL_SLOT;
+
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
 /// `None` for a tick.
@@ -128,9 +139,15 @@ impl<'a> Lobby<'a> {
         if let Some(line) = self.connection_line() {
             status_col = status_col.push(line);
         }
-        // The status stack soaks up the slack so the settings +
-        // Ready stay packed against the right edge.
-        let mut bar = row![self.leave_button(), container(status_col).width(Length::Fill)]
+        // Leave's wrapper carries the bar's fixed content height (see
+        // COMMAND_BAR_CONTENT) — a strut, not a clip: if the failure
+        // text ever wraps taller, the row still grows around it. The
+        // status stack soaks up the slack so the settings + Ready
+        // stay packed against the right edge.
+        let leave = container(self.leave_button())
+            .height(Length::Fixed(COMMAND_BAR_CONTENT))
+            .align_y(iced::alignment::Vertical::Center);
+        let mut bar = row![leave, container(status_col).width(Length::Fill)]
             .spacing(24)
             .align_y(Alignment::Center);
         if !failed {
@@ -345,16 +362,23 @@ impl<'a> Lobby<'a> {
         // Caption on top, control centered in a fixed-height slot
         // beneath — the slot is what keeps the short controls (the
         // checkbox) on the same horizontal axis as the tall ones (the
-        // picker) instead of hugging their captions.
-        const CONTROL_SLOT: f32 = 36.0;
+        // picker) instead of hugging their captions. The caption line
+        // height is absolute so the column's total is exactly
+        // COMMAND_BAR_CONTENT — the height the bar holds in every
+        // state, failed included.
         let labeled = |label: String, control: Element<'a, Message>| -> Element<'a, Message> {
             column![
-                text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+                text(label)
+                    .size(TEXT_CAPTION)
+                    .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(
+                        SETTING_CAPTION_LINE
+                    )))
+                    .style(widgets::muted_text_style),
                 container(control)
                     .height(Length::Fixed(CONTROL_SLOT))
                     .align_y(iced::alignment::Vertical::Center),
             ]
-            .spacing(4)
+            .spacing(SETTING_GAP)
             .into()
         };
 
