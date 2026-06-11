@@ -169,7 +169,11 @@ impl State {
                     // order, so the discriminants double as
                     // positions: moving down brings the pane in
                     // from below, moving up from above.
-                    self.pane_enter_dy = if (t as u8) > (self.active_tab as u8) { 32.0 } else { -32.0 };
+                    self.pane_enter_dy = if (t as u8) > (self.active_tab as u8) {
+                        32.0
+                    } else {
+                        -32.0
+                    };
                     self.active_tab = t;
                     self.pane_enter.start(iced::time::Instant::now());
                 }

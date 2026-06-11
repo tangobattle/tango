@@ -128,7 +128,11 @@ impl ReplaySession {
                     if let Some(err) = inner.take_error() {
                         log::error!("replay stepper error: {err:?}");
                     }
-                    (inner.absolute_tick(), inner.total_input_pairs_left(), inner.is_round_ended())
+                    (
+                        inner.absolute_tick(),
+                        inner.total_input_pairs_left(),
+                        inner.is_round_ended(),
+                    )
                 };
 
                 // During a seek chase only the landing frame reaches the

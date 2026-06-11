@@ -1346,8 +1346,8 @@ pub fn view<'a>(
                 // read as a glitch. Only sub-tab switches (horizontal
                 // enters) can carry it over; vertical enters are
                 // whole-body swaps where everything is new.
-                let carried_over = enter_from.x != 0.0
-                    && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
+                let carried_over =
+                    enter_from.x != 0.0 && state.prev_tab.map_or(false, |p| tab_has_edit(p, loaded, editable));
                 let el = if edit_swap.is_some() || carried_over {
                     edit_btn
                 } else {
@@ -3411,7 +3411,12 @@ fn render_navi<M: 'static>(lang: &LanguageIdentifier, loaded: &Loaded) -> Elemen
                         .content_fit(ContentFit::Contain)
                         .into()
                 })
-                .unwrap_or_else(|| Space::new().width(Length::Fixed(90.0)).height(Length::Fixed(90.0)).into());
+                .unwrap_or_else(|| {
+                    Space::new()
+                        .width(Length::Fixed(90.0))
+                        .height(Length::Fixed(90.0))
+                        .into()
+                });
 
             // Circular plate behind the emblem: accent-tinted fill, a
             // ring a shade brighter, and an accent glow lifting it off
@@ -3578,9 +3583,15 @@ fn navicust_parts_panel<M: 'static>(
             .align_y(Alignment::Center)
             .into();
 
-        let mut name_col = column![colored_badge_sized::<M>(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0])]
-            .spacing(3)
-            .align_x(Alignment::Start);
+        let mut name_col = column![colored_badge_sized::<M>(
+            part_name,
+            bg,
+            iced::Color::BLACK,
+            TEXT_BODY,
+            [3.0, 8.0]
+        )]
+        .spacing(3)
+        .align_x(Alignment::Start);
         if let Some(desc) = info.description() {
             // ROM descriptions keep the game's own textbox line breaks —
             // they're authored to wrap there, so the text shrink-wraps to

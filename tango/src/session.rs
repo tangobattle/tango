@@ -446,7 +446,12 @@ impl State {
         self.controls_hovered = false;
     }
 
-    fn update_inner(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
+    fn update_inner(
+        &mut self,
+        msg: Message,
+        mapping: &crate::input::Mapping,
+        video_filter: &str,
+    ) -> iced::Task<Message> {
         match msg {
             Message::Close => {
                 if let Some(s) = self.active.as_ref() {
@@ -1341,7 +1346,10 @@ fn setup_sidebar_plate(theme: &iced::Theme) -> iced::widget::container::Style {
 /// plate + hairline border instead of the chunky gradient, so the
 /// replay bar's speed picker reads as the same family as the
 /// floating chips around it.
-fn flat_pick_list(theme: &iced::Theme, status: sweeten::widget::pick_list::Status) -> sweeten::widget::pick_list::Style {
+fn flat_pick_list(
+    theme: &iced::Theme,
+    status: sweeten::widget::pick_list::Status,
+) -> sweeten::widget::pick_list::Style {
     use sweeten::widget::pick_list::Status;
     let p = theme.extended_palette();
     let text = theme.palette().text;
@@ -1422,8 +1430,7 @@ pub fn view<'a>(
     // it back on top of the moving pane. See `keep_above_drawers`
     // for why it isn't hoisted permanently.
     let now = iced::time::Instant::now();
-    let drawer_moving =
-        state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
+    let drawer_moving = state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
     if state.controls_anim.visible(now) {
         // Replay: transport bar; PvP: setup-drawer edge handles.
         // SP has nothing down here.
@@ -1975,8 +1982,7 @@ fn replay_transport<'a>(
     // the seek chase that follows it, but when playback resumes on
     // landing the session is logically still *playing* — flipping the
     // button to "Play" mid-scrub reads as a stuck pause.
-    let logically_playing =
-        (state.scrub_preview.is_some() && state.scrub_resume) || r.seek_will_resume();
+    let logically_playing = (state.scrub_preview.is_some() && state.scrub_resume) || r.seek_will_resume();
     let (play_pause_icon, play_pause_label, paused) = if r.is_paused() && !logically_playing {
         (Icon::Play, t!(lang, "playback-play"), true)
     } else {
