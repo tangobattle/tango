@@ -53,16 +53,6 @@ impl Core {
             let config_name_cstr = CString::new(config_name).unwrap();
             mgba_sys::mCoreConfigInit(&mut ptr.as_mut().unwrap().config, config_name_cstr.as_ptr());
             mgba_sys::mCoreConfigLoad(&mut ptr.as_mut().unwrap().config);
-
-            // CPU dynarec on by default, and uniformly: every core in the
-            // process (session, stepper, shadow, replay) must use the same
-            // CPU engine, because the dynarec checks IRQ deadlines at block
-            // boundaries rather than per instruction -- self-consistent and
-            // savestate-compatible, but not tick-for-tick interchangeable
-            // with the interpreter. Mixing engines across cores (or across
-            // netplay peers!) would desync. No-op on hosts where mgba was
-            // built without ENABLE_DYNAREC (anything not x86_64/arm64).
-            mgba_sys::GBACoreEnableDynarec(ptr, true);
         }
 
         Ok(Core {
@@ -71,15 +61,6 @@ impl Core {
             trapper: None,
             rtc: None,
         })
-    }
-
-    /// Toggles the CPU dynarec (see `new_gba`: on by default). Keep this
-    /// uniform across every core in a session and across netplay peers;
-    /// interpreter and dynarec cores are not timing-interchangeable.
-    pub fn set_dynarec_enabled(&mut self, enabled: bool) {
-        unsafe {
-            mgba_sys::GBACoreEnableDynarec(self.ptr, enabled);
-        }
     }
 
     /// Pin the cart's RTC chip to a fixed time instead of host wallclock.
