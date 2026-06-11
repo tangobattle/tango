@@ -97,6 +97,7 @@ lobby-unready = 取消
 lobby-match-starting = 開始中…
 lobby-reveal-mine = 自分の構築を相手に公開
 lobby-reveal-peer-on = 相手は構築を公開しています。
+lobby-reveal-self-on = 自分の構築を公開しています。
 lobby-reveal-peer-off = 相手は公開していません。
 lobby-reveal-peer-unknown = （相手の応答待ち）
 session-opponent = 相手の構築

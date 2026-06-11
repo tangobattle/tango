@@ -55,8 +55,9 @@ impl<'a> Lobby<'a> {
     pub(super) fn view(self) -> Element<'a, Message> {
         let status = self.status();
         let compat_ok = status.compat_ok();
-        let matchup_pane = self.matchup_pane();
-        let command_pane = self.command_pane(&status, compat_ok);
+        let failed = self.failed();
+        let matchup_pane = self.matchup_pane(failed);
+        let command_pane = self.command_pane(&status, compat_ok, failed);
         container(
             column![matchup_pane, command_pane]
                 .spacing(style::PANE_GAP)
@@ -116,26 +117,26 @@ impl<'a> Lobby<'a> {
     /// commit button — then the status stack (verdict line +
     /// connection detail), the match settings cluster, and the Ready
     /// CTA at the far right, where the idle strip parks its Fight
-    /// button. On failure the pane picks up a faint red wash so a
-    /// dead lobby reads as dead at a glance — quiet on purpose; the
-    /// icon + danger text of the status line carry the message, the
-    /// wash just sets the mood.
-    fn command_pane(&self, status: &Status<'_>, compat_ok: bool) -> Element<'a, Message> {
+    /// button. On failure the bar powers down: the settings and Ready
+    /// disappear entirely (a dead lobby has nothing left to set or
+    /// commit — Leave is the only move), and the pane picks up a
+    /// faint red wash so it reads as dead at a glance — quiet on
+    /// purpose; the icon + danger text of the status line carry the
+    /// message, the wash just sets the mood.
+    fn command_pane(&self, status: &Status<'_>, compat_ok: bool, failed: bool) -> Element<'a, Message> {
         let mut status_col = column![self.status_line(status)].spacing(4);
         if let Some(line) = self.connection_line() {
             status_col = status_col.push(line);
         }
-        let bar = row![
-            self.leave_button(),
-            // The status stack soaks up the slack so the settings +
-            // Ready stay packed against the right edge.
-            container(status_col).width(Length::Fill),
-            self.settings_cluster(),
-            self.ready_button(compat_ok),
-        ]
-        .spacing(24)
-        .align_y(Alignment::Center);
-        let pane_style: fn(&iced::Theme) -> iced::widget::container::Style = if self.failed() {
+        // The status stack soaks up the slack so the settings +
+        // Ready stay packed against the right edge.
+        let mut bar = row![self.leave_button(), container(status_col).width(Length::Fill)]
+            .spacing(24)
+            .align_y(Alignment::Center);
+        if !failed {
+            bar = bar.push(self.settings_cluster()).push(self.ready_button(compat_ok));
+        }
+        let pane_style: fn(&iced::Theme) -> iced::widget::container::Style = if failed {
             |theme: &iced::Theme| {
                 let danger = theme.extended_palette().danger.strong.color;
                 iced::widget::container::Style {
@@ -293,23 +294,27 @@ impl<'a> Lobby<'a> {
     /// Matchup pane: you / opponent cards with a wide gap so the
     /// diagonal cut + VS badge from `widgets::vs_splitter` paints
     /// through the middle. The splitter canvas (which also paints the
-    /// red/blue half tints) is layered *under* the row.
-    fn matchup_pane(&self) -> Element<'a, Message> {
+    /// red/blue half tints) is layered *under* the row. On failure
+    /// the matchup powers down: the opponent card resets to the
+    /// waiting placeholder and both ready lights go dark — the lobby
+    /// those flags belonged to is gone.
+    fn matchup_pane(&self, failed: bool) -> Element<'a, Message> {
         let lang = self.lang;
+        let remote = if failed { None } else { self.state.remote.as_ref() };
         let sides_row = row![
             side_card(
                 lang,
                 t!(lang, "play-you"),
-                t!(lang, "lobby-reveal-mine"),
+                t!(lang, "lobby-reveal-self-on"),
                 Some(self.state.local.as_ref().unwrap_or(&self.local_fallback)),
-                self.state.local_ready,
+                self.state.local_ready && !failed,
             ),
             side_card(
                 lang,
                 t!(lang, "play-opponent"),
                 t!(lang, "lobby-reveal-peer-on"),
-                self.state.remote.as_ref(),
-                self.state.remote_ready
+                remote,
+                self.state.remote_ready && !failed
             ),
         ]
         .spacing(56)

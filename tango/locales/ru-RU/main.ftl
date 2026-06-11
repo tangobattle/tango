@@ -156,6 +156,7 @@ lobby-unready = Не готов
 lobby-match-starting = Запуск…
 lobby-reveal-mine = Показать мою сборку сопернику
 lobby-reveal-peer-on = Соперник показывает свою сборку.
+lobby-reveal-self-on = Вы показываете свою сборку.
 lobby-reveal-peer-off = Соперник не показывает.
 lobby-reveal-peer-unknown = (ожидание соперника)
 session-opponent = Сборка соперника

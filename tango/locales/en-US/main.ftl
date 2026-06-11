@@ -95,6 +95,7 @@ lobby-unready = Unready
 lobby-match-starting = Starting…
 lobby-reveal-mine = Reveal my setup to opponent
 lobby-reveal-peer-on = Opponent is revealing their setup.
+lobby-reveal-self-on = You are revealing your setup.
 lobby-reveal-peer-off = Opponent isn't revealing.
 lobby-reveal-peer-unknown = (waiting on opponent)
 session-opponent = Opponent setup

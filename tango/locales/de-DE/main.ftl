@@ -155,6 +155,7 @@ lobby-unready = Nicht bereit
 lobby-match-starting = Beginnt…
 lobby-reveal-mine = Mein Setup dem Gegner zeigen
 lobby-reveal-peer-on = Gegner zeigt sein Setup.
+lobby-reveal-self-on = Du zeigst dein Setup.
 lobby-reveal-peer-off = Gegner zeigt sein Setup nicht.
 lobby-reveal-peer-unknown = (warte auf Gegner)
 session-opponent = Gegner-Setup

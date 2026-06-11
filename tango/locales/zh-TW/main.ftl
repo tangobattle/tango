@@ -152,6 +152,7 @@ lobby-unready = 取消準備
 lobby-match-starting = 開始中…
 lobby-reveal-mine = 向對手公開我的配置
 lobby-reveal-peer-on = 對手正在公開配置。
+lobby-reveal-self-on = 你正在公開配置。
 lobby-reveal-peer-off = 對手未公開。
 lobby-reveal-peer-unknown = （等待對手）
 session-opponent = 對手配置

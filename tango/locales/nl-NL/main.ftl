@@ -155,6 +155,7 @@ lobby-unready = Niet klaar
 lobby-match-starting = Starten…
 lobby-reveal-mine = Mijn opzet aan tegenstander tonen
 lobby-reveal-peer-on = Tegenstander toont zijn opzet.
+lobby-reveal-self-on = Je toont je opzet.
 lobby-reveal-peer-off = Tegenstander toont niets.
 lobby-reveal-peer-unknown = (wachten op tegenstander)
 session-opponent = Opzet van tegenstander

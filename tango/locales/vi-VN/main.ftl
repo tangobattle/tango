@@ -152,6 +152,7 @@ lobby-unready = Chưa sẵn sàng
 lobby-match-starting = Đang bắt đầu…
 lobby-reveal-mine = Hiển thị thiết lập của tôi cho đối thủ
 lobby-reveal-peer-on = Đối thủ đang hiển thị thiết lập.
+lobby-reveal-self-on = Bạn đang hiển thị thiết lập.
 lobby-reveal-peer-off = Đối thủ không hiển thị.
 lobby-reveal-peer-unknown = (đang đợi đối thủ)
 session-opponent = Thiết lập đối thủ
