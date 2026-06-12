@@ -50,17 +50,19 @@ pub fn theme_for(config: &config::Config) -> Theme {
         config::ThemeMode::Dark => Theme::custom(
             "Tango Dark".to_string(),
             iced::theme::Palette {
-                // Deep green-black — same brightness as the old
-                // navy but with the hue swung toward the accent,
-                // because every navy we tried read "too blue" next
-                // to the green chrome. Still darker than stock iced
-                // Dark (0x2b2d31) so the neon green actually glows.
-                background: iced::Color::from_rgb(0x0a as f32 / 255.0, 0x14 as f32 / 255.0, 0x0f as f32 / 255.0),
-                // Green-tinted off-white. The slight tint keeps
-                // body copy from looking gray on the dark bg, in
-                // the accent's own hue rather than the old cyan
-                // shift (which cast every text-mixed surface blue).
-                text: iced::Color::from_rgb(0xe6 as f32 / 255.0, 0xf4 as f32 / 255.0, 0xea as f32 / 255.0),
+                // Neutral charcoal, the faintest hair cool. The
+                // base went navy ("too blue" next to the green
+                // chrome), then green-black ("way too green
+                // everywhere") — the lesson both times: the base
+                // shouldn't carry the accent's hue at all, just sit
+                // dark and let the green chrome and gold selection
+                // be the color. Still darker than stock iced Dark
+                // (0x2b2d31) so the neon green actually glows.
+                background: iced::Color::from_rgb(0x0e as f32 / 255.0, 0x10 as f32 / 255.0, 0x11 as f32 / 255.0),
+                // Neutral off-white to match — any tinted white
+                // (the old cyan, then green) casts its hue onto
+                // every surface mixed from it.
+                text: iced::Color::from_rgb(0xec as f32 / 255.0, 0xee as f32 / 255.0, 0xed as f32 / 255.0),
                 primary: TANGO_GREEN,
                 success: TANGO_GREEN,
                 warning: iced::Color::from_rgb(0xff as f32 / 255.0, 0xb5 as f32 / 255.0, 0x47 as f32 / 255.0),

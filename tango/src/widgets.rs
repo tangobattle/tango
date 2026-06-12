@@ -180,7 +180,7 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
     // hint of glow off the navy bg — see [`plate_lift`]) and
     // toward white on light (a clean parchment).
     let plate = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.17)
+        mix(bg, plate_lift(theme), 0.13)
     } else {
         mix(bg, iced::Color::WHITE, 0.5)
     };
@@ -632,15 +632,15 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
 
 /// The [`pane`] plate fill. Exposed so exit washes
 /// ([`crate::anim::exit_fade`]) can dissolve departing controls
-/// into the same color they sit on. On dark, the mix leans toward
-/// the primary so plates pick up the accent-tinted cast of the
-/// Legacy Collection panels (in tango's green here); either way
-/// it's a ~5-8% nudge — enough contrast against the page bg to
-/// read as a region without competing with content.
+/// into the same color they sit on. On dark, the lift runs through
+/// [`plate_lift`] (neutral with a whisper of accent); on light, a
+/// 5% nudge toward text. Either way it's just enough contrast
+/// against the page bg to read as a region without competing with
+/// content.
 pub fn plate_color(theme: &Theme) -> iced::Color {
     let p = theme.extended_palette();
     if p.is_dark {
-        mix(theme.palette().background, theme.palette().primary, 0.08)
+        mix(theme.palette().background, plate_lift(theme), 0.06)
     } else {
         mix(theme.palette().background, theme.palette().text, 0.05)
     }
@@ -758,15 +758,16 @@ pub fn tech_radius(r: f32) -> iced::border::Radius {
 }
 
 /// The tone dark-theme control plates (buttons, inputs, pickers,
-/// checkbox boxes, slider rails) are lifted toward: mostly the
-/// accent, softened toward the text white so plates read
-/// accent-gray rather than saturated accent. Lifting toward the
-/// raw text color — the old recipe — made every control read
-/// blue-slate, because the text white is deliberately cyan-tinted;
-/// lifting toward raw primary over-saturates. Light theme keeps
-/// its white/parchment lifts and doesn't use this.
+/// checkbox boxes, slider rails) are lifted toward: the neutral
+/// text white warmed with a whisper (~18%) of the accent, so
+/// plates read as neutral gray with a hint of the chrome's green
+/// rather than as colored surfaces. Both stronger recipes failed
+/// on sight: lifting toward a tinted text color cast every control
+/// blue, and lifting toward a heavy accent mix turned the whole UI
+/// green. Light theme keeps its white/parchment lifts and doesn't
+/// use this.
 fn plate_lift(theme: &Theme) -> iced::Color {
-    mix(theme.palette().primary, theme.palette().text, 0.35)
+    mix(theme.palette().primary, theme.palette().text, 0.82)
 }
 
 /// Dark "ink" for text sitting on a bright accent plate — the
@@ -803,18 +804,20 @@ pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
     let text = theme.palette().text;
     let (top, bottom) = if p.is_dark {
         // Pull toward black at the bottom; the top stays close to
-        // the bg color so the gradient is felt, not seen.
+        // the bg color so the gradient is felt, not seen. Uniform
+        // channel decay — the old blue-retaining multipliers were
+        // a navy-era trick that re-tints a neutral base cool.
         (
             iced::Color {
                 r: bg.r * 0.7,
                 g: bg.g * 0.7,
-                b: bg.b * 0.8,
+                b: bg.b * 0.7,
                 a: 1.0,
             },
             iced::Color {
                 r: bg.r * 0.4,
                 g: bg.g * 0.4,
-                b: bg.b * 0.5,
+                b: bg.b * 0.4,
                 a: 1.0,
             },
         )
@@ -1211,12 +1214,13 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let primary = theme.palette().primary;
-    // Slightly lifted plate. On dark, mix bg toward the primary
-    // for the accent-cast plate that reads above the navy body.
+    // Slightly lifted plate. On dark, lift through [`plate_lift`]
+    // so the card reads above the body without taking on the
+    // accent's hue — the green lives in the frame, not the fill.
     // On light, go toward white so the card looks like paper on
     // parchment.
     let plate = if p.is_dark {
-        mix(bg, primary, 0.10)
+        mix(bg, plate_lift(theme), 0.12)
     } else {
         mix(bg, iced::Color::WHITE, 0.4)
     };
@@ -1271,7 +1275,7 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
         let bg = theme.palette().background;
         let text = theme.palette().text;
         let dim = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.14)
+        mix(bg, plate_lift(theme), 0.11)
     } else {
         mix(bg, text, 0.08)
     };
@@ -1378,12 +1382,12 @@ pub fn chunky_text_input(
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let plate_top = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.12)
+        mix(bg, plate_lift(theme), 0.09)
     } else {
         iced::Color::WHITE
     };
     let plate_bottom = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.20)
+        mix(bg, plate_lift(theme), 0.15)
     } else {
         mix(bg, iced::Color::WHITE, 0.55)
     };
@@ -1442,12 +1446,12 @@ pub fn chunky_pick_list(
     // Drop in the same gradient as the text input so the two
     // widgets read as siblings.
     let plate_top = if p.is_dark {
-        mix(theme.palette().background, plate_lift(theme), 0.14)
+        mix(theme.palette().background, plate_lift(theme), 0.11)
     } else {
         iced::Color::WHITE
     };
     let plate_bottom = if p.is_dark {
-        mix(theme.palette().background, plate_lift(theme), 0.23)
+        mix(theme.palette().background, plate_lift(theme), 0.18)
     } else {
         mix(theme.palette().background, iced::Color::WHITE, 0.55)
     };
@@ -1484,7 +1488,7 @@ pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let dim = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.14)
+        mix(bg, plate_lift(theme), 0.11)
     } else {
         mix(bg, text, 0.08)
     };
@@ -1533,7 +1537,7 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
     // mix() so checkboxes feel like family with the toolbar
     // buttons sitting next to them.
     let unchecked_plate = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.17)
+        mix(bg, plate_lift(theme), 0.13)
     } else {
         mix(bg, iced::Color::WHITE, 0.5)
     };
@@ -1589,7 +1593,7 @@ pub fn chunky_slider(theme: &Theme, status: iced::widget::slider::Status) -> ice
     // Empty track: same plate recipe as the neutral button so the
     // rail reads as part of the same widget family.
     let track = if p.is_dark {
-        mix(bg, plate_lift(theme), 0.23)
+        mix(bg, plate_lift(theme), 0.18)
     } else {
         mix(bg, text, 0.18)
     };
@@ -1662,7 +1666,7 @@ pub fn chunky_scrollable(theme: &Theme, status: iced::widget::scrollable::Status
             background: iced::Background::Color(if lit {
                 primary
             } else if p.is_dark {
-                mix(bg, plate_lift(theme), 0.43)
+                mix(bg, plate_lift(theme), 0.33)
             } else {
                 mix(bg, text, 0.35)
             }),
