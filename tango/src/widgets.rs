@@ -693,7 +693,7 @@ pub fn danger_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
 }
 
 /// Accent-tinted text — for "lit" indicators that belong to the
-/// primary glow language (ready nicknames, the lobby's reveal eye)
+/// primary glow language (like the lobby's ready nicknames)
 /// rather than the success/danger semantic colors.
 pub fn primary_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     iced::widget::text::Style {

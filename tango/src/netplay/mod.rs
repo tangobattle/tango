@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 pub mod compat;
 
-pub const PROTOCOL_VERSION: u32 = 0x45;
+pub const PROTOCOL_VERSION: u32 = 0x46;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -155,12 +155,12 @@ pub struct LobbyState {
     /// = Single. Local-only UI state; gets folded into Settings
     /// on send.
     pub match_type: (u8, u8),
-    /// Per-lobby "reveal my setup to the opponent" flag. Crosses
-    /// the wire via `protocol::Settings.reveal_setup`; each side
-    /// picks their own independently. When the peer flips it on
-    /// + the match starts, we render their save view alongside
-    /// ours in the session pane.
-    pub reveal_setup: bool,
+    /// Per-lobby "blind my setup from the opponent" flag. Crosses
+    /// the wire via `protocol::Settings.blind_setup`; each side
+    /// picks their own independently. Setups are visible by
+    /// default — unless the peer flips this on, the match start
+    /// renders their save view alongside ours in the session pane.
+    pub blind_setup: bool,
     /// We've sent a Commit packet — flagged in the UI as
     /// "you: ready". Cleared on Uncommit + on every settings
     /// change (any selection move invalidates the commitment).
@@ -200,7 +200,7 @@ impl Default for LobbyState {
             // in-match `PvpSession` latency counter.
             latency_counter: crate::net::LatencyCounter::new(5),
             match_type: (0, 0),
-            reveal_setup: false,
+            blind_setup: false,
             local_ready: false,
             remote_ready: false,
             match_ready: false,
@@ -324,9 +324,9 @@ pub enum Message {
     /// User changed the match-type pick. Lobby state updates and
     /// the App resends the Settings packet.
     SetMatchType((u8, u8)),
-    /// User toggled the "reveal setup" checkbox. Triggers a
+    /// User toggled the "blind setup" checkbox. Triggers a
     /// Settings resend (the flag's part of the wire format).
-    SetRevealSetup(bool),
+    SetBlindSetup(bool),
     /// User pressed the Ready button. Payload is the local
     /// save's raw SRAM — packed into NegotiatedState, zstd'd,
     /// committed to, then Chunk'd over the wire.
@@ -614,16 +614,16 @@ impl State {
             }
             Message::WireOpDone => iced::Task::none(),
             Message::RemoteSettings(settings) => {
-                // Reveal-status downgrade (peer used to reveal,
-                // now doesn't): drop our local commit so we
-                // re-commit explicitly under the new visibility
-                // contract. Matches the legacy app
+                // Visibility downgrade (peer's setup used to be
+                // visible, now they've blinded it): drop our local
+                // commit so we re-commit explicitly under the new
+                // visibility contract. Matches the legacy app
                 // (gui/play_pane.rs::handle_settings).
                 let downgrade = self
                     .lobby
                     .remote
                     .as_ref()
-                    .map(|prev| prev.reveal_setup && !settings.reveal_setup)
+                    .map(|prev| !prev.blind_setup && settings.blind_setup)
                     .unwrap_or(false);
                 self.lobby.remote = Some(*settings);
                 if downgrade {
@@ -640,14 +640,14 @@ impl State {
                 // material-diff check.
                 iced::Task::none()
             }
-            Message::SetRevealSetup(v) => {
-                let prev = self.lobby.reveal_setup;
-                self.lobby.reveal_setup = v;
-                // Downgrading our own reveal (true → false): drop
-                // the *peer's* commit so they re-commit under the
-                // new visibility contract. Matches legacy
+            Message::SetBlindSetup(v) => {
+                let prev = self.lobby.blind_setup;
+                self.lobby.blind_setup = v;
+                // Downgrading our own visibility (blind flips on):
+                // drop the *peer's* commit so they re-commit under
+                // the new visibility contract. Matches legacy
                 // `set_reveal_setup` in gui/play_pane.rs.
-                if prev && !v {
+                if !prev && v {
                     self.remote_commitment = None;
                     self.remote_chunks.clear();
                     self.lobby.remote_ready = false;
@@ -656,7 +656,7 @@ impl State {
                 }
                 // App fires a settings resend after this. The
                 // SendLocalSettings material-diff check doesn't
-                // include reveal_setup, so a same-game reveal
+                // include blind_setup, so a same-game blind
                 // toggle doesn't drop our own commit unnecessarily.
                 iced::Task::none()
             }

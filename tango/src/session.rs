@@ -135,9 +135,8 @@ pub struct State {
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
     /// PvP-only: shows the opponent's save view in a side panel
-    /// when they enabled reveal-setup. Defaults to visible when
-    /// the panel is available; user can hide it via the toggle
-    /// button in the header.
+    /// when they haven't blinded their setup. Defaults to hidden;
+    /// user opens it via the edge handle.
     pub show_opponent_panel: bool,
     /// PvP-only: shows the local player's save view in a side
     /// panel. Defaults to hidden; user toggles via the
@@ -342,7 +341,7 @@ pub enum Message {
     /// Dismiss the disconnect confirm without disconnecting (the
     /// Cancel button + the modal backdrop both fire this).
     CloseDisconnectConfirm,
-    /// Show/hide the opponent's reveal-setup side panel. PvP-only.
+    /// Show/hide the opponent's setup side panel. PvP-only.
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel. PvP-only.
     ToggleSelfPanel,
@@ -1833,7 +1832,7 @@ fn corner_commands_overlay<'a>(
 /// (inward to open, back out to close) tinted in the side's
 /// accent. They ride the shared auto-hide, slipping out through
 /// their own edges; the opponent handle isn't rendered at all
-/// until the peer enables reveal-setup.
+/// while the peer has blinded their setup.
 fn setup_handles_overlay<'a>(
     lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
@@ -1973,8 +1972,8 @@ fn setup_handles_overlay<'a>(
         ));
     }
     edges = edges.push(horizontal_space());
-    // No tab at all when the peer isn't revealing — a permanently
-    // dead handle is just clutter on the edge.
+    // No tab at all when the peer blinded their setup — a
+    // permanently dead handle is just clutter on the edge.
     if pvp.opponent_loaded.is_some() {
         edges = edges.push(handle(
             false,
@@ -2504,12 +2503,12 @@ pub async fn spawn_pvp(
         remote_rom_raw
     };
 
-    // Build the opponent's Loaded only if they enabled reveal-
+    // Build the opponent's Loaded only if they didn't blind their
     // setup — otherwise we don't have visibility into their save.
     // Loaded parses chip/navi/navicust assets from the rom + wram,
     // so the session pane can render them with the same widgets we
     // use for the local side.
-    let opponent_loaded = if pre_match.remote_settings.reveal_setup {
+    let opponent_loaded = if !pre_match.remote_settings.blind_setup {
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;

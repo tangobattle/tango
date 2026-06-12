@@ -299,7 +299,7 @@ impl Loadout {
                 .iter()
                 .map(|(name, info)| (name.clone(), info.versions.keys().cloned().collect()))
                 .collect(),
-            reveal_setup: lobby.reveal_setup,
+            blind_setup: lobby.blind_setup,
         }
     }
 }

@@ -96,7 +96,7 @@ pub struct PvpSession {
     pub link_code: String,
     pub remote_nickname: String,
     /// Opponent's fully-loaded selection (rom + parsed save +
-    /// derived assets) if they enabled reveal-setup. The session
+    /// derived assets) unless they blinded their setup. The session
     /// pane uses it to embed the same save-view we render for
     /// our own side — folder, navi, navicust, the whole thing.
     pub opponent_loaded: Option<crate::selection::Loaded>,
@@ -750,7 +750,10 @@ fn build_replay_writer(
                             version: p.version.to_string(),
                         }),
                 }),
-                reveal_setup: local_settings.reveal_setup,
+                // The replay metadata proto (replay11) predates the
+                // blind-setup inversion and still stores the
+                // positive "reveal" sense.
+                reveal_setup: !local_settings.blind_setup,
             }),
             remote_side: Some(tango_pvp::replay::metadata::Side {
                 nickname: remote_settings.nickname.clone(),
@@ -765,7 +768,7 @@ fn build_replay_writer(
                             version: p.version.to_string(),
                         }),
                 }),
-                reveal_setup: remote_settings.reveal_setup,
+                reveal_setup: !remote_settings.blind_setup,
             }),
             match_type: match_type.0 as u32,
             match_subtype: match_type.1 as u32,

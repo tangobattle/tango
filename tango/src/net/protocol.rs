@@ -115,7 +115,7 @@ pub struct Settings {
     pub game_info: Option<GameInfo>,
     pub available_games: Vec<(String, u8)>,
     pub available_patches: Vec<(String, Vec<semver::Version>)>,
-    pub reveal_setup: bool,
+    pub blind_setup: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

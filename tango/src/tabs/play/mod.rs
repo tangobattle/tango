@@ -47,8 +47,8 @@ pub enum Message {
     /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
     /// (same store the Settings-tab slider writes), not lobby-local state.
     SetFrameDelay(u32),
-    /// Lobby UI: user toggled the reveal-setup checkbox.
-    SetRevealSetup(bool),
+    /// Lobby UI: user toggled the blind-setup checkbox.
+    SetBlindSetup(bool),
     /// Lobby UI: user pressed Ready. App loads the local
     /// save's raw SRAM, builds a NegotiatedState, and
     /// dispatches netplay::Message::Commit.
@@ -465,7 +465,7 @@ impl State {
             Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::SetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
             Message::SetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
-            Message::SetRevealSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetRevealSetup(v))),
+            Message::SetBlindSetup(v) => Some(Effect::Netplay(crate::netplay::Message::SetBlindSetup(v))),
             Message::Ready => Some(Effect::ReadyWithSave),
             Message::Unready => Some(Effect::Netplay(crate::netplay::Message::Uncommit)),
             Message::SaveViewAction(action) => {

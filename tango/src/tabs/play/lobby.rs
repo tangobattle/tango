@@ -368,14 +368,14 @@ impl<'a> Lobby<'a> {
             side_card(
                 lang,
                 t!(lang, "play-you"),
-                t!(lang, "lobby-reveal-self-on"),
+                t!(lang, "lobby-blind-self-on"),
                 Some(self.state.local.as_ref().unwrap_or(&self.local_fallback)),
                 self.state.local_ready && !failed,
             ),
             side_card(
                 lang,
                 t!(lang, "play-opponent"),
-                t!(lang, "lobby-reveal-peer-on"),
+                t!(lang, "lobby-blind-peer-on"),
                 self.state.remote.as_ref(),
                 self.state.remote_ready && !failed
             ),
@@ -473,10 +473,11 @@ impl<'a> Lobby<'a> {
             .into(),
         );
 
-        // Reveal-setup checkbox. Mirrors the legacy app's
-        // `play-details-reveal-setup` checkbox — each side picks
-        // independently. This is only YOUR toggle; what each side has
-        // picked shows as the eye on their matchup card (yours lights
+        // Blind-setup checkbox — the inversion of the legacy app's
+        // `play-details-reveal-setup`: setups are visible by default,
+        // checking this hides yours. Each side picks independently.
+        // This is only YOUR toggle; what each side has picked shows
+        // as the crossed-out eye on their matchup card (yours appears
         // when you check this, which is what teaches the opponent's),
         // so the cluster carries no peer state to reflow or decode.
         // Unlike the picker and slider, the checkbox does accept a
@@ -485,11 +486,11 @@ impl<'a> Lobby<'a> {
         let toggle = if inert {
             None
         } else {
-            Some(Message::SetRevealSetup as fn(bool) -> Message)
+            Some(Message::SetBlindSetup as fn(bool) -> Message)
         };
-        let reveal_col = labeled(
-            t!(lang, "lobby-reveal-mine"),
-            iced::widget::checkbox(self.state.reveal_setup)
+        let blind_col = labeled(
+            t!(lang, "lobby-blind-mine"),
+            iced::widget::checkbox(self.state.blind_setup)
                 .on_toggle_maybe(toggle)
                 .size(TEXT_HEADING)
                 .style(widgets::chunky_checkbox)
@@ -498,7 +499,7 @@ impl<'a> Lobby<'a> {
 
         // Top-align so the captions sit on one line like a table
         // header row, whatever each control's height is.
-        row![match_col, delay_col, reveal_col]
+        row![match_col, delay_col, blind_col]
             .spacing(20)
             .align_y(Alignment::Start)
             .into()
@@ -685,16 +686,16 @@ fn gated<T>(inert: bool, live: fn(T) -> Message) -> fn(T) -> Message {
 
 /// Compact "you / opponent" card — a 2-line waiting placeholder that
 /// grows to 3 lines once that side's settings land. `ready` lights the
-/// dot and tints the nickname when that side has committed. An eye
-/// rides the nickname row while that side is revealing their setup —
-/// the same indicator on both cards, so your own card (which lights
-/// when you tick the reveal checkbox) teaches what the opponent's
-/// means; `reveal_tip` is the side-appropriate sentence for its
-/// tooltip.
+/// dot and tints the nickname when that side has committed. A red
+/// crossed-out eye rides the nickname row while that side is blinding
+/// their setup — the same indicator on both cards, so your own card
+/// (which gains it when you tick the blind checkbox) teaches what the
+/// opponent's means; `blind_tip` is the side-appropriate sentence for
+/// its tooltip.
 fn side_card(
     lang: &LanguageIdentifier,
     label: String,
-    reveal_tip: String,
+    blind_tip: String,
     settings: Option<&Settings>,
     ready: bool,
 ) -> Element<'static, Message> {
@@ -723,20 +724,20 @@ fn side_card(
     } else {
         |_theme: &iced::Theme| iced::widget::text::Style { color: None }
     };
-    // The reveal eye rides the nickname row at heading size, primary
-    // tinted — big enough to notice at a glance, and in the accent
-    // color the lobby's other "lit" cues use (the ready dot, the
-    // tinted nickname) so it doesn't fight the palette. The title-
-    // size nickname dominates the row's height, so the eye lighting
-    // up still moves nothing.
+    // The blind eye rides the nickname row at heading size, danger
+    // tinted — a red crossed-out eye is the universal "you can't see
+    // this", and red keeps it apart from the lobby's primary "lit"
+    // cues (the ready dot, the tinted nickname). The title-size
+    // nickname dominates the row's height, so the eye appearing
+    // still moves nothing.
     let mut name_row = row![text(settings.nickname.clone()).size(TEXT_TITLE).style(nickname_style)]
         .spacing(8)
         .align_y(Alignment::Center);
-    if settings.reveal_setup {
+    if settings.blind_setup {
         name_row = name_row.push(
             iced::widget::tooltip(
-                Icon::Eye.widget().size(TEXT_HEADING).style(widgets::primary_text_style),
-                container(text(reveal_tip).size(TEXT_CAPTION))
+                Icon::EyeOff.widget().size(TEXT_HEADING).style(widgets::danger_text_style),
+                container(text(blind_tip).size(TEXT_CAPTION))
                     .padding(6)
                     .style(widgets::tooltip_chrome),
                 iced::widget::tooltip::Position::Top,

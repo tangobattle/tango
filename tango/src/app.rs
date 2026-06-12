@@ -1014,9 +1014,12 @@ impl App {
                 };
                 match result {
                     Ok(session) => {
-                        let has_opponent_panel = session.opponent_loaded.is_some();
                         self.session.active = Some(ActiveSession::PvP(session));
-                        self.session.show_opponent_panel = has_opponent_panel;
+                        // Both setup drawers start closed — the edge
+                        // handles are the invitation; a pane that
+                        // barges in over the match start isn't.
+                        self.session.show_opponent_panel = false;
+                        self.session.show_self_panel = false;
                         self.session.wake_controls();
                     }
                     Err(e) => {
