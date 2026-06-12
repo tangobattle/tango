@@ -735,12 +735,18 @@ impl State {
                     Some(g) => {
                         disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, g, template.as_deref()))
                     }
-                    // No single default yet — seed the field from the
-                    // first creation variant (game name only) so it isn't
-                    // empty while the user picks a template.
-                    None => creation_games(loadout, scanners)
-                        .first()
-                        .map(|g| disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, *g, None)))
+                    // No single default yet — seed the field with the
+                    // variant-neutral family name so it isn't empty (and
+                    // doesn't presume a color) while the user picks a
+                    // template.
+                    None => loadout
+                        .family
+                        .map(|f| {
+                            disambiguate_save_name(
+                                &saves_dir,
+                                &sanitize_filename(&game::family_display_name(&config.language, f)),
+                            )
+                        })
                         .unwrap_or_else(|| "new save".to_string()),
                 };
                 self.save_action = SaveAction::NewSave {
