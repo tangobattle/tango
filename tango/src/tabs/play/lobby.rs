@@ -171,42 +171,81 @@ impl<'a> Lobby<'a> {
             .into()
     }
 
-    /// Small muted line under the status. While dialing (Connecting /
-    /// Negotiating) it's the connection identifier — matchmaking code
-    /// / direct host / direct target — so the user can read off what
-    /// they're matching on; once the connection is established the
-    /// code has done its job and the line becomes the live ping
-    /// instead. Streamer privacy mode suppresses the identifier so a
-    /// viewer of the stream can't scrape it off the screen and crash
-    /// the lobby; a failed lobby gets no line at all (the status line
-    /// carries the failure).
+    /// Small line under the status, in one of two visually distinct
+    /// states so a glance tells which one it's in. While dialing
+    /// (Connecting / Negotiating) it's the *identifier*: a link glyph
+    /// + the matchmaking code (or direct host / target), with a copy
+    /// button so the code can be handed to the opponent straight from
+    /// here. Once the connection is established it's the *wire*: an
+    /// activity glyph + the live ping. Streamer privacy mode masks
+    /// the code on screen — so a viewer can't scrape it and crash the
+    /// lobby — but the copy button still copies the real one, so
+    /// inviting someone doesn't require leaving streamer mode.
+    /// (Direct host / target stay fully hidden in streamer mode: they
+    /// can carry an address, and you typed them yourself anyway.) A
+    /// failed lobby gets no line at all — the status line carries the
+    /// failure.
     fn connection_line(&self) -> Option<Element<'a, Message>> {
         let lang = self.lang;
-        let label = match self.phase {
+        let (glyph, label, copy): (Icon, String, Option<String>) = match self.phase {
             Phase::Lobby { .. } => {
                 let d = self.state.latency_counter.latest()?;
                 let ms = d.as_millis() as i64;
-                match self.state.connection_kind {
+                let label = match self.state.connection_kind {
                     Some(netplay::ConnectionKind::Direct) => t!(lang, "lobby-latency-direct", ms = ms),
                     Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
                     None => t!(lang, "lobby-latency", ms = ms),
-                }
+                };
+                (Icon::Activity, label, None)
             }
-            Phase::Connecting { ident, .. } | Phase::Negotiating { ident } if !self.streamer_mode => {
+            Phase::Connecting { ident, .. } | Phase::Negotiating { ident } => {
                 use netplay::{DirectRole, LinkIdent};
                 match ident {
-                    LinkIdent::Matchmaking(code) => t!(lang, "lobby-link-code", code = code.clone()),
+                    LinkIdent::Matchmaking(code) => {
+                        let shown = if self.streamer_mode {
+                            t!(lang, "lobby-link-code", code = "••••••".to_string())
+                        } else {
+                            t!(lang, "lobby-link-code", code = code.clone())
+                        };
+                        (Icon::Link, shown, Some(code.clone()))
+                    }
+                    LinkIdent::Direct(_) if self.streamer_mode => return None,
                     LinkIdent::Direct(DirectRole::Host { port }) => {
-                        t!(lang, "lobby-direct-host", port = port.to_string())
+                        (Icon::Link, t!(lang, "lobby-direct-host", port = port.to_string()), None)
                     }
-                    LinkIdent::Direct(DirectRole::Connect { addr }) => {
-                        t!(lang, "lobby-direct-connect", target = addr.clone())
-                    }
+                    LinkIdent::Direct(DirectRole::Connect { addr }) => (
+                        Icon::Link,
+                        t!(lang, "lobby-direct-connect", target = addr.clone()),
+                        None,
+                    ),
                 }
             }
             _ => return None,
         };
-        Some(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style).into())
+        let mut line = row![
+            glyph.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
+            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+        if let Some(code) = copy {
+            // Micro copy button, caption-sized so the subtitle stays
+            // a subtitle.
+            line = line.push(
+                iced::widget::tooltip(
+                    button(Icon::Copy.widget().size(TEXT_CAPTION))
+                        .padding([2, 5])
+                        .style(widgets::neutral)
+                        .on_press(Message::CopyText(code)),
+                    container(text(t!(lang, "save-copy")).size(TEXT_CAPTION))
+                        .padding(6)
+                        .style(widgets::tooltip_chrome),
+                    iced::widget::tooltip::Position::Top,
+                )
+                .gap(4),
+            );
+        }
+        Some(line.into())
     }
 
     /// The command bar's status / verdict line — the first thing in

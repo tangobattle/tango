@@ -35,6 +35,10 @@ pub enum Message {
     /// Fill the link-code input with a fresh random
     /// adjective-word-noun handle from `randomcode::generate`.
     LinkCodeRandom,
+    /// Copy plain text to the clipboard — the lobby's copy-link-code
+    /// button. Carries the real code even when streamer mode masks it
+    /// on screen.
+    CopyText(String),
     FightPressed,
     Disconnect,
     /// Lobby UI: user picked a different match type. App routes
@@ -373,6 +377,7 @@ impl State {
                 // without an extra select+copy round-trip.
                 Some(Effect::CopyText(self.link_code.clone()))
             }
+            Message::CopyText(s) => Some(Effect::CopyText(s)),
             Message::FightPressed => {
                 // The Fight CTA is gated at the view layer to require
                 // a submittable link code, so reaching this handler
