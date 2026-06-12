@@ -13,9 +13,9 @@ use crate::stepper::{self, ReplayCheckpoint, ReplaySnapshot};
 
 /// Take a fresh mid-round snapshot at most once per this many absolute_ticks.
 /// Coarser snapshots leave long fast-forwards on backward scrub; finer ones
-/// cost RAM and a `core.save_state()` per capture (~256KB each). 240 ticks
-/// ≈ 4 seconds of GBA time.
-pub const MID_ROUND_SNAPSHOT_INTERVAL: u32 = 240;
+/// cost RAM and a `core.save_state()` per capture (~256KB each). 60 ticks
+/// ≈ 1 seconds of GBA time.
+pub const MID_ROUND_SNAPSHOT_INTERVAL: u32 = 60;
 
 /// Shared, cloneable handle to the replay-playback snapshot collection.
 /// All clones share the same underlying snapshot list behind a mutex —
@@ -160,8 +160,7 @@ pub fn run_prefetch(
 
     local_hooks.patch(core.as_mut());
 
-    let (stepper_state, shadow) =
-        stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
+    let (stepper_state, shadow) = stepper::State::new_for_replay(replay, remote_rom, remote_hooks, Box::new(|| {}))?;
     let mut traps = local_hooks.common_traps();
     traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
@@ -327,15 +326,8 @@ pub fn run_seek_worker(
             let store = store.clone();
             let completion_token = completion_token.clone();
             handle.run_on_core(move |core| {
-                if let Err(e) = chase_on_core(
-                    core,
-                    &ctrl,
-                    &stepper_state,
-                    &shadow,
-                    &replay,
-                    &store,
-                    &completion_token,
-                ) {
+                if let Err(e) = chase_on_core(core, &ctrl, &stepper_state, &shadow, &replay, &store, &completion_token)
+                {
                     log::error!("seek chase failed: {e:?}");
                 }
             });
