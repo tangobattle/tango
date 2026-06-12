@@ -189,12 +189,19 @@ enum EnterScope {
     /// forward in nav order), negative from the left (moving
     /// back).
     Body { dx: f32 },
-    /// Welcome/session swaps: the whole window rises into place.
-    Root,
+    /// Welcome/session swaps: the whole window glides into place
+    /// vertically. `dy` is the starting offset — positive rises in
+    /// from below (the default), negative descends from above
+    /// (closing a session, so the return to the menu reads as
+    /// stepping back down rather than climbing further).
+    Root { dy: f32 },
 }
 
 /// How far a pane starts off-position when sliding in.
 const PANE_SLIDE: f32 = 28.0;
+
+/// How far the whole window starts off-position on a Root enter.
+const ROOT_SLIDE: f32 = 10.0;
 
 /// Identity of what `view` is fundamentally showing. Computed
 /// before and after every `update` dispatch; a change means the
@@ -349,7 +356,7 @@ impl App {
             // Start at rest (no launch animation) — progress 1.0
             // and not animating until first triggered.
             screen_enter: anim::Enter::default(),
-            screen_enter_scope: EnterScope::Root,
+            screen_enter_scope: EnterScope::Root { dy: ROOT_SLIDE },
             lobby_swap: anim::Transition::swap(false),
             lobby_exit_snapshot: None,
         };
@@ -782,7 +789,11 @@ impl App {
                     };
                     EnterScope::Body { dx }
                 }
-                _ => EnterScope::Root,
+                // Closing a session descends — the menu comes back
+                // in from above, mirroring the rise that brought
+                // the session up.
+                (ScreenKey::Session, _) => EnterScope::Root { dy: -ROOT_SLIDE },
+                _ => EnterScope::Root { dy: ROOT_SLIDE },
             };
         }
         // The Play tab's band swap follows the netplay phase: the
@@ -1967,6 +1978,7 @@ impl App {
                 )
                 .map(Message::Welcome),
                 enter,
+                ROOT_SLIDE,
             );
         }
 
@@ -2055,11 +2067,11 @@ impl App {
             } else {
                 session_view
             };
-            // Session entry rises in the same way leaving it does —
-            // the screen-enter trigger fires on both edges of the
-            // Session screen key.
+            // Session entry rises into place; the scope's dy also
+            // covers the way back out (the menu descends — see the
+            // screen-swap match in `update`).
             let composed = match (enter, self.screen_enter_scope) {
-                (Some(p), EnterScope::Root) => entered(composed, Some(p)),
+                (Some(p), EnterScope::Root { dy }) => entered(composed, Some(p), dy),
                 _ => composed,
             };
             return crate::input_capture::InputCapture::new(composed, |input| {
@@ -2169,7 +2181,7 @@ impl App {
         .height(Fill)
         .into();
         match (enter, self.screen_enter_scope) {
-            (Some(p), EnterScope::Root) => entered(root, Some(p)),
+            (Some(p), EnterScope::Root { dy }) => entered(root, Some(p), dy),
             _ => root,
         }
     }
@@ -2189,12 +2201,13 @@ impl App {
     }
 }
 
-/// Apply the whole-window entrance glide (a short upward rise) to
-/// `el` while one is live; pass-through otherwise. Drawing-only —
-/// layout and hit-testing stay at the rest position throughout.
-fn entered(el: Element<'_, Message>, progress: Option<f32>) -> Element<'_, Message> {
+/// Apply the whole-window entrance glide to `el` while one is live;
+/// pass-through otherwise. `dy` is the starting offset (positive =
+/// rise in from below). Drawing-only — layout and hit-testing stay
+/// at the rest position throughout.
+fn entered(el: Element<'_, Message>, progress: Option<f32>, dy: f32) -> Element<'_, Message> {
     match progress {
-        Some(p) => anim::slide_in(el, p, iced::Vector::new(0.0, 10.0)),
+        Some(p) => anim::slide_in(el, p, iced::Vector::new(0.0, dy)),
         None => el,
     }
 }
