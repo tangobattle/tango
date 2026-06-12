@@ -288,6 +288,32 @@ pub fn flat(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// The fullscreen top bar's app-close X — window chrome, not a
+/// toolbar action. Borderless and muted at rest so it doesn't
+/// compete with the nav pills, flipping to a solid danger plate
+/// with a white glyph on hover: the universal titlebar-close
+/// idiom, so "this closes the whole app" lands before the tooltip
+/// does.
+pub fn window_close(theme: &Theme, status: button::Status) -> button::Style {
+    let danger = theme.palette().danger;
+    let (bg, text_color) = match status {
+        button::Status::Hovered => (danger, iced::Color::WHITE),
+        button::Status::Pressed => (mix(danger, iced::Color::BLACK, 0.15), iced::Color::WHITE),
+        button::Status::Active | button::Status::Disabled => (iced::Color::TRANSPARENT, muted_color(theme)),
+    };
+    button::Style {
+        background: Some(iced::Background::Color(bg)),
+        text_color,
+        border: iced::Border {
+            color: iced::Color::TRANSPARENT,
+            width: 0.0,
+            radius: 6.0.into(),
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
 /// Lower-level helper for callers that need to pick the button
 /// style explicitly — `button::primary` for the one emphasized
 /// action in a row, `button::danger` for destructive ones, etc.

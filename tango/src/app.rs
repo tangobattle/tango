@@ -686,6 +686,10 @@ pub enum Message {
         size: iced::Size,
         maximized: bool,
     },
+    /// Exit the application. Fired by the top bar's close button,
+    /// which only renders in fullscreen — there's no OS title-bar X
+    /// to reach for there (iced's fullscreen is borderless).
+    Quit,
     /// Fired when a backgrounded `Scanners::rescan` task completes.
     /// `followup` tells the handler which post-scan work to do —
     /// most paths just want `Refresh` (re-validate `self.loaded`),
@@ -814,6 +818,10 @@ impl App {
         match message {
             Message::NoOp => iced::Task::none(),
             Message::AnimTick => iced::Task::none(),
+            // Same as the OS close button: config is persisted
+            // incrementally (on every change + resize), so there's
+            // no shutdown bookkeeping to flush here.
+            Message::Quit => iced::exit(),
             Message::TabSelected(t) => {
                 self.tab = t;
                 iced::Task::none()
@@ -2140,7 +2148,7 @@ impl App {
         // open lobby isn't forgotten behind a tab switch.
         let lobby_badge = self.lobby_on_screen() && self.tab != Tab::Play;
         let root: Element<'_, Message> = column![
-            top_bar(lang, self.tab, lobby_badge),
+            top_bar(lang, self.tab, lobby_badge, self.config.fullscreen),
             widgets::hud_scanline_top(),
             body_surface,
         ]
@@ -2179,7 +2187,7 @@ fn entered(el: Element<'_, Message>, progress: Option<f32>) -> Element<'_, Messa
     }
 }
 
-fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool) -> Element<'_, Message> {
+fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen: bool) -> Element<'_, Message> {
     use iced::widget::image::{Handle, Image};
     use lucide_icons::Icon;
     use std::sync::LazyLock;
@@ -2197,47 +2205,57 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool) -> Element
 
     let tab =
         |icon, label, target: Tab| widgets::nav_tab_button(icon, label, Message::TabSelected(target), target == active);
-    container(
-        row![
-            iced::widget::container(
-                Image::new(LOGO.clone())
-                    .width(iced::Length::Fixed(28.0))
-                    .height(iced::Length::Fixed(28.0))
-                    .content_fit(iced::ContentFit::Contain),
-            )
-            .padding([2, 8]),
-            widgets::nav_tab_button_badged(
-                Icon::Gamepad,
-                t!(lang, "tab-play"),
-                Message::TabSelected(Tab::Play),
-                Tab::Play == active,
-                lobby_badge,
-            ),
-            tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
-            horizontal_space(),
-            // Patches + Settings = low-emphasis utility tabs.
-            // Patch management is an occasional maintenance chore,
-            // not a destination, so it doesn't get equal billing
-            // with Play/Replays — icon-only on the right, with the
-            // label exposed as a hover tooltip.
-            widgets::nav_icon_tab_button(
-                Icon::Puzzle,
-                t!(lang, "tab-patches"),
-                Message::TabSelected(Tab::Patches),
-                Tab::Patches == active,
-            ),
-            widgets::nav_icon_tab_button(
-                Icon::Settings,
-                t!(lang, "tab-settings"),
-                Message::TabSelected(Tab::Settings),
-                Tab::Settings == active,
-            ),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding([10, 8]),
-    )
-    .width(Fill)
-    .style(widgets::hud_bar)
-    .into()
+    let mut bar = row![
+        iced::widget::container(
+            Image::new(LOGO.clone())
+                .width(iced::Length::Fixed(28.0))
+                .height(iced::Length::Fixed(28.0))
+                .content_fit(iced::ContentFit::Contain),
+        )
+        .padding([2, 8]),
+        widgets::nav_tab_button_badged(
+            Icon::Gamepad,
+            t!(lang, "tab-play"),
+            Message::TabSelected(Tab::Play),
+            Tab::Play == active,
+            lobby_badge,
+        ),
+        tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
+        horizontal_space(),
+        // Patches + Settings = low-emphasis utility tabs.
+        // Patch management is an occasional maintenance chore,
+        // not a destination, so it doesn't get equal billing
+        // with Play/Replays — icon-only on the right, with the
+        // label exposed as a hover tooltip.
+        widgets::nav_icon_tab_button(
+            Icon::Puzzle,
+            t!(lang, "tab-patches"),
+            Message::TabSelected(Tab::Patches),
+            Tab::Patches == active,
+        ),
+        widgets::nav_icon_tab_button(
+            Icon::Settings,
+            t!(lang, "tab-settings"),
+            Message::TabSelected(Tab::Settings),
+            Tab::Settings == active,
+        ),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+    if fullscreen {
+        // Fullscreen is borderless — no OS title bar, so no native
+        // X. Stand in for it at the same screen corner, in the
+        // titlebar-close mood (quiet at rest, red on hover).
+        bar = bar.push(widgets::icon_button_styled(
+            Icon::X,
+            t!(lang, "window-quit"),
+            Some(Message::Quit),
+            [8.0, 12.0],
+            widgets::window_close,
+        ));
+    }
+    container(bar.padding([10, 8]))
+        .width(Fill)
+        .style(widgets::hud_bar)
+        .into()
 }

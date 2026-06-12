@@ -3,6 +3,8 @@
 LANGUAGE = English
 
 window-title = Tango
+# Tooltip on the top bar's close button (fullscreen only).
+window-quit = Exit Tango
 
 # Crash handler dialogs (parent process)
 crash = Oops, Tango has encountered an error and has crashed!
