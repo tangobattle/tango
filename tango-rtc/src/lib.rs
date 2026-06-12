@@ -5,18 +5,19 @@
 //! supplies the I/O around it — UDP sockets, candidate gathering (host +
 //! STUN server-reflexive + TURN relay) and a Tokio driver task — while
 //! keeping the async, channel-based shape the rest of Tango is written
-//! against: connection events arrive on an `mpsc::Receiver`, and
+//! against: peer-connection events arrive on an `mpsc::Receiver`, and
 //! data-channel sends/receives are `await`-able.
 //!
 //! Tango does non-trickle ICE: gathering runs to completion first, the full
 //! SDP (candidates included) is shipped over signaling, and the connection
 //! proceeds from there. A connection carries exactly one data channel, so
-//! connection and channel are a single type here: [`DataChannel::new`]
-//! starts the transport, the SDP methods on the same value drive the
-//! signaling exchange, and afterwards it (or its
-//! [`split`](DataChannel::split) halves) is the channel. The transport
-//! stays up as long as either half is alive, and hangs up when the last
-//! one is dropped.
+//! there is no channel-creation API: [`PeerConnection::new`] starts the
+//! transport and returns the connection together with its [`DataChannel`].
+//! The connection half drives the signaling exchange; the channel (or its
+//! [`split`](DataChannel::split) halves) carries the data. The channel's
+//! send half owns the transport — it hangs up when the
+//! [`DataChannelSender`] is dropped — while [`PeerConnection`] is only a
+//! negotiation handle.
 
 mod driver;
 mod gather;
@@ -49,7 +50,7 @@ pub enum ConnectionState {
 }
 
 /// ICE candidate gathering progress. Tango waits for `Complete` before
-/// reading the local description off the channel.
+/// reading the local description off the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GatheringState {
     InProgress,
@@ -85,9 +86,10 @@ pub struct RtcConfig {
     pub include_loopback: bool,
 }
 
-/// Events forwarded from the driver task onto the channel's event channel.
+/// Events forwarded from the driver task onto the peer-connection's event
+/// channel.
 #[derive(Debug)]
-pub enum ConnectionEvent {
+pub enum PeerConnectionEvent {
     ConnectionStateChange(ConnectionState),
     GatheringStateChange(GatheringState),
 }
@@ -131,7 +133,7 @@ enum DataChannelStatus {
     Error(Failure),
 }
 
-/// State shared between the user-facing [`DataChannel`] (sync methods)
+/// State shared between the user-facing [`PeerConnection`] (sync methods)
 /// and the driver task. All str0m access happens under this lock; the
 /// driver re-polls after every mutation (via [`Shared::notify`]).
 struct Inner {
@@ -186,8 +188,8 @@ impl Shared {
     }
 }
 
-/// The engine behind the channel halves: each half holds an `Arc` of this,
-/// so the transport lives until the last half is dropped.
+/// Owns the transport's lifetime: held by [`DataChannelSender`], so the
+/// transport lives exactly as long as the channel's send half.
 struct Transport {
     shared: Arc<Shared>,
     /// Dropping this (i.e. dropping the whole `Transport`) tears down the
@@ -242,19 +244,22 @@ fn other_err<E: std::fmt::Display>(e: E) -> std::io::Error {
     std::io::Error::other(e.to_string())
 }
 
-/// A peer-to-peer data channel and the connection that carries it, as one
-/// value: construct it, run the SDP exchange through it, then send/receive
-/// on it (or on its [`split`](DataChannel::split) halves).
-pub struct DataChannel {
-    sender: DataChannelSender,
-    receiver: DataChannelReceiver,
+/// The negotiation half of a connection: it drives the SDP exchange and
+/// reports on the ICE outcome, while the [`DataChannel`] created alongside
+/// it — the only one the connection ever has — carries the data.
+///
+/// This is a handle, not an owner: the transport's lifetime belongs to the
+/// channel's send half, so dropping the `PeerConnection` (e.g. once
+/// negotiation is done) leaves the channel up.
+pub struct PeerConnection {
+    shared: Arc<Shared>,
 }
 
-impl DataChannel {
-    /// Create the transport and spawn its driver task on the current Tokio
-    /// runtime. Candidate gathering starts immediately;
-    /// `GatheringStateChange(Complete)` on the event channel signals that
-    /// [`DataChannel::local_description`] is ready.
+impl PeerConnection {
+    /// Create a connection and its data channel, and spawn the driver task
+    /// on the current Tokio runtime. Candidate gathering starts
+    /// immediately; `GatheringStateChange(Complete)` on the event channel
+    /// signals that [`PeerConnection::local_description`] is ready.
     ///
     /// The channel is negotiated in-band (DCEP): whichever side's offer
     /// survives the exchange opens it, and the other side binds to the
@@ -263,7 +268,7 @@ impl DataChannel {
     pub fn new(
         config: RtcConfig,
         label: &str,
-    ) -> Result<(Self, tokio::sync::mpsc::Receiver<ConnectionEvent>), std::io::Error> {
+    ) -> Result<(Self, DataChannel, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
         let runtime = tokio::runtime::Handle::try_current().map_err(other_err)?;
 
         let rtc = str0m::Rtc::builder().build(std::time::Instant::now());
@@ -307,11 +312,12 @@ impl DataChannel {
         }));
 
         Ok((
+            PeerConnection { shared: shared.clone() },
             DataChannel {
                 sender: DataChannelSender {
                     outgoing_tx,
                     status_rx,
-                    transport: Transport {
+                    _transport: Transport {
                         shared,
                         _shutdown_tx: shutdown_tx,
                     },
@@ -322,17 +328,12 @@ impl DataChannel {
         ))
     }
 
-    fn shared(&self) -> &Shared {
-        &self.sender.transport.shared
-    }
-
     /// Apply the remote description. An `Offer` implicitly rolls back our
     /// own pending offer (the "polite peer" path) and produces the answer,
-    /// which is then available via [`DataChannel::local_description`];
+    /// which is then available via [`PeerConnection::local_description`];
     /// an `Answer` completes our own offer.
     pub fn set_remote_description(&mut self, desc: SessionDescription) -> Result<(), std::io::Error> {
-        let shared = self.shared();
-        let mut inner = shared.inner.lock().unwrap();
+        let mut inner = self.shared.inner.lock().unwrap();
         match desc.sdp_type {
             SdpType::Offer => {
                 let offer = str0m::change::SdpOffer::from_sdp_string(&desc.sdp).map_err(other_err)?;
@@ -358,16 +359,16 @@ impl DataChannel {
         inner.remote_candidates = parse_sdp_candidates(&desc.sdp);
         inner.remote_desc = Some(desc);
         drop(inner);
-        shared.notify.notify_one();
+        self.shared.notify.notify_one();
         Ok(())
     }
 
     pub fn local_description(&self) -> Option<SessionDescription> {
-        self.shared().inner.lock().unwrap().local_desc.clone()
+        self.shared.inner.lock().unwrap().local_desc.clone()
     }
 
     pub fn remote_description(&self) -> Option<SessionDescription> {
-        self.shared().inner.lock().unwrap().remote_desc.clone()
+        self.shared.inner.lock().unwrap().remote_desc.clone()
     }
 
     /// The selected ICE candidate pair as raw candidate strings,
@@ -375,7 +376,7 @@ impl DataChannel {
     /// connection from a direct one (`typ relay`). Errors until
     /// the agent has picked a pair.
     pub fn selected_candidate_pair(&self) -> Result<(String, String), std::io::Error> {
-        let inner = self.shared().inner.lock().unwrap();
+        let inner = self.shared.inner.lock().unwrap();
         let (source, destination) = inner
             .current_path
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::WouldBlock, "no nominated pair yet"))?;
@@ -403,18 +404,6 @@ impl DataChannel {
 
         Ok((local, remote))
     }
-
-    pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
-        self.sender.send(msg).await
-    }
-
-    pub async fn receive(&mut self) -> Option<Vec<u8>> {
-        self.receiver.receive().await
-    }
-
-    pub fn split(self) -> (DataChannelSender, DataChannelReceiver) {
-        (self.sender, self.receiver)
-    }
 }
 
 /// Pull the `a=candidate:` lines out of an SDP blob.
@@ -437,10 +426,36 @@ fn synthesize_candidate(addr: std::net::SocketAddr, typ: &str) -> String {
     format!("candidate:0 1 UDP 0 {} {} typ {}", addr.ip(), addr.port(), typ)
 }
 
+/// The data half of a connection, created by [`PeerConnection::new`]:
+/// `await`-able sends and receives, splittable into its two halves. The
+/// send half owns the transport; see [`DataChannelSender`].
+pub struct DataChannel {
+    sender: DataChannelSender,
+    receiver: DataChannelReceiver,
+}
+
+impl DataChannel {
+    pub async fn send(&mut self, msg: &[u8]) -> Result<(), std::io::Error> {
+        self.sender.send(msg).await
+    }
+
+    pub async fn receive(&mut self) -> Option<Vec<u8>> {
+        self.receiver.receive().await
+    }
+
+    pub fn split(self) -> (DataChannelSender, DataChannelReceiver) {
+        (self.sender, self.receiver)
+    }
+}
+
+/// The channel's send half. Owns the transport: dropping it hangs up the
+/// connection, even while the receive half or the [`PeerConnection`]
+/// handle are still alive.
 pub struct DataChannelSender {
     outgoing_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
-    transport: Transport,
+    /// Held only for its `Drop` (the hangup).
+    _transport: Transport,
 }
 
 impl DataChannelSender {

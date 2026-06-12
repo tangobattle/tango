@@ -350,9 +350,9 @@ pub enum Message {
 
 /// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
 /// non-Sync payloads through iced's `Task::perform` boundary. The
-/// runtime needs `Message: Clone + Send`, and DataChannel isn't
-/// Clone — this wrapper papers over that by taking the inner once
-/// on receipt and going None afterwards.
+/// runtime needs `Message: Clone + Send`, and DataChannel /
+/// PeerConnection aren't Clone — this wrapper papers over that by
+/// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
 /// Which side of a direct-TCP connection the local instance is.
@@ -367,6 +367,10 @@ pub enum DirectRole {
 }
 
 pub struct ConnectionPayload {
+    /// Negotiation handle only — the channel's halves own the
+    /// transport's lifetime. `run_negotiate` reads the SDP type and
+    /// selected ICE pair off it, then lets it drop.
+    pub pc: tango_rtc::PeerConnection,
     pub dc: tango_rtc::DataChannel,
 }
 
@@ -1186,11 +1190,11 @@ async fn run_signaling_connect(
 /// joins + WebRTC ICE handshake opens the data channel.
 async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
-        let dc = hello
+        let (pc, dc) = hello
             .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
-        Ok::<_, AsyncError>(ConnectionPayload { dc })
+        Ok::<_, AsyncError>(ConnectionPayload { pc, dc })
     };
     tokio::select! {
         biased;
@@ -1251,22 +1255,24 @@ fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
 async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
-    let ConnectionPayload { dc } = payload;
-    // Read these off the channel before splitting it: the SDP type
-    // tells offerer from answerer, and the selected ICE pair (already
-    // nominated — the channel wouldn't be open otherwise) tells a
-    // relayed connection from a direct one.
-    let is_offerer = dc
+    let ConnectionPayload { pc, dc } = payload;
+    // The SDP type tells offerer from answerer, and the selected ICE
+    // pair (already nominated — the channel wouldn't be open otherwise)
+    // tells a relayed connection from a direct one. That's all the
+    // PeerConnection is for: it's a non-owning handle, so letting it
+    // drop here leaves the channel up.
+    let is_offerer = pc
         .local_description()
         .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
         .unwrap_or(false);
-    let connection_kind = dc.selected_candidate_pair().ok().map(|(local, remote)| {
+    let connection_kind = pc.selected_candidate_pair().ok().map(|(local, remote)| {
         if local.contains("typ relay") || remote.contains("typ relay") {
             ConnectionKind::Relayed
         } else {
             ConnectionKind::Direct
         }
     });
+    drop(pc);
     let (mut sender, mut receiver) = crate::net::datachannel::pair(dc);
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {

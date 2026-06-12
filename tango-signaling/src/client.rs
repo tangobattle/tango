@@ -19,26 +19,27 @@ const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(500);
 const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
 
-async fn create_data_channel(
+async fn create_peer_connection(
     rtc_config: tango_rtc::RtcConfig,
 ) -> Result<
     (
+        tango_rtc::PeerConnection,
         tango_rtc::DataChannel,
-        tokio::sync::mpsc::Receiver<tango_rtc::ConnectionEvent>,
+        tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
     ),
     std::io::Error,
 > {
-    let (dc, mut event_rx) = tango_rtc::DataChannel::new(rtc_config, "tango")?;
+    let (pc, dc, mut event_rx) = tango_rtc::PeerConnection::new(rtc_config, "tango")?;
 
     loop {
-        if let Some(tango_rtc::ConnectionEvent::GatheringStateChange(tango_rtc::GatheringState::Complete)) =
+        if let Some(tango_rtc::PeerConnectionEvent::GatheringStateChange(tango_rtc::GatheringState::Complete)) =
             event_rx.recv().await
         {
             break;
         }
     }
 
-    Ok((dc, event_rx))
+    Ok((pc, dc, event_rx))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -93,7 +94,8 @@ fn is_transient(e: &Error) -> bool {
     }
 }
 
-pub type Connecting = futures_util::future::BoxFuture<'static, Result<tango_rtc::DataChannel, Error>>;
+pub type Connecting =
+    futures_util::future::BoxFuture<'static, Result<(tango_rtc::PeerConnection, tango_rtc::DataChannel), Error>>;
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
 /// `Hello`, build a new peer connection from the offered ICE servers, and send
@@ -108,8 +110,9 @@ async fn establish(
 ) -> Result<
     (
         SignalingStream,
+        tango_rtc::PeerConnection,
         tango_rtc::DataChannel,
-        tokio::sync::mpsc::Receiver<tango_rtc::ConnectionEvent>,
+        tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
     ),
     Error,
 > {
@@ -190,7 +193,7 @@ async fn establish(
         },
         ..Default::default()
     };
-    let (dc, event_rx) = create_data_channel(rtc_config).await?;
+    let (pc, dc, event_rx) = create_peer_connection(rtc_config).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -198,7 +201,7 @@ async fn establish(
                 which: Some(crate::proto::signaling::packet::Which::Start(
                     crate::proto::signaling::packet::Start {
                         protocol_version,
-                        offer_sdp: dc.local_description().unwrap().sdp.to_string(),
+                        offer_sdp: pc.local_description().unwrap().sdp.to_string(),
                         connection_id: connection_id.to_vec(),
                     },
                 )),
@@ -207,15 +210,15 @@ async fn establish(
         ))
         .await?;
 
-    Ok((signaling_stream, dc, event_rx))
+    Ok((signaling_stream, pc, dc, event_rx))
 }
 
 /// Outcome of waiting on a single signaling websocket for the peer to begin the
 /// SDP exchange.
 enum WaitOutcome {
     /// We received the peer's `Offer` (and answered it) or `Answer` (and applied
-    /// it). The peer has committed to this handshake — the channel now holds the
-    /// remote description and we proceed to the ICE phase.
+    /// it). The peer has committed to this handshake — the connection now holds
+    /// the remote description and we proceed to the ICE phase.
     Exchanged,
     /// The websocket dropped (closed / reset / timed out / EOF) *before* the peer
     /// sent any SDP. Nothing is committed on either side, so it's safe to throw
@@ -232,7 +235,7 @@ enum WaitOutcome {
 /// anything become `Dropped`, which the caller may transparently reconnect.
 async fn wait_for_exchange(
     signaling_stream: &mut SignalingStream,
-    dc: &mut tango_rtc::DataChannel,
+    pc: &mut tango_rtc::PeerConnection,
 ) -> Result<WaitOutcome, Error> {
     let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -313,12 +316,12 @@ async fn wait_for_exchange(
                 // is fatal, never a reconnect. Accepting the remote offer
                 // implicitly rolls back our own pending offer and produces
                 // the answer as our new local description.
-                dc.set_remote_description(tango_rtc::SessionDescription {
+                pc.set_remote_description(tango_rtc::SessionDescription {
                     sdp_type: tango_rtc::SdpType::Offer,
                     sdp: offer.sdp.clone(),
                 })?;
 
-                let local_description = dc.local_description().unwrap();
+                let local_description = pc.local_description().unwrap();
                 signaling_stream
                     .send(tokio_tungstenite::tungstenite::Message::Binary(
                         crate::proto::signaling::Packet {
@@ -337,7 +340,7 @@ async fn wait_for_exchange(
             Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
                 log::info!("received an answer, this is the impolite side");
 
-                dc.set_remote_description(tango_rtc::SessionDescription {
+                pc.set_remote_description(tango_rtc::SessionDescription {
                     sdp_type: tango_rtc::SdpType::Answer,
                     sdp: answer.sdp.clone(),
                 })?;
@@ -366,7 +369,7 @@ pub async fn connect(
     // The initial dial surfaces failures to the caller (so "couldn't reach the
     // matchmaking server" is reported promptly); transparent reconnects only
     // kick in once we've successfully connected at least once.
-    let (mut signaling_stream, mut dc, mut event_rx) =
+    let (mut signaling_stream, mut pc, mut dc, mut event_rx) =
         establish(addr, session_id, use_relay, protocol_version, &connection_id).await?;
 
     let addr = addr.to_owned();
@@ -377,7 +380,7 @@ pub async fn connect(
         // started, a websocket drop is recoverable: tear everything down and dial
         // again with a fresh peer connection / offer.
         loop {
-            match wait_for_exchange(&mut signaling_stream, &mut dc).await? {
+            match wait_for_exchange(&mut signaling_stream, &mut pc).await? {
                 WaitOutcome::Exchanged => break,
                 WaitOutcome::Dropped(reason) => {
                     log::warn!(
@@ -387,8 +390,9 @@ pub async fn connect(
                     let mut backoff = MIN_RECONNECT_BACKOFF;
                     loop {
                         match establish(&addr, &session_id, use_relay, protocol_version, &connection_id).await {
-                            Ok((s, d, e)) => {
+                            Ok((s, p, d, e)) => {
                                 signaling_stream = s;
+                                pc = p;
                                 dc = d;
                                 event_rx = e;
                                 log::info!("signaling reconnected; still waiting for the peer");
@@ -411,19 +415,19 @@ pub async fn connect(
 
         log::debug!(
             "local sdp (type = {:?}): {}",
-            dc.local_description().expect("local sdp").sdp_type,
-            dc.local_description().expect("local sdp").sdp
+            pc.local_description().expect("local sdp").sdp_type,
+            pc.local_description().expect("local sdp").sdp
         );
         log::debug!(
             "remote sdp (type = {:?}): {}",
-            dc.remote_description().expect("remote sdp").sdp_type,
-            dc.remote_description().expect("remote sdp").sdp
+            pc.remote_description().expect("remote sdp").sdp_type,
+            pc.remote_description().expect("remote sdp").sdp
         );
 
         loop {
             let signal = event_rx.recv().await.unwrap();
 
-            if let tango_rtc::ConnectionEvent::ConnectionStateChange(c) = signal {
+            if let tango_rtc::PeerConnectionEvent::ConnectionStateChange(c) = signal {
                 match c {
                     tango_rtc::ConnectionState::Connected => {
                         break;
@@ -442,6 +446,6 @@ pub async fn connect(
             }
         }
 
-        Ok(dc)
+        Ok((pc, dc))
     }))
 }
