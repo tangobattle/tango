@@ -1091,27 +1091,37 @@ impl State {
             .spacing(8)
             .align_y(Alignment::Center)
             .into(),
-            SaveAction::ConfirmDelete => row![
-                text(t!(lang, "save-delete-prompt"))
-                    .style(widgets::muted_text_style)
-                    .width(Length::Fill),
-                widgets::icon_button(
-                    Icon::X,
-                    t!(lang, "save-action-cancel"),
-                    Message::SaveActionCancel,
-                    STANDARD_PADDING,
-                ),
-                widgets::labeled_icon_button(
-                    Icon::Trash,
-                    t!(lang, "save-delete-confirm"),
-                    Message::SaveDeleteConfirm,
-                    STANDARD_PADDING,
-                    widgets::danger_button,
-                ),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .into(),
+            SaveAction::ConfirmDelete => {
+                // Name the target — "Delete BN3 White?" reads as a
+                // decision; "Delete this save?" reads as a riddle
+                // about what's currently selected.
+                let name = loadout
+                    .save
+                    .as_ref()
+                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+                    .unwrap_or_default();
+                row![
+                    text(t!(lang, "save-delete-prompt", name = name))
+                        .style(widgets::muted_text_style)
+                        .width(Length::Fill),
+                    widgets::icon_button(
+                        Icon::X,
+                        t!(lang, "save-action-cancel"),
+                        Message::SaveActionCancel,
+                        STANDARD_PADDING,
+                    ),
+                    widgets::labeled_icon_button(
+                        Icon::Trash,
+                        t!(lang, "save-delete-confirm"),
+                        Message::SaveDeleteConfirm,
+                        STANDARD_PADDING,
+                        widgets::danger_button,
+                    ),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
+            }
             SaveAction::NewSave {
                 draft, game, template, ..
             } => {
