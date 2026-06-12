@@ -35,9 +35,12 @@ pub fn icon_button_maybe<'a, M: Clone + 'a>(
 /// Icon button for clipboard copies, with feedback: once the copy
 /// actually lands, the update path calls
 /// [`crate::copy_feedback::flash`] with this button's `key`, and
-/// until the flash expires the glyph flips to a primary-tinted check
-/// and the tooltip to `copied_label` ("Copied!"). `key` must be
-/// stable and unique per button — see [`crate::copy_feedback`].
+/// until the flash expires the glyph flips to a primary-tinted
+/// clipboard-check and the tooltip to `copied_label` ("Copied!").
+/// `icon` is the idle glyph — ClipboardCopy for plain copies,
+/// something more specific (ImageDown) where the payload kind needs
+/// distinguishing. `key` must be stable and unique per button — see
+/// [`crate::copy_feedback`].
 pub fn copy_icon_button<'a, M: Clone + 'a>(
     key: &str,
     icon: Icon,
@@ -48,7 +51,7 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
     padding: [f32; 2],
 ) -> Element<'a, M> {
     let lit = crate::copy_feedback::is_lit(key);
-    let (glyph, tip) = if lit { (Icon::CopyCheck, copied_label) } else { (icon, label) };
+    let (glyph, tip) = if lit { (Icon::ClipboardCheck, copied_label) } else { (icon, label) };
     let mut glyph_el = glyph.widget().size(icon_size);
     if lit {
         glyph_el = glyph_el.style(primary_text_style);

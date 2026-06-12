@@ -859,7 +859,7 @@ impl State {
             }
             .view()
         } else {
-            self.bottom_strip(lang)
+            self.bottom_strip(lang, streamer_mode)
         };
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
         if let Some(phase) = swap {
@@ -1181,8 +1181,12 @@ impl State {
     /// singleplayer lives in the save view's Play button. An empty
     /// input is fair game: Fight generates a random code on the spot
     /// (see the FightPressed handler), so the only un-submittable
-    /// state is a malformed `/`-command.
-    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
+    /// state is a malformed `/`-command. In streamer mode the input
+    /// renders secure (masked) — typed, pasted, and freshly-generated
+    /// codes are all scrapeable off a stream otherwise (the generated
+    /// one used to flash here in the clear before the lobby's masking
+    /// took over).
+    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier, streamer_mode: bool) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
@@ -1216,6 +1220,7 @@ impl State {
         // surrounding controls.
         let link_input: Element<'a, Message> = container(
             text_input(&t!(lang, "play-link-code"), &self.link_code)
+                .secure(streamer_mode)
                 .on_input(Message::LinkCodeChanged)
                 .on_submit(Message::FightPressed)
                 .size(BOTTOM_SIZE)

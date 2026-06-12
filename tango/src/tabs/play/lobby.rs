@@ -244,7 +244,7 @@ impl<'a> Lobby<'a> {
             // after the copy lands.
             line = line.push(widgets::copy_icon_button(
                 LINK_CODE_FLASH_KEY,
-                Icon::Copy,
+                Icon::ClipboardCopy,
                 TEXT_CAPTION,
                 t!(lang, "save-copy"),
                 t!(lang, "copied"),
@@ -358,12 +358,12 @@ impl<'a> Lobby<'a> {
     /// diagonal cut + VS badge from `widgets::vs_splitter` paints
     /// through the middle. The splitter canvas (which also paints the
     /// red/blue half tints) is layered *under* the row. On failure
-    /// the matchup powers down: the opponent card resets to the
-    /// waiting placeholder and both ready lights go dark — the lobby
-    /// those flags belonged to is gone.
+    /// the matchup powers down — both ready lights go dark, since the
+    /// lobby those flags belonged to is gone — but the opponent card
+    /// keeps their info ("who just left" is exactly what you want to
+    /// read off a dead lobby; netplay deliberately doesn't wipe it).
     fn matchup_pane(&self, failed: bool) -> Element<'a, Message> {
         let lang = self.lang;
-        let remote = if failed { None } else { self.state.remote.as_ref() };
         let sides_row = row![
             side_card(
                 lang,
@@ -376,7 +376,7 @@ impl<'a> Lobby<'a> {
                 lang,
                 t!(lang, "play-opponent"),
                 t!(lang, "lobby-reveal-peer-on"),
-                remote,
+                self.state.remote.as_ref(),
                 self.state.remote_ready && !failed
             ),
         ]
@@ -558,12 +558,7 @@ impl<'a> Lobby<'a> {
     /// the glow shadow does the work of "look at me" instead.
     fn ready_button(&self, compat_ok: bool) -> Element<'a, Message> {
         const READY_TEXT: f32 = 16.0;
-        const READY_PAD: [f32; 2] = [10.0, 12.0];
-        // Fixed width — just enough for the longest localized label
-        // (vi "Chưa sẵn sàng") — so toggling Ready → Unready →
-        // Starting… never shifts the bar around it. The width does
-        // the sizing; the padding is only a minimum gutter.
-        const READY_W: f32 = 150.0;
+        const READY_PAD: [f32; 2] = [10.0, 16.0];
         let lang = self.lang;
         let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.state.match_ready {
             // Both committed — match is spinning up. Button is purely
@@ -601,20 +596,43 @@ impl<'a> Lobby<'a> {
         // Force the Ready button off regardless of how the
         // pre-failure state looked.
         let msg = if self.failed() { None } else { msg };
+        // The width is pinned by a transparent ghost of the current
+        // locale's widest label (char count is a fair width proxy
+        // within a single script), so toggling Ready → Unready →
+        // Starting… never shifts the bar — and the button is never
+        // wider than its longest state actually needs.
+        let widest = [
+            t!(lang, "lobby-ready"),
+            t!(lang, "lobby-unready"),
+            t!(lang, "lobby-match-starting"),
+        ]
+        .into_iter()
+        .max_by_key(|s| s.chars().count())
+        .unwrap_or_default();
+        let ghost_style = |_: &iced::Theme| iced::widget::text::Style {
+            color: Some(iced::Color::TRANSPARENT),
+        };
+        let ghost = row![
+            icon.widget().size(READY_TEXT).style(ghost_style),
+            text(widest).size(READY_TEXT).style(ghost_style),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
         let label_widget = row![icon.widget().size(READY_TEXT), text(label).size(READY_TEXT)]
             .spacing(8)
             .align_y(Alignment::Center);
-        // Buttons don't center their content, so the fixed width
-        // needs a Fill container inside to keep short labels
-        // ("Ready") on the button's center line.
-        let mut btn = button(
+        // Stack overlays clamp to the base layer (the ghost), so the
+        // live label centers inside the ghost's footprint.
+        let content = iced::widget::Stack::new().push(ghost).push(
             container(label_widget)
                 .width(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Center),
-        )
-        .width(Length::Fixed(READY_W))
-        .padding(READY_PAD)
-        .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
+                .height(Length::Fill)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center),
+        );
+        let mut btn = button(content)
+            .padding(READY_PAD)
+            .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
         if let Some(m) = msg {
             btn = btn.on_press(m);
         }
