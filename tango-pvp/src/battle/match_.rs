@@ -250,6 +250,10 @@ impl Match {
         self.cancellation_token.cancel()
     }
 
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_token.is_cancelled()
+    }
+
     pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
         self.cancellation_token.cancelled()
     }
