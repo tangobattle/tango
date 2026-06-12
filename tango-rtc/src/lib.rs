@@ -306,22 +306,17 @@ impl DataChannel {
             shutdown_rx,
         }));
 
-        let transport = Arc::new(Transport {
-            shared,
-            _shutdown_tx: shutdown_tx,
-        });
-
         Ok((
             DataChannel {
                 sender: DataChannelSender {
                     outgoing_tx,
                     status_rx,
-                    transport: transport.clone(),
+                    transport: Transport {
+                        shared,
+                        _shutdown_tx: shutdown_tx,
+                    },
                 },
-                receiver: DataChannelReceiver {
-                    message_rx,
-                    _transport: transport,
-                },
+                receiver: DataChannelReceiver { message_rx },
             },
             event_rx,
         ))
@@ -445,7 +440,7 @@ fn synthesize_candidate(addr: std::net::SocketAddr, typ: &str) -> String {
 pub struct DataChannelSender {
     outgoing_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
-    transport: Arc<Transport>,
+    transport: Transport,
 }
 
 impl DataChannelSender {
@@ -484,8 +479,6 @@ impl DataChannelSender {
 
 pub struct DataChannelReceiver {
     message_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    /// Keep-alive only: the transport lives as long as either half does.
-    _transport: Arc<Transport>,
 }
 
 impl DataChannelReceiver {
