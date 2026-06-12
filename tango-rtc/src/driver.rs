@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::{gather, ConnectionState, DataChannelStatus, GatheringState, Inner, PeerConnectionEvent, Shared};
+use crate::{gather, ConnectionState, DataChannelStatus, Failure, GatheringState, Inner, PeerConnectionEvent, Shared};
 
 /// How long ICE may sit in `Disconnected` before we give the connection up
 /// for dead. str0m's ICE never reaches a terminal failed state on its own.
@@ -43,7 +43,7 @@ enum Exit {
     /// Deliberate teardown: the `PeerConnection` was dropped.
     Closed,
     /// The connection died underneath us.
-    Failed(String),
+    Failed(Failure),
 }
 
 pub(crate) async fn run(mut driver: Driver) {
@@ -359,7 +359,7 @@ async fn main_loop(
                         }
                     }
                     Err(e) => {
-                        return Exit::Failed(format!("rtc.poll_output: {}", e));
+                        return Exit::Failed(Failure::Rtc(Arc::new(e)));
                     }
                 }
             }
@@ -402,7 +402,7 @@ async fn main_loop(
         {
             let inner = driver.shared.inner.lock().unwrap();
             if !inner.rtc.is_alive() {
-                return Exit::Failed("connection died".to_owned());
+                return Exit::Failed(Failure::Died);
             }
             if exchange_done_at.is_none() && inner.remote_desc.is_some() {
                 exchange_done_at = Some(Instant::now());
@@ -410,13 +410,13 @@ async fn main_loop(
         }
         if let Some(since) = disconnected_since {
             if since.elapsed() >= DISCONNECT_GRACE {
-                return Exit::Failed("ice disconnected".to_owned());
+                return Exit::Failed(Failure::IceDisconnected);
             }
         }
         if !connected {
             if let Some(at) = exchange_done_at {
                 if at.elapsed() >= CONNECT_TIMEOUT {
-                    return Exit::Failed("timed out establishing connection".to_owned());
+                    return Exit::Failed(Failure::ConnectTimeout);
                 }
             }
         }
@@ -437,7 +437,7 @@ async fn main_loop(
         if wake <= now {
             let mut inner = driver.shared.inner.lock().unwrap();
             if let Err(e) = inner.rtc.handle_input(str0m::Input::Timeout(now)) {
-                return Exit::Failed(format!("rtc.handle_input: {}", e));
+                return Exit::Failed(Failure::Rtc(Arc::new(e)));
             }
             continue;
         }
@@ -446,7 +446,7 @@ async fn main_loop(
             _ = tokio::time::sleep_until(tokio::time::Instant::from_std(wake)) => {
                 let mut inner = driver.shared.inner.lock().unwrap();
                 if let Err(e) = inner.rtc.handle_input(str0m::Input::Timeout(Instant::now())) {
-                    return Exit::Failed(format!("rtc.handle_input: {}", e));
+                    return Exit::Failed(Failure::Rtc(Arc::new(e)));
                 }
             }
             incoming = net_rx.recv(), if !net_done => {

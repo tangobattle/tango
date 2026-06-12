@@ -87,13 +87,43 @@ pub enum PeerConnectionEvent {
     GatheringStateChange(GatheringState),
 }
 
+/// Why the transport died, when it died on its own (deliberate teardown
+/// reports `Closed`, not a failure). Surfaced to the consumer boxed inside
+/// the `std::io::Error` that `DataChannel::send` returns.
+#[derive(Debug, Clone)]
+enum Failure {
+    /// The str0m state machine errored while being fed or polled. `Arc`
+    /// because this travels through a watch channel ([`DataChannelStatus`]
+    /// is `Clone`) and `RtcError` isn't.
+    Rtc(Arc<str0m::RtcError>),
+    /// The `Rtc` instance reported itself dead without an explicit close.
+    Died,
+    /// ICE sat in `Disconnected` past the grace period.
+    IceDisconnected,
+    /// No connection within the post-signaling-exchange timeout.
+    ConnectTimeout,
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Failure::Rtc(e) => write!(f, "rtc: {}", e),
+            Failure::Died => write!(f, "connection died"),
+            Failure::IceDisconnected => write!(f, "ice disconnected"),
+            Failure::ConnectTimeout => write!(f, "timed out establishing connection"),
+        }
+    }
+}
+
+impl std::error::Error for Failure {}
+
 /// The lifecycle of the data channel as observed by the send side.
 #[derive(Debug, Clone)]
 enum DataChannelStatus {
     Pending,
     Open,
     Closed,
-    Error(String),
+    Error(Failure),
 }
 
 /// State shared between the user-facing [`PeerConnection`] (sync methods)
