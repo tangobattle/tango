@@ -13,11 +13,10 @@
 //! proceeds from there. A connection carries exactly one data channel, so
 //! there is no channel-creation API: [`PeerConnection::new`] starts the
 //! transport and returns the connection together with its [`DataChannel`].
-//! The connection half drives the signaling exchange; the channel (or its
-//! [`split`](DataChannel::split) halves) carries the data. The channel's
-//! send half owns the transport — it hangs up when the
-//! [`DataChannelSender`] is dropped — while [`PeerConnection`] is only a
-//! negotiation handle.
+//! The connection drives the signaling exchange and owns the transport:
+//! keep it alive for as long as the channel (or its
+//! [`split`](DataChannel::split) halves) is in use — dropping it hangs up
+//! and the channel goes dead.
 
 mod driver;
 mod gather;
@@ -158,7 +157,7 @@ struct Inner {
     /// pair, so this is the selected path.
     current_path: Option<(std::net::SocketAddr, std::net::SocketAddr)>,
     /// The driver's transmit routes, shared here once gathering is done so
-    /// [`Transport`]'s `Drop` can hang up without the driver task.
+    /// [`PeerConnection`]'s `Drop` can hang up without the driver task.
     routes: Option<Arc<std::collections::HashMap<std::net::SocketAddr, driver::Route>>>,
 }
 
@@ -188,71 +187,19 @@ impl Shared {
     }
 }
 
-/// Owns the transport's lifetime: held by [`DataChannelSender`], so the
-/// transport lives exactly as long as the channel's send half.
-struct Transport {
-    shared: Arc<Shared>,
-    /// Dropping this (i.e. dropping the whole `Transport`) tears down the
-    /// driver task.
-    _shutdown_tx: tokio::sync::oneshot::Sender<()>,
-}
-
-impl Drop for Transport {
-    /// Hang up synchronously: DTLS close_notify, straight onto the wire.
-    ///
-    /// The driver task has its own graceful close on shutdown, but it only
-    /// runs if the task gets polled again — on process exit the runtime is
-    /// torn down by *dropping* its tasks, so anything that must reach the
-    /// remote has to go out inline here, before `_shutdown_tx` drops. The
-    /// remote turns close_notify into a prompt EOF instead of sitting out
-    /// its disconnect grace. Best effort: one unacknowledged datagram.
-    fn drop(&mut self) {
-        let mut inner = self.shared.inner.lock().unwrap();
-        if !inner.rtc.is_alive() {
-            return;
-        }
-        // No routes means gathering never finished: nothing to hang up.
-        let Some(routes) = inner.routes.clone() else {
-            return;
-        };
-        if let Err(e) = inner.rtc.close() {
-            log::debug!("rtc.close: {}", e);
-            return;
-        }
-        // Drain the close_notify out, as in the driver's graceful close;
-        // close() flips the instance to not-alive once fully polled.
-        loop {
-            let mut sent_any = false;
-            loop {
-                match inner.rtc.poll_output() {
-                    Ok(str0m::Output::Transmit(t)) => {
-                        driver::send_transmit_sync(&routes, t.source, t.destination, &t.contents);
-                        sent_any = true;
-                    }
-                    Ok(str0m::Output::Event(_)) => {}
-                    Ok(str0m::Output::Timeout(_)) | Err(_) => break,
-                }
-            }
-            if !sent_any || !inner.rtc.is_alive() {
-                break;
-            }
-        }
-    }
-}
-
 fn other_err<E: std::fmt::Display>(e: E) -> std::io::Error {
     std::io::Error::other(e.to_string())
 }
 
-/// The negotiation half of a connection: it drives the SDP exchange and
-/// reports on the ICE outcome, while the [`DataChannel`] created alongside
-/// it — the only one the connection ever has — carries the data.
-///
-/// This is a handle, not an owner: the transport's lifetime belongs to the
-/// channel's send half, so dropping the `PeerConnection` (e.g. once
-/// negotiation is done) leaves the channel up.
+/// The connection half: it drives the SDP exchange, reports on the ICE
+/// outcome, and owns the transport, while the [`DataChannel`] created
+/// alongside it — the only one the connection ever has — carries the
+/// data. Keep it alive for as long as the channel is in use.
 pub struct PeerConnection {
     shared: Arc<Shared>,
+    /// Dropping this (i.e. dropping the `PeerConnection`) tears down the
+    /// driver task and with it the whole transport.
+    _shutdown_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl PeerConnection {
@@ -312,16 +259,12 @@ impl PeerConnection {
         }));
 
         Ok((
-            PeerConnection { shared: shared.clone() },
+            PeerConnection {
+                shared,
+                _shutdown_tx: shutdown_tx,
+            },
             DataChannel {
-                sender: DataChannelSender {
-                    outgoing_tx,
-                    status_rx,
-                    _transport: Transport {
-                        shared,
-                        _shutdown_tx: shutdown_tx,
-                    },
-                },
+                sender: DataChannelSender { outgoing_tx, status_rx },
                 receiver: DataChannelReceiver { message_rx },
             },
             event_rx,
@@ -406,6 +349,49 @@ impl PeerConnection {
     }
 }
 
+impl Drop for PeerConnection {
+    /// Hang up synchronously: DTLS close_notify, straight onto the wire.
+    ///
+    /// The driver task has its own graceful close on shutdown, but it only
+    /// runs if the task gets polled again — on process exit the runtime is
+    /// torn down by *dropping* its tasks, so anything that must reach the
+    /// remote has to go out inline here, before `_shutdown_tx` drops. The
+    /// remote turns close_notify into a prompt EOF instead of sitting out
+    /// its disconnect grace. Best effort: one unacknowledged datagram.
+    fn drop(&mut self) {
+        let mut inner = self.shared.inner.lock().unwrap();
+        if !inner.rtc.is_alive() {
+            return;
+        }
+        // No routes means gathering never finished: nothing to hang up.
+        let Some(routes) = inner.routes.clone() else {
+            return;
+        };
+        if let Err(e) = inner.rtc.close() {
+            log::debug!("rtc.close: {}", e);
+            return;
+        }
+        // Drain the close_notify out, as in the driver's graceful close;
+        // close() flips the instance to not-alive once fully polled.
+        loop {
+            let mut sent_any = false;
+            loop {
+                match inner.rtc.poll_output() {
+                    Ok(str0m::Output::Transmit(t)) => {
+                        driver::send_transmit_sync(&routes, t.source, t.destination, &t.contents);
+                        sent_any = true;
+                    }
+                    Ok(str0m::Output::Event(_)) => {}
+                    Ok(str0m::Output::Timeout(_)) | Err(_) => break,
+                }
+            }
+            if !sent_any || !inner.rtc.is_alive() {
+                break;
+            }
+        }
+    }
+}
+
 /// Pull the `a=candidate:` lines out of an SDP blob.
 fn parse_sdp_candidates(sdp: &str) -> Vec<str0m::Candidate> {
     sdp.lines()
@@ -428,7 +414,8 @@ fn synthesize_candidate(addr: std::net::SocketAddr, typ: &str) -> String {
 
 /// The data half of a connection, created by [`PeerConnection::new`]:
 /// `await`-able sends and receives, splittable into its two halves. The
-/// send half owns the transport; see [`DataChannelSender`].
+/// [`PeerConnection`] owns the transport — the channel goes dead if it
+/// isn't kept alive alongside.
 pub struct DataChannel {
     sender: DataChannelSender,
     receiver: DataChannelReceiver,
@@ -448,14 +435,9 @@ impl DataChannel {
     }
 }
 
-/// The channel's send half. Owns the transport: dropping it hangs up the
-/// connection, even while the receive half or the [`PeerConnection`]
-/// handle are still alive.
 pub struct DataChannelSender {
     outgoing_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
-    /// Held only for its `Drop` (the hangup).
-    _transport: Transport,
 }
 
 impl DataChannelSender {

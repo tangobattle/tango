@@ -1,6 +1,6 @@
 //! The per-connection driver task: gathers candidates, then pumps the
 //! str0m state machine — socket I/O in, transmits out, events onto the
-//! wrapper's channels — until the channel's send half is dropped or the
+//! wrapper's channels — until the peer connection is dropped or the
 //! connection dies.
 
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ pub(crate) enum Route {
 type Incoming = (SocketAddr, SocketAddr, Vec<u8>, Instant);
 
 enum Exit {
-    /// Deliberate teardown: the last channel half was dropped.
+    /// Deliberate teardown: the peer connection was dropped.
     Closed,
     /// The connection died underneath us.
     Failed(Failure),
@@ -128,9 +128,9 @@ pub(crate) async fn run(mut driver: Driver) {
     }
     drop(net_tx);
 
-    // Share the route map with `Transport`'s `Drop`, which uses it to get
-    // a close_notify out synchronously when this task will never be polled
-    // again (process exit tears the runtime down by dropping tasks).
+    // Share the route map with `PeerConnection`'s `Drop`, which uses it to
+    // get a close_notify out synchronously when this task will never be
+    // polled again (process exit tears the runtime down by dropping tasks).
     let routes = Arc::new(routes);
     driver.shared.inner.lock().unwrap().routes = Some(routes.clone());
 
@@ -213,7 +213,7 @@ async fn send_transmit(
 }
 
 /// Non-blocking, runtime-independent variant of [`send_transmit`], for
-/// [`crate::Transport`]'s `Drop`. Host sockets use `try_send_to`
+/// [`crate::PeerConnection`]'s `Drop`. Host sockets use `try_send_to`
 /// (a plain non-blocking syscall); relayed sends get the one poll an
 /// established TURN channel needs (ChannelData wrap + non-blocking UDP
 /// write) and are abandoned if they'd wait. Best effort by nature —

@@ -123,9 +123,8 @@ async fn test_loopback_connection() {
         assert!(!local.contains("typ relay"), "local: {}", local);
         assert!(!remote.contains("typ relay"), "remote: {}", remote);
 
-        // Dropping one side's channel promptly EOFs the other — even with
-        // its PeerConnection handle still alive, since the channel's send
-        // half owns the transport.
+        // Dropping one peer's connection promptly EOFs the other side.
+        drop(pc_a);
         drop(dc_a);
         assert_eq!(
             tokio::time::timeout(std::time::Duration::from_secs(5), dc_b.receive())
@@ -133,7 +132,6 @@ async fn test_loopback_connection() {
                 .expect("EOF should arrive promptly, not via disconnect grace"),
             None
         );
-        drop(pc_a);
     })
     .await
     .unwrap();
@@ -141,9 +139,9 @@ async fn test_loopback_connection() {
 
 /// The hangup must reach the remote even on process exit, where the tokio
 /// runtime is torn down by dropping its tasks without polling them again —
-/// so the driver task's own graceful close never runs, and only the
-/// transport's (synchronous) `Drop` stands between the remote and a full
-/// disconnect-grace wait.
+/// so the driver task's own graceful close never runs, and only
+/// `PeerConnection`'s (synchronous) `Drop` stands between the remote and a
+/// full disconnect-grace wait.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_hangup_survives_runtime_teardown() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
@@ -169,6 +167,7 @@ async fn test_hangup_survives_runtime_teardown() {
         // "Process exit": A's driver task is dropped, never to be polled
         // again, and only then do A's locals drop.
         rt_a.shutdown_background();
+        drop(pc_a);
         drop(dc_a);
         drop(events_a);
 

@@ -84,6 +84,10 @@ pub struct PvpSession {
     /// up; the match-run task swaps it to `None` the moment the remote drops,
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
     latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
+    /// `None` for the direct-TCP local transport (the TCP stream
+    /// halves live inside the Sender/Receiver). `Some` for WebRTC,
+    /// where the peer connection must outlive the data channel.
+    _peer_conn: Option<tango_rtc::PeerConnection>,
     /// Kept alive so the background `match_.run(receiver)` task
     /// has a referent. Cleared by that task when it exits. The UI
     /// also reads this each tick to scrape the current round's
@@ -450,6 +454,7 @@ impl PvpSession {
             _thread: thread,
             cancellation_token,
             latency_counter,
+            _peer_conn: pre_match.peer_conn,
             match_handle,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,
@@ -510,11 +515,10 @@ impl PvpSession {
     ///     (peer crashed / disconnected — give up waiting).
     /// The handshake keeps the data channel alive long enough
     /// for the lagging side to also reach its hook and write
-    /// `END_OF_REPLAY` before the session (and with it the
-    /// sender/receiver halves owning the transport) is dropped.
-    /// Without it, whichever side finishes first kills the
-    /// connection out from under the other and the other side's
-    /// replay ends up truncated.
+    /// `END_OF_REPLAY` before we drop `_peer_conn`. Without it,
+    /// whichever side finishes first kills the connection out
+    /// from under the other and the other side's replay ends up
+    /// truncated.
     pub fn is_ended(&self) -> bool {
         if !self.completion_token.is_complete() {
             return false;
