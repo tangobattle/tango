@@ -141,6 +141,13 @@ pub struct Match {
     /// mid-match (footer slider) and every round reads the current value each
     /// frame.
     frame_delay: Arc<AtomicU32>,
+    /// Whether this side mutes battle BGM. Reaches the game through the
+    /// battle-start play-music traps on both cores that execute ticks: the
+    /// live primary's (via `primary_traps`) and each round's re-sim
+    /// [`Stepper`](crate::stepper::Stepper)'s — the stepper's matters most,
+    /// since its snapshots (carrying the sound driver's RAM) are loaded into
+    /// the live core every frame. Local-only, like `frame_delay`.
+    disable_bgm: bool,
 }
 
 impl Match {
@@ -155,6 +162,7 @@ impl Match {
         identity: MatchIdentity,
         replay: ReplayConfig,
         frame_delay: Arc<AtomicU32>,
+        disable_bgm: bool,
     ) -> Arc<Self> {
         Arc::new(Self {
             shadow: Arc::new(SyncMutex::new(shadow)),
@@ -171,7 +179,12 @@ impl Match {
             peer_round_idx: AtomicU32::new(0),
             replay_writer: Arc::new(SyncMutex::new(replay.writer)),
             frame_delay,
+            disable_bgm,
         })
+    }
+
+    pub(super) fn disable_bgm(&self) -> bool {
+        self.disable_bgm
     }
 
     pub(super) fn rom(&self) -> &[u8] {

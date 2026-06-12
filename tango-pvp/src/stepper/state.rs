@@ -293,6 +293,7 @@ impl InnerState {
         current_tick: u32,
         last_local_packet: Vec<u8>,
         packet_source: Arc<dyn super::RemotePacketSource>,
+        disable_bgm: bool,
     ) -> Self {
         // Run `inputs` one tick each, then capture at the boundary tick (one past
         // the last applied). By then the input window is exhausted, so the
@@ -302,7 +303,7 @@ impl InnerState {
         let capture_tick = current_tick + inputs.len() as u32;
         let input_pairs: VecDeque<PartialInputPair> = inputs.into_iter().collect();
         Self {
-            disable_bgm: false,
+            disable_bgm,
             current_tick,
             local_player_index,
             match_type,

@@ -290,6 +290,7 @@ impl PvpSession {
             identity,
             tango_pvp::battle::ReplayConfig { writer: replay_writer },
             frame_delay.clone(),
+            disable_bgm,
         );
         match_handle.set(inner_match.clone());
 

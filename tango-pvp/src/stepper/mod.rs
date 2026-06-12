@@ -102,6 +102,11 @@ pub struct Stepper {
     /// hands a clone to its run state, where the per-game traps reach it via
     /// `apply_shadow_input`.
     packet_source: std::sync::Arc<dyn RemotePacketSource>,
+    /// Whether each [`step`](Self::step)'s run state mutes battle BGM (the
+    /// per-game play-music trap skips the call). The snapshots this core
+    /// produces carry the sound driver's RAM into the live core, so this is
+    /// where a PvP music mute actually takes hold.
+    disable_bgm: bool,
 }
 
 impl Stepper {
@@ -115,6 +120,7 @@ impl Stepper {
         local_player_index: u8,
         initial_state: &mgba::state::State,
         packet_source: std::sync::Arc<dyn RemotePacketSource>,
+        disable_bgm: bool,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango", &mgba::core::Options { ..Default::default() })?;
         let rom_vf = mgba::vfile::VFile::from_vec(rom.to_vec());
@@ -143,6 +149,7 @@ impl Stepper {
             local_player_index,
             parked_tick: 0,
             packet_source,
+            disable_bgm,
         })
     }
 
@@ -185,6 +192,7 @@ impl Stepper {
             self.parked_tick,
             last_local_packet.to_vec(),
             self.packet_source.clone(),
+            self.disable_bgm,
         ));
 
         let result = loop {
