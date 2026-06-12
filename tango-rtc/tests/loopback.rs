@@ -129,3 +129,49 @@ async fn test_loopback_connection() {
     .await
     .unwrap();
 }
+
+/// The hangup must reach the remote even on process exit, where the tokio
+/// runtime is torn down by dropping its tasks without polling them again —
+/// so the driver task's own graceful close never runs, and only
+/// `PeerConnection`'s (synchronous) `Drop` stands between the remote and a
+/// full disconnect-grace wait.
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn test_hangup_survives_runtime_teardown() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        // Peer A gets its own runtime so it can be torn down mid-test the
+        // way process exit does it; peer B lives on the test's runtime.
+        let rt_a = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (mut a, mut dc_a, mut events_a) = rt_a.spawn(make_peer()).await.unwrap();
+        let (mut b, mut dc_b, mut events_b) = make_peer().await;
+
+        b.set_remote_description(a.local_description().unwrap()).unwrap();
+        a.set_remote_description(b.local_description().unwrap()).unwrap();
+
+        wait_connected(&mut events_a).await;
+        wait_connected(&mut events_b).await;
+
+        dc_a.send(b"ping").await.unwrap();
+        assert_eq!(dc_b.receive().await.unwrap(), b"ping");
+
+        // "Process exit": A's driver task is dropped, never to be polled
+        // again, and only then do A's locals drop.
+        rt_a.shutdown_background();
+        drop(a);
+        drop(dc_a);
+        drop(events_a);
+
+        // B still hears the hangup promptly.
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), dc_b.receive())
+                .await
+                .expect("EOF should arrive promptly, not via disconnect grace"),
+            None
+        );
+    })
+    .await
+    .unwrap();
+}

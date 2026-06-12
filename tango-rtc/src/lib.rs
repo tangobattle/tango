@@ -120,6 +120,9 @@ struct Inner {
     /// transmit: str0m only sends application traffic over the nominated
     /// pair, so this is the selected path.
     current_path: Option<(std::net::SocketAddr, std::net::SocketAddr)>,
+    /// The driver's transmit routes, shared here once gathering is done so
+    /// [`PeerConnection`]'s `Drop` can hang up without the driver task.
+    routes: Option<Arc<std::collections::HashMap<std::net::SocketAddr, driver::Route>>>,
 }
 
 struct Shared {
@@ -196,6 +199,7 @@ impl PeerConnection {
                 local_candidates: vec![],
                 remote_candidates: vec![],
                 current_path: None,
+                routes: None,
             }),
             notify: tokio::sync::Notify::new(),
         });
@@ -337,6 +341,49 @@ impl PeerConnection {
             .unwrap_or_else(|| synthesize_candidate(destination, "prflx"));
 
         Ok((local, remote))
+    }
+}
+
+impl Drop for PeerConnection {
+    /// Hang up synchronously: DTLS close_notify, straight onto the wire.
+    ///
+    /// The driver task has its own graceful close on shutdown, but it only
+    /// runs if the task gets polled again — on process exit the runtime is
+    /// torn down by *dropping* its tasks, so anything that must reach the
+    /// remote has to go out inline here, before `_shutdown_tx` drops. The
+    /// remote turns close_notify into a prompt EOF instead of sitting out
+    /// its disconnect grace. Best effort: one unacknowledged datagram.
+    fn drop(&mut self) {
+        let mut inner = self.shared.inner.lock().unwrap();
+        if !inner.rtc.is_alive() {
+            return;
+        }
+        // No routes means gathering never finished: nothing to hang up.
+        let Some(routes) = inner.routes.clone() else {
+            return;
+        };
+        if let Err(e) = inner.rtc.close() {
+            log::debug!("rtc.close: {}", e);
+            return;
+        }
+        // Drain the close_notify out, as in the driver's graceful close;
+        // close() flips the instance to not-alive once fully polled.
+        loop {
+            let mut sent_any = false;
+            loop {
+                match inner.rtc.poll_output() {
+                    Ok(str0m::Output::Transmit(t)) => {
+                        driver::send_transmit_sync(&routes, t.source, t.destination, &t.contents);
+                        sent_any = true;
+                    }
+                    Ok(str0m::Output::Event(_)) => {}
+                    Ok(str0m::Output::Timeout(_)) | Err(_) => break,
+                }
+            }
+            if !sent_any || !inner.rtc.is_alive() {
+                break;
+            }
+        }
     }
 }
 

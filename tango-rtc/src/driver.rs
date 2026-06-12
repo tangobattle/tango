@@ -30,7 +30,7 @@ pub(crate) struct Driver {
 
 /// Where to send a transmit, keyed by its source address: a host socket,
 /// or a TURN allocation for relayed candidates.
-enum Route {
+pub(crate) enum Route {
     Socket(Arc<tokio::net::UdpSocket>),
     Relay(Arc<dyn webrtc_util::Conn + Send + Sync>),
 }
@@ -128,6 +128,12 @@ pub(crate) async fn run(mut driver: Driver) {
     }
     drop(net_tx);
 
+    // Share the route map with `PeerConnection::drop`, which uses it to get
+    // a close_notify out synchronously when this task will never be polled
+    // again (process exit tears the runtime down by dropping tasks).
+    let routes = Arc::new(routes);
+    driver.shared.inner.lock().unwrap().routes = Some(routes.clone());
+
     let exit = main_loop(&mut driver, &routes, &mut net_rx).await;
 
     // Teardown.
@@ -203,6 +209,38 @@ async fn send_transmit(
         // UDP send errors (e.g. unreachable) are routine during ICE; the
         // agent's own retries/timeouts deal with them.
         log::debug!("send_to {} -> {}: {}", source, destination, e);
+    }
+}
+
+/// Non-blocking, runtime-independent variant of [`send_transmit`], for
+/// [`crate::PeerConnection`]'s `Drop`. Host sockets use `try_send_to`
+/// (a plain non-blocking syscall); relayed sends get the one poll an
+/// established TURN channel needs (ChannelData wrap + non-blocking UDP
+/// write) and are abandoned if they'd wait. Best effort by nature —
+/// the remote's disconnect grace remains the fallback.
+pub(crate) fn send_transmit_sync(
+    routes: &HashMap<SocketAddr, Route>,
+    source: SocketAddr,
+    destination: SocketAddr,
+    payload: &[u8],
+) {
+    let Some(route) = routes.get(&source) else {
+        log::debug!("no route for transmit source {}", source);
+        return;
+    };
+    let result = match route {
+        Route::Socket(socket) => socket.try_send_to(payload, destination).map(|_| ()).map_err(|e| e.to_string()),
+        Route::Relay(conn) => {
+            let mut fut = conn.send_to(payload, destination);
+            let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+            match fut.as_mut().poll(&mut cx) {
+                std::task::Poll::Ready(r) => r.map(|_| ()).map_err(|e| e.to_string()),
+                std::task::Poll::Pending => Err("would block".to_owned()),
+            }
+        }
+    };
+    if let Err(e) = result {
+        log::debug!("sync send_to {} -> {}: {}", source, destination, e);
     }
 }
 
