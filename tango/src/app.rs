@@ -1252,11 +1252,11 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::SaveDuplicate => {
+            E::SaveDuplicate { new_stem } => {
                 if let Some(src) = self.loadout.save.clone() {
-                    match duplicate_save(&src) {
+                    match duplicate_save(&src, &new_stem) {
                         Ok(dst) => {
-                            log::info!("duplicated save: {}", dst.display());
+                            log::info!("duplicated save: {} → {}", src.display(), dst.display());
                             self.loadout.save = Some(dst);
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);

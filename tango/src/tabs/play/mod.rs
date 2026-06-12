@@ -69,7 +69,9 @@ pub enum Message {
     /// the no-saves / no-roms empty-state cards to give the user
     /// a one-click jump into the right directory.
     OpenSavesFolder(std::path::PathBuf),
-    SaveDuplicate,
+    SaveDuplicateStart,
+    SaveDuplicateDraftChanged(String),
+    SaveDuplicateConfirm,
     SaveRenameStart,
     SaveRenameDraftChanged(String),
     SaveRenameConfirm,
@@ -120,6 +122,12 @@ pub enum SaveAction {
     #[default]
     None,
     Renaming {
+        draft: String,
+    },
+    /// Duplicating the selected save. `draft` is the new file's name,
+    /// prefilled with the next free "<stem> (copy)" suggestion so a
+    /// plain Enter behaves like the old one-click duplicate.
+    Duplicating {
         draft: String,
     },
     ConfirmDelete,
@@ -276,8 +284,9 @@ pub enum Effect {
     /// User pressed Play → start a single-player session from the
     /// current selection.
     StartSinglePlayer,
-    /// Duplicate the currently-selected save file.
-    SaveDuplicate,
+    /// Duplicate the currently-selected save file as `new_stem` (no
+    /// extension; the handler keeps the source's).
+    SaveDuplicate { new_stem: String },
     /// Rename the currently-selected save to `new_stem` (no
     /// extension; rename_save adds `.sav`).
     SaveRename { new_stem: String },
@@ -627,7 +636,36 @@ impl State {
                 .and_then(|p| p.parent())
                 .map(|p| Effect::OpenPath(p.to_path_buf())),
             Message::OpenSavesFolder(path) => Some(Effect::OpenPath(path)),
-            Message::SaveDuplicate => Some(Effect::SaveDuplicate),
+            Message::SaveDuplicateStart => {
+                // Prefill with the next free "<stem> (copy)" name so a
+                // plain Enter behaves like the old one-click duplicate.
+                let draft = loadout
+                    .save
+                    .as_deref()
+                    .map(suggest_duplicate_stem)
+                    .unwrap_or_default();
+                self.save_action = SaveAction::Duplicating { draft };
+                None
+            }
+            Message::SaveDuplicateDraftChanged(s) => {
+                if let SaveAction::Duplicating { draft } = &mut self.save_action {
+                    *draft = s;
+                }
+                None
+            }
+            Message::SaveDuplicateConfirm => {
+                let new_stem = if let SaveAction::Duplicating { draft } = &self.save_action {
+                    draft.trim().to_string()
+                } else {
+                    String::new()
+                };
+                self.save_action = SaveAction::None;
+                if new_stem.is_empty() {
+                    None
+                } else {
+                    Some(Effect::SaveDuplicate { new_stem })
+                }
+            }
             Message::SaveRenameStart => {
                 let draft = loadout
                     .save
@@ -976,20 +1014,35 @@ impl State {
         action: &'a SaveAction,
     ) -> Element<'a, Message> {
         if !render_form {
-            let actions = self.save_action_buttons(lang, scanners, loadout);
-            return row![save_picker, actions].spacing(8).align_y(Alignment::Center).into();
+            return row![
+                self.new_save_button(lang, scanners, loadout),
+                save_picker,
+                self.save_action_buttons(lang, loadout),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into();
         }
         match action {
             SaveAction::None => {
                 // Form side with nothing recorded (shouldn't happen
                 // — the exit snapshot is always set before the swap
                 // starts) — degrade to the picker row.
-                let actions = self.save_action_buttons(lang, scanners, loadout);
-                row![save_picker, actions].spacing(8).align_y(Alignment::Center).into()
+                row![
+                    self.new_save_button(lang, scanners, loadout),
+                    save_picker,
+                    self.save_action_buttons(lang, loadout),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
             }
-            // Cancel before Confirm — same order as the edit-mode
-            // Save / Cancel pair and the modal dialogs, so the
-            // primary action always sits at the row's end.
+            // Every form ends [× cancel][confirm] — cancel before
+            // confirm, same order as the edit-mode Save / Cancel pair
+            // and the modal dialogs, so the primary action always
+            // sits at the row's end. Confirm buttons repeat the icon
+            // of the toolbar action that opened the form, so the form
+            // visibly answers the button that started it.
             SaveAction::Renaming { draft } => row![
                 text_input(&t!(lang, "save-name-placeholder"), draft)
                     .on_input(Message::SaveRenameDraftChanged)
@@ -1003,10 +1056,34 @@ impl State {
                     Message::SaveActionCancel,
                     STANDARD_PADDING,
                 ),
-                widgets::icon_button_styled(
-                    Icon::Check,
+                widgets::labeled_icon_button(
+                    Icon::PencilLine,
                     t!(lang, "save-rename-confirm"),
-                    Some(Message::SaveRenameConfirm),
+                    Message::SaveRenameConfirm,
+                    STANDARD_PADDING,
+                    widgets::primary_button,
+                ),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
+            SaveAction::Duplicating { draft } => row![
+                text_input(&t!(lang, "save-name-placeholder"), draft)
+                    .on_input(Message::SaveDuplicateDraftChanged)
+                    .on_submit(Message::SaveDuplicateConfirm)
+                    .style(widgets::chunky_text_input)
+                    .padding(STANDARD_PADDING)
+                    .width(Length::Fill),
+                widgets::icon_button(
+                    Icon::X,
+                    t!(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_PADDING,
+                ),
+                widgets::labeled_icon_button(
+                    Icon::Files,
+                    t!(lang, "save-duplicate"),
+                    Message::SaveDuplicateConfirm,
                     STANDARD_PADDING,
                     widgets::primary_button,
                 ),
@@ -1018,18 +1095,18 @@ impl State {
                 text(t!(lang, "save-delete-prompt"))
                     .style(widgets::muted_text_style)
                     .width(Length::Fill),
+                widgets::icon_button(
+                    Icon::X,
+                    t!(lang, "save-action-cancel"),
+                    Message::SaveActionCancel,
+                    STANDARD_PADDING,
+                ),
                 widgets::labeled_icon_button(
                     Icon::Trash,
                     t!(lang, "save-delete-confirm"),
                     Message::SaveDeleteConfirm,
                     STANDARD_PADDING,
                     widgets::danger_button,
-                ),
-                widgets::icon_button(
-                    Icon::X,
-                    t!(lang, "save-action-cancel"),
-                    Message::SaveActionCancel,
-                    STANDARD_PADDING,
                 ),
             ]
             .spacing(8)
@@ -1051,7 +1128,7 @@ impl State {
                 let can_confirm = game.is_some() && template.is_some() && !draft.trim().is_empty();
                 let confirm_btn = if can_confirm {
                     widgets::labeled_icon_button(
-                        Icon::Check,
+                        Icon::FilePlus,
                         t!(lang, "save-new-confirm"),
                         Message::SaveNewConfirm,
                         STANDARD_PADDING,
@@ -1059,7 +1136,7 @@ impl State {
                     )
                 } else {
                     button(
-                        row![Icon::Check.widget(), text(t!(lang, "save-new-confirm"))]
+                        row![Icon::FilePlus.widget(), text(t!(lang, "save-new-confirm"))]
                             .spacing(8)
                             .align_y(Alignment::Center),
                     )
@@ -1081,13 +1158,13 @@ impl State {
                         .padding(STANDARD_PADDING)
                         .width(Length::Fill)
                         .style(widgets::chunky_text_input),
-                    confirm_btn,
                     widgets::icon_button(
                         Icon::X,
                         t!(lang, "save-action-cancel"),
                         Message::SaveActionCancel,
                         STANDARD_PADDING,
                     ),
+                    confirm_btn,
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -1096,12 +1173,30 @@ impl State {
         }
     }
 
-    fn save_action_buttons<'a>(
+    /// The "new save" button, leading the row from the picker's left —
+    /// creation stands apart from the manage-what's-there actions on
+    /// the picker's right. Enabled whenever the selected family has an
+    /// owned-ROM variant that ships (bundled or patch) save templates
+    /// — independent of whether a save is currently selected, so the
+    /// first save of an empty family can still be created.
+    fn new_save_button<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
         scanners: &'a Scanners,
         loadout: &'a Loadout,
     ) -> Element<'a, Message> {
+        let can_new = creation_games(loadout, scanners).iter().any(|g| {
+            templates_for_game(*g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
+        });
+        widgets::icon_button_maybe(
+            Icon::FilePlus,
+            t!(lang, "save-new"),
+            can_new.then_some(Message::SaveNewStart),
+            STANDARD_PADDING,
+        )
+    }
+
+    fn save_action_buttons<'a>(&'a self, lang: &'a LanguageIdentifier, loadout: &'a Loadout) -> Element<'a, Message> {
         let enabled = loadout.save.is_some();
         let mk = |icon: Icon, label: String, msg: Message, on: bool| {
             widgets::icon_button_maybe(icon, label, if on { Some(msg) } else { None }, STANDARD_PADDING)
@@ -1117,22 +1212,19 @@ impl State {
                 widgets::danger_button,
             )
         };
-        // "New save" is enabled whenever the selected family has an
-        // owned-ROM variant that ships (bundled or patch) save templates
-        // — independent of whether a save is currently selected, so the
-        // first save of an empty family can still be created.
-        let can_new = creation_games(loadout, scanners).iter().any(|g| {
-            templates_for_game(*g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
-        });
         row![
-            mk(Icon::FilePlus, t!(lang, "save-new"), Message::SaveNewStart, can_new),
             mk(
                 Icon::FolderOpen,
                 t!(lang, "save-open-folder"),
                 Message::SaveOpenFolder,
                 enabled
             ),
-            mk(Icon::Files, t!(lang, "save-duplicate"), Message::SaveDuplicate, enabled),
+            mk(
+                Icon::Files,
+                t!(lang, "save-duplicate"),
+                Message::SaveDuplicateStart,
+                enabled
+            ),
             mk(
                 Icon::PencilLine,
                 t!(lang, "save-rename"),
@@ -1466,35 +1558,57 @@ fn empty_state_card(
 
 // ---------- File-level save helpers ----------
 
-/// Copy `src` to a sibling file with " (copy)" inserted before the
-/// extension (with " (copy 2)", " (copy 3)", ... on collisions).
-pub fn duplicate_save(src: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
-    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+/// Next free "<stem> (copy)" / "<stem> (copy N)" stem for `src` —
+/// the prefill for the duplicate form, so a plain Enter behaves like
+/// the old one-click duplicate.
+fn suggest_duplicate_stem(src: &std::path::Path) -> String {
     let stem = src
         .file_stem()
-        .ok_or_else(|| anyhow::anyhow!("save has no file stem"))?
-        .to_string_lossy()
-        .into_owned();
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
-
     for n in 1..1000 {
         let suffix = if n == 1 {
             " (copy)".to_string()
         } else {
             format!(" (copy {n})")
         };
-        let new_name = if let Some(ext) = &ext {
-            format!("{stem}{suffix}.{ext}")
-        } else {
-            format!("{stem}{suffix}")
+        let candidate_stem = format!("{stem}{suffix}");
+        let filename = match &ext {
+            Some(ext) => format!("{candidate_stem}.{ext}"),
+            None => candidate_stem.clone(),
         };
-        let candidate = parent.join(new_name);
-        if !candidate.exists() {
-            std::fs::copy(src, &candidate)?;
-            return Ok(candidate);
+        let taken = src.parent().map(|p| p.join(filename).exists()).unwrap_or(false);
+        if !taken {
+            return candidate_stem;
         }
     }
-    anyhow::bail!("could not find unused name after 999 tries")
+    format!("{stem} (copy)")
+}
+
+/// Copy `src` to a sibling file named `new_stem` (extension
+/// preserved). Refuses path-traversal, empty names, and existing
+/// destinations — same rules as [`rename_save`].
+pub fn duplicate_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std::path::PathBuf> {
+    if new_stem.is_empty() {
+        anyhow::bail!("empty save name");
+    }
+    if new_stem.contains('/') || new_stem.contains('\\') || new_stem.contains("..") {
+        anyhow::bail!("invalid save name");
+    }
+    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
+    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
+    let new_name = if let Some(ext) = ext {
+        format!("{new_stem}.{ext}")
+    } else {
+        new_stem.to_string()
+    };
+    let dst = parent.join(new_name);
+    if dst == src || dst.exists() {
+        anyhow::bail!("destination already exists");
+    }
+    std::fs::copy(src, &dst)?;
+    Ok(dst)
 }
 
 /// Rename `src` to use `new_stem` (extension preserved). Refuses

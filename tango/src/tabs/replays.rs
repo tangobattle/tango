@@ -1004,23 +1004,18 @@ fn replay_detail<'a>(
                     STANDARD_PADDING,
                 ),
                 // Watch is the main action of the detail view —
-                // promote to primary so it's visually obvious.
-                // Disabled while netplay is in any non-Idle
-                // phase: starting a playback session would race
-                // with the live emulator. Also disabled when the
-                // local-side ROM isn't scanned (playback can't
-                // build a core without it); tooltip carries the
-                // reason in that case.
+                // promote to primary with a text label so it's
+                // visually obvious. Disabled while netplay is in any
+                // non-Idle phase: starting a playback session would
+                // race with the live emulator. Also disabled when the
+                // local-side ROM isn't scanned (playback can't build
+                // a core without it); a tooltip carries the reason in
+                // that case, since the label alone can't say why.
                 {
                     let watch_disabled = netplay_active || !local_rom_present;
-                    let tooltip = if !local_rom_present {
-                        t!(lang, "replays-watch-missing-rom")
-                    } else {
-                        t!(lang, "replays-watch")
-                    };
-                    widgets::icon_button_styled(
+                    let btn = widgets::labeled_icon_button_maybe(
                         Icon::Play,
-                        tooltip,
+                        t!(lang, "replays-watch"),
                         if watch_disabled {
                             None
                         } else {
@@ -1032,7 +1027,20 @@ fn replay_detail<'a>(
                         } else {
                             widgets::primary_button
                         },
-                    )
+                    );
+                    if local_rom_present {
+                        btn
+                    } else {
+                        iced::widget::tooltip(
+                            btn,
+                            container(text(t!(lang, "replays-watch-missing-rom")).size(TEXT_CAPTION))
+                                .padding(6)
+                                .style(widgets::tooltip_chrome),
+                            iced::widget::tooltip::Position::Top,
+                        )
+                        .gap(4)
+                        .into()
+                    }
                 },
             ]
             .spacing(6)
