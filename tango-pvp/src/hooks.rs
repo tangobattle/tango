@@ -49,14 +49,25 @@ impl MatchHandle {
     /// the host installs and clears the slot but goes through host-facing
     /// API like [`round_metrics`](Self::round_metrics) to observe the match
     /// — it never gets the trap view.
+    ///
+    /// A cancelled match is `None` here too: `Match::cancel` only fires the
+    /// cancellation token, and the host's [`clear`](Self::clear) runs
+    /// asynchronously after it, so the emu thread keeps hitting traps in
+    /// between. Worse, the cancel may come from a trap that aborted
+    /// mid-frame (e.g. `add_local_input_and_fastforward` failing before it
+    /// loads a state), leaving the round's tick bookkeeping behind the game
+    /// — the tick-invariant panics in the per-game traps would fire on
+    /// state that's no longer expected to be consistent. Going inert at
+    /// `cancel` instead of `clear` closes that window.
     pub(crate) fn get(&self) -> Option<TrapMatch> {
-        self.0.read().unwrap().clone().map(TrapMatch)
+        self.0.read().unwrap().clone().filter(|m| !m.is_cancelled()).map(TrapMatch)
     }
 
-    /// True iff a match is installed. Cheaper than [`get`](Self::get) for
-    /// the per-frame traps that only test presence (no `Arc` clone+drop).
+    /// True iff a match is installed (and not cancelled — see
+    /// [`get`](Self::get)). Cheaper than `get` for the per-frame traps that
+    /// only test presence (no `Arc` clone+drop).
     pub(crate) fn is_set(&self) -> bool {
-        self.0.read().unwrap().is_some()
+        self.0.read().unwrap().as_ref().is_some_and(|m| !m.is_cancelled())
     }
 
     /// Host-facing: engine metrics of the live round, or `None` when no
