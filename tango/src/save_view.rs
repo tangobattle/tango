@@ -1586,7 +1586,7 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
         ExtraKind::CopyImage => widgets::copy_icon_button(
             &copy_flash_key(tab, true),
             Icon::ImageDown,
-            16.0,
+            TEXT_BODY,
             t!(lang, "save-copy-image"),
             t!(lang, "copied"),
             Some(Action::CopyTabImage(tab)),
@@ -1595,7 +1595,7 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
         ExtraKind::Copy => widgets::copy_icon_button(
             &copy_flash_key(tab, false),
             Icon::ClipboardCopy,
-            16.0,
+            TEXT_BODY,
             t!(lang, "save-copy"),
             t!(lang, "copied"),
             Some(Action::CopyTab(tab)),
