@@ -55,7 +55,7 @@ play-patch-toggle = パッチを使用…
 play-version-placeholder = —
 
 # Play bottom strip
-play-link-code = リンクコード
+play-link-code = リンクコード（空欄でランダム生成）
 play-link-code-random = ランダムリンクコード
 play-play = プレイ
 play-fight = 対戦
