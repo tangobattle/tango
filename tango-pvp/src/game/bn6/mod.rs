@@ -39,8 +39,9 @@ impl crate::hooks::Hooks for Hooks {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: crate::hooks::MatchHandle,
         completion_token: crate::hooks::CompletionToken,
+        disable_bgm: bool,
     ) -> Vec<crate::hooks::Trap> {
-        primary::traps(self, joyflags, match_, completion_token)
+        primary::traps(self, joyflags, match_, completion_token, disable_bgm)
     }
 
     fn shadow_traps(&self, shadow_state: crate::shadow::State) -> Vec<crate::hooks::Trap> {

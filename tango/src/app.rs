@@ -1901,6 +1901,8 @@ impl App {
                 self.config.volume = v;
                 self.audio_binder.set_volume(v);
             }
+            // Sampled by spawn_pvp at match start; nothing live to poke.
+            C::DisableBgmInPvp(b) => self.config.disable_bgm_in_pvp = b,
             C::Theme(t) => self.config.theme = t,
             C::AddInputBinding(slot, binding) => {
                 let bindings = self.config.input_mapping.slot_mut(slot);

@@ -8,6 +8,7 @@ pub(super) fn traps(
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     match_: MatchHandle,
     completion_token: CompletionToken,
+    disable_bgm: bool,
 ) -> Vec<Trap> {
     let make_send_and_receive_call_hook = || {
         let match_ = match_.clone();
@@ -36,6 +37,16 @@ pub(super) fn traps(
     };
 
     vec![
+        (
+            hooks.offsets.rom.battle_start_play_music_call,
+            Box::new(move |mut core: mgba::core::CoreMutRef| {
+                if !disable_bgm {
+                    return;
+                }
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+            }),
+        ),
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             Box::new(move |core| {

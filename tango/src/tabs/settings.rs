@@ -103,6 +103,9 @@ pub enum Message {
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     VolumeChanged(f32),
+    /// "Mute music in netplay" checkbox toggled. Persisted to
+    /// `config.disable_bgm_in_pvp`; sampled at the next match start.
+    ToggleDisableBgmInPvp(bool),
     /// User clicked "Update Now" on the About panel. App's
     /// settings handler calls `updater.finish_update()` which
     /// hands off to the installer + exits the process.
@@ -151,6 +154,7 @@ pub enum ConfigChange {
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     Volume(f32),
+    DisableBgmInPvp(bool),
     Theme(config::ThemeMode),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
     RemoveInputBinding(input::MappedKey, usize),
@@ -196,6 +200,7 @@ impl State {
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
+            Message::ToggleDisableBgmInPvp(b) => Some(ConfigChange::DisableBgmInPvp(b)),
             // App handles UpdateNow as a top-level effect — it
             // calls `updater.finish_update()` which exits the
             // process on success. Nothing to fold into config.
@@ -412,24 +417,30 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
 }
 
 fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    column![labeled::<Message>(
-        t!(lang, "settings-volume"),
-        row![
-            // Bounded slider width — Fill would stretch all the way
-            // across the pane, which looks silly for a volume bar.
-            container(
-                iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged)
-                    .step(0.01)
-                    .style(widgets::chunky_slider)
-            )
-            .width(Length::Fixed(220.0)),
-            // Compact percent readout next to the track so the user
-            // can see exactly where the slider sits.
-            text(format!("{:.0}%", config.volume * 100.0)).size(TEXT_CAPTION),
-        ]
-        .spacing(12)
-        .align_y(Alignment::Center),
-    )]
+    column![
+        labeled::<Message>(
+            t!(lang, "settings-volume"),
+            row![
+                // Bounded slider width — Fill would stretch all the way
+                // across the pane, which looks silly for a volume bar.
+                container(
+                    iced::widget::slider(0.0..=1.0, config.volume, Message::VolumeChanged)
+                        .step(0.01)
+                        .style(widgets::chunky_slider)
+                )
+                .width(Length::Fixed(220.0)),
+                // Compact percent readout next to the track so the user
+                // can see exactly where the slider sits.
+                text(format!("{:.0}%", config.volume * 100.0)).size(TEXT_CAPTION),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center),
+        ),
+        iced::widget::checkbox(config.disable_bgm_in_pvp)
+            .label(t!(lang, "settings-disable-bgm-in-pvp"))
+            .on_toggle(Message::ToggleDisableBgmInPvp)
+            .style(widgets::chunky_checkbox),
+    ]
     .spacing(14)
     .padding(style::PANE_PADDING)
     .into()

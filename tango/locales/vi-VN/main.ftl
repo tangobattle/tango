@@ -257,6 +257,7 @@ settings-section-graphics = Hiển thị
 settings-section-netplay = Netplay
 settings-section-audio = Âm thanh
 settings-volume = Âm lượng
+settings-disable-bgm-in-pvp = Tắt nhạc nền trong netplay
 settings-section-about = Giới thiệu
 settings-section-input = Đầu vào
 settings-input-press-key = Nhấn phím hoặc nút…

@@ -146,11 +146,15 @@ pub trait Hooks {
 
     fn shadow_traps(&self, shadow_state: crate::shadow::State) -> Vec<Trap>;
 
+    /// `disable_bgm` arms the battle-start play-music trap (same one the
+    /// stepper installs, switched by its stepper state instead): when set,
+    /// battle BGM never starts; sound effects are unaffected.
     fn primary_traps(
         &self,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: MatchHandle,
         completion_token: CompletionToken,
+        disable_bgm: bool,
     ) -> Vec<Trap>;
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);

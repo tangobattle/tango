@@ -138,6 +138,11 @@ impl PvpSession {
         // far the display core trails the netcode frontier). Comes straight from
         // local config; never negotiated with or sent to the peer.
         frame_delay: u32,
+        // Whether to skip the game's battle BGM for this match. Local-only
+        // like the volume — the peer is unaffected, and the recorded replay
+        // keeps its music (export has its own mute toggle). Sampled from
+        // config at match start.
+        disable_bgm: bool,
         replays_path: &Path,
         audio_binder: &crate::audio::LateBinder,
         opponent_loaded: Option<crate::selection::Loaded>,
@@ -198,7 +203,12 @@ impl PvpSession {
         // (start_round / record_first_commit / end_round all
         // need an async runtime to do their work).
         let mut traps = local_hooks.common_traps();
-        traps.extend(local_hooks.primary_traps(joyflags.clone(), match_handle.clone(), completion_token.clone()));
+        traps.extend(local_hooks.primary_traps(
+            joyflags.clone(),
+            match_handle.clone(),
+            completion_token.clone(),
+            disable_bgm,
+        ));
         let rt_handle = tokio::runtime::Handle::current();
         core.set_traps(
             traps
