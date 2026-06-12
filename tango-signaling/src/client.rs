@@ -446,7 +446,11 @@ pub async fn connect(
             }
         }
 
-        signaling_stream.close(None).await?;
+        // Best-effort: the server closes both sockets itself the moment it
+        // forwards the answer, so our close frame races its teardown. The
+        // websocket has already served its purpose — losing that race must
+        // not abort a healthy peer connection bring-up.
+        let _ = signaling_stream.close(None).await;
 
         log::debug!(
             "local sdp (type = {:?}): {}",
