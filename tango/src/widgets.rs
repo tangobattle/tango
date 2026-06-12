@@ -89,7 +89,7 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
         if selected {
             // Lit-up plate in the Legacy Collection's selection
             // gold — BNLC highlights the picked row / focused
-            // thumbnail in yellow against the cyan chrome, so the
+            // thumbnail in yellow against the chrome color, so the
             // selection reads in its own register instead of
             // blending into the accent-colored CTAs. Yellow→amber
             // gradient with navy ink text, like the music player's
@@ -176,10 +176,11 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let primary = theme.palette().primary;
-    // Base plate: nudged toward text on dark (a hint of glow off
-    // the navy bg) and toward white on light (a clean parchment).
+    // Base plate: nudged toward the accent-gray lift on dark (a
+    // hint of glow off the navy bg — see [`plate_lift`]) and
+    // toward white on light (a clean parchment).
     let plate = if p.is_dark {
-        mix(bg, text, 0.12)
+        mix(bg, plate_lift(theme), 0.17)
     } else {
         mix(bg, iced::Color::WHITE, 0.5)
     };
@@ -554,8 +555,9 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
             } else {
                 (0.65, 18.0)
             };
-            // Navy ink on the cyan plate, like BNLC's header band —
-            // white on PET cyan washes out (see [`on_accent`]).
+            // Contrast-aware text — white on tango green, navy ink
+            // if the accent ever goes light again (see
+            // [`on_accent`]).
             (Some(grad), on_accent(primary), g, b)
         } else {
             let hover = matches!(status, button::Status::Hovered);
@@ -578,7 +580,7 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
             background: bg,
             text_color,
             // Tech-frame corners instead of a full pill — the
-            // active tab reads as one of BNLC's clipped cyan chips.
+            // active tab reads as one of BNLC's clipped chips.
             border: iced::Border {
                 radius: tech_radius(12.0),
                 width: 0.0,
@@ -631,10 +633,10 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
 /// The [`pane`] plate fill. Exposed so exit washes
 /// ([`crate::anim::exit_fade`]) can dissolve departing controls
 /// into the same color they sit on. On dark, the mix leans toward
-/// the cyan primary so plates pick up the PET-blue cast of the
-/// Legacy Collection panels; either way it's a ~5-8% nudge —
-/// enough contrast against the page bg to read as a region
-/// without competing with content.
+/// the primary so plates pick up the accent-tinted cast of the
+/// Legacy Collection panels (in tango's green here); either way
+/// it's a ~5-8% nudge — enough contrast against the page bg to
+/// read as a region without competing with content.
 pub fn plate_color(theme: &Theme) -> iced::Color {
     let p = theme.extended_palette();
     if p.is_dark {
@@ -755,12 +757,25 @@ pub fn tech_radius(r: f32) -> iced::border::Radius {
     }
 }
 
-/// Dark navy "ink" for text sitting on a bright accent plate —
-/// the selection gold today, any light accent tomorrow. BNLC
-/// letters its bright chrome in navy, not white; white genuinely
-/// fails contrast on these light fills.
+/// The tone dark-theme control plates (buttons, inputs, pickers,
+/// checkbox boxes, slider rails) are lifted toward: mostly the
+/// accent, softened toward the text white so plates read
+/// accent-gray rather than saturated accent. Lifting toward the
+/// raw text color — the old recipe — made every control read
+/// blue-slate, because the text white is deliberately cyan-tinted;
+/// lifting toward raw primary over-saturates. Light theme keeps
+/// its white/parchment lifts and doesn't use this.
+fn plate_lift(theme: &Theme) -> iced::Color {
+    mix(theme.palette().primary, theme.palette().text, 0.35)
+}
+
+/// Dark "ink" for text sitting on a bright accent plate — the
+/// selection gold today, any light accent tomorrow. BNLC letters
+/// its bright chrome in a dark ink, not white (white genuinely
+/// fails contrast on these light fills); ours leans green-black to
+/// match the rest of the dark family instead of BNLC's navy.
 pub const ACCENT_INK: iced::Color =
-    iced::Color::from_rgb(0x0a as f32 / 255.0, 0x1e as f32 / 255.0, 0x30 as f32 / 255.0);
+    iced::Color::from_rgb(0x0a as f32 / 255.0, 0x20 as f32 / 255.0, 0x12 as f32 / 255.0);
 
 /// Readable text color for a plate filled with `accent`: navy ink
 /// on light accents (the selection gold), white on dark ones
@@ -788,20 +803,18 @@ pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
     let text = theme.palette().text;
     let (top, bottom) = if p.is_dark {
         // Pull toward black at the bottom; the top stays close to
-        // the bg color so the gradient is felt, not seen. The blue
-        // channel decays slowest, giving the band the deep-blue
-        // cast of the collection's header strip.
+        // the bg color so the gradient is felt, not seen.
         (
             iced::Color {
                 r: bg.r * 0.7,
-                g: bg.g * 0.78,
-                b: bg.b * 0.95,
+                g: bg.g * 0.7,
+                b: bg.b * 0.8,
                 a: 1.0,
             },
             iced::Color {
                 r: bg.r * 0.4,
-                g: bg.g * 0.45,
-                b: bg.b * 0.6,
+                g: bg.g * 0.4,
+                b: bg.b * 0.5,
                 a: 1.0,
             },
         )
@@ -1198,10 +1211,10 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let primary = theme.palette().primary;
-    // Slightly lifted plate. On dark, mix bg toward the cyan
-    // primary for the PET-blue panel navy that reads above the
-    // navy body. On light, go toward white so the card looks like
-    // paper on ice.
+    // Slightly lifted plate. On dark, mix bg toward the primary
+    // for the accent-cast plate that reads above the navy body.
+    // On light, go toward white so the card looks like paper on
+    // parchment.
     let plate = if p.is_dark {
         mix(bg, primary, 0.10)
     } else {
@@ -1257,7 +1270,11 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
         let p = theme.extended_palette();
         let bg = theme.palette().background;
         let text = theme.palette().text;
-        let dim = mix(bg, text, if p.is_dark { 0.10 } else { 0.08 });
+        let dim = if p.is_dark {
+        mix(bg, plate_lift(theme), 0.14)
+    } else {
+        mix(bg, text, 0.08)
+    };
         return button::Style {
             background: Some(iced::Background::Color(dim)),
             text_color: iced::Color { a: 0.35, ..text },
@@ -1287,8 +1304,8 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
                 .add_stop(0.0, top)
                 .add_stop(1.0, bottom),
         ))),
-        // Ink on the light accents (the PET cyan), white on the
-        // dark ones (danger red) — see [`on_accent`].
+        // White on the dark accents (green, red), ink if a light
+        // one ever lands here — see [`on_accent`].
         text_color: on_accent(accent),
         border: iced::Border {
             radius: tech_radius(10.0),
@@ -1361,12 +1378,12 @@ pub fn chunky_text_input(
     let bg = theme.palette().background;
     let text = theme.palette().text;
     let plate_top = if p.is_dark {
-        mix(bg, text, 0.08)
+        mix(bg, plate_lift(theme), 0.12)
     } else {
         iced::Color::WHITE
     };
     let plate_bottom = if p.is_dark {
-        mix(bg, text, 0.14)
+        mix(bg, plate_lift(theme), 0.20)
     } else {
         mix(bg, iced::Color::WHITE, 0.55)
     };
@@ -1425,12 +1442,12 @@ pub fn chunky_pick_list(
     // Drop in the same gradient as the text input so the two
     // widgets read as siblings.
     let plate_top = if p.is_dark {
-        mix(theme.palette().background, text, 0.10)
+        mix(theme.palette().background, plate_lift(theme), 0.14)
     } else {
         iced::Color::WHITE
     };
     let plate_bottom = if p.is_dark {
-        mix(theme.palette().background, text, 0.16)
+        mix(theme.palette().background, plate_lift(theme), 0.23)
     } else {
         mix(theme.palette().background, iced::Color::WHITE, 0.55)
     };
@@ -1466,7 +1483,11 @@ pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style
     let p = theme.extended_palette();
     let bg = theme.palette().background;
     let text = theme.palette().text;
-    let dim = mix(bg, text, if p.is_dark { 0.10 } else { 0.08 });
+    let dim = if p.is_dark {
+        mix(bg, plate_lift(theme), 0.14)
+    } else {
+        mix(bg, text, 0.08)
+    };
     iced::widget::container::Style {
         text_color: Some(iced::Color { a: 0.35, ..text }),
         background: Some(iced::Background::Color(dim)),
@@ -1512,7 +1533,7 @@ pub fn chunky_checkbox(theme: &Theme, status: iced::widget::checkbox::Status) ->
     // mix() so checkboxes feel like family with the toolbar
     // buttons sitting next to them.
     let unchecked_plate = if p.is_dark {
-        mix(bg, text, 0.12)
+        mix(bg, plate_lift(theme), 0.17)
     } else {
         mix(bg, iced::Color::WHITE, 0.5)
     };
@@ -1568,7 +1589,7 @@ pub fn chunky_slider(theme: &Theme, status: iced::widget::slider::Status) -> ice
     // Empty track: same plate recipe as the neutral button so the
     // rail reads as part of the same widget family.
     let track = if p.is_dark {
-        mix(bg, text, 0.16)
+        mix(bg, plate_lift(theme), 0.23)
     } else {
         mix(bg, text, 0.18)
     };
@@ -1640,8 +1661,10 @@ pub fn chunky_scrollable(theme: &Theme, status: iced::widget::scrollable::Status
         scroller: Scroller {
             background: iced::Background::Color(if lit {
                 primary
+            } else if p.is_dark {
+                mix(bg, plate_lift(theme), 0.43)
             } else {
-                mix(bg, text, if p.is_dark { 0.30 } else { 0.35 })
+                mix(bg, text, 0.35)
             }),
             border: iced::Border {
                 radius: 999.0.into(),

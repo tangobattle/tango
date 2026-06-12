@@ -2559,6 +2559,7 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
                 .height(Length::Fixed(40.0))
                 .into()
         });
+        let selected = held_opt.map_or(false, |h| h.id == id);
         let name_text = if at_cap {
             text(name).size(TEXT_BODY).style(muted_text_style)
         } else {
@@ -2566,7 +2567,16 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         };
         let mut info_col = column![name_text].spacing(1);
         if let Some(desc) = description.filter(|d| !d.trim().is_empty()) {
-            info_col = info_col.push(text(desc).size(TEXT_CAPTION).style(muted_text_style));
+            // On the selected (held) row, drop the muted wash so the
+            // description inherits the gold plate's ink — every line
+            // reads in the title's color, same as the replay list.
+            info_col = info_col.push(text(desc).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
+                if selected {
+                    iced::widget::text::Style { color: None }
+                } else {
+                    muted_text_style(theme)
+                }
+            }));
         }
         // Per-part orientation controls: rotate, and (de)compress. They
         // edit this part's picker entry — including the thumbnail beside
@@ -2604,7 +2614,6 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
         let content = row![icon_el, info_col, Space::new().width(Fill), controls]
             .spacing(8)
             .align_y(Alignment::Center);
-        let selected = held_opt.map_or(false, |h| h.id == id);
         let mut pick = button(content)
             .padding(style::ROW_PADDING)
             .width(Fill)
