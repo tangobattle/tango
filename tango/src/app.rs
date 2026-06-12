@@ -752,6 +752,7 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
+        let family_before = self.loadout.family;
         let selection_before = (self.loadout.game, self.loadout.save.clone());
         // Candidate snapshot for the lobby's exit animation — taken
         // before dispatch (the handler about to run may reset the
@@ -794,10 +795,15 @@ impl App {
         // patch) — re-sync the patch row's transition here too so
         // those paths animate like in-module ones.
         self.loadout.sync_patch_row(now);
-        // A different game or save swaps the whole save-view body —
-        // rise it in vertically (sub-tab switches slide it
-        // horizontally instead; see save_view::State::apply).
-        if selection_before != (self.loadout.game, self.loadout.save.clone()) {
+        // A different family swaps the entire bottom of the tab —
+        // rise the whole save-view pane in. A different game or save
+        // within the family only re-renders the save's content — rise
+        // just the panes under the save view's sub-tab strip, leaving
+        // the strip itself planted. (Sub-tab switches slide the inner
+        // panes horizontally instead; see save_view::State::apply.)
+        if family_before != self.loadout.family {
+            self.play.save_body_enter.start(now);
+        } else if selection_before != (self.loadout.game, self.loadout.save.clone()) {
             self.play.save_view.enter_from = iced::Vector::new(0.0, 20.0);
             self.play.save_view.enter.start(now);
         }

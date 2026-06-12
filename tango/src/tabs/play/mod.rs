@@ -106,6 +106,13 @@ pub struct State {
     /// handled by view-time button gating + inline hints, because
     /// graying out the action surface explains itself.
     pub last_error: Option<String>,
+    /// Entrance glide for the whole save-view pane under the selector
+    /// strip, played by the App when the *family* changes — a family
+    /// switch replaces the entire bottom of the tab. A save switch
+    /// within the family plays the smaller [`save_view::State`]
+    /// entrance instead, which only moves the panes under the save
+    /// view's sub-tab strip.
+    pub save_body_enter: crate::anim::Enter,
     /// Fade-through swap for the save-action row: the picker row
     /// morphs into whichever rename / delete / create form opens
     /// ([`State::save_action`]) and back.
@@ -159,6 +166,7 @@ impl Default for State {
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             last_error: None,
+            save_body_enter: crate::anim::Enter::default(),
             save_form: crate::anim::Transition::swap(false),
             save_action_exit: SaveAction::None,
         }
@@ -639,11 +647,7 @@ impl State {
             Message::SaveDuplicateStart => {
                 // Prefill with the next free "<stem> (copy)" name so a
                 // plain Enter behaves like the old one-click duplicate.
-                let draft = loadout
-                    .save
-                    .as_deref()
-                    .map(suggest_duplicate_stem)
-                    .unwrap_or_default();
+                let draft = loadout.save.as_deref().map(suggest_duplicate_stem).unwrap_or_default();
                 self.save_action = SaveAction::Duplicating { draft };
                 None
             }
@@ -823,7 +827,15 @@ impl State {
         // flash to the idle handshake line mid-dissolve.
         lobby_exit_snapshot: Option<&'a (crate::netplay::Phase, crate::netplay::LobbyState)>,
     ) -> Element<'a, Message> {
-        let save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
+        let now = iced::time::Instant::now();
+        let mut save_body = self.body(lang, scanners, loadout, loaded, streamer_mode, config, netplay_phase);
+        // A family switch replaces the entire bottom of the tab, so
+        // the whole pane glides in (the App starts `save_body_enter`
+        // when `loadout.family` flips); save switches within the
+        // family animate inside the save view instead.
+        if let Some(p) = self.save_body_enter.progress(now) {
+            save_body = crate::anim::slide_in(save_body, p, iced::Vector::new(0.0, 20.0));
+        }
 
         // Selector strip + save-view body live inside a single
         // PANE_GAP-padded column so every pane in that area shares
@@ -861,7 +873,6 @@ impl State {
         // other arriving. The bottom HUD scanline is grouped into the
         // moving band so it rides the motion instead of staying
         // pinned above it.
-        let now = iced::time::Instant::now();
         let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
         let bottom: Element<'a, Message> = if render_lobby {
             // While the band is on its way OUT, the live phase has
