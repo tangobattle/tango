@@ -1307,8 +1307,8 @@ pub fn slim_progress_bar(theme: &Theme) -> iced::widget::progress_bar::Style {
 /// reaches the pane's top and bottom edges automatically. See
 /// `tabs/play.rs` and `tabs/replays.rs` for the layout pattern.
 pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
-    use iced::widget::canvas::{Canvas, Frame, LineCap, Path, Stroke, Style, Text as CanvasText};
-    use iced::{Pixels, Point, Rectangle, Renderer};
+    use iced::widget::canvas::{Canvas, Frame, LineCap, Path, Stroke, Style};
+    use iced::{Point, Rectangle, Renderer};
 
     /// Thickness of the cut, perpendicular to the band axis. Half
     /// the inter-pane gap so the slice reads as slimmer than the
@@ -1324,18 +1324,29 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
     /// or anti-aliasing leaves a soft tapered edge that reads as
     /// the slash trailing off short of the pane border.
     const OVERSHOOT: f32 = 16.0;
-    /// "V" / "S" glyph size.
-    const GLYPH: f32 = 18.0;
+    /// "V" / "S" glyph box: per-letter width and cap height of the
+    /// hand-drawn letterforms. Roughly what the old 18px font-rendered
+    /// glyphs occupied.
+    const GLYPH_W: f32 = 10.0;
+    const GLYPH_H: f32 = 12.0;
+    /// Stroke weight of the letterforms — heavy, keeping the "Black"
+    /// weight look of the old font-rendered glyphs.
+    const GLYPH_T: f32 = 2.8;
+    /// Italic shear: horizontal offset per unit of height above the
+    /// glyph's vertical center (≈12°, matching Noto's italic angle).
+    const SLANT: f32 = 0.21;
     /// Radius of the body-bg-colored circle that the "VS" sits
     /// inside. Sized so the glyph pair has a comfortable margin
     /// to the rim; the circle merges seamlessly with the band
     /// (same color), reading as a node bulging out of the cut.
     const BADGE_R: f32 = 18.0;
     /// Half the horizontal spread between the V and S glyph
-    /// centers. Less than the glyph half-width so the two
-    /// letters smush into each other — the pair reads as one
-    /// stamped "VS" mark, not two separate characters.
-    const GLYPH_DX: f32 = 3.0;
+    /// centers. Less than the glyph width so the letter boxes
+    /// overlap diagonally — the pair reads as one stamped "VS"
+    /// mark — but enough that a hairline channel, parallel to
+    /// the cut, stays open between the V's stem and the S's
+    /// top bar.
+    const GLYPH_DX: f32 = 4.0;
     /// Half the vertical stagger between the V and S glyph
     /// centers. V sits above center, S sits below, giving the
     /// pair a fighting-game-style diagonal stack.
@@ -1435,31 +1446,76 @@ pub fn vs_splitter<'a, M: 'a>() -> Element<'a, M> {
             frame.fill(&badge, body_bg);
 
             // V upper-left of center, S lower-right of center —
-            // the cut runs diagonally between them. Heavy italic
-            // in the theme's primary accent so the pair reads as
-            // a fighting-game splash on top of the slash.
+            // the cut runs diagonally between them. The letterforms
+            // are hand-traced filled polygons, sheared for the
+            // italic lean: none of the bundled Noto faces carry a
+            // Black Italic, and two letters aren't worth shipping
+            // one for. Heavy and leaned-over so the pair still
+            // reads as a fighting-game splash stamped on the slash.
             let cy = h / 2.0;
             let color = muted_color(theme);
-            let fun_font = iced::Font {
-                family: iced::font::Family::Name("Noto Sans"),
-                weight: iced::font::Weight::Black,
-                style: iced::font::Style::Italic,
-                ..iced::Font::default()
+            // Outline points are in glyph-local coordinates: origin
+            // at the letter's center, y down. The shear leans the
+            // top of each letter to the right; horizontal edges stay
+            // horizontal, as in a real italic.
+            let glyph = |outline: &[(f32, f32)], gx: f32, gy: f32| {
+                Path::new(|p| {
+                    let mut pts = outline.iter().map(|&(x, y)| Point::new(gx + x - y * SLANT, gy + y));
+                    p.move_to(pts.next().unwrap());
+                    for pt in pts {
+                        p.line_to(pt);
+                    }
+                    p.close();
+                })
             };
-            let mut glyph = |content: &str, x: f32, y: f32| {
-                frame.fill_text(CanvasText {
-                    content: content.into(),
-                    position: Point::new(x, y),
-                    color,
-                    size: Pixels(GLYPH),
-                    font: fun_font,
-                    align_x: iced::advanced::text::Alignment::Center,
-                    align_y: iced::alignment::Vertical::Center,
-                    ..Default::default()
-                });
-            };
-            glyph("V", cx - GLYPH_DX, cy - GLYPH_DY);
-            glyph("S", cx + GLYPH_DX, cy + GLYPH_DY);
+            let (gl, gr, gt, gb) = (-GLYPH_W / 2.0, GLYPH_W / 2.0, -GLYPH_H / 2.0, GLYPH_H / 2.0);
+
+            // The V is two thick diagonal strokes meeting in a
+            // point. `vt` is the stroke's horizontal cut where it
+            // meets the top edge (perpendicular thickness GLYPH_T
+            // over the cosine of the stroke's lean); the inner
+            // edges run parallel to the outer ones and meet at
+            // `apex_y`, leaving a small triangular counter.
+            let vt = GLYPH_T * (GLYPH_W / 2.0).hypot(GLYPH_H) / GLYPH_H;
+            let v = glyph(
+                &[
+                    (gl, gt),
+                    (gl + vt, gt),
+                    (0.0, gt + GLYPH_H * (gr - vt) / gr),
+                    (gr - vt, gt),
+                    (gr, gt),
+                    (0.0, gb),
+                ],
+                cx - GLYPH_DX,
+                cy - GLYPH_DY,
+            );
+            frame.fill(&v, color);
+
+            // The S is the blocky three-bars-and-two-notches
+            // digital form — top aperture opening right, bottom
+            // aperture opening left, like the letter. Angular
+            // rather than curved both because tracing a curved S
+            // by hand is fiddly and because blocky suits the
+            // splash style.
+            let s = glyph(
+                &[
+                    (gr, gt),
+                    (gr, gt + GLYPH_T),
+                    (gl + GLYPH_T, gt + GLYPH_T),
+                    (gl + GLYPH_T, -GLYPH_T / 2.0),
+                    (gr, -GLYPH_T / 2.0),
+                    (gr, gb),
+                    (gl, gb),
+                    (gl, gb - GLYPH_T),
+                    (gr - GLYPH_T, gb - GLYPH_T),
+                    (gr - GLYPH_T, GLYPH_T / 2.0),
+                    (gl, GLYPH_T / 2.0),
+                    (gl, gt),
+                ],
+                cx + GLYPH_DX,
+                cy + GLYPH_DY,
+            );
+            frame.fill(&s, color);
 
             vec![frame.into_geometry()]
         }
