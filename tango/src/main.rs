@@ -284,7 +284,7 @@ fn run_app() -> iced::Result {
     // This double-load keeps the window-size restore self-contained
     // in main without threading a Config handle into App::new.
     let geom_cfg = config::Config::load_or_create();
-    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1000.0, 640.0));
+    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1280.0, 720.0));
     // Reopen where the app last sat, so multi-monitor setups keep
     // Tango on its monitor across launches. Windowed restores the
     // exact position; fullscreen effectively restores the monitor
@@ -307,7 +307,7 @@ fn run_app() -> iced::Result {
             // collapsing on top of one another. Initial size +
             // maximized state come from the last shutdown.
             size: iced::Size::new(start_w, start_h),
-            min_size: Some(iced::Size::new(800.0, 600.0)),
+            min_size: Some(iced::Size::new(1280.0, 720.0)),
             position: start_position,
             maximized: geom_cfg.last_window_maximized,
             fullscreen: geom_cfg.fullscreen,

@@ -449,10 +449,8 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
 /// Standard windowed resolutions surfaced in the graphics settings
 /// pick-list. Selecting one resizes the live window and updates
 /// `config.last_window_size`. Skips anything smaller than the
-/// min_size enforced in `main.rs` (800×600).
+/// min_size enforced in `main.rs` (1280×720).
 const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
-    (800, 600),
-    (1024, 768),
     (1280, 720),
     (1280, 800),
     (1366, 768),
