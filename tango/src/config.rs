@@ -202,11 +202,11 @@ pub struct Config {
     #[serde(default)]
     pub last_window_maximized: bool,
     /// Last window position (logical pixels), updated on every Moved
-    /// event. Only applied at startup when launching fullscreen:
-    /// while fullscreen the window sits at its monitor's origin, so
-    /// restoring that position before the fullscreen mode kicks in
-    /// puts the app back on the monitor it was quit from. Windowed
-    /// launches keep the OS default placement.
+    /// event and restored as the startup position — keeps the window
+    /// (and in particular its monitor) where the user last had it.
+    /// While fullscreen the window sits at its monitor's origin, so
+    /// restoring the position before the fullscreen mode kicks in
+    /// also puts a fullscreen relaunch back on the right monitor.
     #[serde(default)]
     pub last_window_position: Option<(f32, f32)>,
     /// Whether the app should launch (and stay) in fullscreen. The
