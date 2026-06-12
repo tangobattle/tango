@@ -1441,7 +1441,7 @@ pub fn view<'a>(
 
     let frame = framebuffer_view(state, fractional_scaling, effect);
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
-    layout = layout.push(emulator_body(lang, session, state, frame, hide_emulator_border));
+    layout = layout.push(emulator_body(session, state, frame, hide_emulator_border));
 
     // The controls live in a floating bar over the emulator (no
     // reserved bottom strip), sliding away after the cursor sits
@@ -1451,10 +1451,11 @@ pub fn view<'a>(
     let mut stacked = stack![Element::from(layout)];
     // A drawer pane mid-animation draws in iced's floating layer,
     // above every base stack layer — so for those moments the
-    // persistent chrome (telemetry corner, top-right commands) is
-    // hoisted into the floating layer too, where tree order puts
-    // it back on top of the moving pane. See `keep_above_drawers`
-    // for why it isn't hoisted permanently.
+    // telemetry plate is hoisted into the floating layer too, where
+    // tree order puts it back on top of the moving pane. See
+    // `keep_above_drawers` for why it isn't hoisted permanently.
+    // The top-right commands stay un-hoisted on purpose: the
+    // drawers are supposed to cover them.
     let now = iced::time::Instant::now();
     let drawer_moving = state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
     if state.controls_anim.visible(now) {
@@ -1465,10 +1466,14 @@ pub fn view<'a>(
         }
         // Every session: Settings + tear-down, top-right (PvP's
         // tear-down routes through the disconnect confirm).
-        stacked = stacked.push(keep_above_drawers(
-            corner_commands_overlay(lang, session, state),
-            drawer_moving,
-        ));
+        // Pushed BEFORE the setup drawers so an open drawer layers
+        // over them rather than the buttons intruding on the pane.
+        stacked = stacked.push(corner_commands_overlay(lang, session, state));
+    }
+    // PvP setup drawers — above the corner commands, below the
+    // telemetry plate (see `setup_drawers_overlay`).
+    for pane in setup_drawers_overlay(lang, session, state) {
+        stacked = stacked.push(pane);
     }
     if let Some(o) = scrub_thumbnail_overlay(session, state) {
         stacked = stacked.push(o);
@@ -1600,7 +1605,6 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
 /// backdrop when BNLC isn't installed. The backdrop spans the full
 /// body width so the setup panes float on top of the same bezel art.
 fn emulator_body<'a>(
-    lang: &'a LanguageIdentifier,
     session: &'a ActiveSession,
     state: &'a State,
     frame: Element<'a, Message>,
@@ -1626,78 +1630,99 @@ fn emulator_body<'a>(
             .into(),
     };
 
-    // Optional left/right setup panes for PvP. Each occupies a
-    // fixed width when shown; the emulator fills the rest of the
-    // row. The panes ride on top of the backdrop layer so the
-    // BNLC bezel art shows around their outer margins. Only the
-    // panes carry padding — the emulator itself still extends to
-    // the screen edges.
-    //
-    // Open/close animates like a drawer, and the layout hands the
-    // space back eagerly: an OPEN pane sits in the content row
-    // (claiming its width while it slides in), but the moment it
-    // starts closing it leaves the row — the emulator expands
-    // right away — and the exit slide plays as an overlay gliding
-    // out over the reflowed body. The matching edge handle rides
-    // the drawer's inner edge either way (`setup_handles_overlay`).
+    // Left/right drawer SLOTS for PvP. The panes themselves render
+    // as overlay layers in [`view`] (`setup_drawers_overlay`) so
+    // they can layer above the corner commands; the row only claims
+    // their width so the emulator docks aside. The space is claimed
+    // eagerly and handed back eagerly: an OPEN drawer holds its slot
+    // (while the pane slides in over it), but the moment it starts
+    // closing the slot collapses — the emulator expands right away —
+    // and the exit slide plays out over the reflowed body. The
+    // matching edge handle rides the drawer's inner edge either way
+    // (`setup_handles_overlay`).
+    let drawer_slot = || {
+        iced::widget::Space::new()
+            .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
+            .height(Fill)
+    };
+    let mut content_row = row![].spacing(0).height(Fill).width(Fill);
+    if let ActiveSession::PvP(s) = session {
+        if s.local_loaded.is_some() && state.show_self_panel {
+            content_row = content_row.push(drawer_slot());
+        }
+    }
+    content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
+    if let ActiveSession::PvP(s) = session {
+        if s.opponent_loaded.is_some() && state.show_opponent_panel {
+            content_row = content_row.push(drawer_slot());
+        }
+    }
+    let body = stack![backdrop, Element::from(content_row)];
+    container(body).width(Fill).height(Fill).into()
+}
+
+/// The PvP setup drawers, one overlay layer per visible pane. Each
+/// is a docked sidebar flush with its screen edge — full height,
+/// square corners, only the content padded — whose width
+/// `emulator_body`'s drawer slots reserve in the layout while it's
+/// open. Rendered as stack layers (rather than row members) so the
+/// drawers sit ABOVE the corner commands — an open drawer covers
+/// the Settings / Close buttons instead of having them intrude on
+/// its content — and BELOW the telemetry plate, which stays
+/// glanceable over an open drawer (see the layer order in [`view`]).
+/// Mid-slide the panes draw in iced's floating layer, above every
+/// base layer (see `anim::slide_in` / `keep_above_drawers`).
+fn setup_drawers_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    session: &'a ActiveSession,
+    state: &'a State,
+) -> Vec<Element<'a, Message>> {
+    let ActiveSession::PvP(s) = session else {
+        return Vec::new();
+    };
     let now = iced::time::Instant::now();
     let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
-        // A docked sidebar, not a floating card: flush with its
-        // screen edge, full height, square corners — only the
-        // content carries padding.
         let pane = container(panel)
             .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
             .height(Fill)
             .padding(style::PANE_PADDING)
             .style(setup_sidebar_plate);
+        // An opaque plate must be opaque to the mouse too: iced's
+        // Stack lets the cursor reach lower layers anywhere the
+        // upper one reports no interaction, so without this a
+        // click on a quiet patch of the pane would press the
+        // corner commands hidden beneath it.
+        let pane = iced::widget::mouse_area(pane).interaction(iced::mouse::Interaction::Idle);
         anim::slide_in(pane, progress, iced::Vector::new(from_dx, 0.0))
     };
-    let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    let mut closing_panes: Vec<Element<'a, Message>> = Vec::new();
-    if let ActiveSession::PvP(s) = session {
-        if s.local_loaded.is_some() && (state.show_self_panel || state.self_panel_anim.is_animating(now)) {
-            let me = s.local_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
-                .map(Message::SelfSaveViewAction);
-            let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel_anim.progress(now));
-            if state.show_self_panel {
-                content_row = content_row.push(pane);
-            } else {
-                closing_panes.push(
-                    container(pane)
-                        .width(Fill)
-                        .height(Fill)
-                        .align_x(iced::alignment::Horizontal::Left)
-                        .into(),
-                );
-            }
-        }
+    let mut panes: Vec<Element<'a, Message>> = Vec::new();
+    if s.local_loaded.is_some() && (state.show_self_panel || state.self_panel_anim.is_animating(now)) {
+        let me = s.local_loaded.as_ref().unwrap();
+        let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
+            .map(Message::SelfSaveViewAction);
+        let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel_anim.progress(now));
+        panes.push(
+            container(pane)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Left)
+                .into(),
+        );
     }
-    content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if let ActiveSession::PvP(s) = session {
-        if s.opponent_loaded.is_some() && (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) {
-            let opponent = s.opponent_loaded.as_ref().unwrap();
-            let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
-                .map(Message::OpponentSaveViewAction);
-            let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel_anim.progress(now));
-            if state.show_opponent_panel {
-                content_row = content_row.push(pane);
-            } else {
-                closing_panes.push(
-                    container(pane)
-                        .width(Fill)
-                        .height(Fill)
-                        .align_x(iced::alignment::Horizontal::Right)
-                        .into(),
-                );
-            }
-        }
+    if s.opponent_loaded.is_some() && (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) {
+        let opponent = s.opponent_loaded.as_ref().unwrap();
+        let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
+            .map(Message::OpponentSaveViewAction);
+        let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel_anim.progress(now));
+        panes.push(
+            container(pane)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .into(),
+        );
     }
-    let mut body = stack![backdrop, Element::from(content_row)];
-    for pane in closing_panes {
-        body = body.push(pane);
-    }
-    container(body).width(Fill).height(Fill).into()
+    panes
 }
 
 /// The replay bar's strip: full transport (play/pause + scrubber +
@@ -1744,9 +1769,11 @@ fn replay_bar<'a>(
 /// an invisible sub-pixel translation — so it keeps drawing above
 /// a drawer pane mid-animation (which floats, and floats render
 /// above every base stack layer; among floats, tree order wins,
-/// and these layers come after the drawer). Only applied while a
-/// drawer is actually moving: hoisted permanently, the chrome
-/// would also paint over the settings/disconnect modals.
+/// and these layers come after the drawer). Used by the telemetry
+/// plate, the one piece of chrome that outranks the drawers — the
+/// top-right commands deliberately layer UNDER them instead. Only
+/// applied while a drawer is actually moving: hoisted permanently,
+/// the chrome would also paint over the settings/disconnect modals.
 fn keep_above_drawers(el: Element<'_, Message>, drawer_moving: bool) -> Element<'_, Message> {
     if drawer_moving {
         iced::widget::float(el)
@@ -1809,11 +1836,23 @@ fn corner_commands_overlay<'a>(
     let pinned = iced::widget::mouse_area(cluster)
         .on_enter(Message::ControlsHovered(true))
         .on_exit(Message::ControlsHovered(false));
-    let slid = anim::slide_in(
-        pinned,
-        state.controls_anim.progress(now),
-        iced::Vector::new(0.0, -CONTROLS_SLIDE),
-    );
+    // While the opponent drawer is open the cluster sits behind it
+    // (see the layer order in `view`) — skip the auto-hide slide
+    // then. The slide draws in iced's floating layer
+    // (`anim::slide_in`), which would pop the buttons OVER the
+    // drawer they're supposed to be under for the length of the
+    // animation; at rest behind the drawer the slide is invisible
+    // anyway.
+    let behind_drawer = match session {
+        ActiveSession::PvP(pvp) => pvp.opponent_loaded.is_some() && state.show_opponent_panel,
+        _ => false,
+    };
+    let progress = if behind_drawer {
+        1.0
+    } else {
+        state.controls_anim.progress(now)
+    };
+    let slid = anim::slide_in(pinned, progress, iced::Vector::new(0.0, -CONTROLS_SLIDE));
     container(slid)
         .width(Fill)
         .height(Fill)
