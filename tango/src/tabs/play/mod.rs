@@ -376,10 +376,16 @@ impl State {
             Message::LinkCodeChanged(s) => {
                 // Direct-TCP commands (/host, /connect) need slashes,
                 // spaces, dots, colons, brackets — pass them through.
+                // Link codes are lowercased as typed: matchmaking is
+                // case-sensitive, so this keeps a code read aloud or
+                // retyped from a screenshot from missing its lobby.
                 let filtered: String = if s.starts_with('/') {
                     s
                 } else {
-                    s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect()
+                    s.chars()
+                        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+                        .map(|c| c.to_ascii_lowercase())
+                        .collect()
                 };
                 self.link_code = filtered.chars().take(100).collect();
                 None

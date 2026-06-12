@@ -55,7 +55,7 @@ play-patch-toggle = Use a patch…
 play-version-placeholder = —
 
 # Play bottom strip
-play-link-code = Link code
+play-link-code = Link code (leave empty for a random one)
 play-link-code-random = Random link code
 play-play = Play
 play-fight = Fight
