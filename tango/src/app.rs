@@ -803,6 +803,10 @@ impl App {
         let lobby_after = self.lobby_on_screen();
         if let (Some(snap), false) = (lobby_live, lobby_after) {
             self.lobby_exit_snapshot = Some(snap);
+            // A Fight-generated code never touched the input on the way in
+            // (it debuted in the lobby band) — drop it in now that the
+            // strip is coming back, so a retry re-hosts the same code.
+            self.play.restore_generated_link_code();
         }
         self.lobby_swap.set(lobby_after, now);
         // Effect handlers in this module mutate `loadout.patch`
@@ -1206,7 +1210,7 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
-            E::Connect(ident) => {
+            E::Connect { ident, copy_code } => {
                 let msg = match ident {
                     netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
                         link_code,
@@ -1222,7 +1226,13 @@ impl App {
                 // appears, instead of flickering to Triple later
                 // when the first Lobby-phase resend runs.
                 self.apply_default_match_type();
-                task
+                match copy_code {
+                    // Fight auto-generated this code — put it straight on
+                    // the clipboard so the host can paste it to their
+                    // opponent right away.
+                    Some(code) => iced::Task::batch([iced::clipboard::write(code), task]),
+                    None => task,
+                }
             }
             E::Netplay(m) => {
                 // An explicit user pick of match type pre-Lobby

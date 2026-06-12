@@ -93,6 +93,15 @@ pub enum Message {
 
 pub struct State {
     pub link_code: String,
+    /// A link code Fight auto-generated for an empty input, parked here
+    /// instead of `link_code` while the lobby is up: the outgoing strip
+    /// renders for the first half of the band morph, so writing the input
+    /// immediately would flash the code on screen before the lobby's
+    /// connection line (which masks it in streamer mode) gets to debut it.
+    /// [`restore_generated_link_code`](Self::restore_generated_link_code)
+    /// moves it into the input when the lobby band leaves, so a retry
+    /// re-hosts the same code.
+    pending_generated_code: Option<String>,
     /// Persistent state for the embedded save view (active tab,
     /// folder grouping). Apply incoming `SaveViewAction`s via
     /// [`save_view::State::apply`].
@@ -163,6 +172,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             link_code: String::new(),
+            pending_generated_code: None,
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             last_error: None,
@@ -272,8 +282,14 @@ pub enum AutoBattleDataEdit {
 pub enum Effect {
     /// Kick off netplay. The `LinkIdent` variant tells the app
     /// handler whether to route via matchmaking signaling or direct
-    /// TCP transport.
-    Connect(crate::netplay::LinkIdent),
+    /// TCP transport. `copy_code` is `Some` when Fight auto-generated
+    /// the code for an empty input — the App puts it straight on the
+    /// clipboard so the host can paste it to their opponent without
+    /// hunting for the lobby's copy button.
+    Connect {
+        ident: crate::netplay::LinkIdent,
+        copy_code: Option<String>,
+    },
     /// Forward verbatim to the netplay subsystem.
     Netplay(crate::netplay::Message),
     /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
@@ -361,6 +377,19 @@ impl State {
         effect
     }
 
+    /// Move a Fight-generated link code into the input. The App calls this
+    /// the moment the lobby band leaves (failure, cancel, or handoff into a
+    /// match), so the returning strip shows what was hosted and a retry
+    /// re-hosts the same code — without the code ever rendering in the
+    /// input on the way *into* the lobby.
+    pub fn restore_generated_link_code(&mut self) {
+        if let Some(code) = self.pending_generated_code.take() {
+            if self.link_code.trim().is_empty() {
+                self.link_code = code;
+            }
+        }
+    }
+
     fn update_inner(
         &mut self,
         msg: Message,
@@ -399,22 +428,38 @@ impl State {
             }
             Message::FightPressed => {
                 // An empty bar means "just get me a lobby": generate a
-                // fresh random adjective-word-noun code, drop it into
-                // the input so the user can see what they're hosting
-                // on, and connect with it — the lobby subtitle's copy
-                // button hands it to the opponent from there.
-                if self.link_code.trim().is_empty() {
-                    self.link_code = crate::randomcode::generate(&config.language);
-                }
+                // fresh random adjective-word-noun code and connect with
+                // it directly. The code deliberately skips the input —
+                // the outgoing strip still renders through the first
+                // half of the band morph, so the lobby's connection
+                // line (which masks in streamer mode) should be the
+                // first place it shows. It rides the Connect effect
+                // onto the clipboard, and `pending_generated_code`
+                // refills the input once the lobby band leaves.
+                let generated = self
+                    .link_code
+                    .trim()
+                    .is_empty()
+                    .then(|| crate::randomcode::generate(&config.language));
                 // The Fight CTA is gated at the view layer to require
                 // an empty or submittable link code, so reaching this
                 // handler with a malformed one is a stale message +
                 // safe to ignore.
-                let ident = resolve_link_ident(self.link_code.trim())?;
+                let ident = resolve_link_ident(generated.as_deref().unwrap_or(self.link_code.trim()))?;
+                if let Some(code) = &generated {
+                    self.pending_generated_code = Some(code.clone());
+                    // Light the lobby copy button's "Copied!" flash as
+                    // the band rises — the cue that the code is already
+                    // in hand.
+                    crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
+                }
                 // Clear any leftover after-the-fact error from a prior
                 // attempt — the new attempt's outcome will replace it.
                 self.last_error = None;
-                Some(Effect::Connect(ident))
+                Some(Effect::Connect {
+                    ident,
+                    copy_code: generated,
+                })
             }
             Message::Noop => None,
             Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
@@ -1305,12 +1350,12 @@ impl State {
     /// this strip is pure "enter a link code and fight" —
     /// singleplayer lives in the save view's Play button. An empty
     /// input is fair game: Fight generates a random code on the spot
-    /// (see the FightPressed handler), so the only un-submittable
-    /// state is a malformed `/`-command. In streamer mode the input
-    /// renders secure (masked) — typed, pasted, and freshly-generated
-    /// codes are all scrapeable off a stream otherwise (the generated
-    /// one used to flash here in the clear before the lobby's masking
-    /// took over).
+    /// (see the FightPressed handler) which never renders here on the
+    /// way in — it debuts in the lobby's connection line and only
+    /// lands in this input when the lobby band leaves. In streamer
+    /// mode the input renders secure (masked) — typed, pasted, and
+    /// restored-generated codes are all scrapeable off a stream
+    /// otherwise.
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier, streamer_mode: bool) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
