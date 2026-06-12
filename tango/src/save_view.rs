@@ -1283,7 +1283,13 @@ pub fn view<'a>(
     // button height so the strip's overall height doesn't grow
     // when active-tab extras (folder group toggle, copy buttons)
     // change.
-    const TAB_STRIP_HEIGHT: f32 = 31.0;
+    // Height of a small `widgets::tab_button`: TEXT_BODY at iced's
+    // default 1.3 line height plus the [6, 14] chip padding. The
+    // tail is pinned to exactly this so both halves of the strip
+    // share a centerline (Start-aligned row + equal heights =
+    // aligned); a stale hand-tuned 31.0 here had the chips riding
+    // ~2px high against the tail buttons.
+    const TAB_STRIP_HEIGHT: f32 = style::TEXT_BODY * 1.3 + 12.0;
     let mut tabs_only = row![].spacing(2).align_y(Alignment::Center);
     for tab in &available {
         let label = match tab {

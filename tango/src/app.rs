@@ -1966,17 +1966,23 @@ impl App {
         let enter = self.screen_enter.progress(now);
 
         // First-run gate: no main UI until the user picks a nickname.
+        // Sits on the same cyberworld backdrop as the main shell so
+        // the first thing a new user sees is already the PET screen.
         if self.config.nickname.is_none() {
             let roms_count = self.scanners.roms.read().len();
+            let welcome = tabs::welcome::view(
+                lang,
+                &self.welcome,
+                roms_count,
+                &self.config.roms_path(),
+                self.is_rescanning(),
+            )
+            .map(Message::Welcome);
             return entered(
-                tabs::welcome::view(
-                    lang,
-                    &self.welcome,
-                    roms_count,
-                    &self.config.roms_path(),
-                    self.is_rescanning(),
-                )
-                .map(Message::Welcome),
+                iced::widget::stack![widgets::cyber_backdrop(), welcome]
+                    .width(Fill)
+                    .height(Fill)
+                    .into(),
                 enter,
                 ROOT_SLIDE,
             );
@@ -2153,20 +2159,25 @@ impl App {
                 .map(Message::Settings),
         };
 
-        // Body container picks up the palette background and adds
-        // a faint inner tint so the HUD bar visibly sits on top of
-        // a "screen surface" rather than a flat sheet of pixels.
-        // Tab switches slide just this surface sideways (the top
-        // bar stays put); welcome/session swaps glide the whole
-        // window up.
-        let mut body_surface: Element<'_, Message> = container(body)
+        // Body content rides on the drawn cyberworld backdrop (the
+        // Legacy Collection's ring-and-hex PET screen). The content
+        // container itself paints no background, and the backdrop
+        // sits in a layer underneath — so tab switches slide just
+        // the content sideways while the cyberworld stays fixed
+        // (the top bar stays put too); welcome/session swaps glide
+        // the whole window up.
+        let mut body_content: Element<'_, Message> = container(body)
             .width(Fill)
             .height(Fill)
             .style(widgets::body_surface)
             .into();
         if let (Some(p), EnterScope::Body { dx }) = (enter, self.screen_enter_scope) {
-            body_surface = anim::slide_in(body_surface, p, iced::Vector::new(dx, 0.0));
+            body_content = anim::slide_in(body_content, p, iced::Vector::new(dx, 0.0));
         }
+        let body_surface: Element<'_, Message> = iced::widget::stack![widgets::cyber_backdrop(), body_content]
+            .width(Fill)
+            .height(Fill)
+            .into();
         // While a lobby is live and the user is on another tab, the
         // Play tab's nav pill carries a small attention dot so the
         // open lobby isn't forgotten behind a tab switch.
@@ -2247,6 +2258,10 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
         ),
         tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
         horizontal_space(),
+        // Decorative hexagon burst — the Legacy Collection's
+        // header motif, trailing off ahead of the utility tabs.
+        // Sized just shy of the chips so it fills the band.
+        widgets::hex_chain(32.0),
         // Patches + Settings = low-emphasis utility tabs.
         // Patch management is an occasional maintenance chore,
         // not a destination, so it doesn't get equal billing

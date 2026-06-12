@@ -9,29 +9,40 @@
 use crate::config;
 use iced::Theme;
 
-/// The accent color used across the app — selection highlights,
-/// primary CTA buttons, the active tab underline, markdown link
-/// color in the About panel, etc. Same green the legacy egui
-/// app uses, kept in one const so we never accidentally drift to
-/// a different shade.
-pub const TANGO_GREEN: iced::Color =
-    iced::Color::from_rgb(0x4c as f32 / 255.0, 0xaf as f32 / 255.0, 0x50 as f32 / 255.0);
+/// The accent color used across the app — primary CTA buttons,
+/// the active tab chip, panel frames, markdown link color in the
+/// About panel, etc. The Legacy Collection's PET cyan: the glowing
+/// border color of every panel in BNLC's menus. Kept in one const
+/// so we never accidentally drift to a different shade. (Tango's
+/// old egui green is fully retired — the LC restyle runs cyan
+/// through and through.)
+pub const TANGO_CYAN: iced::Color =
+    iced::Color::from_rgb(0x4e as f32 / 255.0, 0xd6 as f32 / 255.0, 0xf5 as f32 / 255.0);
+
+/// The Legacy Collection's selection gold — BNLC paints the picked
+/// list row / focused thumbnail in this yellow with dark ink text.
+/// Used by `widgets::list_item` for selected rows so "what you've
+/// picked" reads in a different register from the cyan chrome.
+pub const SELECT_YELLOW: iced::Color =
+    iced::Color::from_rgb(0xff as f32 / 255.0, 0xd2 as f32 / 255.0, 0x3d as f32 / 255.0);
 
 pub fn theme_for(config: &config::Config) -> Theme {
     // Tango palettes — these aren't tweaks of iced's stock Light /
-    // Dark anymore. The dark variant is a deep navy "cyberworld"
-    // base (think MMBN's PET screens / the legacy egui theme's
-    // accent) so panels read as game chrome rather than a generic
-    // desktop app. Light is a warm cream + slate set tuned to feel
-    // like the same UI under daylight, not a separate identity.
+    // Dark anymore. The dark variant is the Battle Network Legacy
+    // Collection "PET" look: deep blue navy cyberworld base, cyan
+    // chrome, gold selection. Light is the same identity under
+    // daylight — pale ice blue with a deeper cyan that keeps
+    // contrast — not a separate personality.
     match config.theme {
         config::ThemeMode::Light => Theme::custom(
             "Tango Light".to_string(),
             iced::theme::Palette {
-                background: iced::Color::from_rgb(0xf3 as f32 / 255.0, 0xee as f32 / 255.0, 0xdc as f32 / 255.0),
-                text: iced::Color::from_rgb(0x14 as f32 / 255.0, 0x22 as f32 / 255.0, 0x34 as f32 / 255.0),
-                primary: TANGO_GREEN,
-                success: TANGO_GREEN,
+                background: iced::Color::from_rgb(0xe9 as f32 / 255.0, 0xf2 as f32 / 255.0, 0xf9 as f32 / 255.0),
+                text: iced::Color::from_rgb(0x10 as f32 / 255.0, 0x2a as f32 / 255.0, 0x3c as f32 / 255.0),
+                // The PET cyan is too pale to read on ice white, so
+                // light mode runs a deeper tone of the same hue.
+                primary: LIGHT_CYAN,
+                success: LIGHT_CYAN,
                 warning: iced::Color::from_rgb(0xb7 as f32 / 255.0, 0x7e as f32 / 255.0, 0x33 as f32 / 255.0),
                 danger: iced::Color::from_rgb(0xd1 as f32 / 255.0, 0x3a as f32 / 255.0, 0x3a as f32 / 255.0),
             },
@@ -39,21 +50,28 @@ pub fn theme_for(config: &config::Config) -> Theme {
         config::ThemeMode::Dark => Theme::custom(
             "Tango Dark".to_string(),
             iced::theme::Palette {
-                // Deep navy black — darker than stock iced Dark
-                // (0x2b2d31) so the neon green primary actually
-                // glows against it instead of competing.
-                background: iced::Color::from_rgb(0x0b as f32 / 255.0, 0x12 as f32 / 255.0, 0x1c as f32 / 255.0),
+                // Deep blue navy — bluer than the old near-black so
+                // the cyan chrome reads as light glowing off a
+                // cyberworld, not neon on void.
+                background: iced::Color::from_rgb(0x0a as f32 / 255.0, 0x1a as f32 / 255.0, 0x2c as f32 / 255.0),
                 // Cyan-tinted off-white. The slight blue shift
                 // keeps body copy from looking gray on the navy bg.
                 text: iced::Color::from_rgb(0xe4 as f32 / 255.0, 0xf3 as f32 / 255.0, 0xfb as f32 / 255.0),
-                primary: TANGO_GREEN,
-                success: TANGO_GREEN,
+                primary: TANGO_CYAN,
+                // Positive states ride the same cyan — BNLC has no
+                // green anywhere, and neither do we anymore.
+                success: TANGO_CYAN,
                 warning: iced::Color::from_rgb(0xff as f32 / 255.0, 0xb5 as f32 / 255.0, 0x47 as f32 / 255.0),
                 danger: iced::Color::from_rgb(0xff as f32 / 255.0, 0x52 as f32 / 255.0, 0x52 as f32 / 255.0),
             },
         ),
     }
 }
+
+/// Light mode's stand-in for [`TANGO_CYAN`]: same hue, pulled deep
+/// enough to hold contrast on the ice-white page.
+const LIGHT_CYAN: iced::Color =
+    iced::Color::from_rgb(0x07 as f32 / 255.0, 0x82 as f32 / 255.0, 0xb4 as f32 / 255.0);
 
 pub fn is_gay_time() -> bool {
     use chrono::Datelike;

@@ -803,7 +803,7 @@ fn settings_about<'a>(
 
     // Pull the live Theme from the same `crate::theme::theme_for` the
     // App's theme callback uses — keeps link color in sync with
-    // the rest of the app instead of pinning to DARK + TANGO_GREEN
+    // the rest of the app instead of pinning to DARK + TANGO_CYAN
     // by hand. `Settings::from(&Theme)` defaults to text-size 16,
     // so wrap to also pin the app's body text size.
     let theme = crate::theme::theme_for(config);

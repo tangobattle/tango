@@ -87,16 +87,20 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
         let bg = theme.palette().background;
         let text = theme.palette().text;
         if selected {
-            // Lit-up plate. Gradient + glow shadow give the
-            // selected row the same energy as the lobby Ready
-            // button at rest, so the list "knows" what you've
-            // picked rather than just hinting at it.
-            let lighter = mix(primary, iced::Color::WHITE, 0.10);
-            let darker = mix(primary, iced::Color::BLACK, 0.15);
+            // Lit-up plate in the Legacy Collection's selection
+            // gold — BNLC highlights the picked row / focused
+            // thumbnail in yellow against the cyan chrome, so the
+            // selection reads in its own register instead of
+            // blending into the accent-colored CTAs. Yellow→amber
+            // gradient with navy ink text, like the music player's
+            // active track bar.
+            let sel = crate::theme::SELECT_YELLOW;
+            let amber = mix(sel, iced::Color::from_rgb(0.95, 0.55, 0.05), 0.40);
+            let lighter = mix(sel, iced::Color::WHITE, 0.15);
             let (top, bottom, glow_alpha) = match status {
-                button::Status::Hovered => (mix(lighter, iced::Color::WHITE, 0.10), primary, 0.55),
-                button::Status::Pressed => (darker, mix(darker, iced::Color::BLACK, 0.10), 0.2),
-                _ => (lighter, darker, 0.4),
+                button::Status::Hovered => (mix(lighter, iced::Color::WHITE, 0.12), mix(sel, amber, 0.5), 0.5),
+                button::Status::Pressed => (amber, mix(amber, iced::Color::BLACK, 0.10), 0.2),
+                _ => (lighter, amber, 0.35),
             };
             return button::Style {
                 background: Some(iced::Background::Gradient(iced::Gradient::Linear(
@@ -104,17 +108,14 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
                         .add_stop(0.0, top)
                         .add_stop(1.0, bottom),
                 ))),
-                text_color: iced::Color::WHITE,
+                text_color: ACCENT_INK,
                 border: iced::Border {
                     radius: 0.0.into(),
                     width: 1.0,
-                    color: mix(primary, iced::Color::WHITE, 0.35),
+                    color: mix(sel, iced::Color::WHITE, 0.45),
                 },
                 shadow: iced::Shadow {
-                    color: iced::Color {
-                        a: glow_alpha,
-                        ..primary
-                    },
+                    color: iced::Color { a: glow_alpha, ..sel },
                     offset: iced::Vector::new(0.0, 3.0),
                     blur_radius: 12.0,
                 },
@@ -192,7 +193,7 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
             background: Some(iced::Background::Color(dim)),
             text_color: iced::Color { a: 0.35, ..text },
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: tech_radius(10.0),
                 width: 1.0,
                 color: iced::Color {
                     a: 0.15,
@@ -239,7 +240,7 @@ pub fn neutral(theme: &Theme, status: button::Status) -> button::Style {
         ))),
         text_color,
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: tech_radius(10.0),
             width: 1.0,
             color: border_color,
         },
@@ -553,7 +554,9 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
             } else {
                 (0.65, 18.0)
             };
-            (Some(grad), iced::Color::WHITE, g, b)
+            // Navy ink on the cyan plate, like BNLC's header band —
+            // white on PET cyan washes out (see [`on_accent`]).
+            (Some(grad), on_accent(primary), g, b)
         } else {
             let hover = matches!(status, button::Status::Hovered);
             let bg = if hover {
@@ -574,17 +577,22 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
         button::Style {
             background: bg,
             text_color,
+            // Tech-frame corners instead of a full pill — the
+            // active tab reads as one of BNLC's clipped cyan chips.
             border: iced::Border {
-                radius: 999.0.into(),
+                radius: tech_radius(12.0),
                 width: 0.0,
                 color: iced::Color::TRANSPARENT,
             },
+            // Centered glow — zero offset. A downward-offset glow
+            // visually drags the chip off the strip's centerline
+            // and the whole tab row reads as mis-centered.
             shadow: iced::Shadow {
                 color: iced::Color {
                     a: glow_alpha,
                     ..primary
                 },
-                offset: iced::Vector::new(0.0, 3.0),
+                offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: blur,
             },
             snap: false,
@@ -605,9 +613,16 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(plate)),
         text_color: Some(p.background.weak.text),
+        // Faint accent hairline — the quiet cousin of [`panel`]'s
+        // full frame, just enough edge that panes read as PET
+        // screen regions against the cyberworld backdrop.
         border: iced::Border {
             radius: 4.0.into(),
-            ..Default::default()
+            width: 1.0,
+            color: iced::Color {
+                a: if p.is_dark { 0.20 } else { 0.30 },
+                ..theme.palette().primary
+            },
         },
         ..Default::default()
     }
@@ -615,11 +630,18 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
 
 /// The [`pane`] plate fill. Exposed so exit washes
 /// ([`crate::anim::exit_fade`]) can dissolve departing controls
-/// into the same color they sit on. A 5% mix toward the
-/// foreground is enough contrast against the page bg to read as a
-/// region without competing with content.
+/// into the same color they sit on. On dark, the mix leans toward
+/// the cyan primary so plates pick up the PET-blue cast of the
+/// Legacy Collection panels; either way it's a ~5-8% nudge —
+/// enough contrast against the page bg to read as a region
+/// without competing with content.
 pub fn plate_color(theme: &Theme) -> iced::Color {
-    mix(theme.palette().background, theme.palette().text, 0.05)
+    let p = theme.extended_palette();
+    if p.is_dark {
+        mix(theme.palette().background, theme.palette().primary, 0.08)
+    } else {
+        mix(theme.palette().background, theme.palette().text, 0.05)
+    }
 }
 
 /// Theme-aware muted text color: mix the palette's text into the
@@ -682,9 +704,15 @@ pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(p.background.strong.color)),
         text_color: Some(p.background.strong.text),
+        // Hairline accent edge so even tooltips read as tiny PET
+        // chips rather than gray OS bubbles.
         border: iced::Border {
             radius: 4.0.into(),
-            ..Default::default()
+            width: 1.0,
+            color: iced::Color {
+                a: 0.45,
+                ..theme.palette().primary
+            },
         },
         ..Default::default()
     }
@@ -711,6 +739,42 @@ pub fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
     }
 }
 
+/// The signature "tech frame" corner treatment, after the Legacy
+/// Collection's PET panels: one diagonal pair of corners gets a
+/// big cut, the other stays nearly sharp, so plates lean like the
+/// collection's clipped cyber-frames instead of sitting as evenly
+/// rounded web cards. The sharp corners land top-right /
+/// bottom-left so the implied diagonal runs "/" — the same
+/// rightward lean as the collection's italic headers.
+pub fn tech_radius(r: f32) -> iced::border::Radius {
+    iced::border::Radius {
+        top_left: r,
+        top_right: (r * 0.25).min(3.0),
+        bottom_right: r,
+        bottom_left: (r * 0.25).min(3.0),
+    }
+}
+
+/// Dark navy "ink" for text sitting on a bright accent plate —
+/// the selection gold today, any light accent tomorrow. BNLC
+/// letters its bright chrome in navy, not white; white genuinely
+/// fails contrast on these light fills.
+pub const ACCENT_INK: iced::Color =
+    iced::Color::from_rgb(0x0a as f32 / 255.0, 0x1e as f32 / 255.0, 0x30 as f32 / 255.0);
+
+/// Readable text color for a plate filled with `accent`: navy ink
+/// on light accents (the selection gold), white on dark ones
+/// (tango green, danger red). Keeps `tinted_button` / the active
+/// tab pill legible no matter which accent the palette hands them.
+pub fn on_accent(accent: iced::Color) -> iced::Color {
+    let luma = 0.299 * accent.r + 0.587 * accent.g + 0.114 * accent.b;
+    if luma > 0.6 {
+        ACCENT_INK
+    } else {
+        iced::Color::WHITE
+    }
+}
+
 /// Top nav strip background. Vertical gradient (lighter top, darker
 /// bottom) so it reads as a console plate catching overhead light
 /// rather than a flat sheet of pixels. Drops a soft shadow onto
@@ -724,18 +788,20 @@ pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
     let text = theme.palette().text;
     let (top, bottom) = if p.is_dark {
         // Pull toward black at the bottom; the top stays close to
-        // the bg color so the gradient is felt, not seen.
+        // the bg color so the gradient is felt, not seen. The blue
+        // channel decays slowest, giving the band the deep-blue
+        // cast of the collection's header strip.
         (
             iced::Color {
                 r: bg.r * 0.7,
-                g: bg.g * 0.7,
-                b: bg.b * 0.8,
+                g: bg.g * 0.78,
+                b: bg.b * 0.95,
                 a: 1.0,
             },
             iced::Color {
                 r: bg.r * 0.4,
-                g: bg.g * 0.4,
-                b: bg.b * 0.5,
+                g: bg.g * 0.45,
+                b: bg.b * 0.6,
                 a: 1.0,
             },
         )
@@ -763,15 +829,306 @@ pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
-/// Body surface (everything below the HUD bar). Uses the bare
-/// palette background so we don't double-paint, but specifies it
-/// explicitly so future tweaks have a single hook to land in.
+/// Body surface (everything below the HUD bar). Paints no
+/// background of its own — the content layer rides on
+/// [`cyber_backdrop`], stacked underneath by `App::view`, and an
+/// opaque fill here would blot the cyberworld out.
 pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(theme.palette().background)),
+        background: None,
         text_color: Some(theme.palette().text),
         ..Default::default()
     }
+}
+
+/// The cyberworld backdrop — the Legacy Collection's PET menu
+/// background, drawn instead of shipped as a bitmap: a vertical
+/// wash that's lit at the top and falls toward black, two big
+/// soft ring clusters (the de-focused "net" circles behind BNLC's
+/// menus), a dashed orbit ring, and a loose scatter of hexagons.
+/// Static — no animation — and cached; the geometry only
+/// re-tessellates when the canvas resizes or the theme flips.
+pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
+    use iced::widget::canvas::{self, Canvas, LineDash, Path, Stroke, Style, gradient};
+    use iced::{Point, Rectangle, Renderer};
+
+    struct Backdrop;
+
+    #[derive(Default)]
+    struct State {
+        cache: canvas::Cache,
+        /// Palette fingerprint the cached geometry was drawn with.
+        /// `Cache` only invalidates on size changes, so theme flips
+        /// have to clear it by hand or the old colors stick.
+        key: std::cell::Cell<u32>,
+    }
+
+    impl<M> canvas::Program<M> for Backdrop {
+        type State = State;
+
+        fn draw(
+            &self,
+            state: &State,
+            renderer: &Renderer,
+            theme: &Theme,
+            bounds: Rectangle,
+            _cursor: iced::mouse::Cursor,
+        ) -> Vec<canvas::Geometry> {
+            let bg = theme.palette().background;
+            let primary = theme.palette().primary;
+            let dark = theme.extended_palette().is_dark;
+            let key = (((bg.r * 255.0) as u32) << 24)
+                | (((bg.g * 255.0) as u32) << 16)
+                | (((bg.b * 255.0) as u32) << 8)
+                | dark as u32;
+            if state.key.replace(key) != key {
+                state.cache.clear();
+            }
+            let geom = state.cache.draw(renderer, bounds.size(), |frame| {
+                let w = frame.width();
+                let h = frame.height();
+                // Master intensity — the whole backdrop runs at a
+                // fraction of this on light so it stays a texture,
+                // not a watermark fighting dark text.
+                let lvl = if dark { 1.0 } else { 0.45 };
+                let glow = move |a: f32| iced::Color { a: a * lvl, ..primary };
+
+                // Base wash: a faint screen-glow at the top falling
+                // to a darker floor, so the page reads as a lit PET
+                // screen rather than a flat sheet.
+                frame.fill_rectangle(
+                    Point::ORIGIN,
+                    frame.size(),
+                    gradient::Linear::new(Point::ORIGIN, Point::new(0.0, h))
+                        .add_stop(0.0, mix(bg, primary, if dark { 0.06 } else { 0.03 }))
+                        .add_stop(0.55, bg)
+                        .add_stop(1.0, mix(bg, iced::Color::BLACK, if dark { 0.28 } else { 0.06 })),
+                );
+
+                // One "net ring" cluster: a fat blurry-reading band
+                // (low alpha, huge stroke), a mid ring, a crisp thin
+                // rim, and a dashed orbit — the de-focused circle
+                // stacks behind every BNLC menu.
+                let cluster = |frame: &mut canvas::Frame, c: Point, s: f32, boost: f32| {
+                    let g = |a: f32| glow(a * boost);
+                    frame.fill(&Path::circle(c, s * 0.20), g(0.05));
+                    frame.stroke(
+                        &Path::circle(c, s * 0.46),
+                        Stroke {
+                            style: Style::Solid(g(0.05)),
+                            width: s * 0.16,
+                            ..Stroke::default()
+                        },
+                    );
+                    frame.stroke(
+                        &Path::circle(c, s * 0.62),
+                        Stroke {
+                            style: Style::Solid(g(0.08)),
+                            width: s * 0.05,
+                            ..Stroke::default()
+                        },
+                    );
+                    frame.stroke(
+                        &Path::circle(c, s * 0.72),
+                        Stroke {
+                            style: Style::Solid(g(0.16)),
+                            width: 1.5,
+                            ..Stroke::default()
+                        },
+                    );
+                    frame.stroke(
+                        &Path::circle(c, s * 0.54),
+                        Stroke {
+                            style: Style::Solid(g(0.13)),
+                            width: 2.0,
+                            line_dash: LineDash {
+                                segments: &[18.0, 12.0],
+                                offset: 0,
+                            },
+                            ..Stroke::default()
+                        },
+                    );
+                };
+                cluster(frame, Point::new(w * 0.16, h * 0.40), h * 0.85, 1.0);
+                cluster(frame, Point::new(w * 0.88, h * 0.74), h * 0.55, 0.8);
+                cluster(frame, Point::new(w * 0.60, h * 0.08), h * 0.30, 0.6);
+
+                // Hexagon drift — the collection's other signature
+                // motif, scattered loosely toward the corners the
+                // rings leave empty.
+                let hex = |c: Point, r: f32| {
+                    Path::new(|b| {
+                        for i in 0..6 {
+                            let ang = std::f32::consts::FRAC_PI_3 * i as f32;
+                            let pt = Point::new(c.x + r * ang.cos(), c.y + r * ang.sin());
+                            if i == 0 {
+                                b.move_to(pt);
+                            } else {
+                                b.line_to(pt);
+                            }
+                        }
+                        b.close();
+                    })
+                };
+                let outline = |frame: &mut canvas::Frame, c: Point, r: f32, a: f32| {
+                    frame.stroke(
+                        &hex(c, r),
+                        Stroke {
+                            style: Style::Solid(glow(a)),
+                            width: 1.5,
+                            ..Stroke::default()
+                        },
+                    );
+                };
+                outline(frame, Point::new(w * 0.90, h * 0.18), 18.0, 0.12);
+                frame.fill(&hex(Point::new(w * 0.94, h * 0.27), 11.0), glow(0.08));
+                outline(frame, Point::new(w * 0.855, h * 0.295), 9.0, 0.08);
+                outline(frame, Point::new(w * 0.105, h * 0.80), 15.0, 0.10);
+                frame.fill(&hex(Point::new(w * 0.155, h * 0.875), 9.0), glow(0.06));
+            });
+            vec![geom]
+        }
+    }
+
+    Canvas::new(Backdrop).width(Length::Fill).height(Length::Fill).into()
+}
+
+/// The Legacy Collection's header hexagon motif, upgraded from a
+/// flat row of pips to a honeycomb burst: a zigzag cluster whose
+/// lead hex burns hot (halo + bright core + rim) and whose tail
+/// decays through dimmer fills into bare outlines, with a circuit
+/// trace carrying the energy off to the right and terminating in
+/// a node dot. Decorative only; `height` pins the canvas so it
+/// slots into the nav row without affecting the strip's height.
+pub fn hex_chain<'a, M: 'a>(height: f32) -> Element<'a, M> {
+    use iced::widget::canvas::{self, Canvas, Path, Stroke, Style};
+    use iced::{Point, Rectangle, Renderer};
+
+    /// Hexes in the honeycomb cluster (zigzag, alternating above /
+    /// below the centerline).
+    const COUNT: usize = 7;
+    /// Length of the circuit trace running out of the last hex,
+    /// including the terminal node.
+    const TRACE: f32 = 30.0;
+
+    struct HexChain {
+        height: f32,
+    }
+
+    impl<M> canvas::Program<M> for HexChain {
+        type State = ();
+
+        fn draw(
+            &self,
+            _state: &(),
+            renderer: &Renderer,
+            theme: &Theme,
+            bounds: Rectangle,
+            _cursor: iced::mouse::Cursor,
+        ) -> Vec<canvas::Geometry> {
+            let mut frame = canvas::Frame::new(renderer, bounds.size());
+            let primary = theme.palette().primary;
+            let cy = bounds.height / 2.0;
+            // Hex circumradius sized so the zigzag (hex height
+            // √3·r plus the ±0.433r row stagger) fills the canvas.
+            let r = self.height / 2.6;
+
+            // Flat-top hexagon (points left/right), like BNLC's.
+            let hex = |c: Point, r: f32| {
+                Path::new(|b| {
+                    for k in 0..6 {
+                        let ang = std::f32::consts::FRAC_PI_3 * k as f32;
+                        let pt = Point::new(c.x + r * ang.cos(), c.y + r * ang.sin());
+                        if k == 0 {
+                            b.move_to(pt);
+                        } else {
+                            b.line_to(pt);
+                        }
+                    }
+                    b.close();
+                })
+            };
+
+            let center = |i: usize| {
+                Point::new(
+                    r + 1.0 + 1.5 * r * i as f32,
+                    // True honeycomb stagger: adjacent columns sit
+                    // ±(√3/4)·r off the centerline.
+                    cy + if i % 2 == 0 { 0.433 * r } else { -0.433 * r },
+                )
+            };
+
+            for i in 0..COUNT {
+                let c = center(i);
+                match i {
+                    // Lead hex: soft halo underneath, hot core fill,
+                    // bright rim on top — the "live node".
+                    0 => {
+                        frame.fill(&hex(c, r * 1.55), iced::Color { a: 0.12, ..primary });
+                        frame.fill(&hex(c, r), mix(primary, iced::Color::WHITE, 0.25));
+                        frame.stroke(
+                            &hex(c, r),
+                            Stroke {
+                                style: Style::Solid(mix(primary, iced::Color::WHITE, 0.6)),
+                                width: 1.2,
+                                ..Stroke::default()
+                            },
+                        );
+                    }
+                    // Decaying solid tail.
+                    1 => frame.fill(&hex(c, r), iced::Color { a: 0.85, ..primary }),
+                    2 => frame.fill(&hex(c, r), iced::Color { a: 0.40, ..primary }),
+                    // Outline fade-out, floored so the tail never
+                    // quite vanishes (or goes negative).
+                    _ => frame.stroke(
+                        &hex(c, r),
+                        Stroke {
+                            style: Style::Solid(iced::Color {
+                                a: (0.50 - 0.12 * (i - 3) as f32).max(0.10),
+                                ..primary
+                            }),
+                            width: 1.5,
+                            ..Stroke::default()
+                        },
+                    ),
+                }
+            }
+
+            // Circuit trace out of the last hex: a short run at the
+            // hex's row, a 45° jog back to the centerline, then on
+            // to a terminal node dot.
+            let last = center(COUNT - 1);
+            let jog = (last.y - cy).abs();
+            let x0 = last.x + r + 1.0;
+            let trace = Path::new(|b| {
+                b.move_to(Point::new(x0, last.y));
+                b.line_to(Point::new(x0 + 5.0, last.y));
+                b.line_to(Point::new(x0 + 5.0 + jog, cy));
+                b.line_to(Point::new(x0 + TRACE - 5.0, cy));
+            });
+            frame.stroke(
+                &trace,
+                Stroke {
+                    style: Style::Solid(iced::Color { a: 0.45, ..primary }),
+                    width: 1.5,
+                    ..Stroke::default()
+                },
+            );
+            frame.fill(
+                &Path::circle(Point::new(x0 + TRACE - 2.0, cy), 2.0),
+                iced::Color { a: 0.8, ..primary },
+            );
+
+            vec![frame.into_geometry()]
+        }
+    }
+
+    let r = height / 2.6;
+    let w = (r + 1.0 + 1.5 * r * (COUNT - 1) as f32) + r + 1.0 + TRACE + 2.0;
+    Canvas::new(HexChain { height })
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(height))
+        .into()
 }
 
 /// The top accent strip, rendered under the HUD bar. 3-px tall,
@@ -833,18 +1190,20 @@ fn hud_scanline<'a, M: 'a>(override_bg: Option<iced::Background>) -> Element<'a,
 }
 
 /// HUD frame for inline cards (empty-state hints, lobby side
-/// panels, settings groups). Adds a soft drop shadow + thicker
-/// border so panels read as physical widgets sitting on the
-/// console surface rather than CSS rectangles.
+/// panels, settings groups). The full Legacy Collection treatment:
+/// accent-cast plate, glowing accent frame, tech-radius corners —
+/// the PET menu's framed panels, not CSS rectangles.
 pub fn panel(theme: &Theme) -> iced::widget::container::Style {
     let p = theme.extended_palette();
     let bg = theme.palette().background;
     let text = theme.palette().text;
-    // Slightly lifted plate. On dark, mix bg toward text 10% for
-    // a navy plate that reads above the navy body. On light, go
-    // toward white so the card looks like paper on parchment.
+    let primary = theme.palette().primary;
+    // Slightly lifted plate. On dark, mix bg toward the cyan
+    // primary for the PET-blue panel navy that reads above the
+    // navy body. On light, go toward white so the card looks like
+    // paper on ice.
     let plate = if p.is_dark {
-        mix(bg, text, 0.10)
+        mix(bg, primary, 0.10)
     } else {
         mix(bg, iced::Color::WHITE, 0.4)
     };
@@ -852,21 +1211,32 @@ pub fn panel(theme: &Theme) -> iced::widget::container::Style {
         background: Some(iced::Background::Color(plate)),
         text_color: Some(text),
         border: iced::Border {
-            radius: 12.0.into(),
-            width: 2.0,
-            color: if p.is_dark {
-                mix(bg, text, 0.20)
-            } else {
-                mix(bg, text, 0.18)
+            radius: tech_radius(14.0),
+            width: 1.5,
+            color: iced::Color {
+                a: if p.is_dark { 0.65 } else { 0.45 },
+                ..primary
             },
         },
-        shadow: iced::Shadow {
-            color: iced::Color {
-                a: if p.is_dark { 0.55 } else { 0.18 },
-                ..iced::Color::BLACK
-            },
-            offset: iced::Vector::new(0.0, 6.0),
-            blur_radius: 18.0,
+        // On dark the shadow is the frame's accent glow (centered,
+        // no offset — light radiating off the border, not a drop
+        // shadow). Light theme keeps a soft black drop; a colored
+        // glow on a pale page reads as smudge.
+        shadow: if p.is_dark {
+            iced::Shadow {
+                color: iced::Color { a: 0.28, ..primary },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 16.0,
+            }
+        } else {
+            iced::Shadow {
+                color: iced::Color {
+                    a: 0.18,
+                    ..iced::Color::BLACK
+                },
+                offset: iced::Vector::new(0.0, 6.0),
+                blur_radius: 18.0,
+            }
         },
         snap: false,
     }
@@ -892,7 +1262,7 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
             background: Some(iced::Background::Color(dim)),
             text_color: iced::Color { a: 0.35, ..text },
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: tech_radius(10.0),
                 width: 1.0,
                 color: iced::Color {
                     a: 0.15,
@@ -917,9 +1287,11 @@ pub fn tinted_button(theme: &Theme, status: button::Status, accent: iced::Color)
                 .add_stop(0.0, top)
                 .add_stop(1.0, bottom),
         ))),
-        text_color: iced::Color::WHITE,
+        // Ink on the light accents (the PET cyan), white on the
+        // dark ones (danger red) — see [`on_accent`].
+        text_color: on_accent(accent),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: tech_radius(10.0),
             width: 1.0,
             color: mix(accent, iced::Color::WHITE, 0.35),
         },
@@ -1016,7 +1388,7 @@ pub fn chunky_text_input(
     sweeten::widget::text_input::Style {
         background,
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: tech_radius(10.0),
             width,
             color: border_color,
         },
@@ -1077,7 +1449,7 @@ pub fn chunky_pick_list(
                 .add_stop(1.0, plate_bottom),
         )),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: tech_radius(10.0),
             width,
             color: border_color,
         },
@@ -1099,7 +1471,7 @@ pub fn disabled_pick_list_style(theme: &Theme) -> iced::widget::container::Style
         text_color: Some(iced::Color { a: 0.35, ..text }),
         background: Some(iced::Background::Color(dim)),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: tech_radius(10.0),
             width: 1.0,
             color: iced::Color {
                 a: 0.15,
