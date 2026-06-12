@@ -1754,7 +1754,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
             background: Some(iced::Background::Color(p.background.weak.color)),
             text_color: widgets::muted_color(theme),
             border: iced::Border {
-                radius: 10.0.into(),
+                radius: widgets::tech_radius(10.0),
                 width: 1.0,
                 color: p.background.strong.color,
             },
@@ -1799,9 +1799,9 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
                         .add_stop(0.0, top)
                         .add_stop(1.0, bottom),
                 ))),
-                text_color: iced::Color::WHITE,
+                text_color: widgets::on_accent(primary),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: widgets::tech_radius(10.0),
                     width: 2.0,
                     color: widgets::mix(primary, iced::Color::WHITE, 0.45),
                 },

@@ -309,7 +309,7 @@ pub fn window_close(theme: &Theme, status: button::Status) -> button::Style {
         border: iced::Border {
             color: iced::Color::TRANSPARENT,
             width: 0.0,
-            radius: 6.0.into(),
+            radius: tech_radius(8.0),
         },
         shadow: iced::Shadow::default(),
         snap: false,
