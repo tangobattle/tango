@@ -1297,6 +1297,33 @@ fn telemetry_plate_button(theme: &iced::Theme, status: iced::widget::button::Sta
     }
 }
 
+/// [`telemetry_plate_button`] variant for the overlay's Close X:
+/// the same quiet floating chip at rest, but hover and press flip
+/// to a solid danger plate with a white glyph — the titlebar-close
+/// idiom (`widgets::window_close`), adapted to sit over live game
+/// pixels instead of the nav bar.
+fn overlay_close_button(theme: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+    use iced::widget::button::Status;
+    let danger = theme.palette().danger;
+    match status {
+        Status::Hovered | Status::Pressed => iced::widget::button::Style {
+            background: Some(iced::Background::Color(if matches!(status, Status::Pressed) {
+                widgets::mix(danger, iced::Color::BLACK, 0.15)
+            } else {
+                danger
+            })),
+            text_color: iced::Color::WHITE,
+            border: iced::Border {
+                radius: 6.0.into(),
+                width: 1.0,
+                color: iced::Color::TRANSPARENT,
+            },
+            ..Default::default()
+        },
+        _ => telemetry_plate_button(theme, status),
+    }
+}
+
 /// Container twin of [`telemetry_plate_button`]'s resting plate —
 /// the flat translucent fill + hairline border the floating chips
 /// use, for surfaces that aren't buttons (the replay transport
@@ -1743,11 +1770,12 @@ fn corner_commands_overlay<'a>(
     state: &'a State,
 ) -> Element<'a, Message> {
     let now = iced::time::Instant::now();
-    let cmd = |icon: Icon, label: String, msg: Message| -> Element<'a, Message> {
-        let btn = button(icon.widget().size(16.0))
-            .padding([6.0, 8.0])
-            .style(telemetry_plate_button)
-            .on_press(msg);
+    let cmd = |icon: Icon,
+               label: String,
+               msg: Message,
+               style: fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style|
+     -> Element<'a, Message> {
+        let btn = button(icon.widget().size(16.0)).padding([6.0, 8.0]).style(style).on_press(msg);
         iced::widget::tooltip(
             btn,
             container(text(label).size(TEXT_CAPTION))
@@ -1767,9 +1795,14 @@ fn corner_commands_overlay<'a>(
         ActiveSession::PvP(pvp) if pvp.latency().is_some() => Message::OpenDisconnectConfirm,
         _ => Message::Close,
     };
-    let tear_down = cmd(Icon::X, t!(lang, "playback-close"), tear_down_msg);
+    let tear_down = cmd(Icon::X, t!(lang, "playback-close"), tear_down_msg, overlay_close_button);
     let cluster = row![
-        cmd(Icon::Settings, t!(lang, "tab-settings"), Message::OpenSettings),
+        cmd(
+            Icon::Settings,
+            t!(lang, "tab-settings"),
+            Message::OpenSettings,
+            telemetry_plate_button
+        ),
         tear_down,
     ]
     .spacing(6)

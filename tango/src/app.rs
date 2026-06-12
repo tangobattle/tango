@@ -2016,11 +2016,15 @@ impl App {
                 // close is the only affordance for dismissing the
                 // modal — the backdrop is inert. Inline (not a
                 // floating overlay) so the body lays out beneath.
-                let close_btn = widgets::icon_button(
+                // Same chrome as the fullscreen top bar's app-close
+                // X — both are window-dismissal affordances, so
+                // they share the quiet-at-rest / red-on-hover look.
+                let close_btn = widgets::icon_button_styled(
                     lucide_icons::Icon::X,
                     t!(lang, "playback-close"),
-                    Message::Session(session::Message::CloseSettings),
+                    Some(Message::Session(session::Message::CloseSettings)),
                     [4.0, 8.0],
+                    widgets::window_close,
                 );
                 let heading = iced::widget::text(t!(lang, "tab-settings")).size(crate::style::TEXT_HEADING);
                 let header = iced::widget::container(
