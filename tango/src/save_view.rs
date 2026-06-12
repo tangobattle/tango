@@ -1558,6 +1558,18 @@ fn extra_kinds(tab: Tab, loaded: &Loaded) -> Vec<ExtraKind> {
     }
 }
 
+/// Stable copy-feedback key for a tab's copy buttons — shared between
+/// the view (which renders the "Copied!" flash) and the host tabs'
+/// update paths (which fire it once the copy actually lands on the
+/// clipboard). See [`crate::copy_feedback`].
+pub fn copy_flash_key(tab: Tab, image: bool) -> String {
+    format!(
+        "save-view-copy-{}-{}",
+        if image { "image" } else { "text" },
+        tab as u8
+    )
+}
+
 /// Build one tail control. `tab` parameterizes the copy actions'
 /// target.
 fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, kind: ExtraKind) -> Element<'a, Action> {
@@ -1571,16 +1583,22 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
             .text_size(12)
             .style(crate::widgets::chunky_checkbox)
             .into(),
-        ExtraKind::CopyImage => widgets::icon_button(
+        ExtraKind::CopyImage => widgets::copy_icon_button(
+            &copy_flash_key(tab, true),
             Icon::ImageDown,
+            16.0,
             t!(lang, "save-copy-image"),
-            Action::CopyTabImage(tab),
+            t!(lang, "copied"),
+            Some(Action::CopyTabImage(tab)),
             [4.0, 10.0],
         ),
-        ExtraKind::Copy => widgets::icon_button(
+        ExtraKind::Copy => widgets::copy_icon_button(
+            &copy_flash_key(tab, false),
             Icon::ClipboardCopy,
+            16.0,
             t!(lang, "save-copy"),
-            Action::CopyTab(tab),
+            t!(lang, "copied"),
+            Some(Action::CopyTab(tab)),
             [4.0, 10.0],
         ),
     }

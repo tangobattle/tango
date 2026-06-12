@@ -4,6 +4,7 @@ mod anim;
 mod audio;
 mod bnlc;
 mod config;
+mod copy_feedback;
 mod discord;
 mod game;
 mod gamepad;

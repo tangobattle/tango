@@ -322,16 +322,29 @@ impl ReplaysState {
                         let opts = save_view::RenderOpts {
                             folder_grouped: self.save_view.folder_grouped,
                         };
-                        self.loaded
+                        let effect = self
+                            .loaded
                             .as_ref()
                             .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
-                            .map(Effect::CopyText)
+                            .map(Effect::CopyText);
+                        // Only a copy that actually produced text
+                        // earns the "Copied!" flash.
+                        if effect.is_some() {
+                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, false));
+                        }
+                        effect
                     }
-                    save_view::Action::CopyTabImage(tab) => self
-                        .loaded
-                        .as_ref()
-                        .and_then(|l| save_view::tab_as_image(tab, l))
-                        .map(Effect::CopyImage),
+                    save_view::Action::CopyTabImage(tab) => {
+                        let effect = self
+                            .loaded
+                            .as_ref()
+                            .and_then(|l| save_view::tab_as_image(tab, l))
+                            .map(Effect::CopyImage);
+                        if effect.is_some() {
+                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, true));
+                        }
+                        effect
+                    }
                     _ => Some(Effect::SaveViewTask(sv_task.map(Message::SaveViewAction))),
                 }
             }

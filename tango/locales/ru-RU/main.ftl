@@ -170,6 +170,7 @@ session-stat-ping = Сетевая задержка
 navi-style = Стиль
 folder-group = Группировать по чипу
 save-copy = Копировать
+copied = Скопировано!
 save-copy-image = Копировать как изображение
 navi-id = ID Navi
 navi-link-navi = Link Navi

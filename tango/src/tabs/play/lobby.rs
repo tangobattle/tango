@@ -41,6 +41,10 @@ const SETTING_GAP: f32 = 4.0;
 const CONTROL_SLOT: f32 = 36.0;
 const COMMAND_BAR_CONTENT: f32 = SETTING_CAPTION_LINE + SETTING_GAP + CONTROL_SLOT;
 
+/// Copy-feedback key for the link-code copy button — the Play tab's
+/// CopyText handler fires this once the code lands on the clipboard.
+pub(super) const LINK_CODE_FLASH_KEY: &str = "lobby-link-code";
+
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
 /// `None` for a tick.
@@ -143,13 +147,17 @@ impl<'a> Lobby<'a> {
         // COMMAND_BAR_CONTENT) — a strut, not a clip: if the failure
         // text ever wraps taller, the row still grows around it. The
         // status stack soaks up the slack so the settings + Ready
-        // stay packed against the right edge.
+        // stay packed against the right edge; Leave sits tighter to
+        // the status than the right-side zones sit to each other —
+        // they read as one "where things stand" group.
         let leave = container(self.leave_button())
             .height(Length::Fixed(COMMAND_BAR_CONTENT))
             .align_y(iced::alignment::Vertical::Center);
-        let mut bar = row![leave, container(status_col).width(Length::Fill)]
-            .spacing(24)
-            .align_y(Alignment::Center);
+        let left = row![leave, container(status_col).width(Length::Fill)]
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .width(Length::Fill);
+        let mut bar = row![left].spacing(24).align_y(Alignment::Center);
         if !failed {
             bar = bar.push(self.settings_cluster()).push(self.ready_button(compat_ok));
         }
@@ -196,7 +204,9 @@ impl<'a> Lobby<'a> {
                     Some(netplay::ConnectionKind::Relayed) => t!(lang, "lobby-latency-relayed", ms = ms),
                     None => t!(lang, "lobby-latency", ms = ms),
                 };
-                (Icon::Activity, label, None)
+                // Same glyph as the telemetry panel's ping metric, so
+                // "network latency" looks like one thing everywhere.
+                (Icon::ChevronsLeftRightEllipsis, label, None)
             }
             Phase::Connecting { ident, .. } | Phase::Negotiating { ident } => {
                 use netplay::{DirectRole, LinkIdent};
@@ -230,20 +240,17 @@ impl<'a> Lobby<'a> {
         .align_y(Alignment::Center);
         if let Some(code) = copy {
             // Micro copy button, caption-sized so the subtitle stays
-            // a subtitle.
-            line = line.push(
-                iced::widget::tooltip(
-                    button(Icon::Copy.widget().size(TEXT_CAPTION))
-                        .padding([2, 5])
-                        .style(widgets::neutral)
-                        .on_press(Message::CopyText(code)),
-                    container(text(t!(lang, "save-copy")).size(TEXT_CAPTION))
-                        .padding(6)
-                        .style(widgets::tooltip_chrome),
-                    iced::widget::tooltip::Position::Top,
-                )
-                .gap(4),
-            );
+            // a subtitle. Flips to a "Copied!" check for a moment
+            // after the copy lands.
+            line = line.push(widgets::copy_icon_button(
+                LINK_CODE_FLASH_KEY,
+                Icon::Copy,
+                TEXT_CAPTION,
+                t!(lang, "save-copy"),
+                t!(lang, "copied"),
+                Some(Message::CopyText(code)),
+                [2.0, 5.0],
+            ));
         }
         Some(line.into())
     }
@@ -551,7 +558,12 @@ impl<'a> Lobby<'a> {
     /// the glow shadow does the work of "look at me" instead.
     fn ready_button(&self, compat_ok: bool) -> Element<'a, Message> {
         const READY_TEXT: f32 = 16.0;
-        const READY_PAD: [f32; 2] = [10.0, 22.0];
+        const READY_PAD: [f32; 2] = [10.0, 12.0];
+        // Fixed width — just enough for the longest localized label
+        // (vi "Chưa sẵn sàng") — so toggling Ready → Unready →
+        // Starting… never shifts the bar around it. The width does
+        // the sizing; the padding is only a minimum gutter.
+        const READY_W: f32 = 150.0;
         let lang = self.lang;
         let (icon, label, msg, palette): (Icon, String, Option<Message>, ReadyPalette) = if self.state.match_ready {
             // Both committed — match is spinning up. Button is purely
@@ -592,9 +604,17 @@ impl<'a> Lobby<'a> {
         let label_widget = row![icon.widget().size(READY_TEXT), text(label).size(READY_TEXT)]
             .spacing(8)
             .align_y(Alignment::Center);
-        let mut btn = button(label_widget)
-            .padding(READY_PAD)
-            .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
+        // Buttons don't center their content, so the fixed width
+        // needs a Fill container inside to keep short labels
+        // ("Ready") on the button's center line.
+        let mut btn = button(
+            container(label_widget)
+                .width(Length::Fill)
+                .align_x(iced::alignment::Horizontal::Center),
+        )
+        .width(Length::Fixed(READY_W))
+        .padding(READY_PAD)
+        .style(move |theme: &iced::Theme, status| ready_button_style(theme, status, palette));
         if let Some(m) = msg {
             btn = btn.on_press(m);
         }

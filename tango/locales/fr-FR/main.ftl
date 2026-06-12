@@ -169,6 +169,7 @@ session-stat-ping = Latence réseau
 navi-style = Style
 folder-group = Grouper par puce
 save-copy = Copier
+copied = Copié !
 save-copy-image = Copier en image
 navi-id = ID du Navi
 navi-link-navi = Link Navi

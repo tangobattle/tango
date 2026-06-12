@@ -169,6 +169,7 @@ session-stat-ping = Netwerklatentie
 navi-style = Stijl
 folder-group = Groeperen per chip
 save-copy = Kopiëren
+copied = Gekopieerd!
 save-copy-image = Als afbeelding kopiëren
 navi-id = Navi-ID
 navi-link-navi = Link Navi

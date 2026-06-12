@@ -120,6 +120,7 @@ navi-style = Style
 # Folder pane
 folder-group = Group by chip
 save-copy = Copy
+copied = Copied!
 save-copy-image = Copy as image
 save-edit = Edit
 save-edit-save = Save

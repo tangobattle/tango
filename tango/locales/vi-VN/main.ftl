@@ -166,6 +166,7 @@ session-stat-ping = Độ trễ mạng
 navi-style = Style
 folder-group = Nhóm theo chip
 save-copy = Sao chép
+copied = Đã sao chép!
 save-copy-image = Sao chép thành ảnh
 navi-id = Navi ID
 navi-link-navi = Link Navi

@@ -32,9 +32,6 @@ pub enum Message {
     SaveViewAction(save_view::Action),
 
     LinkCodeChanged(String),
-    /// Fill the link-code input with a fresh random
-    /// adjective-word-noun handle from `randomcode::generate`.
-    LinkCodeRandom,
     /// Copy plain text to the clipboard — the lobby's copy-link-code
     /// button. Carries the real code even when streamer mode masks it
     /// on screen.
@@ -370,18 +367,26 @@ impl State {
                 self.link_code = filtered.chars().take(100).collect();
                 None
             }
-            Message::LinkCodeRandom => {
-                self.link_code = crate::randomcode::generate(&config.language);
-                // Drop the freshly-generated code straight onto the
-                // clipboard so the user can paste it into chat
-                // without an extra select+copy round-trip.
-                Some(Effect::CopyText(self.link_code.clone()))
+            Message::CopyText(s) => {
+                // The lobby's copy-link-code button is the only
+                // sender — light its "Copied!" flash as the text
+                // heads for the clipboard.
+                crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
+                Some(Effect::CopyText(s))
             }
-            Message::CopyText(s) => Some(Effect::CopyText(s)),
             Message::FightPressed => {
+                // An empty bar means "just get me a lobby": generate a
+                // fresh random adjective-word-noun code, drop it into
+                // the input so the user can see what they're hosting
+                // on, and connect with it — the lobby subtitle's copy
+                // button hands it to the opponent from there.
+                if self.link_code.trim().is_empty() {
+                    self.link_code = crate::randomcode::generate(&config.language);
+                }
                 // The Fight CTA is gated at the view layer to require
-                // a submittable link code, so reaching this handler
-                // without one is a stale message + safe to ignore.
+                // an empty or submittable link code, so reaching this
+                // handler with a malformed one is a stale message +
+                // safe to ignore.
                 let ident = resolve_link_ident(self.link_code.trim())?;
                 // Clear any leftover after-the-fact error from a prior
                 // attempt — the new attempt's outcome will replace it.
@@ -403,13 +408,25 @@ impl State {
                         let opts = save_view::RenderOpts {
                             folder_grouped: self.save_view.folder_grouped,
                         };
-                        loaded
+                        let effect = loaded
                             .and_then(|l| save_view::tab_as_text(&config.language, tab, l, opts))
-                            .map(Effect::CopyText)
+                            .map(Effect::CopyText);
+                        // Only a copy that actually produced text
+                        // earns the "Copied!" flash.
+                        if effect.is_some() {
+                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, false));
+                        }
+                        effect
                     }
-                    A::CopyTabImage(tab) => loaded
-                        .and_then(|l| save_view::tab_as_image(tab, l))
-                        .map(Effect::CopyImage),
+                    A::CopyTabImage(tab) => {
+                        let effect = loaded
+                            .and_then(|l| save_view::tab_as_image(tab, l))
+                            .map(Effect::CopyImage);
+                        if effect.is_some() {
+                            crate::copy_feedback::flash(&save_view::copy_flash_key(tab, true));
+                        }
+                        effect
+                    }
                     A::PlayClicked => {
                         // Clear stale error from a prior attempt; the
                         // new launch's outcome takes its place.
@@ -1161,12 +1178,16 @@ impl State {
     /// The idle bottom band: link-code input + Fight CTA. The lobby
     /// band replaces this strip for every in-flight netplay phase, so
     /// this strip is pure "enter a link code and fight" —
-    /// singleplayer lives in the save view's Play button.
+    /// singleplayer lives in the save view's Play button. An empty
+    /// input is fair game: Fight generates a random code on the spot
+    /// (see the FightPressed handler), so the only un-submittable
+    /// state is a malformed `/`-command.
     fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
-        let can_submit = resolve_link_ident(self.link_code.trim()).is_some();
+        let trimmed = self.link_code.trim();
+        let can_submit = trimmed.is_empty() || resolve_link_ident(trimmed).is_some();
         let fight_button: Element<'a, Message> = {
             // Same chrome as the lobby's Ready button — both are
             // "commit to a match" CTAs. ready_button_style for
@@ -1189,10 +1210,9 @@ impl State {
             }
             btn.into()
         };
-        // Link-code input fills all the slack between the dice
-        // button on its right and the row's left edge.
-        // text_input doesn't expose a `.height()` method, so we
-        // wrap it in a fixed-height container to match the
+        // Link-code input fills all the slack to the left of the
+        // Fight CTA. text_input doesn't expose a `.height()` method,
+        // so we wrap it in a fixed-height container to match the
         // surrounding controls.
         let link_input: Element<'a, Message> = container(
             text_input(&t!(lang, "play-link-code"), &self.link_code)
@@ -1206,33 +1226,9 @@ impl State {
         .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
         .width(Length::Fill)
         .into();
-        let dice_button: Element<'a, Message> = iced::widget::tooltip(
-            button(Icon::Dice5.widget().size(BOTTOM_SIZE))
-                .padding(BOTTOM_PAD)
-                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-                .style(widgets::neutral)
-                .on_press(Message::LinkCodeRandom),
-            container(text(t!(lang, "play-link-code-random")).size(TEXT_CAPTION))
-                .padding(6)
-                .style(|theme: &iced::Theme| {
-                    let p = theme.extended_palette();
-                    iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.background.strong.color)),
-                        text_color: Some(p.background.strong.text),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4)
-        .into();
 
         container(
-            row![link_input, dice_button, fight_button]
+            row![link_input, fight_button]
                 .spacing(10)
                 .align_y(Alignment::Center)
                 .padding([10, 8]),

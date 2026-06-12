@@ -166,6 +166,7 @@ session-stat-ping = 網路延遲
 navi-style = 風格
 folder-group = 依晶片分組
 save-copy = 複製
+copied = 已複製！
 save-copy-image = 複製為圖片
 navi-id = Navi ID
 navi-link-navi = Link Navi

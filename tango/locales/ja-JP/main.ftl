@@ -122,6 +122,7 @@ navi-style = スタイル
 # Folder pane
 folder-group = チップでまとめる
 save-copy = コピー
+copied = コピーしました！
 save-copy-image = 画像をコピー
 
 # Navi pane
