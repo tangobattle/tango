@@ -6,9 +6,8 @@ edition = "2021"
 [features]
 default = ["client"]
 client = [
-  "dep:datachannel-wrapper",
+  "dep:tango-rtc",
   "dep:url",
-  "dep:urlencoding",
   "dep:tokio-tungstenite",
   "dep:tokio",
   "dep:rand"
@@ -16,7 +15,7 @@ client = [
 proto = []
 
 [dependencies]
-datachannel-wrapper = { path = "../datachannel-wrapper", optional = true }
+tango-rtc = { path = "../tango-rtc", optional = true }
 futures = "0.3"
 futures-util = "0.3"
 http = "0.2"
@@ -29,7 +28,6 @@ tokio-tungstenite = { version = "0.16", features = [
   "rustls-tls-webpki-roots"
 ], optional = true }
 url = { version = "2", optional = true }
-urlencoding = { version = "2", optional = true }
 
 [build-dependencies]
 prost-build = "0.14"

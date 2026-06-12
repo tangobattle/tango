@@ -252,7 +252,7 @@ struct ConnectionHandles {
     /// duration of the session); `None` for the direct-TCP local
     /// transport, whose lifetime is owned by the Sender/Receiver
     /// halves themselves.
-    peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    peer_conn: Option<tango_rtc::PeerConnection>,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
     /// or we're the listener on the direct-TCP path. Drives the
@@ -371,8 +371,8 @@ pub enum DirectRole {
 }
 
 pub struct ConnectionPayload {
-    pub dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub dc: tango_rtc::DataChannel,
+    pub peer_conn: tango_rtc::PeerConnection,
 }
 
 /// Intermediate hand-off between `run_signaling_connect` (server
@@ -403,7 +403,7 @@ pub struct NegotiationOutput {
     pub receiver: crate::net::Receiver,
     /// `None` for the direct-TCP local transport. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
     /// Pre-computed by the per-transport negotiator. WebRTC reads
     /// the SDP type; TCP sets host=true, connect=false.
     pub is_offerer: bool,
@@ -1035,7 +1035,7 @@ pub struct PreMatchData {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// `None` for the direct-TCP local transport; see
     /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
@@ -1283,7 +1283,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
-                .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
+                .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
                 .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),

@@ -20,35 +20,22 @@ const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_mil
 const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
 
 async fn create_data_channel(
-    rtc_config: datachannel_wrapper::RtcConfig,
+    rtc_config: tango_rtc::RtcConfig,
 ) -> Result<
     (
-        datachannel_wrapper::DataChannel,
-        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-        datachannel_wrapper::PeerConnection,
+        tango_rtc::DataChannel,
+        tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
+        tango_rtc::PeerConnection,
     ),
     std::io::Error,
 > {
-    let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
+    let (mut peer_conn, mut event_rx) = tango_rtc::PeerConnection::new(rtc_config)?;
 
-    let dc = peer_conn.create_data_channel(
-        "tango",
-        datachannel_wrapper::DataChannelInit::default()
-            .reliability(datachannel_wrapper::Reliability {
-                unordered: false,
-                unreliable: false,
-                max_packet_life_time: 0,
-                max_retransmits: 0,
-            })
-            .negotiated()
-            .manual_stream()
-            .stream(0),
-    )?;
+    let dc = peer_conn.create_data_channel("tango")?;
 
     loop {
-        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
-            datachannel_wrapper::GatheringState::Complete,
-        )) = event_rx.recv().await
+        if let Some(tango_rtc::PeerConnectionEvent::GatheringStateChange(tango_rtc::GatheringState::Complete)) =
+            event_rx.recv().await
         {
             break;
         }
@@ -109,10 +96,8 @@ fn is_transient(e: &Error) -> bool {
     }
 }
 
-pub type Connecting = futures_util::future::BoxFuture<
-    'static,
-    Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
->;
+pub type Connecting =
+    futures_util::future::BoxFuture<'static, Result<(tango_rtc::DataChannel, tango_rtc::PeerConnection), Error>>;
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
 /// `Hello`, build a new peer connection from the offered ICE servers, and send
@@ -127,9 +112,9 @@ async fn establish(
 ) -> Result<
     (
         SignalingStream,
-        datachannel_wrapper::DataChannel,
-        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-        datachannel_wrapper::PeerConnection,
+        tango_rtc::DataChannel,
+        tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
+        tango_rtc::PeerConnection,
     ),
     Error,
 > {
@@ -185,50 +170,31 @@ async fn establish(
 
     log::info!("hello received from signaling stream: {:?}", hello);
 
-    let mut rtc_config = datachannel_wrapper::RtcConfig::new(
-        &hello
+    let rtc_config = tango_rtc::RtcConfig {
+        ice_servers: hello
             .ice_servers
             .into_iter()
-            .flat_map(|ice_server| {
-                ice_server
+            .map(|ice_server| tango_rtc::IceServer {
+                urls: ice_server
                     .urls
                     .into_iter()
-                    .flat_map(|url| {
-                        let Some(colon_idx) = url.chars().position(|c| c == ':') else {
-                            return vec![];
-                        };
-
-                        let proto = &url[..colon_idx];
-                        let rest = &url[colon_idx + 1..];
-
-                        if (proto == "turn" || proto == "turns") && use_relay == Some(false) {
-                            return vec![];
-                        }
-
-                        // libdatachannel doesn't support TURN over TCP: in fact, it explodes!
-                        if url.chars().skip_while(|c| *c != '?').collect::<String>() == "?transport=tcp" {
-                            return vec![];
-                        }
-
-                        if let (Some(username), Some(credential)) = (&ice_server.username, &ice_server.credential) {
-                            vec![format!(
-                                "{}:{}:{}@{}",
-                                proto,
-                                urlencoding::encode(username),
-                                urlencoding::encode(credential),
-                                rest
-                            )]
-                        } else {
-                            vec![format!("{}:{}", proto, rest)]
-                        }
+                    .filter(|url| {
+                        // Relaying explicitly disabled: don't even gather
+                        // relay candidates.
+                        !((url.starts_with("turn:") || url.starts_with("turns:")) && use_relay == Some(false))
                     })
-                    .collect::<Vec<_>>()
+                    .collect(),
+                username: ice_server.username,
+                credential: ice_server.credential,
             })
-            .collect::<Vec<_>>(),
-    );
-    if use_relay == Some(true) {
-        rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
-    }
+            .collect(),
+        ice_transport_policy: if use_relay == Some(true) {
+            tango_rtc::TransportPolicy::Relay
+        } else {
+            tango_rtc::TransportPolicy::All
+        },
+        ..Default::default()
+    };
     let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
 
     signaling_stream
@@ -271,7 +237,7 @@ enum WaitOutcome {
 /// anything become `Dropped`, which the caller may transparently reconnect.
 async fn wait_for_exchange(
     signaling_stream: &mut SignalingStream,
-    peer_conn: &mut datachannel_wrapper::PeerConnection,
+    peer_conn: &mut tango_rtc::PeerConnection,
 ) -> Result<WaitOutcome, Error> {
     let mut ping_interval = tokio::time::interval_at(tokio::time::Instant::now() + PING_INTERVAL, PING_INTERVAL);
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -349,10 +315,11 @@ async fn wait_for_exchange(
                 log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
                 // From here on the peer has committed to this offer: any failure
-                // is fatal, never a reconnect.
-                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                    sdp_type: datachannel_wrapper::SdpType::Offer,
+                // is fatal, never a reconnect. Accepting the remote offer
+                // implicitly rolls back our own pending offer and produces
+                // the answer as our new local description.
+                peer_conn.set_remote_description(tango_rtc::SessionDescription {
+                    sdp_type: tango_rtc::SdpType::Offer,
                     sdp: offer.sdp.clone(),
                 })?;
 
@@ -375,8 +342,8 @@ async fn wait_for_exchange(
             Some(crate::proto::signaling::packet::Which::Answer(answer)) => {
                 log::info!("received an answer, this is the impolite side");
 
-                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                    sdp_type: datachannel_wrapper::SdpType::Answer,
+                peer_conn.set_remote_description(tango_rtc::SessionDescription {
+                    sdp_type: tango_rtc::SdpType::Answer,
                     sdp: answer.sdp.clone(),
                 })?;
                 return Ok(WaitOutcome::Exchanged);
@@ -462,18 +429,18 @@ pub async fn connect(
         loop {
             let signal = event_rx.recv().await.unwrap();
 
-            if let datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) = signal {
+            if let tango_rtc::PeerConnectionEvent::ConnectionStateChange(c) = signal {
                 match c {
-                    datachannel_wrapper::ConnectionState::Connected => {
+                    tango_rtc::ConnectionState::Connected => {
                         break;
                     }
-                    datachannel_wrapper::ConnectionState::Disconnected => {
+                    tango_rtc::ConnectionState::Disconnected => {
                         return Err(Error::PeerConnectionDisconnected);
                     }
-                    datachannel_wrapper::ConnectionState::Failed => {
+                    tango_rtc::ConnectionState::Failed => {
                         return Err(Error::PeerConnectionFailed);
                     }
-                    datachannel_wrapper::ConnectionState::Closed => {
+                    tango_rtc::ConnectionState::Closed => {
                         return Err(Error::PeerConnectionClosed);
                     }
                     _ => {}

@@ -52,7 +52,7 @@ mgba = { path = "../mgba" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }
-datachannel-wrapper = { path = "../datachannel-wrapper" }
+tango-rtc = { path = "../tango-rtc" }
 bincode = "1"
 async-trait = "0.1"
 sdl3 = { version = "0.18", default-features = false, features = ["build-from-source-static"] }
@@ -101,7 +101,7 @@ anyhow = "1"
 # Linux, a Mach exception server on macOS (needed for
 # EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored
 # handler on Windows. We install this in the child UI process so
-# segfaults coming from mgba / datachannel C code land in the
+# segfaults coming from mgba C code land in the
 # same log file as Rust panics.
 #
 # Note: crash-handler's Windows code path imports `_invoke_watson`

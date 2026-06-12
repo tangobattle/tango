@@ -1,7 +1,7 @@
 //! Crash logging. Installs a Rust panic hook and a native crash
 //! handler ([`crash_handler::CrashHandler`]) so segfaults / SEH
 //! exceptions / mach EXC_BAD_ACCESS — i.e. crashes coming from
-//! mgba, datachannel, or wgpu / driver code — land in the same
+//! mgba or wgpu / driver code — land in the same
 //! log file as ordinary panics.
 //!
 //! The supervisor process pipes the child's stderr into the
@@ -100,7 +100,7 @@ fn describe(cc: &crash_handler::CrashContext) -> String {
 // fails with `undefined reference to '_invoke_watson'`. Provide a
 // stub that aborts — Watson reporting was already going to kill us,
 // abort just skips the dialog. The SEH / vectored handler path
-// (what actually catches mgba / datachannel segfaults) doesn't
+// (what actually catches mgba segfaults) doesn't
 // touch this.
 #[cfg(all(windows, target_env = "gnu"))]
 #[no_mangle]

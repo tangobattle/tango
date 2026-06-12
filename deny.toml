@@ -215,7 +215,10 @@ unknown-git = "warn"
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
-allow-git = []
+allow-git = [
+    # str0m close_notify fork (upstream PR #956); see tango-rtc/Cargo.toml.
+    "https://github.com/kvasilye/str0m",
+]
 
 [sources.allow-org]
 # 1 or more github.com organizations to allow git sources for
