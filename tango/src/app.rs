@@ -845,14 +845,26 @@ impl App {
                 iced::Task::none()
             }
             Message::Window(id, ev) => {
-                if let iced::window::Event::Resized(size) = ev {
-                    // The Resized size could be either a user-driven
-                    // resize or the result of maximize/unmaximize.
-                    // We need is_maximized to decide whether to keep
-                    // it as the restore size, so query it and finish
-                    // the bookkeeping in WindowMaximizedQueried.
-                    return iced::window::is_maximized(id)
-                        .map(move |maximized| Message::WindowMaximizedQueried { size, maximized });
+                match ev {
+                    iced::window::Event::Resized(size) => {
+                        // The Resized size could be either a user-driven
+                        // resize or the result of maximize/unmaximize.
+                        // We need is_maximized to decide whether to keep
+                        // it as the restore size, so query it and finish
+                        // the bookkeeping in WindowMaximizedQueried.
+                        return iced::window::is_maximized(id)
+                            .map(move |maximized| Message::WindowMaximizedQueried { size, maximized });
+                    }
+                    iced::window::Event::Moved(point) => {
+                        // Entering fullscreen parks the window at its
+                        // monitor's origin and fires Moved — so the
+                        // persisted value at quit time identifies the
+                        // fullscreen monitor for the next launch (see
+                        // Config::last_window_position).
+                        self.config.last_window_position = Some((point.x, point.y));
+                        self.persist_config();
+                    }
+                    _ => {}
                 }
                 iced::Task::none()
             }

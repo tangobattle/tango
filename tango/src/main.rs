@@ -285,6 +285,16 @@ fn run_app() -> iced::Result {
     // in main without threading a Config handle into App::new.
     let geom_cfg = config::Config::load_or_create();
     let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1000.0, 640.0));
+    // Fullscreen launches restore the last window position first so
+    // the borderless fullscreen claims the monitor the user quit
+    // from (while fullscreen the window sits at that monitor's
+    // origin, and Moved events keep the position persisted).
+    // Windowed launches keep the OS default placement — a stale
+    // fullscreen origin would pin the window to a corner.
+    let start_position = match geom_cfg.last_window_position {
+        Some((x, y)) if geom_cfg.fullscreen => iced::window::Position::Specific(iced::Point::new(x, y)),
+        _ => iced::window::Position::default(),
+    };
 
     iced::application(App::new, App::update, App::view)
         .settings(settings)
@@ -299,6 +309,7 @@ fn run_app() -> iced::Result {
             // maximized state come from the last shutdown.
             size: iced::Size::new(start_w, start_h),
             min_size: Some(iced::Size::new(800.0, 600.0)),
+            position: start_position,
             maximized: geom_cfg.last_window_maximized,
             fullscreen: geom_cfg.fullscreen,
             // OS-level window icon (title bar + taskbar). Same

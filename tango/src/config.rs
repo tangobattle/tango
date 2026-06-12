@@ -201,6 +201,14 @@ pub struct Config {
     /// `iced::window::Settings::maximized` at startup.
     #[serde(default)]
     pub last_window_maximized: bool,
+    /// Last window position (logical pixels), updated on every Moved
+    /// event. Only applied at startup when launching fullscreen:
+    /// while fullscreen the window sits at its monitor's origin, so
+    /// restoring that position before the fullscreen mode kicks in
+    /// puts the app back on the monitor it was quit from. Windowed
+    /// launches keep the OS default placement.
+    #[serde(default)]
+    pub last_window_position: Option<(f32, f32)>,
     /// Whether the app should launch (and stay) in fullscreen. The
     /// graphics-settings toggle calls `iced::window::set_mode` live;
     /// this value persists the user's choice across restarts.
@@ -264,6 +272,7 @@ impl Default for Config {
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
+            last_window_position: None,
             fullscreen: false,
             ui_scale: default_ui_scale(),
             input_mapping: crate::input::Mapping::default(),
