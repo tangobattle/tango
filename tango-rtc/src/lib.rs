@@ -184,18 +184,7 @@ impl Shared {
             sdp: offer.to_sdp_string(),
         });
     }
-}
 
-/// The engine behind the channel halves: each half holds an `Arc` of this,
-/// so the transport lives until the last half is dropped.
-struct Transport {
-    shared: Arc<Shared>,
-    /// Dropping this (i.e. dropping the whole `Transport`) tears down the
-    /// driver task.
-    _shutdown_tx: tokio::sync::oneshot::Sender<()>,
-}
-
-impl Drop for Transport {
     /// Hang up synchronously: DTLS close_notify, straight onto the wire.
     ///
     /// The driver task has its own graceful close on shutdown, but it only
@@ -204,8 +193,14 @@ impl Drop for Transport {
     /// remote has to go out inline here, before `_shutdown_tx` drops. The
     /// remote turns close_notify into a prompt EOF instead of sitting out
     /// its disconnect grace. Best effort: one unacknowledged datagram.
-    fn drop(&mut self) {
-        let mut inner = self.shared.inner.lock().unwrap();
+    ///
+    /// Called from [`Transport`]'s `Drop` and from the
+    /// [`hangup_all_at_exit`] `atexit` hook (exit paths that never unwind),
+    /// possibly both — idempotent via the `is_alive` check, and safe off
+    /// the runtime: everything here is sync, down to the non-blocking
+    /// [`driver::send_transmit_sync`].
+    fn hangup(&self) {
+        let mut inner = self.inner.lock().unwrap();
         if !inner.rtc.is_alive() {
             return;
         }
@@ -236,6 +231,61 @@ impl Drop for Transport {
             }
         }
     }
+}
+
+/// The engine behind the channel halves: each half holds an `Arc` of this,
+/// so the transport lives until the last half is dropped.
+struct Transport {
+    shared: Arc<Shared>,
+    /// Dropping this (i.e. dropping the whole `Transport`) tears down the
+    /// driver task.
+    _shutdown_tx: tokio::sync::oneshot::Sender<()>,
+}
+
+impl Drop for Transport {
+    fn drop(&mut self) {
+        self.shared.hangup();
+    }
+}
+
+/// Transports that may still be live at process exit, for
+/// [`hangup_all_at_exit`]. Some exit paths never unwind, so neither the
+/// driver's graceful close nor [`Transport`]'s `Drop` hangup gets a chance
+/// to run: on macOS, Cmd+Q goes through `-[NSApplication terminate:]`,
+/// which calls `exit(3)` from inside the event loop (winit's `run` never
+/// returns), and the app exits other flows via `std::process::exit` too.
+/// Both still run `atexit` handlers, so a hook walks this registry and
+/// hangs up whatever is left — otherwise the remote sits out its full
+/// disconnect grace instead of getting a prompt close_notify EOF.
+static LIVE_TRANSPORTS: Mutex<Vec<std::sync::Weak<Shared>>> = Mutex::new(Vec::new());
+
+extern "C" fn hangup_all_at_exit() {
+    // Unwinding out of an `extern "C"` exit handler would abort — and trip
+    // the crash supervisor's dialog on what the user meant as a quit. The
+    // hangup is best-effort anyway; a panic just forfeits the courtesy.
+    let _ = std::panic::catch_unwind(|| {
+        let live = std::mem::take(&mut *LIVE_TRANSPORTS.lock().unwrap());
+        for shared in live.iter().filter_map(std::sync::Weak::upgrade) {
+            shared.hangup();
+        }
+    });
+}
+
+/// Put `shared` on the exit-hangup registry, installing the `atexit` hook
+/// on first use. Weak entries: a transport dropped the normal way already
+/// hung up, and (`hangup` being idempotent past `is_alive`) one that races
+/// the exit just no-ops.
+fn register_for_exit_hangup(shared: &Arc<Shared>) {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| {
+        extern "C" {
+            fn atexit(cb: extern "C" fn()) -> std::os::raw::c_int;
+        }
+        unsafe { atexit(hangup_all_at_exit) };
+    });
+    let mut live = LIVE_TRANSPORTS.lock().unwrap();
+    live.retain(|w| w.strong_count() > 0);
+    live.push(Arc::downgrade(shared));
 }
 
 fn other_err<E: std::fmt::Display>(e: E) -> std::io::Error {
@@ -306,22 +356,19 @@ impl DataChannel {
             shutdown_rx,
         }));
 
-        let transport = Arc::new(Transport {
-            shared,
-            _shutdown_tx: shutdown_tx,
-        });
+        register_for_exit_hangup(&shared);
 
         Ok((
             DataChannel {
                 sender: DataChannelSender {
                     outgoing_tx,
                     status_rx,
-                    transport: transport.clone(),
+                    transport: Transport {
+                        shared,
+                        _shutdown_tx: shutdown_tx,
+                    },
                 },
-                receiver: DataChannelReceiver {
-                    message_rx,
-                    _transport: transport,
-                },
+                receiver: DataChannelReceiver { message_rx },
             },
             event_rx,
         ))
@@ -445,7 +492,7 @@ fn synthesize_candidate(addr: std::net::SocketAddr, typ: &str) -> String {
 pub struct DataChannelSender {
     outgoing_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
-    transport: Arc<Transport>,
+    transport: Transport,
 }
 
 impl DataChannelSender {
@@ -484,8 +531,6 @@ impl DataChannelSender {
 
 pub struct DataChannelReceiver {
     message_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    /// Keep-alive only: the transport lives as long as either half does.
-    _transport: Arc<Transport>,
 }
 
 impl DataChannelReceiver {
@@ -495,5 +540,83 @@ impl DataChannelReceiver {
 
     pub fn unsplit(self, tx: DataChannelSender) -> DataChannel {
         tx.unsplit(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn make_peer() -> (DataChannel, tokio::sync::mpsc::Receiver<ConnectionEvent>) {
+        let (dc, mut event_rx) = DataChannel::new(
+            RtcConfig {
+                include_loopback: true,
+                ..Default::default()
+            },
+            "tango",
+        )
+        .unwrap();
+        loop {
+            if let Some(ConnectionEvent::GatheringStateChange(GatheringState::Complete)) = event_rx.recv().await {
+                break;
+            }
+        }
+        (dc, event_rx)
+    }
+
+    /// The exit-paths-that-never-unwind case (macOS Cmd+Q's `exit(3)`,
+    /// `std::process::exit`): no `Drop` runs on the quitting side, only the
+    /// `atexit` hook — the remote must still hear the hangup promptly
+    /// instead of waiting out its disconnect grace. A unit test (not in
+    /// tests/loopback.rs with the other teardown tests) because the hook is
+    /// deliberately private.
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
+    async fn test_exit_hook_hangs_up_leaked_transport() {
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let (mut dc_a, mut events_a) = make_peer().await;
+            let (mut dc_b, mut events_b) = make_peer().await;
+
+            dc_b.set_remote_description(dc_a.local_description().unwrap()).unwrap();
+            dc_a.set_remote_description(dc_b.local_description().unwrap()).unwrap();
+
+            for events in [&mut events_a, &mut events_b] {
+                loop {
+                    match events.recv().await.unwrap() {
+                        ConnectionEvent::ConnectionStateChange(ConnectionState::Connected) => break,
+                        ConnectionEvent::ConnectionStateChange(
+                            state @ (ConnectionState::Failed | ConnectionState::Closed | ConnectionState::Disconnected),
+                        ) => panic!("connection reached {:?} before Connected", state),
+                        _ => {}
+                    }
+                }
+            }
+
+            dc_a.send(b"ping").await.unwrap();
+            assert_eq!(dc_b.receive().await.unwrap(), b"ping");
+
+            // Keep only A on the registry: the hook hangs up everything
+            // registered, and hanging B up too would EOF it through its own
+            // teardown — passing the assert below without close_notify ever
+            // crossing the wire.
+            let a_shared = Arc::downgrade(&dc_a.sender.transport.shared);
+            LIVE_TRANSPORTS.lock().unwrap().retain(|w| w.ptr_eq(&a_shared));
+
+            // "Cmd+Q": nothing on A drops — its driver task even keeps
+            // running (so absent the hook, the connection would stay alive
+            // indefinitely and B's receive() would never return).
+            std::mem::forget(dc_a);
+            std::mem::forget(events_a);
+            hangup_all_at_exit();
+
+            // B hears the hangup promptly.
+            assert_eq!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), dc_b.receive())
+                    .await
+                    .expect("EOF should arrive promptly, not via disconnect grace"),
+                None
+            );
+        })
+        .await
+        .unwrap();
     }
 }
