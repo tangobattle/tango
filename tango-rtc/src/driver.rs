@@ -375,24 +375,54 @@ fn drain_rtc(inner: &mut Inner, liveness: &mut Liveness) -> Result<(Drained, Ins
     }
 }
 
-/// Try to hand an outgoing message to SCTP. Gives the message back if it
-/// can't be written *yet* (channel not open, send buffer full), so the
-/// caller keeps it parked; a vanished channel swallows it.
-fn write_to_channel(inner: &mut Inner, message: Vec<u8>) -> Option<Vec<u8>> {
-    // Channel not open yet.
-    let Some(id) = inner.channel_id else {
-        return Some(message);
-    };
-    // A gone channel (`?`) swallows the message; it has nowhere to go.
-    let mut channel = inner.rtc.channel(id)?;
-    match channel.write(true, &message) {
-        Ok(true) => None,
-        // SCTP send buffer is full; retry on the next pass.
-        Ok(false) => Some(message),
-        Err(e) => {
-            log::warn!("channel write failed: {}", e);
-            None
+/// The handoff between `outgoing_rx` (async, pulled by the select) and
+/// SCTP's send buffer (sans-IO, refusable try-writes): one message, parked
+/// here until SCTP takes it.
+///
+/// There is no event for "send buffer freed" or "channel opened" to await,
+/// so [`Outbox::flush`] runs on every loop pass and the retry rides
+/// whatever woke the loop — usually the very SACK datagram that freed the
+/// space. While a message is parked the select stops pulling from
+/// `outgoing_rx` ([`Outbox::has_room`]), so a full SCTP buffer backs up
+/// through the bounded channel and blocks `DataChannel::send`:
+/// backpressure, with exactly one message of slack.
+#[derive(Default)]
+struct Outbox {
+    parked: Option<Vec<u8>>,
+}
+
+impl Outbox {
+    /// Move the parked message, if any, into SCTP. Not-writable-*yet*
+    /// (channel not open, send buffer full) keeps it parked for the next
+    /// pass; a vanished channel discards it.
+    fn flush(&mut self, inner: &mut Inner) {
+        let Some(message) = self.parked.take() else {
+            return;
+        };
+        let Some(id) = inner.channel_id else {
+            // Channel not open yet.
+            self.parked = Some(message);
+            return;
+        };
+        let Some(mut channel) = inner.rtc.channel(id) else {
+            // Channel is gone; the message has nowhere to go.
+            return;
+        };
+        match channel.write(true, &message) {
+            Ok(true) => {}
+            // SCTP send buffer is full; retry on the next pass.
+            Ok(false) => self.parked = Some(message),
+            Err(e) => log::warn!("channel write failed: {}", e),
         }
+    }
+
+    fn has_room(&self) -> bool {
+        self.parked.is_none()
+    }
+
+    fn park(&mut self, message: Vec<u8>) {
+        debug_assert!(self.parked.is_none(), "outbox already occupied");
+        self.parked = Some(message);
     }
 }
 
@@ -434,7 +464,7 @@ async fn dispatch(
     }
 }
 
-/// The driver's steady state: write parked output into SCTP, drain str0m,
+/// The driver's steady state: flush the outbox into SCTP, drain str0m,
 /// dispatch what it produced, check liveness, then sleep until the next
 /// wakeup source — datagram, outgoing message, API call, timeout or
 /// shutdown — and go again.
@@ -443,10 +473,7 @@ async fn main_loop(
     routes: &HashMap<SocketAddr, Route>,
     net_rx: &mut tokio::sync::mpsc::Receiver<Incoming>,
 ) -> Exit {
-    // The one queued outgoing message str0m's SCTP buffer didn't take yet.
-    // While occupied we don't pull more from outgoing_rx, so backpressure
-    // propagates to `DataChannel::send`.
-    let mut parked_out: Option<Vec<u8>> = None;
+    let mut outbox = Outbox::default();
     let mut outgoing_done = false;
     let mut net_done = false;
     // Moved (not cloned!) out of the driver so that dropping it on channel
@@ -458,15 +485,12 @@ async fn main_loop(
     loop {
         let (drained, rtc_deadline) = {
             let mut inner = driver.shared.inner.lock().unwrap();
-            // Write a parked outgoing message into SCTP before draining, so
-            // the drain carries it onto the wire in this same pass.
-            // (Writing after the drain would leave it sitting in SCTP's
-            // send buffer until the next — possibly unrelated, possibly
-            // hundreds of ms away — wakeup, which shows up directly as
-            // latency jitter.)
-            if let Some(message) = parked_out.take() {
-                parked_out = write_to_channel(&mut inner, message);
-            }
+            // Flush before draining, so the message rides this same pass
+            // onto the wire. (Flushing after the drain would leave it
+            // sitting in SCTP's send buffer until the next — possibly
+            // unrelated, possibly hundreds of ms away — wakeup, which
+            // shows up directly as latency jitter.)
+            outbox.flush(&mut inner);
             match drain_rtc(&mut inner, &mut liveness) {
                 Ok(drained) => drained,
                 Err(failure) => return Exit::Failed(failure),
@@ -529,9 +553,9 @@ async fn main_loop(
                     None => net_done = true,
                 }
             }
-            outgoing = driver.outgoing_rx.recv(), if !outgoing_done && parked_out.is_none() => {
+            outgoing = driver.outgoing_rx.recv(), if !outgoing_done && outbox.has_room() => {
                 match outgoing {
-                    Some(message) => parked_out = Some(message),
+                    Some(message) => outbox.park(message),
                     // The DataChannelSender was dropped; no more sends.
                     None => outgoing_done = true,
                 }
