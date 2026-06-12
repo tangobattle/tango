@@ -1,6 +1,6 @@
 //! The per-connection driver task: gathers candidates, then pumps the
 //! str0m state machine — socket I/O in, transmits out, events onto the
-//! wrapper's channels — until the `PeerConnection` is dropped or the
+//! wrapper's channels — until the last channel half is dropped or the
 //! connection dies.
 
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::{gather, ConnectionState, DataChannelStatus, Failure, GatheringState, Inner, PeerConnectionEvent, Shared};
+use crate::{gather, ConnectionEvent, ConnectionState, DataChannelStatus, Failure, GatheringState, Inner, Shared};
 
 /// How long ICE may sit in `Disconnected` before we give the connection up
 /// for dead. str0m's ICE never reaches a terminal failed state on its own.
@@ -21,7 +21,7 @@ const MAX_DATAGRAM: usize = 2048;
 pub(crate) struct Driver {
     pub shared: Arc<Shared>,
     pub config: crate::RtcConfig,
-    pub event_tx: tokio::sync::mpsc::Sender<PeerConnectionEvent>,
+    pub event_tx: tokio::sync::mpsc::Sender<ConnectionEvent>,
     pub status_tx: tokio::sync::watch::Sender<DataChannelStatus>,
     pub message_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     pub outgoing_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
@@ -40,7 +40,7 @@ pub(crate) enum Route {
 type Incoming = (SocketAddr, SocketAddr, Vec<u8>, Instant);
 
 enum Exit {
-    /// Deliberate teardown: the `PeerConnection` was dropped.
+    /// Deliberate teardown: the last channel half was dropped.
     Closed,
     /// The connection died underneath us.
     Failed(Failure),
@@ -49,7 +49,7 @@ enum Exit {
 pub(crate) async fn run(mut driver: Driver) {
     let _ = driver
         .event_tx
-        .send(PeerConnectionEvent::GatheringStateChange(GatheringState::InProgress))
+        .send(ConnectionEvent::GatheringStateChange(GatheringState::InProgress))
         .await;
 
     let gathered = tokio::select! {
@@ -73,7 +73,7 @@ pub(crate) async fn run(mut driver: Driver) {
     }
     let _ = driver
         .event_tx
-        .send(PeerConnectionEvent::GatheringStateChange(GatheringState::Complete))
+        .send(ConnectionEvent::GatheringStateChange(GatheringState::Complete))
         .await;
 
     // Reader tasks: one per socket/relay, all funneling into net_rx. They
@@ -128,7 +128,7 @@ pub(crate) async fn run(mut driver: Driver) {
     }
     drop(net_tx);
 
-    // Share the route map with `PeerConnection::drop`, which uses it to get
+    // Share the route map with `Transport`'s `Drop`, which uses it to get
     // a close_notify out synchronously when this task will never be polled
     // again (process exit tears the runtime down by dropping tasks).
     let routes = Arc::new(routes);
@@ -166,7 +166,7 @@ pub(crate) async fn run(mut driver: Driver) {
     });
     let _ = driver
         .event_tx
-        .send(PeerConnectionEvent::ConnectionStateChange(event))
+        .send(ConnectionEvent::ConnectionStateChange(event))
         .await;
     // driver.message_tx drops here, signaling EOF to `receive()`.
 }
@@ -213,7 +213,7 @@ async fn send_transmit(
 }
 
 /// Non-blocking, runtime-independent variant of [`send_transmit`], for
-/// [`crate::PeerConnection`]'s `Drop`. Host sockets use `try_send_to`
+/// [`crate::Transport`]'s `Drop`. Host sockets use `try_send_to`
 /// (a plain non-blocking syscall); relayed sends get the one poll an
 /// established TURN channel needs (ChannelData wrap + non-blocking UDP
 /// write) and are abandoned if they'd wait. Best effort by nature —
@@ -257,7 +257,7 @@ async fn main_loop(
     let mut net_done = false;
     // Moved (not cloned!) out of the driver so that dropping it on channel
     // close is an immediate EOF for `receive()`, even though the driver —
-    // whose lifetime is the PeerConnection's — keeps running.
+    // whose lifetime is the transport's — keeps running.
     let mut message_tx = driver.message_tx.take();
     let mut disconnected_since: Option<Instant> = None;
     let mut exchange_done_at: Option<Instant> = None;
@@ -390,7 +390,7 @@ async fn main_loop(
         for state in events {
             let _ = driver
                 .event_tx
-                .send(PeerConnectionEvent::ConnectionStateChange(state))
+                .send(ConnectionEvent::ConnectionStateChange(state))
                 .await;
         }
         if remote_closed {

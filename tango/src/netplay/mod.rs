@@ -243,16 +243,12 @@ struct LocalCommit {
 
 /// Handles we hang onto for the duration of a connected session:
 /// the Sender (locked behind a tokio Mutex because the lobby loop
-/// + the eventual battle loop share it), and the peer-connection
-/// itself so the underlying RTC stays up. The PvP-handoff path
-/// (`take_pre_match`) drains these into the PvpSession.
+/// + the eventual battle loop share it). On both transports the
+/// Sender/Receiver halves own the underlying connection's
+/// lifetime themselves. The PvP-handoff path (`take_pre_match`)
+/// drains these into the PvpSession.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `Some` for WebRTC peer connections (kept alive for the
-    /// duration of the session); `None` for the direct-TCP local
-    /// transport, whose lifetime is owned by the Sender/Receiver
-    /// halves themselves.
-    peer_conn: Option<tango_rtc::PeerConnection>,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
     /// or we're the listener on the direct-TCP path. Drives the
@@ -354,9 +350,9 @@ pub enum Message {
 
 /// Single-take Arc<Mutex<Option<T>>> we use to pass non-Clone /
 /// non-Sync payloads through iced's `Task::perform` boundary. The
-/// runtime needs `Message: Clone + Send`, and DataChannel /
-/// PeerConnection aren't Clone — this wrapper papers over that by
-/// taking the inner once on receipt and going None afterwards.
+/// runtime needs `Message: Clone + Send`, and DataChannel isn't
+/// Clone — this wrapper papers over that by taking the inner once
+/// on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
 /// Which side of a direct-TCP connection the local instance is.
@@ -372,7 +368,6 @@ pub enum DirectRole {
 
 pub struct ConnectionPayload {
     pub dc: tango_rtc::DataChannel,
-    pub peer_conn: tango_rtc::PeerConnection,
 }
 
 /// Intermediate hand-off between `run_signaling_connect` (server
@@ -396,14 +391,16 @@ impl std::fmt::Debug for ConnectionPayload {
 }
 
 /// Output of the negotiate task — the post-handshake sender /
-/// receiver (the lobby + match loops own them from here) and the
-/// peer-conn handle they need to stay alive against.
+/// receiver (the lobby + match loops own them from here; they
+/// also own the transport's lifetime).
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    /// `None` for the direct-TCP local transport. See
-    /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: Option<tango_rtc::PeerConnection>,
+    /// How the transport actually flows, for the lobby's ping
+    /// line. Direct by construction on the raw-TCP path; WebRTC
+    /// reads the selected ICE pair before splitting the channel —
+    /// a `typ relay` candidate on either end means TURN.
+    pub connection_kind: Option<ConnectionKind>,
     /// Pre-computed by the per-transport negotiator. WebRTC reads
     /// the SDP type; TCP sets host=true, connect=false.
     pub is_offerer: bool,
@@ -522,24 +519,9 @@ impl State {
                     return iced::Task::none();
                 };
                 let sender = out.sender.clone();
-                // Resolve how the transport actually flows for the
-                // lobby's ping line. The raw-TCP path (no peer
-                // connection) is direct by construction; WebRTC
-                // reads the selected ICE pair — a `typ relay`
-                // candidate on either end means TURN.
-                self.lobby.connection_kind = match &out.peer_conn {
-                    None => Some(ConnectionKind::Direct),
-                    Some(pc) => pc.selected_candidate_pair().ok().map(|(local, remote)| {
-                        if local.contains("typ relay") || remote.contains("typ relay") {
-                            ConnectionKind::Relayed
-                        } else {
-                            ConnectionKind::Direct
-                        }
-                    }),
-                };
+                self.lobby.connection_kind = out.connection_kind;
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
-                    peer_conn: out.peer_conn,
                     is_offerer: out.is_offerer,
                 });
                 // Spawn the lobby loop as a detached tokio task.
@@ -940,7 +922,7 @@ impl State {
     /// this call the netplay subsystem retains no live handles
     /// — the cancellation token fires (which tears down the
     /// lobby loop), and the App owns sender / receiver /
-    /// peer_conn / negotiated state.
+    /// negotiated state.
     ///
     /// `phase` and `lobby` are deliberately NOT cleared here —
     /// the lobby UI keeps rendering its post-ready snapshot while
@@ -993,7 +975,6 @@ impl State {
         // asynchronously below.
         let pre_match = PreMatchData {
             sender: handles.sender,
-            peer_conn: handles.peer_conn,
             is_offerer: handles.is_offerer,
             receiver_slot: self.post_lobby_receiver.clone(),
             rng_seed,
@@ -1033,9 +1014,6 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `None` for the direct-TCP local transport; see
-    /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: Option<tango_rtc::PeerConnection>,
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
@@ -1208,11 +1186,11 @@ async fn run_signaling_connect(
 /// joins + WebRTC ICE handshake opens the data channel.
 async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
-        let (dc, peer_conn) = hello
+        let dc = hello
             .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
-        Ok::<_, AsyncError>(ConnectionPayload { dc, peer_conn })
+        Ok::<_, AsyncError>(ConnectionPayload { dc })
     };
     tokio::select! {
         biased;
@@ -1245,7 +1223,7 @@ async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Resul
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
-            peer_conn: None,
+            connection_kind: Some(ConnectionKind::Direct),
             is_offerer,
         })
     };
@@ -1273,7 +1251,22 @@ fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
 async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
-    let ConnectionPayload { dc, peer_conn } = payload;
+    let ConnectionPayload { dc } = payload;
+    // Read these off the channel before splitting it: the SDP type
+    // tells offerer from answerer, and the selected ICE pair (already
+    // nominated — the channel wouldn't be open otherwise) tells a
+    // relayed connection from a direct one.
+    let is_offerer = dc
+        .local_description()
+        .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
+        .unwrap_or(false);
+    let connection_kind = dc.selected_candidate_pair().ok().map(|(local, remote)| {
+        if local.contains("typ relay") || remote.contains("typ relay") {
+            ConnectionKind::Relayed
+        } else {
+            ConnectionKind::Direct
+        }
+    });
     let (mut sender, mut receiver) = crate::net::datachannel::pair(dc);
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
@@ -1281,14 +1274,10 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
         _ = cancel.cancelled() => Err(AsyncError::Cancelled),
         result = work => {
             result.map_err(negotiation_error_sentinel)?;
-            let is_offerer = peer_conn
-                .local_description()
-                .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
-                .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
-                peer_conn: Some(peer_conn),
+                connection_kind,
                 is_offerer,
             })
         }

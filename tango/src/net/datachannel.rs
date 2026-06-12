@@ -31,8 +31,8 @@ impl PacketStream for DataChannelStream {
 }
 
 /// Split a `DataChannel` into a transport-agnostic Sender + Receiver
-/// pair. The peer connection that owns the channel must be kept alive
-/// separately (see `netplay::NegotiationOutput`).
+/// pair. The halves own the underlying connection between them; it
+/// hangs up when the last one is dropped.
 pub fn pair(dc: tango_rtc::DataChannel) -> (Sender, Receiver) {
     let (dc_tx, dc_rx) = dc.split();
     let sender = Sender::new(Box::new(DataChannelSink { inner: dc_tx }));

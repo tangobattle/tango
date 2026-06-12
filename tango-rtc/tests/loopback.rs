@@ -4,34 +4,34 @@
 //! — implicitly rolling back its own — and answers.
 
 async fn make_peer() -> (
-    tango_rtc::PeerConnection,
     tango_rtc::DataChannel,
-    tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>,
+    tokio::sync::mpsc::Receiver<tango_rtc::ConnectionEvent>,
 ) {
-    let (mut peer_conn, mut event_rx) = tango_rtc::PeerConnection::new(tango_rtc::RtcConfig {
-        include_loopback: true,
-        ..Default::default()
-    })
+    let (dc, mut event_rx) = tango_rtc::DataChannel::new(
+        tango_rtc::RtcConfig {
+            include_loopback: true,
+            ..Default::default()
+        },
+        "tango",
+    )
     .unwrap();
 
-    let dc = peer_conn.create_data_channel("tango").unwrap();
-
     loop {
-        if let Some(tango_rtc::PeerConnectionEvent::GatheringStateChange(tango_rtc::GatheringState::Complete)) =
+        if let Some(tango_rtc::ConnectionEvent::GatheringStateChange(tango_rtc::GatheringState::Complete)) =
             event_rx.recv().await
         {
             break;
         }
     }
 
-    (peer_conn, dc, event_rx)
+    (dc, event_rx)
 }
 
-async fn wait_connected(event_rx: &mut tokio::sync::mpsc::Receiver<tango_rtc::PeerConnectionEvent>) {
+async fn wait_connected(event_rx: &mut tokio::sync::mpsc::Receiver<tango_rtc::ConnectionEvent>) {
     loop {
         match event_rx.recv().await.unwrap() {
-            tango_rtc::PeerConnectionEvent::ConnectionStateChange(tango_rtc::ConnectionState::Connected) => break,
-            tango_rtc::PeerConnectionEvent::ConnectionStateChange(
+            tango_rtc::ConnectionEvent::ConnectionStateChange(tango_rtc::ConnectionState::Connected) => break,
+            tango_rtc::ConnectionEvent::ConnectionStateChange(
                 state @ (tango_rtc::ConnectionState::Failed
                 | tango_rtc::ConnectionState::Closed
                 | tango_rtc::ConnectionState::Disconnected),
@@ -44,25 +44,25 @@ async fn wait_connected(event_rx: &mut tokio::sync::mpsc::Receiver<tango_rtc::Pe
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_loopback_connection() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        let (mut impolite, mut dc_a, mut events_a) = make_peer().await;
-        let (mut polite, mut dc_b, mut events_b) = make_peer().await;
+        let (mut dc_a, mut events_a) = make_peer().await;
+        let (mut dc_b, mut events_b) = make_peer().await;
 
-        let offer = impolite.local_description().unwrap();
+        let offer = dc_a.local_description().unwrap();
         assert!(matches!(offer.sdp_type, tango_rtc::SdpType::Offer));
         eprintln!("=== OFFER ===\n{}", offer.sdp);
 
         // The polite side had its own pending offer; receiving the remote
         // offer rolls it back and produces an answer.
         assert!(matches!(
-            polite.local_description().unwrap().sdp_type,
+            dc_b.local_description().unwrap().sdp_type,
             tango_rtc::SdpType::Offer
         ));
-        polite.set_remote_description(offer).unwrap();
-        let answer = polite.local_description().unwrap();
+        dc_b.set_remote_description(offer).unwrap();
+        let answer = dc_b.local_description().unwrap();
         assert!(matches!(answer.sdp_type, tango_rtc::SdpType::Answer));
         eprintln!("=== ANSWER ===\n{}", answer.sdp);
 
-        impolite.set_remote_description(answer).unwrap();
+        dc_a.set_remote_description(answer).unwrap();
 
         wait_connected(&mut events_a).await;
         wait_connected(&mut events_b).await;
@@ -92,32 +92,37 @@ async fn test_loopback_connection() {
             elapsed
         );
 
-        // A bigger volume of messages in both directions at once.
+        // A bigger volume of messages in both directions at once. Split so
+        // each side can send and receive concurrently.
+        let (mut tx_a, mut rx_a) = dc_a.split();
+        let (mut tx_b, mut rx_b) = dc_b.split();
         let a_to_b = async {
             for i in 0..1000u32 {
-                dc_a.send(&i.to_le_bytes()).await.unwrap();
+                tx_a.send(&i.to_le_bytes()).await.unwrap();
             }
             for i in 0..1000u32 {
-                assert_eq!(dc_a.receive().await.unwrap(), (!i).to_le_bytes());
+                assert_eq!(rx_a.receive().await.unwrap(), (!i).to_le_bytes());
             }
         };
         let b_to_a = async {
             for i in 0..1000u32 {
-                dc_b.send(&(!i).to_le_bytes()).await.unwrap();
+                tx_b.send(&(!i).to_le_bytes()).await.unwrap();
             }
             for i in 0..1000u32 {
-                assert_eq!(dc_b.receive().await.unwrap(), i.to_le_bytes());
+                assert_eq!(rx_b.receive().await.unwrap(), i.to_le_bytes());
             }
         };
         tokio::join!(a_to_b, b_to_a);
 
+        let dc_a = tx_a.unsplit(rx_a);
+        let mut dc_b = tx_b.unsplit(rx_b);
+
         // Both sides should agree they're talking directly.
-        let (local, remote) = impolite.selected_candidate_pair().unwrap();
+        let (local, remote) = dc_a.selected_candidate_pair().unwrap();
         assert!(!local.contains("typ relay"), "local: {}", local);
         assert!(!remote.contains("typ relay"), "remote: {}", remote);
 
-        // Dropping one peer's connection promptly EOFs the other side.
-        drop(impolite);
+        // Dropping one side (both halves at once) promptly EOFs the other.
         drop(dc_a);
         assert_eq!(
             tokio::time::timeout(std::time::Duration::from_secs(5), dc_b.receive())
@@ -132,9 +137,9 @@ async fn test_loopback_connection() {
 
 /// The hangup must reach the remote even on process exit, where the tokio
 /// runtime is torn down by dropping its tasks without polling them again —
-/// so the driver task's own graceful close never runs, and only
-/// `PeerConnection`'s (synchronous) `Drop` stands between the remote and a
-/// full disconnect-grace wait.
+/// so the driver task's own graceful close never runs, and only the
+/// transport's (synchronous) `Drop` stands between the remote and a full
+/// disconnect-grace wait.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_hangup_survives_runtime_teardown() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
@@ -145,11 +150,11 @@ async fn test_hangup_survives_runtime_teardown() {
             .enable_all()
             .build()
             .unwrap();
-        let (mut a, mut dc_a, mut events_a) = rt_a.spawn(make_peer()).await.unwrap();
-        let (mut b, mut dc_b, mut events_b) = make_peer().await;
+        let (mut dc_a, mut events_a) = rt_a.spawn(make_peer()).await.unwrap();
+        let (mut dc_b, mut events_b) = make_peer().await;
 
-        b.set_remote_description(a.local_description().unwrap()).unwrap();
-        a.set_remote_description(b.local_description().unwrap()).unwrap();
+        dc_b.set_remote_description(dc_a.local_description().unwrap()).unwrap();
+        dc_a.set_remote_description(dc_b.local_description().unwrap()).unwrap();
 
         wait_connected(&mut events_a).await;
         wait_connected(&mut events_b).await;
@@ -160,7 +165,6 @@ async fn test_hangup_survives_runtime_teardown() {
         // "Process exit": A's driver task is dropped, never to be polled
         // again, and only then do A's locals drop.
         rt_a.shutdown_background();
-        drop(a);
         drop(dc_a);
         drop(events_a);
 
