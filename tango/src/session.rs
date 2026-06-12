@@ -1245,18 +1245,18 @@ fn tone_for_ping(ping_ms: u128) -> StatTone {
 /// Signed skew in a 3-wide field; bare `0` at parity reads calmer than `+0`.
 fn fmt_skew(skew: i32) -> String {
     if skew == 0 {
-        "  0".to_string()
+        "0".to_string()
     } else {
-        format!("{:>+3}", skew)
+        format!("{skew:+}")
     }
 }
-/// Rollback depth, right-aligned in a 2-wide field.
+/// Rollback depth.
 fn fmt_depth(depth: u32) -> String {
-    format!("{:>2}", depth)
+    format!("{depth}")
 }
-/// Latency in ms, right-aligned in a 3-wide field.
+/// Latency in ms.
 fn fmt_ping(ping_ms: u128) -> String {
-    format!("{:>3} ms", ping_ms)
+    format!("{ping_ms} ms")
 }
 
 /// One telemetry cell: a label `icon` and the current `value`, both
