@@ -1229,6 +1229,11 @@ impl App {
                 // appears, instead of flickering to Triple later
                 // when the first Lobby-phase resend runs.
                 self.apply_default_match_type();
+                // Seed the blind-setup checkbox from the user's last
+                // choice (cancel_and_renew reset it to false). Only
+                // here, not in the per-resend default pass, so a
+                // mid-lobby toggle still sticks.
+                self.netplay.lobby.blind_setup = self.config.last_blind_setup;
                 match copy_code {
                     // Fight auto-generated this code — put it straight on
                     // the clipboard so the host can paste it to their
@@ -1253,6 +1258,12 @@ impl App {
                         let (fam, var) = g.family_and_variant();
                         self.netplay.lobby.default_mt_for_game = Some((fam.to_string(), var));
                     }
+                }
+                // Remember the blind-setup choice so the next lobby
+                // (this session or a future launch) defaults to it.
+                if let netplay::Message::SetBlindSetup(v) = &m {
+                    self.config.last_blind_setup = *v;
+                    self.persist_config();
                 }
                 self.netplay.update(m).map(Message::Netplay)
             }

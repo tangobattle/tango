@@ -244,6 +244,12 @@ pub struct Config {
     /// [`RelayMode`]. Sampled at connect time.
     #[serde(default)]
     pub relay_mode: RelayMode,
+    /// Last "blind my setup from the opponent" choice made in the
+    /// netplay lobby. Seeded into `LobbyState::blind_setup` at connect
+    /// time so the checkbox comes back the way the user last left it;
+    /// each lobby remains independently toggleable thereafter.
+    #[serde(default)]
+    pub last_blind_setup: bool,
 }
 
 impl Default for Config {
@@ -285,6 +291,7 @@ impl Default for Config {
             disable_bgm_in_pvp: false,
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
+            last_blind_setup: false,
         }
     }
 }
