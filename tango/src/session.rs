@@ -328,11 +328,12 @@ pub enum Message {
     /// telemetry plate (instrument panel). Mutually exclusive with the
     /// options menu.
     ToggleMatchSettings,
-    /// User pressed Esc inside a session. Closes whichever overlay is on
-    /// top (settings modal, disconnect confirm, match-settings popover,
-    /// options popover) if any, otherwise opens the options popover. Routed
-    /// here rather than from the InputCapture so the decision sees the
-    /// current overlay state.
+    /// User pressed Esc inside a session. Dismisses whichever overlay
+    /// is on top (settings modal, disconnect confirm, match-settings
+    /// popover) if any; otherwise does nothing — Esc never tears the
+    /// session down (closing a session is an explicit button action).
+    /// Routed here rather than from the InputCapture so the decision
+    /// sees the current overlay state.
     EscPressed,
     /// Show the "really disconnect?" modal. PvP-only; picked from
     /// the options menu's Disconnect item, which also dismisses
@@ -581,28 +582,17 @@ impl State {
                 }
             }
             Message::EscPressed => {
-                // Peel overlays off top-down: the modal first, then the
-                // telemetry panel, else the session's tear-down — direct
-                // close for replay/SP, the disconnect confirm for PvP
-                // (ending a live match deserves the gate).
+                // Peel overlays off top-down: the settings modal, then
+                // the disconnect confirm, then the match-settings
+                // popover. Esc stops there — it no longer tears the
+                // session down (replay/SP back-out and PvP disconnect
+                // are explicit button actions now).
                 if self.show_settings {
                     self.show_settings = false;
                 } else if self.show_disconnect_confirm {
                     self.show_disconnect_confirm = false;
                 } else if self.show_match_settings {
                     self.show_match_settings = false;
-                } else if matches!(
-                    self.active,
-                    Some(ActiveSession::Replay(_)) | Some(ActiveSession::SinglePlayer(_))
-                ) {
-                    return self.update_inner(Message::Close, mapping, video_filter);
-                } else if let Some(ActiveSession::PvP(pvp)) = &self.active {
-                    if pvp.latency().is_some() {
-                        self.show_disconnect_confirm = true;
-                    } else {
-                        // Link's already gone — nothing to confirm.
-                        return self.update_inner(Message::Close, mapping, video_filter);
-                    }
                 }
             }
             Message::OpenDisconnectConfirm => {

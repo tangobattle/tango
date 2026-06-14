@@ -16,7 +16,7 @@
 use crate::app::Scanners;
 use crate::i18n::t;
 use crate::style::STANDARD_PADDING;
-use crate::{anim, config, game, rom, widgets};
+use crate::{config, game, rom, widgets};
 use iced::widget::row;
 use iced::{Alignment, Element, Length};
 use lucide_icons::Icon;
@@ -34,20 +34,6 @@ pub struct Loadout {
     /// see the module docs; persisted per save, not globally.
     pub patch: Option<String>,
     pub patch_version: Option<semver::Version>,
-    /// Whether the patch/version pickers in the selector row
-    /// ([`game_row`]) are unfolded. Patching is a niche flow, so the
-    /// pickers stay collapsed behind a small toggle until the user
-    /// opts in; selecting "no patch" folds them away again. Not
-    /// persisted — an *active* patch always forces the pickers
-    /// visible, so a remembered patch selection survives without
-    /// this flag.
-    pub patch_picker_open: bool,
-    /// Show/hide transition for the expanded patch controls (patch +
-    /// version pickers). Mirrors `patch.is_some() ||
-    /// patch_picker_open` (synced via [`Loadout::sync_patch_row`]);
-    /// the selector rows fade-through morph between their folded and
-    /// expanded shapes.
-    pub patch_row: anim::Transition,
 }
 
 impl Default for Loadout {
@@ -58,8 +44,6 @@ impl Default for Loadout {
             save: None,
             patch: None,
             patch_version: None,
-            patch_picker_open: false,
-            patch_row: anim::Transition::swap(false),
         }
     }
 }
@@ -71,10 +55,6 @@ pub enum Message {
     /// Real patch name; empty string is the "no patch" sentinel.
     PatchSelected(String),
     PatchVersionSelected(semver::Version),
-    /// Unfold the collapsed patch/version pickers in the selector
-    /// rows. There's no explicit close message — picking "no patch"
-    /// folds them back up (see PatchSelected).
-    PatchPickerOpened,
     Rescan,
 }
 
@@ -93,9 +73,7 @@ pub enum Effect {
 
 impl Loadout {
     pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
-        let effect = self.update_inner(msg, scanners, config);
-        self.sync_patch_row(iced::time::Instant::now());
-        effect
+        self.update_inner(msg, scanners, config)
     }
 
     fn update_inner(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
@@ -133,17 +111,10 @@ impl Loadout {
                 self.restore_patch_memory(config, scanners);
                 Some(Effect::SelectionChanged)
             }
-            Message::PatchPickerOpened => {
-                self.patch_picker_open = true;
-                None
-            }
             Message::PatchSelected(name) => {
                 if name.is_empty() {
                     self.patch = None;
                     self.patch_version = None;
-                    // Picking the sentinel doubles as "put the patch
-                    // controls away".
-                    self.patch_picker_open = false;
                 } else {
                     self.patch_version = newest_supporting_version(scanners, &name, self.game);
                     self.patch = Some(name);
@@ -169,13 +140,6 @@ impl Loadout {
             }
             Message::Rescan => Some(Effect::Rescan),
         }
-    }
-
-    /// Drive [`Loadout::patch_row`] toward the current expanded
-    /// state. Called after every [`Loadout::update`], and by the App
-    /// after effect handlers that mutate `patch` outside this module.
-    pub fn sync_patch_row(&mut self, now: iced::time::Instant) {
-        self.patch_row.set(self.patch.is_some() || self.patch_picker_open, now);
     }
 
     /// Programmatic save selection (post-delete auto-pick, etc.) —
@@ -675,12 +639,8 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 // ---------- Views ----------
 
 /// The full game row for the Play tab's selector strip: family
-/// picker, foldable patch/version pickers, rescan button. The patch
-/// controls stay folded behind a small icon toggle until the user
-/// opts in (or a patch is already active) — patching is a niche flow
-/// that shouldn't share top billing with the game picker. With the
-/// pickers folded, the game picker's FillPortion is the only fill in
-/// the row, so it soaks up the freed width.
+/// picker, patch + version pickers, rescan button. The patch controls
+/// are always visible.
 pub fn game_row<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
@@ -697,49 +657,13 @@ pub fn game_row<'a>(
         STANDARD_PADDING,
     );
 
-    let mut row_el = row![game];
-    for el in patch_fold_segment(loadout, lang, scanners, config, Length::FillPortion(2)) {
-        row_el = row_el.push(el);
-    }
-    row_el.push(refresh).spacing(8).align_y(Alignment::Center).into()
-}
+    let patch = patch_picker(loadout, lang, scanners, config).width(Length::FillPortion(2));
+    let version = version_picker(loadout, lang, scanners);
 
-/// The foldable patch segment of [`game_row`]: a small puzzle toggle
-/// at rest, the patch + version pickers once the user opts in (or a
-/// patch is already active). Folding either way fade-through morphs
-/// ONLY this segment — the toggle and the pickers swap through the
-/// pane plate, horizontally, while the row's other controls stay
-/// untouched. (They still reflow at the swap's midpoint, but the
-/// segment is fully dissolved there.) The fold state lives on the
-/// shared [`Loadout`].
-fn patch_fold_segment<'a>(
-    loadout: &'a Loadout,
-    lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
-    config: &'a config::Config,
-    patch_width: Length,
-) -> Vec<Element<'a, Message>> {
-    let now = iced::time::Instant::now();
-    let (render_expanded, patch_swap) = anim::swap_phase(&loadout.patch_row, now);
-    let swapped = |el: Element<'a, Message>| -> Element<'a, Message> {
-        match patch_swap {
-            Some(phase) => anim::swap_transform(el, phase, iced::Vector::new(24.0, 0.0), widgets::plate_color),
-            None => el,
-        }
-    };
-    if render_expanded {
-        let patch = patch_picker(loadout, lang, scanners, config).width(patch_width);
-        let version = version_picker(loadout, lang, scanners);
-        vec![swapped(patch.into()), swapped(version)]
-    } else {
-        let patch_toggle = widgets::icon_button(
-            Icon::Puzzle,
-            t!(lang, "play-patch-toggle"),
-            Message::PatchPickerOpened,
-            STANDARD_PADDING,
-        );
-        vec![swapped(patch_toggle)]
-    }
+    row![game, patch, version, refresh]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn family_picker<'a>(

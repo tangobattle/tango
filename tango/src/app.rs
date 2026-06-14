@@ -276,11 +276,6 @@ impl App {
                 }
             }
         }
-        // The patch row's swap transition has to start in the
-        // restored expanded state (a remembered patch keeps the
-        // pickers up) — constructed at rest so launch doesn't play
-        // a fold animation.
-        restored.patch_row = anim::Transition::swap(restored.patch.is_some());
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
         // Spin up the SDL audio backend once at startup with the
@@ -809,11 +804,6 @@ impl App {
             self.play.restore_generated_link_code();
         }
         self.lobby_swap.set(lobby_after, now);
-        // Effect handlers in this module mutate `loadout.patch`
-        // directly (e.g. save creation dropping an unsupported
-        // patch) — re-sync the patch row's transition here too so
-        // those paths animate like in-module ones.
-        self.loadout.sync_patch_row(now);
         // A different family swaps the entire bottom of the tab —
         // rise the whole save-view pane in. A different game or save
         // within the family only re-renders the save's content — rise
