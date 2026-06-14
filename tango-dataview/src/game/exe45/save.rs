@@ -80,7 +80,7 @@ impl crate::save::Save for Save {
 
     fn folder_limits(&self, _assets: &dyn crate::rom::Assets) -> crate::save::FolderLimits {
         crate::save::FolderLimits {
-            mega_limit: Some(3),
+            mega_limit: Some(5),
             giga_limit: Some(1),
             reg_memory: None,
             max_copies: |chip| match chip.class() {
