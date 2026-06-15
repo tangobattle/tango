@@ -135,7 +135,7 @@ pub struct State {
     /// into the next one.
     post_lobby_receiver: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     /// Receive half of the unreliable in-match channel (WebRTC stream 1 /
-    /// direct UDP), parked at negotiate time. The PvP handoff drains it into
+    /// direct QUIC datagrams), parked at negotiate time. The PvP handoff drains it into
     /// the `PvpReceiver`. Unlike [`post_lobby_receiver`] it's filled
     /// immediately (the lobby loop never owns it). Reset on every session
     /// boundary alongside the reliable slot.
@@ -256,16 +256,16 @@ struct LocalCommit {
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Send half of the unreliable in-match channel (WebRTC stream 1 / direct
-    /// UDP). Drained into the PvpSession at `take_pre_match`.
+    /// QUIC datagrams). Drained into the PvpSession at `take_pre_match`.
     in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// `Some` for WebRTC peer connections (kept alive for the
-    /// duration of the session); `None` for the direct-TCP local
-    /// transport, whose lifetime is owned by the Sender/Receiver
-    /// halves themselves.
+    /// duration of the session); `None` for the direct link-code
+    /// transport, whose QUIC connection's lifetime is owned by the
+    /// Sender/Receiver halves themselves.
     peer_conn: Option<datachannel_wrapper::PeerConnection>,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
-    /// or we're the listener on the direct-TCP path. Drives the
+    /// or we're the listener on the direct link-code path. Drives the
     /// `Match::pick_local_player_index` tie-break.
     is_offerer: bool,
 }
@@ -283,12 +283,11 @@ pub enum Message {
         endpoint: String,
         use_relay: Option<bool>,
     },
-    /// Direct-TCP local-play entry. Bypasses signaling + WebRTC
-    /// entirely — runs the protocol-version negotiate handshake
-    /// over a raw length-prefixed TCP connection (see
-    /// [`crate::net::tcp`]). `role` says whether we're the
-    /// listener or the dialer; the UI-side identifier is derived
-    /// from it (see [`LinkIdent`]).
+    /// Direct link-code local-play entry. Bypasses signaling + WebRTC
+    /// entirely — runs the protocol-version negotiate handshake over a
+    /// QUIC connection's reliable stream (see [`crate::net::quic`]).
+    /// `role` says whether we're the listener or the dialer; the
+    /// UI-side identifier is derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
@@ -369,9 +368,9 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
-/// Which side of a direct-TCP connection the local instance is.
-/// Drives the offer/answer symmetry breaker the WebRTC path gets
-/// for free from SDP role assignment.
+/// Which side of a direct link-code (QUIC) connection the local
+/// instance is. Drives the offer/answer symmetry breaker the WebRTC
+/// path gets for free from SDP role assignment.
 #[derive(Debug, Clone)]
 pub enum DirectRole {
     /// Listen on the given port and accept the first inbound peer.
@@ -413,15 +412,16 @@ impl std::fmt::Debug for ConnectionPayload {
 /// peer-conn handle they need to stay alive against.
 pub struct NegotiationOutput {
     /// Reliable lobby channel: WebRTC data-channel stream 0, or the direct
-    /// path's TCP connection. Owns the lobby loop + (later) disconnect watch.
+    /// path's QUIC bidi stream. Owns the lobby loop + (later) disconnect watch.
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
     /// Unreliable in-match channel carrying the `wire` datagrams: WebRTC
-    /// data-channel stream 1, or the direct path's UDP socket. Always present
-    /// (both transports provide one); handed to the session for the live match.
+    /// data-channel stream 1, or the direct path's QUIC datagrams. Always
+    /// present (both transports provide one); handed to the session for the
+    /// live match.
     pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub in_match_receiver: crate::net::Receiver,
-    /// `None` for the direct-TCP local transport. See
+    /// `None` for the direct link-code (QUIC) transport. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
     pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
     /// Pre-computed by the per-transport negotiator. WebRTC reads
@@ -495,7 +495,7 @@ impl State {
                     waiting_for_opponent,
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(run_tcp_negotiate(role, cancel), map_negotiate_result)
+                iced::Task::perform(run_quic_negotiate(role, cancel), map_negotiate_result)
             }
             Message::SignalingHelloReceived(slot_rx) => {
                 let ident = match &self.phase {
@@ -527,8 +527,8 @@ impl State {
                 iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
             }
             Message::NegotiationDone(slot_rx) => {
-                // Accept both `Connecting` (direct-TCP path: the
-                // negotiate is folded into the single TCP task and
+                // Accept both `Connecting` (direct link-code path: the
+                // negotiate is folded into the single QUIC task and
                 // skips the intermediate Negotiating phase) and
                 // `Negotiating` (WebRTC path: signaling +
                 // peer-await + negotiate are split stages). Either
@@ -544,7 +544,7 @@ impl State {
                 };
                 let sender = out.sender.clone();
                 // Resolve how the transport actually flows for the
-                // lobby's ping line. The raw-TCP path (no peer
+                // lobby's ping line. The direct QUIC path (no peer
                 // connection) is direct by construction; WebRTC
                 // reads the selected ICE pair — a `typ relay`
                 // candidate on either end means TURN.
@@ -1063,7 +1063,7 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     /// Send half of the unreliable in-match channel — the live match's `wire`
-    /// datagrams go here (WebRTC stream 1 / direct UDP).
+    /// datagrams go here (WebRTC stream 1 / direct QUIC datagrams).
     pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Receive half of the unreliable in-match channel, parked at negotiate
     /// time. PvP setup drains it (one-shot poll on a tick).
@@ -1076,7 +1076,7 @@ pub struct PreMatchData {
     /// session watches it for EOF as the disconnect signal (the UDP/datagram
     /// in-match channel has no close event of its own).
     pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-    /// `None` for the direct-TCP local transport; see
+    /// `None` for the direct link-code (QUIC) transport; see
     /// [`ConnectionHandles::peer_conn`].
     pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
     pub is_offerer: bool,
@@ -1265,38 +1265,37 @@ async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Res
     }
 }
 
-/// Direct-TCP entry: bind-and-accept (host) or dial (connect),
-/// then run the same `protocol::negotiate` handshake the WebRTC
-/// path uses. No signaling server, no peer-connection — the TCP
-/// stream halves carry the whole transport lifetime themselves.
-/// `is_offerer` is set from the role (host = true) so the
-/// `pick_local_player_index` symmetry break still has a stable
-/// asymmetric input.
-async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
+/// Direct link-code entry: listen-and-accept (host) or dial (connect)
+/// a QUIC connection, then run the same `protocol::negotiate` handshake
+/// the WebRTC path uses. No signaling server, no peer-connection — one
+/// QUIC connection over a single UDP port multiplexes both channels (a
+/// reliable bidi stream for the lobby + unreliable datagrams for the
+/// in-match `wire` traffic), and its four transport halves carry the
+/// whole transport lifetime themselves. `is_offerer` is set from the
+/// role (host = true) so the `pick_local_player_index` symmetry break
+/// still has a stable asymmetric input.
+async fn run_quic_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
-        let (mut sender, mut receiver, peer_ip) = match role {
-            DirectRole::Host { port } => crate::net::tcp::host(port)
+        let crate::net::quic::DirectChannels {
+            mut reliable_sender,
+            mut reliable_receiver,
+            in_match_sender,
+            in_match_receiver,
+        } = match role {
+            DirectRole::Host { port } => crate::net::quic::host(port)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("tcp host: {e}")))?,
-            DirectRole::Connect { addr } => crate::net::tcp::connect(&addr)
+                .map_err(|e| AsyncError::Failed(format!("quic host: {e}")))?,
+            DirectRole::Connect { addr } => crate::net::quic::connect(&addr)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("tcp connect: {e}")))?,
+                .map_err(|e| AsyncError::Failed(format!("quic connect: {e}")))?,
         };
-        crate::net::negotiate(&mut sender, &mut receiver)
+        crate::net::negotiate(&mut reliable_sender, &mut reliable_receiver)
             .await
             .map_err(negotiation_error_sentinel)?;
-        // Bring up the sibling unreliable channel: a UDP socket connected to the
-        // peer, ports swapped over the just-negotiated TCP link. In-match `wire`
-        // datagrams ride this; TCP stays as the reliable lobby + disconnect-watch
-        // channel.
-        let udp = crate::net::udp::connect_via(peer_ip, &mut sender, &mut receiver)
-            .await
-            .map_err(|e| AsyncError::Failed(format!("udp connect: {e}")))?;
-        let (in_match_sender, in_match_receiver) = crate::net::udp::pair(udp);
         Ok::<_, AsyncError>(NegotiationOutput {
-            sender: Arc::new(tokio::sync::Mutex::new(sender)),
-            receiver,
+            sender: Arc::new(tokio::sync::Mutex::new(reliable_sender)),
+            receiver: reliable_receiver,
             in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
             in_match_receiver,
             peer_conn: None,

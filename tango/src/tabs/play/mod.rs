@@ -1880,7 +1880,7 @@ fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
     }
 }
 
-/// Recognise the direct-TCP link-code commands the user can type
+/// Recognise the direct link-code commands the user can type
 /// in place of a matchmaking code:
 ///
 /// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
@@ -1914,7 +1914,7 @@ fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
             // their input ends with the IPv6 closing bracket
             // without a trailing colon, append the default port.
             // We deliberately don't try to validate the address
-            // itself — TcpStream::connect's error surfaces well.
+            // itself — the QUIC dial's resolve/connect error surfaces well.
             let addr = if arg.contains(':') && !arg.ends_with(']') {
                 arg.to_string()
             } else {
