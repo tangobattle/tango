@@ -1,5 +1,5 @@
 //! Transport-agnostic reliability state machines for the in-match wire
-//! protocol ([`super::wire`]). Two halves, both pure (no async, no I/O):
+//! protocol ([`super::protocol`]). Two halves, both pure (no async, no I/O):
 //!
 //! * [`OutStream`] — assigns a monotonic seq to each local element, keeps a
 //!   redundancy window of recent unconfirmed elements (`history`), and trims
@@ -20,7 +20,7 @@
 //!
 use std::collections::BTreeMap;
 
-use super::wire::{BlockAck, Element, Frame, Marker};
+use super::protocol::{BlockAck, Element, Frame, Marker};
 
 /// Rollback horizon: a gap wider than this can't be rolled back to, so the
 /// receiver bails instead of waiting forever. Matches the engine's input
@@ -103,11 +103,7 @@ impl OutStream {
         };
         let redundancy_floor = newest.saturating_sub(MIN_REDUNDANCY.saturating_sub(1));
         let horizon_floor = newest.saturating_sub(HORIZON.saturating_sub(1));
-        let keep_from = self
-            .peer_ack_base
-            .min(redundancy_floor)
-            .max(horizon_floor)
-            .max(1);
+        let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor).max(1);
         while let Some(&(seq, _)) = self.history.front() {
             if seq < keep_from {
                 self.history.pop_front();
@@ -170,11 +166,19 @@ impl InStream {
     /// contiguous (in strict seq order, possibly empty). The frame's
     /// block-ack, if any, is the caller's job to apply to its [`OutStream`].
     pub fn accept(&mut self, frame: &Frame) -> Result<Vec<Element>, HorizonExceeded> {
-        if let Some(fa) = frame.frame_advantage {
-            self.latest_advantage = Some(fa);
-        }
-        for (i, &e) in frame.entries.iter().enumerate() {
-            let seq = frame.base + i as u32;
+        // Ack-only frames carry no input data — nothing to reassemble.
+        let (base, frame_advantage, entries) = match frame {
+            Frame::Ack(_) => return Ok(Vec::new()),
+            Frame::Data {
+                base,
+                frame_advantage,
+                entries,
+                ..
+            } => (base.get(), *frame_advantage, entries),
+        };
+        self.latest_advantage = Some(frame_advantage);
+        for (i, &e) in entries.iter().enumerate() {
+            let seq = base + i as u32;
             if seq < self.recv_base {
                 continue; // already delivered — a redundant/duplicate copy.
             }
@@ -221,8 +225,8 @@ impl InStream {
 
 #[cfg(test)]
 mod tests {
+    use super::super::protocol::Packet;
     use super::*;
-    use crate::net::wire::Wire;
 
     fn input(j: u16) -> Element {
         Element::Input(j)
@@ -233,14 +237,9 @@ mod tests {
     /// real encode/decode too).
     fn make_frame(out: &OutStream, ack: Option<BlockAck>) -> Frame {
         let (base, fa, entries) = out.window().expect("window");
-        let frame = Frame {
-            base,
-            frame_advantage: Some(fa),
-            entries,
-            ack,
-        };
-        match Wire::decode(&Wire::Frame(frame).encode()).unwrap() {
-            Wire::Frame(f) => f,
+        let frame = Frame::data(base, fa, entries, ack);
+        match Packet::decode(&Packet::Frame(frame).encode()).unwrap() {
+            Packet::Frame(f) => f,
             _ => unreachable!(),
         }
     }
@@ -329,7 +328,7 @@ mod tests {
 
         out.push_input(12, 0);
         let f_c = make_frame(&out, None); // window includes 11 and 12 (redundancy)
-        // Frontier was at seq for 11; the lost frame's 11 arrives here.
+                                          // Frontier was at seq for 11; the lost frame's 11 arrives here.
         assert_eq!(inn.accept(&f_c).unwrap(), vec![input(11), input(12)]);
     }
 
@@ -337,12 +336,7 @@ mod tests {
     fn in_buffers_out_of_order_then_fills_gap() {
         let mut inn = InStream::new();
         // Deliver a frame starting at seq 3 (1 and 2 missing): buffered, none delivered.
-        let ahead = Frame {
-            base: 3,
-            frame_advantage: Some(0),
-            entries: vec![input(30), input(40)],
-            ack: None,
-        };
+        let ahead = Frame::data(3, 0, vec![input(30), input(40)], None);
         assert_eq!(inn.accept(&ahead).unwrap(), vec![]);
         assert_eq!(inn.recv_base(), 1);
         // Block-ack reports the hole: base=1, bits for seq 3 and 4 (offsets 2,3).
@@ -350,25 +344,19 @@ mod tests {
         assert_eq!(ba.base, 1);
         assert_eq!(ba.bits, (1 << 2) | (1 << 3));
         // Now the gap arrives; everything drains in order.
-        let gap = Frame {
-            base: 1,
-            frame_advantage: Some(0),
-            entries: vec![input(10), input(20)],
-            ack: None,
-        };
-        assert_eq!(inn.accept(&gap).unwrap(), vec![input(10), input(20), input(30), input(40)]);
+        let gap = Frame::data(1, 0, vec![input(10), input(20)], None);
+        assert_eq!(
+            inn.accept(&gap).unwrap(),
+            vec![input(10), input(20), input(30), input(40)]
+        );
         assert_eq!(inn.recv_base(), 5);
     }
 
     #[test]
     fn in_bails_past_horizon() {
         let mut inn = InStream::new();
-        let way_ahead = Frame {
-            base: 1 + HORIZON, // recv_base is 1; this is exactly a horizon away
-            frame_advantage: Some(0),
-            entries: vec![input(1)],
-            ack: None,
-        };
+        // recv_base is 1; this is exactly a horizon away.
+        let way_ahead = Frame::data(1 + HORIZON, 0, vec![input(1)], None);
         assert_eq!(inn.accept(&way_ahead), Err(HorizonExceeded));
     }
 
@@ -418,16 +406,11 @@ mod tests {
         for k in 1..=200u32 {
             out.push_input(k as u16, 0);
             let (base, fa, entries) = out.window().unwrap();
-            let frame = Frame {
-                base,
-                frame_advantage: Some(fa),
-                entries,
-                ack: None,
-            };
+            let frame = Frame::data(base, fa, entries, None);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
-                let f = match Wire::decode(&Wire::Frame(frame).encode()).unwrap() {
-                    Wire::Frame(f) => f,
+                let f = match Packet::decode(&Packet::Frame(frame).encode()).unwrap() {
+                    Packet::Frame(f) => f,
                     _ => unreachable!(),
                 };
                 delivered.extend(f_inputs(inn.accept(&f).unwrap()));
