@@ -8,13 +8,15 @@ fn generate_rc(icon_path: Option<&str>) -> Result<String, Box<dyn std::error::Er
     // in, so emit the ICON resource only when it's present; the VERSIONINFO
     // block is always embedded.
     let icon = match icon_path {
-        Some(path) => format!("1 ICON \"{path}\"\n\n"),
+        Some(path) => format!("1 ICON \"{path}\""),
         None => String::new(),
     };
     Ok(format!(
         r#"#include "winver.h"
 
-{icon}VS_VERSION_INFO VERSIONINFO
+{icon}
+
+VS_VERSION_INFO VERSIONINFO
 FILEVERSION    {major},{minor},{patch},0
 PRODUCTVERSION {major},{minor},{patch},0
 BEGIN
