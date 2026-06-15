@@ -13,6 +13,8 @@ crash-no-log =
     { $error }
 window-title = Tango
     .running = Tango（进行中）
+# Tooltip on the top bar's close button (fullscreen only).
+window-quit = 退出 Tango
 play-play = 启动
 play-fight = 战斗！
 play-link-code = 链接代码（留空则随机生成）
@@ -129,9 +131,11 @@ play-status-negotiate-failed = 协商时发生错误：{ $error }
 lobby-waiting = 等待中…
 lobby-no-game = （未选择游戏）
 lobby-latency = 延迟：{ $ms } 毫秒
+lobby-latency-direct = 延迟（直连）：{ $ms } 毫秒
+lobby-latency-relayed = 延迟（中继）：{ $ms } 毫秒
 lobby-link-code = 链接代码：{ $code }
-lobby-direct-host = 在端口 { $port } 上托管
-lobby-direct-connect = 连接到：{ $target }
+lobby-direct-host = 在 UDP 端口 { $port } 上托管
+lobby-direct-connect = 通过 UDP 连接到：{ $target }
 lobby-handshake = 交换设置中…
 lobby-match-type = 对战类型
 settings-netplay-frame-delay = 帧延迟

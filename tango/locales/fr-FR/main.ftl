@@ -13,6 +13,8 @@ crash-no-log =
     { $error }
 window-title = Tango
     .running = Tango (en cours d'exécution)
+# Tooltip on the top bar's close button (fullscreen only).
+window-quit = Quitter Tango
 play-play = Jouer
 play-fight = Bagarre !
 play-link-code = Code de connexion (laisser vide pour un code aléatoire)
@@ -132,9 +134,11 @@ play-status-negotiate-failed = Une erreur s'est produite lors de la négociation
 lobby-waiting = En attente…
 lobby-no-game = (aucun jeu choisi)
 lobby-latency = Ping : { $ms } ms
+lobby-latency-direct = Ping (direct) : { $ms } ms
+lobby-latency-relayed = Ping (relayé) : { $ms } ms
 lobby-link-code = Code de connexion : { $code }
-lobby-direct-host = Hébergement sur le port : { $port }
-lobby-direct-connect = Connexion à : { $target }
+lobby-direct-host = Hébergement sur le port UDP : { $port }
+lobby-direct-connect = Connexion via UDP : { $target }
 lobby-handshake = Échange des paramètres…
 lobby-match-type = Type de match
 settings-netplay-frame-delay = Délai d'image

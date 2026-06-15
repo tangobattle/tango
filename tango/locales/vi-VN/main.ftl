@@ -13,6 +13,8 @@ crash-no-log =
     {$error}
 window-title = Tango
     .running = Tango (đang chạy)
+# Tooltip on the top bar's close button (fullscreen only).
+window-quit = Thoát Tango
 play-play = Chơi
 play-fight = Đấu!
 play-link-code = Mã kết nối (để trống để tạo mã ngẫu nhiên)
@@ -129,9 +131,11 @@ play-status-negotiate-failed = Đã xảy ra lỗi trong khi đàm phán: { $err
 lobby-waiting = Đang đợi…
 lobby-no-game = (chưa chọn game)
 lobby-latency = Ping: { $ms } ms
+lobby-latency-direct = Ping (trực tiếp): { $ms } ms
+lobby-latency-relayed = Ping (chuyển tiếp): { $ms } ms
 lobby-link-code = Mã kết nối: { $code }
-lobby-direct-host = Đang lưu trữ trên cổng: { $port }
-lobby-direct-connect = Đang kết nối tới: { $target }
+lobby-direct-host = Đang lưu trữ trên cổng UDP: { $port }
+lobby-direct-connect = Đang kết nối qua UDP: { $target }
 lobby-handshake = Trao đổi cài đặt…
 lobby-match-type = Kiểu trận
 settings-netplay-frame-delay = Độ trễ khung hình
