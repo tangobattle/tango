@@ -19,10 +19,13 @@ const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(500);
 const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
 
-async fn create_data_channel(
+async fn create_data_channels(
     rtc_config: datachannel_wrapper::RtcConfig,
 ) -> Result<
     (
+        // Reliable, ordered — lobby handshake + save-state transfer.
+        datachannel_wrapper::DataChannel,
+        // Unreliable, unordered — the per-frame in-match `wire` datagrams.
         datachannel_wrapper::DataChannel,
         tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
@@ -31,7 +34,7 @@ async fn create_data_channel(
 > {
     let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
 
-    let dc = peer_conn.create_data_channel(
+    let reliable = peer_conn.create_data_channel(
         "tango",
         datachannel_wrapper::DataChannelInit::default()
             .reliability(datachannel_wrapper::Reliability {
@@ -45,6 +48,24 @@ async fn create_data_channel(
             .stream(0),
     )?;
 
+    // Second negotiated SCTP stream for inputs: unreliable + unordered, so a
+    // lost datagram never head-of-line-blocks the ones behind it (the in-match
+    // protocol recovers loss with its own redundancy + block-ack). Both peers
+    // create it with the same stream id, so it needs no in-band negotiation.
+    let unreliable = peer_conn.create_data_channel(
+        "tango-input",
+        datachannel_wrapper::DataChannelInit::default()
+            .reliability(datachannel_wrapper::Reliability {
+                unordered: true,
+                unreliable: true,
+                max_packet_life_time: 0,
+                max_retransmits: 0,
+            })
+            .negotiated()
+            .manual_stream()
+            .stream(1),
+    )?;
+
     loop {
         if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
             datachannel_wrapper::GatheringState::Complete,
@@ -54,7 +75,7 @@ async fn create_data_channel(
         }
     }
 
-    Ok((dc, event_rx, peer_conn))
+    Ok((reliable, unreliable, event_rx, peer_conn))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -111,7 +132,15 @@ fn is_transient(e: &Error) -> bool {
 
 pub type Connecting = futures_util::future::BoxFuture<
     'static,
-    Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
+    Result<
+        (
+            // Reliable lobby channel, unreliable in-match channel, peer connection.
+            datachannel_wrapper::DataChannel,
+            datachannel_wrapper::DataChannel,
+            datachannel_wrapper::PeerConnection,
+        ),
+        Error,
+    >,
 >;
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
@@ -127,6 +156,7 @@ async fn establish(
 ) -> Result<
     (
         SignalingStream,
+        datachannel_wrapper::DataChannel,
         datachannel_wrapper::DataChannel,
         tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
@@ -229,7 +259,7 @@ async fn establish(
     if use_relay == Some(true) {
         rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
     }
-    let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
+    let (dc, unreliable_dc, event_rx, peer_conn) = create_data_channels(rtc_config).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -246,7 +276,7 @@ async fn establish(
         ))
         .await?;
 
-    Ok((signaling_stream, dc, event_rx, peer_conn))
+    Ok((signaling_stream, dc, unreliable_dc, event_rx, peer_conn))
 }
 
 /// Outcome of waiting on a single signaling websocket for the peer to begin the
@@ -404,7 +434,7 @@ pub async fn connect(
     // The initial dial surfaces failures to the caller (so "couldn't reach the
     // matchmaking server" is reported promptly); transparent reconnects only
     // kick in once we've successfully connected at least once.
-    let (mut signaling_stream, mut dc, mut event_rx, mut peer_conn) =
+    let (mut signaling_stream, mut dc, mut unreliable_dc, mut event_rx, mut peer_conn) =
         establish(addr, session_id, use_relay, protocol_version, &connection_id).await?;
 
     let addr = addr.to_owned();
@@ -425,9 +455,10 @@ pub async fn connect(
                     let mut backoff = MIN_RECONNECT_BACKOFF;
                     loop {
                         match establish(&addr, &session_id, use_relay, protocol_version, &connection_id).await {
-                            Ok((s, d, e, p)) => {
+                            Ok((s, d, u, e, p)) => {
                                 signaling_stream = s;
                                 dc = d;
+                                unreliable_dc = u;
                                 event_rx = e;
                                 peer_conn = p;
                                 log::info!("signaling reconnected; still waiting for the peer");
@@ -485,6 +516,6 @@ pub async fn connect(
             }
         }
 
-        Ok((dc, peer_conn))
+        Ok((dc, unreliable_dc, peer_conn))
     }))
 }

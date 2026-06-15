@@ -67,12 +67,16 @@ impl PacketStream for TcpRecvStream {
     }
 }
 
-fn wrap(stream: TcpStream) -> std::io::Result<(Sender, Receiver)> {
+fn wrap(stream: TcpStream) -> std::io::Result<(Sender, Receiver, std::net::IpAddr)> {
     stream.set_nodelay(true)?;
+    // Peer IP for the sibling UDP in-match channel's connect target (the UDP
+    // port is exchanged separately over this connection — see `net::udp`).
+    let peer_ip = stream.peer_addr()?.ip();
     let (rh, wh) = stream.into_split();
     Ok((
         Sender::new(Box::new(TcpSink { inner: wh })),
         Receiver::new(Box::new(TcpRecvStream { inner: rh })),
+        peer_ip,
     ))
 }
 
@@ -90,7 +94,7 @@ fn wrap(stream: TcpStream) -> std::io::Result<(Sender, Receiver)> {
 /// v4 bind succeeds and we `select!` across both `accept()` calls.
 /// If only one family is available (rare), we run with just that
 /// one; only when both binds fail do we surface the error.
-pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver)> {
+pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver, std::net::IpAddr)> {
     let v6 = TcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, port)).await;
     let v4 = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await;
     let stream = match (v6, v4) {
@@ -108,7 +112,7 @@ pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver)> {
 /// Open a TCP connection to the given `host:port`. The caller is
 /// responsible for substituting [`super::DEFAULT_LOCAL_PORT`] when
 /// the user omitted the port.
-pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver)> {
+pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver, std::net::IpAddr)> {
     let stream = TcpStream::connect(addr).await?;
     wrap(stream)
 }
