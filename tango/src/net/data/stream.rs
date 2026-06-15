@@ -3,24 +3,24 @@
 //!
 //! * [`OutStream`] — assigns a monotonic seq to each local element, keeps a
 //!   redundancy window of recent unconfirmed elements (`history`), and trims
-//!   it as the peer's block-acks confirm receipt. [`OutStream::window`] is
+//!   it as the peer's cumulative acks confirm receipt. [`OutStream::window`] is
 //!   what goes into an outbound [`Frame`].
 //! * [`InStream`] — reassembles the peer's stream from possibly-lossy,
 //!   reordered, duplicated frames: a reorder buffer feeds elements out in
-//!   strict seq order ([`InStream::accept`]), generates the block-ack to
-//!   send back ([`InStream::block_ack`]), and bails when a gap grows past
+//!   strict seq order ([`InStream::accept`]), generates the cumulative ack to
+//!   send back ([`InStream::ack`]), and bails when a gap grows past
 //!   the rollback horizon.
 //!
 //! Recovery is proactive, not request/response: a lost element is re-sent in
 //! the *next* frame's window (cost ~one frame), so single/short losses never
-//! pay a round-trip. The block-ack only drives window *trimming* (and would
+//! pay a round-trip. The ack only drives window *trimming* (and would
 //! drive selective resend for bursts longer than the window — see
 //! [`OutStream::trim`]). Nothing here knows about the engine's `Event` type;
 //! the `PvpSender`/`PvpReceiver` adapters map [`Element`] <-> `Event`.
 //!
 use std::collections::BTreeMap;
 
-use super::protocol::{BlockAck, Element, Frame, Marker};
+use super::protocol::{Element, Frame, PAYLOAD_MASK};
 
 /// Rollback horizon: a gap wider than this can't be rolled back to, so the
 /// receiver bails instead of waiting forever. Matches the engine's input
@@ -63,18 +63,17 @@ impl OutStream {
         }
     }
 
-    /// Append a local input; returns its seq.
+    /// Append a local input; returns its seq. Convenience over [`push`](Self::push)
+    /// that also records the time-sync advantage — markers carry none, so they
+    /// go straight through `push`.
     pub fn push_input(&mut self, joyflags: u16, frame_advantage: i16) -> u32 {
         self.latest_advantage = frame_advantage;
-        self.push(Element::Input(joyflags & 0x03ff))
+        self.push(Element::Input(joyflags & PAYLOAD_MASK))
     }
 
-    /// Append a round/match boundary; returns its seq.
-    pub fn push_marker(&mut self, marker: Marker) -> u32 {
-        self.push(Element::Marker(marker))
-    }
-
-    fn push(&mut self, e: Element) -> u32 {
+    /// Append any element (an input, or an `EndOf*` boundary) at the next seq;
+    /// returns it. Markers ride in-band on the same seq line as inputs.
+    pub fn push(&mut self, e: Element) -> u32 {
         let seq = self.next_seq;
         self.next_seq += 1;
         self.history.push_back((seq, e));
@@ -82,12 +81,13 @@ impl OutStream {
         seq
     }
 
-    /// Apply a block-ack the peer piggybacked on one of its frames.
-    pub fn apply_ack(&mut self, ack: BlockAck) {
+    /// Apply a cumulative ack (the peer's contiguous frontier) piggybacked on
+    /// one of its frames.
+    pub fn apply_ack(&mut self, frontier: u32) {
         // Clamp to what we've actually sent — a peer can't legitimately ack a
         // seq beyond `next_seq`, and an out-of-range value mustn't pin the
         // frontier into the future (which would starve our own redundancy).
-        let acked = ack.base.min(self.next_seq);
+        let acked = frontier.min(self.next_seq);
         // Acks are cumulative and idempotent; a stale/reordered one must not
         // drag the frontier backwards.
         if acked > self.peer_ack_base {
@@ -142,7 +142,7 @@ impl OutStream {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HorizonExceeded;
 
-/// Receiver half: reorder buffer + contiguous delivery + block-ack.
+/// Receiver half: reorder buffer + contiguous delivery + cumulative ack.
 pub struct InStream {
     /// Next contiguous seq we still need. Everything below has been
     /// delivered. 1-based to match [`OutStream`].
@@ -173,7 +173,7 @@ impl InStream {
 
     /// Ingest one frame's entries. Returns the elements that became
     /// contiguous (in strict seq order, possibly empty). The frame's
-    /// block-ack, if any, is the caller's job to apply to its [`OutStream`].
+    /// cumulative ack, if any, is the caller's job to apply to its [`OutStream`].
     pub fn accept(&mut self, frame: &Frame) -> Result<Vec<Element>, HorizonExceeded> {
         // Ack-only frames carry no input data — nothing to reassemble.
         let (base, frame_advantage, entries) = match frame {
@@ -208,19 +208,14 @@ impl InStream {
         Ok(delivered)
     }
 
-    /// Block-ack to send back: the contiguous frontier plus a bitmap of the
-    /// out-of-order arrivals just above it.
-    pub fn block_ack(&self) -> BlockAck {
-        let mut bits = 0u32;
-        let end = self.recv_base.saturating_add(32);
-        for (&seq, _) in self.buffer.range(self.recv_base..end) {
-            let off = seq - self.recv_base; // recv_base itself is never buffered, so off >= 1
-            bits |= 1 << off;
-        }
-        BlockAck {
-            base: self.recv_base,
-            bits,
-        }
+    /// Cumulative ack to send back: the contiguous frontier (lowest seq not yet
+    /// received). The sender resends its window from here; with a contiguous
+    /// resend window that's all it can act on, so there's no bitmap of
+    /// out-of-order receipts — those seqs can't be skipped in a contiguous
+    /// frame anyway. The reorder `buffer` still tracks them, it's just not
+    /// reported.
+    pub fn ack(&self) -> u32 {
+        self.recv_base
     }
 
     /// Freshest frame-advantage, for the throttler. `None` => no sample yet
@@ -247,7 +242,7 @@ mod tests {
     /// Build a frame from the out-stream's current window + the in-stream's
     /// ack, then round-trip it through the wire codec (so tests exercise the
     /// real encode/decode too).
-    fn make_frame(out: &OutStream, ack: Option<BlockAck>) -> Frame {
+    fn make_frame(out: &OutStream, ack: Option<u32>) -> Frame {
         let (base, fa, entries) = out.window().expect("window");
         let frame = Frame::data(base, fa, entries, ack);
         match Packet::decode(&Packet::Frame(frame).encode()).unwrap() {
@@ -262,8 +257,8 @@ mod tests {
         out.push_input(1, 0);
         out.push_input(2, 0);
         out.push_input(3, 0);
-        // Peer has confirmed everything through seq 3 (base = 4).
-        out.apply_ack(BlockAck { base: 4, bits: 0 });
+        // Peer has confirmed everything through seq 3 (frontier = 4).
+        out.apply_ack(4);
         // Still keeps MIN_REDUNDANCY recent elements (seqs are 1..=3).
         assert_eq!(out.window_len(), MIN_REDUNDANCY as usize);
         let (base, _, entries) = out.window().unwrap();
@@ -277,8 +272,8 @@ mod tests {
         for k in 0..10 {
             out.push_input(k, 0);
         }
-        // Peer only confirmed through seq 4 (base = 5): seqs 5..=10 unconfirmed.
-        out.apply_ack(BlockAck { base: 5, bits: 0 });
+        // Peer only confirmed through seq 4 (frontier = 5): seqs 5..=10 unconfirmed.
+        out.apply_ack(5);
         let (base, _, entries) = out.window().unwrap();
         assert_eq!(base, 5);
         assert_eq!(entries.len(), 6); // 5,6,7,8,9,10
@@ -290,8 +285,8 @@ mod tests {
         for k in 0..10 {
             out.push_input(k, 0);
         }
-        out.apply_ack(BlockAck { base: 8, bits: 0 });
-        out.apply_ack(BlockAck { base: 3, bits: 0 }); // stale/reordered
+        out.apply_ack(8);
+        out.apply_ack(3); // stale/reordered
         let (base, _, _) = out.window().unwrap();
         assert_eq!(base, 8); // didn't regress
     }
@@ -301,9 +296,9 @@ mod tests {
         let mut out = OutStream::new();
         out.push_input(1, 0);
         out.push_input(2, 0); // next_seq = 3
-        // A peer can't have received a seq we never sent; the bogus frontier
-        // is clamped to next_seq rather than pinned far into the future.
-        out.apply_ack(BlockAck { base: 9999, bits: 0 });
+                              // A peer can't have received a seq we never sent; the bogus frontier
+                              // is clamped to next_seq rather than pinned far into the future.
+        out.apply_ack(9999);
         assert_eq!(out.peer_ack_base(), 3);
     }
 
@@ -362,10 +357,9 @@ mod tests {
         let ahead = Frame::data(3, 0, vec![input(30), input(40)], None);
         assert_eq!(inn.accept(&ahead).unwrap(), vec![]);
         assert_eq!(inn.recv_base(), 1);
-        // Block-ack reports the hole: base=1, bits for seq 3 and 4 (offsets 2,3).
-        let ba = inn.block_ack();
-        assert_eq!(ba.base, 1);
-        assert_eq!(ba.bits, (1 << 2) | (1 << 3));
+        // The ack reports the frontier: still seq 1 (the hole), regardless of
+        // the out-of-order seqs 3,4 sitting in the reorder buffer.
+        assert_eq!(inn.ack(), 1);
         // Now the gap arrives; everything drains in order.
         let gap = Frame::data(1, 0, vec![input(10), input(20)], None);
         assert_eq!(
@@ -388,17 +382,17 @@ mod tests {
         let mut out = OutStream::new();
         let mut inn = InStream::new();
         out.push_input(1, 0);
-        out.push_marker(Marker::EndOfRound);
+        out.push(Element::EndOfRound);
         out.push_input(2, 0);
-        out.push_marker(Marker::EndOfMatch);
+        out.push(Element::EndOfMatch);
         let f = make_frame(&out, None);
         assert_eq!(
             inn.accept(&f).unwrap(),
             vec![
                 Element::Input(1),
-                Element::Marker(Marker::EndOfRound),
+                Element::EndOfRound,
                 Element::Input(2),
-                Element::Marker(Marker::EndOfMatch),
+                Element::EndOfMatch,
             ]
         );
     }
@@ -414,7 +408,7 @@ mod tests {
         inn.accept(&f).unwrap();
         // The in-stream now wants seq 5; its ack should advance the peer's
         // out-stream frontier so it trims to the redundancy floor.
-        out.apply_ack(inn.block_ack());
+        out.apply_ack(inn.ack());
         assert_eq!(out.window_len(), MIN_REDUNDANCY as usize);
     }
 
@@ -437,7 +431,7 @@ mod tests {
                     _ => unreachable!(),
                 };
                 delivered.extend(f_inputs(inn.accept(&f).unwrap()));
-                out.apply_ack(inn.block_ack());
+                out.apply_ack(inn.ack());
             }
         }
         let expected: Vec<u32> = (1..=200).collect();
@@ -448,7 +442,7 @@ mod tests {
         els.into_iter()
             .filter_map(|e| match e {
                 Element::Input(j) => Some(j as u32),
-                Element::Marker(_) => None,
+                Element::EndOfRound | Element::EndOfMatch => None,
             })
             .collect()
     }

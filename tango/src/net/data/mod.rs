@@ -1,7 +1,7 @@
 //! Data plane: the live in-match protocol.
 //!
 //! The byte-minimized [`protocol`] frame codec, the [`stream`] reliability state
-//! machines (redundancy window + block-ack reassembly), and the [`InMatchTx`]
+//! machines (redundancy window + cumulative-ack reassembly), and the [`InMatchTx`]
 //! / [`PvpSender`] / [`PvpReceiver`] adapters that run them over the
 //! unreliable in-match channel and present the engine's ordered
 //! `tango_pvp::net::Event` stream. Loss-tolerant by design — it never assumes
@@ -39,7 +39,7 @@ struct InMatchState {
 }
 
 /// Send handle for the unreliable in-match channel (WebRTC stream-1 data
-/// channel, or the direct path's UDP socket). Shared by the per-frame input
+/// channel, or the direct path's QUIC datagrams). Shared by the per-frame input
 /// pump, the receive loop's ping/pong + ack replies, and the session's in-band
 /// `EndOfMatch`. Carries [`protocol`] frames + ping/pong over [`Sender::send_raw`].
 #[derive(Clone)]
@@ -59,14 +59,14 @@ impl InMatchTx {
         }
     }
 
-    /// Push an element, snapshot the current redundancy window + block-ack into
+    /// Push an element, snapshot the current redundancy window + cumulative ack into
     /// one frame, and ship it. The state lock is dropped before the await.
     async fn send_frame_with(&self, push: impl FnOnce(&mut stream::OutStream)) -> std::io::Result<()> {
         let frame = {
             let mut st = self.state.lock().unwrap();
             push(&mut st.out);
             let (base, fa, entries) = st.out.window().expect("window is non-empty after a push");
-            let ack = st.inn.block_ack();
+            let ack = st.inn.ack();
             protocol::Packet::Frame(protocol::Frame::data(base, fa, entries, Some(ack)))
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
@@ -81,7 +81,7 @@ impl InMatchTx {
 
     pub async fn send_end_of_round(&self) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
-            out.push_marker(protocol::Marker::EndOfRound);
+            out.push(protocol::Element::EndOfRound);
         })
         .await
     }
@@ -90,7 +90,7 @@ impl InMatchTx {
     /// peer sees it exactly once and only after every preceding input.
     pub async fn send_end_of_match(&self) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
-            out.push_marker(protocol::Marker::EndOfMatch);
+            out.push(protocol::Element::EndOfMatch);
         })
         .await
     }
@@ -111,13 +111,13 @@ impl InMatchTx {
             .await
     }
 
-    /// Apply an incoming frame: feed its block-ack to the out-stream and its
+    /// Apply an incoming frame: feed its cumulative ack to the out-stream and its
     /// entries to the in-stream. Returns the newly-contiguous elements (seq
     /// order) plus the freshest frame-advantage. `Err` => a gap blew past the
     /// rollback horizon and the match must tear down.
     fn recv(&self, frame: &protocol::Frame) -> Result<(Vec<protocol::Element>, Option<i16>), stream::HorizonExceeded> {
         let mut st = self.state.lock().unwrap();
-        // The block-ack is the out-stream's concern (it acks what we sent);
+        // The ack is the out-stream's concern (it acks what we sent);
         // the in-stream reassembly below only consumes the data entries.
         let ack = match frame {
             protocol::Frame::Ack(ack) => Some(*ack),
@@ -258,10 +258,10 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                                             tango_pvp::net::Input { joyflags, frame_advantage },
                                         ));
                                     }
-                                    protocol::Element::Marker(protocol::Marker::EndOfRound) => {
+                                    protocol::Element::EndOfRound => {
                                         self.pending.push_back(tango_pvp::net::Event::EndOfRound);
                                     }
-                                    protocol::Element::Marker(protocol::Marker::EndOfMatch) => {
+                                    protocol::Element::EndOfMatch => {
                                         self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
                                         self.end_of_match_notify.notify_one();
                                     }

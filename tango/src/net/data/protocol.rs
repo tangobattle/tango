@@ -4,11 +4,12 @@
 //! reliable lobby channel.
 //!
 //! A [`Packet`] message is one datagram: a [`Frame`] (the per-tick input
-//! window + a block-ack of the peer's stream), or a `Ping`/`Pong` probe.
+//! window + a cumulative ack of the peer's stream), or a `Ping`/`Pong` probe.
 //! Reliability is the receiver's job — inputs are recovered by a redundancy
 //! window keyed on a monotonic seq, round/match boundaries ride in-band as
-//! marker entries, and a block-ack drives the sender's window. None of that
-//! state lives here; this module is purely the on-wire (de)serialization.
+//! marker entries, and a cumulative ack (the peer's contiguous frontier)
+//! drives the sender's window. None of that state lives here; this module is
+//! purely the on-wire (de)serialization.
 //!
 //! Layout of a `Frame` body (after the 1-byte `Packet` tag):
 //! ```text
@@ -16,7 +17,7 @@
 //!                            else 1-based global seq of entries[0]
 //! frame_advantage  svarint   present iff base != 0
 //! entries[]        u16 LE    present iff base != 0; >= 1; until CONT clear
-//! ack (optional)   present iff bytes remain:  ack_base uvarint, ack_bits uvarint
+//! ack (optional)   present iff bytes remain:  frontier uvarint
 //! ```
 //! Each entry `u16`: bit 15 = CONT (more follow), bit 14 = MARK (marker vs
 //! input), bits 0..=9 = payload (joyflags, or marker kind). `ack` is the
@@ -31,7 +32,7 @@ const CONT: u16 = 0x8000;
 const MARK: u16 = 0x4000;
 /// Bits 0..=9 of a stream entry: joyflags, or a marker kind. The GBA keypad
 /// is 10 bits, so the top 6 bits are free for CONT/MARK and stay reserved.
-const PAYLOAD_MASK: u16 = 0x03ff;
+pub const PAYLOAD_MASK: u16 = 0x03ff;
 
 /// Marker kind, carried in an entry's payload when [`MARK`] is set.
 const KIND_END_OF_ROUND: u16 = 0;
@@ -49,50 +50,30 @@ const TAG_PONG: u8 = 2;
 /// but a WebRTC peer's datagram is only bounded by the SCTP max message size.
 const MAX_ENTRIES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
 
-/// A round/match boundary that occupies a seq slot in the input stream.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Marker {
-    EndOfRound,
-    EndOfMatch,
-}
-
-impl Marker {
-    fn kind(self) -> u16 {
-        match self {
-            Marker::EndOfRound => KIND_END_OF_ROUND,
-            Marker::EndOfMatch => KIND_END_OF_MATCH,
-        }
-    }
-
-    fn from_kind(kind: u16) -> io::Result<Marker> {
-        match kind {
-            KIND_END_OF_ROUND => Ok(Marker::EndOfRound),
-            KIND_END_OF_MATCH => Ok(Marker::EndOfMatch),
-            other => Err(invalid(format!("unknown marker kind: {other}"))),
-        }
-    }
-}
-
-/// One element of the input stream, occupying a single seq slot.
+/// One element of the input stream, occupying a single seq slot: either a
+/// tick's input, or a round/match boundary that rides in-band on the seq line.
+/// The boundary variants are wire-tagged by [`MARK`] + a `KIND_*` payload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Element {
     /// Joyflags for this tick (10-bit GBA keypad; the top 6 bits must be 0).
     Input(u16),
-    Marker(Marker),
+    /// End-of-round boundary — the round its preceding inputs belong to ends here.
+    EndOfRound,
+    /// End-of-match boundary.
+    EndOfMatch,
 }
 
-/// Selective acknowledgement of the peer's input stream.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BlockAck {
-    /// Lowest seq not yet contiguously received (the SSN). The peer trims
-    /// its retransmit window to start here.
-    pub base: u32,
-    /// Bit `i` set => seq `base + i` was received out of order. Usually 0.
-    pub bits: u32,
-}
+/// Cumulative acknowledgement: the receiver's contiguous frontier — the lowest
+/// seq it hasn't received yet, i.e. "resend your window from here." That single
+/// number is the whole ack: the sender always resends a contiguous run up to
+/// its newest input, so a frontier is all it can act on (a bitmap of
+/// out-of-order receipts above the frontier couldn't be skipped in a contiguous
+/// frame anyway). The window size the sender resends is `newest - frontier + 1`,
+/// which it derives from its own counter.
+pub type Ack = u32;
 
 /// One in-match datagram's payload: either a tick of input data, or a bare
-/// block-ack.
+/// cumulative ack.
 ///
 /// Modeled as a sum type so the wire's `base == 0` ack-only sentinel can't be
 /// confused with a data tick: an ack-only frame has no advantage and no
@@ -102,10 +83,10 @@ pub struct BlockAck {
 /// invariant check to keep these in sync.)
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
-    /// Ack-only: no input this tick, just a block-ack of the peer's stream
+    /// Ack-only: no input this tick, just a cumulative ack of the peer's stream
     /// (encoded as the `base == 0` sentinel). Sent during stalls / as a
     /// reconnect resync.
-    Ack(BlockAck),
+    Ack(Ack),
     /// A tick of input data.
     Data {
         /// 1-based global seq of `entries[0]` (`entries[i]` has seq
@@ -116,9 +97,9 @@ pub enum Frame {
         /// Inputs + markers in seq order; non-empty (a window always carries
         /// >= 1 element, and the decoder reads >= 1).
         entries: Vec<Element>,
-        /// Optional piggybacked block-ack of the peer's stream. Absent => zero
-        /// trailing bytes (inferred from the datagram's exact length).
-        ack: Option<BlockAck>,
+        /// Optional piggybacked cumulative ack of the peer's stream. Absent =>
+        /// zero trailing bytes (inferred from the datagram's exact length).
+        ack: Option<Ack>,
     },
 }
 
@@ -127,7 +108,7 @@ impl Frame {
     /// that value is the ack-only sentinel, never a data seq. Callers source
     /// `base` from the 1-based out-stream window, so it never fires in
     /// practice; it just keeps the `NonZeroU32` construction ergonomic.
-    pub fn data(base: u32, frame_advantage: i16, entries: Vec<Element>, ack: Option<BlockAck>) -> Frame {
+    pub fn data(base: u32, frame_advantage: i16, entries: Vec<Element>, ack: Option<Ack>) -> Frame {
         Frame::Data {
             base: std::num::NonZeroU32::new(base).expect("data frame seq is 1-based (non-zero)"),
             frame_advantage,
@@ -184,10 +165,9 @@ impl Packet {
 
 fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
     match f {
-        Frame::Ack(ack) => {
+        Frame::Ack(frontier) => {
             write_uvarint(out, 0); // base == 0 sentinel
-            write_uvarint(out, ack.base as u64);
-            write_uvarint(out, ack.bits as u64);
+            write_uvarint(out, *frontier as u64);
         }
         Frame::Data {
             base,
@@ -208,7 +188,8 @@ fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
                         );
                         joyflags & PAYLOAD_MASK
                     }
-                    Element::Marker(m) => MARK | m.kind(),
+                    Element::EndOfRound => MARK | KIND_END_OF_ROUND,
+                    Element::EndOfMatch => MARK | KIND_END_OF_MATCH,
                 };
                 if i + 1 != n {
                     w |= CONT;
@@ -216,9 +197,8 @@ fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
                 out.extend_from_slice(&w.to_le_bytes());
             }
             // `ack` is appended raw (no discriminant); its absence is zero bytes.
-            if let Some(a) = ack {
-                write_uvarint(out, a.base as u64);
-                write_uvarint(out, a.bits as u64);
+            if let Some(frontier) = ack {
+                write_uvarint(out, *frontier as u64);
             }
         }
     }
@@ -230,16 +210,12 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
     let remaining = |c: &io::Cursor<&[u8]>| (c.position() as usize) < body.len();
 
     if base == 0 {
-        // Ack-only: the remainder is the block-ack (required — a base==0 frame
-        // exists to carry one; a fully empty frame is rejected).
+        // Ack-only: the remainder is the cumulative ack (required — a base==0
+        // frame exists to carry one; a fully empty frame is rejected).
         if !remaining(&c) {
-            return Err(invalid("ack-only frame missing block-ack".to_string()));
+            return Err(invalid("ack-only frame missing ack".to_string()));
         }
-        let ack = BlockAck {
-            base: read_uvarint(&mut c)? as u32,
-            bits: read_uvarint(&mut c)? as u32,
-        };
-        return Ok(Frame::Ack(ack));
+        return Ok(Frame::Ack(read_uvarint(&mut c)? as u32));
     }
 
     let base = std::num::NonZeroU32::new(base).expect("base != 0 checked above");
@@ -249,7 +225,11 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
     loop {
         let w = read_u16le(&mut c)?;
         let element = if w & MARK != 0 {
-            Element::Marker(Marker::from_kind(w & PAYLOAD_MASK)?)
+            match w & PAYLOAD_MASK {
+                KIND_END_OF_ROUND => Element::EndOfRound,
+                KIND_END_OF_MATCH => Element::EndOfMatch,
+                other => return Err(invalid(format!("unknown marker kind: {other}"))),
+            }
         } else {
             Element::Input(w & PAYLOAD_MASK)
         };
@@ -262,12 +242,9 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
             return Err(invalid(format!("frame exceeds {MAX_ENTRIES}-entry window cap")));
         }
     }
-    // Whatever is left after the entries is the optional block-ack.
+    // Whatever is left after the entries is the optional cumulative ack.
     let ack = if remaining(&c) {
-        Some(BlockAck {
-            base: read_uvarint(&mut c)? as u32,
-            bits: read_uvarint(&mut c)? as u32,
-        })
+        Some(read_uvarint(&mut c)? as u32)
     } else {
         None
     };
@@ -370,7 +347,7 @@ mod tests {
             2,
             vec![
                 Element::Input(0x010),
-                Element::Marker(Marker::EndOfRound),
+                Element::EndOfRound,
                 Element::Input(0x001),
             ],
             None,
@@ -384,9 +361,9 @@ mod tests {
 
     #[test]
     fn ack_only_frame_exact_bytes() {
-        // base=0, ack_base=12340, bits=0.
-        let f = Packet::Frame(Frame::Ack(BlockAck { base: 12340, bits: 0 }));
-        assert_eq!(f.encode(), vec![0x00, 0x00, 0xB4, 0x60, 0x00]);
+        // base=0 sentinel, then frontier=12340.
+        let f = Packet::Frame(Frame::Ack(12340));
+        assert_eq!(f.encode(), vec![0x00, 0x00, 0xB4, 0x60]);
         roundtrip(&f);
     }
 
@@ -404,10 +381,7 @@ mod tests {
             12345,
             2,
             vec![Element::Input(0x010), Element::Input(0x011), Element::Input(0x001)],
-            Some(BlockAck {
-                base: 12340,
-                bits: 0b1011,
-            }),
+            Some(12340),
         )));
     }
 
@@ -423,8 +397,8 @@ mod tests {
         roundtrip(&Packet::Frame(Frame::data(
             7,
             0,
-            vec![Element::Input(0x10), Element::Marker(Marker::EndOfMatch)],
-            Some(BlockAck { base: 6, bits: 0 }),
+            vec![Element::Input(0x10), Element::EndOfMatch],
+            Some(6),
         )));
     }
 
@@ -439,10 +413,7 @@ mod tests {
             1_000_000,
             5,
             vec![Element::Input(0x200), Element::Input(0x100)],
-            Some(BlockAck {
-                base: 999_999,
-                bits: 0xFFFF_FFFF,
-            }),
+            Some(999_999),
         )));
     }
 
