@@ -23,6 +23,13 @@ pub use tango_pvp::battle::EXPECTED_FPS;
 /// enough that a crashed peer doesn't pin the UI for long.
 const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Retransmit-heartbeat cadence for the in-match channel — one emulator frame
+/// at [`EXPECTED_FPS`]. Keeps the unacked redundancy window flowing while the
+/// local sim is throttled or stalled, so loss recovery isn't coupled to the
+/// frame rate (see [`crate::net::InMatchTx`]).
+const IN_MATCH_HEARTBEAT: std::time::Duration =
+    std::time::Duration::from_nanos((1_000_000_000.0 / EXPECTED_FPS as f64) as u64);
+
 /// The latching end-of-match signals, grouped so the teardown policy
 /// lives in one place instead of four loose atomics on the session.
 ///
@@ -166,7 +173,7 @@ impl PvpSession {
         // the disconnect signal (a datagram channel has no clean close event).
         let in_match_receiver = drain_receiver(&pre_match.in_match_receiver_slot).await?;
         let reliable_receiver = drain_receiver(&pre_match.reliable_receiver_slot).await?;
-        let in_match = crate::net::InMatchTx::new(pre_match.in_match_sender.clone());
+        let in_match = crate::net::InMatchTx::new(pre_match.in_match_sender.clone(), IN_MATCH_HEARTBEAT);
 
         // Parse the peer's raw SRAM into a Save object. Needed
         // by the Shadow constructor (its primary trap needs

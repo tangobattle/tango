@@ -46,22 +46,40 @@ struct InMatchState {
 pub struct InMatchTx {
     state: std::sync::Arc<std::sync::Mutex<InMatchState>>,
     sink: std::sync::Arc<tokio::sync::Mutex<Sender>>,
+    /// Count of data frames (inputs/markers) sent. The heartbeat watches this
+    /// to tell "the emulator is sending" from "the emulator has stalled".
+    data_sends: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Retransmit-heartbeat cadence. The heartbeat task is spawned in [`new`]
+    /// and runs for the life of the channel.
+    heartbeat: std::time::Duration,
 }
 
 impl InMatchTx {
-    pub fn new(sink: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
-        Self {
+    /// Build the in-match send handle and start its retransmit heartbeat. The
+    /// heartbeat is transparent — callers just `send_*`; the channel keeps the
+    /// unacked window flowing on its own when the emulator goes quiet (see
+    /// [`run_heartbeat`](Self::run_heartbeat)). `heartbeat` is the resend
+    /// cadence (the caller picks it — typically one emulator frame).
+    ///
+    /// Must be called within a Tokio runtime (it spawns the heartbeat task).
+    pub fn new(sink: std::sync::Arc<tokio::sync::Mutex<Sender>>, heartbeat: std::time::Duration) -> Self {
+        let this = Self {
             state: std::sync::Arc::new(std::sync::Mutex::new(InMatchState {
                 out: stream::OutStream::new(),
                 inn: stream::InStream::new(),
             })),
             sink,
-        }
+            data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            heartbeat,
+        };
+        tokio::spawn(this.clone().run_heartbeat());
+        this
     }
 
     /// Push an element, snapshot the current redundancy window + cumulative ack into
     /// one frame, and ship it. The state lock is dropped before the await.
     async fn send_frame_with(&self, push: impl FnOnce(&mut stream::OutStream)) -> std::io::Result<()> {
+        self.data_sends.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let frame = {
             let mut st = self.state.lock().unwrap();
             push(&mut st.out);
@@ -111,6 +129,53 @@ impl InMatchTx {
             .await
     }
 
+    /// Re-send the current redundancy window (or a bare ack if no inputs yet)
+    /// without advancing the stream — the heartbeat's retransmit. Lets recovery
+    /// and the peer's acks keep flowing while the emulator is throttled/stalled.
+    async fn resend_window(&self) -> std::io::Result<()> {
+        let frame = {
+            let st = self.state.lock().unwrap();
+            let ack = st.inn.ack();
+            match st.out.window() {
+                Some((base, fa, entries)) => protocol::Frame::data(base, fa, entries, Some(ack)),
+                None => protocol::Frame::Ack(ack),
+            }
+        };
+        self.sink
+            .lock()
+            .await
+            .send_raw(&protocol::Packet::Frame(frame).encode())
+            .await
+    }
+
+    /// Retransmit heartbeat: keep the unacked window (and our ack) flowing at
+    /// roughly the frame rate even when the emulator slows or stalls.
+    ///
+    /// Sends are otherwise emulator-driven, so throttling the local sim to brake
+    /// a runaway lead would also throttle *recovery* — defeating the brake and
+    /// risking a bail on otherwise-recoverable loss. This decouples the two: it
+    /// resends only on intervals where the emulator sent nothing, so it adds no
+    /// traffic during normal play but fills the gaps during a stall. Runs until
+    /// the channel errors (match teardown).
+    async fn run_heartbeat(self) {
+        let mut interval = tokio::time::interval(self.heartbeat);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_seen = self.data_sends.load(std::sync::atomic::Ordering::Relaxed);
+        loop {
+            interval.tick().await;
+            let now = self.data_sends.load(std::sync::atomic::Ordering::Relaxed);
+            if now != last_seen {
+                // The emulator sent a frame this interval; nothing to fill in.
+                last_seen = now;
+                continue;
+            }
+            if let Err(e) = self.resend_window().await {
+                log::debug!("pvp heartbeat ended: {e}");
+                return;
+            }
+        }
+    }
+
     /// Apply an incoming frame: feed its cumulative ack to the out-stream and its
     /// entries to the in-stream. Returns the newly-contiguous elements (seq
     /// order) plus the freshest frame-advantage. `Err` => a gap blew past the
@@ -144,6 +209,8 @@ pub struct PvpSender {
 
 impl PvpSender {
     pub fn new(im: InMatchTx) -> Self {
+        // The retransmit heartbeat is the in-match channel's own concern
+        // (started by `InMatchTx::new`), so the pump just forwards events.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(SEND_PUMP_DEPTH);
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
