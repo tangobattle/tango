@@ -26,10 +26,9 @@ function cleanup {
 trap cleanup EXIT
 cleanup
 
-# Generate an appropriate .rc file.
-tools/mako_generate.py "$(dirname "${BASH_SOURCE[0]}")/resource.rc.mako" >tango/resource.rc
-
-# Create icon.
+# Create icon. `resource.rc` (which references icon.ico) is rendered by
+# tango's build.rs, which only embeds the resource when icon.ico exists,
+# so the icon must be in place before `cargo build` below.
 mkdir Tango.iconset
 magick tango/src/icon.png -resize 16x16 -depth 32 Tango.iconset/icon_16x16.png
 magick tango/src/icon.png -resize 32x32 -depth 32 Tango.iconset/icon_32x32.png
