@@ -42,6 +42,13 @@ const TAG_FRAME: u8 = 0;
 const TAG_PING: u8 = 1;
 const TAG_PONG: u8 = 2;
 
+/// Hard cap on entries decoded from one frame. A legitimate redundancy window
+/// can't exceed the rollback horizon (the out-stream trims it to that), so a
+/// frame claiming more is malformed or hostile. Bounds the decode allocation
+/// regardless of transport — UDP is incidentally capped by its recv buffer,
+/// but a WebRTC peer's datagram is only bounded by the SCTP max message size.
+const MAX_ENTRIES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
+
 /// A round/match boundary that occupies a seq slot in the input stream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Marker {
@@ -250,6 +257,10 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
         if w & CONT == 0 {
             break;
         }
+        // Reject a runaway/hostile window before it can grow the allocation.
+        if entries.len() >= MAX_ENTRIES {
+            return Err(invalid(format!("frame exceeds {MAX_ENTRIES}-entry window cap")));
+        }
     }
     // Whatever is left after the entries is the optional block-ack.
     let ack = if remaining(&c) {
@@ -455,6 +466,24 @@ mod tests {
     #[test]
     fn ping_with_trailing_garbage_errors() {
         assert!(Packet::decode(&[TAG_PING, 0x00, 0x00, 0x00]).is_err());
+    }
+
+    #[test]
+    fn max_window_decodes() {
+        // Exactly the cap is legitimate (the last entry terminates the run).
+        let f = Packet::Frame(Frame::data(1, 0, vec![Element::Input(1); MAX_ENTRIES], None));
+        assert_eq!(Packet::decode(&f.encode()).unwrap(), f);
+    }
+
+    #[test]
+    fn over_long_window_errors() {
+        // base=1, adv=0, then a run of CONT-set entries with no terminator
+        // inside the cap — a hostile peer trying to force a huge allocation.
+        let mut bytes = vec![TAG_FRAME, 0x01, 0x00];
+        for _ in 0..=MAX_ENTRIES {
+            bytes.extend_from_slice(&(CONT | 0x001).to_le_bytes());
+        }
+        assert!(Packet::decode(&bytes).is_err());
     }
 
     #[test]

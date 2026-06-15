@@ -84,10 +84,14 @@ impl OutStream {
 
     /// Apply a block-ack the peer piggybacked on one of its frames.
     pub fn apply_ack(&mut self, ack: BlockAck) {
+        // Clamp to what we've actually sent — a peer can't legitimately ack a
+        // seq beyond `next_seq`, and an out-of-range value mustn't pin the
+        // frontier into the future (which would starve our own redundancy).
+        let acked = ack.base.min(self.next_seq);
         // Acks are cumulative and idempotent; a stale/reordered one must not
         // drag the frontier backwards.
-        if ack.base > self.peer_ack_base {
-            self.peer_ack_base = ack.base;
+        if acked > self.peer_ack_base {
+            self.peer_ack_base = acked;
             self.trim();
         }
     }
@@ -125,6 +129,11 @@ impl OutStream {
     #[cfg(test)]
     fn window_len(&self) -> usize {
         self.history.len()
+    }
+
+    #[cfg(test)]
+    fn peer_ack_base(&self) -> u32 {
+        self.peer_ack_base
     }
 }
 
@@ -178,7 +187,10 @@ impl InStream {
         };
         self.latest_advantage = Some(frame_advantage);
         for (i, &e) in entries.iter().enumerate() {
-            let seq = base + i as u32;
+            // Saturating: `base` is peer-supplied, so `base + i` mustn't
+            // overflow. A saturated seq lands past the horizon and is rejected
+            // below, same as any other too-far-ahead value.
+            let seq = base.saturating_add(i as u32);
             if seq < self.recv_base {
                 continue; // already delivered — a redundant/duplicate copy.
             }
@@ -282,6 +294,17 @@ mod tests {
         out.apply_ack(BlockAck { base: 3, bits: 0 }); // stale/reordered
         let (base, _, _) = out.window().unwrap();
         assert_eq!(base, 8); // didn't regress
+    }
+
+    #[test]
+    fn ack_beyond_sent_is_clamped() {
+        let mut out = OutStream::new();
+        out.push_input(1, 0);
+        out.push_input(2, 0); // next_seq = 3
+        // A peer can't have received a seq we never sent; the bogus frontier
+        // is clamped to next_seq rather than pinned far into the future.
+        out.apply_ack(BlockAck { base: 9999, bits: 0 });
+        assert_eq!(out.peer_ack_base(), 3);
     }
 
     #[test]

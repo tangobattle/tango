@@ -16,6 +16,13 @@ impl PacketSink for DataChannelSink {
     }
 }
 
+/// Largest data-channel message we'll accept, on either channel. The lobby's
+/// biggest packet is a save-state `Chunk` (chunked under this), and an
+/// in-match `wire` frame is tiny; anything larger is malformed or hostile, so
+/// reject it rather than hand a peer-sized buffer up the stack. Matches the
+/// reliable transport's framing cap (`tcp::MAX_FRAME_BYTES`).
+const MAX_MESSAGE_BYTES: usize = 64 * 1024;
+
 struct DataChannelStream {
     inner: datachannel_wrapper::DataChannelReceiver,
 }
@@ -23,10 +30,18 @@ struct DataChannelStream {
 #[async_trait::async_trait]
 impl PacketStream for DataChannelStream {
     async fn recv(&mut self) -> std::io::Result<Vec<u8>> {
-        self.inner
+        let msg = self
+            .inner
             .receive()
             .await
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream is empty"))
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream is empty"))?;
+        if msg.len() > MAX_MESSAGE_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("oversized message: {} bytes", msg.len()),
+            ));
+        }
+        Ok(msg)
     }
 }
 
