@@ -18,6 +18,7 @@ pub const SUPPORTED_LANGS: &[unic_langid::LanguageIdentifier] = &[
     unic_langid::langid!("ja-JP"),
     unic_langid::langid!("zh-CN"),
     unic_langid::langid!("zh-TW"),
+    unic_langid::langid!("ko-KR"),
     unic_langid::langid!("de-DE"),
     unic_langid::langid!("es-419"),
     unic_langid::langid!("fr-FR"),
