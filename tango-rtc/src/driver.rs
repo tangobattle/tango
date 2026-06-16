@@ -669,14 +669,22 @@ impl Outbox {
         // "this many frames of in-flight + queue," independent of frame size, so
         // a clean high-RTT link sits well under it and only a real cwnd-blocked
         // backlog beyond a healthy window sheds. A fat recovery frame is
-        // proportionally larger, so it still keeps its slot. Sized to ~0.5 s of
-        // frames: enough that no playable RTT sheds on a clean link, little
-        // enough that banked staleness under genuine congestion stays far below
-        // the 128 KB cap. (There's no longer a small-message floor — the 3-byte
-        // ping/pong probe that needed one is gone; RTT now rides the ack
-        // round-trip, and every frame here carries a recoverable redundancy
-        // window.)
-        const HEALTHY_INFLIGHT_FRAMES: usize = 30;
+        // proportionally larger, so it still keeps its slot.
+        //
+        // Size the window to the deepest round trip the netplay is tuned for.
+        // The frame-delay control compensates one-way delay up to ~10 frames
+        // (tango-pvp's MAX_FRAME_DELAY) before it stops hiding RTT and starts
+        // speculating, i.e. it targets a round trip of TUNED_ROUND_TRIP_FRAMES
+        // (~330 ms at 60 Hz). That round trip is the healthy in-flight window;
+        // half again on top covers ack jitter and the redundancy heartbeat's
+        // extra in-flight copies, so a clean link never sheds within the
+        // envelope and only a genuine cwnd-blocked backlog past it does. Banked
+        // staleness then stays ~0.5 s, far below str0m's 128 KB cap. (No
+        // small-message floor anymore — the 3-byte ping/pong probe that needed
+        // one is gone; RTT rides the ack round-trip, and every frame here
+        // carries a recoverable redundancy window.)
+        const TUNED_ROUND_TRIP_FRAMES: usize = 20; // 2 x tango-pvp's ~10-frame max one-way frame delay
+        const HEALTHY_INFLIGHT_FRAMES: usize = TUNED_ROUND_TRIP_FRAMES * 3 / 2;
         if lossy && channel.buffered_amount() > HEALTHY_INFLIGHT_FRAMES * message.len() {
             return;
         }
