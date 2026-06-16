@@ -14,19 +14,25 @@ use super::EXPECTED_FPS;
 /// firing first.
 pub const MAX_QUEUE_LENGTH: usize = 2 * 60; // ~2 seconds
 
-/// Lead (unmatched local inputs — the same quantity the overflow bail guards)
-/// at which the emergency time-sync stall engages: 70% of [`MAX_QUEUE_LENGTH`].
-/// The remaining headroom is room for the throttler's emergency brake
-/// ([`super::throttler`]) to arrest the lead before it overruns the cap.
-pub(super) const STALL_HIGH_WATER: usize = MAX_QUEUE_LENGTH * 7 / 10;
-
 /// How long the local frontier may sit stalled above [`STALL_HIGH_WATER`] with
 /// no confirmation progress before the round tears down. The emergency brake
 /// holds a merely *slow* peer indefinitely (it keeps confirming, just below
 /// realtime); this only fires once a peer has gone genuinely silent, turning
 /// the old unrecoverable overflow bail into a deliberate timeout. Sized to the
 /// session's peer-end grace.
-const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const STALL_TIMEOUT_SECS: u64 = 5;
+const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(STALL_TIMEOUT_SECS);
+
+/// Lead (unmatched local inputs — the same quantity the overflow bail guards)
+/// at which the emergency time-sync brake engages. Derived from the watchdog,
+/// not picked as a fraction of the cap: it sits far enough below the cap that a
+/// peer going silent the instant the brake engages still can't overrun the cap
+/// before the [`STALL_TIMEOUT`] watchdog tears the round down — the headroom is
+/// the frozen frontier's floor creep over the grace window (see
+/// [`stall_headroom`](super::throttler::stall_headroom)). So the recoverable
+/// timeout always beats the unrecoverable overflow bail.
+pub(super) const STALL_HIGH_WATER: usize =
+    MAX_QUEUE_LENGTH - super::throttler::stall_headroom(STALL_TIMEOUT_SECS as f32);
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
