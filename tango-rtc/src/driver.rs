@@ -661,38 +661,10 @@ impl Outbox {
             self.parked = Some(message);
             return;
         };
-        let lossy = crate::is_lossy(inner.channels[idx].config.reliability);
         let Some(mut channel) = inner.rtc.channel(id) else {
             // Channel is gone; the message has nowhere to go.
             return;
         };
-        // Don't bank a stale backlog on a lossy channel. When the send buffer is
-        // already past a healthy in-flight window, *defer* this frame — hold it
-        // parked rather than writing it into a backed-up SCTP queue. While it's
-        // parked the sender keeps producing, and `park` coalesces each new frame
-        // onto it (newest wins), so the freshest frame is what waits for SCTP and
-        // the older ones fall away (their inputs ride the newer frame's
-        // redundancy window). Under a cwnd collapse from packet loss that keeps
-        // SCTP shallow and current instead of piling old frames that flush out in
-        // a burst when cwnd reopens — the burst that lurches the rollback
-        // time-sync. Genuine network losses still recover via the redundancy
-        // window (a single loss is a one-frame gap, not a clump).
-        //
-        // The window is a frame *count*, not a byte count. `buffered_amount()`
-        // includes in-flight (un-SACKed) bytes, and the lossy channel re-sends a
-        // redundancy window every frame, so in-flight bytes ≈ frames_in_flight ×
-        // frame_size and grow with RTT — a fixed byte threshold would defer a
-        // perfectly healthy high-RTT window. Dividing by `message.len()` cancels
-        // that. Sized to the deepest round trip the netplay is tuned for: twice
-        // tango-pvp's ~10-frame MAX_FRAME_DELAY (the one-way delay the frame-delay
-        // control hides before it speculates), plus half again for jitter, so a
-        // clean link never defers inside its envelope.
-        const TUNED_ROUND_TRIP_FRAMES: usize = 20; // 2 x tango-pvp's ~10-frame max one-way frame delay
-        const HEALTHY_INFLIGHT_FRAMES: usize = TUNED_ROUND_TRIP_FRAMES * 3 / 2;
-        if lossy && channel.buffered_amount() > HEALTHY_INFLIGHT_FRAMES * message.len() {
-            self.parked = Some(message); // defer; `park` coalesces newer frames onto it
-            return;
-        }
         match channel.write(true, &message) {
             Ok(true) => {}
             // SCTP's send buffer is full. Keep the frame parked and retry next
