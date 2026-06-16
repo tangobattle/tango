@@ -551,8 +551,10 @@ async fn main_loop(
     let mut liveness = Liveness::default();
 
     loop {
+        let waiting;
         let (drained, rtc_deadline) = {
             let mut inner = driver.shared.inner.lock().unwrap();
+            waiting = inner.remote_desc.is_none();
             // Flush before draining, so a parked message rides this same pass
             // onto the wire. (Flushing after the drain would leave it sitting
             // in SCTP's send buffer until the next — possibly unrelated,
@@ -589,22 +591,35 @@ async fn main_loop(
             return Exit::Failed(failure);
         }
 
-        // Sleep until str0m's next timeout or the earliest liveness
-        // deadline, whichever wakeup source fires first.
-        let wake = liveness
-            .next_deadline()
-            .map_or(rtc_deadline, |deadline| deadline.min(rtc_deadline));
+        // Until the peer shows up, str0m has nothing to do but tick the DTLS
+        // handshake it optimistically starts at offer time — whose ~40s connect
+        // timeout would otherwise drain against the lobby wait. So while there's
+        // no remote description we hold str0m's clock still: don't advance time,
+        // wake only on a real event (the remote arriving, a datagram,
+        // shutdown). `PeerConnection::set_remote_description` re-bases the clock
+        // to the present before it inits DTLS, so the handshake gets its full
+        // budget from the real exchange.
+        let wake = if waiting {
+            None
+        } else {
+            Some(
+                liveness
+                    .next_deadline()
+                    .map_or(rtc_deadline, |deadline| deadline.min(rtc_deadline)),
+            )
+        };
 
-        let now = Instant::now();
-        if wake <= now {
-            if let Err(failure) = step_time(&driver.shared, now) {
-                return Exit::Failed(failure);
+        if let Some(wake) = wake {
+            if wake <= Instant::now() {
+                if let Err(failure) = step_time(&driver.shared, Instant::now()) {
+                    return Exit::Failed(failure);
+                }
+                continue;
             }
-            continue;
         }
 
         tokio::select! {
-            _ = tokio::time::sleep_until(tokio::time::Instant::from_std(wake)) => {
+            _ = sleep_until_opt(wake) => {
                 if let Err(failure) = step_time(&driver.shared, Instant::now()) {
                     return Exit::Failed(failure);
                 }
@@ -638,6 +653,15 @@ async fn main_loop(
                 return Exit::Closed;
             }
         }
+    }
+}
+
+/// Sleep until `wake` (real time), or forever if `None` — used while we hold
+/// str0m's clock and only want to wake on a real event.
+async fn sleep_until_opt(wake: Option<Instant>) {
+    match wake {
+        Some(wake) => tokio::time::sleep_until(tokio::time::Instant::from_std(wake)).await,
+        None => std::future::pending().await,
     }
 }
 

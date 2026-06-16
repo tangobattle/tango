@@ -355,6 +355,18 @@ impl PeerConnection {
     /// an `Answer` completes our own offer.
     pub fn set_remote_description(&mut self, desc: SessionDescription) -> Result<(), std::io::Error> {
         let mut inner = self.shared.inner.lock().unwrap();
+
+        // Re-base str0m's clock to the present before we init DTLS. While we
+        // waited in the lobby the driver held str0m's clock still (it has
+        // nothing to do without a remote, and ticking it would spend the DTLS
+        // handshake's ~40s connect budget against the wait). Accepting the
+        // offer/answer below inits DTLS and arms that timeout relative to the
+        // clock, so step it forward to now — that hands the handshake its full
+        // budget from the real exchange, and lets the driver resume on real time
+        // without a backwards jump. (str0m ignores a timeout that would move its
+        // clock backwards, so this is a no-op if the driver already advanced it.)
+        let _ = inner.rtc.handle_input(str0m::Input::Timeout(std::time::Instant::now()));
+
         match desc.sdp_type {
             SdpType::Offer => {
                 let offer = str0m::change::SdpOffer::from_sdp_string(&desc.sdp).map_err(other_err)?;

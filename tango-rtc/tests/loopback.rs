@@ -187,6 +187,41 @@ async fn test_loopback_connection() {
     .unwrap();
 }
 
+/// Waiting a long time in the lobby before the peer shows up must not poison
+/// the connection. While idle the driver parks on a far-future timeout, so
+/// str0m's clock goes stale; `set_remote_description` re-bases it before
+/// touching DTLS, otherwise `init_dtls` would arm the DTLS handshake timeout
+/// already-expired and the handshake would instantly "time out: connect".
+///
+/// Ignored by default: it sleeps past the 40s DTLS handshake timeout on
+/// purpose. Run with `cargo test -p tango-rtc -- --ignored`.
+#[ignore = "sleeps >40s to exceed the DTLS handshake timeout"]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn test_connect_after_long_lobby_wait() {
+    tokio::time::timeout(std::time::Duration::from_secs(90), async {
+        let (mut pc_a, mut dc_a, mut udc_a, mut events_a) = make_peer().await;
+        let (mut pc_b, mut dc_b, mut udc_b, mut events_b) = make_peer().await;
+
+        // Sit idle in the "lobby" past the 40s DTLS handshake timeout before
+        // the peer joins, the way a host waiting for an opponent does.
+        tokio::time::sleep(std::time::Duration::from_secs(45)).await;
+
+        pc_b.set_remote_description(pc_a.local_description().unwrap()).unwrap();
+        pc_a.set_remote_description(pc_b.local_description().unwrap()).unwrap();
+
+        wait_connected(&mut events_a).await;
+        wait_connected(&mut events_b).await;
+
+        // Both channels still come up and carry data.
+        dc_a.send(b"hello after the wait").await.unwrap();
+        assert_eq!(dc_b.receive().await.unwrap(), b"hello after the wait");
+        udc_a.send(b"input after the wait").await.unwrap();
+        assert_eq!(udc_b.receive().await.unwrap(), b"input after the wait");
+    })
+    .await
+    .unwrap();
+}
+
 /// The hangup must reach the remote even on process exit, where the tokio
 /// runtime is torn down by dropping its tasks without polling them again —
 /// so the driver task's own graceful close never runs, and only
