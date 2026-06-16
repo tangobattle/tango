@@ -178,9 +178,9 @@ pub struct LobbyState {
     /// user-explicit picks for the SAME game stick.
     pub default_mt_for_game: Option<(String, u8)>,
     /// How the transport actually flows, resolved once the wire
-    /// handshake completes: direct (peer-to-peer, incl. the raw
-    /// TCP path) or relayed through a TURN server. `None` when it
-    /// couldn't be determined.
+    /// handshake completes: direct (peer-to-peer) or relayed
+    /// through a TURN server. `None` when it couldn't be
+    /// determined.
     pub connection_kind: Option<ConnectionKind>,
 }
 
@@ -248,15 +248,14 @@ struct LocalCommit {
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `Some` for WebRTC peer connections (kept alive for the
-    /// duration of the session); `None` for the direct-TCP local
-    /// transport, whose lifetime is owned by the Sender/Receiver
-    /// halves themselves.
-    peer_conn: Option<datachannel_wrapper::PeerConnection>,
-    /// `true` iff we're the "offer side" for symmetry-breaking
-    /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
-    /// or we're the listener on the direct-TCP path. Drives the
-    /// `Match::pick_local_player_index` tie-break.
+    /// The peer connection, kept alive for the duration of the session (it owns
+    /// the data channel the Sender/Receiver ride). `Some` on both paths now —
+    /// matchmaking and direct link-code both run over tango-rtc.
+    peer_conn: Option<tango_rtc::PeerConnection>,
+    /// `true` iff we're the "offer side" for symmetry-breaking purposes — we
+    /// wrote the SDP offer on the matchmaking path, or we're the host on the
+    /// direct link-code path. Drives the `Match::pick_local_player_index`
+    /// tie-break.
     is_offerer: bool,
 }
 
@@ -273,12 +272,12 @@ pub enum Message {
         endpoint: String,
         use_relay: Option<bool>,
     },
-    /// Direct-TCP local-play entry. Bypasses signaling + WebRTC
-    /// entirely — runs the protocol-version negotiate handshake
-    /// over a raw length-prefixed TCP connection (see
-    /// [`crate::net::tcp`]). `role` says whether we're the
-    /// listener or the dialer; the UI-side identifier is derived
-    /// from it (see [`LinkIdent`]).
+    /// Direct link-code local-play entry. Bypasses the signaling server —
+    /// brings up a peer connection from fixed constants + the host's
+    /// `addr:port` (`tango_rtc::PeerConnection::new_direct`), then runs the
+    /// same protocol-version negotiate handshake the matchmaking path uses.
+    /// `role` says whether we're the host or the dialer; the UI-side
+    /// identifier is derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
@@ -359,9 +358,9 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
-/// Which side of a direct-TCP connection the local instance is.
-/// Drives the offer/answer symmetry breaker the WebRTC path gets
-/// for free from SDP role assignment.
+/// Which side of a direct link-code connection the local instance is.
+/// Drives the symmetry breaker the matchmaking path gets for free from
+/// SDP role assignment (here the host plays the offerer's part).
 #[derive(Debug, Clone)]
 pub enum DirectRole {
     /// Listen on the given port and accept the first inbound peer.
@@ -371,8 +370,8 @@ pub enum DirectRole {
 }
 
 pub struct ConnectionPayload {
-    pub dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub dc: tango_rtc::DataChannel,
+    pub peer_conn: tango_rtc::PeerConnection,
 }
 
 /// Intermediate hand-off between `run_signaling_connect` (server
@@ -401,11 +400,11 @@ impl std::fmt::Debug for ConnectionPayload {
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    /// `None` for the direct-TCP local transport. See
+    /// Always `Some` now — both paths run over tango-rtc. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
-    /// Pre-computed by the per-transport negotiator. WebRTC reads
-    /// the SDP type; TCP sets host=true, connect=false.
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
+    /// Pre-computed by the per-path negotiator: the matchmaking path
+    /// reads the SDP type; the direct path sets host=true, connect=false.
     pub is_offerer: bool,
 }
 
@@ -474,7 +473,7 @@ impl State {
                     waiting_for_opponent,
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(run_tcp_negotiate(role, cancel), map_negotiate_result)
+                iced::Task::perform(run_direct_negotiate(role, cancel), map_negotiate_result)
             }
             Message::SignalingHelloReceived(slot_rx) => {
                 let ident = match &self.phase {
@@ -523,10 +522,11 @@ impl State {
                 };
                 let sender = out.sender.clone();
                 // Resolve how the transport actually flows for the
-                // lobby's ping line. The raw-TCP path (no peer
-                // connection) is direct by construction; WebRTC
-                // reads the selected ICE pair — a `typ relay`
-                // candidate on either end means TURN.
+                // lobby's ping line. Both paths carry a peer
+                // connection now; read the selected ICE pair — a
+                // `typ relay` candidate on either end means TURN,
+                // otherwise direct (every direct link-code
+                // connection included).
                 self.lobby.connection_kind = match &out.peer_conn {
                     None => Some(ConnectionKind::Direct),
                     Some(pc) => pc.selected_candidate_pair().ok().map(|(local, remote)| {
@@ -962,7 +962,7 @@ impl State {
         // to recover the nonce + save_data.
         let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)).ok()?;
         let peer_state = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
-        // Direct-TCP codes carry no remote-discoverable identity,
+        // Direct link-code codes carry no remote-discoverable identity,
         // so the replay metadata's `link_code` slot is left empty
         // for them — the replay filename and view substitute
         // their own placeholder. Matchmaking codes round-trip
@@ -1033,9 +1033,9 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `None` for the direct-TCP local transport; see
+    /// Always `Some` now — both paths run over tango-rtc; see
     /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
@@ -1221,31 +1221,67 @@ async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Res
     }
 }
 
-/// Direct-TCP entry: bind-and-accept (host) or dial (connect),
-/// then run the same `protocol::negotiate` handshake the WebRTC
-/// path uses. No signaling server, no peer-connection — the TCP
-/// stream halves carry the whole transport lifetime themselves.
-/// `is_offerer` is set from the role (host = true) so the
-/// `pick_local_player_index` symmetry break still has a stable
-/// asymmetric input.
-async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
+/// Direct link-code entry: bring up a peer connection with no signaling server
+/// (`tango_rtc::PeerConnection::new_direct`), then run the same
+/// `protocol::negotiate` handshake the matchmaking path uses. Both ends agree
+/// ICE/DTLS from fixed constants and the host's `addr:port`; the dialer opens
+/// the data channel and the host binds it. `is_offerer` is set from the role
+/// (host = true) so the `pick_local_player_index` symmetry break still has a
+/// stable asymmetric input.
+async fn run_direct_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
-        let (mut sender, mut receiver) = match role {
-            DirectRole::Host { port } => crate::net::tcp::host(port)
-                .await
-                .map_err(|e| AsyncError::Failed(format!("tcp host: {e}")))?,
-            DirectRole::Connect { addr } => crate::net::tcp::connect(&addr)
-                .await
-                .map_err(|e| AsyncError::Failed(format!("tcp connect: {e}")))?,
+        // The dialer needs a resolved socket address; the host only needs its
+        // listen port (it learns the dialer peer-reflexively).
+        let rtc_role = match role {
+            DirectRole::Host { port } => tango_rtc::DirectRole::Host { port },
+            DirectRole::Connect { addr } => {
+                let remote = tokio::net::lookup_host(&addr)
+                    .await
+                    .map_err(|e| AsyncError::Failed(format!("resolve {addr}: {e}")))?
+                    .next()
+                    .ok_or_else(|| AsyncError::Failed(format!("resolve {addr}: no addresses")))?;
+                tango_rtc::DirectRole::Connect { remote }
+            }
         };
+
+        let (peer_conn, mut dcs, mut event_rx) = tango_rtc::PeerConnection::new_direct(
+            tango_rtc::RtcConfig::default(),
+            &[tango_rtc::ChannelConfig {
+                label: "tango".to_owned(),
+                ordered: true,
+                reliability: tango_rtc::Reliability::Reliable,
+                ..Default::default()
+            }],
+            rtc_role,
+        )
+        .map_err(|e| AsyncError::Failed(format!("direct: {e}")))?;
+
+        loop {
+            match event_rx.recv().await {
+                Some(tango_rtc::PeerConnectionEvent::ConnectionStateChange(state)) => match state {
+                    tango_rtc::ConnectionState::Connected => break,
+                    tango_rtc::ConnectionState::Disconnected
+                    | tango_rtc::ConnectionState::Failed
+                    | tango_rtc::ConnectionState::Closed => {
+                        return Err(AsyncError::Failed(format!("direct connection {state:?}")));
+                    }
+                    tango_rtc::ConnectionState::Connecting => {}
+                },
+                Some(_) => {}
+                None => return Err(AsyncError::Failed("direct connection event channel closed".to_owned())),
+            }
+        }
+
+        let dc = dcs.pop().expect("one data channel");
+        let (mut sender, mut receiver) = crate::net::datachannel::pair(dc);
         crate::net::negotiate(&mut sender, &mut receiver)
             .await
             .map_err(negotiation_error_sentinel)?;
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
-            peer_conn: None,
+            peer_conn: Some(peer_conn),
             is_offerer,
         })
     };
@@ -1283,7 +1319,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
-                .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
+                .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
                 .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),

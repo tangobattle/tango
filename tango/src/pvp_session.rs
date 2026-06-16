@@ -84,10 +84,9 @@ pub struct PvpSession {
     /// up; the match-run task swaps it to `None` the moment the remote drops,
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
     latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
-    /// `None` for the direct-TCP local transport (the TCP stream
-    /// halves live inside the Sender/Receiver). `Some` for WebRTC,
-    /// where the peer connection must outlive the data channel.
-    _peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    /// Kept alive so the peer connection (matchmaking or direct link-code,
+    /// both now WebRTC over tango-rtc) outlives the data channel it owns.
+    _peer_conn: Option<tango_rtc::PeerConnection>,
     /// Kept alive so the background `match_.run(receiver)` task
     /// has a referent. Cleared by that task when it exits. The UI
     /// also reads this each tick to scrape the current round's

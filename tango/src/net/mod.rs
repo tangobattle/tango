@@ -11,9 +11,8 @@
 
 pub mod datachannel;
 pub mod protocol;
-pub mod tcp;
 
-/// Default port for the direct-TCP local-play transport (link-code
+/// Default port for the direct link-code local-play transport (link-code
 /// commands `/host` and `/connect`). `24680` reads as a memorable
 /// even-step sequence and steers clear of every well-known service
 /// in the ephemeral range — easy to type, easy to recite over voice
