@@ -85,65 +85,34 @@ pub struct RtcConfig {
     pub include_loopback: bool,
 }
 
-/// Per-channel reliability, mirroring SCTP's partial-reliability modes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Reliability {
-    /// Ordered, fully reliable (retransmit until delivered) — the default.
-    #[default]
-    Reliable,
-    /// Give up on a message after this many retransmits (`0` = never
-    /// retransmit, i.e. fully unreliable).
-    MaxRetransmits(u16),
-    /// Give up on a message after this lifetime, in milliseconds.
-    MaxPacketLifetime(u16),
-}
-
-impl Reliability {
-    /// Whether the transport may drop a message rather than deliver it — i.e.
-    /// anything but fully [`Reliable`](Reliability::Reliable). A lossy channel's
-    /// caller already tolerates loss, so it's safe for the driver to shed under
-    /// backpressure instead of blocking the sender (see [`DataChannelSender::send`]
-    /// and the driver's outbox).
-    pub fn is_lossy(self) -> bool {
-        !matches!(self, Reliability::Reliable)
-    }
-}
-
-/// Spec for one data channel. Channels are negotiated in-band (DCEP), so the
-/// SCTP stream id is assigned by str0m, not chosen here; the `label` is what
-/// both peers agree on and what each channel is matched by. Build one per
-/// channel and hand the slice to [`PeerConnection::new`]; the returned
-/// [`DataChannel`]s come back in the same order.
+/// Which end of a direct ([`PeerConnection::new_direct`]) connection this is.
+/// The link code is the host's `addr:port`; there's no signaling server, so the
+/// two ends agree everything else (ICE creds, roles) from fixed constants.
 #[derive(Debug, Clone)]
-pub struct ChannelConfig {
-    pub label: String,
-    /// Ordered delivery. `false` lets a later message arrive ahead of an
-    /// earlier lost/late one — paired with an unreliable [`Reliability`] for
-    /// the in-match input channel.
-    pub ordered: bool,
-    pub reliability: Reliability,
+pub enum DirectRole {
+    /// Listen on `port` (the only thing that needs port-forwarding). The host
+    /// learns the dialer's address peer-reflexively from its first ICE check.
+    Host { port: u16 },
+    /// Dial the host at `remote` (its `addr:port`).
+    Connect { remote: std::net::SocketAddr },
 }
 
-impl ChannelConfig {
-    fn to_str0m(&self) -> str0m::channel::ChannelConfig {
-        str0m::channel::ChannelConfig {
-            label: self.label.clone(),
-            ordered: self.ordered,
-            reliability: match self.reliability {
-                Reliability::Reliable => str0m::channel::Reliability::Reliable,
-                Reliability::MaxRetransmits(retransmits) => {
-                    str0m::channel::Reliability::MaxRetransmits { retransmits }
-                }
-                Reliability::MaxPacketLifetime(lifetime) => {
-                    str0m::channel::Reliability::MaxPacketLifetime { lifetime }
-                }
-            },
-            // In-band (DCEP): str0m picks the stream id and carries the
-            // reliability params to the peer.
-            negotiated: None,
-            protocol: String::new(),
-        }
-    }
+/// Per-channel config + reliability, re-exported from str0m so callers don't
+/// depend on str0m directly. Build one [`ChannelConfig`] per channel — set
+/// `label`, `ordered` and `reliability` and leave the rest at
+/// `..Default::default()`. In particular **leave `negotiated` unset**: tango-rtc
+/// assigns it per path (in-band DCEP for the signaling path, so it dodges the
+/// SDP glare/rollback; fixed out-of-band stream ids for the direct path). Hand
+/// the slice to [`PeerConnection::new`] / [`new_direct`](PeerConnection::new_direct);
+/// the returned [`DataChannel`]s line up with it by index.
+pub use str0m::channel::{ChannelConfig, Reliability};
+
+/// Whether a channel may drop a message rather than deliver it — anything but
+/// fully [`Reliable`](Reliability::Reliable). A lossy channel's caller tolerates
+/// loss, so the driver may shed under backpressure instead of blocking the
+/// sender (see [`DataChannelSender::send`] and the driver's outbox).
+pub(crate) fn is_lossy(reliability: Reliability) -> bool {
+    !matches!(reliability, Reliability::Reliable)
 }
 
 /// Events forwarded from the driver task onto the peer-connection's event
@@ -242,7 +211,10 @@ impl Shared {
         if !inner.gathering_complete || inner.local_desc.is_some() || inner.remote_desc.is_some() {
             return;
         }
-        let configs: Vec<_> = inner.channels.iter().map(|c| c.config.to_str0m()).collect();
+        // In-band (DCEP) for the signaling path: the caller leaves `negotiated`
+        // unset, so str0m picks the stream id and carries the reliability over
+        // DCEP.
+        let configs: Vec<_> = inner.channels.iter().map(|c| c.config.clone()).collect();
         let mut api = inner.rtc.sdp_api();
         for config in configs {
             api.add_channel_with_config(config);
@@ -288,9 +260,39 @@ impl PeerConnection {
         config: RtcConfig,
         channels: &[ChannelConfig],
     ) -> Result<(Self, Vec<DataChannel>, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
-        let runtime = tokio::runtime::Handle::try_current().map_err(other_err)?;
-
         let rtc = str0m::Rtc::builder().build(std::time::Instant::now());
+        Self::spawn_connection(rtc, config, channels, driver::Setup::Signaled)
+    }
+
+    /// Create a connection over the **direct** (link-code) path: no signaling
+    /// server. Both peers configure ICE/DTLS/SCTP locally from fixed shared
+    /// constants and the host's `addr:port` (see [`DirectRole`]) — DTLS
+    /// fingerprint verification is off, so the trust model is "address =
+    /// identity". Channels are negotiated out-of-band (fixed stream ids); the
+    /// returned [`DataChannel`]s line up with `channels` by index. Drives the
+    /// connection to `Connected` with no offer/answer exchange.
+    pub fn new_direct(
+        config: RtcConfig,
+        channels: &[ChannelConfig],
+        role: DirectRole,
+    ) -> Result<(Self, Vec<DataChannel>, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
+        let rtc = str0m::Rtc::builder()
+            .set_fingerprint_verification(false)
+            .build(std::time::Instant::now());
+        Self::spawn_connection(rtc, config, channels, driver::Setup::Direct(role))
+    }
+
+    /// Shared construction for [`new`](Self::new) / [`new_direct`](Self::new_direct):
+    /// build the shared state + per-channel pipelines and spawn the driver. The
+    /// `rtc` is pre-built (the two paths differ only in its config) and `setup`
+    /// selects gather-and-signal vs. direct configuration.
+    fn spawn_connection(
+        rtc: str0m::Rtc,
+        config: RtcConfig,
+        channels: &[ChannelConfig],
+        setup: driver::Setup,
+    ) -> Result<(Self, Vec<DataChannel>, tokio::sync::mpsc::Receiver<PeerConnectionEvent>), std::io::Error> {
+        let runtime = tokio::runtime::Handle::try_current().map_err(other_err)?;
 
         let shared = Arc::new(Shared {
             inner: Mutex::new(Inner {
@@ -335,7 +337,7 @@ impl PeerConnection {
                 sender: DataChannelSender {
                     outgoing_tx,
                     status_rx,
-                    lossy: config.reliability.is_lossy(),
+                    lossy: is_lossy(config.reliability),
                 },
                 receiver: DataChannelReceiver { message_rx },
             });
@@ -352,6 +354,7 @@ impl PeerConnection {
             event_tx,
             channels: driver_channels,
             shutdown_rx,
+            setup,
         }));
 
         Ok((

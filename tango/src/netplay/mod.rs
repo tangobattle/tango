@@ -134,8 +134,8 @@ pub struct State {
     /// from a previous session can't deposit a stale receiver
     /// into the next one.
     post_lobby_receiver: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-    /// Receive half of the unreliable in-match channel (WebRTC stream 1 /
-    /// direct QUIC datagrams), parked at negotiate time. The PvP handoff drains it into
+    /// Receive half of the unreliable in-match channel (tango-rtc data-channel
+    /// stream 1), parked at negotiate time. The PvP handoff drains it into
     /// the `PvpReceiver`. Unlike [`post_lobby_receiver`] it's filled
     /// immediately (the lobby loop never owns it). Reset on every session
     /// boundary alongside the reliable slot.
@@ -255,16 +255,16 @@ struct LocalCommit {
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// Send half of the unreliable in-match channel (WebRTC stream 1 / direct
-    /// QUIC datagrams). Drained into the PvpSession at `take_pre_match`.
+    /// Send half of the unreliable in-match channel (tango-rtc data-channel
+    /// stream 1). Drained into the PvpSession at `take_pre_match`.
     in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `Some` for WebRTC peer connections (kept alive for the
-    /// duration of the session); `None` for the direct link-code
-    /// transport, whose QUIC connection's lifetime is owned by the
-    /// Sender/Receiver halves themselves.
+    /// The tango-rtc peer connection, kept alive for the duration of
+    /// the session (both the matchmaking and direct link-code paths
+    /// run over tango-rtc, so this is always `Some` post-negotiate —
+    /// the `Option` only models the pre-negotiate gap).
     peer_conn: Option<tango_rtc::PeerConnection>,
     /// `true` iff we're the "offer side" for symmetry-breaking
-    /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
+    /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
     /// or we're the listener on the direct link-code path. Drives the
     /// `Match::pick_local_player_index` tie-break.
     is_offerer: bool,
@@ -283,11 +283,12 @@ pub enum Message {
         endpoint: String,
         use_relay: Option<bool>,
     },
-    /// Direct link-code local-play entry. Bypasses signaling + WebRTC
-    /// entirely — runs the protocol-version negotiate handshake over a
-    /// QUIC connection's reliable stream (see [`crate::net::quic`]).
-    /// `role` says whether we're the listener or the dialer; the
-    /// UI-side identifier is derived from it (see [`LinkIdent`]).
+    /// Direct link-code local-play entry. Bypasses the signaling server
+    /// — runs the protocol-version negotiate handshake over a tango-rtc
+    /// connection's reliable channel, configured locally from the shared
+    /// link code (see [`run_direct_negotiate`]). `role` says whether
+    /// we're the listener or the dialer; the UI-side identifier is
+    /// derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
@@ -368,9 +369,9 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
-/// Which side of a direct link-code (QUIC) connection the local
-/// instance is. Drives the offer/answer symmetry breaker the WebRTC
-/// path gets for free from SDP role assignment.
+/// Which side of a direct link-code connection the local instance is.
+/// Drives the offer/answer symmetry breaker the matchmaking path gets
+/// for free from SDP role assignment.
 #[derive(Debug, Clone)]
 pub enum DirectRole {
     /// Listen on the given port and accept the first inbound peer.
@@ -411,21 +412,20 @@ impl std::fmt::Debug for ConnectionPayload {
 /// receiver (the lobby + match loops own them from here) and the
 /// peer-conn handle they need to stay alive against.
 pub struct NegotiationOutput {
-    /// Reliable lobby channel: WebRTC data-channel stream 0, or the direct
-    /// path's QUIC bidi stream. Owns the lobby loop + (later) disconnect watch.
+    /// Reliable lobby channel: tango-rtc data-channel stream 0. Owns the lobby
+    /// loop + (later) disconnect watch.
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    /// Unreliable in-match channel carrying the `wire` datagrams: WebRTC
-    /// data-channel stream 1, or the direct path's QUIC datagrams. Always
-    /// present (both transports provide one); handed to the session for the
-    /// live match.
+    /// Unreliable in-match channel carrying the `wire` datagrams: tango-rtc
+    /// data-channel stream 1. Always present (both paths provide one); handed to
+    /// the session for the live match.
     pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub in_match_receiver: crate::net::Receiver,
-    /// `None` for the direct link-code (QUIC) transport. See
+    /// The tango-rtc peer connection, kept alive for the session. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
     pub peer_conn: Option<tango_rtc::PeerConnection>,
-    /// Pre-computed by the per-transport negotiator. WebRTC reads
-    /// the SDP type; TCP sets host=true, connect=false.
+    /// Pre-computed by the negotiator: the matchmaking path reads the SDP
+    /// type; the direct path sets host=true, connect=false.
     pub is_offerer: bool,
 }
 
@@ -495,7 +495,7 @@ impl State {
                     waiting_for_opponent,
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(run_quic_negotiate(role, cancel), map_negotiate_result)
+                iced::Task::perform(run_direct_negotiate(role, cancel), map_negotiate_result)
             }
             Message::SignalingHelloReceived(slot_rx) => {
                 let ident = match &self.phase {
@@ -528,8 +528,8 @@ impl State {
             }
             Message::NegotiationDone(slot_rx) => {
                 // Accept both `Connecting` (direct link-code path: the
-                // negotiate is folded into the single QUIC task and
-                // skips the intermediate Negotiating phase) and
+                // negotiate is folded into the single direct-connect task
+                // and skips the intermediate Negotiating phase) and
                 // `Negotiating` (WebRTC path: signaling +
                 // peer-await + negotiate are split stages). Either
                 // is a valid Connect-or-Direct-Connect lifecycle
@@ -544,10 +544,12 @@ impl State {
                 };
                 let sender = out.sender.clone();
                 // Resolve how the transport actually flows for the
-                // lobby's ping line. The direct QUIC path (no peer
-                // connection) is direct by construction; WebRTC
-                // reads the selected ICE pair — a `typ relay`
-                // candidate on either end means TURN.
+                // lobby's ping line. Both paths run over tango-rtc, so
+                // we read the selected ICE pair — a `typ relay`
+                // candidate on either end means TURN. (The direct
+                // link-code path only ever forms host pairs, so it
+                // resolves to Direct by construction.) The `None` arm
+                // is a defensive fallback; post-negotiate it's `Some`.
                 self.lobby.connection_kind = match &out.peer_conn {
                     None => Some(ConnectionKind::Direct),
                     Some(pc) => pc.selected_candidate_pair().ok().map(|(local, remote)| {
@@ -1063,7 +1065,7 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     /// Send half of the unreliable in-match channel — the live match's `wire`
-    /// datagrams go here (WebRTC stream 1 / direct QUIC datagrams).
+    /// datagrams go here (tango-rtc data-channel stream 1).
     pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Receive half of the unreliable in-match channel, parked at negotiate
     /// time. PvP setup drains it (one-shot poll on a tick).
@@ -1076,7 +1078,7 @@ pub struct PreMatchData {
     /// session watches it for EOF as the disconnect signal (the UDP/datagram
     /// in-match channel has no close event of its own).
     pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
-    /// `None` for the direct link-code (QUIC) transport; see
+    /// The tango-rtc peer connection, kept alive for the session; see
     /// [`ConnectionHandles::peer_conn`].
     pub peer_conn: Option<tango_rtc::PeerConnection>,
     pub is_offerer: bool,
@@ -1265,40 +1267,78 @@ async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Res
     }
 }
 
-/// Direct link-code entry: listen-and-accept (host) or dial (connect)
-/// a QUIC connection, then run the same `protocol::negotiate` handshake
-/// the WebRTC path uses. No signaling server, no peer-connection — one
-/// QUIC connection over a single UDP port multiplexes both channels (a
-/// reliable bidi stream for the lobby + unreliable datagrams for the
-/// in-match `wire` traffic), and its four transport halves carry the
-/// whole transport lifetime themselves. `is_offerer` is set from the
-/// role (host = true) so the `pick_local_player_index` symmetry break
-/// still has a stable asymmetric input.
-async fn run_quic_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
+/// Direct link-code entry: host (listen on the forwarded port) or connect
+/// (dial the host's `addr:port`), over the same tango-rtc transport the
+/// matchmaking path uses — only without a signaling server. Both ends bring up
+/// a WebRTC connection from fixed shared constants ([`tango_rtc::PeerConnection::new_direct`]),
+/// then run the same `protocol::negotiate` handshake on the reliable channel.
+/// The `peer_conn` is kept alive in the [`NegotiationOutput`] for the session's
+/// lifetime, exactly like the matchmaking path. `is_offerer` is set from the
+/// role (host = true) so the `pick_local_player_index` symmetry break still has
+/// a stable asymmetric input.
+async fn run_direct_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
-        let crate::net::quic::DirectChannels {
-            mut reliable_sender,
-            mut reliable_receiver,
-            in_match_sender,
-            in_match_receiver,
-        } = match role {
-            DirectRole::Host { port } => crate::net::quic::host(port)
-                .await
-                .map_err(|e| AsyncError::Failed(format!("quic host: {e}")))?,
-            DirectRole::Connect { addr } => crate::net::quic::connect(&addr)
-                .await
-                .map_err(|e| AsyncError::Failed(format!("quic connect: {e}")))?,
+        let role = match role {
+            DirectRole::Host { port } => tango_rtc::DirectRole::Host { port },
+            DirectRole::Connect { addr } => {
+                let remote = tokio::net::lookup_host(&addr)
+                    .await
+                    .map_err(|e| AsyncError::Failed(format!("resolve {addr}: {e}")))?
+                    .next()
+                    .ok_or_else(|| AsyncError::Failed(format!("no addresses resolved for {addr}")))?;
+                tango_rtc::DirectRole::Connect { remote }
+            }
         };
-        crate::net::negotiate(&mut reliable_sender, &mut reliable_receiver)
+        let (peer_conn, mut dcs, mut event_rx) = tango_rtc::PeerConnection::new_direct(
+            tango_rtc::RtcConfig::default(),
+            &[
+                tango_rtc::ChannelConfig {
+                    label: "tango".to_owned(),
+                    ordered: true,
+                    reliability: tango_rtc::Reliability::Reliable,
+                    ..Default::default()
+                },
+                tango_rtc::ChannelConfig {
+                    label: "tango-input".to_owned(),
+                    ordered: false,
+                    reliability: tango_rtc::Reliability::MaxRetransmits { retransmits: 0 },
+                    ..Default::default()
+                },
+            ],
+            role,
+        )
+        .map_err(|e| AsyncError::Failed(format!("direct: {e}")))?;
+
+        loop {
+            match event_rx.recv().await {
+                Some(tango_rtc::PeerConnectionEvent::ConnectionStateChange(state)) => match state {
+                    tango_rtc::ConnectionState::Connected => break,
+                    tango_rtc::ConnectionState::Disconnected
+                    | tango_rtc::ConnectionState::Failed
+                    | tango_rtc::ConnectionState::Closed => {
+                        return Err(AsyncError::Failed(format!("direct connection {state:?}")));
+                    }
+                    tango_rtc::ConnectionState::Connecting => {}
+                },
+                Some(_) => {}
+                None => return Err(AsyncError::Failed("direct connection ended before connecting".to_owned())),
+            }
+        }
+
+        let unreliable_dc = dcs.pop().expect("unreliable channel");
+        let reliable_dc = dcs.pop().expect("reliable channel");
+        let (mut sender, mut receiver) = crate::net::datachannel::pair(reliable_dc);
+        let (in_match_sender, in_match_receiver) = crate::net::datachannel::pair(unreliable_dc);
+        crate::net::negotiate(&mut sender, &mut receiver)
             .await
             .map_err(negotiation_error_sentinel)?;
         Ok::<_, AsyncError>(NegotiationOutput {
-            sender: Arc::new(tokio::sync::Mutex::new(reliable_sender)),
-            receiver: reliable_receiver,
+            sender: Arc::new(tokio::sync::Mutex::new(sender)),
+            receiver,
             in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
             in_match_receiver,
-            peer_conn: None,
+            peer_conn: Some(peer_conn),
             is_offerer,
         })
     };

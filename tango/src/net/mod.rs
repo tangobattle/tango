@@ -1,8 +1,9 @@
 //! Per-peer netplay networking, split into three layers:
 //!
 //! * [`transport`] — the byte pipe: the `PacketSink` / `PacketStream` traits,
-//!   the concrete WebRTC (matchmaking) / QUIC (direct link-code)
-//!   implementations, and the `Sender` / `Receiver` raw-message pair.
+//!   the concrete tango-rtc data-channel implementation (used by both the
+//!   matchmaking and direct link-code paths), and the `Sender` / `Receiver`
+//!   raw-message pair.
 //! * [`control`] — the reliable lobby/handshake `Packet` protocol: message
 //!   types, the version `negotiate` handshake, and the typed `Packet` send
 //!   helpers. Runs over the reliable, ordered channel.
@@ -21,7 +22,7 @@ pub mod transport;
 
 pub use control::{negotiate, protocol, NegotiationError};
 pub use data::{InMatchTx, PvpReceiver, PvpSender};
-pub use transport::{datachannel, quic, DEFAULT_LOCAL_PORT, Receiver, Sender};
+pub use transport::{datachannel, DEFAULT_LOCAL_PORT, Receiver, Sender};
 
 /// How often the lobby + match loops fire a ping. Latency is computed
 /// from the matching Pong; absent pongs after a few intervals signal

@@ -1,6 +1,6 @@
 //! Transport layer: the byte-pipe abstraction ([`PacketSink`] /
-//! [`PacketStream`]) and its concrete implementations (WebRTC data channel for
-//! the matchmaking path, QUIC for the direct link-code path), wrapped as a
+//! [`PacketStream`]) and its concrete implementation (a tango-rtc data channel,
+//! used by both the matchmaking and direct link-code paths), wrapped as a
 //! [`Sender`] / [`Receiver`] pair that moves raw framed messages.
 //!
 //! This layer knows nothing about packet contents. The control plane
@@ -8,10 +8,9 @@
 //! framing on top via [`Sender::send_raw`] / [`Receiver::recv_raw`].
 
 pub mod datachannel;
-pub mod quic;
 
 /// Default UDP port for the direct link-code transport (commands `/host`
-/// and `/connect`). The host's QUIC connection multiplexes both netplay
+/// and `/connect`). The host's tango-rtc connection multiplexes both netplay
 /// channels over this one port, so it's the only thing to port-forward.
 /// `24680` reads as a memorable even-step sequence and steers clear of every
 /// well-known service in the ephemeral range — easy to type, easy to recite
@@ -20,12 +19,9 @@ pub const DEFAULT_LOCAL_PORT: u16 = 24680;
 
 /// One half of a peer connection's send side. Carries discrete,
 /// reliable, in-order byte messages — same contract as a WebRTC
-/// DataChannel configured `unordered: false, unreliable: false`. A
-/// byte-stream-backed impl (a QUIC stream) must add its own
-/// length-prefix framing so each `send` round-trips as exactly one
-/// `recv` on the peer. (The unreliable in-match channels relax the
-/// ordering/reliability half of this; the data plane is built to
-/// tolerate it.)
+/// DataChannel configured `unordered: false, unreliable: false`.
+/// (The unreliable in-match channels relax the ordering/reliability
+/// half of this; the data plane is built to tolerate it.)
 #[async_trait::async_trait]
 pub trait PacketSink: Send + Sync {
     async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;

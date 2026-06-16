@@ -14,11 +14,13 @@ fn channel_specs() -> Vec<tango_rtc::ChannelConfig> {
             label: "tango".to_owned(),
             ordered: true,
             reliability: tango_rtc::Reliability::Reliable,
+            ..Default::default()
         },
         tango_rtc::ChannelConfig {
             label: "tango-input".to_owned(),
             ordered: false,
-            reliability: tango_rtc::Reliability::MaxRetransmits(0),
+            reliability: tango_rtc::Reliability::MaxRetransmits { retransmits: 0 },
+            ..Default::default()
         },
     ]
 }
@@ -261,6 +263,69 @@ async fn test_hangup_survives_runtime_teardown() {
             tokio::time::timeout(std::time::Duration::from_secs(5), dc_b.receive())
                 .await
                 .expect("EOF should arrive promptly, not via disconnect grace"),
+            None
+        );
+    })
+    .await
+    .unwrap();
+}
+
+/// The direct (link-code) path: no signaling. The host binds a port and the
+/// dialer connects to it; both configure str0m from fixed shared constants
+/// (`new_direct`). Gates the load-bearing unknown — the ICE-lite host learning
+/// the dialer peer-reflexively, with no pre-known remote candidate.
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn test_direct_connection() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        const PORT: u16 = 24690;
+        let config = || tango_rtc::RtcConfig {
+            include_loopback: true,
+            ..Default::default()
+        };
+
+        let (host_pc, host_dcs, mut host_events) = tango_rtc::PeerConnection::new_direct(
+            config(),
+            &channel_specs(),
+            tango_rtc::DirectRole::Host { port: PORT },
+        )
+        .unwrap();
+        let (_client_pc, client_dcs, mut client_events) = tango_rtc::PeerConnection::new_direct(
+            config(),
+            &channel_specs(),
+            tango_rtc::DirectRole::Connect {
+                remote: format!("127.0.0.1:{PORT}").parse().unwrap(),
+            },
+        )
+        .unwrap();
+
+        wait_connected(&mut host_events).await;
+        wait_connected(&mut client_events).await;
+
+        let mut host = host_dcs.into_iter();
+        let (mut host_reliable, mut host_unreliable) = (host.next().unwrap(), host.next().unwrap());
+        let mut client = client_dcs.into_iter();
+        let (mut client_reliable, mut client_unreliable) = (client.next().unwrap(), client.next().unwrap());
+
+        // Reliable channel, both directions.
+        host_reliable.send(b"hello from host").await.unwrap();
+        assert_eq!(client_reliable.receive().await.unwrap(), b"hello from host");
+        client_reliable.send(b"hello from dialer").await.unwrap();
+        assert_eq!(host_reliable.receive().await.unwrap(), b"hello from dialer");
+
+        // Unreliable channel, both directions (no loss on loopback).
+        host_unreliable.send(b"input from host").await.unwrap();
+        assert_eq!(client_unreliable.receive().await.unwrap(), b"input from host");
+        client_unreliable.send(b"input from dialer").await.unwrap();
+        assert_eq!(host_unreliable.receive().await.unwrap(), b"input from dialer");
+
+        // Dropping the host promptly EOFs the dialer.
+        drop(host_pc);
+        drop(host_reliable);
+        drop(host_unreliable);
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), client_reliable.receive())
+                .await
+                .expect("EOF should arrive promptly"),
             None
         );
     })

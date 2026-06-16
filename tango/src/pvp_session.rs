@@ -91,9 +91,9 @@ pub struct PvpSession {
     /// up; the match-run task swaps it to `None` the moment the remote drops,
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
     latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
-    /// `None` for the direct link-code (QUIC) transport (the QUIC
-    /// connection lives inside the Sender/Receiver halves). `Some` for
-    /// WebRTC, where the peer connection must outlive the data channel.
+    /// The tango-rtc peer connection, held so it outlives the data
+    /// channels (both the matchmaking and direct link-code paths run
+    /// over tango-rtc). `None` only models the pre-negotiate gap.
     _peer_conn: Option<tango_rtc::PeerConnection>,
     /// Reliable lobby channel's sender, parked for the match's lifetime. Idle
     /// in-match (all traffic is on the unreliable channel), but held open so

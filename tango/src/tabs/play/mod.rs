@@ -1914,7 +1914,7 @@ fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
             // their input ends with the IPv6 closing bracket
             // without a trailing colon, append the default port.
             // We deliberately don't try to validate the address
-            // itself — the QUIC dial's resolve/connect error surfaces well.
+            // itself — the direct dial's resolve/connect error surfaces well.
             let addr = if arg.contains(':') && !arg.ends_with(']') {
                 arg.to_string()
             } else {

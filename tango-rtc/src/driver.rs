@@ -33,6 +33,18 @@ pub(crate) struct Driver {
     pub event_tx: tokio::sync::mpsc::Sender<PeerConnectionEvent>,
     pub channels: Vec<ChannelIo>,
     pub shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    pub setup: Setup,
+}
+
+/// How the connection is brought up before the shared steady-state loop.
+pub(crate) enum Setup {
+    /// Matchmaking path: gather ICE candidates, declare an SDP offer, and let
+    /// the signaling exchange (`set_remote_description`) drive ICE/DTLS.
+    Signaled,
+    /// Direct link-code path: no signaling server. Configure str0m's ICE/DTLS/
+    /// SCTP and channels directly (str0m `direct_api`) from fixed shared
+    /// constants + the host's `addr:port`. See [`direct_setup`].
+    Direct(crate::DirectRole),
 }
 
 /// Where to send a transmit, keyed by its source address: a host socket,
@@ -79,36 +91,57 @@ impl ChannelLoop {
 }
 
 pub(crate) async fn run(mut driver: Driver) {
-    let _ = driver
-        .event_tx
-        .send(PeerConnectionEvent::GatheringStateChange(GatheringState::InProgress))
-        .await;
+    let gathered = match std::mem::replace(&mut driver.setup, Setup::Signaled) {
+        // Matchmaking: gather, declare the offer, signal.
+        Setup::Signaled => {
+            let _ = driver
+                .event_tx
+                .send(PeerConnectionEvent::GatheringStateChange(GatheringState::InProgress))
+                .await;
 
-    let gathered = tokio::select! {
-        gathered = gather::gather(&driver.config) => gathered,
-        // Dropped before gathering even finished: nothing to unwind.
-        _ = &mut driver.shutdown_rx => {
-            for ch in &driver.channels {
-                ch.status_tx.send_replace(DataChannelStatus::Closed);
+            let gathered = tokio::select! {
+                gathered = gather::gather(&driver.config) => gathered,
+                // Dropped before gathering even finished: nothing to unwind.
+                _ = &mut driver.shutdown_rx => {
+                    for ch in &driver.channels {
+                        ch.status_tx.send_replace(DataChannelStatus::Closed);
+                    }
+                    return;
+                }
+            };
+
+            {
+                let mut inner = driver.shared.inner.lock().unwrap();
+                for candidate in &gathered.candidates {
+                    if inner.rtc.add_local_candidate(candidate.clone()).is_some() {
+                        inner.local_candidates.push(candidate.clone());
+                    }
+                }
+                inner.gathering_complete = true;
+                Shared::maybe_make_offer(&mut inner);
             }
-            return;
+            let _ = driver
+                .event_tx
+                .send(PeerConnectionEvent::GatheringStateChange(GatheringState::Complete))
+                .await;
+            gathered
         }
+        // Direct link-code: configure str0m directly, no signaling/offer.
+        Setup::Direct(role) => match direct_setup(&driver, role).await {
+            Ok(gathered) => gathered,
+            Err(e) => {
+                log::warn!("direct connection setup failed: {}", e);
+                for ch in &driver.channels {
+                    ch.status_tx.send_replace(DataChannelStatus::Closed);
+                }
+                let _ = driver
+                    .event_tx
+                    .send(PeerConnectionEvent::ConnectionStateChange(ConnectionState::Failed))
+                    .await;
+                return;
+            }
+        },
     };
-
-    {
-        let mut inner = driver.shared.inner.lock().unwrap();
-        for candidate in &gathered.candidates {
-            if inner.rtc.add_local_candidate(candidate.clone()).is_some() {
-                inner.local_candidates.push(candidate.clone());
-            }
-        }
-        inner.gathering_complete = true;
-        Shared::maybe_make_offer(&mut inner);
-    }
-    let _ = driver
-        .event_tx
-        .send(PeerConnectionEvent::GatheringStateChange(GatheringState::Complete))
-        .await;
 
     // Reader tasks: one per socket/relay, all funneling into net_rx. They
     // end when their socket dies or when we drop net_rx at function exit.
@@ -209,6 +242,150 @@ pub(crate) async fn run(mut driver: Driver) {
         .await;
     // `channels` (and every `message_tx`) drops here, signaling EOF to each
     // `receive()`.
+}
+
+/// Direct (link-code) connection setup: no signaling. Both peers configure
+/// str0m's ICE/DTLS/SCTP and the negotiated channels directly from fixed shared
+/// constants plus the host's `addr:port`. The dialer is ICE controlling + DTLS/
+/// SCTP active; the host is the ICE-lite controlled responder + passive and
+/// learns the dialer peer-reflexively from its first check. Mirrors str0m's own
+/// `tests/data-channel-direct.rs`. Returns the bound sockets for the shared
+/// loop (no STUN/TURN relays on this path).
+async fn direct_setup(driver: &Driver, role: crate::DirectRole) -> std::io::Result<gather::Gathered> {
+    let io_other = |e: str0m::RtcError| std::io::Error::other(e.to_string());
+
+    // Role sets the listen port (host = the known forwarded `port`, dialer =
+    // ephemeral), the dialer's target candidate, and the ICE/DTLS/SCTP roles.
+    let (port, remote_candidate, controlling) = match role {
+        crate::DirectRole::Host { port } => (port, None, false),
+        crate::DirectRole::Connect { remote } => {
+            let candidate = str0m::Candidate::host(remote, "udp").map_err(|e| std::io::Error::other(e.to_string()))?;
+            (0, Some(candidate), true)
+        }
+    };
+
+    // One concrete host candidate per usable interface — str0m rejects an
+    // unspecified-IP candidate, so we can't bind `0.0.0.0`. (The host's are all
+    // on the known `port`; the dialer's get ephemeral ports.) The host learns
+    // the dialer peer-reflexively, so it needs no remote candidate.
+    let mut sockets = vec![];
+    let mut local_candidates = vec![];
+    for ip in gather::local_ips(driver.config.include_loopback) {
+        let socket = match tokio::net::UdpSocket::bind(SocketAddr::new(ip, port)).await {
+            Ok(socket) => Arc::new(socket),
+            Err(e) => {
+                log::debug!("direct: bind {}:{}: {}", ip, port, e);
+                continue;
+            }
+        };
+        if let Ok(local) = socket.local_addr() {
+            if let Ok(candidate) = str0m::Candidate::host(local, "udp") {
+                local_candidates.push(candidate);
+            }
+        }
+        sockets.push(socket);
+    }
+    if sockets.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("could not bind any direct socket (port {})", port),
+        ));
+    }
+
+    let mut inner = driver.shared.inner.lock().unwrap();
+
+    // Negotiated channels: both ends agree the stream ids (0, 1, …) up front, so
+    // they open with no DCEP/SDP exchange. Collect before borrowing the api.
+    let configs: Vec<str0m::channel::ChannelConfig> = inner
+        .channels
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let mut config = c.config.clone();
+            config.negotiated = Some(i as u16);
+            config
+        })
+        .collect();
+
+    {
+        let mut direct = inner.rtc.direct_api();
+        let (local_creds, remote_creds) = if controlling {
+            (client_ice_creds(), host_ice_creds())
+        } else {
+            (host_ice_creds(), client_ice_creds())
+        };
+        direct.set_local_ice_credentials(local_creds);
+        direct.set_remote_ice_credentials(remote_creds);
+        // Address = identity: fingerprint verification is off (set in
+        // `new_direct`), but str0m still needs *a* remote fingerprint set before
+        // DTLS — hand it a throwaway.
+        direct.set_remote_fingerprint(placeholder_fingerprint());
+        direct.set_ice_controlling(controlling);
+        if !controlling {
+            // The host is the passive ICE-lite responder: it never sends checks,
+            // only answers the dialer's — and learns the dialer's address
+            // peer-reflexively from them.
+            direct.set_ice_lite(true);
+        }
+        direct.start_dtls(controlling).map_err(io_other)?;
+        direct.start_sctp(controlling);
+        for config in configs {
+            direct.create_data_channel(config);
+        }
+    }
+
+    for candidate in &local_candidates {
+        if inner.rtc.add_local_candidate(candidate.clone()).is_some() {
+            inner.local_candidates.push(candidate.clone());
+        }
+    }
+    if let Some(remote) = remote_candidate {
+        inner.rtc.add_remote_candidate(remote.clone());
+        inner.remote_candidates.push(remote);
+    }
+    inner.gathering_complete = true;
+    // There's no SDP exchange on this path, but the main loop's lobby-wait clock
+    // hold and its connect-timeout both key off `remote_desc`: a direct
+    // connection is never "waiting in the lobby" and should arm its connect
+    // timeout immediately, so plant a sentinel so it reads as "exchange done".
+    inner.remote_desc = Some(crate::SessionDescription {
+        sdp_type: crate::SdpType::Answer,
+        sdp: String::new(),
+    });
+
+    Ok(gather::Gathered {
+        sockets,
+        candidates: local_candidates,
+        relays: vec![],
+    })
+}
+
+/// Fixed ICE credentials for the host end of a direct connection — both peers
+/// hard-code the same two sets (host + dialer) so there's no exchange. Trust is
+/// "whoever answered on that address" (see [`crate::PeerConnection::new_direct`]).
+fn host_ice_creds() -> str0m::IceCreds {
+    str0m::IceCreds {
+        ufrag: "tangodirecthost".to_owned(),
+        pass: "tango-direct-host-ice-credential".to_owned(),
+    }
+}
+
+/// Fixed ICE credentials for the dialing end. See [`host_ice_creds`].
+fn client_ice_creds() -> str0m::IceCreds {
+    str0m::IceCreds {
+        ufrag: "tangodirectpeer".to_owned(),
+        pass: "tango-direct-peer-ice-credential".to_owned(),
+    }
+}
+
+/// Throwaway remote DTLS fingerprint. `new_direct` turns fingerprint
+/// verification off (the dialer can't know the host's per-session cert), but
+/// str0m still needs the field populated before DTLS starts.
+fn placeholder_fingerprint() -> str0m::config::Fingerprint {
+    str0m::config::Fingerprint {
+        hash_func: "sha-256".to_owned(),
+        bytes: vec![0u8; 32],
+    }
 }
 
 /// Feed one datagram into str0m.
@@ -456,7 +633,7 @@ impl Outbox {
             self.parked = Some(message);
             return;
         };
-        let lossy = inner.channels[idx].config.reliability.is_lossy();
+        let lossy = crate::is_lossy(inner.channels[idx].config.reliability);
         let Some(mut channel) = inner.rtc.channel(id) else {
             // Channel is gone; the message has nowhere to go.
             return;

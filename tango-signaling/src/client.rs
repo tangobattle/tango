@@ -43,11 +43,13 @@ async fn create_data_channels(
                 label: "tango".to_owned(),
                 ordered: true,
                 reliability: tango_rtc::Reliability::Reliable,
+                ..Default::default()
             },
             tango_rtc::ChannelConfig {
                 label: "tango-input".to_owned(),
                 ordered: false,
-                reliability: tango_rtc::Reliability::MaxRetransmits(0),
+                reliability: tango_rtc::Reliability::MaxRetransmits { retransmits: 0 },
+                ..Default::default()
             },
         ],
     )?;

@@ -38,8 +38,8 @@ struct InMatchState {
     inn: stream::InStream,
 }
 
-/// Send handle for the unreliable in-match channel (WebRTC stream-1 data
-/// channel, or the direct path's QUIC datagrams). Shared by the per-frame input
+/// Send handle for the unreliable in-match channel (tango-rtc stream-1 data
+/// channel). Shared by the per-frame input
 /// pump, the receive loop's ping/pong + ack replies, and the session's in-band
 /// `EndOfMatch`. Carries [`protocol`] frames + ping/pong over [`Sender::send_raw`].
 #[derive(Clone)]

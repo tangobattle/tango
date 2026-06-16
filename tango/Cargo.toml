@@ -122,21 +122,6 @@ bytes = "1"
 num-derive = "0.4"
 num-traits = "0.2"
 serde-hex = "0.1"
-# Direct (link-code) netplay transport. A single QUIC connection over one
-# UDP socket multiplexes the reliable lobby/handshake stream and the
-# unreliable in-match datagrams, so only one UDP port needs forwarding —
-# replacing the old dual TCP-(reliable)+UDP-(unreliable) pair. rcgen mints a
-# throwaway per-session self-signed cert; socket2 opens a dual-stack v6 listen
-# socket (one bind serves both families, matching the old TCP host). Trust
-# model is unchanged (address = identity): the client skips cert verification,
-# and QUIC's transport encryption just rides along for free.
-#
-# All three are pinned to the `ring` crypto backend (already in our tree via
-# rustls) with `default-features = false` to keep `aws-lc-rs` — and its
-# cmake/NASM build, painful under the mingw cross-compile — out of the graph.
-quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring", "log"] }
-rcgen = { version = "0.13", default-features = false, features = ["ring"] }
-socket2 = "0.5"
 
 [lints]
 workspace = true

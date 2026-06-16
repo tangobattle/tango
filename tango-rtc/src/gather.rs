@@ -99,7 +99,7 @@ fn parse_ice_servers(servers: &[crate::IceServer]) -> (Vec<String>, Vec<TurnServ
 }
 
 /// Local unicast addresses worth gathering host candidates on.
-fn local_ips(include_loopback: bool) -> Vec<IpAddr> {
+pub(crate) fn local_ips(include_loopback: bool) -> Vec<IpAddr> {
     let ifaces = match if_addrs::get_if_addrs() {
         Ok(ifaces) => ifaces,
         Err(e) => {
