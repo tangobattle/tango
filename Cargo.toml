@@ -2,8 +2,6 @@
 resolver = "2"
 members = [
     "bps",
-    "datachannel-wrapper",
-    "libdatachannel",
     "mgba",
     "getgud",
     "tango",
@@ -12,6 +10,7 @@ members = [
     "tango-gamedb",
     "tango-pvp",
     "tango-replaytool",
+    "tango-rtc",
     "tango-signaling",
 ]
 

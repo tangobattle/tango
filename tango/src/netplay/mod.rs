@@ -262,7 +262,7 @@ struct ConnectionHandles {
     /// duration of the session); `None` for the direct link-code
     /// transport, whose QUIC connection's lifetime is owned by the
     /// Sender/Receiver halves themselves.
-    peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    peer_conn: Option<tango_rtc::PeerConnection>,
     /// `true` iff we're the "offer side" for symmetry-breaking
     /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
     /// or we're the listener on the direct link-code path. Drives the
@@ -381,10 +381,10 @@ pub enum DirectRole {
 
 pub struct ConnectionPayload {
     /// Reliable, ordered channel — lobby handshake + save-state transfer.
-    pub dc: datachannel_wrapper::DataChannel,
+    pub dc: tango_rtc::DataChannel,
     /// Unreliable, unordered channel — the in-match `wire` datagrams.
-    pub unreliable_dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub unreliable_dc: tango_rtc::DataChannel,
+    pub peer_conn: tango_rtc::PeerConnection,
 }
 
 /// Intermediate hand-off between `run_signaling_connect` (server
@@ -423,7 +423,7 @@ pub struct NegotiationOutput {
     pub in_match_receiver: crate::net::Receiver,
     /// `None` for the direct link-code (QUIC) transport. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
     /// Pre-computed by the per-transport negotiator. WebRTC reads
     /// the SDP type; TCP sets host=true, connect=false.
     pub is_offerer: bool,
@@ -1078,7 +1078,7 @@ pub struct PreMatchData {
     pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     /// `None` for the direct link-code (QUIC) transport; see
     /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: Option<tango_rtc::PeerConnection>,
     pub is_offerer: bool,
     pub rng_seed: [u8; 16],
     pub local_save_data: Vec<u8>,
@@ -1343,7 +1343,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             result.map_err(negotiation_error_sentinel)?;
             let is_offerer = peer_conn
                 .local_description()
-                .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
+                .map(|d| matches!(d.sdp_type, tango_rtc::SdpType::Offer))
                 .unwrap_or(false);
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),

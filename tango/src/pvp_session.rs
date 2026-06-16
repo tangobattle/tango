@@ -94,7 +94,7 @@ pub struct PvpSession {
     /// `None` for the direct link-code (QUIC) transport (the QUIC
     /// connection lives inside the Sender/Receiver halves). `Some` for
     /// WebRTC, where the peer connection must outlive the data channel.
-    _peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    _peer_conn: Option<tango_rtc::PeerConnection>,
     /// Reliable lobby channel's sender, parked for the match's lifetime. Idle
     /// in-match (all traffic is on the unreliable channel), but held open so
     /// its close doesn't surface as a spurious disconnect on the peer's

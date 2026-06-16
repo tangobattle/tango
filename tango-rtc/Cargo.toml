@@ -1,0 +1,26 @@
+[package]
+name = "tango-rtc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false }
+if-addrs = "0.15"
+log = "0.4"
+# kvasilye's close_notify branch (str0m PR #956): adds Rtc::close() (DTLS
+# close_notify on teardown) and Event::Closed on the receiving side, which
+# upstream str0m doesn't have yet — without it a hangup is only detectable
+# via the disconnect grace timeout. Switch back to crates.io once merged.
+str0m = { git = "https://github.com/kvasilye/str0m", rev = "77c546613cb4273b2417c0297656dc98d07baba4", default-features = false, features = [
+  "rust-crypto",
+] }
+stun = "0.17"
+tokio = { version = "1", features = ["full"] }
+turn = "0.17"
+webrtc-util = { version = "0.17", default-features = false, features = ["conn"] }
+
+[dev-dependencies]
+test-log = { version = "0.2", features = ["trace"] }
+
+[lints]
+workspace = true

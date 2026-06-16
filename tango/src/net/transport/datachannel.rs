@@ -5,7 +5,7 @@
 use super::{PacketSink, PacketStream, Receiver, Sender};
 
 struct DataChannelSink {
-    inner: datachannel_wrapper::DataChannelSender,
+    inner: tango_rtc::DataChannelSender,
 }
 
 #[async_trait::async_trait]
@@ -24,7 +24,7 @@ impl PacketSink for DataChannelSink {
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
 struct DataChannelStream {
-    inner: datachannel_wrapper::DataChannelReceiver,
+    inner: tango_rtc::DataChannelReceiver,
 }
 
 #[async_trait::async_trait]
@@ -48,7 +48,7 @@ impl PacketStream for DataChannelStream {
 /// Split a `DataChannel` into a transport-agnostic Sender + Receiver
 /// pair. The peer connection that owns the channel must be kept alive
 /// separately (see `netplay::NegotiationOutput`).
-pub fn pair(dc: datachannel_wrapper::DataChannel) -> (Sender, Receiver) {
+pub fn pair(dc: tango_rtc::DataChannel) -> (Sender, Receiver) {
     let (dc_tx, dc_rx) = dc.split();
     let sender = Sender::new(Box::new(DataChannelSink { inner: dc_tx }));
     let receiver = Receiver::new(Box::new(DataChannelStream { inner: dc_rx }));
