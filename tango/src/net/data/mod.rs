@@ -11,7 +11,7 @@ pub mod protocol;
 pub mod stream;
 
 use super::transport::{Receiver, Sender};
-use super::{LatencyCounter, PING_INTERVAL};
+use super::LatencyCounter;
 
 /// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
 /// so that under a genuinely stalled wire the engine's overflow bail fires
@@ -20,14 +20,12 @@ use super::{LatencyCounter, PING_INTERVAL};
 /// interleaved into the same channel (one `EndOfRound` per round).
 const SEND_PUMP_DEPTH: usize = tango_pvp::battle::MAX_QUEUE_LENGTH + 8;
 
-/// Sender's short wall-clock stamp (ms, wrapping into a u16) for a ping. The
-/// pong echoes it; the round-trip delta is the latency sample.
-fn ping_timestamp() -> u16 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u16
-}
+/// Upper bound on the outstanding-send timestamps kept for RTT measurement.
+/// The deque is trimmed by the peer's acks every frame, so it stays tiny in
+/// steady state; this only bounds the book-keeping if the peer goes silent
+/// (acks stop), at which point a sample beyond the rollback horizon would be
+/// meaningless anyway. Sized to the horizon for that reason.
+const MAX_RTT_SAMPLES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
 
 /// Shared per-match stream state: the outbound seq/redundancy window
 /// ([`stream::OutStream`]) and the inbound reorder/ack machinery
@@ -36,12 +34,27 @@ fn ping_timestamp() -> u16 {
 struct InMatchState {
     out: stream::OutStream,
     inn: stream::InStream,
+    /// First-send wall time of each unconfirmed seq, ascending by seq. Pushed
+    /// when a brand-new seq ships; popped as the peer's cumulative ack confirms
+    /// it, and the freshest just-confirmed entry dates the round-trip. This is
+    /// how RTT is measured now that there's no separate ping/pong probe — the
+    /// ack the peer already piggybacks on every frame is the echo.
+    sent_times: std::collections::VecDeque<(u32, std::time::Instant)>,
+}
+
+/// What [`InMatchTx::recv`] extracts from one incoming frame: the elements it
+/// made contiguous (seq order), the freshest frame-advantage for the throttler,
+/// and an RTT sample if the frame's ack confirmed a timestamped seq of ours.
+struct Delivery {
+    elements: Vec<protocol::Element>,
+    frame_advantage: Option<i16>,
+    rtt: Option<std::time::Duration>,
 }
 
 /// Send handle for the unreliable in-match channel (tango-rtc stream-1 data
-/// channel). Shared by the per-frame input
-/// pump, the receive loop's ping/pong + ack replies, and the session's in-band
-/// `EndOfMatch`. Carries [`protocol`] frames + ping/pong over [`Sender::send_raw`].
+/// channel). Shared by the per-frame input pump, the receive loop's ack
+/// replies, and the session's in-band `EndOfMatch`. Carries [`protocol`] frames
+/// over [`Sender::send_raw`].
 #[derive(Clone)]
 pub struct InMatchTx {
     state: std::sync::Arc<std::sync::Mutex<InMatchState>>,
@@ -67,6 +80,7 @@ impl InMatchTx {
             state: std::sync::Arc::new(std::sync::Mutex::new(InMatchState {
                 out: stream::OutStream::new(),
                 inn: stream::InStream::new(),
+                sent_times: std::collections::VecDeque::new(),
             })),
             sink,
             data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -83,9 +97,20 @@ impl InMatchTx {
         let frame = {
             let mut st = self.state.lock().unwrap();
             push(&mut st.out);
+            // Stamp the newest seq's first-send time for ack-derived RTT. Only a
+            // brand-new (higher) seq lands here; resends and the heartbeat don't
+            // touch this, so the time stays anchored to first transmission.
+            if let Some(seq) = st.out.newest_seq() {
+                if st.sent_times.back().map_or(true, |&(prev, _)| seq > prev) {
+                    st.sent_times.push_back((seq, std::time::Instant::now()));
+                    while st.sent_times.len() > MAX_RTT_SAMPLES {
+                        st.sent_times.pop_front();
+                    }
+                }
+            }
             let (base, fa, entries) = st.out.window().expect("window is non-empty after a push");
             let ack = st.inn.ack();
-            protocol::Packet::Frame(protocol::Frame::data(base, fa, entries, Some(ack)))
+            protocol::Frame::data(base, fa, entries, Some(ack))
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
     }
@@ -113,25 +138,11 @@ impl InMatchTx {
         .await
     }
 
-    async fn send_ping(&self, ts: u16) -> std::io::Result<()> {
-        self.sink
-            .lock()
-            .await
-            .send_raw(&protocol::Packet::Ping(ts).encode())
-            .await
-    }
-
-    async fn send_pong(&self, ts: u16) -> std::io::Result<()> {
-        self.sink
-            .lock()
-            .await
-            .send_raw(&protocol::Packet::Pong(ts).encode())
-            .await
-    }
-
     /// Re-send the current redundancy window (or a bare ack if no inputs yet)
     /// without advancing the stream — the heartbeat's retransmit. Lets recovery
     /// and the peer's acks keep flowing while the emulator is throttled/stalled.
+    /// (Also keeps RTT samples coming: the peer keeps acking our resent window,
+    /// and each returning ack dates a round-trip.)
     async fn resend_window(&self) -> std::io::Result<()> {
         let frame = {
             let st = self.state.lock().unwrap();
@@ -141,11 +152,7 @@ impl InMatchTx {
                 None => protocol::Frame::Ack(ack),
             }
         };
-        self.sink
-            .lock()
-            .await
-            .send_raw(&protocol::Packet::Frame(frame).encode())
-            .await
+        self.sink.lock().await.send_raw(&frame.encode()).await
     }
 
     /// Retransmit heartbeat: keep the unacked window (and our ack) flowing at
@@ -178,9 +185,10 @@ impl InMatchTx {
 
     /// Apply an incoming frame: feed its cumulative ack to the out-stream and its
     /// entries to the in-stream. Returns the newly-contiguous elements (seq
-    /// order) plus the freshest frame-advantage. `Err` => a gap blew past the
+    /// order), the freshest frame-advantage, and an RTT sample when the ack
+    /// confirmed one of our timestamped seqs. `Err` => a gap blew past the
     /// rollback horizon and the match must tear down.
-    fn recv(&self, frame: &protocol::Frame) -> Result<(Vec<protocol::Element>, Option<i16>), stream::HorizonExceeded> {
+    fn recv(&self, frame: &protocol::Frame) -> Result<Delivery, stream::HorizonExceeded> {
         let mut st = self.state.lock().unwrap();
         // The ack is the out-stream's concern (it acks what we sent);
         // the in-stream reassembly below only consumes the data entries.
@@ -188,21 +196,35 @@ impl InMatchTx {
             protocol::Frame::Ack(ack) => Some(*ack),
             protocol::Frame::Data { ack, .. } => *ack,
         };
+        let mut rtt = None;
         if let Some(ack) = ack {
             st.out.apply_ack(ack);
+            // The ack confirms every seq below the peer's frontier. Retire the
+            // confirmed first-send timestamps; the newest one just retired dates
+            // the round-trip (now − when we first sent that seq).
+            let frontier = st.out.peer_ack_base();
+            let mut confirmed_at = None;
+            while st.sent_times.front().is_some_and(|&(seq, _)| seq < frontier) {
+                confirmed_at = st.sent_times.pop_front().map(|(_, t)| t);
+            }
+            rtt = confirmed_at.map(|t| std::time::Instant::now().saturating_duration_since(t));
         }
         let delivered = st.inn.accept(frame)?;
-        let fa = st.inn.latest_advantage();
-        Ok((delivered, fa))
+        let frame_advantage = st.inn.latest_advantage();
+        Ok(Delivery {
+            elements: delivered,
+            frame_advantage,
+            rtt,
+        })
     }
 }
 
 /// `tango_pvp::net::Sender` adapter — pushes each per-frame `Event` through a
 /// bounded pump ([`SEND_PUMP_DEPTH`]) that ships it as a [`protocol`] frame over
 /// the unreliable in-match channel. The pump keeps the emulator thread off the
-/// shared sink mutex (contended by the receive loop's ping/pong + ack replies)
-/// and off the await, and preserves Input/EndOfRound ordering into the
-/// out-stream's seq space.
+/// shared sink mutex (also taken by the heartbeat's window resends) and off the
+/// await, and preserves Input/EndOfRound ordering into the out-stream's seq
+/// space.
 pub struct PvpSender {
     tx: tokio::sync::mpsc::Sender<tango_pvp::net::Event>,
 }
@@ -243,20 +265,20 @@ impl tango_pvp::net::Sender for PvpSender {
 
 /// `tango_pvp::net::Receiver` adapter — reads [`protocol`] frames off the
 /// unreliable in-match channel, feeds them through the shared [`InMatchTx`]
-/// reassembly, and yields the resulting `Event`s in strict seq order. Ping is
-/// answered with Pong; Pong marks a latency sample; an in-band `EndOfMatch`
-/// marker raises `remote_ended`. One frame can deliver several elements, so
-/// surplus events buffer in `pending` and drain before the next read. The ping
-/// timer keeps the round-trip clock ticking on the live match's actual
-/// (unreliable) path.
+/// reassembly, and yields the resulting `Event`s in strict seq order. The ack
+/// piggybacked on each frame drives both loss recovery and the latency readout:
+/// when it confirms one of our timestamped seqs, the round-trip is marked as a
+/// latency sample (there's no separate ping/pong probe). An in-band
+/// `EndOfMatch` marker raises `remote_ended`. One frame can deliver several
+/// elements, so surplus events buffer in `pending` and drain before the next
+/// read.
 pub struct PvpReceiver {
     receiver: Receiver,
     im: InMatchTx,
     /// `None` once the remote drops — the session swaps the counter out so the
     /// UI can tell "no live link" from "0 ms ping on LAN". While the link is up
-    /// it's `Some` and ping samples land here.
+    /// it's `Some` and latency samples land here.
     latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
-    ping_timer: tokio::time::Interval,
     /// Flipped `true` the first time an in-band `EndOfMatch` marker is
     /// delivered. `PvpSession::is_ended` reads this to know the remote reached
     /// its match_end_ret hook and the connection is safe to tear down.
@@ -280,7 +302,6 @@ impl PvpReceiver {
             receiver,
             im,
             latency_counter,
-            ping_timer: tokio::time::interval(PING_INTERVAL),
             remote_ended,
             end_of_match_notify,
             pending: std::collections::VecDeque::new(),
@@ -295,46 +316,31 @@ impl tango_pvp::net::Receiver for PvpReceiver {
             if let Some(event) = self.pending.pop_front() {
                 return Ok(event);
             }
-            tokio::select! {
-                _ = self.ping_timer.tick() => {
-                    self.im.send_ping(ping_timestamp()).await?;
+            let msg = self.receiver.recv_raw().await?;
+            let frame = protocol::Frame::decode(&msg)?;
+            let delivery = self.im.recv(&frame).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::Other, "remote overflowed our input buffer")
+            })?;
+            // A returning ack that confirmed one of our seqs dates a round-trip.
+            if let Some(rtt) = delivery.rtt {
+                if let Some(c) = self.latency_counter.lock().await.as_mut() {
+                    c.mark(rtt);
                 }
-                msg = self.receiver.recv_raw() => {
-                    match protocol::Packet::decode(&msg?)? {
-                        protocol::Packet::Ping(ts) => {
-                            self.im.send_pong(ts).await?;
-                        }
-                        protocol::Packet::Pong(ts) => {
-                            let dt = ping_timestamp().wrapping_sub(ts);
-                            if let Some(c) = self.latency_counter.lock().await.as_mut() {
-                                c.mark(std::time::Duration::from_millis(dt as u64));
-                            }
-                        }
-                        protocol::Packet::Frame(frame) => {
-                            let (delivered, fa) = self.im.recv(&frame).map_err(|_| {
-                                std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    "remote overflowed our input buffer",
-                                )
-                            })?;
-                            let frame_advantage = fa.unwrap_or(0);
-                            for element in delivered {
-                                match element {
-                                    protocol::Element::Input(joyflags) => {
-                                        self.pending.push_back(tango_pvp::net::Event::Input(
-                                            tango_pvp::net::Input { joyflags, frame_advantage },
-                                        ));
-                                    }
-                                    protocol::Element::EndOfRound => {
-                                        self.pending.push_back(tango_pvp::net::Event::EndOfRound);
-                                    }
-                                    protocol::Element::EndOfMatch => {
-                                        self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
-                                        self.end_of_match_notify.notify_one();
-                                    }
-                                }
-                            }
-                        }
+            }
+            let frame_advantage = delivery.frame_advantage.unwrap_or(0);
+            for element in delivery.elements {
+                match element {
+                    protocol::Element::Input(joyflags) => {
+                        self.pending.push_back(tango_pvp::net::Event::Input(
+                            tango_pvp::net::Input { joyflags, frame_advantage },
+                        ));
+                    }
+                    protocol::Element::EndOfRound => {
+                        self.pending.push_back(tango_pvp::net::Event::EndOfRound);
+                    }
+                    protocol::Element::EndOfMatch => {
+                        self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
+                        self.end_of_match_notify.notify_one();
                     }
                 }
             }

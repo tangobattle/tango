@@ -1,17 +1,18 @@
-//! In-match wire format for the (future) unreliable netplay datagram
-//! channel. This is the byte-minimized, loss-tolerant replacement for the
-//! per-frame `Packet::Input` / `Packet::EndOfRound` traffic on the
-//! reliable lobby channel.
+//! In-match wire format for the unreliable netplay datagram channel. This is
+//! the byte-minimized, loss-tolerant replacement for the per-frame input /
+//! end-of-round traffic that used to ride the reliable lobby channel.
 //!
-//! A [`Packet`] message is one datagram: a [`Frame`] (the per-tick input
-//! window + a cumulative ack of the peer's stream), or a `Ping`/`Pong` probe.
-//! Reliability is the receiver's job — inputs are recovered by a redundancy
-//! window keyed on a monotonic seq, round/match boundaries ride in-band as
-//! marker entries, and a cumulative ack (the peer's contiguous frontier)
-//! drives the sender's window. None of that state lives here; this module is
-//! purely the on-wire (de)serialization.
+//! One datagram is exactly one [`Frame`]: a per-tick input window plus a
+//! cumulative ack of the peer's stream (or a bare ack). There is no envelope
+//! tag — a `Frame` is the whole message — and no separate ping/pong probe:
+//! round-trip latency is derived from the ack round-trip (see
+//! [`super::InMatchTx`]). Reliability is the receiver's job — inputs are
+//! recovered by a redundancy window keyed on a monotonic seq, round/match
+//! boundaries ride in-band as marker entries, and a cumulative ack (the peer's
+//! contiguous frontier) drives the sender's window. None of that state lives
+//! here; this module is purely the on-wire (de)serialization.
 //!
-//! Layout of a `Frame` body (after the 1-byte `Packet` tag):
+//! Layout of a `Frame` datagram:
 //! ```text
 //! base             uvarint   0 => ack-only (no advantage, no entries);
 //!                            else 1-based global seq of entries[0]
@@ -37,11 +38,6 @@ pub const PAYLOAD_MASK: u16 = 0x03ff;
 /// Marker kind, carried in an entry's payload when [`MARK`] is set.
 const KIND_END_OF_ROUND: u16 = 0;
 const KIND_END_OF_MATCH: u16 = 1;
-
-/// `Wire` envelope tags (first byte of every in-match datagram).
-const TAG_FRAME: u8 = 0;
-const TAG_PING: u8 = 1;
-const TAG_PONG: u8 = 2;
 
 /// Hard cap on entries decoded from one frame. A legitimate redundancy window
 /// can't exceed the rollback horizon (the out-stream trims it to that), so a
@@ -116,50 +112,19 @@ impl Frame {
             ack,
         }
     }
-}
 
-/// One message on the in-match channel.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Packet {
-    Frame(Frame),
-    /// Latency probe carrying the sender's short timestamp (ms, wrapping).
-    Ping(u16),
-    /// Echo of a `Ping`'s timestamp.
-    Pong(u16),
-}
-
-impl Packet {
+    /// Serialize as one whole datagram. There is no envelope tag — a frame
+    /// *is* the message — so this is just the body.
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::new();
-        match self {
-            Packet::Frame(f) => {
-                out.push(TAG_FRAME);
-                encode_frame_body(f, &mut out);
-            }
-            Packet::Ping(ts) => {
-                out.push(TAG_PING);
-                out.extend_from_slice(&ts.to_le_bytes());
-            }
-            Packet::Pong(ts) => {
-                out.push(TAG_PONG);
-                out.extend_from_slice(&ts.to_le_bytes());
-            }
-        }
+        encode_frame_body(self, &mut out);
         out
     }
 
     /// Decode one whole datagram. `buf` must be exactly one message — the
     /// trailing-ack inference relies on the datagram boundary.
-    pub fn decode(buf: &[u8]) -> io::Result<Packet> {
-        let (&tag, rest) = buf
-            .split_first()
-            .ok_or_else(|| invalid("empty wire message".to_string()))?;
-        match tag {
-            TAG_FRAME => Ok(Packet::Frame(decode_frame_body(rest)?)),
-            TAG_PING => Ok(Packet::Ping(read_u16_whole(rest)?)),
-            TAG_PONG => Ok(Packet::Pong(read_u16_whole(rest)?)),
-            other => Err(invalid(format!("unknown wire tag: {other}"))),
-        }
+    pub fn decode(buf: &[u8]) -> io::Result<Frame> {
+        decode_frame_body(buf)
     }
 }
 
@@ -313,18 +278,6 @@ fn read_u16le(r: &mut impl Read) -> io::Result<u16> {
     Ok(u16::from_le_bytes(b))
 }
 
-/// Read a `u16` that must be exactly the whole remaining slice (used for the
-/// fixed-size `Ping`/`Pong` payload — reject trailing garbage).
-fn read_u16_whole(rest: &[u8]) -> io::Result<u16> {
-    match rest {
-        [lo, hi] => Ok(u16::from_le_bytes([*lo, *hi])),
-        _ => Err(invalid(format!(
-            "ping/pong payload must be 2 bytes, got {}",
-            rest.len()
-        ))),
-    }
-}
-
 fn invalid(msg: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -333,16 +286,16 @@ fn invalid(msg: String) -> io::Error {
 mod tests {
     use super::*;
 
-    fn roundtrip(w: &Packet) {
-        let bytes = w.encode();
-        let back = Packet::decode(&bytes).expect("decode");
-        assert_eq!(w, &back, "roundtrip mismatch; bytes = {bytes:02x?}");
+    fn roundtrip(f: &Frame) {
+        let bytes = f.encode();
+        let back = Frame::decode(&bytes).expect("decode");
+        assert_eq!(f, &back, "roundtrip mismatch; bytes = {bytes:02x?}");
     }
 
     #[test]
     fn normal_frame_exact_bytes() {
         // From the spec: base=12345, adv=+2, [Right(0x010), EndOfRound, A(0x001)], no ack.
-        let f = Packet::Frame(Frame::data(
+        let f = Frame::data(
             12345,
             2,
             vec![
@@ -351,10 +304,10 @@ mod tests {
                 Element::Input(0x001),
             ],
             None,
-        ));
+        );
         assert_eq!(
             f.encode(),
-            vec![0x00, 0xB9, 0x60, 0x04, 0x10, 0x80, 0x00, 0xC0, 0x01, 0x00]
+            vec![0xB9, 0x60, 0x04, 0x10, 0x80, 0x00, 0xC0, 0x01, 0x00]
         );
         roundtrip(&f);
     }
@@ -362,99 +315,82 @@ mod tests {
     #[test]
     fn ack_only_frame_exact_bytes() {
         // base=0 sentinel, then frontier=12340.
-        let f = Packet::Frame(Frame::Ack(12340));
-        assert_eq!(f.encode(), vec![0x00, 0x00, 0xB4, 0x60]);
+        let f = Frame::Ack(12340);
+        assert_eq!(f.encode(), vec![0x00, 0xB4, 0x60]);
         roundtrip(&f);
     }
 
     #[test]
-    fn ping_pong_exact_bytes() {
-        assert_eq!(Packet::Ping(0x1234).encode(), vec![0x01, 0x34, 0x12]);
-        assert_eq!(Packet::Pong(0x1234).encode(), vec![0x02, 0x34, 0x12]);
-        roundtrip(&Packet::Ping(0x1234));
-        roundtrip(&Packet::Pong(0));
-    }
-
-    #[test]
     fn normal_frame_with_ack_roundtrips() {
-        roundtrip(&Packet::Frame(Frame::data(
+        roundtrip(&Frame::data(
             12345,
             2,
             vec![Element::Input(0x010), Element::Input(0x011), Element::Input(0x001)],
             Some(12340),
-        )));
+        ));
     }
 
     #[test]
     fn negative_frame_advantage_roundtrips() {
         for fa in [-1i16, -2, -64, -300, i16::MIN, i16::MAX, 0, 63, 200] {
-            roundtrip(&Packet::Frame(Frame::data(1, fa, vec![Element::Input(0x3ff)], None)));
+            roundtrip(&Frame::data(1, fa, vec![Element::Input(0x3ff)], None));
         }
     }
 
     #[test]
     fn marker_as_last_entry_roundtrips() {
-        roundtrip(&Packet::Frame(Frame::data(
+        roundtrip(&Frame::data(
             7,
             0,
             vec![Element::Input(0x10), Element::EndOfMatch],
             Some(6),
-        )));
+        ));
     }
 
     #[test]
     fn single_entry_window_roundtrips() {
-        roundtrip(&Packet::Frame(Frame::data(1, 0, vec![Element::Input(0)], None)));
+        roundtrip(&Frame::data(1, 0, vec![Element::Input(0)], None));
     }
 
     #[test]
     fn large_seqs_roundtrip() {
-        roundtrip(&Packet::Frame(Frame::data(
+        roundtrip(&Frame::data(
             1_000_000,
             5,
             vec![Element::Input(0x200), Element::Input(0x100)],
             Some(999_999),
-        )));
+        ));
     }
 
     #[test]
     fn unknown_marker_kind_errors() {
-        // MARK set with payload kind 2 (no such marker yet).
-        let bytes = vec![0x00, 0x01, 0x00, 0x02, 0x40];
-        assert!(Packet::decode(&bytes).is_err());
-    }
-
-    #[test]
-    fn unknown_tag_errors() {
-        assert!(Packet::decode(&[0x09, 0x00]).is_err());
+        // base=1, adv=0, then an entry with MARK set and payload kind 2 (no
+        // such marker yet).
+        let bytes = vec![0x01, 0x00, 0x02, 0x40];
+        assert!(Frame::decode(&bytes).is_err());
     }
 
     #[test]
     fn empty_message_errors() {
-        assert!(Packet::decode(&[]).is_err());
-    }
-
-    #[test]
-    fn ping_with_trailing_garbage_errors() {
-        assert!(Packet::decode(&[TAG_PING, 0x00, 0x00, 0x00]).is_err());
+        assert!(Frame::decode(&[]).is_err());
     }
 
     #[test]
     fn max_window_decodes() {
         // Exactly the cap is legitimate (the last entry terminates the run).
-        let f = Packet::Frame(Frame::data(1, 0, vec![Element::Input(1); MAX_ENTRIES], None));
-        assert_eq!(Packet::decode(&f.encode()).unwrap(), f);
+        let f = Frame::data(1, 0, vec![Element::Input(1); MAX_ENTRIES], None);
+        assert_eq!(Frame::decode(&f.encode()).unwrap(), f);
     }
 
     #[test]
     fn over_long_window_errors() {
         // base=1, adv=0, then a run of CONT-set entries with no terminator
         // inside the cap — a hostile peer trying to force a huge allocation.
-        let mut bytes = vec![TAG_FRAME, 0x01, 0x00];
+        let mut bytes = vec![0x01, 0x00];
         for _ in 0..=MAX_ENTRIES {
             bytes.extend_from_slice(&(CONT | 0x001).to_le_bytes());
         }
-        assert!(Packet::decode(&bytes).is_err());
+        assert!(Frame::decode(&bytes).is_err());
     }
 
     #[test]

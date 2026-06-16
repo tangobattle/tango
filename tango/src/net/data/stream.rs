@@ -126,14 +126,24 @@ impl OutStream {
         Some((base, self.latest_advantage, entries))
     }
 
-    #[cfg(test)]
-    fn window_len(&self) -> usize {
-        self.history.len()
+    /// The newest seq handed out so far, or `None` before the first push. The
+    /// adapter timestamps this on each send to derive RTT from the peer's ack
+    /// of it (see [`super::InMatchTx`]).
+    pub fn newest_seq(&self) -> Option<u32> {
+        (self.next_seq > 1).then(|| self.next_seq - 1)
+    }
+
+    /// The peer's contiguous frontier: the lowest seq it hasn't confirmed, so
+    /// every seq below it is acknowledged received. Drives RTT measurement —
+    /// when this advances past a timestamped seq, that seq's round-trip is
+    /// known.
+    pub fn peer_ack_base(&self) -> u32 {
+        self.peer_ack_base
     }
 
     #[cfg(test)]
-    fn peer_ack_base(&self) -> u32 {
-        self.peer_ack_base
+    fn window_len(&self) -> usize {
+        self.history.len()
     }
 }
 
@@ -232,7 +242,6 @@ impl InStream {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::Packet;
     use super::*;
 
     fn input(j: u16) -> Element {
@@ -245,10 +254,7 @@ mod tests {
     fn make_frame(out: &OutStream, ack: Option<u32>) -> Frame {
         let (base, fa, entries) = out.window().expect("window");
         let frame = Frame::data(base, fa, entries, ack);
-        match Packet::decode(&Packet::Frame(frame).encode()).unwrap() {
-            Packet::Frame(f) => f,
-            _ => unreachable!(),
-        }
+        Frame::decode(&frame.encode()).unwrap()
     }
 
     #[test]
@@ -426,10 +432,7 @@ mod tests {
             let frame = Frame::data(base, fa, entries, None);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
-                let f = match Packet::decode(&Packet::Frame(frame).encode()).unwrap() {
-                    Packet::Frame(f) => f,
-                    _ => unreachable!(),
-                };
+                let f = Frame::decode(&frame.encode()).unwrap();
                 delivered.extend(f_inputs(inn.accept(&f).unwrap()));
                 out.apply_ack(inn.ack());
             }
