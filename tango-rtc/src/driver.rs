@@ -645,47 +645,35 @@ impl Outbox {
             // Channel is gone; the message has nowhere to go.
             return;
         };
-        // Shed-don't-stall for a lossy channel: once the send side is genuinely
-        // backed up, drop this frame rather than deepening the queue. Left
-        // unchecked the buffer can grow to str0m's 128 KB cap — seconds of stale
-        // inputs that flush out in a post-congestion burst and poison the
-        // rollback time-sync. The in-match redundancy window + retransmit
-        // heartbeat recover the dropped frame.
+        // Shed-don't-stall for a lossy channel — but only as a runaway backstop,
+        // not a per-frame gate. Under packet loss SCTP's cwnd collapses and the
+        // send buffer backs up. An eager gate sheds the sender's *own fresh
+        // inputs* for the whole collapse; the in-match redundancy window then
+        // recovers the backlog in one big burst when cwnd reopens, and that
+        // burst lurches the rollback time-sync — our view of the remote frontier
+        // jumps forward a clump at a time, which the throttler chases into an
+        // oscillation. A reliable channel doesn't have this: it never sheds, so
+        // SCTP just trickles the backlog out in order at the cwnd rate and the
+        // remote frontier advances smoothly. We want that same graceful
+        // degradation here.
         //
-        // The gate is a frame *count*, not a fixed byte count, and that
-        // distinction is load-bearing. `buffered_amount()` is bytes written
-        // minus bytes the peer has SACKed (sctp-proto only releases it on ack),
-        // so it includes everything still *in flight*, not just what's queued
-        // behind a stalled cwnd. The lossy channel re-sends a redundancy window
-        // every frame, so in-flight bytes ≈ frames_in_flight × frame_size and
-        // frames_in_flight ≈ RTT × frame_rate — in-flight grows with RTT. A
-        // fixed byte threshold gets crossed by an entirely *healthy* in-flight
-        // window once RTT is high enough (≈200 ms for a typical steady frame),
-        // and then the gate sheds steady-state inputs that aren't backed up at
-        // all. They recover in clumps, which sawtooths the rollback skew — the
-        // exact failure this gate exists to prevent.
+        // So don't shed under ordinary cwnd pressure — let the buffer build and
+        // drain at the cwnd rate, and let the redundancy window cover the genuine
+        // network losses (a single loss recovers in the next frame, a one-frame
+        // gap, not a clump). `buffered_amount()` counts in-flight bytes too
+        // (sctp-proto only releases them on SACK), and that in-flight window
+        // grows with RTT, so any *frame-count* or small-byte gate trips on a
+        // perfectly healthy high-RTT or briefly-congested link and reintroduces
+        // the very bursts it's meant to prevent.
         //
-        // Dividing by `message.len()` cancels the RTT term: the threshold is
-        // "this many frames of in-flight + queue," independent of frame size, so
-        // a clean high-RTT link sits well under it and only a real cwnd-blocked
-        // backlog beyond a healthy window sheds. A fat recovery frame is
-        // proportionally larger, so it still keeps its slot.
-        //
-        // Size the window to the deepest round trip the netplay is tuned for.
-        // The frame-delay control compensates one-way delay up to ~10 frames
-        // (tango-pvp's MAX_FRAME_DELAY) before it stops hiding RTT and starts
-        // speculating, i.e. it targets a round trip of TUNED_ROUND_TRIP_FRAMES
-        // (~330 ms at 60 Hz). That round trip is the healthy in-flight window;
-        // half again on top covers ack jitter and the redundancy heartbeat's
-        // extra in-flight copies, so a clean link never sheds within the
-        // envelope and only a genuine cwnd-blocked backlog past it does. Banked
-        // staleness then stays ~0.5 s, far below str0m's 128 KB cap. (No
-        // small-message floor anymore — the 3-byte ping/pong probe that needed
-        // one is gone; RTT rides the ack round-trip, and every frame here
-        // carries a recoverable redundancy window.)
-        const TUNED_ROUND_TRIP_FRAMES: usize = 20; // 2 x tango-pvp's ~10-frame max one-way frame delay
-        const HEALTHY_INFLIGHT_FRAMES: usize = TUNED_ROUND_TRIP_FRAMES * 3 / 2;
-        if lossy && channel.buffered_amount() > HEALTHY_INFLIGHT_FRAMES * message.len() {
+        // Only shed to stop a genuine runaway from reaching str0m's hard cap
+        // (`MAX_BUFFERED_ACROSS_STREAMS` = 128 KiB, where `channel.write` refuses
+        // and the `Ok(false)` arm below would drop anyway). Shedding at half the
+        // cap makes that drop a controlled one here and bounds worst-case banked
+        // staleness to ~64 KiB, while every normal-operation buffer — which
+        // stays in the low-KiB range even at high loss — trickles untouched.
+        const SHED_AT_BYTES: usize = 64 * 1024; // half str0m's 128 KiB MAX_BUFFERED_ACROSS_STREAMS
+        if lossy && channel.buffered_amount() > SHED_AT_BYTES {
             return;
         }
         match channel.write(true, &message) {
