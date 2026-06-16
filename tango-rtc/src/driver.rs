@@ -80,12 +80,12 @@ struct ChannelLoop {
 }
 
 impl ChannelLoop {
-    fn new(io: ChannelIo) -> Self {
+    fn new(io: ChannelIo, lossy: bool) -> Self {
         ChannelLoop {
             status_tx: io.status_tx,
             message_tx: io.message_tx,
             outgoing_rx: io.outgoing_rx,
-            outbox: Outbox::default(),
+            outbox: Outbox { lossy, ..Default::default() },
             outgoing_done: false,
         }
     }
@@ -202,8 +202,23 @@ pub(crate) async fn run(mut driver: Driver) {
     let routes = Arc::new(routes);
     driver.shared.inner.lock().unwrap().routes = Some(routes.clone());
 
-    // Take the channel I/O ends out of the driver for the loop's lifetime.
-    let mut channels: Vec<ChannelLoop> = driver.channels.drain(..).map(ChannelLoop::new).collect();
+    // Take the channel I/O ends out of the driver for the loop's lifetime,
+    // pairing each with whether its channel tolerates loss (same order as
+    // `Inner::channels`).
+    let lossy: Vec<bool> = {
+        let inner = driver.shared.inner.lock().unwrap();
+        inner
+            .channels
+            .iter()
+            .map(|c| crate::is_lossy(c.config.reliability))
+            .collect()
+    };
+    let mut channels: Vec<ChannelLoop> = driver
+        .channels
+        .drain(..)
+        .zip(lossy)
+        .map(|(io, lossy)| ChannelLoop::new(io, lossy))
+        .collect();
 
     let exit = main_loop(&mut driver, &routes, &mut net_rx, &mut channels).await;
 
@@ -625,6 +640,12 @@ fn drain_rtc(inner: &mut Inner, liveness: &mut Liveness) -> Result<(Drained, Ins
 #[derive(Default)]
 struct Outbox {
     parked: Option<Vec<u8>>,
+    /// Whether this channel tolerates loss. A lossy outbox never backpressures
+    /// the sender: it always accepts the next message and coalesces it onto
+    /// `parked` (newest wins), dropping the older frame — whose inputs the newer
+    /// frame's redundancy window already carries — so the freshest frame is
+    /// what waits for SCTP instead of a stale backlog.
+    lossy: bool,
 }
 
 impl Outbox {
@@ -645,53 +666,57 @@ impl Outbox {
             // Channel is gone; the message has nowhere to go.
             return;
         };
-        // Shed-don't-stall for a lossy channel — but only as a runaway backstop,
-        // not a per-frame gate. Under packet loss SCTP's cwnd collapses and the
-        // send buffer backs up. An eager gate sheds the sender's *own fresh
-        // inputs* for the whole collapse; the in-match redundancy window then
-        // recovers the backlog in one big burst when cwnd reopens, and that
-        // burst lurches the rollback time-sync — our view of the remote frontier
-        // jumps forward a clump at a time, which the throttler chases into an
-        // oscillation. A reliable channel doesn't have this: it never sheds, so
-        // SCTP just trickles the backlog out in order at the cwnd rate and the
-        // remote frontier advances smoothly. We want that same graceful
-        // degradation here.
+        // Don't bank a stale backlog on a lossy channel. When the send buffer is
+        // already past a healthy in-flight window, *defer* this frame — hold it
+        // parked rather than writing it into a backed-up SCTP queue. While it's
+        // parked the sender keeps producing, and `park` coalesces each new frame
+        // onto it (newest wins), so the freshest frame is what waits for SCTP and
+        // the older ones fall away (their inputs ride the newer frame's
+        // redundancy window). Under a cwnd collapse from packet loss that keeps
+        // SCTP shallow and current instead of piling old frames that flush out in
+        // a burst when cwnd reopens — the burst that lurches the rollback
+        // time-sync. Genuine network losses still recover via the redundancy
+        // window (a single loss is a one-frame gap, not a clump).
         //
-        // So don't shed under ordinary cwnd pressure — let the buffer build and
-        // drain at the cwnd rate, and let the redundancy window cover the genuine
-        // network losses (a single loss recovers in the next frame, a one-frame
-        // gap, not a clump). `buffered_amount()` counts in-flight bytes too
-        // (sctp-proto only releases them on SACK), and that in-flight window
-        // grows with RTT, so any *frame-count* or small-byte gate trips on a
-        // perfectly healthy high-RTT or briefly-congested link and reintroduces
-        // the very bursts it's meant to prevent.
-        //
-        // Only shed to stop a genuine runaway from reaching str0m's hard cap
-        // (`MAX_BUFFERED_ACROSS_STREAMS` = 128 KiB, where `channel.write` refuses
-        // and the `Ok(false)` arm below would drop anyway). Shedding at half the
-        // cap makes that drop a controlled one here and bounds worst-case banked
-        // staleness to ~64 KiB, while every normal-operation buffer — which
-        // stays in the low-KiB range even at high loss — trickles untouched.
-        const SHED_AT_BYTES: usize = 64 * 1024; // half str0m's 128 KiB MAX_BUFFERED_ACROSS_STREAMS
-        if lossy && channel.buffered_amount() > SHED_AT_BYTES {
+        // The window is a frame *count*, not a byte count. `buffered_amount()`
+        // includes in-flight (un-SACKed) bytes, and the lossy channel re-sends a
+        // redundancy window every frame, so in-flight bytes ≈ frames_in_flight ×
+        // frame_size and grow with RTT — a fixed byte threshold would defer a
+        // perfectly healthy high-RTT window. Dividing by `message.len()` cancels
+        // that. Sized to the deepest round trip the netplay is tuned for: twice
+        // tango-pvp's ~10-frame MAX_FRAME_DELAY (the one-way delay the frame-delay
+        // control hides before it speculates), plus half again for jitter, so a
+        // clean link never defers inside its envelope.
+        const TUNED_ROUND_TRIP_FRAMES: usize = 20; // 2 x tango-pvp's ~10-frame max one-way frame delay
+        const HEALTHY_INFLIGHT_FRAMES: usize = TUNED_ROUND_TRIP_FRAMES * 3 / 2;
+        if lossy && channel.buffered_amount() > HEALTHY_INFLIGHT_FRAMES * message.len() {
+            self.parked = Some(message); // defer; `park` coalesces newer frames onto it
             return;
         }
         match channel.write(true, &message) {
             Ok(true) => {}
-            // SCTP send buffer is full. A reliable channel parks and retries
-            // (backpressure); a lossy one drops, same as the shallow-queue gate.
-            Ok(false) if !lossy => self.parked = Some(message),
-            Ok(false) => {}
+            // SCTP's send buffer is full. Keep the frame parked and retry next
+            // pass (the freeing SACK is the wakeup): a reliable channel
+            // backpressures behind it; a lossy one coalesces newer frames onto it
+            // (newest wins), so nothing stale banks either way.
+            Ok(false) => self.parked = Some(message),
             Err(e) => log::warn!("channel write failed: {}", e),
         }
     }
 
     fn has_room(&self) -> bool {
-        self.parked.is_none()
+        // A lossy channel always accepts the next message (it coalesces onto the
+        // parked slot); only a reliable channel backpressures on a full slot.
+        self.lossy || self.parked.is_none()
     }
 
     fn park(&mut self, message: Vec<u8>) {
-        debug_assert!(self.parked.is_none(), "outbox already occupied");
+        // Lossy: newest wins — a frame already waiting (SCTP hasn't taken it yet)
+        // is dropped in favour of this newer one. Dropping older-and-keeping-
+        // newest is lossless (the newer frame's redundancy window re-carries the
+        // older inputs) and keeps the freshest frame flowing instead of banking a
+        // stale backlog that would later flush as a burst.
+        debug_assert!(self.lossy || self.parked.is_none(), "reliable outbox already occupied");
         self.parked = Some(message);
     }
 }
