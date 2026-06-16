@@ -54,6 +54,7 @@ const FONT_NOTO_SANS: &[u8] = include_bytes!("../fonts/NotoSans-Regular.ttf");
 const FONT_NOTO_SANS_JP: &[u8] = include_bytes!("../fonts/NotoSansJP-Regular.otf");
 const FONT_NOTO_SANS_SC: &[u8] = include_bytes!("../fonts/NotoSansSC-Regular.otf");
 const FONT_NOTO_SANS_TC: &[u8] = include_bytes!("../fonts/NotoSansTC-Regular.otf");
+const FONT_NOTO_SANS_KR: &[u8] = include_bytes!("../fonts/NotoSansKR-Regular.otf");
 const FONT_NOTO_SANS_MONO: &[u8] = include_bytes!("../fonts/NotoSansMono-Regular.ttf");
 const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../fonts/NotoEmoji-Regular.ttf");
 // Lucide icon font ships with the `lucide-icons` crate as
@@ -322,6 +323,7 @@ fn run_app() -> iced::Result {
         .font(FONT_NOTO_SANS_JP)
         .font(FONT_NOTO_SANS_SC)
         .font(FONT_NOTO_SANS_TC)
+        .font(FONT_NOTO_SANS_KR)
         .font(FONT_NOTO_SANS_MONO)
         .font(FONT_NOTO_EMOJI)
         .font(lucide_icons::LUCIDE_FONT_BYTES)
