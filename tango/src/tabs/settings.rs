@@ -92,6 +92,13 @@ pub enum Message {
     /// connection.
     RelayModeChanged(config::RelayMode),
     PatchRepoChanged(String),
+    /// "Change…" clicked next to the data folder. The App intercepts this
+    /// (before `State::update`) to open an async folder picker, which comes
+    /// back as `DataFolderPicked`.
+    OpenDataFolderPicker,
+    /// Folder picker resolved: `Some(path)` if the user chose one, `None` if
+    /// they dismissed it.
+    DataFolderPicked(Option<std::path::PathBuf>),
     TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
@@ -144,6 +151,10 @@ pub enum ConfigChange {
     FrameDelay(u32),
     RelayMode(config::RelayMode),
     PatchRepo(String),
+    /// New root data folder picked. The App points `config.data_path` at it,
+    /// creates the standard subfolders, re-scans, and re-points the patch
+    /// autoupdater.
+    DataPath(std::path::PathBuf),
     PatchAutoupdate(bool),
     VideoFilter(String),
     FractionalScaling(bool),
@@ -190,6 +201,12 @@ impl State {
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
+            // Intercepted by the App before it reaches here (it opens the
+            // folder picker); the arm exists only for exhaustiveness.
+            Message::OpenDataFolderPicker => None,
+            Message::DataFolderPicked(Some(path)) => Some(ConfigChange::DataPath(path)),
+            // Dialog dismissed — nothing to change.
+            Message::DataFolderPicked(None) => None,
             Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
@@ -390,6 +407,18 @@ fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
             .label(t!(lang, "settings-streamer-mode"))
             .on_toggle(Message::ToggleStreamerMode)
             .style(widgets::chunky_checkbox),
+        labeled::<Message>(
+            t!(lang, "settings-data-folder"),
+            row![
+                text(config.data_path.to_string_lossy().into_owned()),
+                button(text(t!(lang, "settings-data-folder-change")))
+                    .on_press(Message::OpenDataFolderPicker)
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::neutral),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        ),
         labeled::<Message>(
             t!(lang, "settings-patch-repo"),
             text_input("", &config.patch_repo)
