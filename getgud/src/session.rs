@@ -127,6 +127,15 @@ pub struct Session<W: World> {
     last_misprediction_depth: u32,
 
     last_remote_tick_advantage: i16,
+
+    /// Local ticks advanced since the last remote input arrived. A lossy link
+    /// delivers remote inputs in clumps, so between clumps the confirmed remote
+    /// frontier sits still while the local frontier runs on — yet the remote
+    /// *clock* keeps ticking, it's just not being heard. `local_tick_advantage`
+    /// subtracts this to extrapolate the remote frontier through the gap, so the
+    /// clock-sync lead tracks the real offset instead of ramping and snapping
+    /// with every delivery stall.
+    ticks_since_remote_input: u32,
 }
 
 impl<W: World> Session<W> {
@@ -153,6 +162,7 @@ impl<W: World> Session<W> {
             terminal_reached: false,
             last_misprediction_depth: 0,
             last_remote_tick_advantage: 0,
+            ticks_since_remote_input: 0,
         }
     }
 
@@ -227,6 +237,7 @@ impl<W: World> Session<W> {
         }
 
         self.local_frontier += 1;
+        self.ticks_since_remote_input += 1;
 
         // Present the speculation at `target`. The buffer can reach *past* `target`
         // when `present_delay` was just increased (shrinking `target`) since those
@@ -268,15 +279,29 @@ impl<W: World> Session<W> {
         self.input_queue.remote_queue_length()
     }
 
-    /// How far local input leads remote input, in ticks (clamped to [`i16`]).
+    /// How far local input leads remote input, in ticks (clamped to [`i16`]),
+    /// with the remote frontier extrapolated through delivery stalls.
     ///
-    /// This is the input queue's signed [`lead`](crate::Queue::lead), surfaced
-    /// for clock sync. It is each peer's half of the clock-sync handshake: you
-    /// send it to the remote with every input, and the remote's value comes back
-    /// via [`add_remote_input`](Session::add_remote_input). The difference of the
-    /// two is the [`skew`](Session::skew) used to keep the simulations aligned.
+    /// The base value is the input queue's signed [`lead`](crate::Queue::lead).
+    /// But a lossy link delivers remote inputs in clumps: between clumps the
+    /// confirmed remote frontier sits still even though the remote *clock* keeps
+    /// running, so the raw lead ramps and then snaps back every time a clump
+    /// lands — a sawtooth that has nothing to do with the real clock offset.
+    /// Subtracting the local ticks since the last remote input credits the remote
+    /// one tick per tick we haven't heard from it, holding the lead steady across
+    /// the gap (`ticks_since_remote_input`).
+    ///
+    /// This is each peer's half of the clock-sync handshake: you send it to the
+    /// remote with every input, and the remote's value comes back via
+    /// [`add_remote_input`](Session::add_remote_input). The difference of the two
+    /// is the [`skew`](Session::skew) that keeps the simulations aligned.
+    /// Speculation is unaffected — it gates on the raw
+    /// [`lead`](crate::Queue::lead) through
+    /// [`speculation_balance`](Session::speculation_balance), which still sees the
+    /// real, ramping lead.
     pub fn local_tick_advantage(&self) -> i16 {
-        self.input_queue.lead().clamp(i16::MIN as i32, i16::MAX as i32) as i16
+        let extrapolated = self.input_queue.lead() - self.ticks_since_remote_input as i32;
+        extrapolated.clamp(i16::MIN as i32, i16::MAX as i32) as i16
     }
 
     /// The tick advantage the remote peer last reported (via the
@@ -348,6 +373,8 @@ impl<W: World> Session<W> {
     pub fn add_remote_input(&mut self, input: W::Input, tick_advantage: i16) {
         self.input_queue.add_remote_input(input);
         self.last_remote_tick_advantage = tick_advantage;
+        // We've heard from the remote: stop extrapolating its frontier.
+        self.ticks_since_remote_input = 0;
     }
 
     /// Fold confirmed pairs into the settled state up to `target`, promoting the
