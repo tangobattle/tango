@@ -645,26 +645,39 @@ impl Outbox {
             // Channel is gone; the message has nowhere to go.
             return;
         };
-        // Keep a lossy channel's SCTP send queue shallow: once more than a
-        // couple of frames are already waiting (cwnd-blocked), drop this one
-        // rather than deepening the queue. Left unchecked the buffer can grow to
-        // str0m's 128 KB cap — seconds of stale inputs that flush out in a
-        // post-congestion burst and poison the rollback time-sync. The in-match
-        // redundancy window + retransmit heartbeat recover the dropped frame;
-        // `message.len()` tracks the current frame size, so a fat recovery frame
-        // still gets a slot while a tiny steady-state frame sheds the instant the
-        // link backs up. This is the shed-don't-stall behaviour the QUIC datagram
-        // path has for free.
+        // Shed-don't-stall for a lossy channel: once the send side is genuinely
+        // backed up, drop this frame rather than deepening the queue. Left
+        // unchecked the buffer can grow to str0m's 128 KB cap — seconds of stale
+        // inputs that flush out in a post-congestion burst and poison the
+        // rollback time-sync. The in-match redundancy window + retransmit
+        // heartbeat recover the dropped frame.
         //
-        // Floored at LOSSY_SHED_FLOOR_BYTES so the smallest messages aren't
-        // starved: a 3-byte ping/pong probe (which has no redundancy to recover
-        // it) would otherwise gate at `2 * 3 = 6` bytes and shed the instant any
-        // input frame sat in the buffer — so ping measurement never lands a
-        // sample. The floor is a handful of frames' worth and still negligible
-        // against the 128 KB cap, so the "don't bank seconds of stale inputs"
-        // intent holds; fat recovery frames still get the larger `2 * len`.
-        const LOSSY_SHED_FLOOR_BYTES: usize = 256;
-        if lossy && channel.buffered_amount() > (2 * message.len()).max(LOSSY_SHED_FLOOR_BYTES) {
+        // The gate is a frame *count*, not a fixed byte count, and that
+        // distinction is load-bearing. `buffered_amount()` is bytes written
+        // minus bytes the peer has SACKed (sctp-proto only releases it on ack),
+        // so it includes everything still *in flight*, not just what's queued
+        // behind a stalled cwnd. The lossy channel re-sends a redundancy window
+        // every frame, so in-flight bytes ≈ frames_in_flight × frame_size and
+        // frames_in_flight ≈ RTT × frame_rate — in-flight grows with RTT. A
+        // fixed byte threshold gets crossed by an entirely *healthy* in-flight
+        // window once RTT is high enough (≈200 ms for a typical steady frame),
+        // and then the gate sheds steady-state inputs that aren't backed up at
+        // all. They recover in clumps, which sawtooths the rollback skew — the
+        // exact failure this gate exists to prevent.
+        //
+        // Dividing by `message.len()` cancels the RTT term: the threshold is
+        // "this many frames of in-flight + queue," independent of frame size, so
+        // a clean high-RTT link sits well under it and only a real cwnd-blocked
+        // backlog beyond a healthy window sheds. A fat recovery frame is
+        // proportionally larger, so it still keeps its slot. Sized to ~0.5 s of
+        // frames: enough that no playable RTT sheds on a clean link, little
+        // enough that banked staleness under genuine congestion stays far below
+        // the 128 KB cap. (There's no longer a small-message floor — the 3-byte
+        // ping/pong probe that needed one is gone; RTT now rides the ack
+        // round-trip, and every frame here carries a recoverable redundancy
+        // window.)
+        const HEALTHY_INFLIGHT_FRAMES: usize = 30;
+        if lossy && channel.buffered_amount() > HEALTHY_INFLIGHT_FRAMES * message.len() {
             return;
         }
         match channel.write(true, &message) {
