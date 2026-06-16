@@ -274,14 +274,18 @@ async fn test_hangup_survives_runtime_teardown() {
 /// dialer connects to it; both configure str0m from fixed shared constants
 /// (`new_direct`). Gates the load-bearing unknown — the ICE-lite host learning
 /// the dialer peer-reflexively, with no pre-known remote candidate.
+///
+/// Deliberately uses `RtcConfig::default()` (i.e. `include_loopback: false`),
+/// exactly as netplay's `run_direct_negotiate` does: the direct path must bind
+/// loopback on its own so `/connect 127.0.0.1` works without the caller opting
+/// in. (Regression guard — passing a non-loopback config here used to leave the
+/// host with no `127.0.0.1` socket and the dialer firing checks at an
+/// unroutable address.)
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_direct_connection() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
         const PORT: u16 = 24690;
-        let config = || tango_rtc::RtcConfig {
-            include_loopback: true,
-            ..Default::default()
-        };
+        let config = tango_rtc::RtcConfig::default;
 
         let (host_pc, host_dcs, mut host_events) = tango_rtc::PeerConnection::new_direct(
             config(),

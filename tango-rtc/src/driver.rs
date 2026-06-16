@@ -268,9 +268,15 @@ async fn direct_setup(driver: &Driver, role: crate::DirectRole) -> std::io::Resu
     // unspecified-IP candidate, so we can't bind `0.0.0.0`. (The host's are all
     // on the known `port`; the dialer's get ephemeral ports.) The host learns
     // the dialer peer-reflexively, so it needs no remote candidate.
+    //
+    // Always include loopback here, regardless of `config.include_loopback`:
+    // `/connect 127.0.0.1` (two instances on one machine) is a legitimate direct
+    // target, and a loopback candidate is harmless for a real cross-machine
+    // connection — a check from `127.0.0.1` to a routable remote just fails
+    // silently while the real-interface candidate wins the pair.
     let mut sockets = vec![];
     let mut local_candidates = vec![];
-    for ip in gather::local_ips(driver.config.include_loopback) {
+    for ip in gather::local_ips(true) {
         let socket = match tokio::net::UdpSocket::bind(SocketAddr::new(ip, port)).await {
             Ok(socket) => Arc::new(socket),
             Err(e) => {
