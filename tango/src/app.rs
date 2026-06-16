@@ -1843,6 +1843,21 @@ impl App {
             self.updater.finish_update();
             return iced::Task::none();
         }
+        // The data-folder "Change…" button opens a native folder picker. It's
+        // async, so intercept here and surface the result as DataFolderPicked.
+        if matches!(msg, tabs::settings::Message::OpenDataFolderPicker) {
+            let initial = self.config.data_path.clone();
+            return iced::Task::perform(
+                async move {
+                    rfd::AsyncFileDialog::new()
+                        .set_directory(&initial)
+                        .pick_folder()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
+                tabs::settings::Message::DataFolderPicked,
+            );
+        }
         use tabs::settings::ConfigChange as C;
         let Some(change) = self.settings.update(msg) else {
             return iced::Task::none();
@@ -1858,6 +1873,33 @@ impl App {
                     v.clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY)
             }
             C::PatchRepo(s) => self.config.patch_repo = s,
+            C::DataPath(path) => {
+                self.config.data_path = path;
+                // Make sure the standard subfolders exist in the new location
+                // so scanners and writers have somewhere to go.
+                for dir in [
+                    self.config.roms_path(),
+                    self.config.saves_path(),
+                    self.config.patches_path(),
+                    self.config.replays_path(),
+                    self.config.logs_path(),
+                ] {
+                    let _ = std::fs::create_dir_all(&dir);
+                }
+                // Re-scan so the new folder's contents show up immediately, and
+                // re-point the patch autoupdater at the new patches folder
+                // (it captured the old path at construction). The self-updater
+                // cache and log file follow the new path on next launch.
+                self.scanners.rescan(&self.config);
+                self.patch_autoupdater = patch::Autoupdater::new(
+                    self.config.patches_path(),
+                    self.config.patch_repo.clone(),
+                    self.scanners.patches.clone(),
+                );
+                if self.config.enable_patch_autoupdate {
+                    self.patch_autoupdater.start();
+                }
+            }
             C::PatchAutoupdate(b) => {
                 self.config.enable_patch_autoupdate = b;
                 if b {
