@@ -12,27 +12,7 @@ use super::EXPECTED_FPS;
 /// against — anything queueing inputs upstream of the engine (e.g. the host's
 /// send pump) can hold a bit more than this and rely on the engine's bail
 /// firing first.
-pub const MAX_QUEUE_LENGTH: usize = 2 * 60; // ~2 seconds
-
-/// How long the local frontier may sit stalled above [`STALL_HIGH_WATER`] with
-/// no confirmation progress before the round tears down. The emergency brake
-/// holds a merely *slow* peer indefinitely (it keeps confirming, just below
-/// realtime); this only fires once a peer has gone genuinely silent, turning
-/// the old unrecoverable overflow bail into a deliberate timeout. Sized to the
-/// session's peer-end grace.
-const STALL_TIMEOUT_SECS: u64 = 5;
-const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(STALL_TIMEOUT_SECS);
-
-/// Lead (unmatched local inputs — the same quantity the overflow bail guards)
-/// at which the emergency time-sync brake engages. Derived from the watchdog,
-/// not picked as a fraction of the cap: it sits far enough below the cap that a
-/// peer going silent the instant the brake engages still can't overrun the cap
-/// before the [`STALL_TIMEOUT`] watchdog tears the round down — the headroom is
-/// the frozen frontier's floor creep over the grace window (see
-/// [`stall_headroom`](super::throttler::stall_headroom)). So the recoverable
-/// timeout always beats the unrecoverable overflow bail.
-pub(super) const STALL_HIGH_WATER: usize =
-    MAX_QUEUE_LENGTH - super::throttler::stall_headroom(STALL_TIMEOUT_SECS as f32);
+pub const MAX_QUEUE_LENGTH: usize = 5 * 60; // ~5 seconds
 
 /// One round of live PvP. A thin shell around the generic
 /// [`getgud::Session`]: it owns the rollback state machine plus the
@@ -81,16 +61,6 @@ pub struct Round {
     /// before the first load. Read by the per-game `round_post_increment_tick`
     /// traps via [`last_loaded_tick`](Self::last_loaded_tick).
     last_loaded_tick: u32,
-    /// Confirmation watchdog for the emergency stall. `last_confirm_frontier`
-    /// is the count of settled (matched) pairs at the last observed progress;
-    /// `stall_watch` is when that progress happened. While the lead sits above
-    /// [`STALL_HIGH_WATER`] and confirmation hasn't advanced for
-    /// [`STALL_TIMEOUT`], the peer has gone silent and the round tears down —
-    /// the emergency brake has frozen the frontier but there is nothing to
-    /// catch up to. Refreshed every frame during healthy play, so it only ever
-    /// ages during an actual stall.
-    last_confirm_frontier: u32,
-    stall_watch: std::time::Instant,
 }
 
 impl Round {
@@ -103,10 +73,8 @@ impl Round {
             hooks: match_.local_hooks(),
             frame_delay: match_.frame_delay(),
             primary_thread_handle: match_.primary_thread_handle(),
-            throttler: super::throttler::Throttler::new(STALL_HIGH_WATER as i32),
+            throttler: super::throttler::Throttler::new(),
             last_loaded_tick: 0,
-            last_confirm_frontier: 0,
-            stall_watch: std::time::Instant::now(),
         }
     }
 
@@ -276,33 +244,12 @@ impl Round {
         self.last_loaded_tick = frame.tick;
         // `frame`'s borrow of `session` ends here, freeing it to be re-queried.
 
-        // Emergency-stall watchdog. `lead` is the unmatched-local count — how
-        // close we are to the overflow bail — and `confirm_frontier` is the
-        // count of settled pairs, which advances as the peer's inputs match
-        // ours. The emergency brake below freezes the frontier once the lead
-        // crosses STALL_HIGH_WATER, holding a slow-but-live peer below the cap
-        // indefinitely (confirmation keeps advancing, refreshing the watch). If
-        // confirmation instead flatlines for STALL_TIMEOUT while parked up
-        // here, the peer has gone silent: tear down deliberately rather than
-        // freezing forever (or waiting to overrun the cap).
-        let lead = session.local_queue_length();
-        let confirm_frontier = session.local_frontier().saturating_sub(lead as u32);
-        let now = std::time::Instant::now();
-        if confirm_frontier > self.last_confirm_frontier {
-            self.last_confirm_frontier = confirm_frontier;
-            self.stall_watch = now;
-        }
-        if lead >= STALL_HIGH_WATER && now.duration_since(self.stall_watch) >= STALL_TIMEOUT {
-            anyhow::bail!("peer stalled: {lead} frames ahead with no confirmation for {STALL_TIMEOUT:?}");
-        }
-
         // Frames presented with the lead still inside the present delay are
         // fully confirmed — running ahead by that much costs no presentation
         // quality, so the throttler stays disengaged until the speculation
         // balance crosses the boundary, instead of shaving fps the player
-        // can feel. Past STALL_HIGH_WATER the same call brakes hard toward a
-        // near-full stall regardless, on the raw `lead`.
-        let slowdown = self.throttler.step(skew, session.speculation_balance(), lead as i32);
+        // can feel.
+        let slowdown = self.throttler.step(skew, session.speculation_balance());
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
