@@ -1653,7 +1653,8 @@ fn emulator_body<'a>(
 
 /// The PvP setup drawers, one overlay layer per visible pane. Each
 /// is a docked sidebar flush with its screen edge — full height,
-/// square corners, only the content padded — whose width
+/// square corners, content padded on every side but the docked one
+/// so it meets the window edge flush — whose width
 /// `emulator_body`'s drawer slots reserve in the layout while it's
 /// open. Rendered as stack layers (rather than row members) so the
 /// drawers sit ABOVE the corner commands — an open drawer covers
@@ -1672,10 +1673,23 @@ fn setup_drawers_overlay<'a>(
     };
     let now = iced::time::Instant::now();
     let setup_pane = |panel: Element<'a, Message>, from_dx: f32, progress: f32| -> Element<'a, Message> {
+        // No padding on the docked (screen) edge: the content cards
+        // meet the window edge flush instead of floating off a strip
+        // of plate-colored backing, which read as an awkward gap
+        // between the pane and the window. Breathing room stays on
+        // the other three sides. `from_dx` sign tells us the dock —
+        // negative = left edge (self), positive = right (opponent).
+        let on_left = from_dx < 0.0;
+        let pad = iced::Padding {
+            top: style::PANE_PADDING,
+            bottom: style::PANE_PADDING,
+            left: if on_left { 0.0 } else { style::PANE_PADDING },
+            right: if on_left { style::PANE_PADDING } else { 0.0 },
+        };
         let pane = container(panel)
             .width(iced::Length::Fixed(SETUP_PANE_WIDTH))
             .height(Fill)
-            .padding(style::PANE_PADDING)
+            .padding(pad)
             .style(setup_sidebar_plate);
         // An opaque plate must be opaque to the mouse too: iced's
         // Stack lets the cursor reach lower layers anywhere the
