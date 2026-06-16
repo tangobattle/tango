@@ -164,6 +164,12 @@ pub struct InStream {
     /// Freshest frame-advantage seen, attached to delivered inputs by the
     /// adapter. `None` until the first data frame.
     latest_advantage: Option<i16>,
+    /// Newest seq whose frame set [`latest_advantage`](Self::latest_advantage).
+    /// Datagrams reorder under jitter, so a *later-arriving* frame can be an
+    /// *older* one; without this guard its stale advantage would overwrite the
+    /// fresh one and jerk the clock-sync skew backward. Only a frame reaching at
+    /// least this far updates the advantage.
+    latest_advantage_seq: u32,
 }
 
 impl Default for InStream {
@@ -178,6 +184,7 @@ impl InStream {
             recv_base: 1,
             buffer: BTreeMap::new(),
             latest_advantage: None,
+            latest_advantage_seq: 0,
         }
     }
 
@@ -195,7 +202,13 @@ impl InStream {
                 ..
             } => (base.get(), *frame_advantage, entries),
         };
-        self.latest_advantage = Some(frame_advantage);
+        // Only the newest-by-seq frame's advantage is fresh; a reordered older
+        // frame arriving later must not clobber it (its `frame_advantage` is stale).
+        let frame_newest = base.saturating_add(entries.len() as u32).saturating_sub(1);
+        if frame_newest >= self.latest_advantage_seq {
+            self.latest_advantage_seq = frame_newest;
+            self.latest_advantage = Some(frame_advantage);
+        }
         for (i, &e) in entries.iter().enumerate() {
             // Saturating: `base` is peer-supplied, so `base + i` mustn't
             // overflow. A saturated seq lands past the horizon and is rejected
@@ -448,5 +461,141 @@ mod tests {
                 Element::EndOfRound | Element::EndOfMatch => None,
             })
             .collect()
+    }
+
+    /// Route two peers' inputs through the *real* `OutStream`/`InStream` — the
+    /// growing redundancy window, the cumulative ack (which rides the same lossy
+    /// frames), reassembly, and the wire codec — over a bursty-lossy, laggy link,
+    /// and watch the clock-sync skew each side computes (extrapolated lead minus
+    /// the peer's reported advantage, as getgud does). This exercises the actual
+    /// reliability dynamics — window growth while acks are missing, recovery
+    /// gated on the ack round-trip — that a fixed-redundancy model can't show.
+    #[test]
+    fn skew_through_real_data_channel() {
+        struct Peer {
+            out: OutStream,
+            inn: InStream,
+            local: u32,           // local inputs produced
+            remote: u32,          // remote inputs delivered in order
+            ticks_since: u32,     // local ticks since a remote input landed
+            last_remote_adv: i32, // freshest advantage the peer reported
+        }
+        impl Peer {
+            fn new() -> Self {
+                Peer {
+                    out: OutStream::new(),
+                    inn: InStream::new(),
+                    local: 0,
+                    remote: 0,
+                    ticks_since: 0,
+                    last_remote_adv: 0,
+                }
+            }
+            // getgud's local_tick_advantage: lead minus ticks since we last heard.
+            fn synced_lead(&self) -> i32 {
+                (self.local as i32 - self.remote as i32) - self.ticks_since as i32
+            }
+        }
+
+        const FRAMES: u32 = 18_000; // 5 min at 60 Hz
+        const LATENCY: u32 = 6; // ~100 ms one way
+        // Variable latency (reorders datagrams). With loss alone the extrapolated
+        // skew is dead flat; jitter is what shows through — both peers' leads
+        // wobble with delivery timing, so the skew (their difference) swings about
+        // ±jitter on each side, i.e. a span ≈ 2 × JITTER. (Sweeping the real
+        // channel: JITTER 3 → span 6, 8 → 16, 15 → 29.) Pinned at 0 here so the
+        // test asserts the loss-taming; the jitter scaling is the residual to smooth.
+        const JITTER: u32 = 0;
+        const BURST: u64 = 12;
+        const LOSS_PCT: u64 = 10;
+        let start_ppm = LOSS_PCT * 1_000_000 / ((100 - LOSS_PCT) * BURST);
+
+        let mut peers = [Peer::new(), Peer::new()];
+        // (arrival frame, recipient, encoded datagram).
+        let mut wire: Vec<(u32, usize, Vec<u8>)> = Vec::new();
+        let mut rng = 0x1234_5678_9abc_def0u64;
+        let mut bad = [0u64; 2];
+        let mut next = || {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng >> 40
+        };
+        let mut skew = [Vec::<i32>::new(), Vec::<i32>::new()];
+
+        for f in 0..FRAMES {
+            // Deliver everything scheduled to land this frame.
+            let mut k = 0;
+            while k < wire.len() {
+                if wire[k].0 == f {
+                    let (_, dst, bytes) = wire.swap_remove(k);
+                    let frame = Frame::decode(&bytes).expect("decode");
+                    let ack = match &frame {
+                        Frame::Ack(a) => Some(*a),
+                        Frame::Data { ack, .. } => *ack,
+                    };
+                    if let Some(a) = ack {
+                        peers[dst].out.apply_ack(a);
+                    }
+                    let delivered = peers[dst]
+                        .inn
+                        .accept(&frame)
+                        .unwrap_or_else(|_| panic!("InStream bailed (HorizonExceeded) at frame {f}"));
+                    let n = delivered.iter().filter(|e| matches!(e, Element::Input(_))).count() as u32;
+                    if n > 0 {
+                        peers[dst].remote += n;
+                        peers[dst].ticks_since = 0;
+                    }
+                    if let Some(a) = peers[dst].inn.latest_advantage() {
+                        peers[dst].last_remote_adv = a as i32;
+                    }
+                } else {
+                    k += 1;
+                }
+            }
+            // Record each side's skew (post-deliver, pre-advance — what round.rs reads).
+            for p in 0..2 {
+                skew[p].push(peers[p].synced_lead() - peers[p].last_remote_adv);
+            }
+            // Produce this tick + ship, dropping loss bursts.
+            for src in 0..2 {
+                let adv = peers[src].synced_lead().clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                peers[src].local += 1;
+                peers[src].ticks_since += 1;
+                peers[src].out.push_input(0, adv);
+                let (base, fa, entries) = peers[src].out.window().unwrap();
+                let frame = Frame::data(base, fa, entries, Some(peers[src].inn.ack()));
+                let bytes = frame.encode();
+                let lost = if bad[src] > 0 {
+                    bad[src] -= 1;
+                    true
+                } else if next() % 1_000_000 < start_ppm {
+                    bad[src] = BURST - 1;
+                    true
+                } else {
+                    false
+                };
+                if !lost {
+                    let extra = (next() % (JITTER as u64 + 1)) as u32;
+                    wire.push((f + LATENCY + extra, 1 - src, bytes));
+                }
+            }
+        }
+
+        let warmup = 1_200;
+        let report = |s: &[i32]| {
+            let lo = *s.iter().min().unwrap();
+            let hi = *s.iter().max().unwrap();
+            (lo, hi, hi - lo)
+        };
+        let (lo0, hi0, sp0) = report(&skew[0][warmup..]);
+        let (lo1, hi1, sp1) = report(&skew[1][warmup..]);
+        eprintln!(
+            "real data channel @ 100ms / {LOSS_PCT}% bursty loss, {JITTER} jitter — P1 skew [{lo0}, {hi0}] span {sp0}, P2 skew [{lo1}, {hi1}] span {sp1}"
+        );
+        // Through the real reliability layer, bursty loss alone leaves the
+        // extrapolated clock-sync skew dead flat — recovery + extrapolation
+        // cancel it. (Jitter is the residual; see JITTER above.)
+        assert!(sp0 <= 2 && sp1 <= 2, "loss-only skew should be flat, got {sp0}/{sp1}");
     }
 }
