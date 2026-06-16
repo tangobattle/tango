@@ -456,14 +456,30 @@ impl Outbox {
             self.parked = Some(message);
             return;
         };
+        let lossy = inner.channels[idx].config.reliability.is_lossy();
         let Some(mut channel) = inner.rtc.channel(id) else {
             // Channel is gone; the message has nowhere to go.
             return;
         };
+        // Keep a lossy channel's SCTP send queue shallow: once more than a
+        // couple of frames are already waiting (cwnd-blocked), drop this one
+        // rather than deepening the queue. Left unchecked the buffer can grow to
+        // str0m's 128 KB cap — seconds of stale inputs that flush out in a
+        // post-congestion burst and poison the rollback time-sync. The in-match
+        // redundancy window + retransmit heartbeat recover the dropped frame;
+        // `message.len()` tracks the current frame size, so a fat recovery frame
+        // still gets a slot while a tiny steady-state frame sheds the instant the
+        // link backs up. This is the shed-don't-stall behaviour the QUIC datagram
+        // path has for free.
+        if lossy && channel.buffered_amount() > 2 * message.len() {
+            return;
+        }
         match channel.write(true, &message) {
             Ok(true) => {}
-            // SCTP send buffer is full; retry on the next pass.
-            Ok(false) => self.parked = Some(message),
+            // SCTP send buffer is full. A reliable channel parks and retries
+            // (backpressure); a lossy one drops, same as the shallow-queue gate.
+            Ok(false) if !lossy => self.parked = Some(message),
+            Ok(false) => {}
             Err(e) => log::warn!("channel write failed: {}", e),
         }
     }

@@ -98,6 +98,17 @@ pub enum Reliability {
     MaxPacketLifetime(u16),
 }
 
+impl Reliability {
+    /// Whether the transport may drop a message rather than deliver it — i.e.
+    /// anything but fully [`Reliable`](Reliability::Reliable). A lossy channel's
+    /// caller already tolerates loss, so it's safe for the driver to shed under
+    /// backpressure instead of blocking the sender (see [`DataChannelSender::send`]
+    /// and the driver's outbox).
+    pub fn is_lossy(self) -> bool {
+        !matches!(self, Reliability::Reliable)
+    }
+}
+
 /// Spec for one data channel. Channels are negotiated in-band (DCEP), so the
 /// SCTP stream id is assigned by str0m, not chosen here; the `label` is what
 /// both peers agree on and what each channel is matched by. Build one per
@@ -311,7 +322,7 @@ impl PeerConnection {
         // means a full reliable channel can't back up the unreliable one.
         let mut data_channels = Vec::with_capacity(channels.len());
         let mut driver_channels = Vec::with_capacity(channels.len());
-        for _ in channels {
+        for config in channels {
             let (outgoing_tx, outgoing_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
             // Inbound messages must never block the driver — a consumer that's
             // slow to read (e.g. sending a burst before it starts receiving)
@@ -321,7 +332,11 @@ impl PeerConnection {
             let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
             let (status_tx, status_rx) = tokio::sync::watch::channel(DataChannelStatus::Pending);
             data_channels.push(DataChannel {
-                sender: DataChannelSender { outgoing_tx, status_rx },
+                sender: DataChannelSender {
+                    outgoing_tx,
+                    status_rx,
+                    lossy: config.reliability.is_lossy(),
+                },
                 receiver: DataChannelReceiver { message_rx },
             });
             driver_channels.push(driver::ChannelIo {
@@ -528,6 +543,10 @@ impl DataChannel {
 pub struct DataChannelSender {
     outgoing_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     status_rx: tokio::sync::watch::Receiver<DataChannelStatus>,
+    /// The channel tolerates loss (unreliable reliability mode), so a send may
+    /// drop rather than block when the pipeline is full — matching the QUIC
+    /// datagram path. Reliable channels keep blocking backpressure.
+    lossy: bool,
 }
 
 impl DataChannelSender {
@@ -551,6 +570,24 @@ impl DataChannelSender {
                 return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))
             }
             DataChannelStatus::Pending => unreachable!("wait_for guarantees we left Pending"),
+        }
+
+        if self.lossy {
+            // Never block a lossy channel's sender: under a full pipeline (a
+            // congested SCTP send buffer backing up through the bounded channel)
+            // drop this message rather than stalling the caller. The in-match
+            // protocol recovers the loss from its own redundancy window, and the
+            // retransmit heartbeat keeps flowing instead of being held behind a
+            // backpressured `send` — the same shed-don't-stall behaviour the QUIC
+            // datagram path gets for free.
+            use tokio::sync::mpsc::error::TrySendError;
+            return match self.outgoing_tx.try_send(msg.to_vec()) {
+                Ok(()) => Ok(()),
+                Err(TrySendError::Full(_)) => Ok(()),
+                Err(TrySendError::Closed(_)) => {
+                    Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))
+                }
+            };
         }
 
         self.outgoing_tx

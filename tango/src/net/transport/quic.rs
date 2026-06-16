@@ -362,14 +362,41 @@ fn bind_listen_socket(port: u16) -> std::io::Result<std::net::UdpSocket> {
     }
 }
 
-/// Listen on `port` and accept the first peer that completes a QUIC handshake.
-/// Like the old TCP host: binds dual-stack, blocks until one peer connects,
-/// then accepts the peer-opened bidi stream that carries the reliable channel.
-/// Only one peer per call — the endpoint is never `accept`ed again.
-pub async fn host(port: u16) -> std::io::Result<DirectChannels> {
+/// Host listen endpoints, one per port, kept bound for the process lifetime.
+///
+/// quinn frees an endpoint's UDP socket only once its driver winds down, and a
+/// connection holds that driver open through a mandatory post-close QUIC drain
+/// (a few × PTO). So a brand-new `Endpoint` on a just-disconnected port races
+/// that drain and fails with `AddrInUse`. Instead of rebinding, we bind each
+/// host port exactly once and reuse the endpoint for every session on it —
+/// re-hosting is just another `accept()` on the socket that's already open, so
+/// there's no rebind to race and the previous connection's drain happens
+/// underneath the still-live endpoint.
+static HOST_ENDPOINTS: std::sync::Mutex<Option<std::collections::HashMap<u16, quinn::Endpoint>>> =
+    std::sync::Mutex::new(None);
+
+/// The reusable listen endpoint for `port`, binding it the first time. The
+/// returned handle is cheap to clone; the cache's own clone is what keeps the
+/// socket bound across sessions.
+fn host_endpoint(port: u16) -> std::io::Result<quinn::Endpoint> {
+    let mut guard = HOST_ENDPOINTS.lock().unwrap();
+    let endpoints = guard.get_or_insert_with(std::collections::HashMap::new);
+    if let Some(endpoint) = endpoints.get(&port) {
+        return Ok(endpoint.clone());
+    }
     let socket = bind_listen_socket(port)?;
     let runtime = quinn::default_runtime().ok_or_else(|| io_other("no tokio runtime for quinn endpoint"))?;
     let endpoint = quinn::Endpoint::new(quinn::EndpointConfig::default(), Some(server_config()?), socket, runtime)?;
+    endpoints.insert(port, endpoint.clone());
+    Ok(endpoint)
+}
+
+/// Listen on `port` and accept the first peer that completes a QUIC handshake.
+/// Reuses the persistent [`host_endpoint`] so re-hosting never rebinds, then
+/// blocks until one peer connects and accepts the peer-opened bidi stream that
+/// carries the reliable channel.
+pub async fn host(port: u16) -> std::io::Result<DirectChannels> {
+    let endpoint = host_endpoint(port)?;
 
     let incoming = endpoint.accept().await.ok_or_else(|| io_eof("endpoint closed before a peer connected"))?;
     let connection = incoming.accept().map_err(io_other)?.await.map_err(io_other)?;
