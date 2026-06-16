@@ -42,8 +42,9 @@ pub(crate) enum Setup {
     /// the signaling exchange (`set_remote_description`) drive ICE/DTLS.
     Signaled,
     /// Direct link-code path: no signaling server. Configure str0m's ICE/DTLS/
-    /// SCTP and channels directly (str0m `direct_api`) from fixed shared
-    /// constants + the host's `addr:port`. See [`direct_setup`].
+    /// SCTP directly (str0m `direct_api`) from fixed shared constants + the
+    /// host's `addr:port`, then open the data channels in-band (DCEP). See
+    /// [`direct_setup`].
     Direct(crate::DirectRole),
 }
 
@@ -245,12 +246,13 @@ pub(crate) async fn run(mut driver: Driver) {
 }
 
 /// Direct (link-code) connection setup: no signaling. Both peers configure
-/// str0m's ICE/DTLS/SCTP and the negotiated channels directly from fixed shared
-/// constants plus the host's `addr:port`. The dialer is ICE controlling + DTLS/
-/// SCTP active; the host is the ICE-lite controlled responder + passive and
-/// learns the dialer peer-reflexively from its first check. Mirrors str0m's own
-/// `tests/data-channel-direct.rs`. Returns the bound sockets for the shared
-/// loop (no STUN/TURN relays on this path).
+/// str0m's ICE/DTLS/SCTP directly from fixed shared constants plus the host's
+/// `addr:port`. The dialer is ICE controlling + DTLS/SCTP active; the host is the
+/// ICE-lite controlled responder + passive and learns the dialer peer-reflexively
+/// from its first check. Channels are negotiated in-band (DCEP), the same as the
+/// signaling path: the dialer (the SCTP client) opens each one and the host
+/// learns it in-band and binds it by label. Returns the bound sockets for the
+/// shared loop (no STUN/TURN relays on this path).
 async fn direct_setup(driver: &Driver, role: crate::DirectRole) -> std::io::Result<gather::Gathered> {
     let io_other = |e: str0m::RtcError| std::io::Error::other(e.to_string());
 
@@ -300,18 +302,16 @@ async fn direct_setup(driver: &Driver, role: crate::DirectRole) -> std::io::Resu
 
     let mut inner = driver.shared.inner.lock().unwrap();
 
-    // Negotiated channels: both ends agree the stream ids (0, 1, …) up front, so
-    // they open with no DCEP/SDP exchange. Collect before borrowing the api.
-    let configs: Vec<str0m::channel::ChannelConfig> = inner
-        .channels
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let mut config = c.config.clone();
-            config.negotiated = Some(i as u16);
-            config
-        })
-        .collect();
+    // In-band (DCEP) channels, same as the signaling path: the dialer opens each
+    // one and the host learns it in-band and binds it by label. Only the dialer
+    // (the SCTP client) opens them — the host creates nothing and waits for the
+    // DcepOpen — so on the host `configs` is empty. Collect before borrowing the
+    // api.
+    let configs: Vec<str0m::channel::ChannelConfig> = if controlling {
+        inner.channels.iter().map(|c| c.config.clone()).collect()
+    } else {
+        vec![]
+    };
 
     {
         let mut direct = inner.rtc.direct_api();
@@ -335,6 +335,7 @@ async fn direct_setup(driver: &Driver, role: crate::DirectRole) -> std::io::Resu
         }
         direct.start_dtls(controlling).map_err(io_other)?;
         direct.start_sctp(controlling);
+        // The dialer opens the channels over DCEP; on the host `configs` is empty.
         for config in configs {
             direct.create_data_channel(config);
         }
@@ -576,9 +577,9 @@ fn drain_rtc(inner: &mut Inner, liveness: &mut Liveness) -> Result<(Drained, Ins
                     _ => {}
                 }
             }
-            // Bind the open channel to its spec by label — works both for our
-            // own in-band channel on the offering side and the remote-declared
-            // one after we answered.
+            // Bind the open channel to its spec by label — works for a channel we
+            // opened (signaling offerer / direct dialer) and for one the remote
+            // opened (signaling answerer / direct host).
             str0m::Event::ChannelOpen(id, label) => {
                 if let Some(idx) = inner.channels.iter().position(|c| c.config.label == label) {
                     inner.channels[idx].id = Some(id);

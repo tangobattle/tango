@@ -100,11 +100,11 @@ pub enum DirectRole {
 /// Per-channel config + reliability, re-exported from str0m so callers don't
 /// depend on str0m directly. Build one [`ChannelConfig`] per channel — set
 /// `label`, `ordered` and `reliability` and leave the rest at
-/// `..Default::default()`. In particular **leave `negotiated` unset**: tango-rtc
-/// assigns it per path (in-band DCEP for the signaling path, so it dodges the
-/// SDP glare/rollback; fixed out-of-band stream ids for the direct path). Hand
-/// the slice to [`PeerConnection::new`] / [`new_direct`](PeerConnection::new_direct);
-/// the returned [`DataChannel`]s line up with it by index.
+/// `..Default::default()`. In particular **leave `negotiated` unset**: both paths
+/// negotiate channels in-band (DCEP) and demux them by `label`, so each label has
+/// to be unique within the slice. Hand the slice to [`PeerConnection::new`] /
+/// [`new_direct`](PeerConnection::new_direct); the returned [`DataChannel`]s line
+/// up with it by index.
 pub use str0m::channel::{ChannelConfig, Reliability};
 
 /// Whether a channel may drop a message rather than deliver it — anything but
@@ -168,9 +168,10 @@ enum DataChannelStatus {
 struct Inner {
     rtc: str0m::Rtc,
     /// One entry per requested channel, in the order they were passed to
-    /// [`PeerConnection::new`]. The driver binds each entry's `id` by `label`
-    /// when str0m reports the channel open (our own in-band channel on the
-    /// offering side, or the remote-opened one after we answered).
+    /// [`PeerConnection::new`] / [`new_direct`](PeerConnection::new_direct). The
+    /// driver binds each entry's `id` by `label` when str0m reports the channel
+    /// open — whether we opened it (signaling offerer / direct dialer) or the
+    /// remote did (signaling answerer / direct host).
     channels: Vec<ChannelState>,
     pending_offer: Option<str0m::change::SdpPendingOffer>,
     local_desc: Option<SessionDescription>,
@@ -268,9 +269,10 @@ impl PeerConnection {
     /// server. Both peers configure ICE/DTLS/SCTP locally from fixed shared
     /// constants and the host's `addr:port` (see [`DirectRole`]) — DTLS
     /// fingerprint verification is off, so the trust model is "address =
-    /// identity". Channels are negotiated out-of-band (fixed stream ids); the
-    /// returned [`DataChannel`]s line up with `channels` by index. Drives the
-    /// connection to `Connected` with no offer/answer exchange.
+    /// identity". Channels are negotiated in-band (DCEP), just like the signaling
+    /// path — the dialer opens them and the host binds each by label; the returned
+    /// [`DataChannel`]s line up with `channels` by index. Drives the connection to
+    /// `Connected` with no offer/answer exchange.
     pub fn new_direct(
         config: RtcConfig,
         channels: &[ChannelConfig],
