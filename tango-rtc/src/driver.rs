@@ -654,7 +654,16 @@ impl Outbox {
         // still gets a slot while a tiny steady-state frame sheds the instant the
         // link backs up. This is the shed-don't-stall behaviour the QUIC datagram
         // path has for free.
-        if lossy && channel.buffered_amount() > 2 * message.len() {
+        //
+        // Floored at LOSSY_SHED_FLOOR_BYTES so the smallest messages aren't
+        // starved: a 3-byte ping/pong probe (which has no redundancy to recover
+        // it) would otherwise gate at `2 * 3 = 6` bytes and shed the instant any
+        // input frame sat in the buffer — so ping measurement never lands a
+        // sample. The floor is a handful of frames' worth and still negligible
+        // against the 128 KB cap, so the "don't bank seconds of stale inputs"
+        // intent holds; fat recovery frames still get the larger `2 * len`.
+        const LOSSY_SHED_FLOOR_BYTES: usize = 256;
+        if lossy && channel.buffered_amount() > (2 * message.len()).max(LOSSY_SHED_FLOOR_BYTES) {
             return;
         }
         match channel.write(true, &message) {
