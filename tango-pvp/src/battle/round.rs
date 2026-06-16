@@ -12,7 +12,7 @@ use super::EXPECTED_FPS;
 /// against — anything queueing inputs upstream of the engine (e.g. the host's
 /// send pump) can hold a bit more than this and rely on the engine's bail
 /// firing first.
-pub const MAX_QUEUE_LENGTH: usize = 5 * 60; // ~5 seconds
+pub const MAX_QUEUE_LENGTH: usize = 2 * 60; // ~2 seconds
 
 /// Lead (unmatched local inputs — the same quantity the overflow bail guards)
 /// at which the emergency time-sync stall engages: 70% of [`MAX_QUEUE_LENGTH`].

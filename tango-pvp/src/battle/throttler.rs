@@ -171,7 +171,7 @@ mod tests {
     /// for [`STALL_HIGH_WATER`](super::super::round::STALL_HIGH_WATER) (70% of the
     /// engine's overflow cap), kept as a local literal so these tests don't
     /// depend on the round's policy constant.
-    const HW: i32 = 210;
+    const HW: i32 = 84;
 
     /// A lead well below the emergency high-water mark, so [`emergency_slowdown`]
     /// stays silent and these tests exercise only the steady-state controller.
