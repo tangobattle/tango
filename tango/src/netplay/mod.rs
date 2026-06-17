@@ -1351,8 +1351,8 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
     // Both channels were created together up front (before the offer); here we
     // just split each into its Sender/Receiver. The handshake runs on the
     // reliable channel.
-    let (mut sender, mut receiver) = crate::net::datachannel::pair(control_dc);
-    let (in_match_sender, in_match_receiver) = crate::net::datachannel::pair(in_match_dc);
+    let (mut sender, mut receiver) = crate::net::channel::pair(control_dc);
+    let (in_match_sender, in_match_receiver) = crate::net::channel::pair(in_match_dc);
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;

@@ -1,8 +1,11 @@
-//! Single source of truth for the two WebRTC data channels every netplay
-//! transport brings up:
+//! WebRTC data channels: their specs, and the adapter that turns one into a
+//! transport-agnostic [`Sender`] / [`Receiver`] pair.
+//!
+//! Single source of truth for the two channels every netplay transport brings
+//! up:
 //!
 //! * the **reliable, ordered** control/lobby channel (stream 0) carrying the
-//!   [`super::protocol`] `Packet` stream, and
+//!   [`super::control::protocol`] `Packet` stream, and
 //! * the **unreliable, unordered** in-match channel (stream 1) carrying the
 //!   live match's [`super::data`] `wire` datagrams.
 //!
@@ -15,6 +18,7 @@
 //! All channels are *negotiated* (pre-agreed stream ids, no in-band DCEP), so
 //! both sides just create them with matching ids — no DCEP open handshake.
 
+use super::{PacketSink, PacketStream, Receiver, Sender};
 use datachannel_wrapper::{DataChannelInit, Reliability};
 
 /// Label + init for the reliable control channel, as a
@@ -46,4 +50,42 @@ pub fn in_match_channel() -> (&'static str, DataChannelInit) {
             .manual_stream()
             .stream(1),
     )
+}
+
+// --- DataChannel <-> Sender/Receiver adapter ------------------------------
+
+struct DataChannelSink {
+    inner: datachannel_wrapper::DataChannelSender,
+}
+
+#[async_trait::async_trait]
+impl PacketSink for DataChannelSink {
+    async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.inner.send(bytes).await?;
+        Ok(())
+    }
+}
+
+struct DataChannelStream {
+    inner: datachannel_wrapper::DataChannelReceiver,
+}
+
+#[async_trait::async_trait]
+impl PacketStream for DataChannelStream {
+    async fn recv(&mut self) -> std::io::Result<Vec<u8>> {
+        self.inner
+            .receive()
+            .await
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream is empty"))
+    }
+}
+
+/// Split a `DataChannel` into a transport-agnostic Sender + Receiver
+/// pair. The peer connection that owns the channel must be kept alive
+/// separately (see `netplay::NegotiationOutput`).
+pub fn pair(dc: datachannel_wrapper::DataChannel) -> (Sender, Receiver) {
+    let (dc_tx, dc_rx) = dc.split();
+    let sender = Sender::new(Box::new(DataChannelSink { inner: dc_tx }));
+    let receiver = Receiver::new(Box::new(DataChannelStream { inner: dc_rx }));
+    (sender, receiver)
 }

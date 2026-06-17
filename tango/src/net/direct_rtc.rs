@@ -107,8 +107,8 @@ fn open_channels(mut pc: PeerConnection) -> DirectChannels {
         .create_data_channel(label, init)
         .expect("create pre-negotiated in-match data channel");
     DirectChannels {
-        control: super::datachannel::pair(control_dc),
-        in_match: super::datachannel::pair(in_match_dc),
+        control: super::channel::pair(control_dc),
+        in_match: super::channel::pair(in_match_dc),
         peer_conn: pc,
     }
 }
