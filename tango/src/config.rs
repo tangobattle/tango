@@ -152,25 +152,6 @@ pub struct Config {
     /// Legacy (pre-loadout-model) global "last patch" selection. Read
     /// once by [`Config::migrate`] to seed [`Config::last_patch_per_save`],
     /// never written back.
-    #[serde(default, skip_serializing)]
-    last_patch: Option<String>,
-    /// See [`Config::last_patch`].
-    #[serde(default, skip_serializing)]
-    last_patch_version: Option<semver::Version>,
-    /// Legacy per-(game, patch) save memory, keyed
-    /// `"family/variant/patch_name/patch_version"`. Read once by
-    /// [`Config::migrate`] to seed `last_save_per_game` +
-    /// `last_patch_per_save`, never written back.
-    #[serde(default, skip_serializing)]
-    last_save_per_game_per_patch: std::collections::BTreeMap<String, String>,
-    /// Per-game memory of the most recent save selection. Key:
-    /// `"family/variant"` ([`game_key`]). Value: forward-slash-separated
-    /// path **relative to `data_path`** (e.g. `"saves/bn6/MyMan.sav"`).
-    /// Storing relative + slash-joined keeps the config portable across
-    /// machines and OSes. Consulted when the active game/family changes
-    /// so the previously-used save is restored. (The patch is no longer
-    /// part of the key — a save is the identity, and the patch hangs
-    /// off it via [`Config::last_patch_per_save`].)
     #[serde(default)]
     pub last_save_per_game: std::collections::BTreeMap<String, String>,
     /// Per-save memory of the patch each save was last used with — the
@@ -277,9 +258,6 @@ impl Default for Config {
             allow_prerelease_upgrades: false,
             last_game: None,
             last_family: None,
-            last_patch: None,
-            last_patch_version: None,
-            last_save_per_game_per_patch: std::collections::BTreeMap::new(),
             last_save_per_game: std::collections::BTreeMap::new(),
             last_patch_per_save: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
@@ -347,8 +325,7 @@ impl Config {
         match config_path() {
             Some(p) => match std::fs::read_to_string(&p) {
                 Ok(s) => match serde_json::from_str::<Self>(&s) {
-                    Ok(mut c) => {
-                        c.migrate();
+                    Ok(c) => {
                         return c;
                     }
                     Err(e) => log::warn!("config parse failed, using defaults: {e}"),
@@ -361,95 +338,6 @@ impl Config {
         let c = Self::default();
         let _ = c.save();
         c
-    }
-
-    /// One-shot config migrations applied on load. Keeps stale
-    /// values from breaking the app after a default change.
-    fn migrate(&mut self) {
-        // Old default pointed at the github repo page, which serves
-        // HTML — the patch updater needs the static-file host. If
-        // the user is still on the legacy default, silently move
-        // them to the new one.
-        const STALE_PATCH_REPOS: &[&str] = &[
-            "https://github.com/tangobattle/patches",
-            "https://github.com/tangobattle/patches/",
-        ];
-        if STALE_PATCH_REPOS.iter().any(|u| self.patch_repo.eq(*u)) {
-            log::info!(
-                "migrating stale patch_repo {:?} -> {:?}",
-                self.patch_repo,
-                DEFAULT_PATCH_REPO,
-            );
-            self.patch_repo = DEFAULT_PATCH_REPO.to_string();
-            let _ = self.save();
-        }
-
-        // Clamp any stale frame_delay into the supported frame-delay
-        // range so the lobby slider's handle and the displayed number stay in
-        // range.
-        let clamped = self
-            .frame_delay
-            .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
-        if clamped != self.frame_delay {
-            log::info!("clamping stale frame_delay {} -> {}", self.frame_delay, clamped);
-            self.frame_delay = clamped;
-            let _ = self.save();
-        }
-
-        // Selection-memory model flip: the old config remembered saves
-        // per (game, patch) and the active patch globally; the new
-        // model remembers one save per game and the patch per save.
-        // Seed the new maps from the legacy ones once (the legacy
-        // fields are skip_serializing, so they vanish from disk on the
-        // next save).
-        if self.last_save_per_game.is_empty() && self.last_patch_per_save.is_empty() {
-            let mut migrated = false;
-            for (key, rel) in &self.last_save_per_game_per_patch {
-                // Key shape: "family/variant/patch_name/patch_version",
-                // empty patch segments meaning "no patch". Patch names
-                // can't contain '/' (they're scanner directory names),
-                // so the version is everything after the last slash.
-                let mut segs = key.splitn(3, '/');
-                let (Some(family), Some(variant)) = (segs.next(), segs.next()) else {
-                    continue;
-                };
-                migrated = true;
-                self.last_save_per_game
-                    .insert(format!("{family}/{variant}"), rel.clone());
-                if let Some((name, version)) = segs.next().and_then(|rest| rest.rsplit_once('/')) {
-                    if !name.is_empty() {
-                        if let Ok(v) = semver::Version::parse(version) {
-                            // A save filed under a patch key carries a real
-                            // association — let it overwrite a no-patch entry.
-                            self.last_patch_per_save
-                                .insert(rel.clone(), Some((name.to_string(), v)));
-                            continue;
-                        }
-                    }
-                    self.last_patch_per_save.entry(rel.clone()).or_insert(None);
-                }
-            }
-            // The globally-active legacy patch wins for the save it was
-            // restored alongside, mirroring what the old startup path
-            // would have resolved.
-            if let (Some((family, variant)), Some(name), Some(version)) =
-                (&self.last_game, &self.last_patch, &self.last_patch_version)
-            {
-                let legacy_key = format!("{family}/{variant}/{name}/{version}");
-                if let Some(rel) = self.last_save_per_game_per_patch.get(&legacy_key) {
-                    self.last_patch_per_save
-                        .insert(rel.clone(), Some((name.clone(), version.clone())));
-                }
-            }
-            if migrated {
-                log::info!(
-                    "migrated selection memory: {} save(s), {} patch association(s)",
-                    self.last_save_per_game.len(),
-                    self.last_patch_per_save.len(),
-                );
-                let _ = self.save();
-            }
-        }
     }
 
     pub fn save(&self) -> std::io::Result<()> {
