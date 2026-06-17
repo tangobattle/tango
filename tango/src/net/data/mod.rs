@@ -129,7 +129,7 @@ impl InMatchTx {
             }
             let w = st.out.window().expect("window is non-empty after a push");
             let ack = st.inn.ack();
-            protocol::Frame::data(w.base, w.frame_advantage, w.entries, Some(ack))
+            protocol::Frame::data(w.base, w.frame_advantage, w.entries, ack)
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
     }
@@ -167,7 +167,7 @@ impl InMatchTx {
             let st = self.state.lock().unwrap();
             let ack = st.inn.ack();
             match st.out.window() {
-                Some(w) => protocol::Frame::data(w.base, w.frame_advantage, w.entries, Some(ack)),
+                Some(w) => protocol::Frame::data(w.base, w.frame_advantage, w.entries, ack),
                 None => protocol::Frame::Ack(ack),
             }
         };
@@ -209,45 +209,43 @@ impl InMatchTx {
     /// rollback horizon and the match must tear down.
     fn recv(&self, frame: &protocol::Frame) -> Result<Delivery, stream::HorizonExceeded> {
         let mut st = self.state.lock().unwrap();
-        // The ack is the out-stream's concern (it acks what we sent);
-        // the in-stream reassembly below only consumes the data entries.
+        // The ack is the out-stream's concern (it acks what we sent); the
+        // in-stream reassembly below only consumes the data entries. Every frame
+        // carries one — `Frame::Ack` outright, every `Frame::Data` piggybacked —
+        // so applying it is unconditional.
         let ack = match frame {
-            protocol::Frame::Ack(ack) => Some(*ack),
+            protocol::Frame::Ack(ack) => *ack,
             protocol::Frame::Data { ack, .. } => *ack,
         };
-        let mut rtt = None;
-        if let Some(ack) = ack {
-            st.out.apply_ack(ack);
-            // The ack confirms every seq below the peer's frontier. Retire the
-            // confirmed first-send timestamps; the newest one just retired dates
-            // the round-trip (now − when we first sent that seq).
-            let frontier = st.out.peer_ack_base();
-            let mut confirmed_at = None;
-            while st.sent_times.front().is_some_and(|&(seq, _)| seq < frontier) {
-                confirmed_at = st.sent_times.pop_front().map(|(_, t)| t);
-            }
-            rtt = confirmed_at.map(|t| std::time::Instant::now().saturating_duration_since(t));
-            // Re-aim the proactive redundancy floor at the smoothed round-trip:
-            // the deeper the RTT, the more an ack-driven resend would cost, so
-            // the more a redundant copy in the very next datagram is worth.
-            if let Some(sample) = rtt {
-                let ewma = match st.rtt_ewma {
-                    Some(prev) => prev.mul_f64(1.0 - RTT_EWMA_ALPHA) + sample.mul_f64(RTT_EWMA_ALPHA),
-                    None => sample,
-                };
-                st.rtt_ewma = Some(ewma);
-                let frames = ewma.as_secs_f64() / self.heartbeat.as_secs_f64();
-                // `set_min_redundancy` clamps to [1, MAX_REDUNDANCY]; the f64->u32
-                // cast saturates, so a degenerate (huge/inf/NaN) `frames` is safe.
-                let redundancy = (1.0 + frames / FRAMES_PER_REDUNDANCY).round() as u32;
-                st.out.set_min_redundancy(redundancy);
-            }
+        st.out.apply_ack(ack);
+        // The ack confirms every seq below the peer's frontier. Retire the
+        // confirmed first-send timestamps; the newest one just retired dates
+        // the round-trip (now − when we first sent that seq).
+        let frontier = st.out.peer_ack_base();
+        let mut confirmed_at = None;
+        while st.sent_times.front().is_some_and(|&(seq, _)| seq < frontier) {
+            confirmed_at = st.sent_times.pop_front().map(|(_, t)| t);
+        }
+        let rtt = confirmed_at.map(|t| std::time::Instant::now().saturating_duration_since(t));
+        // Re-aim the proactive redundancy floor at the smoothed round-trip:
+        // the deeper the RTT, the more an ack-driven resend would cost, so
+        // the more a redundant copy in the very next datagram is worth.
+        if let Some(sample) = rtt {
+            let ewma = match st.rtt_ewma {
+                Some(prev) => prev.mul_f64(1.0 - RTT_EWMA_ALPHA) + sample.mul_f64(RTT_EWMA_ALPHA),
+                None => sample,
+            };
+            st.rtt_ewma = Some(ewma);
+            let frames = ewma.as_secs_f64() / self.heartbeat.as_secs_f64();
+            // `set_min_redundancy` clamps to [1, MAX_REDUNDANCY]; the f64->u32
+            // cast saturates, so a degenerate (huge/inf/NaN) `frames` is safe.
+            let redundancy = (1.0 + frames / FRAMES_PER_REDUNDANCY).round() as u32;
+            st.out.set_min_redundancy(redundancy);
         }
         let delivered = st.inn.accept(frame)?;
-        let frame_advantage = st.inn.latest_advantage();
         Ok(Delivery {
-            elements: delivered,
-            frame_advantage,
+            elements: delivered.entries,
+            frame_advantage: delivered.frame_advantage,
             rtt,
         })
     }

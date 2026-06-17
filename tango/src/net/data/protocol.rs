@@ -14,16 +14,16 @@
 //!
 //! Layout of a `Frame` datagram:
 //! ```text
-//! base             uvarint   0 => ack-only (no advantage, no entries);
-//!                            else 1-based global seq of entries[0]
+//! base             uvarint   0 => ack-only frame (then the ack as a raw
+//!                            uvarint frontier); else 1-based seq of entries[0]
 //! frame_advantage  svarint   present iff base != 0
 //! entries[]        u16 LE    present iff base != 0; >= 1; until CONT clear
-//! ack (optional)   present iff bytes remain:  svarint (frontier - base)
+//! ack              svarint   present iff base != 0; (frontier - base)
 //! ```
 //! Each entry `u16`: bit 15 = CONT (more follow), bit 14 = MARK (marker vs
-//! input), bits 0..=9 = payload (joyflags, or marker kind). `ack` is the
-//! sole truncation-inferred field, which works because the transport hands
-//! us one exact-length message per datagram.
+//! input), bits 0..=9 = payload (joyflags, or marker kind). The CONT bit
+//! self-delimits the entry run and the mandatory ack closes the frame, so
+//! every field is self-describing — no length prefix, no truncation inference.
 //!
 //! The piggybacked `ack` is encoded as a *delta from `base`* rather than as an
 //! absolute frontier. Both counters index per-tick streams that advance at the
@@ -100,11 +100,11 @@ pub enum Frame {
         /// Inputs + markers in seq order; non-empty (a window always carries
         /// >= 1 element, and the decoder reads >= 1).
         entries: Vec<Element>,
-        /// Optional piggybacked cumulative ack of the peer's stream, as an
-        /// absolute frontier (the wire encodes it as a delta from `base`).
-        /// Absent => zero trailing bytes (inferred from the datagram's exact
-        /// length).
-        ack: Option<Ack>,
+        /// Piggybacked cumulative ack of the peer's stream, as an absolute
+        /// frontier (the wire encodes it as a signed delta from `base`). Every
+        /// data frame carries one: the reassembler always has a frontier to
+        /// report, so there's never a reason to omit it.
+        ack: Ack,
     },
 }
 
@@ -113,7 +113,7 @@ impl Frame {
     /// that value is the ack-only sentinel, never a data seq. Callers source
     /// `base` from the 1-based out-stream window, so it never fires in
     /// practice; it just keeps the `NonZeroU32` construction ergonomic.
-    pub fn data(base: u32, frame_advantage: i16, entries: Vec<Element>, ack: Option<Ack>) -> Frame {
+    pub fn data(base: u32, frame_advantage: i16, entries: Vec<Element>, ack: Ack) -> Frame {
         Frame::Data {
             base: std::num::NonZeroU32::new(base).expect("data frame seq is 1-based (non-zero)"),
             frame_advantage,
@@ -130,8 +130,9 @@ impl Frame {
         out
     }
 
-    /// Decode one whole datagram. `buf` must be exactly one message — the
-    /// trailing-ack inference relies on the datagram boundary.
+    /// Decode one whole datagram. Every field is self-delimiting now that the
+    /// ack is mandatory, so this no longer leans on the exact message length;
+    /// `buf` is still one datagram = one frame.
     pub fn decode(buf: &[u8]) -> io::Result<Frame> {
         decode_frame_body(buf)
     }
@@ -170,31 +171,20 @@ fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
                 }
                 out.extend_from_slice(&w.to_le_bytes());
             }
-            // `ack` is appended raw (no discriminant); its absence is zero
-            // bytes. Encoded as a signed delta from `base` — see the module
-            // header — so the common case is a single byte.
-            if let Some(frontier) = ack {
-                write_svarint(out, *frontier as i64 - base.get() as i64);
-            }
+            // `ack` is appended raw (no discriminant), as a signed delta from
+            // `base` — see the module header — so the common case is one byte.
+            write_svarint(out, *ack as i64 - base.get() as i64);
         }
     }
 }
 
 fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
     let mut c = io::Cursor::new(body);
-    let base = read_uvarint(&mut c)? as u32;
-    let remaining = |c: &io::Cursor<&[u8]>| (c.position() as usize) < body.len();
 
-    if base == 0 {
-        // Ack-only: the remainder is the cumulative ack (required — a base==0
-        // frame exists to carry one; a fully empty frame is rejected).
-        if !remaining(&c) {
-            return Err(invalid("ack-only frame missing ack".to_string()));
-        }
+    let Some(base) = std::num::NonZeroU32::new(read_uvarint(&mut c)? as u32) else {
         return Ok(Frame::Ack(read_uvarint(&mut c)? as u32));
-    }
+    };
 
-    let base = std::num::NonZeroU32::new(base).expect("base != 0 checked above");
     let frame_advantage =
         i16::try_from(read_svarint(&mut c)?).map_err(|_| invalid("frame_advantage out of range".to_string()))?;
     let mut entries = Vec::new();
@@ -218,22 +208,19 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
             return Err(invalid(format!("frame exceeds {MAX_ENTRIES}-entry window cap")));
         }
     }
-    // Whatever is left after the entries is the optional cumulative ack,
-    // carried as a signed delta from `base` (see the module header).
-    let ack = if remaining(&c) {
-        let frontier = base.get() as i64 + read_svarint(&mut c)?;
-        if !(0..=u32::MAX as i64).contains(&frontier) {
-            return Err(invalid(format!("ack delta puts frontier out of range: {frontier}")));
-        }
-        Some(frontier as u32)
-    } else {
-        None
-    };
+    // The entries are followed by the mandatory cumulative ack, carried as a
+    // signed delta from `base` (see the module header). A frame that stops here
+    // is malformed; `read_svarint` bottoms out in `read_exact`, so the missing
+    // bytes surface as a decode error on their own.
+    let frontier = base.get() as i64 + read_svarint(&mut c)?;
+    if !(0..=u32::MAX as i64).contains(&frontier) {
+        return Err(invalid(format!("ack delta puts frontier out of range: {frontier}")));
+    }
     Ok(Frame::Data {
         base,
         frame_advantage,
         entries,
-        ack,
+        ack: frontier as u32,
     })
 }
 
@@ -310,20 +297,17 @@ mod tests {
 
     #[test]
     fn normal_frame_exact_bytes() {
-        // From the spec: base=12345, adv=+2, [Right(0x010), EndOfRound, A(0x001)], no ack.
+        // base=12345, adv=+2, [Right(0x010), EndOfRound, A(0x001)], ack=12345
+        // (== base, so the delta is 0 → a single trailing 0x00 byte).
         let f = Frame::data(
             12345,
             2,
-            vec![
-                Element::Input(0x010),
-                Element::EndOfRound,
-                Element::Input(0x001),
-            ],
-            None,
+            vec![Element::Input(0x010), Element::EndOfRound, Element::Input(0x001)],
+            12345,
         );
         assert_eq!(
             f.encode(),
-            vec![0xB9, 0x60, 0x04, 0x10, 0x80, 0x00, 0xC0, 0x01, 0x00]
+            vec![0xB9, 0x60, 0x04, 0x10, 0x80, 0x00, 0xC0, 0x01, 0x00, 0x00]
         );
         roundtrip(&f);
     }
@@ -342,7 +326,7 @@ mod tests {
             12345,
             2,
             vec![Element::Input(0x010), Element::Input(0x011), Element::Input(0x001)],
-            Some(12340),
+            12340,
         ));
     }
 
@@ -351,33 +335,28 @@ mod tests {
         // base=12345, adv=+2, [Right(0x010)], ack=12340 (5 behind base).
         // The ack is svarint(12340 - 12345) = svarint(-5) = zigzag(9) = one byte,
         // where an absolute frontier would have cost three.
-        let f = Frame::data(12345, 2, vec![Element::Input(0x010)], Some(12340));
+        let f = Frame::data(12345, 2, vec![Element::Input(0x010)], 12340);
         assert_eq!(f.encode(), vec![0xB9, 0x60, 0x04, 0x10, 0x00, 0x09]);
         roundtrip(&f);
         // An ack ahead of base round-trips too (delta is genuinely signed).
-        roundtrip(&Frame::data(12345, 0, vec![Element::Input(0x001)], Some(12400)));
+        roundtrip(&Frame::data(12345, 0, vec![Element::Input(0x001)], 12400));
     }
 
     #[test]
     fn negative_frame_advantage_roundtrips() {
         for fa in [-1i16, -2, -64, -300, i16::MIN, i16::MAX, 0, 63, 200] {
-            roundtrip(&Frame::data(1, fa, vec![Element::Input(0x3ff)], None));
+            roundtrip(&Frame::data(1, fa, vec![Element::Input(0x3ff)], 1));
         }
     }
 
     #[test]
     fn marker_as_last_entry_roundtrips() {
-        roundtrip(&Frame::data(
-            7,
-            0,
-            vec![Element::Input(0x10), Element::EndOfMatch],
-            Some(6),
-        ));
+        roundtrip(&Frame::data(7, 0, vec![Element::Input(0x10), Element::EndOfMatch], 6));
     }
 
     #[test]
     fn single_entry_window_roundtrips() {
-        roundtrip(&Frame::data(1, 0, vec![Element::Input(0)], None));
+        roundtrip(&Frame::data(1, 0, vec![Element::Input(0)], 1));
     }
 
     #[test]
@@ -386,7 +365,7 @@ mod tests {
             1_000_000,
             5,
             vec![Element::Input(0x200), Element::Input(0x100)],
-            Some(999_999),
+            999_999,
         ));
     }
 
@@ -404,9 +383,18 @@ mod tests {
     }
 
     #[test]
+    fn data_frame_missing_ack_errors() {
+        // base=1, adv=0, one terminating entry Input(0) — but no trailing ack.
+        // The ack is mandatory now, so a frame that stops at the entry run is
+        // malformed (it would have decoded as `ack: None` before).
+        let bytes = vec![0x01, 0x00, 0x00, 0x00];
+        assert!(Frame::decode(&bytes).is_err());
+    }
+
+    #[test]
     fn max_window_decodes() {
         // Exactly the cap is legitimate (the last entry terminates the run).
-        let f = Frame::data(1, 0, vec![Element::Input(1); MAX_ENTRIES], None);
+        let f = Frame::data(1, 0, vec![Element::Input(1); MAX_ENTRIES], 1);
         assert_eq!(Frame::decode(&f.encode()).unwrap(), f);
     }
 

@@ -41,16 +41,21 @@ pub const DEFAULT_REDUNDANCY: u32 = 2;
 /// floor is capped low.
 pub const MAX_REDUNDANCY: u32 = 3;
 
-/// The data portion of an outbound [`Frame`]: the redundancy window plus the
-/// frame-advantage echo, as produced by [`OutStream::window`]. The caller wraps
-/// it in a [`Frame::data`] alongside the in-stream's ack.
-#[derive(Debug, Clone)]
+/// A contiguous run of elements plus the time-sync advantage that rides with
+/// them. Both halves of the protocol produce one: [`OutStream::window`] builds
+/// the outbound redundancy window (wrapped into a [`Frame::data`]), and
+/// [`InStream::accept`] returns the run it just made contiguous, tagged with the
+/// freshest advantage, for the receive adapter.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Window {
-    /// Seq of the oldest element in the window — the frame's `base`.
+    /// Seq of `entries[0]`: the frame's `base` outbound, the oldest
+    /// just-delivered seq inbound. When `entries` is empty, the next seq the
+    /// producer expects (`next_seq` / `recv_base`).
     pub base: u32,
-    /// Newest input's time-sync lead, echoed once per frame.
+    /// Time-sync lead carried with this run: the newest local input's lead
+    /// outbound, the freshest advantage seen inbound.
     pub frame_advantage: i16,
-    /// The window's elements, ascending by seq from `base`.
+    /// The elements, ascending by seq from `base`.
     pub entries: Vec<Element>,
 }
 
@@ -217,8 +222,9 @@ pub struct InStream {
     /// (a gap precedes them). Keyed by seq; re-inserting a seq is a no-op,
     /// which is how redundant copies dedup.
     buffer: BTreeMap<u32, Element>,
-    /// Freshest frame-advantage seen, attached to delivered inputs by the
-    /// adapter.
+    /// Freshest frame-advantage seen; [`accept`](Self::accept) returns it with
+    /// every delivery so the adapter can tag the delivered inputs. Persisted
+    /// across calls for the reorder guard below.
     latest_advantage: i16,
     /// Newest seq whose frame set [`latest_advantage`](Self::latest_advantage).
     /// Datagrams reorder under jitter, so a *later-arriving* frame can be an
@@ -244,13 +250,22 @@ impl InStream {
         }
     }
 
-    /// Ingest one frame's entries. Returns the elements that became
-    /// contiguous (in strict seq order, possibly empty). The frame's
-    /// cumulative ack, if any, is the caller's job to apply to its [`OutStream`].
-    pub fn accept(&mut self, frame: &Frame) -> Result<Vec<Element>, HorizonExceeded> {
+    /// Ingest one frame's entries. Returns the run that became contiguous (in
+    /// strict seq order, possibly empty) as a [`Window`]: `entries` are the
+    /// newly-delivered elements, `base` their starting seq, and `frame_advantage`
+    /// the freshest advantage seen so far — the reorder guard below keeps a
+    /// late-arriving older frame from regressing it. The frame's cumulative ack,
+    /// if any, is the caller's job to apply to its [`OutStream`].
+    pub fn accept(&mut self, frame: &Frame) -> Result<Window, HorizonExceeded> {
         // Ack-only frames carry no input data — nothing to reassemble.
         let (base, frame_advantage, entries) = match frame {
-            Frame::Ack(_) => return Ok(Vec::new()),
+            Frame::Ack(_) => {
+                return Ok(Window {
+                    base: self.recv_base,
+                    frame_advantage: self.latest_advantage,
+                    entries: Vec::new(),
+                })
+            }
             Frame::Data {
                 base,
                 frame_advantage,
@@ -279,12 +294,18 @@ impl InStream {
             }
             self.buffer.entry(seq).or_insert(e);
         }
+        // `recv_base` before draining is the seq of the first delivered element.
+        let delivered_base = self.recv_base;
         let mut delivered = Vec::new();
         while let Some(e) = self.buffer.remove(&self.recv_base) {
             delivered.push(e);
             self.recv_base += 1;
         }
-        Ok(delivered)
+        Ok(Window {
+            base: delivered_base,
+            frame_advantage: self.latest_advantage,
+            entries: delivered,
+        })
     }
 
     /// Cumulative ack to send back: the contiguous frontier (lowest seq not yet
@@ -296,12 +317,6 @@ impl InStream {
     pub fn ack(&self) -> u32 {
         self.recv_base
     }
-
-    /// Freshest frame-advantage seen, for the throttler. `0` until the first
-    /// data frame arrives.
-    pub fn latest_advantage(&self) -> i16 {
-        self.latest_advantage
-    }
 }
 
 #[cfg(test)]
@@ -312,12 +327,13 @@ mod tests {
         Element::Input(j)
     }
 
-    /// Build a frame from the out-stream's current window + the in-stream's
-    /// ack, then round-trip it through the wire codec (so tests exercise the
-    /// real encode/decode too).
-    fn make_frame(out: &OutStream, ack: Option<u32>) -> Frame {
+    /// Build a frame from the out-stream's current window, then round-trip it
+    /// through the wire codec (so tests exercise the real encode/decode too).
+    /// The ack is irrelevant to these reassembly tests — the in-stream ignores
+    /// it — so it's pinned to the initial frontier.
+    fn make_frame(out: &OutStream) -> Frame {
         let w = out.window().expect("window");
-        let frame = Frame::data(w.base, w.frame_advantage, w.entries, ack);
+        let frame = Frame::data(w.base, w.frame_advantage, w.entries, 1);
         Frame::decode(&frame.encode()).unwrap()
     }
 
@@ -401,9 +417,9 @@ mod tests {
         for k in 1..=5u16 {
             out.push_input(k, 0);
         }
-        let f = make_frame(&out, None);
+        let f = make_frame(&out);
         let delivered = inn.accept(&f).unwrap();
-        assert_eq!(delivered, (1..=5).map(input).collect::<Vec<_>>());
+        assert_eq!(delivered.entries, (1..=5).map(input).collect::<Vec<_>>());
         assert_eq!(inn.ack(), 6);
     }
 
@@ -413,13 +429,13 @@ mod tests {
         let mut inn = InStream::new();
         out.push_input(1, 0);
         out.push_input(2, 0);
-        let f1 = make_frame(&out, None);
-        assert_eq!(inn.accept(&f1).unwrap(), vec![input(1), input(2)]);
+        let f1 = make_frame(&out);
+        assert_eq!(inn.accept(&f1).unwrap().entries, vec![input(1), input(2)]);
         out.push_input(3, 0);
         // f2's window still re-includes 2 (redundancy) plus the new 3.
-        let f2 = make_frame(&out, None);
+        let f2 = make_frame(&out);
         // 2 is a dup (already delivered), only 3 is new.
-        assert_eq!(inn.accept(&f2).unwrap(), vec![input(3)]);
+        assert_eq!(inn.accept(&f2).unwrap().entries, vec![input(3)]);
         assert_eq!(inn.ack(), 4);
     }
 
@@ -430,32 +446,32 @@ mod tests {
         // Each "frame" carries the last MIN_REDUNDANCY+ elements. Drop one
         // datagram entirely; the next one's window should still cover it.
         out.push_input(10, 0);
-        let f_a = make_frame(&out, None); // window ends at seq1=Input(10)
-        assert_eq!(inn.accept(&f_a).unwrap(), vec![input(10)]);
+        let f_a = make_frame(&out); // window ends at seq1=Input(10)
+        assert_eq!(inn.accept(&f_a).unwrap().entries, vec![input(10)]);
 
         out.push_input(11, 0);
-        let _dropped = make_frame(&out, None); // imagine this is lost
+        let _dropped = make_frame(&out); // imagine this is lost
 
         out.push_input(12, 0);
-        let f_c = make_frame(&out, None); // window includes 11 and 12 (redundancy)
+        let f_c = make_frame(&out); // window includes 11 and 12 (redundancy)
                                           // Frontier was at seq for 11; the lost frame's 11 arrives here.
-        assert_eq!(inn.accept(&f_c).unwrap(), vec![input(11), input(12)]);
+        assert_eq!(inn.accept(&f_c).unwrap().entries, vec![input(11), input(12)]);
     }
 
     #[test]
     fn in_buffers_out_of_order_then_fills_gap() {
         let mut inn = InStream::new();
         // Deliver a frame starting at seq 3 (1 and 2 missing): buffered, none delivered.
-        let ahead = Frame::data(3, 0, vec![input(30), input(40)], None);
-        assert_eq!(inn.accept(&ahead).unwrap(), vec![]);
+        let ahead = Frame::data(3, 0, vec![input(30), input(40)], 1);
+        assert_eq!(inn.accept(&ahead).unwrap().entries, vec![]);
         assert_eq!(inn.ack(), 1);
         // The ack reports the frontier: still seq 1 (the hole), regardless of
         // the out-of-order seqs 3,4 sitting in the reorder buffer.
         assert_eq!(inn.ack(), 1);
         // Now the gap arrives; everything drains in order.
-        let gap = Frame::data(1, 0, vec![input(10), input(20)], None);
+        let gap = Frame::data(1, 0, vec![input(10), input(20)], 1);
         assert_eq!(
-            inn.accept(&gap).unwrap(),
+            inn.accept(&gap).unwrap().entries,
             vec![input(10), input(20), input(30), input(40)]
         );
         assert_eq!(inn.ack(), 5);
@@ -465,7 +481,7 @@ mod tests {
     fn in_bails_past_horizon() {
         let mut inn = InStream::new();
         // ack is 1; this is exactly a horizon away.
-        let way_ahead = Frame::data(1 + HORIZON, 0, vec![input(1)], None);
+        let way_ahead = Frame::data(1 + HORIZON, 0, vec![input(1)], 1);
         assert_eq!(inn.accept(&way_ahead), Err(HorizonExceeded));
     }
 
@@ -477,9 +493,9 @@ mod tests {
         out.push(Element::EndOfRound);
         out.push_input(2, 0);
         out.push(Element::EndOfMatch);
-        let f = make_frame(&out, None);
+        let f = make_frame(&out);
         assert_eq!(
-            inn.accept(&f).unwrap(),
+            inn.accept(&f).unwrap().entries,
             vec![
                 Element::Input(1),
                 Element::EndOfRound,
@@ -496,7 +512,7 @@ mod tests {
         for k in 1..=4u16 {
             out.push_input(k, 0);
         }
-        let f = make_frame(&out, None);
+        let f = make_frame(&out);
         inn.accept(&f).unwrap();
         // The in-stream now wants seq 5; its ack should advance the peer's
         // out-stream frontier so it trims to the redundancy floor.
@@ -515,11 +531,11 @@ mod tests {
         for k in 1..=200u32 {
             out.push_input(k as u16, 0);
             let w = out.window().unwrap();
-            let frame = Frame::data(w.base, w.frame_advantage, w.entries, None);
+            let frame = Frame::data(w.base, w.frame_advantage, w.entries, 1);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
                 let f = Frame::decode(&frame.encode()).unwrap();
-                delivered.extend(f_inputs(inn.accept(&f).unwrap()));
+                delivered.extend(f_inputs(inn.accept(&f).unwrap().entries));
                 out.apply_ack(inn.ack());
             }
         }
