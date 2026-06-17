@@ -41,6 +41,19 @@ pub const DEFAULT_REDUNDANCY: u32 = 2;
 /// floor is capped low.
 pub const MAX_REDUNDANCY: u32 = 3;
 
+/// The data portion of an outbound [`Frame`]: the redundancy window plus the
+/// frame-advantage echo, as produced by [`OutStream::window`]. The caller wraps
+/// it in a [`Frame::data`] alongside the in-stream's ack.
+#[derive(Debug, Clone)]
+pub struct Window {
+    /// Seq of the oldest element in the window — the frame's `base`.
+    pub base: u32,
+    /// Newest input's time-sync lead, echoed once per frame.
+    pub frame_advantage: i16,
+    /// The window's elements, ascending by seq from `base`.
+    pub entries: Vec<Element>,
+}
+
 /// Sender half: seq assignment + redundancy window.
 pub struct OutStream {
     /// Next seq to hand out. Seqs are 1-based so `0` stays free as the
@@ -156,15 +169,17 @@ impl OutStream {
         self.next_seq - self.history.len() as u32
     }
 
-    /// The data portion of an outbound frame: `(base, frame_advantage,
-    /// entries)`. `None` before the first element is pushed — the caller
-    /// emits an ack-only frame (`base == 0`) instead.
-    pub fn window(&self) -> Option<(u32, i16, Vec<Element>)> {
+    /// The data portion of an outbound frame — see [`Window`]. `None` before the
+    /// first element is pushed: the caller emits an ack-only frame instead.
+    pub fn window(&self) -> Option<Window> {
         if self.history.is_empty() {
             return None;
         }
-        let entries = self.history.iter().copied().collect();
-        Some((self.base(), self.latest_advantage, entries))
+        Some(Window {
+            base: self.base(),
+            frame_advantage: self.latest_advantage,
+            entries: self.history.iter().copied().collect(),
+        })
     }
 
     /// The newest seq handed out so far, or `None` before the first push. The
@@ -306,8 +321,8 @@ mod tests {
     /// ack, then round-trip it through the wire codec (so tests exercise the
     /// real encode/decode too).
     fn make_frame(out: &OutStream, ack: Option<u32>) -> Frame {
-        let (base, fa, entries) = out.window().expect("window");
-        let frame = Frame::data(base, fa, entries, ack);
+        let w = out.window().expect("window");
+        let frame = Frame::data(w.base, w.frame_advantage, w.entries, ack);
         Frame::decode(&frame.encode()).unwrap()
     }
 
@@ -321,9 +336,9 @@ mod tests {
         out.apply_ack(4);
         // Still keeps MIN_REDUNDANCY recent elements (seqs are 1..=3).
         assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
-        let (base, _, entries) = out.window().unwrap();
-        assert_eq!(base, 3 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 2
-        assert_eq!(entries.len(), DEFAULT_REDUNDANCY as usize);
+        let w = out.window().unwrap();
+        assert_eq!(w.base, 3 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 2
+        assert_eq!(w.entries.len(), DEFAULT_REDUNDANCY as usize);
     }
 
     #[test]
@@ -356,9 +371,9 @@ mod tests {
         }
         // Peer only confirmed through seq 4 (frontier = 5): seqs 5..=10 unconfirmed.
         out.apply_ack(5);
-        let (base, _, entries) = out.window().unwrap();
-        assert_eq!(base, 5);
-        assert_eq!(entries.len(), 6); // 5,6,7,8,9,10
+        let w = out.window().unwrap();
+        assert_eq!(w.base, 5);
+        assert_eq!(w.entries.len(), 6); // 5,6,7,8,9,10
     }
 
     #[test]
@@ -369,8 +384,8 @@ mod tests {
         }
         out.apply_ack(8);
         out.apply_ack(3); // stale/reordered
-        let (base, _, _) = out.window().unwrap();
-        assert_eq!(base, 8); // didn't regress
+        let w = out.window().unwrap();
+        assert_eq!(w.base, 8); // didn't regress
     }
 
     #[test]
@@ -504,8 +519,8 @@ mod tests {
         let mut delivered = Vec::new();
         for k in 1..=200u32 {
             out.push_input(k as u16, 0);
-            let (base, fa, entries) = out.window().unwrap();
-            let frame = Frame::data(base, fa, entries, None);
+            let w = out.window().unwrap();
+            let frame = Frame::data(w.base, w.frame_advantage, w.entries, None);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
                 let f = Frame::decode(&frame.encode()).unwrap();
@@ -624,8 +639,8 @@ mod tests {
                 peers[src].local += 1;
                 peers[src].ticks_since += 1;
                 peers[src].out.push_input(0, adv);
-                let (base, fa, entries) = peers[src].out.window().unwrap();
-                let frame = Frame::data(base, fa, entries, Some(peers[src].inn.ack()));
+                let w = peers[src].out.window().unwrap();
+                let frame = Frame::data(w.base, w.frame_advantage, w.entries, Some(peers[src].inn.ack()));
                 let bytes = frame.encode();
                 let lost = if bad[src] > 0 {
                     bad[src] -= 1;

@@ -127,9 +127,9 @@ impl InMatchTx {
                     }
                 }
             }
-            let (base, fa, entries) = st.out.window().expect("window is non-empty after a push");
+            let w = st.out.window().expect("window is non-empty after a push");
             let ack = st.inn.ack();
-            protocol::Frame::data(base, fa, entries, Some(ack))
+            protocol::Frame::data(w.base, w.frame_advantage, w.entries, Some(ack))
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
     }
@@ -167,7 +167,7 @@ impl InMatchTx {
             let st = self.state.lock().unwrap();
             let ack = st.inn.ack();
             match st.out.window() {
-                Some((base, fa, entries)) => protocol::Frame::data(base, fa, entries, Some(ack)),
+                Some(w) => protocol::Frame::data(w.base, w.frame_advantage, w.entries, Some(ack)),
                 None => protocol::Frame::Ack(ack),
             }
         };
