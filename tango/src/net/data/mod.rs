@@ -39,7 +39,26 @@ struct InMatchState {
     /// how RTT is measured now that there's no separate ping/pong probe — the
     /// ack the peer already piggybacks on every frame is the echo.
     sent_times: std::collections::VecDeque<(u32, std::time::Instant)>,
+    /// Smoothed round-trip, fed by each ack-derived sample. Drives the
+    /// out-stream's adaptive redundancy floor (see [`recv`](InMatchTx::recv)).
+    /// `None` until the first sample.
+    rtt_ewma: Option<std::time::Duration>,
 }
+
+/// EWMA weight for a fresh RTT sample (the rest carries the prior estimate).
+/// Per-seq samples are jittery; smoothing keeps the redundancy floor from
+/// flapping on a single late ack. A flap would only add/drop one window element
+/// (~2 bytes) anyway, so this is about steadiness, not correctness.
+const RTT_EWMA_ALPHA: f64 = 0.125;
+
+/// Frames of round-trip that add one element to the proactive redundancy floor.
+/// The floor is a continuous `1 + rtt_frames / FRAMES_PER_REDUNDANCY` (rounded,
+/// then capped at [`stream::MAX_REDUNDANCY`]), where `rtt_frames` is the smoothed
+/// RTT in [`InMatchTx::heartbeat`] (≈ one frame) units. A redundant copy recovers
+/// a dropped datagram in ~one frame, where an ack-driven resend costs ~one whole
+/// RTT — so the deeper the RTT, the more a copy is worth. At a sub-frame (LAN)
+/// round-trip the floor stays 1; it reaches the cap near a 4-frame round-trip.
+const FRAMES_PER_REDUNDANCY: f64 = 2.0;
 
 /// What [`InMatchTx::recv`] extracts from one incoming frame: the elements it
 /// made contiguous (seq order), the freshest frame-advantage for the throttler,
@@ -80,6 +99,7 @@ impl InMatchTx {
                 out: stream::OutStream::new(),
                 inn: stream::InStream::new(),
                 sent_times: std::collections::VecDeque::new(),
+                rtt_ewma: None,
             })),
             sink,
             data_sends: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -207,6 +227,21 @@ impl InMatchTx {
                 confirmed_at = st.sent_times.pop_front().map(|(_, t)| t);
             }
             rtt = confirmed_at.map(|t| std::time::Instant::now().saturating_duration_since(t));
+            // Re-aim the proactive redundancy floor at the smoothed round-trip:
+            // the deeper the RTT, the more an ack-driven resend would cost, so
+            // the more a redundant copy in the very next datagram is worth.
+            if let Some(sample) = rtt {
+                let ewma = match st.rtt_ewma {
+                    Some(prev) => prev.mul_f64(1.0 - RTT_EWMA_ALPHA) + sample.mul_f64(RTT_EWMA_ALPHA),
+                    None => sample,
+                };
+                st.rtt_ewma = Some(ewma);
+                let frames = ewma.as_secs_f64() / self.heartbeat.as_secs_f64();
+                // `set_min_redundancy` clamps to [1, MAX_REDUNDANCY]; the f64->u32
+                // cast saturates, so a degenerate (huge/inf/NaN) `frames` is safe.
+                let redundancy = (1.0 + frames / FRAMES_PER_REDUNDANCY).round() as u32;
+                st.out.set_min_redundancy(redundancy);
+            }
         }
         let delivered = st.inn.accept(frame)?;
         let frame_advantage = st.inn.latest_advantage();

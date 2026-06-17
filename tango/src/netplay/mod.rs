@@ -31,7 +31,9 @@ pub mod compat;
 // 0x47: in-match Input/EndOfRound/EndOfMatch moved off the reliable lobby
 // channel onto a separate unreliable channel with the `data::wire` redundancy
 // protocol. Incompatible with 0x46 peers, so the version gate rejects them.
-pub const PROTOCOL_VERSION: u32 = 0x47;
+// 0x48: the data frame's piggybacked ack is now a signed delta from `base`
+// instead of an absolute frontier (smaller on the wire). Incompatible with 0x47.
+pub const PROTOCOL_VERSION: u32 = 0x48;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.

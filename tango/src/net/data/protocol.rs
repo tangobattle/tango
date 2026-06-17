@@ -18,12 +18,19 @@
 //!                            else 1-based global seq of entries[0]
 //! frame_advantage  svarint   present iff base != 0
 //! entries[]        u16 LE    present iff base != 0; >= 1; until CONT clear
-//! ack (optional)   present iff bytes remain:  frontier uvarint
+//! ack (optional)   present iff bytes remain:  svarint (frontier - base)
 //! ```
 //! Each entry `u16`: bit 15 = CONT (more follow), bit 14 = MARK (marker vs
 //! input), bits 0..=9 = payload (joyflags, or marker kind). `ack` is the
 //! sole truncation-inferred field, which works because the transport hands
 //! us one exact-length message per datagram.
+//!
+//! The piggybacked `ack` is encoded as a *delta from `base`* rather than as an
+//! absolute frontier. Both counters index per-tick streams that advance at the
+//! same ~60 Hz, so at any instant they differ only by the lead/redundancy span
+//! (bounded by the rollback horizon) — a small signed number that fits in one
+//! svarint byte, where the absolute frontier grows to three uvarint bytes over a
+//! match. The in-memory [`Ack`] stays absolute; only the wire form is relative.
 //!
 use std::io::{self, Read};
 
@@ -93,8 +100,10 @@ pub enum Frame {
         /// Inputs + markers in seq order; non-empty (a window always carries
         /// >= 1 element, and the decoder reads >= 1).
         entries: Vec<Element>,
-        /// Optional piggybacked cumulative ack of the peer's stream. Absent =>
-        /// zero trailing bytes (inferred from the datagram's exact length).
+        /// Optional piggybacked cumulative ack of the peer's stream, as an
+        /// absolute frontier (the wire encodes it as a delta from `base`).
+        /// Absent => zero trailing bytes (inferred from the datagram's exact
+        /// length).
         ack: Option<Ack>,
     },
 }
@@ -161,9 +170,11 @@ fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
                 }
                 out.extend_from_slice(&w.to_le_bytes());
             }
-            // `ack` is appended raw (no discriminant); its absence is zero bytes.
+            // `ack` is appended raw (no discriminant); its absence is zero
+            // bytes. Encoded as a signed delta from `base` — see the module
+            // header — so the common case is a single byte.
             if let Some(frontier) = ack {
-                write_uvarint(out, *frontier as u64);
+                write_svarint(out, *frontier as i64 - base.get() as i64);
             }
         }
     }
@@ -207,9 +218,14 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
             return Err(invalid(format!("frame exceeds {MAX_ENTRIES}-entry window cap")));
         }
     }
-    // Whatever is left after the entries is the optional cumulative ack.
+    // Whatever is left after the entries is the optional cumulative ack,
+    // carried as a signed delta from `base` (see the module header).
     let ack = if remaining(&c) {
-        Some(read_uvarint(&mut c)? as u32)
+        let frontier = base.get() as i64 + read_svarint(&mut c)?;
+        if !(0..=u32::MAX as i64).contains(&frontier) {
+            return Err(invalid(format!("ack delta puts frontier out of range: {frontier}")));
+        }
+        Some(frontier as u32)
     } else {
         None
     };
@@ -328,6 +344,18 @@ mod tests {
             vec![Element::Input(0x010), Element::Input(0x011), Element::Input(0x001)],
             Some(12340),
         ));
+    }
+
+    #[test]
+    fn ack_is_a_signed_delta_from_base() {
+        // base=12345, adv=+2, [Right(0x010)], ack=12340 (5 behind base).
+        // The ack is svarint(12340 - 12345) = svarint(-5) = zigzag(9) = one byte,
+        // where an absolute frontier would have cost three.
+        let f = Frame::data(12345, 2, vec![Element::Input(0x010)], Some(12340));
+        assert_eq!(f.encode(), vec![0xB9, 0x60, 0x04, 0x10, 0x00, 0x09]);
+        roundtrip(&f);
+        // An ack ahead of base round-trips too (delta is genuinely signed).
+        roundtrip(&Frame::data(12345, 0, vec![Element::Input(0x001)], Some(12400)));
     }
 
     #[test]

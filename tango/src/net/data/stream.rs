@@ -27,10 +27,19 @@ use super::protocol::{Element, Frame, PAYLOAD_MASK};
 /// buffer cap (`round.rs` bails locally at the same depth).
 const HORIZON: u32 = tango_pvp::battle::MAX_QUEUE_LENGTH as u32;
 
-/// Minimum elements every data frame carries, regardless of acks: enough
-/// that a single dropped datagram is always covered by the next one without
-/// waiting for the peer's ack to report the hole.
-pub const MIN_REDUNDANCY: u32 = 2;
+/// Default proactive redundancy floor: the minimum elements every data frame
+/// carries regardless of acks, so a dropped datagram is covered by the next one
+/// without waiting for the peer's ack to report the hole. This is just the
+/// starting/typical value — the floor is adaptive (see
+/// [`OutStream::set_min_redundancy`]); the adapter raises or lowers it from the
+/// measured round-trip.
+pub const DEFAULT_REDUNDANCY: u32 = 2;
+
+/// Hard ceiling on the adaptive redundancy floor. Every extra element is bytes
+/// on every datagram, and bursts longer than the floor are still recovered by
+/// the ack-driven window growth (just a round-trip slower), so the *proactive*
+/// floor is capped low.
+pub const MAX_REDUNDANCY: u32 = 3;
 
 /// Sender half: seq assignment + redundancy window.
 pub struct OutStream {
@@ -45,6 +54,10 @@ pub struct OutStream {
     peer_ack_base: u32,
     /// Newest input's time-sync lead, echoed once per frame.
     latest_advantage: i16,
+    /// Current proactive redundancy floor (see [`MIN_REDUNDANCY`]). Adaptive —
+    /// the adapter drives it from the measured RTT. Always in `[1,
+    /// MAX_REDUNDANCY]`.
+    min_redundancy: u32,
 }
 
 impl Default for OutStream {
@@ -60,6 +73,22 @@ impl OutStream {
             history: std::collections::VecDeque::new(),
             peer_ack_base: 1,
             latest_advantage: 0,
+            min_redundancy: DEFAULT_REDUNDANCY,
+        }
+    }
+
+    /// Adjust the proactive redundancy floor (see [`MIN_REDUNDANCY`]), clamped to
+    /// `[1, MAX_REDUNDANCY]`. The adapter drives this from the measured
+    /// round-trip: redundancy exists to recover a lost datagram in ~one frame
+    /// instead of waiting for the ack-driven resend, which costs a whole RTT — so
+    /// a longer RTT makes a deeper floor worth more, and a sub-frame RTT makes it
+    /// worthless (the resend is itself ~one frame). Re-trims immediately so a
+    /// lowered floor sheds its now-excess window the same tick.
+    pub fn set_min_redundancy(&mut self, n: u32) {
+        let n = n.clamp(1, MAX_REDUNDANCY);
+        if n != self.min_redundancy {
+            self.min_redundancy = n;
+            self.trim();
         }
     }
 
@@ -96,8 +125,9 @@ impl OutStream {
         }
     }
 
-    /// Drop history the peer has confirmed, while keeping at least
-    /// [`MIN_REDUNDANCY`] recent elements and no more than a [`HORIZON`]'s
+    /// Drop history the peer has confirmed, while keeping at least the current
+    /// redundancy floor ([`min_redundancy`](Self::min_redundancy), default
+    /// [`MIN_REDUNDANCY`]) of recent elements and no more than a [`HORIZON`]'s
     /// worth (beyond the horizon the peer would bail, so retaining them is
     /// pointless).
     fn trim(&mut self) {
@@ -105,7 +135,7 @@ impl OutStream {
             Some(&(seq, _)) => seq,
             None => return,
         };
-        let redundancy_floor = newest.saturating_sub(MIN_REDUNDANCY.saturating_sub(1));
+        let redundancy_floor = newest.saturating_sub(self.min_redundancy.saturating_sub(1));
         let horizon_floor = newest.saturating_sub(HORIZON.saturating_sub(1));
         let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor).max(1);
         while let Some(&(seq, _)) = self.history.front() {
@@ -279,10 +309,32 @@ mod tests {
         // Peer has confirmed everything through seq 3 (frontier = 4).
         out.apply_ack(4);
         // Still keeps MIN_REDUNDANCY recent elements (seqs are 1..=3).
-        assert_eq!(out.window_len(), MIN_REDUNDANCY as usize);
+        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
         let (base, _, entries) = out.window().unwrap();
-        assert_eq!(base, 3 - (MIN_REDUNDANCY - 1)); // seq of first kept = 2
-        assert_eq!(entries.len(), MIN_REDUNDANCY as usize);
+        assert_eq!(base, 3 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 2
+        assert_eq!(entries.len(), DEFAULT_REDUNDANCY as usize);
+    }
+
+    #[test]
+    fn min_redundancy_floor_is_adaptive() {
+        let mut out = OutStream::new();
+        for k in 0..5 {
+            out.push_input(k, 0);
+        }
+        out.apply_ack(6); // peer caught up: only the floor is retained.
+        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
+
+        // Lower the floor (clean/low-RTT link): the window sheds down to 1 at once.
+        out.set_min_redundancy(1);
+        assert_eq!(out.window_len(), 1);
+
+        // Raise it past the default (high-RTT link); clamped at MAX_REDUNDANCY.
+        out.set_min_redundancy(99);
+        for k in 5..10 {
+            out.push_input(k, 0);
+        }
+        out.apply_ack(11);
+        assert_eq!(out.window_len(), MAX_REDUNDANCY as usize);
     }
 
     #[test]
@@ -428,7 +480,7 @@ mod tests {
         // The in-stream now wants seq 5; its ack should advance the peer's
         // out-stream frontier so it trims to the redundancy floor.
         out.apply_ack(inn.ack());
-        assert_eq!(out.window_len(), MIN_REDUNDANCY as usize);
+        assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
     }
 
     #[test]
@@ -499,12 +551,12 @@ mod tests {
 
         const FRAMES: u32 = 18_000; // 5 min at 60 Hz
         const LATENCY: u32 = 6; // ~100 ms one way
-        // Variable latency (reorders datagrams). With loss alone the extrapolated
-        // skew is dead flat; jitter is what shows through — both peers' leads
-        // wobble with delivery timing, so the skew (their difference) swings about
-        // ±jitter on each side, i.e. a span ≈ 2 × JITTER. (Sweeping the real
-        // channel: JITTER 3 → span 6, 8 → 16, 15 → 29.) Pinned at 0 here so the
-        // test asserts the loss-taming; the jitter scaling is the residual to smooth.
+                                // Variable latency (reorders datagrams). With loss alone the extrapolated
+                                // skew is dead flat; jitter is what shows through — both peers' leads
+                                // wobble with delivery timing, so the skew (their difference) swings about
+                                // ±jitter on each side, i.e. a span ≈ 2 × JITTER. (Sweeping the real
+                                // channel: JITTER 3 → span 6, 8 → 16, 15 → 29.) Pinned at 0 here so the
+                                // test asserts the loss-taming; the jitter scaling is the residual to smooth.
         const JITTER: u32 = 0;
         const BURST: u64 = 12;
         const LOSS_PCT: u64 = 10;
@@ -516,9 +568,7 @@ mod tests {
         let mut rng = 0x1234_5678_9abc_def0u64;
         let mut bad = [0u64; 2];
         let mut next = || {
-            rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             rng >> 40
         };
         let mut skew = [Vec::<i32>::new(), Vec::<i32>::new()];
