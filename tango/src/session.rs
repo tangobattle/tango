@@ -86,14 +86,14 @@ impl ActiveSession {
 /// clears it.
 /// One per-frame snapshot of the live PvP telemetry, retained in a short ring
 /// buffer ([`State::metric_history`]) so the match-settings popover can draw a
-/// sparkline per metric. `round` is `None` between rounds, when no skew/depth
-/// reading exists.
+/// sparkline per metric. `round` is `None` between rounds, when no
+/// skew/lead/depth reading exists; when present it is `(skew, depth, lead)`.
 #[derive(Clone, Copy)]
 pub struct MetricSample {
     pub tps: f32,
     pub fps_target: f32,
     pub ping_ms: u128,
-    pub round: Option<(i32, u32)>,
+    pub round: Option<(i32, u32, i32)>,
 }
 
 impl MetricSample {
@@ -107,7 +107,7 @@ impl MetricSample {
             // display, so it should track the true per-frame reading and
             // show spikes. The median feeds only the frame-delay suggestion.
             ping_ms: pvp.latency_raw().map_or(0, |d| d.as_millis()),
-            round: pvp.round_stats().map(|s| (s.skew, s.depth)),
+            round: pvp.round_stats().map(|s| (s.skew, s.depth, s.lead)),
         }
     }
 }
@@ -827,6 +827,7 @@ const SPARK_H: f32 = 24.0;
 // line up with the tone thresholds so a point's height roughly tracks its color.
 const TPS_SPAN: f32 = 8.0; // fps below target = floor of the chart
 const SKEW_SPAN: i32 = 8; // ± about parity; 0 sits mid-height
+const LEAD_SPAN: i32 = 24; // one-sided; saturates well before the overflow bail
 const DEPTH_SPAN: u32 = 8;
 const PING_SPAN: u128 = 200;
 
@@ -1057,7 +1058,7 @@ fn metric_card<'a>(
 }
 
 /// Contents of the match-settings panel: a sparkline card per live metric
-/// (TPS, skew, depth, ping) stacked above the frame-delay card. Each chart
+/// (TPS, skew, lead, depth, ping) stacked above the frame-delay card. Each chart
 /// reads its window from `history` and its current value from the newest
 /// sample.
 fn match_settings_content<'a>(
@@ -1090,14 +1091,30 @@ fn match_settings_content<'a>(
         Some(0.5),
         history,
         |s| {
-            s.round.map(|(skew, _)| {
+            s.round.map(|(skew, _, _)| {
                 let yf = (skew.clamp(-SKEW_SPAN, SKEW_SPAN) as f32 + SKEW_SPAN as f32) / (2.0 * SKEW_SPAN as f32);
                 (yf, tone_for_skew(skew))
             })
         },
         |s| {
             s.round
-                .map(|(skew, _)| value_text(fmt_skew(skew), Some(tone_for_skew(skew))))
+                .map(|(skew, _, _)| value_text(fmt_skew(skew), Some(tone_for_skew(skew))))
+        },
+    );
+
+    let lead_card = metric_card(
+        Icon::TrendingUp,
+        t!(lang, "session-stat-lead"),
+        true,
+        Some(0.0),
+        history,
+        |s| {
+            s.round
+                .map(|(_, _, lead)| (lead.clamp(0, LEAD_SPAN) as f32 / LEAD_SPAN as f32, tone_for_lead(lead)))
+        },
+        |s| {
+            s.round
+                .map(|(_, _, lead)| value_text(fmt_lead(lead), Some(tone_for_lead(lead))))
         },
     );
 
@@ -1109,11 +1126,11 @@ fn match_settings_content<'a>(
         history,
         |s| {
             s.round
-                .map(|(_, depth)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth)))
+                .map(|(_, depth, _)| (depth.min(DEPTH_SPAN) as f32 / DEPTH_SPAN as f32, tone_for_depth(depth)))
         },
         |s| {
             s.round
-                .map(|(_, depth)| value_text(fmt_depth(depth), Some(tone_for_depth(depth))))
+                .map(|(_, depth, _)| value_text(fmt_depth(depth), Some(tone_for_depth(depth))))
         },
     );
 
@@ -1148,6 +1165,7 @@ fn match_settings_content<'a>(
     column![
         tps_card,
         skew_card,
+        lead_card,
         depth_card,
         ping_card,
         rule,
@@ -1209,6 +1227,16 @@ fn tone_for_skew(skew: i32) -> StatTone {
     }
 }
 
+/// Local lead: green at a healthy steady lead, amber as it climbs, red when it
+/// runs far ahead (the remote is lagging and we're heading toward the bail).
+fn tone_for_lead(lead: i32) -> StatTone {
+    match lead.unsigned_abs() {
+        0..=8 => StatTone::Good,
+        9..=16 => StatTone::Warn,
+        _ => StatTone::Bad,
+    }
+}
+
 /// Rollback depth: green shallow, amber climbing, red when speculation runs deep.
 fn tone_for_depth(depth: u32) -> StatTone {
     match depth {
@@ -1238,6 +1266,10 @@ fn fmt_skew(skew: i32) -> String {
     } else {
         format!("{skew:+}")
     }
+}
+/// Local lead in ticks (one-sided, so no forced sign).
+fn fmt_lead(lead: i32) -> String {
+    format!("{lead}")
 }
 /// Rollback depth.
 fn fmt_depth(depth: u32) -> String {

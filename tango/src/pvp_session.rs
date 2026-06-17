@@ -612,6 +612,7 @@ impl PvpSession {
         let metrics = self.match_handle.round_metrics()?;
         Some(RoundStats {
             skew: metrics.local_frame_advantage as i32 - metrics.remote_frame_advantage as i32,
+            lead: metrics.local_frame_advantage as i32,
             depth: metrics.misprediction_depth,
         })
     }
@@ -628,6 +629,11 @@ pub struct RoundStats {
     /// sync, positive when we're leading (and being slowed), and negative
     /// when the peer is leading.
     pub skew: i32,
+    /// Local tick lead: how far the local frontier runs ahead of the confirmed
+    /// remote input (the raw `local_tick_advantage`, one side of the skew pair).
+    /// Steady around `present_delay` at clock sync; ramps up when the remote falls
+    /// behind or a delivery stall holds its confirmed frontier still.
+    pub lead: i32,
     /// Misprediction depth: how many speculative frames this frame discarded and
     /// re-simulated because a confirmed remote input contradicted the prediction.
     /// 0 on a clean frame; spikes mark the size of each rollback.
