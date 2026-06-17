@@ -58,6 +58,6 @@ impl crate::hooks::Hooks for Hooks {
     }
 
     fn inject_joyflags_on_primary_snapshot(&self, mut core: mgba::core::CoreMutRef, joyflags: u16) {
-        core.gba_mut().cpu_mut().set_gpr(4, (joyflags | !0x03ff) as i32);
+        core.gba_mut().cpu_mut().set_gpr(4, (joyflags | !crate::input::JOYFLAGS_MASK) as i32);
     }
 }

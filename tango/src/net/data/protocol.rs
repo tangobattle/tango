@@ -34,13 +34,15 @@
 //!
 use std::io::{self, Read};
 
+use tango_pvp::input::JOYFLAGS_MASK;
+
 /// Bit 15 of a stream entry: another entry follows this one.
 const CONT: u16 = 0x8000;
 /// Bit 14 of a stream entry: this slot is a marker, not an input.
 const MARK: u16 = 0x4000;
-/// Bits 0..=9 of a stream entry: joyflags, or a marker kind. The GBA keypad
-/// is 10 bits, so the top 6 bits are free for CONT/MARK and stay reserved.
-pub const PAYLOAD_MASK: u16 = 0x03ff;
+// An entry's payload is bits 0..=9 (joyflags, or a marker kind); CONT/MARK take
+// the top 6 bits the 10-bit keypad leaves free. The payload field is keypad-sized,
+// so it reuses the engine's `JOYFLAGS_MASK` rather than defining its own.
 
 /// Marker kind, carried in an entry's payload when [`MARK`] is set.
 const KIND_END_OF_ROUND: u16 = 0;
@@ -158,10 +160,10 @@ fn encode_frame_body(f: &Frame, out: &mut Vec<u8>) {
                 let mut w = match e {
                     Element::Input(joyflags) => {
                         assert!(
-                            joyflags & !PAYLOAD_MASK == 0,
+                            joyflags & !JOYFLAGS_MASK == 0,
                             "joyflags use reserved high bits: {joyflags:#06x}"
                         );
-                        joyflags & PAYLOAD_MASK
+                        joyflags & JOYFLAGS_MASK
                     }
                     Element::EndOfRound => MARK | KIND_END_OF_ROUND,
                     Element::EndOfMatch => MARK | KIND_END_OF_MATCH,
@@ -191,13 +193,13 @@ fn decode_frame_body(body: &[u8]) -> io::Result<Frame> {
     loop {
         let w = read_u16le(&mut c)?;
         let element = if w & MARK != 0 {
-            match w & PAYLOAD_MASK {
+            match w & JOYFLAGS_MASK {
                 KIND_END_OF_ROUND => Element::EndOfRound,
                 KIND_END_OF_MATCH => Element::EndOfMatch,
                 other => return Err(invalid(format!("unknown marker kind: {other}"))),
             }
         } else {
-            Element::Input(w & PAYLOAD_MASK)
+            Element::Input(w & JOYFLAGS_MASK)
         };
         entries.push(element);
         if w & CONT == 0 {

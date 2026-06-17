@@ -130,7 +130,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
 
-                core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | !0x03ff) as i32);
+                core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | !crate::input::JOYFLAGS_MASK) as i32);
             })
         }),
         (hooks.offsets.rom.copy_input_data_entry, {

@@ -20,7 +20,9 @@
 //!
 use std::collections::BTreeMap;
 
-use super::protocol::{Element, Frame, PAYLOAD_MASK};
+use tango_pvp::input::JOYFLAGS_MASK;
+
+use super::protocol::{Element, Frame};
 
 /// Rollback horizon: a gap wider than this can't be rolled back to, so the
 /// receiver bails instead of waiting forever. Matches the engine's input
@@ -118,7 +120,7 @@ impl OutStream {
     /// go straight through `push`.
     pub fn push_input(&mut self, joyflags: u16, frame_advantage: i16) -> u32 {
         self.latest_advantage = frame_advantage;
-        self.push(Element::Input(joyflags & PAYLOAD_MASK))
+        self.push(Element::Input(joyflags & JOYFLAGS_MASK))
     }
 
     /// Append any element (an input, or an `EndOf*` boundary) at the next seq;
