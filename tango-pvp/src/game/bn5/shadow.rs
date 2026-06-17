@@ -123,9 +123,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
 
                 if let Some(pending) = round.peek_shadow_input() {
                     let (_local, remote) = &pending.pair;
-                    core.gba_mut()
-                        .cpu_mut()
-                        .set_gpr(4, (remote.joyflags | 0xfc00) as i32);
+                    core.gba_mut().cpu_mut().set_gpr(4, (remote.joyflags | !0x03ff) as i32);
                 }
 
                 if round.take_input_injected() {

@@ -130,7 +130,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     return;
                 };
 
-                core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | 0xfc00) as i32);
+                core.gba_mut().cpu_mut().set_gpr(4, (local.joyflags | !0x03ff) as i32);
             })
         }),
         (hooks.offsets.rom.copy_input_data_entry, {
@@ -163,8 +163,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 );
                 // On failure the error is already on the stepper's error
                 // channel; the drive loop aborts on it.
-                let Some(remote_packet) = state.apply_shadow_input((local.with_packet(local_packet), remote))
-                else {
+                let Some(remote_packet) = state.apply_shadow_input((local.with_packet(local_packet), remote)) else {
                     return;
                 };
                 munger.set_rx_packet(
