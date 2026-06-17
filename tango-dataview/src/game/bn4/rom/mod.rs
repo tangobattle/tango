@@ -503,6 +503,10 @@ impl crate::rom::Assets for Assets {
         true
     }
 
+    fn regular_chip_is_in_place(&self) -> bool {
+        true
+    }
+
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
         if id >= 13 {
             return None;
