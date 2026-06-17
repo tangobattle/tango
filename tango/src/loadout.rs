@@ -116,11 +116,20 @@ impl Loadout {
                     self.patch = None;
                     self.patch_version = None;
                 } else {
-                    self.patch_version = newest_supporting_version(scanners, &name, self.game);
+                    let mut version = newest_supporting_version(scanners, &name, self.game);
+                    // Patches are no longer hidden by the selected save, so
+                    // the user can pick one the current save can't run. The
+                    // actively-chosen patch wins: deselect the save (and the
+                    // game it resolved to) rather than the patch, then pick a
+                    // version unconstrained by the dropped game.
+                    if self.game.is_some() && version.is_none() {
+                        self.save = None;
+                        self.game = None;
+                        version = newest_supporting_version(scanners, &name, None);
+                    }
+                    self.patch_version = version;
                     self.patch = Some(name);
                 }
-                // The picker only offers patches that support the
-                // selected save's variant, so the save always keeps.
                 // With no save selected yet, land on the game's
                 // remembered/first save (without applying that save's
                 // patch memory — the user just picked this patch
@@ -450,12 +459,14 @@ pub fn save_options(loadout: &Loadout, scanners: &Scanners, config: &config::Con
 }
 
 /// Patch picker options (with the "no patch" sentinel first) and the
-/// currently-selected entry. Filtered to patches that support the
-/// selected save's variant — the save is picked first and the patch
-/// list adapts to it, never the other way around. With no concrete
-/// game resolved yet, falls back to "supports any variant in the
-/// family". Favorites sort first (and get a "★ " label prefix),
-/// alphabetical within each group.
+/// currently-selected entry. Filtered to patches that support *any*
+/// variant in the selected family — but NOT narrowed to the specific
+/// save's variant, so a patch for the family's other variant still
+/// shows. Within-family incompatibility is resolved by *deselection*
+/// at pick time (selecting a save drops an incompatible patch;
+/// selecting a patch drops an incompatible save), never by hiding.
+/// With no family selected, the list is empty. Favorites sort first
+/// (and get a "★ " label prefix), alphabetical within each group.
 pub fn patch_options(
     loadout: &Loadout,
     lang: &LanguageIdentifier,
@@ -463,30 +474,27 @@ pub fn patch_options(
     config: &config::Config,
 ) -> (Vec<widgets::Choice<String>>, Option<widgets::Choice<String>>) {
     let patches = scanners.patches.read();
-    let candidate_games: Vec<rom::GameRef> = match loadout.game {
-        Some(g) => vec![g],
-        None => loadout
-            .family
-            .map(|f| game::games_in_family(f).collect())
-            .unwrap_or_default(),
-    };
-    let mut compatible_names: Vec<String> = patches
+    let family_games: Vec<rom::GameRef> = loadout
+        .family
+        .map(|f| game::games_in_family(f).collect())
+        .unwrap_or_default();
+    let mut names: Vec<String> = patches
         .iter()
         .filter(|(_, p)| {
             p.versions
                 .values()
-                .any(|v| candidate_games.iter().any(|g| v.supported_games.contains(g)))
+                .any(|v| family_games.iter().any(|g| v.supported_games.contains(g)))
         })
         .map(|(n, _)| n.clone())
         .collect();
-    compatible_names.sort_by(|a, b| {
+    names.sort_by(|a, b| {
         let fa = config.favorite_patches.contains(a);
         let fb = config.favorite_patches.contains(b);
         fb.cmp(&fa).then_with(|| a.cmp(b))
     });
     let no_patch_option = widgets::Choice::new(String::new(), t!(lang, "play-no-patch"));
     let patch_options: Vec<widgets::Choice<String>> = std::iter::once(no_patch_option.clone())
-        .chain(compatible_names.into_iter().map(|n| {
+        .chain(names.into_iter().map(|n| {
             let display = if config.favorite_patches.contains(&n) {
                 format!("\u{2605} {n}")
             } else {
