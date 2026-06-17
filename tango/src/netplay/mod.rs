@@ -248,14 +248,13 @@ struct LocalCommit {
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `Some` for WebRTC peer connections (kept alive for the
-    /// duration of the session); `None` for the direct-TCP local
-    /// transport, whose lifetime is owned by the Sender/Receiver
-    /// halves themselves.
-    peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    /// The peer connection, kept alive for the duration of the
+    /// session. Both transports (matchmaking WebRTC and the
+    /// signaling-free direct link) bring one up.
+    peer_conn: datachannel_wrapper::PeerConnection,
     /// `true` iff we're the "offer side" for symmetry-breaking
-    /// purposes — i.e. we wrote the SDP offer on the WebRTC path,
-    /// or we're the listener on the direct-TCP path. Drives the
+    /// purposes — i.e. we wrote the SDP offer on the matchmaking path,
+    /// or we're the host on the direct link. Drives the
     /// `Match::pick_local_player_index` tie-break.
     is_offerer: bool,
 }
@@ -273,12 +272,12 @@ pub enum Message {
         endpoint: String,
         use_relay: Option<bool>,
     },
-    /// Direct-TCP local-play entry. Bypasses signaling + WebRTC
-    /// entirely — runs the protocol-version negotiate handshake
-    /// over a raw length-prefixed TCP connection (see
-    /// [`crate::net::tcp`]). `role` says whether we're the
-    /// listener or the dialer; the UI-side identifier is derived
-    /// from it (see [`LinkIdent`]).
+    /// Direct local-play entry. Bypasses the signaling server —
+    /// runs the protocol-version negotiate handshake over a
+    /// libdatachannel peer connection whose SDP both sides fabricate
+    /// from fixed ICE creds (see [`crate::net::direct_rtc`]). `role`
+    /// says whether we're the host (pins the UDP port) or the dialer;
+    /// the UI-side identifier is derived from it (see [`LinkIdent`]).
     ConnectDirect { role: DirectRole },
     /// Tear down the active / pending connection. Cancels the
     /// running async task; drops the connection handles.
@@ -359,12 +358,12 @@ pub enum Message {
 /// taking the inner once on receipt and going None afterwards.
 pub type Slot<T> = Arc<std::sync::Mutex<Option<T>>>;
 
-/// Which side of a direct-TCP connection the local instance is.
-/// Drives the offer/answer symmetry breaker the WebRTC path gets
-/// for free from SDP role assignment.
+/// Which side of a direct (signaling-free) connection the local
+/// instance is. Drives the offer/answer symmetry breaker, and which
+/// side pins the UDP port vs. dials it.
 #[derive(Debug, Clone)]
 pub enum DirectRole {
-    /// Listen on the given port and accept the first inbound peer.
+    /// Pin the given UDP port and accept the first inbound peer.
     Host { port: u16 },
     /// Dial the given `host:port` string.
     Connect { addr: String },
@@ -401,11 +400,11 @@ impl std::fmt::Debug for ConnectionPayload {
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
-    /// `None` for the direct-TCP local transport. See
+    /// The peer connection. Set by both transports. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
-    /// Pre-computed by the per-transport negotiator. WebRTC reads
-    /// the SDP type; TCP sets host=true, connect=false.
+    pub peer_conn: datachannel_wrapper::PeerConnection,
+    /// Pre-computed by the per-transport negotiator. Matchmaking reads
+    /// the SDP type; the direct link sets host=true, connect=false.
     pub is_offerer: bool,
 }
 
@@ -474,7 +473,7 @@ impl State {
                     waiting_for_opponent,
                 };
                 let cancel = self.cancel.clone();
-                iced::Task::perform(run_tcp_negotiate(role, cancel), map_negotiate_result)
+                iced::Task::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
             }
             Message::SignalingHelloReceived(slot_rx) => {
                 let ident = match &self.phase {
@@ -506,13 +505,13 @@ impl State {
                 iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
             }
             Message::NegotiationDone(slot_rx) => {
-                // Accept both `Connecting` (direct-TCP path: the
-                // negotiate is folded into the single TCP task and
-                // skips the intermediate Negotiating phase) and
-                // `Negotiating` (WebRTC path: signaling +
-                // peer-await + negotiate are split stages). Either
-                // is a valid Connect-or-Direct-Connect lifecycle
-                // that's progressed past the wire handshake.
+                // Accept both `Connecting` (direct path: the bring-up
+                // and negotiate are folded into one task and skip the
+                // intermediate Negotiating phase) and `Negotiating`
+                // (matchmaking path: signaling + peer-await + negotiate
+                // are split stages). Either is a valid
+                // Connect-or-Direct-Connect lifecycle that's progressed
+                // past the wire handshake.
                 let ident = match &self.phase {
                     Phase::Negotiating { ident } => ident.clone(),
                     Phase::Connecting { ident, .. } => ident.clone(),
@@ -523,20 +522,21 @@ impl State {
                 };
                 let sender = out.sender.clone();
                 // Resolve how the transport actually flows for the
-                // lobby's ping line. The raw-TCP path (no peer
-                // connection) is direct by construction; WebRTC
-                // reads the selected ICE pair — a `typ relay`
-                // candidate on either end means TURN.
-                self.lobby.connection_kind = match &out.peer_conn {
-                    None => Some(ConnectionKind::Direct),
-                    Some(pc) => pc.selected_candidate_pair().ok().map(|(local, remote)| {
+                // lobby's ping line. We read the selected ICE pair — a
+                // `typ relay` candidate on either end means TURN. The
+                // signaling-free direct path only ever forms host
+                // candidate pairs, so it resolves to Direct.
+                self.lobby.connection_kind = out
+                    .peer_conn
+                    .selected_candidate_pair()
+                    .ok()
+                    .map(|(local, remote)| {
                         if local.contains("typ relay") || remote.contains("typ relay") {
                             ConnectionKind::Relayed
                         } else {
                             ConnectionKind::Direct
                         }
-                    }),
-                };
+                    });
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
                     peer_conn: out.peer_conn,
@@ -1033,9 +1033,9 @@ impl State {
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
-    /// `None` for the direct-TCP local transport; see
+    /// The peer connection; brought up by both transports. See
     /// [`ConnectionHandles::peer_conn`].
-    pub peer_conn: Option<datachannel_wrapper::PeerConnection>,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
     pub is_offerer: bool,
     /// Receiver slot the lobby loop drops into on cancel-exit.
     /// PvP setup waits on this (one-shot poll on a tick).
@@ -1221,23 +1221,27 @@ async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Res
     }
 }
 
-/// Direct-TCP entry: bind-and-accept (host) or dial (connect),
-/// then run the same `protocol::negotiate` handshake the WebRTC
-/// path uses. No signaling server, no peer-connection — the TCP
-/// stream halves carry the whole transport lifetime themselves.
+/// Direct signaling-free entry: bring up a libdatachannel peer
+/// connection whose SDP both sides fabricate from fixed ICE creds
+/// (host listens on a pinned UDP port; connect dials it), then run
+/// the same `protocol::negotiate` handshake the matchmaking WebRTC
+/// path uses. No signaling server — see [`crate::net::direct_rtc`].
 /// `is_offerer` is set from the role (host = true) so the
 /// `pick_local_player_index` symmetry break still has a stable
 /// asymmetric input.
-async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
+async fn run_direct_rtc_negotiate(
+    role: DirectRole,
+    cancel: CancellationToken,
+) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
-        let (mut sender, mut receiver) = match role {
-            DirectRole::Host { port } => crate::net::tcp::host(port)
+        let (mut sender, mut receiver, peer_conn) = match role {
+            DirectRole::Host { port } => crate::net::direct_rtc::host(port)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("tcp host: {e}")))?,
-            DirectRole::Connect { addr } => crate::net::tcp::connect(&addr)
+                .map_err(|e| AsyncError::Failed(format!("direct host: {e}")))?,
+            DirectRole::Connect { addr } => crate::net::direct_rtc::connect(&addr)
                 .await
-                .map_err(|e| AsyncError::Failed(format!("tcp connect: {e}")))?,
+                .map_err(|e| AsyncError::Failed(format!("direct connect: {e}")))?,
         };
         crate::net::negotiate(&mut sender, &mut receiver)
             .await
@@ -1245,7 +1249,7 @@ async fn run_tcp_negotiate(role: DirectRole, cancel: CancellationToken) -> Resul
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
-            peer_conn: None,
+            peer_conn,
             is_offerer,
         })
     };
@@ -1288,7 +1292,7 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
-                peer_conn: Some(peer_conn),
+                peer_conn,
                 is_offerer,
             })
         }

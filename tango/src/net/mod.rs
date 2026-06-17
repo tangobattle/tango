@@ -10,21 +10,24 @@
 //! the live battle loop) come in a later netplay round.
 
 pub mod datachannel;
+pub mod direct_rtc;
 pub mod protocol;
-pub mod tcp;
 
-/// Default port for the direct-TCP local-play transport (link-code
-/// commands `/host` and `/connect`). `24680` reads as a memorable
-/// even-step sequence and steers clear of every well-known service
-/// in the ephemeral range — easy to type, easy to recite over voice
-/// chat, unlikely to clash with anything already listening locally.
+/// Default UDP port for the signaling-free direct local-play transport
+/// (link-code commands `/host` and `/connect`; see
+/// [`direct_rtc`]). `24680` reads as a memorable even-step sequence and
+/// steers clear of every well-known service in the ephemeral range —
+/// easy to type, easy to recite over voice chat, unlikely to clash with
+/// anything already listening locally.
 pub const DEFAULT_LOCAL_PORT: u16 = 24680;
 
 /// One half of a peer connection's send side. Carries discrete,
 /// reliable, in-order byte messages — same contract as a WebRTC
 /// DataChannel configured `unordered: false, unreliable: false`. A
-/// TCP-backed impl must add its own length-prefix framing so each
-/// `send` round-trips as exactly one `recv` on the peer.
+/// stream-oriented impl would have to add its own length-prefix
+/// framing so each `send` round-trips as exactly one `recv` on the
+/// peer; the DataChannel transports preserve message boundaries
+/// natively.
 #[async_trait::async_trait]
 pub trait PacketSink: Send + Sync {
     async fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;

@@ -10,6 +10,20 @@ fn rustc_link_search(cmake: &cmake::Config, path: &str) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
+    // The vendored libdatachannel is a git submodule, so Cargo's default
+    // "rerun if any package file changed" detection doesn't track its sources.
+    // Watch the files we patch (and the bindgen header) explicitly so edits to
+    // the C/C++ side actually trigger a rebuild + bindings regeneration.
+    for path in [
+        "libdatachannel/include/rtc/rtc.h",
+        "libdatachannel/include/rtc/configuration.hpp",
+        "libdatachannel/src/capi.cpp",
+        "libdatachannel/src/peerconnection.cpp",
+        "libdatachannel/src/impl/icetransport.cpp",
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+
     let mut cmake = cmake::Config::new("libdatachannel");
     cmake.build_target("datachannel-static");
     cmake.out_dir(&out_dir);

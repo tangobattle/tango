@@ -3,4 +3,4 @@
 	url = https://github.com/tangobattle/mgba
 [submodule "libdatachannel/libdatachannel-sys/libdatachannel"]
 	path = libdatachannel/libdatachannel-sys/libdatachannel
-	url = https://github.com/paullouisageneau/libdatachannel
+	url = https://github.com/tangobattle/libdatachannel

@@ -7,7 +7,9 @@
 //! libdatachannel's own threads and we forward them onto Tokio channels.
 
 // Re-export the libdatachannel enums whose shape/variants we use verbatim.
-pub use libdatachannel::{GatheringState, Reliability, SdpType, State as ConnectionState, TransportPolicy};
+pub use libdatachannel::{
+    GatheringState, LocalDescriptionInit, Reliability, SdpType, State as ConnectionState, TransportPolicy,
+};
 
 /// An ICE candidate string emitted by the local agent. Tango does non-trickle
 /// ICE (it waits for gathering to complete and ships the full SDP), so nothing
@@ -31,6 +33,19 @@ pub struct SessionDescription {
 pub struct RtcConfig {
     pub ice_servers: Vec<String>,
     pub ice_transport_policy: TransportPolicy,
+    /// Skip the DTLS fingerprint check. Required by the signaling-free
+    /// direct transport, whose fabricated remote SDP carries a dummy
+    /// (non-matching) fingerprint.
+    pub disable_fingerprint_verification: bool,
+    /// Don't auto-generate an offer when a data channel is created. The
+    /// signaling-free direct transport needs this so its manual
+    /// `set_local_description_ex` (with pinned ICE creds) is what runs,
+    /// rather than an auto offer with random creds.
+    pub disable_auto_negotiation: bool,
+    /// Pin the local UDP port range, `(begin, end)`. The signaling-free
+    /// host sets `(port, port)` so the dialing peer knows where to reach
+    /// it. `None` lets libdatachannel pick.
+    pub port_range: Option<(u16, u16)>,
 }
 
 impl RtcConfig {
@@ -38,6 +53,7 @@ impl RtcConfig {
         Self {
             ice_servers: ice_servers.iter().map(|s| s.as_ref().to_owned()).collect(),
             ice_transport_policy: TransportPolicy::All,
+            ..Default::default()
         }
     }
 }
@@ -105,9 +121,14 @@ impl PeerConnection {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
 
+        let (port_range_begin, port_range_end) = config.port_range.unwrap_or((0, 0));
         let mut inner = libdatachannel::PeerConnection::new(libdatachannel::Configuration {
             ice_servers: config.ice_servers,
             ice_transport_policy: config.ice_transport_policy,
+            disable_fingerprint_verification: config.disable_fingerprint_verification,
+            disable_auto_negotiation: config.disable_auto_negotiation,
+            port_range_begin,
+            port_range_end,
             ..Default::default()
         })
         .map_err(error_to_io)?;
@@ -182,6 +203,20 @@ impl PeerConnection {
     pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), std::io::Error> {
         self.inner
             .set_local_description(Some(sdp_type))
+            .map_err(error_to_io)
+    }
+
+    /// As [`set_local_description`](Self::set_local_description), but with extra
+    /// per-description options (e.g. forced ICE ufrag/pwd). The signaling-free
+    /// direct transport pins the ICE creds so a peer can fabricate this side's
+    /// SDP without any exchange.
+    pub fn set_local_description_ex(
+        &mut self,
+        sdp_type: SdpType,
+        init: &LocalDescriptionInit,
+    ) -> Result<(), std::io::Error> {
+        self.inner
+            .set_local_description_ex(Some(sdp_type), init)
             .map_err(error_to_io)
     }
 
