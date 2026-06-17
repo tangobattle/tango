@@ -8,8 +8,7 @@ mod rpc;
 
 pub use rpc::activity;
 
-use crate::i18n::{self, LOCALES};
-use fluent_templates::Loader;
+use crate::i18n::{self, t_opt};
 
 const APP_ID: u64 = 974089681333534750;
 
@@ -28,9 +27,7 @@ pub fn make_game_info(
     let family = game.family_and_variant().0.to_string();
     // Dynamic lookup keyed by the gamedb family — bypass the
     // literal-only t! macro and hit the Fluent loader directly.
-    let mut title = LOCALES
-        .try_lookup(language, &format!("game-{}", family))
-        .unwrap_or_else(|| format!("⟦game-{family}⟧"));
+    let mut title = t_opt(language, &format!("game-{}", family)).unwrap_or_else(|| format!("⟦game-{family}⟧"));
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }

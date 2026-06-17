@@ -7,9 +7,8 @@
 //! replay code has one lookup point.
 
 use crate::bnlc;
-use crate::i18n::LOCALES;
+use crate::i18n::t_opt;
 use crate::rom::GameRef;
-use fluent_templates::Loader;
 use std::sync::LazyLock;
 
 mod bn1;
@@ -121,9 +120,8 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
     // `try_lookup` returns None on miss or format error (vs `lookup`
     // which panics on format errors and returns a sentinel on miss).
     let (family, variant) = game.family_and_variant();
-    LOCALES
-        .try_lookup(lang, &format!("game-{family}.variant-{variant}"))
-        .or_else(|| LOCALES.try_lookup(lang, &format!("game-{family}")))
+    t_opt(lang, &format!("game-{family}.variant-{variant}"))
+        .or_else(|| t_opt(lang, &format!("game-{family}")))
         .unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
@@ -132,9 +130,7 @@ pub fn display_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> St
 /// produce something identifying.
 pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
-    LOCALES
-        .try_lookup(lang, &format!("game-{family}.short"))
-        .unwrap_or_else(|| format!("{family} v{variant}"))
+    t_opt(lang, &format!("game-{family}.short")).unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// Short *variant* tag (e.g. "White", "Blue Moon") via
@@ -145,9 +141,7 @@ pub fn short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> Stri
 /// label stays concise in every case.
 pub fn variant_short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef) -> String {
     let (family, variant) = game.family_and_variant();
-    LOCALES
-        .try_lookup(lang, &format!("game-{family}.variant-{variant}-short"))
-        .unwrap_or_else(|| short_name(lang, game))
+    t_opt(lang, &format!("game-{family}.variant-{variant}-short")).unwrap_or_else(|| short_name(lang, game))
 }
 
 /// Localized match-type label for a (mode, subtype) pair (e.g.
@@ -159,8 +153,7 @@ pub fn match_type_name(
     match_type: u8,
     match_subtype: u8,
 ) -> String {
-    LOCALES
-        .try_lookup(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
+    t_opt(lang, &format!("game-{family}.match-type-{match_type}-{match_subtype}"))
         .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }
 
@@ -179,9 +172,7 @@ pub fn games_in_family(family: &str) -> impl Iterator<Item = GameRef> + '_ {
 /// to the raw family string. Mirrors the lookup `lobby_view` already
 /// uses for the opponent's game label.
 pub fn family_display_name(lang: &unic_langid::LanguageIdentifier, family: &str) -> String {
-    LOCALES
-        .try_lookup(lang, &format!("game-{family}"))
-        .unwrap_or_else(|| family.to_string())
+    t_opt(lang, &format!("game-{family}")).unwrap_or_else(|| family.to_string())
 }
 
 /// Resolve a (possibly persisted) family string to its `&'static`

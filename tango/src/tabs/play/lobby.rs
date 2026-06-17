@@ -15,7 +15,7 @@
 
 use crate::app::Scanners;
 use crate::game;
-use crate::i18n::t;
+use crate::i18n::{t, t_opt};
 use crate::net::protocol::Settings;
 use crate::netplay::{self, Phase};
 use crate::rom;
@@ -650,10 +650,14 @@ impl<'a> Lobby<'a> {
 enum Status<'a> {
     /// Terminal: the connection is gone. Carries the netplay error
     /// tag, sticky until the user cancels out via the leave button.
-    Failed { error: &'a str },
+    Failed {
+        error: &'a str,
+    },
     /// Dialing out. `direct` = a `/connect` dial straight at the peer,
     /// as opposed to the matchmaking server.
-    Connecting { direct: bool },
+    Connecting {
+        direct: bool,
+    },
     /// Connected to matchmaking; the peer hasn't shown up yet.
     WaitingForOpponent,
     Negotiating,
@@ -736,7 +740,10 @@ fn side_card(
     if settings.blind_setup {
         name_row = name_row.push(
             iced::widget::tooltip(
-                Icon::EyeOff.widget().size(TEXT_HEADING).style(widgets::danger_text_style),
+                Icon::EyeOff
+                    .widget()
+                    .size(TEXT_HEADING)
+                    .style(widgets::danger_text_style),
                 container(text(blind_tip).size(TEXT_CAPTION))
                     .padding(6)
                     .style(widgets::tooltip_chrome),
@@ -826,9 +833,7 @@ fn side_card_subline(lang: &LanguageIdentifier, settings: &Settings) -> String {
             let family = gi.family_and_variant.0.as_str();
             // Dynamic key (one per gamedb family) — bypass the
             // literal-only macro and hit the Fluent loader directly.
-            use fluent_templates::Loader;
-            crate::i18n::LOCALES
-                .try_lookup(lang, &format!("game-{family}"))
+            t_opt(lang, &format!("game-{family}"))
                 .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
         })
         .unwrap_or_else(|| t!(lang, "lobby-no-game"));

@@ -1,5 +1,5 @@
 use crate::app::Scanners;
-use crate::i18n::t;
+use crate::i18n::{t, t_opt};
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::widgets;
 use crate::{config, replays, save_view};
@@ -1391,12 +1391,7 @@ fn export_panel<'a>(
 /// how the lobby renders the game line. Falls back to "{family}
 /// v{variant}" for unrecognized families.
 fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    // Dynamic key (one per gamedb family) — bypass the literal-only
-    // macro and hit the Fluent loader directly.
-    use fluent_templates::Loader;
-    crate::i18n::LOCALES
-        .try_lookup(lang, &format!("game-{family}"))
-        .unwrap_or_else(|| format!("{family} v{variant}"))
+    t_opt(lang, &format!("game-{family}")).unwrap_or_else(|| format!("{family} v{variant}"))
 }
 
 /// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60

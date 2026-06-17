@@ -28,7 +28,7 @@ pub const SUPPORTED_LANGS: &[unic_langid::LanguageIdentifier] = &[
 ];
 
 fluent_templates::static_loader! {
-    pub static LOCALES = {
+    static LOCALES = {
         locales: "./locales",
         fallback_language: "en-US",
     };

@@ -11,7 +11,7 @@
 mod lobby;
 
 use crate::app::Scanners;
-use crate::i18n::t;
+use crate::i18n::{t, t_opt};
 use crate::loadout::{self, Loadout};
 use crate::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::widgets;
@@ -1562,18 +1562,13 @@ pub fn creation_template(
 /// carries the right label for it.
 fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> String {
     let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-    // Dynamic key (one per family × template name) — bypass the
-    // literal-only macro and hit the Fluent loader directly.
-    use fluent_templates::Loader;
-    crate::i18n::LOCALES
-        .try_lookup(lang, &format!("game-{family}.save-{key_suffix}"))
-        .unwrap_or_else(|| {
-            if raw.is_empty() {
-                t!(lang, "save-template-default")
-            } else {
-                raw.to_string()
-            }
-        })
+    t_opt(lang, &format!("game-{family}.save-{key_suffix}")).unwrap_or_else(|| {
+        if raw.is_empty() {
+            t!(lang, "save-template-default")
+        } else {
+            raw.to_string()
+        }
+    })
 }
 
 /// One entry in the "new save" template pick_list: a concrete variant
