@@ -45,6 +45,8 @@ mod theme;
 
 use app::App;
 
+use crate::tabs::settings::MINIMUM_RESOLUTION;
+
 // Bundled fonts. We reuse the main app's font files (a few MB total)
 // so JP / SC / TC scripts render instead of tofuing out, and so the
 // monospace chip-code badge matches the rest of the UI. cosmic-text
@@ -284,7 +286,8 @@ fn run_app() -> iced::Result {
     // This double-load keeps the window-size restore self-contained
     // in main without threading a Config handle into App::new.
     let geom_cfg = config::Config::load_or_create();
-    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1280.0, 720.0));
+    let (min_w, min_h) = MINIMUM_RESOLUTION;
+    let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((min_w as f32, min_h as f32));
     // Only restore the position for a fullscreen relaunch, where the
     // saved value is the last fullscreen monitor's origin — this keeps
     // a fullscreen Tango on its monitor across launches. Windowed
@@ -307,7 +310,7 @@ fn run_app() -> iced::Result {
             // collapsing on top of one another. Initial size +
             // maximized state come from the last shutdown.
             size: iced::Size::new(start_w, start_h),
-            min_size: Some(iced::Size::new(1280.0, 720.0)),
+            min_size: Some(iced::Size::new(min_w as f32, min_h as f32)),
             position: start_position,
             maximized: geom_cfg.last_window_maximized,
             fullscreen: geom_cfg.fullscreen,

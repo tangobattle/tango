@@ -480,6 +480,7 @@ fn settings_audio<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) 
 /// `config.last_window_size`. Skips anything smaller than the
 /// min_size enforced in `main.rs` (1280×720).
 const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
+    (960, 720),
     (1280, 720),
     (1280, 800),
     (1366, 768),
@@ -490,6 +491,8 @@ const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
     (2560, 1440),
     (3840, 2160),
 ];
+
+pub const MINIMUM_RESOLUTION: (u32, u32) = STANDARD_RESOLUTIONS[0];
 
 /// A window resolution as a pick_list [`Choice`]. PartialEq is exact
 /// f32 — fine since the values come straight from
