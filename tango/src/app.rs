@@ -861,13 +861,20 @@ impl App {
                             .map(move |maximized| Message::WindowMaximizedQueried { size, maximized });
                     }
                     iced::window::Event::Moved(point) => {
+                        // Only remember position while fullscreen.
                         // Entering fullscreen parks the window at its
-                        // monitor's origin and fires Moved — so the
-                        // persisted value at quit time identifies the
-                        // fullscreen monitor for the next launch (see
-                        // Config::last_window_position).
-                        self.config.last_window_position = Some((point.x, point.y));
-                        self.persist_config();
+                        // monitor's origin and fires Moved (with
+                        // fullscreen already set, see C::Fullscreen) —
+                        // so the persisted value identifies the
+                        // fullscreen monitor for the next launch.
+                        // Windowed positions are deliberately not
+                        // persisted: restoring an exact x/y is janky on
+                        // multi-monitor setups (saved coords can land
+                        // off-screen or on the wrong display).
+                        if self.config.fullscreen {
+                            self.config.last_window_position = Some((point.x, point.y));
+                            self.persist_config();
+                        }
                     }
                     _ => {}
                 }

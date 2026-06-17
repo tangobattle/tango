@@ -201,12 +201,14 @@ pub struct Config {
     /// `iced::window::Settings::maximized` at startup.
     #[serde(default)]
     pub last_window_maximized: bool,
-    /// Last window position (logical pixels), updated on every Moved
-    /// event and restored as the startup position — keeps the window
-    /// (and in particular its monitor) where the user last had it.
-    /// While fullscreen the window sits at its monitor's origin, so
-    /// restoring the position before the fullscreen mode kicks in
-    /// also puts a fullscreen relaunch back on the right monitor.
+    /// Last *fullscreen* window position (logical pixels) — the
+    /// monitor origin the window parks at while fullscreen. Updated on
+    /// Moved events only while fullscreen, and restored as the startup
+    /// position only for a fullscreen relaunch, so it puts a fullscreen
+    /// Tango back on the right monitor. Windowed positions are not
+    /// persisted: restoring an exact x/y is janky on multi-monitor
+    /// setups (saved coords can land off-screen or on the wrong
+    /// display).
     #[serde(default)]
     pub last_window_position: Option<(f32, f32)>,
     /// Whether the app should launch (and stay) in fullscreen. The

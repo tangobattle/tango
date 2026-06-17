@@ -285,14 +285,14 @@ fn run_app() -> iced::Result {
     // in main without threading a Config handle into App::new.
     let geom_cfg = config::Config::load_or_create();
     let (start_w, start_h) = geom_cfg.last_window_size.unwrap_or((1280.0, 720.0));
-    // Reopen where the app last sat, so multi-monitor setups keep
-    // Tango on its monitor across launches. Windowed restores the
-    // exact position; fullscreen effectively restores the monitor
-    // (while fullscreen the window sits at that monitor's origin,
-    // and Moved events keep the position persisted).
-    let start_position = match geom_cfg.last_window_position {
-        Some((x, y)) => iced::window::Position::Specific(iced::Point::new(x, y)),
-        None => iced::window::Position::default(),
+    // Only restore the position for a fullscreen relaunch, where the
+    // saved value is the last fullscreen monitor's origin — this keeps
+    // a fullscreen Tango on its monitor across launches. Windowed
+    // launches let the OS place the window (centered), since restoring
+    // an exact x/y is janky on multi-monitor setups.
+    let start_position = match (geom_cfg.fullscreen, geom_cfg.last_window_position) {
+        (true, Some((x, y))) => iced::window::Position::Specific(iced::Point::new(x, y)),
+        _ => iced::window::Position::default(),
     };
 
     iced::application(App::new, App::update, App::view)
