@@ -5672,7 +5672,7 @@ dependencies = [
 
 [[package]]
 name = "tango"
-version = "5.0.33"
+version = "5.0.34"
 dependencies = [
  "anyhow",
  "arboard",
