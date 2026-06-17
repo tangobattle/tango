@@ -76,10 +76,7 @@ impl SdpType {
 fn get_string(f: impl Fn(*mut i8, i32) -> i32) -> Result<std::ffi::CString, Error> {
     let n = check_error(f(std::ptr::null_mut(), 0))? as usize;
     let mut buf = vec![0u8; n as usize];
-    assert_eq!(
-        f(buf.as_mut_ptr() as *mut _, buf.len() as i32),
-        buf.len() as i32
-    );
+    assert_eq!(f(buf.as_mut_ptr() as *mut _, buf.len() as i32), buf.len() as i32);
     Ok(std::ffi::CString::from_vec_with_nul(buf).unwrap())
 }
 
@@ -169,10 +166,7 @@ struct PeerConnectionUserData {
 fn init_logger() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| unsafe {
-        extern "C" fn log_cb(
-            level: libdatachannel_sys::rtcLogLevel,
-            message: *const std::ffi::c_char,
-        ) {
+        extern "C" fn log_cb(level: libdatachannel_sys::rtcLogLevel, message: *const std::ffi::c_char) {
             let message = unsafe { std::ffi::CStr::from_ptr(message) }.to_string_lossy();
             log::log!(
                 match level {
@@ -191,10 +185,7 @@ fn init_logger() {
             );
         }
 
-        libdatachannel_sys::rtcInitLogger(
-            libdatachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE,
-            Some(log_cb),
-        );
+        libdatachannel_sys::rtcInitLogger(libdatachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE, Some(log_cb));
     });
 }
 
@@ -234,15 +225,9 @@ impl PeerConnection {
             .take()
             .map(|s| std::ffi::CString::new(s).unwrap());
 
-        let raw_key_pem_file = config
-            .key_pem_file
-            .take()
-            .map(|s| std::ffi::CString::new(s).unwrap());
+        let raw_key_pem_file = config.key_pem_file.take().map(|s| std::ffi::CString::new(s).unwrap());
 
-        let raw_key_pem_pass = config
-            .key_pem_pass
-            .take()
-            .map(|s| std::ffi::CString::new(s).unwrap());
+        let raw_key_pem_pass = config.key_pem_pass.take().map(|s| std::ffi::CString::new(s).unwrap());
 
         let raw_config = libdatachannel_sys::rtcConfiguration {
             iceServers: if num_ice_servers > 0 {
@@ -283,9 +268,7 @@ impl PeerConnection {
             maxMessageSize: config.max_message_size,
             disableFingerprintVerification: config.disable_fingerprint_verification,
         };
-        let id = check_error(unsafe {
-            libdatachannel_sys::rtcCreatePeerConnection(&raw_config as *const _)
-        })?;
+        let id = check_error(unsafe { libdatachannel_sys::rtcCreatePeerConnection(&raw_config as *const _) })?;
         let mut userdata: Box<PeerConnectionUserData> = Default::default();
 
         unsafe {
@@ -299,10 +282,7 @@ impl PeerConnection {
                 if let Some(cb) = &ud.on_local_description {
                     cb(
                         unsafe { std::ffi::CStr::from_ptr(sdp) }.to_str().unwrap(),
-                        SdpType::from_str(
-                            unsafe { std::ffi::CStr::from_ptr(type_) }.to_str().unwrap(),
-                        )
-                        .unwrap(),
+                        SdpType::from_str(unsafe { std::ffi::CStr::from_ptr(type_) }.to_str().unwrap()).unwrap(),
                     );
                 }
             }
@@ -349,18 +329,11 @@ impl PeerConnection {
                     cb(GatheringState::from_u32(state as _).unwrap());
                 }
             }
-            libdatachannel_sys::rtcSetGatheringStateChangeCallback(
-                id,
-                Some(gathering_state_change_callback),
-            )
+            libdatachannel_sys::rtcSetGatheringStateChangeCallback(id, Some(gathering_state_change_callback))
         };
 
         unsafe {
-            extern "C" fn data_channel_callback(
-                _id: i32,
-                id: i32,
-                userdata: *mut std::ffi::c_void,
-            ) {
+            extern "C" fn data_channel_callback(_id: i32, id: i32, userdata: *mut std::ffi::c_void) {
                 let ud = unsafe { &*(userdata as *mut PeerConnectionUserData) };
                 if let Some(cb) = &ud.on_data_channel {
                     cb(DataChannel::from_raw(id))
@@ -370,10 +343,7 @@ impl PeerConnection {
         };
 
         unsafe {
-            libdatachannel_sys::rtcSetUserPointer(
-                id,
-                userdata.as_mut() as *mut PeerConnectionUserData as *mut _,
-            );
+            libdatachannel_sys::rtcSetUserPointer(id, userdata.as_mut() as *mut PeerConnectionUserData as *mut _);
         }
 
         Ok(Self { id, userdata })
@@ -384,50 +354,39 @@ impl PeerConnection {
         Ok(())
     }
 
-    pub fn set_local_description(&self, type_: Option<SdpType>) -> Result<(), Error> {
-        let raw_typ = type_.map(|v| std::ffi::CString::new(v.as_str()).unwrap());
-        check_error(unsafe {
-            libdatachannel_sys::rtcSetLocalDescription(
-                self.id,
-                raw_typ
-                    .as_ref()
-                    .map(|v| v.as_ptr())
-                    .unwrap_or(std::ptr::null_mut()),
-            )
-        })?;
-        Ok(())
-    }
-
-    /// As [`set_local_description`](Self::set_local_description), but with extra
-    /// per-description options (forced ICE ufrag/pwd). Mirrors the C API's
-    /// `rtcSetLocalDescriptionEx`.
-    pub fn set_local_description_ex(
+    pub fn set_local_description(
         &self,
         type_: Option<SdpType>,
-        init: &LocalDescriptionInit,
+        init: Option<&LocalDescriptionInit>,
     ) -> Result<(), Error> {
         let raw_typ = type_.map(|v| std::ffi::CString::new(v.as_str()).unwrap());
-        let raw_ufrag = init
-            .ice_ufrag
-            .as_ref()
-            .map(|s| std::ffi::CString::new(s.as_str()).unwrap());
-        let raw_pwd = init
-            .ice_pwd
-            .as_ref()
-            .map(|s| std::ffi::CString::new(s.as_str()).unwrap());
-        let raw_init = libdatachannel_sys::rtcLocalDescriptionInit {
-            iceUfrag: raw_ufrag.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
-            icePwd: raw_pwd.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
-        };
-        check_error(unsafe {
-            libdatachannel_sys::rtcSetLocalDescriptionEx(
-                self.id,
-                raw_typ
-                    .as_ref()
-                    .map(|v| v.as_ptr())
-                    .unwrap_or(std::ptr::null_mut()),
-                &raw_init as *const _,
-            )
+        check_error(if let Some(init) = init {
+            let raw_ufrag = init
+                .ice_ufrag
+                .as_ref()
+                .map(|s| std::ffi::CString::new(s.as_str()).unwrap());
+            let raw_pwd = init
+                .ice_pwd
+                .as_ref()
+                .map(|s| std::ffi::CString::new(s.as_str()).unwrap());
+            let raw_init = libdatachannel_sys::rtcLocalDescriptionInit {
+                iceUfrag: raw_ufrag.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+                icePwd: raw_pwd.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+            };
+            unsafe {
+                libdatachannel_sys::rtcSetLocalDescriptionEx(
+                    self.id,
+                    raw_typ.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null_mut()),
+                    &raw_init as *const _,
+                )
+            }
+        } else {
+            unsafe {
+                libdatachannel_sys::rtcSetLocalDescription(
+                    self.id,
+                    raw_typ.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null_mut()),
+                )
+            }
         })?;
         Ok(())
     }
@@ -452,61 +411,51 @@ impl PeerConnection {
     pub fn local_description(&self) -> Result<Description, Error> {
         Ok(Description {
             type_: SdpType::from_str(
-                get_string(|buf, n| unsafe {
-                    libdatachannel_sys::rtcGetLocalDescriptionType(self.id, buf, n)
-                })?
-                .to_str()
-                .unwrap(),
+                get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetLocalDescriptionType(self.id, buf, n) })?
+                    .to_str()
+                    .unwrap(),
             )
             .unwrap(),
-            sdp: get_string(|buf, n| unsafe {
-                libdatachannel_sys::rtcGetLocalDescription(self.id, buf, n)
-            })?
-            .to_str()
-            .unwrap()
-            .to_string(),
+            sdp: get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetLocalDescription(self.id, buf, n) })?
+                .to_str()
+                .unwrap()
+                .to_string(),
         })
     }
 
     pub fn remote_description(&self) -> Result<Description, Error> {
         Ok(Description {
             type_: SdpType::from_str(
-                get_string(|buf, n| unsafe {
-                    libdatachannel_sys::rtcGetRemoteDescriptionType(self.id, buf, n)
-                })?
-                .to_str()
-                .unwrap(),
+                get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetRemoteDescriptionType(self.id, buf, n) })?
+                    .to_str()
+                    .unwrap(),
             )
             .unwrap(),
-            sdp: get_string(|buf, n| unsafe {
-                libdatachannel_sys::rtcGetRemoteDescription(self.id, buf, n)
-            })?
-            .to_str()
-            .unwrap()
-            .to_string(),
+            sdp: get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetRemoteDescription(self.id, buf, n) })?
+                .to_str()
+                .unwrap()
+                .to_string(),
         })
     }
 
     pub fn local_address(&self) -> Result<std::net::SocketAddr, Error> {
         Ok(
-            get_string(|buf, n| unsafe {
-                libdatachannel_sys::rtcGetLocalAddress(self.id, buf, n)
-            })?
-            .to_str()
-            .unwrap()
-            .parse()
-            .unwrap(),
+            get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetLocalAddress(self.id, buf, n) })?
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap(),
         )
     }
 
     pub fn remote_address(&self) -> Result<std::net::SocketAddr, Error> {
-        Ok(get_string(|buf, n| unsafe {
-            libdatachannel_sys::rtcGetRemoteAddress(self.id, buf, n)
-        })?
-        .to_str()
-        .unwrap()
-        .parse()
-        .unwrap())
+        Ok(
+            get_string(|buf, n| unsafe { libdatachannel_sys::rtcGetRemoteAddress(self.id, buf, n) })?
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap(),
+        )
     }
 
     /// The selected ICE candidate pair as raw candidate strings,
@@ -540,11 +489,7 @@ impl PeerConnection {
         Ok(check_error(unsafe { libdatachannel_sys::rtcGetRemoteMaxMessageSize(self.id) })? as u32)
     }
 
-    pub fn create_data_channel(
-        &self,
-        label: &str,
-        init: DataChannelOptions,
-    ) -> Result<DataChannel, Error> {
+    pub fn create_data_channel(&self, label: &str, init: DataChannelOptions) -> Result<DataChannel, Error> {
         let raw_label = std::ffi::CString::new(label).unwrap();
 
         let raw_protocol = std::ffi::CString::new(init.protocol).unwrap();
@@ -563,20 +508,13 @@ impl PeerConnection {
         };
 
         let id = check_error(unsafe {
-            libdatachannel_sys::rtcCreateDataChannelEx(
-                self.id,
-                raw_label.as_ptr(),
-                &raw_data_channel_init as *const _,
-            )
+            libdatachannel_sys::rtcCreateDataChannelEx(self.id, raw_label.as_ptr(), &raw_data_channel_init as *const _)
         })?;
 
         Ok(DataChannel::from_raw(id))
     }
 
-    pub fn set_on_local_description(
-        &mut self,
-        cb: Option<impl Fn(&str, SdpType) + Send + Sync + 'static>,
-    ) {
+    pub fn set_on_local_description(&mut self, cb: Option<impl Fn(&str, SdpType) + Send + Sync + 'static>) {
         self.userdata.on_local_description = cb.map(|f| Box::new(f) as _);
     }
 
@@ -588,17 +526,11 @@ impl PeerConnection {
         self.userdata.on_state_change = cb.map(|f| Box::new(f) as _);
     }
 
-    pub fn set_on_gathering_state_change(
-        &mut self,
-        cb: Option<impl Fn(GatheringState) + Send + Sync + 'static>,
-    ) {
+    pub fn set_on_gathering_state_change(&mut self, cb: Option<impl Fn(GatheringState) + Send + Sync + 'static>) {
         self.userdata.on_gathering_state_change = cb.map(|f| Box::new(f) as _);
     }
 
-    pub fn set_on_data_channel(
-        &mut self,
-        cb: Option<impl Fn(DataChannel) + Send + Sync + 'static>,
-    ) {
+    pub fn set_on_data_channel(&mut self, cb: Option<impl Fn(DataChannel) + Send + Sync + 'static>) {
         self.userdata.on_data_channel = cb.map(|f| Box::new(f) as _);
     }
 }
@@ -654,11 +586,7 @@ impl DataChannel {
         };
 
         unsafe {
-            extern "C" fn error_callback(
-                _id: i32,
-                error: *const std::ffi::c_char,
-                userdata: *mut std::ffi::c_void,
-            ) {
+            extern "C" fn error_callback(_id: i32, error: *const std::ffi::c_char, userdata: *mut std::ffi::c_void) {
                 let ud = unsafe { &*(userdata as *mut DataChannelUserData) };
                 if let Some(cb) = &ud.on_error {
                     cb(&unsafe { std::ffi::CStr::from_ptr(error) }.to_str().unwrap());
@@ -703,10 +631,7 @@ impl DataChannel {
         };
 
         unsafe {
-            libdatachannel_sys::rtcSetUserPointer(
-                id,
-                userdata.as_mut() as *mut DataChannelUserData as *mut _,
-            );
+            libdatachannel_sys::rtcSetUserPointer(id, userdata.as_mut() as *mut DataChannelUserData as *mut _);
         }
 
         DataChannel { id, userdata }
@@ -741,9 +666,7 @@ impl DataChannel {
     }
 
     pub fn set_buffered_amount_low_threshold(&self, amount: usize) -> Result<(), Error> {
-        check_error(unsafe {
-            libdatachannel_sys::rtcSetBufferedAmountLowThreshold(self.id, amount as i32)
-        })?;
+        check_error(unsafe { libdatachannel_sys::rtcSetBufferedAmountLowThreshold(self.id, amount as i32) })?;
         Ok(())
     }
 
@@ -810,8 +733,7 @@ mod tests {
     #[test]
     pub fn test_peer_connection_communicate() {
         let mut pc1 = PeerConnection::new(Default::default()).unwrap();
-        let pc1_gathered =
-            std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let pc1_gathered = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
         pc1.set_on_gathering_state_change(Some({
             let pc1_gathered = std::sync::Arc::clone(&pc1_gathered);
             move |ice_gathering_state| {
@@ -833,8 +755,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let dc1_open =
-            std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let dc1_open = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
         dc1.set_on_open(Some({
             let dc1_open = std::sync::Arc::clone(&dc1_open);
             move || {
@@ -843,15 +764,14 @@ mod tests {
                 condvar.notify_one();
             }
         }));
-        pc1.set_local_description(Some(SdpType::Offer)).unwrap();
+        pc1.set_local_description(Some(SdpType::Offer), None).unwrap();
         let _pc1_gathered_guard = pc1_gathered
             .1
             .wait_while(pc1_gathered.0.lock().unwrap(), |ready| !*ready)
             .unwrap();
 
         let mut pc2 = PeerConnection::new(Default::default()).unwrap();
-        let pc2_gathered =
-            std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let pc2_gathered = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
         pc2.set_on_gathering_state_change(Some({
             let pc2_gathered = std::sync::Arc::clone(&pc2_gathered);
             move |ice_gathering_state| {
@@ -873,8 +793,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let dc2_open =
-            std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let dc2_open = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
         dc2.set_on_open(Some({
             let dc2_open = std::sync::Arc::clone(&dc2_open);
             move || {
@@ -894,10 +813,8 @@ mod tests {
             tx2.send(msg.to_vec()).unwrap();
         }));
 
-        pc2.set_remote_description(&pc1.local_description().unwrap())
-            .unwrap();
-        pc1.set_remote_description(&pc2.local_description().unwrap())
-            .unwrap();
+        pc2.set_remote_description(&pc1.local_description().unwrap()).unwrap();
+        pc1.set_remote_description(&pc2.local_description().unwrap()).unwrap();
 
         let _pc2_gathered_guard = pc2_gathered
             .1

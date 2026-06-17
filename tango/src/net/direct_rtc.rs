@@ -115,12 +115,12 @@ pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver, PeerConnectio
 
     let (sender, receiver, mut pc) = open_channel(pc);
 
-    pc.set_local_description_ex(
+    pc.set_local_description(
         SdpType::Offer,
-        &LocalDescriptionInit {
+        Some(&LocalDescriptionInit {
             ice_ufrag: Some(UFRAG_HOST.to_string()),
             ice_pwd: Some(ICE_PWD.to_string()),
-        },
+        }),
     )?;
     // The dialer answers as the DTLS client (`active`); no candidate — we
     // learn its address from the incoming connectivity check.
@@ -153,12 +153,12 @@ pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver, PeerConne
     // The host offers as `actpass`; we become the DTLS client by answering
     // `active`. Set the remote offer first, then generate our answer.
     pc.set_remote_description(fabricate_sdp(SdpType::Offer, "actpass", UFRAG_HOST, Some(&candidate)))?;
-    pc.set_local_description_ex(
+    pc.set_local_description(
         SdpType::Answer,
-        &LocalDescriptionInit {
+        Some(&LocalDescriptionInit {
             ice_ufrag: Some(UFRAG_CLIENT.to_string()),
             ice_pwd: Some(ICE_PWD.to_string()),
-        },
+        }),
     )?;
 
     Ok((sender, receiver, pc))

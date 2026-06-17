@@ -350,7 +350,7 @@ async fn wait_for_exchange(
 
                 // From here on the peer has committed to this offer: any failure
                 // is fatal, never a reconnect.
-                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
+                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback, None)?;
                 peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                     sdp_type: datachannel_wrapper::SdpType::Offer,
                     sdp: offer.sdp.clone(),

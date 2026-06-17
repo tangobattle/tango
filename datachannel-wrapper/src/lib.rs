@@ -200,23 +200,13 @@ impl PeerConnection {
         self.data_channel_rx.recv().await
     }
 
-    pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<(), std::io::Error> {
-        self.inner
-            .set_local_description(Some(sdp_type))
-            .map_err(error_to_io)
-    }
-
-    /// As [`set_local_description`](Self::set_local_description), but with extra
-    /// per-description options (e.g. forced ICE ufrag/pwd). The signaling-free
-    /// direct transport pins the ICE creds so a peer can fabricate this side's
-    /// SDP without any exchange.
-    pub fn set_local_description_ex(
+    pub fn set_local_description(
         &mut self,
         sdp_type: SdpType,
-        init: &LocalDescriptionInit,
+        init: Option<&LocalDescriptionInit>,
     ) -> Result<(), std::io::Error> {
         self.inner
-            .set_local_description_ex(Some(sdp_type), init)
+            .set_local_description(Some(sdp_type), init)
             .map_err(error_to_io)
     }
 
