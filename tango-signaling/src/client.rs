@@ -27,10 +27,17 @@ const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_sec
 /// consumes its `init`).
 pub type ChannelSpec = (&'static str, datachannel_wrapper::DataChannelInit);
 
-/// Build a fresh peer connection and create every requested channel on it
-/// (before gathering, so they're all part of the initial association), then
-/// wait for ICE gathering to complete. Returns the channels in the same order
-/// as `channels`.
+/// Build a fresh peer connection, create every requested channel on it, then
+/// generate the offer and wait for ICE gathering to complete. Returns the
+/// channels in the same order as `channels`.
+///
+/// Auto-negotiation is disabled and the offer is driven explicitly *after* all
+/// channels exist: relying on auto-negotiation here raced the channel creation,
+/// because creating the first channel kicks off offer generation + gathering on
+/// libdatachannel's own thread, and a second `create_data_channel` landing
+/// mid-negotiation made the captured `local_description` intermittently
+/// inconsistent. One explicit `set_local_description` after both channels are
+/// registered is deterministic (and mirrors the direct transport's bring-up).
 async fn create_data_channels(
     rtc_config: datachannel_wrapper::RtcConfig,
     channels: &[ChannelSpec],
@@ -48,6 +55,10 @@ async fn create_data_channels(
         .iter()
         .map(|(label, init)| peer_conn.create_data_channel(label, init.clone()))
         .collect::<Result<Vec<_>, _>>()?;
+
+    // All channels registered — now drive the single offer that puts them all
+    // in the initial association and starts gathering.
+    peer_conn.set_local_description(datachannel_wrapper::SdpType::Offer, None)?;
 
     loop {
         if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
@@ -115,7 +126,13 @@ fn is_transient(e: &Error) -> bool {
 
 pub type Connecting = futures_util::future::BoxFuture<
     'static,
-    Result<(Vec<datachannel_wrapper::DataChannel>, datachannel_wrapper::PeerConnection), Error>,
+    Result<
+        (
+            Vec<datachannel_wrapper::DataChannel>,
+            datachannel_wrapper::PeerConnection,
+        ),
+        Error,
+    >,
 >;
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
@@ -234,6 +251,7 @@ async fn establish(
     if use_relay == Some(true) {
         rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
     }
+    rtc_config.disable_auto_negotiation = true;
     let (dcs, event_rx, peer_conn) = create_data_channels(rtc_config, channels).await?;
 
     signaling_stream
@@ -360,6 +378,11 @@ async fn wait_for_exchange(
                     sdp_type: datachannel_wrapper::SdpType::Offer,
                     sdp: offer.sdp.clone(),
                 })?;
+                // Auto-negotiation is off (see `create_data_channels`), so the
+                // answer is generated explicitly rather than implied by applying
+                // the remote offer — otherwise `local_description` below would be
+                // read before the answer existed.
+                peer_conn.set_local_description(datachannel_wrapper::SdpType::Answer, None)?;
 
                 let local_description = peer_conn.local_description().unwrap();
                 signaling_stream
@@ -430,7 +453,16 @@ pub async fn connect(
 
                     let mut backoff = MIN_RECONNECT_BACKOFF;
                     loop {
-                        match establish(&addr, &session_id, use_relay, protocol_version, &connection_id, &channels).await {
+                        match establish(
+                            &addr,
+                            &session_id,
+                            use_relay,
+                            protocol_version,
+                            &connection_id,
+                            &channels,
+                        )
+                        .await
+                        {
                             Ok((s, d, e, p)) => {
                                 signaling_stream = s;
                                 dcs = d;
