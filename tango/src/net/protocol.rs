@@ -42,20 +42,10 @@ pub enum Packet {
     Uncommit(Uncommit),
     Chunk(Chunk),
     StartMatch(StartMatch),
-
-    // In match.
-    Input(tango_pvp::net::Input),
-    /// Sent by each side from its local round-ending trap. The
-    /// receiver bumps its `peer_round_idx`; subsequent Inputs are
-    /// tagged with the new round id so `try_attach_remote_input`
-    /// can drop stale tails from the just-finished round and hold
-    /// inputs from the next round until the local side catches up.
-    EndOfRound(EndOfRound),
-    /// Sent once by each side when its local `match_end_ret`
-    /// hook fires. The peer waits for this before tearing down
-    /// the connection so the lagging side can finish writing its
-    /// replay. See `PvpSession::is_ended` for the wait logic.
-    EndOfMatch(EndOfMatch),
+    // The live match's per-frame Input / EndOfRound / EndOfMatch traffic no
+    // longer rides this reliable channel — it's the data plane's job, carried
+    // as `data::wire` frames/markers over a separate unreliable channel (see
+    // [`crate::net::data`]). Only lobby/handshake packets remain here.
 }
 
 impl Packet {
@@ -120,12 +110,6 @@ pub struct Settings {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct StartMatch {}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct EndOfRound {}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct EndOfMatch {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {

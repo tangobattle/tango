@@ -23,6 +23,13 @@ pub use tango_pvp::battle::EXPECTED_FPS;
 /// enough that a crashed peer doesn't pin the UI for long.
 const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Retransmit-heartbeat cadence for the in-match channel — one emulator frame
+/// at [`EXPECTED_FPS`]. Keeps the unacked redundancy window flowing while the
+/// local sim is throttled or stalled, so loss recovery isn't coupled to the
+/// frame rate (see [`crate::net::InMatchTx`]).
+const IN_MATCH_HEARTBEAT: std::time::Duration =
+    std::time::Duration::from_nanos((1_000_000_000.0 / EXPECTED_FPS as f64) as u64);
+
 /// The latching end-of-match signals, grouped so the teardown policy
 /// lives in one place instead of four loose atomics on the session.
 ///
@@ -33,8 +40,9 @@ const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 /// frame_callback each keep one and raise their own signal.
 #[derive(Clone, Default)]
 struct EndState {
-    /// Remote's in-game match-end handshake (`Packet::EndOfMatch`) arrived
-    /// — raised by the net receive task ([`crate::net::PvpReceiver`]).
+    /// Remote's in-game match-end handshake (the in-band `data::wire`
+    /// `EndOfMatch` marker) arrived — raised by the net receive task
+    /// ([`crate::net::PvpReceiver`]).
     /// `is_ended` honors it so the lagging side gets time to write its
     /// replay tail before we drop the data channel.
     remote_ended: Arc<AtomicBool>,
@@ -85,9 +93,14 @@ pub struct PvpSession {
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
     latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
     /// The peer connection, kept alive so it outlives the data
-    /// channel. Both transports (matchmaking WebRTC and the
+    /// channels. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
     _peer_conn: datachannel_wrapper::PeerConnection,
+    /// Reliable lobby channel's sender, parked for the match's lifetime. Idle
+    /// in-match (all traffic is on the unreliable channel), but held open so
+    /// its close doesn't surface as a spurious disconnect on the peer's
+    /// reliable-channel watch.
+    _lobby_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// Kept alive so the background `match_.run(receiver)` task
     /// has a referent. Cleared by that task when it exits. The UI
     /// also reads this each tick to scrape the current round's
@@ -150,12 +163,15 @@ impl PvpSession {
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
-        // Wait for the lobby loop to drop the data-channel
-        // receiver into the handoff slot (it does this on
-        // cancel-exit, which take_pre_match has already
-        // triggered). Polling is fine — the loop typically
-        // returns within a few ms; cap at 5 s of safety.
-        let receiver = drain_receiver(&pre_match.receiver_slot).await?;
+        // The unreliable in-match channel (parked at negotiate time) carries
+        // the live match's `data::wire` datagrams. The reliable channel's
+        // receiver arrives via the lobby-loop cancel-exit slot; the session
+        // only watches it for the disconnect signal (a datagram channel has no
+        // clean close event). Polling the slots is fine — the lobby loop
+        // typically returns within a few ms; cap at 5 s of safety.
+        let in_match_receiver = drain_receiver(&pre_match.in_match_receiver_slot).await?;
+        let reliable_receiver = drain_receiver(&pre_match.reliable_receiver_slot).await?;
+        let in_match = crate::net::InMatchTx::new(pre_match.in_match_sender.clone(), IN_MATCH_HEARTBEAT);
 
         // Parse the peer's raw SRAM into a Save object. Needed
         // by the Shadow constructor (its primary trap needs
@@ -283,7 +299,7 @@ impl PvpSession {
             local_rom.as_ref().clone(),
             local_hooks,
             thread.handle(),
-            Box::new(crate::net::PvpSender::new(pre_match.sender.clone())),
+            Box::new(crate::net::PvpSender::new(in_match.clone())),
             cancellation_token.clone(),
             rng,
             shadow,
@@ -306,8 +322,8 @@ impl PvpSession {
             let frame_notify_for_disc = frame_notify.clone();
             let latency_counter_for_disc = latency_counter.clone();
             let receiver = Box::new(crate::net::PvpReceiver::new(
-                receiver,
-                pre_match.sender.clone(),
+                in_match_receiver,
+                in_match.clone(),
                 latency_counter.clone(),
                 end.remote_ended.clone(),
                 frame_notify.clone(),
@@ -358,6 +374,32 @@ impl PvpSession {
             });
         }
 
+        // Disconnect watch. The unreliable in-match channel has no clean close
+        // event, so a vanished peer is detected via the reliable channel's EOF
+        // instead. Nothing flows on it mid-match, so any result means the peer
+        // is gone: raise the flag and cancel so `Match::run` (which may be
+        // parked on a datagram recv that will never complete) unblocks, then
+        // wake the session to re-check `is_ended`.
+        {
+            let end = end.clone();
+            let cancel = cancellation_token.clone();
+            let frame_notify = frame_notify.clone();
+            let mut reliable_receiver = reliable_receiver;
+            tokio::task::spawn(async move {
+                tokio::select! {
+                    _ = cancel.cancelled() => {}
+                    _ = async {
+                        // Drain (ignoring any stray late traffic) until it errors.
+                        while reliable_receiver.recv_raw().await.is_ok() {}
+                    } => {
+                        end.remote_disconnected.store(true, Ordering::Release);
+                        cancel.cancel();
+                        frame_notify.notify_one();
+                    }
+                }
+            });
+        }
+
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
@@ -389,7 +431,7 @@ impl PvpSession {
             let completion_token = completion_token.clone();
             let frame_notify = frame_notify.clone();
             let end = end.clone();
-            let sender_for_eom = pre_match.sender.clone();
+            let in_match_for_eom = in_match.clone();
             let rt_handle = tokio::runtime::Handle::current();
             move || -> bool {
                 if !completion_token.is_complete() {
@@ -410,9 +452,12 @@ impl PvpSession {
                     }
                 };
                 if first_completion {
-                    let sender = sender_for_eom.clone();
+                    // In-band EndOfMatch: rides the same ordered seq stream as
+                    // inputs over the unreliable channel, so the peer sees it
+                    // exactly once and only after every preceding input.
+                    let in_match = in_match_for_eom.clone();
                     rt_handle.spawn(async move {
-                        if let Err(e) = sender.lock().await.send_end_of_match().await {
+                        if let Err(e) = in_match.send_end_of_match().await {
                             log::warn!("pvp: send EndOfMatch failed: {e}");
                         }
                     });
@@ -466,6 +511,7 @@ impl PvpSession {
             cancellation_token,
             latency_counter,
             _peer_conn: pre_match.peer_conn,
+            _lobby_sender: pre_match.lobby_sender,
             match_handle,
             link_code: pre_match.link_code,
             remote_nickname: pre_match.remote_settings.nickname,

@@ -28,7 +28,10 @@ use tokio_util::sync::CancellationToken;
 
 pub mod compat;
 
-pub const PROTOCOL_VERSION: u32 = 0x46;
+// 0x47: in-match Input/EndOfRound/EndOfMatch moved off the reliable lobby
+// channel onto a separate unreliable channel with the `data::wire` redundancy
+// protocol. Incompatible with 0x46 peers, so the version gate rejects them.
+pub const PROTOCOL_VERSION: u32 = 0x47;
 
 /// Where the lifecycle is right now. Drives the Play tab's status
 /// bar + the Cancel button's visibility.
@@ -134,6 +137,12 @@ pub struct State {
     /// from a previous session can't deposit a stale receiver
     /// into the next one.
     post_lobby_receiver: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
+    /// Receive half of the unreliable in-match channel, parked here the moment
+    /// `NegotiationDone` fires (nothing flows on it during the lobby, so it
+    /// isn't owned by the lobby loop). PvP handoff (`take_pre_match`) hands the
+    /// slot to the PvpReceiver. Reset to a fresh `Arc` on every session
+    /// boundary alongside [`post_lobby_receiver`].
+    in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     /// Lobby-only state — what each side has advertised so far.
     /// `local` is what we sent; `remote` is what came in over the
     /// Settings packet. Both being `Some` means the lobby pane
@@ -220,6 +229,7 @@ impl Default for State {
             session_id: 0,
             lobby_event_rx_slot: Arc::new(std::sync::Mutex::new(None)),
             post_lobby_receiver: Arc::new(std::sync::Mutex::new(None)),
+            in_match_receiver_slot: Arc::new(std::sync::Mutex::new(None)),
             lobby: LobbyState::default(),
             local_commit: None,
             remote_commitment: None,
@@ -247,7 +257,12 @@ struct LocalCommit {
 /// itself so the underlying RTC stays up. The PvP-handoff path
 /// (`take_pre_match`) drains these into the PvpSession.
 struct ConnectionHandles {
+    /// Reliable, ordered control/lobby channel sender. Shared by the lobby loop
+    /// and (parked, idle) the match.
     sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    /// Unreliable, unordered in-match channel sender — idle during the lobby,
+    /// handed to the PvP session to carry the live `data::wire` datagrams.
+    in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// The peer connection, kept alive for the duration of the
     /// session. Both transports (matchmaking WebRTC and the
     /// signaling-free direct link) bring one up.
@@ -370,7 +385,11 @@ pub enum DirectRole {
 }
 
 pub struct ConnectionPayload {
-    pub dc: datachannel_wrapper::DataChannel,
+    /// Reliable control/lobby channel.
+    pub control_dc: datachannel_wrapper::DataChannel,
+    /// Unreliable in-match channel, created up front alongside the control
+    /// channel (see `net::channel`), not bolted on after the connection.
+    pub in_match_dc: datachannel_wrapper::DataChannel,
     pub peer_conn: datachannel_wrapper::PeerConnection,
 }
 
@@ -400,6 +419,12 @@ impl std::fmt::Debug for ConnectionPayload {
 pub struct NegotiationOutput {
     pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     pub receiver: crate::net::Receiver,
+    /// Unreliable in-match channel's send half. Idle until the match starts.
+    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    /// Unreliable in-match channel's receive half. Parked for the PvP handoff
+    /// the moment negotiate completes — nothing flows on it during the lobby,
+    /// so unlike the reliable receiver it isn't owned by the lobby loop.
+    pub in_match_receiver: crate::net::Receiver,
     /// The peer connection. Set by both transports. See
     /// [`ConnectionHandles::peer_conn`] for the lifetime contract.
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -433,6 +458,7 @@ impl State {
         self.session_id = self.session_id.wrapping_add(1);
         self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
         self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
+        self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
         self.local_commit = None;
@@ -526,19 +552,22 @@ impl State {
                 // `typ relay` candidate on either end means TURN. The
                 // signaling-free direct path only ever forms host
                 // candidate pairs, so it resolves to Direct.
-                self.lobby.connection_kind = out
-                    .peer_conn
-                    .selected_candidate_pair()
-                    .ok()
-                    .map(|(local, remote)| {
-                        if local.contains("typ relay") || remote.contains("typ relay") {
-                            ConnectionKind::Relayed
-                        } else {
-                            ConnectionKind::Direct
-                        }
-                    });
+                self.lobby.connection_kind = out.peer_conn.selected_candidate_pair().ok().map(|(local, remote)| {
+                    if local.contains("typ relay") || remote.contains("typ relay") {
+                        ConnectionKind::Relayed
+                    } else {
+                        ConnectionKind::Direct
+                    }
+                });
+                // Park the unreliable in-match receiver for the PvP handoff.
+                // Nothing flows on it during the lobby (all lobby traffic is on
+                // the reliable channel), so — unlike the reliable receiver — it
+                // isn't owned by the lobby loop and can be stashed here right
+                // away.
+                *self.in_match_receiver_slot.lock().unwrap() = Some(out.in_match_receiver);
                 self.conn = Some(ConnectionHandles {
                     sender: out.sender,
+                    in_match_sender: out.in_match_sender,
                     peer_conn: out.peer_conn,
                     is_offerer: out.is_offerer,
                 });
@@ -722,6 +751,7 @@ impl State {
                 self.session_id = self.session_id.wrapping_add(1);
                 self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
                 self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
+                self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
                 self.conn = None;
                 self.local_commit = None;
                 self.remote_commitment = None;
@@ -992,10 +1022,12 @@ impl State {
         // also takes a clone of the slot Arc and reads
         // asynchronously below.
         let pre_match = PreMatchData {
-            sender: handles.sender,
+            lobby_sender: handles.sender,
+            in_match_sender: handles.in_match_sender,
             peer_conn: handles.peer_conn,
             is_offerer: handles.is_offerer,
-            receiver_slot: self.post_lobby_receiver.clone(),
+            reliable_receiver_slot: self.post_lobby_receiver.clone(),
+            in_match_receiver_slot: self.in_match_receiver_slot.clone(),
             rng_seed,
             local_save_data: local_commit.state.save_data,
             remote_save_data: peer_state.save_data,
@@ -1032,14 +1064,24 @@ impl State {
 /// Everything the App needs to build a PvpSession. Drained
 /// from netplay::State after both sides exchanged StartMatch.
 pub struct PreMatchData {
-    pub sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    /// Reliable control/lobby channel sender. Idle in-match (all live traffic
+    /// is on the unreliable channel), but held open so its close doesn't
+    /// surface as a spurious disconnect on the peer's reliable-channel watch.
+    pub lobby_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
+    /// Unreliable in-match channel sender — the live match's `data::wire`
+    /// datagrams.
+    pub in_match_sender: Arc<tokio::sync::Mutex<crate::net::Sender>>,
     /// The peer connection; brought up by both transports. See
     /// [`ConnectionHandles::peer_conn`].
     pub peer_conn: datachannel_wrapper::PeerConnection,
     pub is_offerer: bool,
-    /// Receiver slot the lobby loop drops into on cancel-exit.
-    /// PvP setup waits on this (one-shot poll on a tick).
-    pub receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
+    /// Reliable receiver slot the lobby loop drops into on cancel-exit. The PvP
+    /// session watches it only for the disconnect signal (the unreliable
+    /// datagram channel has no clean close event).
+    pub reliable_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
+    /// Unreliable in-match receiver slot, parked at negotiate time. PvP setup
+    /// waits on this (one-shot poll on a tick).
+    pub in_match_receiver_slot: Arc<std::sync::Mutex<Option<crate::net::Receiver>>>,
     pub rng_seed: [u8; 16],
     pub local_save_data: Vec<u8>,
     pub remote_save_data: Vec<u8>,
@@ -1192,6 +1234,13 @@ async fn run_signaling_connect(
             // direct routes only.
             use_relay,
             PROTOCOL_VERSION,
+            // Every channel the session needs, created together up front (same
+            // specs the direct path uses — see `net::channel`). Order matters:
+            // `run_await_peer` maps the returned channels back by this order.
+            vec![
+                crate::net::channel::control_channel(),
+                crate::net::channel::in_match_channel(),
+            ],
         )
         .await
         .map_err(|e| AsyncError::Failed(format!("signaling: {e}")))?;
@@ -1208,11 +1257,19 @@ async fn run_signaling_connect(
 /// joins + WebRTC ICE handshake opens the data channel.
 async fn run_await_peer(hello: SignalingHello, cancel: CancellationToken) -> Result<ConnectionPayload, AsyncError> {
     let work = async {
-        let (dc, peer_conn) = hello
+        let (dcs, peer_conn) = hello
             .connecting
             .await
             .map_err(|e| AsyncError::Failed(format!("webrtc: {e}")))?;
-        Ok::<_, AsyncError>(ConnectionPayload { dc, peer_conn })
+        // `connect` created the channels in the order we passed their specs:
+        // control first, in-match second (see `run_signaling_connect`).
+        let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
+            .map_err(|dcs: Vec<_>| AsyncError::Failed(format!("expected 2 data channels, got {}", dcs.len())))?;
+        Ok::<_, AsyncError>(ConnectionPayload {
+            control_dc,
+            in_match_dc,
+            peer_conn,
+        })
     };
     tokio::select! {
         biased;
@@ -1235,7 +1292,7 @@ async fn run_direct_rtc_negotiate(
 ) -> Result<NegotiationOutput, AsyncError> {
     let is_offerer = matches!(role, DirectRole::Host { .. });
     let work = async {
-        let (mut sender, mut receiver, peer_conn) = match role {
+        let channels = match role {
             DirectRole::Host { port } => crate::net::direct_rtc::host(port)
                 .await
                 .map_err(|e| AsyncError::Failed(format!("direct host: {e}")))?,
@@ -1243,12 +1300,21 @@ async fn run_direct_rtc_negotiate(
                 .await
                 .map_err(|e| AsyncError::Failed(format!("direct connect: {e}")))?,
         };
+        let crate::net::direct_rtc::DirectChannels {
+            control: (mut sender, mut receiver),
+            in_match: (in_match_sender, in_match_receiver),
+            peer_conn,
+        } = channels;
+        // Handshake on the reliable channel; the unreliable in-match channel
+        // shares the association and is open by the time the match starts.
         crate::net::negotiate(&mut sender, &mut receiver)
             .await
             .map_err(negotiation_error_sentinel)?;
         Ok::<_, AsyncError>(NegotiationOutput {
             sender: Arc::new(tokio::sync::Mutex::new(sender)),
             receiver,
+            in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
+            in_match_receiver,
             peer_conn,
             is_offerer,
         })
@@ -1277,8 +1343,16 @@ fn negotiation_error_sentinel(e: crate::net::NegotiationError) -> AsyncError {
 /// Split the data channel + run `protocol::negotiate`. Aborts on
 /// cancel.
 async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) -> Result<NegotiationOutput, AsyncError> {
-    let ConnectionPayload { dc, peer_conn } = payload;
-    let (mut sender, mut receiver) = crate::net::datachannel::pair(dc);
+    let ConnectionPayload {
+        control_dc,
+        in_match_dc,
+        peer_conn,
+    } = payload;
+    // Both channels were created together up front (before the offer); here we
+    // just split each into its Sender/Receiver. The handshake runs on the
+    // reliable channel.
+    let (mut sender, mut receiver) = crate::net::datachannel::pair(control_dc);
+    let (in_match_sender, in_match_receiver) = crate::net::datachannel::pair(in_match_dc);
     let work = crate::net::negotiate(&mut sender, &mut receiver);
     tokio::select! {
         biased;
@@ -1292,6 +1366,8 @@ async fn run_negotiate(payload: ConnectionPayload, cancel: CancellationToken) ->
             Ok(NegotiationOutput {
                 sender: Arc::new(tokio::sync::Mutex::new(sender)),
                 receiver,
+                in_match_sender: Arc::new(tokio::sync::Mutex::new(in_match_sender)),
+                in_match_receiver,
                 peer_conn,
                 is_offerer,
             })

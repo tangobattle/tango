@@ -60,7 +60,7 @@ impl RtcConfig {
 
 /// Builder for data-channel options, matching the old fluent API
 /// (`DataChannelInit::default().reliability(..).negotiated().manual_stream().stream(0)`).
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DataChannelInit(libdatachannel::DataChannelOptions);
 
 impl DataChannelInit {

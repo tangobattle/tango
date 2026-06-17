@@ -23,14 +23,14 @@
 //!   candidate — it learns the dialer from the incoming STUN check
 //!   (peer-reflexive).
 //!
-//! The data channel is pre-negotiated on a fixed stream id so there's no
-//! in-band DCEP handshake either. The peer connection must be kept alive
-//! by the caller for the channel's lifetime (see `netplay::NegotiationOutput`).
+//! Two data channels are pre-negotiated on fixed stream ids so there's no
+//! in-band DCEP handshake either: a reliable/ordered control channel (stream 0)
+//! and an unreliable/unordered in-match channel (stream 1) for the live
+//! `data::wire` datagrams. The peer connection must be kept alive by the caller
+//! for the channels' lifetime (see `netplay::NegotiationOutput`).
 
 use super::{Receiver, Sender};
-use datachannel_wrapper::{
-    DataChannelInit, LocalDescriptionInit, PeerConnection, RtcConfig, SdpType, SessionDescription,
-};
+use datachannel_wrapper::{LocalDescriptionInit, PeerConnection, RtcConfig, SdpType, SessionDescription};
 
 /// Fixed local ICE ufrag for the host (offerer) side. Must be a valid
 /// ICE ufrag (>= 4 chars); both peers know both values.
@@ -42,10 +42,16 @@ const UFRAG_CLIENT: &str = "tangoClient";
 /// and a fixed shared secret satisfies that without an exchange.
 const ICE_PWD: &str = "tangoDirectNoSignalingPwd";
 
-/// Label + stream id of the pre-negotiated data channel. Both sides agree
-/// on these so the channel exists without a DCEP open handshake.
-const DC_LABEL: &str = "tango";
-const DC_STREAM: u16 = 0;
+/// Both transport channels brought up by the direct link, plus the peer
+/// connection that owns them (kept alive by the caller). The channel specs
+/// (labels, stream ids, reliability) live in [`super::channel`].
+pub struct DirectChannels {
+    /// Reliable, ordered — the control/lobby `Packet` protocol.
+    pub control: (Sender, Receiver),
+    /// Unreliable, unordered — the in-match `data::wire` datagrams.
+    pub in_match: (Sender, Receiver),
+    pub peer_conn: PeerConnection,
+}
 
 /// Build a fabricated remote SDP for the peer. `setup` is the DTLS role
 /// the *peer* advertises (`actpass` for an offer, `active` for an answer);
@@ -87,21 +93,30 @@ fn fabricate_sdp(sdp_type: SdpType, setup: &str, ufrag: &str, candidate: Option<
     SessionDescription { sdp_type, sdp }
 }
 
-/// Open the pre-negotiated data channel on a fresh peer connection and
-/// split it into our transport-agnostic Sender/Receiver, returning the
-/// peer connection so the caller can keep it alive.
-fn open_channel(mut pc: PeerConnection) -> (Sender, Receiver, PeerConnection) {
-    let dc = pc
-        .create_data_channel(DC_LABEL, DataChannelInit::default().negotiated().stream(DC_STREAM))
-        .expect("create pre-negotiated data channel");
-    let (sender, receiver) = super::datachannel::pair(dc);
-    (sender, receiver, pc)
+/// Open both pre-negotiated data channels on a fresh peer connection (the
+/// reliable control channel + the unreliable in-match channel) and split each
+/// into our transport-agnostic Sender/Receiver, returning the peer connection
+/// so the caller can keep it alive.
+fn open_channels(mut pc: PeerConnection) -> DirectChannels {
+    let (label, init) = super::channel::control_channel();
+    let control_dc = pc
+        .create_data_channel(label, init)
+        .expect("create pre-negotiated control data channel");
+    let (label, init) = super::channel::in_match_channel();
+    let in_match_dc = pc
+        .create_data_channel(label, init)
+        .expect("create pre-negotiated in-match data channel");
+    DirectChannels {
+        control: super::datachannel::pair(control_dc),
+        in_match: super::datachannel::pair(in_match_dc),
+        peer_conn: pc,
+    }
 }
 
 /// Host side: pin the UDP `port`, offer with fixed ICE creds, and accept
 /// the dialer reflexively. Returns once the descriptions are set; the
-/// channel opens asynchronously and the first `send` blocks until it does.
-pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver, PeerConnection)> {
+/// channels open asynchronously and the first `send` blocks until they do.
+pub async fn host(port: u16) -> std::io::Result<DirectChannels> {
     let (pc, _events) = PeerConnection::new(RtcConfig {
         disable_fingerprint_verification: true,
         // We drive setLocalDescription ourselves (with pinned ICE creds);
@@ -113,9 +128,9 @@ pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver, PeerConnectio
         ..Default::default()
     })?;
 
-    let (sender, receiver, mut pc) = open_channel(pc);
+    let mut channels = open_channels(pc);
 
-    pc.set_local_description(
+    channels.peer_conn.set_local_description(
         SdpType::Offer,
         Some(&LocalDescriptionInit {
             ice_ufrag: Some(UFRAG_HOST.to_string()),
@@ -124,14 +139,16 @@ pub async fn host(port: u16) -> std::io::Result<(Sender, Receiver, PeerConnectio
     )?;
     // The dialer answers as the DTLS client (`active`); no candidate — we
     // learn its address from the incoming connectivity check.
-    pc.set_remote_description(fabricate_sdp(SdpType::Answer, "active", UFRAG_CLIENT, None))?;
+    channels
+        .peer_conn
+        .set_remote_description(fabricate_sdp(SdpType::Answer, "active", UFRAG_CLIENT, None))?;
 
-    Ok((sender, receiver, pc))
+    Ok(channels)
 }
 
 /// Dialer side: fabricate the host's offer (carrying a host candidate for
 /// `addr`), then answer with fixed ICE creds.
-pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver, PeerConnection)> {
+pub async fn connect(addr: &str) -> std::io::Result<DirectChannels> {
     // Resolve the typed address into a concrete host candidate.
     let sock = tokio::net::lookup_host(addr)
         .await?
@@ -148,12 +165,17 @@ pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver, PeerConne
         ..Default::default()
     })?;
 
-    let (sender, receiver, mut pc) = open_channel(pc);
+    let mut channels = open_channels(pc);
 
     // The host offers as `actpass`; we become the DTLS client by answering
     // `active`. Set the remote offer first, then generate our answer.
-    pc.set_remote_description(fabricate_sdp(SdpType::Offer, "actpass", UFRAG_HOST, Some(&candidate)))?;
-    pc.set_local_description(
+    channels.peer_conn.set_remote_description(fabricate_sdp(
+        SdpType::Offer,
+        "actpass",
+        UFRAG_HOST,
+        Some(&candidate),
+    ))?;
+    channels.peer_conn.set_local_description(
         SdpType::Answer,
         Some(&LocalDescriptionInit {
             ice_ufrag: Some(UFRAG_CLIENT.to_string()),
@@ -161,7 +183,7 @@ pub async fn connect(addr: &str) -> std::io::Result<(Sender, Receiver, PeerConne
         }),
     )?;
 
-    Ok((sender, receiver, pc))
+    Ok(channels)
 }
 
 /// Format an `a=candidate:` payload (everything after `a=candidate:`) for
@@ -176,31 +198,49 @@ fn host_candidate(sock: &std::net::SocketAddr) -> String {
 mod tests {
     use super::*;
 
-    /// End-to-end: host + dialer bring up the channel from fabricated SDP
-    /// alone (no signaling), then the real protocol-version handshake runs
-    /// both ways. Proves ICE + DTLS + SCTP all complete and the channel is
-    /// bidirectional.
+    /// End-to-end: host + dialer bring up both channels from fabricated SDP
+    /// alone (no signaling), run the real protocol-version handshake over the
+    /// reliable channel, then round-trip a raw datagram over the unreliable
+    /// in-match channel. Proves ICE + DTLS + SCTP all complete and that the
+    /// second pre-negotiated (stream-1, unreliable) channel opens and carries
+    /// traffic both ways.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fabricated_sdp_round_trips() {
         // A high, unlikely-to-clash loopback port for the test host.
         let port = 24987;
         let addr = format!("127.0.0.1:{port}");
         let (host_res, conn_res) = tokio::join!(host(port), connect(&addr));
-        let (mut host_tx, mut host_rx, _host_pc) = host_res.expect("host setup");
-        let (mut conn_tx, mut conn_rx, _conn_pc) = conn_res.expect("connect setup");
+        let mut host_ch = host_res.expect("host setup");
+        let mut conn_ch = conn_res.expect("connect setup");
 
         // `negotiate`'s first send blocks until the channel opens, so this
         // drives the whole ICE/DTLS bring-up. Guard with a timeout so a
         // failure surfaces as a panic rather than a hang.
         let handshake = async {
             tokio::try_join!(
-                crate::net::negotiate(&mut host_tx, &mut host_rx),
-                crate::net::negotiate(&mut conn_tx, &mut conn_rx),
+                crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
             )
         };
         tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
             .await
             .expect("handshake timed out — channel never opened")
             .expect("negotiate failed");
+
+        // The unreliable in-match channel shares the same association, so it's
+        // open by now too — round-trip a raw datagram each way.
+        let in_match = async {
+            host_ch.in_match.0.send_raw(b"ping-h2c").await?;
+            conn_ch.in_match.0.send_raw(b"ping-c2h").await?;
+            let got_at_conn = conn_ch.in_match.1.recv_raw().await?;
+            let got_at_host = host_ch.in_match.1.recv_raw().await?;
+            Ok::<_, std::io::Error>((got_at_conn, got_at_host))
+        };
+        let (got_at_conn, got_at_host) = tokio::time::timeout(std::time::Duration::from_secs(15), in_match)
+            .await
+            .expect("in-match datagram timed out — second channel never opened")
+            .expect("in-match send/recv failed");
+        assert_eq!(got_at_conn, b"ping-h2c");
+        assert_eq!(got_at_host, b"ping-c2h");
     }
 }

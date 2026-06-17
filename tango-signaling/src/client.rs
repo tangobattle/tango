@@ -19,11 +19,24 @@ const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 const MIN_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(500);
 const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(8);
 
-async fn create_data_channel(
+/// One data channel's `(label, init)`. The caller owns the channel policy
+/// (label / stream id / reliability) rather than this crate hardcoding it, and
+/// passes every channel the session needs so they're all created together,
+/// before the offer. The `init` is cloned per attempt because [`connect`]
+/// recreates the channels on every transparent reconnect (and creating one
+/// consumes its `init`).
+pub type ChannelSpec = (&'static str, datachannel_wrapper::DataChannelInit);
+
+/// Build a fresh peer connection and create every requested channel on it
+/// (before gathering, so they're all part of the initial association), then
+/// wait for ICE gathering to complete. Returns the channels in the same order
+/// as `channels`.
+async fn create_data_channels(
     rtc_config: datachannel_wrapper::RtcConfig,
+    channels: &[ChannelSpec],
 ) -> Result<
     (
-        datachannel_wrapper::DataChannel,
+        Vec<datachannel_wrapper::DataChannel>,
         tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
     ),
@@ -31,19 +44,10 @@ async fn create_data_channel(
 > {
     let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
 
-    let dc = peer_conn.create_data_channel(
-        "tango",
-        datachannel_wrapper::DataChannelInit::default()
-            .reliability(datachannel_wrapper::Reliability {
-                unordered: false,
-                unreliable: false,
-                max_packet_life_time: 0,
-                max_retransmits: 0,
-            })
-            .negotiated()
-            .manual_stream()
-            .stream(0),
-    )?;
+    let dcs = channels
+        .iter()
+        .map(|(label, init)| peer_conn.create_data_channel(label, init.clone()))
+        .collect::<Result<Vec<_>, _>>()?;
 
     loop {
         if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
@@ -54,7 +58,7 @@ async fn create_data_channel(
         }
     }
 
-    Ok((dc, event_rx, peer_conn))
+    Ok((dcs, event_rx, peer_conn))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -111,7 +115,7 @@ fn is_transient(e: &Error) -> bool {
 
 pub type Connecting = futures_util::future::BoxFuture<
     'static,
-    Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error>,
+    Result<(Vec<datachannel_wrapper::DataChannel>, datachannel_wrapper::PeerConnection), Error>,
 >;
 
 /// Bring up a fresh signaling websocket end to end: connect, read the server's
@@ -124,10 +128,11 @@ async fn establish(
     use_relay: Option<bool>,
     protocol_version: u32,
     connection_id: &[u8],
+    channels: &[ChannelSpec],
 ) -> Result<
     (
         SignalingStream,
-        datachannel_wrapper::DataChannel,
+        Vec<datachannel_wrapper::DataChannel>,
         tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
     ),
@@ -229,7 +234,7 @@ async fn establish(
     if use_relay == Some(true) {
         rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
     }
-    let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
+    let (dcs, event_rx, peer_conn) = create_data_channels(rtc_config, channels).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -246,7 +251,7 @@ async fn establish(
         ))
         .await?;
 
-    Ok((signaling_stream, dc, event_rx, peer_conn))
+    Ok((signaling_stream, dcs, event_rx, peer_conn))
 }
 
 /// Outcome of waiting on a single signaling websocket for the peer to begin the
@@ -393,6 +398,7 @@ pub async fn connect(
     session_id: &str,
     use_relay: Option<bool>,
     protocol_version: u32,
+    channels: Vec<ChannelSpec>,
 ) -> Result<Connecting, Error> {
     // A stable id for this logical connection attempt, sent with every `Start`.
     // It survives transparent reconnects, so when our offerer socket drops and
@@ -404,8 +410,8 @@ pub async fn connect(
     // The initial dial surfaces failures to the caller (so "couldn't reach the
     // matchmaking server" is reported promptly); transparent reconnects only
     // kick in once we've successfully connected at least once.
-    let (mut signaling_stream, mut dc, mut event_rx, mut peer_conn) =
-        establish(addr, session_id, use_relay, protocol_version, &connection_id).await?;
+    let (mut signaling_stream, mut dcs, mut event_rx, mut peer_conn) =
+        establish(addr, session_id, use_relay, protocol_version, &connection_id, &channels).await?;
 
     let addr = addr.to_owned();
     let session_id = session_id.to_owned();
@@ -424,10 +430,10 @@ pub async fn connect(
 
                     let mut backoff = MIN_RECONNECT_BACKOFF;
                     loop {
-                        match establish(&addr, &session_id, use_relay, protocol_version, &connection_id).await {
+                        match establish(&addr, &session_id, use_relay, protocol_version, &connection_id, &channels).await {
                             Ok((s, d, e, p)) => {
                                 signaling_stream = s;
-                                dc = d;
+                                dcs = d;
                                 event_rx = e;
                                 peer_conn = p;
                                 log::info!("signaling reconnected; still waiting for the peer");
@@ -485,6 +491,6 @@ pub async fn connect(
             }
         }
 
-        Ok((dc, peer_conn))
+        Ok((dcs, peer_conn))
     }))
 }

@@ -6,12 +6,18 @@
 //! The WebRTC DataChannel impl lives in [`datachannel`]; the
 //! transport-agnostic framing and packet helpers live here.
 //!
-//! `PvpSender` / `PvpReceiver` (the `tango_pvp::net` adapters used by
-//! the live battle loop) come in a later netplay round.
+//! The reliable control/lobby `Packet` protocol is [`protocol`]; the live
+//! match's loss-tolerant per-frame wire protocol — the `InMatchTx` /
+//! `PvpSender` / `PvpReceiver` adapters used by the battle loop — is [`data`],
+//! which runs over a separate **unreliable** in-match data channel.
 
+pub mod channel;
+pub mod data;
 pub mod datachannel;
 pub mod direct_rtc;
 pub mod protocol;
+
+pub use data::{InMatchTx, PvpReceiver, PvpSender};
 
 /// Default UDP port for the signaling-free direct local-play transport
 /// (link-code commands `/host` and `/connect`; see
@@ -88,8 +94,16 @@ impl Sender {
         Self { sink }
     }
 
+    /// Ship a pre-serialized payload straight to the transport. The control
+    /// plane's typed `Packet` helpers below frame through here; the data
+    /// plane's `data::wire` framing writes its in-match datagrams through here
+    /// too (over the unreliable channel).
+    pub async fn send_raw(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.sink.send(bytes).await
+    }
+
     pub async fn send_packet(&mut self, p: &protocol::Packet) -> std::io::Result<()> {
-        self.sink.send(p.serialize().unwrap().as_slice()).await
+        self.send_raw(p.serialize().unwrap().as_slice()).await
     }
 
     pub async fn send_hello(&mut self) -> std::io::Result<()> {
@@ -131,15 +145,9 @@ impl Sender {
             .await
     }
 
-    pub async fn send_end_of_round(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::EndOfRound(protocol::EndOfRound {}))
-            .await
-    }
-
-    pub async fn send_end_of_match(&mut self) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::EndOfMatch(protocol::EndOfMatch {}))
-            .await
-    }
+    // EndOfRound / EndOfMatch are no longer reliable-channel packets — they
+    // ride in-band as `data::wire` markers on the unreliable in-match channel
+    // (see [`data::InMatchTx`]), so their old send helpers are gone.
 }
 
 pub struct Receiver {
@@ -151,8 +159,15 @@ impl Receiver {
         Self { stream }
     }
 
+    /// Read one raw transport message. The receive counterpart to
+    /// [`Sender::send_raw`] — the data plane decodes its `wire` frames off
+    /// this, and the in-match disconnect watch drains it for the channel's EOF.
+    pub async fn recv_raw(&mut self) -> std::io::Result<Vec<u8>> {
+        self.stream.recv().await
+    }
+
     pub async fn receive(&mut self) -> std::io::Result<protocol::Packet> {
-        let bytes = self.stream.recv().await?;
+        let bytes = self.recv_raw().await?;
         protocol::Packet::deserialize(bytes.as_slice())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
@@ -198,154 +213,5 @@ impl LatencyCounter {
     /// stays the source for the frame-delay suggestion, which wants it smoothed.
     pub fn latest(&self) -> Option<std::time::Duration> {
         self.marks.back().copied()
-    }
-}
-
-/// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
-/// so that under a genuinely stalled wire the engine's overflow bail fires
-/// before the pump's channel ever blocks the frame — backpressure semantics
-/// match the old inline send. The slack on top covers the non-Input events
-/// interleaved into the same channel (one `EndOfRound` per round).
-const SEND_PUMP_DEPTH: usize = tango_pvp::battle::MAX_QUEUE_LENGTH + 8;
-
-/// `tango_pvp::net::Sender` adapter — forwards inputs as
-/// `Packet::Input` over the shared peer-connection Sender.
-///
-/// Events go through a bounded channel ([`SEND_PUMP_DEPTH`]) drained by a
-/// dedicated pump task rather than being shipped inline: `send` is called
-/// once per frame from the emulator thread's `main_read_joyflags` trap, and
-/// writing the wire there would make the frame wait on the shared sender
-/// mutex (contended by the receive task's ping/pong replies) and on the
-/// datachannel itself. A single pump preserves Input/EndOfRound ordering.
-pub struct PvpSender {
-    tx: tokio::sync::mpsc::Sender<tango_pvp::net::Event>,
-}
-
-impl PvpSender {
-    pub fn new(sender: std::sync::Arc<tokio::sync::Mutex<Sender>>) -> Self {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<tango_pvp::net::Event>(SEND_PUMP_DEPTH);
-        tokio::spawn(async move {
-            while let Some(event) = rx.recv().await {
-                let mut sender = sender.lock().await;
-                let result = match event {
-                    tango_pvp::net::Event::Input(input) => sender.send_packet(&protocol::Packet::Input(input)).await,
-                    tango_pvp::net::Event::EndOfRound => sender.send_end_of_round().await,
-                };
-                if let Err(e) = result {
-                    // Dropping rx closes the channel; the next trap-side send
-                    // sees BrokenPipe and cancels the match, same as an inline
-                    // send failure would have.
-                    log::error!("pvp send pump: {e}");
-                    break;
-                }
-            }
-        });
-        Self { tx }
-    }
-}
-
-#[async_trait::async_trait]
-impl tango_pvp::net::Sender for PvpSender {
-    async fn send(&mut self, event: &tango_pvp::net::Event) -> std::io::Result<()> {
-        self.tx
-            .send(event.clone())
-            .await
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pvp send pump terminated"))
-    }
-}
-
-/// `tango_pvp::net::Receiver` adapter — pulls Input packets,
-/// silently round-trips ping/pong, errors on anything else.
-/// The ping timer here keeps the round-trip clock ticking
-/// during the live match (the lobby loop's interval was for
-/// the pre-match phase only).
-pub struct PvpReceiver {
-    receiver: Receiver,
-    sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
-    /// `None` once the remote drops — the session swaps the counter out so the
-    /// UI can tell "no live link" from "0 ms ping on LAN". While the link is up
-    /// it's `Some` and ping samples land here.
-    latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
-    ping_timer: tokio::time::Interval,
-    /// Flipped to `true` the first time we see an `EndOfMatch`
-    /// packet from the remote. `PvpSession::is_ended` reads this
-    /// to know the remote has also reached its match_end_ret hook
-    /// and the connection is safe to tear down.
-    remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Session subscription wake. Pinged after `remote_ended` flips
-    /// so `is_ended` is re-checked without waiting on the next
-    /// vblank — by then the emu thread has already paused.
-    end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
-}
-
-impl PvpReceiver {
-    pub fn new(
-        receiver: Receiver,
-        sender: std::sync::Arc<tokio::sync::Mutex<Sender>>,
-        latency_counter: std::sync::Arc<tokio::sync::Mutex<Option<LatencyCounter>>>,
-        remote_ended: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        end_of_match_notify: std::sync::Arc<tokio::sync::Notify>,
-    ) -> Self {
-        Self {
-            receiver,
-            sender,
-            latency_counter,
-            ping_timer: tokio::time::interval(PING_INTERVAL),
-            remote_ended,
-            end_of_match_notify,
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl tango_pvp::net::Receiver for PvpReceiver {
-    async fn receive(&mut self) -> std::io::Result<tango_pvp::net::Event> {
-        loop {
-            tokio::select! {
-                _ = self.ping_timer.tick() => {
-                    let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
-                    self.sender
-                        .lock()
-                        .await
-                        .send_ping(now_short)
-                        .await?;
-                }
-                p = self.receiver.receive() => {
-                    match p? {
-                        protocol::Packet::Ping(ping) => {
-                            self.sender.lock().await.send_pong(ping.ts).await?;
-                        }
-                        protocol::Packet::Pong(pong) => {
-                            let now_short = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u16;
-                            let dt = now_short.wrapping_sub(pong.ts);
-
-                            if let Some(c) = self.latency_counter.lock().await.as_mut() {
-                                c.mark(std::time::Duration::from_millis(dt as u64));
-                            }
-                        }
-                        protocol::Packet::Input(input) => {
-                            return Ok(tango_pvp::net::Event::Input(input));
-                        }
-                        protocol::Packet::EndOfRound(_) => {
-                            return Ok(tango_pvp::net::Event::EndOfRound);
-                        }
-                        protocol::Packet::EndOfMatch(_) => {
-                            // Remote reached its match_end_ret hook.
-                            // No input to yield; keep looping so
-                            // any tail-end Input packets the remote
-                            // already queued can still arrive.
-                            self.remote_ended.store(true, std::sync::atomic::Ordering::Release);
-                            self.end_of_match_notify.notify_one();
-                        }
-                        p => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!("invalid in-match packet: {p:?}"),
-                            ));
-                        }
-                    }
-                }
-            }
-        }
     }
 }

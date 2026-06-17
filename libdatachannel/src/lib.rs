@@ -703,7 +703,7 @@ impl Drop for DataChannel {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Reliability {
     pub unordered: bool,
     pub unreliable: bool,
@@ -711,7 +711,7 @@ pub struct Reliability {
     pub max_retransmits: u32,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DataChannelOptions {
     pub reliability: Reliability,
     pub protocol: String,
