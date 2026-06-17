@@ -47,8 +47,11 @@ pub struct OutStream {
     /// ack-only sentinel in [`Frame`].
     next_seq: u32,
     /// Unconfirmed/redundancy window, ascending by seq. Exactly the set
-    /// [`window`](Self::window) emits.
-    history: std::collections::VecDeque<(u32, Element)>,
+    /// [`window`](Self::window) emits. Seqs aren't stored per element: the
+    /// window is a contiguous run ending at `next_seq - 1` (only `push` appends,
+    /// only `trim` pops the front), so the front's seq is always
+    /// [`base`](Self::base) `== next_seq - history.len()`.
+    history: std::collections::VecDeque<Element>,
     /// Peer's contiguous frontier (lowest seq it hasn't confirmed). Trims
     /// `history`; only ever advances.
     peer_ack_base: u32,
@@ -105,7 +108,7 @@ impl OutStream {
     pub fn push(&mut self, e: Element) -> u32 {
         let seq = self.next_seq;
         self.next_seq += 1;
-        self.history.push_back((seq, e));
+        self.history.push_back(e);
         self.trim();
         seq
     }
@@ -131,29 +134,37 @@ impl OutStream {
     /// worth (beyond the horizon the peer would bail, so retaining them is
     /// pointless).
     fn trim(&mut self) {
-        let newest = match self.history.back() {
-            Some(&(seq, _)) => seq,
-            None => return,
-        };
+        if self.history.is_empty() {
+            return;
+        }
+        let newest = self.next_seq - 1;
         let redundancy_floor = newest.saturating_sub(self.min_redundancy.saturating_sub(1));
         let horizon_floor = newest.saturating_sub(HORIZON.saturating_sub(1));
         let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor).max(1);
-        while let Some(&(seq, _)) = self.history.front() {
-            if seq < keep_from {
-                self.history.pop_front();
-            } else {
-                break;
-            }
+        // Each pop advances the front seq (`base` rises as the deque shrinks);
+        // `keep_from <= newest`, so this always leaves at least one element.
+        while self.base() < keep_from {
+            self.history.pop_front();
         }
+    }
+
+    /// Seq of the oldest element still in the window — the `base` of an outbound
+    /// frame. The window is a contiguous run ending at `next_seq - 1`, so the
+    /// front's seq is `next_seq - history.len()`. Equals `next_seq` (one past
+    /// the newest) only when the window is empty.
+    fn base(&self) -> u32 {
+        self.next_seq - self.history.len() as u32
     }
 
     /// The data portion of an outbound frame: `(base, frame_advantage,
     /// entries)`. `None` before the first element is pushed — the caller
     /// emits an ack-only frame (`base == 0`) instead.
     pub fn window(&self) -> Option<(u32, i16, Vec<Element>)> {
-        let base = self.history.front()?.0;
-        let entries = self.history.iter().map(|&(_, e)| e).collect();
-        Some((base, self.latest_advantage, entries))
+        if self.history.is_empty() {
+            return None;
+        }
+        let entries = self.history.iter().copied().collect();
+        Some((self.base(), self.latest_advantage, entries))
     }
 
     /// The newest seq handed out so far, or `None` before the first push. The
