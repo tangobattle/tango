@@ -413,10 +413,10 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
 /// intermingled. Each save is tagged with the concrete game it
 /// resolves to and whether that game's ROM is owned (so the row can
 /// grey out). A path appears under exactly one variant within a
-/// family, but de-dup defensively. The list is NOT filtered by the
-/// active patch — the save is the loadout's identity and the patch
-/// follows it, so every save is always reachable; selecting one
-/// re-resolves the overlay (see [`Loadout::restore_patch_memory`]).
+/// family, but de-dup defensively. The list itself isn't trimmed by
+/// the active patch — `save_picker` instead greys out (disables) saves
+/// the active patch can't run, so the set stays stable while the
+/// patch comes and goes.
 pub fn save_options(loadout: &Loadout, scanners: &Scanners, config: &config::Config) -> Vec<SaveOption> {
     let saves_path = config.saves_path();
     let roms = scanners.roms.read();
@@ -704,8 +704,19 @@ pub fn save_picker<'a>(
         .save
         .as_ref()
         .and_then(|p| options.iter().find(|s| &s.path == p).cloned());
+    // Grey out saves the active patch can't run (alongside saves whose
+    // ROM isn't owned) so an incompatible save can't be picked under a
+    // patch — switch/clear the patch first. `None` (no patch) disables
+    // nothing on this axis.
+    let patch_supported = patch_supported_games(loadout, scanners);
     pick_list(options, selected, Message::SaveSelected)
-        .disabled(|opts: &[SaveOption]| opts.iter().map(|o| !o.available).collect())
+        .disabled(move |opts: &[SaveOption]| {
+            opts.iter()
+                .map(|o| {
+                    !o.available || patch_supported.as_ref().map(|s| !s.contains(&o.game)).unwrap_or(false)
+                })
+                .collect()
+        })
         .placeholder(t!(lang, "play-no-save"))
         .padding(STANDARD_PADDING)
         .style(widgets::chunky_pick_list)
