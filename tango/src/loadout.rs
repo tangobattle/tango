@@ -284,7 +284,7 @@ pub struct FamilyOption {
     /// Region-specific gamedb family string (e.g. `"bn3"`).
     pub family: &'static str,
     pub display: String,
-    /// `false` when no game in this family has a ROM in the scan
+    /// `false` unless *every* game in this family has a ROM in the scan
     /// results. Drives sweeten's `.disabled()` closure on the picker so
     /// the row renders greyed out and refuses clicks.
     pub available: bool,
@@ -374,11 +374,11 @@ impl std::fmt::Display for SaveOption {
 
 // ---------- Option builders ----------
 
-/// Every supported family — not just the ones we have a ROM for, so
+/// Every supported family — not just the ones we have ROMs for, so
 /// users can see what tango knows about. sweeten's `.disabled()` greys
-/// out families with no owned ROM; available families stable-sort to
-/// the top (then own-region first, then by family string) so the live
-/// ones lead.
+/// out families that don't have every game's ROM owned; available
+/// families stable-sort to the top (then own-region first, then by
+/// family string) so the live ones lead.
 pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
@@ -393,7 +393,7 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
         .map(|fam| FamilyOption {
             family: fam,
             display: game::family_display_name(lang, fam),
-            available: game::games_in_family(fam).any(|g| roms.contains_key(&g)),
+            available: game::games_in_family(fam).all(|g| roms.contains_key(&g)),
         })
         .collect();
     family_options.sort_by(|a, b| {
