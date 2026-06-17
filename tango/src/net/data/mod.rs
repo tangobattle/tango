@@ -65,7 +65,7 @@ const FRAMES_PER_REDUNDANCY: f64 = 2.0;
 /// and an RTT sample if the frame's ack confirmed a timestamped seq of ours.
 struct Delivery {
     elements: Vec<protocol::Element>,
-    frame_advantage: Option<i16>,
+    frame_advantage: i16,
     rtt: Option<std::time::Duration>,
 }
 
@@ -352,22 +352,24 @@ impl tango_pvp::net::Receiver for PvpReceiver {
             }
             let msg = self.receiver.recv_raw().await?;
             let frame = protocol::Frame::decode(&msg)?;
-            let delivery = self.im.recv(&frame).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "remote overflowed our input buffer")
-            })?;
+            let delivery = self
+                .im
+                .recv(&frame)
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "remote overflowed our input buffer"))?;
             // A returning ack that confirmed one of our seqs dates a round-trip.
             if let Some(rtt) = delivery.rtt {
                 if let Some(c) = self.latency_counter.lock().await.as_mut() {
                     c.mark(rtt);
                 }
             }
-            let frame_advantage = delivery.frame_advantage.unwrap_or(0);
             for element in delivery.elements {
                 match element {
                     protocol::Element::Input(joyflags) => {
-                        self.pending.push_back(tango_pvp::net::Event::Input(
-                            tango_pvp::net::Input { joyflags, frame_advantage },
-                        ));
+                        self.pending
+                            .push_back(tango_pvp::net::Event::Input(tango_pvp::net::Input {
+                                joyflags,
+                                frame_advantage: delivery.frame_advantage,
+                            }));
                     }
                     protocol::Element::EndOfRound => {
                         self.pending.push_back(tango_pvp::net::Event::EndOfRound);
