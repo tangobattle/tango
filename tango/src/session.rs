@@ -827,7 +827,7 @@ const SPARK_H: f32 = 24.0;
 // line up with the tone thresholds so a point's height roughly tracks its color.
 const TPS_SPAN: f32 = 8.0; // fps below target = floor of the chart
 const SKEW_SPAN: i32 = 8; // ± about parity; 0 sits mid-height
-const LEAD_SPAN: i32 = 24; // one-sided; saturates well before the overflow bail
+const LEAD_SPAN: i32 = 24; // ± about zero; saturates well before the overflow bail
 const DEPTH_SPAN: u32 = 8;
 const PING_SPAN: u128 = 200;
 
@@ -1103,14 +1103,16 @@ fn match_settings_content<'a>(
     );
 
     let lead_card = metric_card(
-        Icon::TrendingUp,
+        Icon::SportShoe,
         t!(lang, "session-stat-lead"),
-        true,
-        Some(0.0),
+        false,
+        Some(0.5),
         history,
         |s| {
-            s.round
-                .map(|(_, _, lead)| (lead.clamp(0, LEAD_SPAN) as f32 / LEAD_SPAN as f32, tone_for_lead(lead)))
+            s.round.map(|(_, _, lead)| {
+                let yf = (lead.clamp(-LEAD_SPAN, LEAD_SPAN) as f32 + LEAD_SPAN as f32) / (2.0 * LEAD_SPAN as f32);
+                (yf, tone_for_lead(lead))
+            })
         },
         |s| {
             s.round
@@ -1227,8 +1229,9 @@ fn tone_for_skew(skew: i32) -> StatTone {
     }
 }
 
-/// Local lead: green at a healthy steady lead, amber as it climbs, red when it
-/// runs far ahead (the remote is lagging and we're heading toward the bail).
+/// Local lead by `|lead|`: green at a healthy steady lead, amber as it climbs,
+/// red when it runs far from zero in either direction (the remote is lagging and
+/// we're heading toward the bail, or we've fallen behind it).
 fn tone_for_lead(lead: i32) -> StatTone {
     match lead.unsigned_abs() {
         0..=8 => StatTone::Good,
@@ -1267,9 +1270,13 @@ fn fmt_skew(skew: i32) -> String {
         format!("{skew:+}")
     }
 }
-/// Local lead in ticks (one-sided, so no forced sign).
+/// Signed local lead in ticks; bare `0` at zero reads calmer than `+0`.
 fn fmt_lead(lead: i32) -> String {
-    format!("{lead}")
+    if lead == 0 {
+        "0".to_string()
+    } else {
+        format!("{lead:+}")
+    }
 }
 /// Rollback depth.
 fn fmt_depth(depth: u32) -> String {
