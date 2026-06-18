@@ -620,7 +620,7 @@ impl State {
                             // Grab the part at the clicked cell: store that
                             // cell's offset from the part's center anchor
                             // so it stays under the cursor while dragging.
-                            e.held_part = Some(save_view::HeldPart {
+                            e.held_part = Some(save_view::navicust::HeldPart {
                                 id: p.id,
                                 rot: p.rot,
                                 compressed: p.compressed,

@@ -641,3 +641,124 @@ fn render_navicust<M: 'static>(
         .style(crate::widgets::pane)
         .into()
 }
+
+/// A part picked up from the palette: its id plus the orientation +
+/// compression it'll be dropped with. Lives in the save-view state
+/// because the palette (which sets it) and the editor canvas (which
+/// draws its ghost) are separate widgets.
+#[derive(Debug, Clone, Copy)]
+pub struct HeldPart {
+    pub id: usize,
+    pub rot: u8,
+    pub compressed: bool,
+    /// Where on the part it was grabbed: the offset (in the *current*
+    /// orientation) of the grabbed cell from the part's center anchor,
+    /// as `(row, col)`. Keeps that cell under the cursor as it's dragged
+    /// instead of snapping the center there. `(0, 0)` for palette
+    /// pick-ups (no meaningful grab point).
+    pub grab_row: i8,
+    pub grab_col: i8,
+}
+
+impl HeldPart {
+    /// Rotate the grab point 90° clockwise to track [`Self::rot`] being
+    /// advanced — keeps the grabbed cell under the cursor through a
+    /// rotate. Mirrors the clockwise cell map in
+    /// [`editor::rotated_offsets`]: `(dy, dx) -> (dx, -dy)`.
+    pub(super) fn rotate_grab_cw(&mut self) {
+        let (r, c) = (self.grab_row, self.grab_col);
+        self.grab_row = c;
+        self.grab_col = -r;
+    }
+}
+
+/// Sort order for the navicust editor's palette pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NavicustSort {
+    Id,
+    Name,
+    Color,
+}
+
+impl NavicustSort {
+    pub const ALL: [NavicustSort; 3] = [NavicustSort::Id, NavicustSort::Name, NavicustSort::Color];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            NavicustSort::Id => t!(lang, "navicust-sort-id"),
+            NavicustSort::Name => t!(lang, "navicust-sort-name"),
+            NavicustSort::Color => t!(lang, "navicust-sort-color"),
+        }
+    }
+}
+
+/// Stable color ordering for the palette's Color sort.
+fn ncp_color_rank(color: &Option<NavicustPartColor>) -> u8 {
+    use NavicustPartColor as N;
+    match color {
+        Some(N::White) => 0,
+        Some(N::Yellow) => 1,
+        Some(N::Pink) => 2,
+        Some(N::Red) => 3,
+        Some(N::Blue) => 4,
+        Some(N::Green) => 5,
+        Some(N::Orange) => 6,
+        Some(N::Purple) => 7,
+        Some(N::Gray) => 8,
+        None => 9,
+    }
+}
+
+/// Every navicust part the ROM defines, as `(id, name, description)`,
+/// filtered by `filter` (case-insensitive name match) and in `sort`
+/// order. Color/solidity are used for the Color sort but the palette
+/// reads the rest (shape, color) from the baked thumbnails. Ties fall
+/// back to id for a stable order.
+fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> Vec<(usize, String, Option<String>)> {
+    let assets = loaded.assets.as_ref();
+    let filter = filter.to_lowercase();
+    struct E {
+        id: usize,
+        name: String,
+        desc: Option<String>,
+        color_rank: u8,
+    }
+    let mut rows: Vec<E> = Vec::new();
+    // Cap how many variants of a given part type (by name) appear, so the
+    // list stays tidy when a ROM carries many near-duplicate color/junk
+    // variants of one part.
+    let mut per_type: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for id in 0..assets.num_navicust_parts() {
+        let Some(info) = assets.navicust_part(id) else { continue };
+        // Skip unused/padding slots: a real part has a color and a
+        // non-empty shape. Placeholder entries have an all-zero bitmap.
+        let Some(color) = info.color() else { continue };
+        if !info.uncompressed_bitmap().iter().any(|&set| set) {
+            continue;
+        }
+        let Some(name) = info.name() else { continue };
+        if name.trim().is_empty() {
+            continue;
+        }
+        if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
+            continue;
+        }
+        let count = per_type.entry(name.clone()).or_insert(0);
+        if *count >= 9 {
+            continue;
+        }
+        *count += 1;
+        rows.push(E {
+            id,
+            name,
+            desc: info.description(),
+            color_rank: ncp_color_rank(&Some(color)),
+        });
+    }
+    match sort {
+        NavicustSort::Id => {}
+        NavicustSort::Name => rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id))),
+        NavicustSort::Color => rows.sort_by(|a, b| a.color_rank.cmp(&b.color_rank).then(a.id.cmp(&b.id))),
+    }
+    rows.into_iter().map(|e| (e.id, e.name, e.desc)).collect()
+}
