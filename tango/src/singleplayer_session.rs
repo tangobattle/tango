@@ -31,16 +31,7 @@ impl SinglePlayerSession {
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
-        let mut core = mgba::core::Core::new_gba(
-            "tango",
-            &mgba::core::Options {
-                audio_sync: true,
-                ..Default::default()
-            },
-        )?;
-        core.enable_video_buffer();
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
+        let mut core = crate::session::new_gba_core(rom.as_ref())?;
         // Open RW so the game's own save writes persist back to disk —
         // mgba memory-maps the file and treats it as the cartridge SRAM.
         let save_file = std::fs::OpenOptions::new().read(true).write(true).open(save_path)?;
@@ -79,16 +70,7 @@ impl SinglePlayerSession {
         thread.start()?;
         thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        )))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("singleplayer: audio bind failed: {e:?}");
-                None
-            }
-        };
+        let audio_binding = audio_binder.bind_mgba(thread.handle(), "singleplayer");
 
         Ok(Self {
             game,

@@ -79,6 +79,19 @@ impl LateBinder {
         *g = stream;
         Ok(Binding { binder: self.clone() })
     }
+
+    /// Bind a running mgba thread's audio output to this binder. Every session
+    /// does this identically; a failed bind is logged (tagged with `context`)
+    /// and downgraded to silence rather than aborting the session.
+    pub fn bind_mgba(&self, handle: mgba::thread::Handle, context: &str) -> Option<Binding> {
+        match self.bind(Some(Box::new(MGBAStream::new(handle, self.sample_rate())))) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                log::warn!("{context}: audio bind failed: {e:?}");
+                None
+            }
+        }
+    }
 }
 
 impl Stream for LateBinder {

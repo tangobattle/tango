@@ -32,6 +32,23 @@ use sweeten::widget::{column, mouse_area, row};
 use tango_pvp::battle::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
+/// Create the mgba core every session boots from: a GBA core with audio-sync
+/// on, its video buffer enabled, and `rom` loaded. Callers then load the save
+/// (which differs per session — RW file vs in-memory SRAM dump) and install
+/// their own traps.
+pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
+    let mut core = mgba::core::Core::new_gba(
+        "tango",
+        &mgba::core::Options {
+            audio_sync: true,
+            ..Default::default()
+        },
+    )?;
+    core.enable_video_buffer();
+    core.as_mut().load_rom(mgba::vfile::VFile::from_vec(rom.to_vec()))?;
+    Ok(core)
+}
+
 /// At most one of these can be active at a time: replay playback, or
 /// single-player. The two variants share enough surface (vbuf,
 /// close-request) that the view + tick loop wrap them uniformly.

@@ -186,16 +186,7 @@ impl PvpSession {
             .parse_save(&pre_match.local_save_data)
             .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
 
-        let mut core = mgba::core::Core::new_gba(
-            "tango",
-            &mgba::core::Options {
-                audio_sync: true,
-                ..Default::default()
-            },
-        )?;
-        core.enable_video_buffer();
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::from_vec(local_rom.as_ref().clone()))?;
+        let mut core = crate::session::new_gba_core(local_rom.as_ref())?;
         // PvP runs entirely off the in-memory SRAM dump from the
         // commitment — writes don't persist back to the user's
         // .sav file (matches legacy behavior; the only PvP-side
@@ -411,17 +402,7 @@ impl PvpSession {
         // netcode and renders straight to the UI. The `Round` loads the FF's
         // computed `present_state` into it each frame, so the live core's game
         // tick lags `current_tick` by `frame_delay`.
-        let audio_stream: Box<dyn crate::audio::Stream + Send> = Box::new(crate::audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        ));
-        let audio_binding = match audio_binder.bind(Some(audio_stream)) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("pvp: audio bind failed: {e:?}");
-                None
-            }
-        };
+        let audio_binding = audio_binder.bind_mgba(thread.handle(), "pvp");
 
         // Completion / EndOfMatch handling, shared by both core layouts. Runs
         // on the live core's frame_callback: returns whether the match has

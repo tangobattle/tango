@@ -57,16 +57,7 @@ impl ReplaySession {
         frame_notify: Arc<tokio::sync::Notify>,
         vbuf: Arc<Mutex<Vec<u8>>>,
     ) -> anyhow::Result<Self> {
-        let mut core = mgba::core::Core::new_gba(
-            "tango",
-            &mgba::core::Options {
-                audio_sync: true,
-                ..Default::default()
-            },
-        )?;
-        core.enable_video_buffer();
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::from_vec(rom.as_ref().clone()))?;
+        let mut core = crate::session::new_gba_core(rom.as_ref())?;
         core.as_mut()
             .load_save(mgba::vfile::VFile::from_vec(replay.local_sram_dump()))?;
 
@@ -180,16 +171,7 @@ impl ReplaySession {
             completion_token.clone(),
         );
 
-        let audio_binding = match audio_binder.bind(Some(Box::new(crate::audio::MGBAStream::new(
-            thread.handle(),
-            audio_binder.sample_rate(),
-        )))) {
-            Ok(b) => Some(b),
-            Err(e) => {
-                log::warn!("replay: audio bind failed: {e:?}");
-                None
-            }
-        };
+        let audio_binding = audio_binder.bind_mgba(thread.handle(), "replay");
 
         Ok(Self {
             game,
