@@ -728,3 +728,181 @@ pub(crate) struct GroupedChip {
     pub(crate) has_tag1: bool,
     pub(crate) has_tag2: bool,
 }
+
+// `code = None` skips the code badge (Auto Battle Data slots
+// have a chip id but no code). `show_count_cell` toggles the
+// leading "N×" column — on for the folder's grouped mode, off
+// for ABD.
+pub(crate) fn chip_row<M: 'static>(
+    loaded: &Loaded,
+    chip_id: Option<usize>,
+    code: Option<String>,
+    g: &folder::GroupedChip,
+    show_count_cell: bool,
+    chips_have_mb: bool,
+    row_idx: usize,
+    is_first: bool,
+    is_last: bool,
+) -> Element<'static, M> {
+    let info = chip_id.and_then(|id| loaded.assets.chip(id));
+    let chip_class = info.as_ref().map(|i| i.class());
+    let dark = info.as_ref().map(|i| i.dark()).unwrap_or(false);
+    let accent = class_accent(chip_class, dark);
+    let is_empty_slot = chip_id.is_none();
+
+    // Chip icon — in-game sprite at 28 px so it reads as a chip
+    // graphic rather than a row decoration. Empty slots reserve the
+    // same 28 px square so their rows match filled rows' height.
+    let icon: Element<'static, M> = match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
+        Some(h) => Image::new(h)
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .filter_method(iced_image::FilterMethod::Nearest)
+            .content_fit(ContentFit::Contain)
+            .into(),
+        None => Space::new()
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .into(),
+    };
+
+    // Element icon. Same 14→28 (2× native) scaling as the chip
+    // icon so both sprites read at the same size and stay on an
+    // integer multiple of their source — anything else makes
+    // cosmic-text's resampler eat the pixel grid.
+    let element_id = info.as_ref().map(|i| i.element());
+    let element_icon: Element<'static, M> = element_id
+        .and_then(|id| loaded.element_icons.get(&id).cloned())
+        .map(|h| {
+            Image::new(h)
+                .width(Length::Fixed(28.0))
+                .height(Length::Fixed(28.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain)
+                .into()
+        })
+        .unwrap_or_else(|| Space::new().width(Length::Fixed(28.0)).into());
+
+    let name_text = info
+        .as_ref()
+        .and_then(|i| i.name())
+        .unwrap_or_else(|| "???".to_string());
+    let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
+    let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
+
+    // Name only — chip code lives in its own right-aligned
+    // column below so every row's letters line up cleanly with
+    // the element / power / MB stats.
+    let title: Element<'static, M> = if is_empty_slot {
+        text("—").size(TEXT_BODY).style(muted_text_style).into()
+    } else {
+        text(name_text).size(TEXT_BODY).into()
+    };
+
+    // REG / TAG indicators sit inline with the title so the
+    // row stays single-line and the card height stops growing
+    // with metadata.
+    let mut indicator_row = row![].spacing(4).align_y(Alignment::Center);
+    if g.is_regular {
+        indicator_row = indicator_row.push(badge("REG", iced::Color::from_rgb8(0xff, 0x42, 0xa5)));
+    }
+    // Tag chips come in pairs (tag1 + tag2). For the chip list
+    // it's the chip-IS-a-tag-chip status the user cares about,
+    // not which slot — collapse both flags into a single "TAG".
+    for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
+        indicator_row = indicator_row.push(badge("TAG", iced::Color::from_rgb8(0x29, 0xa1, 0x21)));
+    }
+
+    // Right-side stats: fixed-width right-aligned columns so the
+    // numbers line up vertically across rows. Both inherit the theme's
+    // text color — no hard-coded white/yellow that breaks on light.
+    // `code.filter().map(...)` consumes the String into the
+    // Text widget so the resulting Element is `'static` (a
+    // `&String` borrow would tie the Element to this stack
+    // frame). The filter drops empty codes so we don't render a
+    // blank fixed-width slot.
+    let code_text: Option<Element<'static, M>> = code.filter(|s| !s.is_empty()).map(|code| {
+        container(text(code).size(TEXT_BODY).font(iced::Font::MONOSPACE))
+            .width(Length::Fixed(22.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
+    });
+    let power_text: Element<'static, M> =
+        container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
+            .width(Length::Fixed(50.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into();
+    let mb_text: Element<'static, M> = if chips_have_mb {
+        container(text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION))
+            .width(Length::Fixed(50.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
+    } else {
+        Space::new().width(Length::Fixed(0.0)).into()
+    };
+
+    // Count column on the left for grouped mode. Theme-aware text:
+    // full strength for count > 1, muted for count == 1 (since "1×" is
+    // visual noise) — both readable on light + dark.
+    let mut r = row![].spacing(10).align_y(Alignment::Center);
+    if show_count_cell {
+        let count_is_one = g.count == 1;
+        r = r.push(
+            text(format!("{}×", g.count))
+                .size(TEXT_BODY)
+                .width(Length::Fixed(22.0))
+                .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if count_is_one {
+                        muted_color(theme)
+                    } else {
+                        theme.palette().text
+                    }),
+                }),
+        );
+    }
+    r = r
+        .push(icon)
+        .push(container(row![title, indicator_row].spacing(8).align_y(Alignment::Center)).width(Length::Fill))
+        .push(element_icon);
+    if let Some(code_text) = code_text {
+        r = r.push(code_text);
+    }
+    r = r.push(power_text).push(mb_text);
+
+    let card = card_wrap(r.padding([3, 12]).into(), accent, row_idx, is_first, is_last);
+    // Hover tooltip with chip image preview + description.
+    // Always rendered when the chip has either; the folder list
+    // and Auto Battle Data both want this affordance, so it
+    // lives at the bottom of chip_row instead of as a wrapper
+    // the callers have to remember to use.
+    let Some(id) = chip_id else {
+        return card;
+    };
+    let description = loaded.assets.chip(id).and_then(|info| info.description());
+    // Program advances show description only — no standalone chip image.
+    let image_handle = if chip_class == Some(tango_dataview::rom::ChipClass::ProgramAdvance) {
+        None
+    } else {
+        loaded.chip_images.get(id).cloned().flatten()
+    };
+    chip_popover(card, image_handle, description, accent)
+}
+
+/// Tooltip chrome for chip hovers — same shape as
+/// [`tooltip_style`] but takes the chip's class accent so
+/// mega / giga / dark chips get a background that matches the
+/// row's left-edge stripe. Standard chips (accent = None) fall
+/// back to the default near-black tooltip.
+
+/// Accent color for the left edge of a chip row. None = no accent (the
+/// row reads as a default chip with no class adornment).
+pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: bool) -> Option<iced::Color> {
+    if dark {
+        return Some(iced::Color::from_rgb8(0x4a, 0x55, 0x82));
+    }
+    match class {
+        Some(tango_dataview::rom::ChipClass::Mega) => Some(iced::Color::from_rgb8(0x52, 0x84, 0x9c)),
+        Some(tango_dataview::rom::ChipClass::Giga) => Some(iced::Color::from_rgb8(0xc4, 0x52, 0x84)),
+        _ => None,
+    }
+}
