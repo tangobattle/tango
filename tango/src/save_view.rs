@@ -172,7 +172,7 @@ fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a
         lucide_icons::Icon::Trash2,
         t!(lang, "save-edit-clear"),
         action,
-        [5.0, 10.0],
+        style::CONTROL_PADDING,
         crate::widgets::danger_button,
     )
 }
