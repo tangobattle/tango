@@ -1035,3 +1035,88 @@ pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::
         }
     }
 }
+
+/// The folder tab as TSV text for clipboard "copy as text".
+pub(crate) fn as_text(loaded: &Loaded, opts: RenderOpts) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let chips_view = loaded.save.view_chips()?;
+    let folder_idx = chips_view.equipped_folder_index();
+    // Read-only display treats "unsupported" and "unset" the same.
+    let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
+    let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
+
+    let mut chips: Vec<Option<tango_dataview::save::Chip>> =
+        (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
+    let regular_display_idx = if !assets.regular_chip_is_in_place() {
+        if let Some(ri) = regular_idx {
+            let c = chips.remove(0);
+            chips.insert(ri, c);
+            Some(ri)
+        } else {
+            None
+        }
+    } else {
+        regular_idx
+    };
+
+    let mut out = String::new();
+    if opts.folder_grouped {
+        let mut grouped_map: indexmap::IndexMap<Option<tango_dataview::save::Chip>, GroupedChip> =
+            indexmap::IndexMap::new();
+        for (i, chip) in chips.iter().enumerate() {
+            let g = grouped_map.entry(chip.clone()).or_default();
+            g.count += 1;
+            if regular_display_idx == Some(i) {
+                g.is_regular = true;
+            }
+            if let Some(t) = tag_idxs {
+                if t[0] == i {
+                    g.has_tag1 = true;
+                }
+                if t[1] == i {
+                    g.has_tag2 = true;
+                }
+            }
+        }
+        for (chip, g) in &grouped_map {
+            let Some(c) = chip else {
+                out.push_str(&format!("{}\t---\n", g.count));
+                continue;
+            };
+            let name = assets
+                .chip(c.id)
+                .and_then(|info| info.name())
+                .unwrap_or_else(|| "???".to_string());
+            out.push_str(&format!("{}\t{name}\t{}", g.count, c.code));
+            if g.is_regular {
+                out.push_str("\t[REG]");
+            }
+            for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
+                out.push_str("\t[TAG]");
+            }
+            out.push('\n');
+        }
+    } else {
+        for (i, chip) in chips.iter().enumerate() {
+            let Some(c) = chip else {
+                out.push_str("---\n");
+                continue;
+            };
+            let name = assets
+                .chip(c.id)
+                .and_then(|info| info.name())
+                .unwrap_or_else(|| "???".to_string());
+            out.push_str(&format!("{name}\t{}", c.code));
+            if regular_display_idx == Some(i) {
+                out.push_str("\t[REG]");
+            }
+            if let Some(ti) = tag_idxs {
+                if ti.contains(&i) {
+                    out.push_str("\t[TAG]");
+                }
+            }
+            out.push('\n');
+        }
+    }
+    Some(out)
+}

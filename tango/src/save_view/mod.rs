@@ -34,7 +34,6 @@ pub struct RenderOpts {
     pub folder_grouped: bool,
 }
 
-
 /// A sort mode paired with its localized label, for the editors' sort
 /// pick_lists — the picker renders options via `Display`, which can't
 /// reach the language, so the label is resolved up front. Equality is
@@ -183,13 +182,6 @@ fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
             }),
         })
 }
-
-/// The chips the player owns (their pack), as `(id, name, code)`, in
-/// `sort` order — one row per owned chip+code. Only chips+codes with a
-/// pack count > 0 are returned, so a folder can only be built from what
-/// the save legitimately holds. Ties fall back to id for a stable order.
-
-
 
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
@@ -1214,251 +1206,26 @@ fn render_extra<'a>(lang: &'a LanguageIdentifier, state: &'a State, tab: Tab, ki
     }
 }
 
-/// Plain-text representation of the active save-view tab, for the
-/// clipboard. `None` = tab not exportable in this form. The Folder
-/// branch honors `opts.folder_grouped`, mirroring [`render_folder`]'s
-/// collapsed-by-identity layout so the clipboard matches what the
-/// user sees.
+/// A save-view tab as TSV text for clipboard "copy as text", or `None` for
+/// tabs without a text form. The Folder branch honors `opts.folder_grouped`.
 pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: RenderOpts) -> Option<String> {
-    let assets = loaded.assets.as_ref();
     match tab {
-        Tab::Folder => {
-            let chips_view = loaded.save.view_chips()?;
-            let folder_idx = chips_view.equipped_folder_index();
-            // Read-only display treats "unsupported" and "unset" the
-            // same — flatten the outer Option away.
-            let regular_idx = chips_view.regular_chip_index(folder_idx).flatten();
-            let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
-
-            let mut chips: Vec<Option<tango_dataview::save::Chip>> =
-                (0..folder::MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
-            let regular_display_idx = if !assets.regular_chip_is_in_place() {
-                if let Some(ri) = regular_idx {
-                    let c = chips.remove(0);
-                    chips.insert(ri, c);
-                    Some(ri)
-                } else {
-                    None
-                }
-            } else {
-                regular_idx
-            };
-
-            let mut out = String::new();
-            if opts.folder_grouped {
-                let mut grouped_map: indexmap::IndexMap<Option<tango_dataview::save::Chip>, folder::GroupedChip> =
-                    indexmap::IndexMap::new();
-                for (i, chip) in chips.iter().enumerate() {
-                    let g = grouped_map.entry(chip.clone()).or_default();
-                    g.count += 1;
-                    if regular_display_idx == Some(i) {
-                        g.is_regular = true;
-                    }
-                    if let Some(t) = tag_idxs {
-                        if t[0] == i {
-                            g.has_tag1 = true;
-                        }
-                        if t[1] == i {
-                            g.has_tag2 = true;
-                        }
-                    }
-                }
-                for (chip, g) in &grouped_map {
-                    let Some(c) = chip else {
-                        out.push_str(&format!("{}\t---\n", g.count));
-                        continue;
-                    };
-                    let name = assets
-                        .chip(c.id)
-                        .and_then(|info| info.name())
-                        .unwrap_or_else(|| "???".to_string());
-                    out.push_str(&format!("{}\t{name}\t{}", g.count, c.code));
-                    if g.is_regular {
-                        out.push_str("\t[REG]");
-                    }
-                    for _ in 0..(g.has_tag1 as usize + g.has_tag2 as usize) {
-                        out.push_str("\t[TAG]");
-                    }
-                    out.push('\n');
-                }
-            } else {
-                for (i, chip) in chips.iter().enumerate() {
-                    let Some(c) = chip else {
-                        out.push_str("---\n");
-                        continue;
-                    };
-                    let name = assets
-                        .chip(c.id)
-                        .and_then(|info| info.name())
-                        .unwrap_or_else(|| "???".to_string());
-                    out.push_str(&format!("{name}\t{}", c.code));
-                    if regular_display_idx == Some(i) {
-                        out.push_str("\t[REG]");
-                    }
-                    if let Some(ti) = tag_idxs {
-                        if ti.contains(&i) {
-                            out.push_str("\t[TAG]");
-                        }
-                    }
-                    out.push('\n');
-                }
-            }
-            Some(out)
-        }
-        Tab::PatchCards => {
-            let view = loaded.save.view_patch_cards()?;
-            let mut out = String::new();
-            match view {
-                tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
-                    for i in 0..v.count() {
-                        let Some(card) = v.patch_card(i) else { continue };
-                        let info = assets.patch_card56(card.id);
-                        let name = info
-                            .as_ref()
-                            .and_then(|c| c.name())
-                            .unwrap_or_else(|| format!("#{}", card.id));
-                        let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-                        out.push_str(&format!(
-                            "{name}\t{mb}MB\t{}\n",
-                            if card.enabled { "ON" } else { "off" }
-                        ));
-                    }
-                }
-                tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
-                    for i in 0..6 {
-                        let Some(card) = v.patch_card(i) else { continue };
-                        let info = assets.patch_card4(card.id);
-                        let name = info
-                            .as_ref()
-                            .and_then(|c| c.name())
-                            .unwrap_or_else(|| format!("#{}", card.id));
-                        out.push_str(&format!(
-                            "0{}\t{name}\t{}\n",
-                            ['A', 'B', 'C', 'D', 'E', 'F'][i],
-                            if card.enabled { "ON" } else { "off" }
-                        ));
-                    }
-                }
-            }
-            Some(out)
-        }
-        Tab::AutoBattleData => {
-            let view = loaded.save.view_auto_battle_data()?;
-            let mat = view.materialized();
-            let chip_name = |id: Option<usize>| match id {
-                Some(id) => assets
-                    .chip(id)
-                    .and_then(|c| c.name())
-                    .unwrap_or_else(|| format!("#{id}")),
-                None => "—".to_string(),
-            };
-            let mut out = String::new();
-            let mut section = |title: &str, ids: &[Option<usize>]| {
-                out.push_str(&format!("[{title}]\n"));
-                for id in ids {
-                    out.push_str(&chip_name(*id));
-                    out.push('\n');
-                }
-                out.push('\n');
-            };
-            section("Secondary standard", mat.secondary_standard_chips());
-            section("Standard", mat.standard_chips());
-            section("Mega", mat.mega_chips());
-            section("Giga", &[mat.giga_chip()]);
-            section("Combos", mat.combos());
-            section("Program advance", &[mat.program_advance()]);
-            Some(out)
-        }
-        Tab::Navi => {
-            let view = loaded.save.view_navi()?;
-            let mut out = String::new();
-            match view {
-                tango_dataview::save::NaviView::LinkNavi(v) => {
-                    let id = v.navi();
-                    let name = assets
-                        .navi(id)
-                        .and_then(|n| n.name())
-                        .unwrap_or_else(|| format!("#{id}"));
-                    out.push_str(&format!("{name}\n"));
-                }
-                tango_dataview::save::NaviView::Navicust(v) => {
-                    // Style name first (BN3 only), then two TSV
-                    // columns: solid parts on the left, plus parts on
-                    // the right, lined up row-by-row to match the
-                    // side-by-side layout the UI renders. Shorter
-                    // column gets blank cells; the trailing tab keeps
-                    // a paste into Google Sheets / Excel parsing as
-                    // two columns even when the last solid row has
-                    // no plus partner.
-                    if let Some(style_id) = v.style() {
-                        if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
-                            out.push_str(&name);
-                            out.push('\n');
-                        }
-                    }
-                    let mut solid = Vec::new();
-                    let mut plus = Vec::new();
-                    for i in 0..v.count() {
-                        let Some(part) = v.navicust_part(i) else {
-                            continue;
-                        };
-                        let Some(info) = assets.navicust_part(part.id) else {
-                            continue;
-                        };
-                        let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
-                        if info.is_solid() {
-                            solid.push(name);
-                        } else {
-                            plus.push(name);
-                        }
-                    }
-                    for i in 0..solid.len().max(plus.len()) {
-                        let s = solid.get(i).map(String::as_str).unwrap_or("");
-                        let p = plus.get(i).map(String::as_str).unwrap_or("");
-                        out.push_str(s);
-                        out.push('\t');
-                        out.push_str(p);
-                        out.push('\n');
-                    }
-                }
-            }
-            Some(out)
-        }
+        Tab::Folder => folder::as_text(loaded, opts),
+        Tab::PatchCards => patch_cards::as_text(loaded),
+        Tab::AutoBattleData => abd::as_text(loaded),
+        Tab::Navi => navicust::as_text(loaded),
         Tab::Cover => None,
     }
 }
 
-/// Render a save-view tab to an RGBA image, for clipboard
-/// "copy as image". Currently only Navi/Navicust supports this
-/// (the rendered grid is already an image; we just hand back a
-/// fresh copy). Returns `None` for tabs without a meaningful
-/// image representation.
+/// Render a save-view tab to an RGBA image for clipboard "copy as image".
+/// Only Navi/NaviCust has an image form; `None` otherwise.
 pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
-    let nv = loaded.save.view_navi()?;
-    let v = match nv {
-        tango_dataview::save::NaviView::Navicust(v) => v,
-        _ => return None,
-    };
-    if !matches!(tab, Tab::Navi) {
-        return None;
+    match tab {
+        Tab::Navi => navicust::as_image(loaded),
+        _ => None,
     }
-    let layout = loaded.assets.navicust_layout()?;
-    let materialized = v.materialized();
-    let lang = crate::game::region_to_language(loaded.game.region());
-    // Clipboard / export path: render at native (high) resolution.
-    Some(navicust::grid::render(
-        &materialized,
-        &layout,
-        v.as_ref(),
-        loaded.assets.as_ref(),
-        &lang,
-        None,
-    ))
 }
-
-
-
-
 
 /// The "✕" button that removes a chip / patch-card from its slot, backing the
 /// row out to the library. Identical across the folder and patch-card editors
@@ -1470,7 +1237,6 @@ fn remove_button<'a>(action: Action) -> Element<'a, Action> {
         .on_press(action)
         .into()
 }
-
 
 /// Wrap an editor row's content with the class-accent stripe + zebra
 /// background, matching the read-only chip list.
@@ -1500,7 +1266,6 @@ fn edit_row_wrap<'a>(
         .style(crate::widgets::zebra_row(row_idx))
         .into()
 }
-
 
 /// A muted grip glyph marking a row as drag-to-reorder. The whole row is the
 /// drag surface (sweeten's `Column` owns the gesture); this is just the visual
@@ -1565,7 +1330,6 @@ fn edit_toggle_maybe<'a>(
     }
 }
 
-
 /// Wraps the inner row content with a 4 px colored stripe on the
 /// left for mega/giga/dark chip class accents. The outer container
 /// carries the standard zebra-row style so every chip row matches
@@ -1621,7 +1385,6 @@ fn card_wrap<M: 'static>(
         })
         .into()
 }
-
 
 fn badge<M: 'static>(label: &'static str, color: iced::Color) -> Element<'static, M> {
     container(text(label).size(10).color(iced::Color::WHITE))

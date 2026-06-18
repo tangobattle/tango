@@ -685,3 +685,34 @@ fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option
             .join(" & "),
     )
 }
+
+/// The patch-cards tab as TSV text.
+pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_patch_cards()?;
+    let mut out = String::new();
+    match view {
+        tango_dataview::save::PatchCardsView::PatchCard56s(v) => {
+            for i in 0..v.count() {
+                let Some(card) = v.patch_card(i) else { continue };
+                let info = assets.patch_card56(card.id);
+                let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{}", card.id));
+                let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
+                out.push_str(&format!("{name}\t{mb}MB\t{}\n", if card.enabled { "ON" } else { "off" }));
+            }
+        }
+        tango_dataview::save::PatchCardsView::PatchCard4s(v) => {
+            for i in 0..6 {
+                let Some(card) = v.patch_card(i) else { continue };
+                let info = assets.patch_card4(card.id);
+                let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{}", card.id));
+                out.push_str(&format!(
+                    "0{}\t{name}\t{}\n",
+                    ['A', 'B', 'C', 'D', 'E', 'F'][i],
+                    if card.enabled { "ON" } else { "off" }
+                ));
+            }
+        }
+    }
+    Some(out)
+}

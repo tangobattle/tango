@@ -809,3 +809,64 @@ fn sorted_navicust_parts(loaded: &Loaded, sort: NavicustSort, filter: &str) -> V
     }
     rows.into_iter().map(|e| (e.id, e.name, e.desc)).collect()
 }
+
+/// The Navi / NaviCust tab as text.
+pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_navi()?;
+    let mut out = String::new();
+    match view {
+        tango_dataview::save::NaviView::LinkNavi(v) => {
+            let id = v.navi();
+            let name = assets.navi(id).and_then(|n| n.name()).unwrap_or_else(|| format!("#{id}"));
+            out.push_str(&format!("{name}\n"));
+        }
+        tango_dataview::save::NaviView::Navicust(v) => {
+            // Style name first (BN3 only), then two TSV columns: solid parts on
+            // the left, plus parts on the right, lined up row-by-row to match
+            // the side-by-side layout the UI renders. The trailing tab keeps a
+            // paste parsing as two columns even when the last solid row has no
+            // plus partner.
+            if let Some(style_id) = v.style() {
+                if let Some(name) = assets.style(style_id).and_then(|s| s.name()) {
+                    out.push_str(&name);
+                    out.push('\n');
+                }
+            }
+            let mut solid = Vec::new();
+            let mut plus = Vec::new();
+            for i in 0..v.count() {
+                let Some(part) = v.navicust_part(i) else { continue };
+                let Some(info) = assets.navicust_part(part.id) else { continue };
+                let name = info.name().unwrap_or_else(|| format!("#{}", part.id));
+                if info.is_solid() {
+                    solid.push(name);
+                } else {
+                    plus.push(name);
+                }
+            }
+            for i in 0..solid.len().max(plus.len()) {
+                let s = solid.get(i).map(String::as_str).unwrap_or("");
+                let p = plus.get(i).map(String::as_str).unwrap_or("");
+                out.push_str(s);
+                out.push('\t');
+                out.push_str(p);
+                out.push('\n');
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The NaviCust grid rendered to an RGBA image for "copy as image". `None`
+/// for non-NaviCust navi views (only the grid has a meaningful image).
+pub(crate) fn as_image(loaded: &Loaded) -> Option<image::RgbaImage> {
+    let tango_dataview::save::NaviView::Navicust(v) = loaded.save.view_navi()? else {
+        return None;
+    };
+    let layout = loaded.assets.navicust_layout()?;
+    let materialized = v.materialized();
+    let lang = crate::game::region_to_language(loaded.game.region());
+    // Clipboard / export path: render at native (high) resolution.
+    Some(grid::render(&materialized, &layout, v.as_ref(), loaded.assets.as_ref(), &lang, None))
+}

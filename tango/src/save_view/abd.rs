@@ -360,3 +360,30 @@ const ABD_COUNT_COL_W: f32 = 104.0;
 /// Use counts are stored as `u16` in the save, so the numeric fields
 /// clamp entries to this ceiling.
 const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
+
+/// The auto-battle-data tab as text.
+pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
+    let assets = loaded.assets.as_ref();
+    let view = loaded.save.view_auto_battle_data()?;
+    let mat = view.materialized();
+    let chip_name = |id: Option<usize>| match id {
+        Some(id) => assets.chip(id).and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}")),
+        None => "—".to_string(),
+    };
+    let mut out = String::new();
+    let mut section = |title: &str, ids: &[Option<usize>]| {
+        out.push_str(&format!("[{title}]\n"));
+        for id in ids {
+            out.push_str(&chip_name(*id));
+            out.push('\n');
+        }
+        out.push('\n');
+    };
+    section("Secondary standard", mat.secondary_standard_chips());
+    section("Standard", mat.standard_chips());
+    section("Mega", mat.mega_chips());
+    section("Giga", &[mat.giga_chip()]);
+    section("Combos", mat.combos());
+    section("Program advance", &[mat.program_advance()]);
+    Some(out)
+}
