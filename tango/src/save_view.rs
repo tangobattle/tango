@@ -2679,6 +2679,17 @@ fn chip_icon<'a>(loaded: &'a Loaded, chip_id: Option<usize>) -> Element<'a, Acti
     }
 }
 
+/// The "✕" button that removes a chip / patch-card from its slot, backing the
+/// row out to the library. Identical across the folder and patch-card editors
+/// apart from the action it fires.
+fn remove_button<'a>(action: Action) -> Element<'a, Action> {
+    button(lucide_icons::Icon::X.widget().size(TEXT_BODY))
+        .padding([3, 8])
+        .style(crate::widgets::neutral)
+        .on_press(action)
+        .into()
+}
+
 /// Build the chip popover — scaled artwork above its description — and wrap
 /// `inner` with it as a follow-cursor tooltip. Returns `inner` unchanged when
 /// the chip has neither artwork nor a description. `accent` tints the popover
@@ -2858,8 +2869,6 @@ fn folder_slot_row<'a>(
     reg_allowed: bool,
     tag_allowed: bool,
 ) -> Element<'a, Action> {
-    use crate::widgets;
-    use lucide_icons::Icon;
     let assets = loaded.assets.as_ref();
     let chips_have_mb = assets.chips_have_mb();
     let chip_id = chip.as_ref().map(|c| c.id);
@@ -2906,12 +2915,7 @@ fn folder_slot_row<'a>(
                 ));
             }
             // ✕ → remove this chip (back out to the library).
-            inner = inner.push(
-                button(Icon::X.widget().size(TEXT_BODY))
-                    .padding([3, 8])
-                    .style(widgets::neutral)
-                    .on_press(Action::RemoveChip { slot }),
-            );
+            inner = inner.push(remove_button(Action::RemoveChip { slot }));
         }
         None => {
             inner = inner.push(text("—").size(TEXT_BODY).style(muted_text_style).width(Fill));
@@ -3967,8 +3971,6 @@ fn patch_card56_list_row<'a>(
     card: tango_dataview::save::PatchCard,
     can_enable: bool,
 ) -> Element<'a, Action> {
-    use crate::widgets;
-    use lucide_icons::Icon;
     let info = loaded.assets.patch_card56(card.id);
     let name = info
         .as_ref()
@@ -3983,10 +3985,7 @@ fn patch_card56_list_row<'a>(
     // already-on card can always be turned off).
     let toggle_msg = (card.enabled || can_enable).then_some(Action::TogglePatchCard56 { slot });
     let toggle = edit_toggle_maybe("ON", card.enabled, iced::Color::from_rgb8(0x29, 0xa1, 0x21), toggle_msg);
-    let remove = button(Icon::X.widget().size(TEXT_BODY))
-        .padding([3, 8])
-        .style(widgets::neutral)
-        .on_press(Action::RemovePatchCard56 { slot });
+    let remove = remove_button(Action::RemovePatchCard56 { slot });
 
     let row = row![
         drag_handle(),

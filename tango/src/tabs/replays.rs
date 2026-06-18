@@ -615,11 +615,7 @@ impl ReplaysState {
                 .into()
         };
 
-        column![top, row![left, right].spacing(style::PANE_GAP).height(Fill),]
-            .spacing(style::PANE_GAP)
-            .padding(style::PANE_GAP)
-            .height(Fill)
-            .into()
+        widgets::top_split_pane(top, left, right)
     }
 
     /// Top strip: game + opponent filter dropdowns plus the

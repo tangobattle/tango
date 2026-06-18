@@ -175,11 +175,7 @@ impl PatchesState {
                     .into()
             };
 
-        column![top, row![left, right].spacing(style::PANE_GAP).height(Fill),]
-            .spacing(style::PANE_GAP)
-            .padding(style::PANE_GAP)
-            .height(Fill)
-            .into()
+        widgets::top_split_pane(top, left, right)
     }
 
     /// Top strip: the search filter, the in-flight / failed update

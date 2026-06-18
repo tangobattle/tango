@@ -10,7 +10,7 @@ use crate::style::{PANE_GAP, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING};
 use iced::widget::{button, container, text, tooltip};
 use iced::{Alignment, Element, Length, Theme};
 use lucide_icons::Icon;
-use sweeten::widget::row;
+use sweeten::widget::{column, row};
 
 /// Icon-only button for low-emphasis toolbar actions (rescan,
 /// copy, open-folder, etc.). Uses [`neutral`] — a soft, theme-
@@ -628,6 +628,24 @@ pub fn pane(theme: &Theme) -> iced::widget::container::Style {
         },
         ..Default::default()
     }
+}
+
+/// The standard tab body: a full-width `top` strip above a left/right split,
+/// with every gap and the outer inset set to [`PANE_GAP`]. Shared by the
+/// Patches and Replays tabs.
+pub fn top_split_pane<'a, M: 'a>(
+    top: impl Into<Element<'a, M>>,
+    left: impl Into<Element<'a, M>>,
+    right: impl Into<Element<'a, M>>,
+) -> Element<'a, M> {
+    let top: Element<'a, M> = top.into();
+    let left: Element<'a, M> = left.into();
+    let right: Element<'a, M> = right.into();
+    column![top, row![left, right].spacing(PANE_GAP).height(Length::Fill)]
+        .spacing(PANE_GAP)
+        .padding(PANE_GAP)
+        .height(Length::Fill)
+        .into()
 }
 
 /// The [`pane`] plate fill. Exposed so exit washes
