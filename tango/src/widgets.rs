@@ -648,6 +648,15 @@ pub fn top_split_pane<'a, M: 'a>(
         .into()
 }
 
+/// A detail pane's empty state: `message` centered on the [`pane`] plate.
+/// Shown by the Patches / Replays tabs when nothing is selected.
+pub fn pane_prompt<'a, M: 'a>(message: String) -> Element<'a, M> {
+    container(text(message).size(TEXT_BODY))
+        .center(Length::Fill)
+        .style(pane)
+        .into()
+}
+
 /// The [`pane`] plate fill. Exposed so exit washes
 /// ([`crate::anim::exit_fade`]) can dissolve departing controls
 /// into the same color they sit on. On dark, the lift runs through

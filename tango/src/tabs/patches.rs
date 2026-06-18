@@ -169,10 +169,7 @@ impl PatchesState {
                     None => detail,
                 }
             } else {
-                container(text(t!(lang, "patches-select-prompt")).size(TEXT_BODY))
-                    .center(Fill)
-                    .style(widgets::pane)
-                    .into()
+                widgets::pane_prompt(t!(lang, "patches-select-prompt"))
             };
 
         widgets::top_split_pane(top, left, right)

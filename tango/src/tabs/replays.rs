@@ -609,10 +609,7 @@ impl ReplaysState {
                 None => detail,
             }
         } else {
-            container(text(t!(lang, "replays-select-prompt")).size(TEXT_BODY))
-                .center(Fill)
-                .style(widgets::pane)
-                .into()
+            widgets::pane_prompt(t!(lang, "replays-select-prompt"))
         };
 
         widgets::top_split_pane(top, left, right)
