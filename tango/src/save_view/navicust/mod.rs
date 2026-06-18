@@ -32,6 +32,49 @@ fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim:
     editor::PartThumb::new(&rotated, color, info.is_solid(), dim).map(|t| t.view())
 }
 
+/// Solid + plus colors for an NCP color, matching the navicust render.
+fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
+    use NavicustPartColor as N;
+    match color {
+        N::Red => (
+            iced::Color::from_rgb8(0xde, 0x10, 0x00),
+            iced::Color::from_rgb8(0xbd, 0x00, 0x00),
+        ),
+        N::Pink => (
+            iced::Color::from_rgb8(0xde, 0x8c, 0xc6),
+            iced::Color::from_rgb8(0xbd, 0x6b, 0xa5),
+        ),
+        N::Yellow => (
+            iced::Color::from_rgb8(0xde, 0xde, 0x00),
+            iced::Color::from_rgb8(0xbd, 0xbd, 0x00),
+        ),
+        N::Green => (
+            iced::Color::from_rgb8(0x18, 0xc6, 0x00),
+            iced::Color::from_rgb8(0x00, 0xa5, 0x00),
+        ),
+        N::Blue => (
+            iced::Color::from_rgb8(0x29, 0x84, 0xde),
+            iced::Color::from_rgb8(0x08, 0x60, 0xb8),
+        ),
+        N::White => (
+            iced::Color::from_rgb8(0xde, 0xde, 0xde),
+            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
+        ),
+        N::Orange => (
+            iced::Color::from_rgb8(0xde, 0x7b, 0x00),
+            iced::Color::from_rgb8(0xbd, 0x5a, 0x00),
+        ),
+        N::Purple => (
+            iced::Color::from_rgb8(0x94, 0x00, 0xce),
+            iced::Color::from_rgb8(0x73, 0x00, 0xad),
+        ),
+        N::Gray => (
+            iced::Color::from_rgb8(0x84, 0x84, 0x84),
+            iced::Color::from_rgb8(0x63, 0x63, 0x63),
+        ),
+    }
+}
+
 /// The navicust editor: an interactive grid (left) + a part palette
 /// (right), mirroring [`render_folder_edit`]'s two-pane layout — the grid
 /// pane shrinks to the grid so the palette gets the rest of the width. The
@@ -40,7 +83,11 @@ fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim:
 /// the read-only viewer and the clipboard image, and ghosts the held part.
 /// Each palette row carries its own rotate / (de)compress buttons that set
 /// the orientation the part is picked up in.
-pub(super) fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
+pub(super) fn render_navicust_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a Loaded,
+    state: &'a State,
+) -> Element<'a, Action> {
     use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {

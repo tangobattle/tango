@@ -1,4 +1,5 @@
 use super::*;
+use super::folder::GroupedChip;
 use sweeten::widget::{column, row, text_input};
 
 // ---------- Auto Battle Data ----------

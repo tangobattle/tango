@@ -516,3 +516,172 @@ fn render_patch_card4s_edit<'a>(
     .style(widgets::pane)
     .into()
 }
+
+/// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
+/// past this is blocked, and a freshly added card lands disabled if it
+/// wouldn't fit — so a committed save never exceeds the in-game limit.
+pub const MAX_PATCH_CARD56_MB: u32 = 80;
+
+/// Sort order for the BN5/BN6 patch-card editor's library pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PatchCard56Sort {
+    Id,
+    Name,
+    Mb,
+}
+
+impl PatchCard56Sort {
+    pub const ALL: [PatchCard56Sort; 3] = [PatchCard56Sort::Id, PatchCard56Sort::Name, PatchCard56Sort::Mb];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            PatchCard56Sort::Id => t!(lang, "patch-card-sort-id"),
+            PatchCard56Sort::Name => t!(lang, "patch-card-sort-name"),
+            PatchCard56Sort::Mb => t!(lang, "patch-card-sort-mb"),
+        }
+    }
+}
+
+/// A choice in a BN4 slot's card dropdown: the card id (`None` clears the
+/// slot) plus a pre-resolved label. The label folds the card's effect into
+/// the name (`"Max HP Up — Max HP+100"`), since within one slot several
+/// cards share a name and only the effect tells them apart. `Display`
+/// renders the label; equality is by id so the picker can match the
+/// currently-installed card.
+#[derive(Clone)]
+struct PatchCard4Choice {
+    id: Option<usize>,
+    label: String,
+}
+
+impl PatchCard4Choice {
+    fn none(lang: &LanguageIdentifier) -> Self {
+        Self {
+            id: None,
+            label: t!(lang, "patch-card4-none"),
+        }
+    }
+
+    fn card(loaded: &Loaded, id: usize) -> Self {
+        let info = loaded.assets.patch_card4(id);
+        let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}"));
+        // 3-digit catalog number prefix (also disambiguates same-named
+        // cards in the dropdown); then the effect to tell them apart.
+        let label = format!(
+            "{id:03} {name} — {}",
+            patch_card4_effect_label(
+                info.as_ref()
+                    .map_or(tango_dataview::rom::PatchCard4Effect::None, |c| c.effect(),)
+            )
+        );
+        Self { id: Some(id), label }
+    }
+}
+
+impl PartialEq for PatchCard4Choice {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl std::fmt::Display for PatchCard4Choice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// Human-readable label for a BN4 patch-card effect, derived from the
+/// machine-readable [`tango_dataview::rom::PatchCard4Effect`] decoded out of
+/// the ROM. (B-shortcut chip params are shown raw for now — the shortcut →
+/// chip-id table isn't mapped yet.)
+fn patch_card4_effect_label(effect: tango_dataview::rom::PatchCard4Effect) -> String {
+    use tango_dataview::rom::{
+        PatchCard4Aura as A, PatchCard4Color as C, PatchCard4Effect as E, PatchCard4Panel as P,
+        PatchCard4PetColor as PT, PatchCard4Soul as S,
+    };
+    match effect {
+        E::None => "—".to_string(),
+        E::PetMenu(c) => format!(
+            "{} PET menu",
+            match c {
+                PT::Blue => "Blue",
+                PT::Pink => "Pink",
+                PT::Green => "Green",
+                PT::Black => "Black",
+            }
+        ),
+        E::MaxHP(n) => format!("Max HP +{n}"),
+        E::BusterAttack(n) => format!("Buster Attack {}", n as u16 + 1),
+        E::BButton(s) => format!("B Button {s:?}"),
+        E::BCharge(s) => format!("B Charge {s:?}"),
+        E::BLeft(s) => format!("B + ← {s:?}"),
+        E::CustomSlots(n) => format!("Custom +{n}"),
+        E::MegaFolder(n) => format!("Mega Chip +{n}"),
+        E::GigaFolder(n) => format!("Giga Chip +{n}"),
+        E::TripleSupporter => "Triple Supporter".to_string(),
+        E::PanelStep(p) => format!(
+            "{} Panel Step",
+            match p {
+                P::Broken => "Broken",
+                P::Cracked => "Cracked",
+                P::Metal => "Metal",
+                P::Holy => "Holy",
+            }
+        ),
+        E::FullSynchro => "Full Synchro".to_string(),
+        E::Aura(a) => match a {
+            A::Barrier100 => "Barrier 100",
+            A::Barrier200 => "Barrier 200",
+            A::LifeAura => "LifeAura",
+        }
+        .to_string(),
+        E::Soul(s) => format!(
+            "{} Soul",
+            match s {
+                S::Roll => "Roll",
+                S::Guts => "Guts",
+                S::Wind => "Wind",
+                S::Search => "Search",
+                S::Fire => "Fire",
+                S::Thunder => "Thunder",
+                S::Proto => "Proto",
+                S::Number => "Number",
+                S::Metal => "Metal",
+                S::Junk => "Junk",
+                S::Aqua => "Aqua",
+                S::Wood => "Wood",
+            }
+        ),
+        E::Color(c) => format!(
+            "{} MegaMan",
+            match c {
+                C::Red => "Red",
+                C::Yellow => "Yellow",
+                C::White => "White",
+                C::Green => "Green",
+            }
+        ),
+        E::AllGuard => "All Guard".to_string(),
+    }
+}
+
+/// Joined human-readable label for a card's bugs, or `None` if it has none.
+fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option<String> {
+    use tango_dataview::rom::PatchCard4Bug as B;
+    if bugs.is_empty() {
+        return None;
+    }
+    Some(
+        bugs.iter()
+            .map(|b| match b {
+                B::Confused => "Start battle Confused",
+                B::AutoMove => "Auto-move forward",
+                B::HP(_) => "HP Bug",
+                B::CustomHP => "Custom HP Bug",
+                B::CustomMinus1 => "Custom −1",
+                B::PoisonPanelStep => "Poison Panel Step",
+            })
+            .collect::<Vec<_>>()
+            .join(" & "),
+    )
+}

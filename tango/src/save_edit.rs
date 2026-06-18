@@ -15,7 +15,7 @@ use crate::{selection, tabs};
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
 pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdit) {
-    use crate::save_view::MAX_FOLDER_CHIPS;
+    use crate::save_view::folder::MAX_FOLDER_CHIPS;
     use tabs::play::ChipEdit;
     use tango_dataview::save::Chip;
 
@@ -36,7 +36,7 @@ pub fn apply_chip_edit(loaded: &mut selection::Loaded, edit: tabs::play::ChipEdi
             // Enforce the equipped navi's folder limits (mega/giga class
             // caps + the per-chip copy cap).
             let limits = loaded.save.folder_limits(&*loaded.assets);
-            if !crate::save_view::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
+            if !crate::save_view::folder::FolderUsage::scan(loaded, folder_idx).can_add(loaded, chip_id, &limits) {
                 return;
             }
             let (chips, regular, tags) = {
@@ -358,7 +358,7 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play:
             // Register it; enable it only if it still fits the MB budget,
             // otherwise it lands disabled (the user can free up room and
             // enable it later). Inserted at the top of the list.
-            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::MAX_PATCH_CARD56_MB;
+            let enabled = enabled_mb(&new_cards) + card_mb(id) <= crate::save_view::patch_cards::MAX_PATCH_CARD56_MB;
             new_cards.insert(0, PatchCard { id, enabled });
         }
         PatchCard56Edit::RemoveCard { slot } => {
@@ -381,7 +381,7 @@ pub fn apply_patch_card56_edit(loaded: &mut selection::Loaded, edit: tabs::play:
                 new_cards[slot].enabled = false;
             } else {
                 // Enabling: refuse if it would exceed the MB budget.
-                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::MAX_PATCH_CARD56_MB {
+                if enabled_mb(&new_cards) + card_mb(card.id) > crate::save_view::patch_cards::MAX_PATCH_CARD56_MB {
                     return;
                 }
                 new_cards[slot].enabled = true;

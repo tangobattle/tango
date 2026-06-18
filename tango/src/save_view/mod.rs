@@ -15,9 +15,9 @@ use tango_dataview::save::Save;
 use unic_langid::LanguageIdentifier;
 
 pub(crate) mod abd;
-mod folder;
+pub(crate) mod folder;
 pub mod navicust;
-mod patch_cards;
+pub(crate) mod patch_cards;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
@@ -33,40 +33,6 @@ pub struct RenderOpts {
     pub folder_grouped: bool,
 }
 
-/// Sort order for the editor's chip-library (right) pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LibrarySort {
-    Id,
-    Name,
-    Code,
-    Attack,
-    Element,
-    Mb,
-}
-
-impl LibrarySort {
-    pub const ALL: [LibrarySort; 6] = [
-        LibrarySort::Id,
-        LibrarySort::Name,
-        LibrarySort::Code,
-        LibrarySort::Attack,
-        LibrarySort::Element,
-        LibrarySort::Mb,
-    ];
-}
-
-impl LibrarySort {
-    fn label(self, lang: &LanguageIdentifier) -> String {
-        match self {
-            LibrarySort::Id => t!(lang, "folder-sort-id"),
-            LibrarySort::Name => t!(lang, "folder-sort-name"),
-            LibrarySort::Code => t!(lang, "folder-sort-code"),
-            LibrarySort::Attack => t!(lang, "folder-sort-attack"),
-            LibrarySort::Element => t!(lang, "folder-sort-element"),
-            LibrarySort::Mb => t!(lang, "folder-sort-mb"),
-        }
-    }
-}
 
 /// A sort mode paired with its localized label, for the editors' sort
 /// pick_lists — the picker renders options via `Display`, which can't
@@ -221,251 +187,8 @@ fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
 /// `sort` order — one row per owned chip+code. Only chips+codes with a
 /// pack count > 0 are returned, so a folder can only be built from what
 /// the save legitimately holds. Ties fall back to id for a stable order.
-fn sorted_library_entries(loaded: &Loaded, sort: LibrarySort) -> Vec<(usize, String, tango_dataview::save::ChipCode)> {
-    use tango_dataview::save::ChipCode;
-    let assets = loaded.assets.as_ref();
-    let chips_view = loaded.save.view_chips();
-    struct E {
-        id: usize,
-        name: String,
-        code: ChipCode,
-        code_rank: u8,
-        atk: u32,
-        elem: usize,
-        mb: u8,
-    }
-    let mut rows: Vec<E> = Vec::new();
-    for id in 0..assets.num_chips() {
-        let Some(info) = assets.chip(id) else { continue };
-        let Some(name) = info.name() else { continue };
-        let (atk, elem, mb) = (info.attack_power(), info.element(), info.mb());
-        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *),
-        // but only for codes the player owns (pack count > 0). `variant`
-        // is the code's index within the chip's code list — the index the
-        // pack table is keyed by. Ids past the pack table (Program
-        // Advances, etc.) return `None` and are dropped. The editor only
-        // renders for games with a pack, so a missing count means "not
-        // owned", not "unsupported".
-        for (variant, ch) in info.codes().into_iter().enumerate() {
-            let Some(code) = ChipCode::from_char(ch) else { continue };
-            let owned = chips_view
-                .as_ref()
-                .and_then(|v| v.pack_count(id, variant))
-                .map_or(false, |c| c > 0);
-            if !owned {
-                continue;
-            }
-            rows.push(E {
-                id,
-                name: name.clone(),
-                code,
-                code_rank: code as u8,
-                atk,
-                elem,
-                mb,
-            });
-        }
-    }
-    // All ties fall back to (id, code) so the order stays stable.
-    match sort {
-        LibrarySort::Id => {}
-        LibrarySort::Name => rows.sort_by(|a, b| {
-            a.name
-                .cmp(&b.name)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Code => rows.sort_by(|a, b| a.code_rank.cmp(&b.code_rank).then(a.id.cmp(&b.id))),
-        LibrarySort::Attack => rows.sort_by(|a, b| {
-            a.atk
-                .cmp(&b.atk)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Element => rows.sort_by(|a, b| {
-            a.elem
-                .cmp(&b.elem)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-        LibrarySort::Mb => rows.sort_by(|a, b| {
-            a.mb.cmp(&b.mb)
-                .then(a.id.cmp(&b.id))
-                .then(a.code_rank.cmp(&b.code_rank))
-        }),
-    }
-    rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
-}
 
-/// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
-/// past this is blocked, and a freshly added card lands disabled if it
-/// wouldn't fit — so a committed save never exceeds the in-game limit.
-pub const MAX_PATCH_CARD56_MB: u32 = 80;
-pub const MAX_FOLDER_CHIPS: usize = 30;
 
-/// Sort order for the BN5/BN6 patch-card editor's library pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PatchCard56Sort {
-    Id,
-    Name,
-    Mb,
-}
-
-impl PatchCard56Sort {
-    pub const ALL: [PatchCard56Sort; 3] = [PatchCard56Sort::Id, PatchCard56Sort::Name, PatchCard56Sort::Mb];
-
-    fn label(self, lang: &LanguageIdentifier) -> String {
-        match self {
-            PatchCard56Sort::Id => t!(lang, "patch-card-sort-id"),
-            PatchCard56Sort::Name => t!(lang, "patch-card-sort-name"),
-            PatchCard56Sort::Mb => t!(lang, "patch-card-sort-mb"),
-        }
-    }
-}
-
-/// A choice in a BN4 slot's card dropdown: the card id (`None` clears the
-/// slot) plus a pre-resolved label. The label folds the card's effect into
-/// the name (`"Max HP Up — Max HP+100"`), since within one slot several
-/// cards share a name and only the effect tells them apart. `Display`
-/// renders the label; equality is by id so the picker can match the
-/// currently-installed card.
-#[derive(Clone)]
-struct PatchCard4Choice {
-    id: Option<usize>,
-    label: String,
-}
-
-impl PatchCard4Choice {
-    fn none(lang: &LanguageIdentifier) -> Self {
-        Self {
-            id: None,
-            label: t!(lang, "patch-card4-none"),
-        }
-    }
-
-    fn card(loaded: &Loaded, id: usize) -> Self {
-        let info = loaded.assets.patch_card4(id);
-        let name = info.as_ref().and_then(|c| c.name()).unwrap_or_else(|| format!("#{id}"));
-        // 3-digit catalog number prefix (also disambiguates same-named
-        // cards in the dropdown); then the effect to tell them apart.
-        let label = format!(
-            "{id:03} {name} — {}",
-            patch_card4_effect_label(
-                info.as_ref()
-                    .map_or(tango_dataview::rom::PatchCard4Effect::None, |c| c.effect(),)
-            )
-        );
-        Self { id: Some(id), label }
-    }
-}
-
-impl PartialEq for PatchCard4Choice {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl std::fmt::Display for PatchCard4Choice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
-}
-
-/// Human-readable label for a BN4 patch-card effect, derived from the
-/// machine-readable [`tango_dataview::rom::PatchCard4Effect`] decoded out of
-/// the ROM. (B-shortcut chip params are shown raw for now — the shortcut →
-/// chip-id table isn't mapped yet.)
-fn patch_card4_effect_label(effect: tango_dataview::rom::PatchCard4Effect) -> String {
-    use tango_dataview::rom::{
-        PatchCard4Aura as A, PatchCard4Color as C, PatchCard4Effect as E, PatchCard4Panel as P,
-        PatchCard4PetColor as PT, PatchCard4Soul as S,
-    };
-    match effect {
-        E::None => "—".to_string(),
-        E::PetMenu(c) => format!(
-            "{} PET menu",
-            match c {
-                PT::Blue => "Blue",
-                PT::Pink => "Pink",
-                PT::Green => "Green",
-                PT::Black => "Black",
-            }
-        ),
-        E::MaxHP(n) => format!("Max HP +{n}"),
-        E::BusterAttack(n) => format!("Buster Attack {}", n as u16 + 1),
-        E::BButton(s) => format!("B Button {s:?}"),
-        E::BCharge(s) => format!("B Charge {s:?}"),
-        E::BLeft(s) => format!("B + ← {s:?}"),
-        E::CustomSlots(n) => format!("Custom +{n}"),
-        E::MegaFolder(n) => format!("Mega Chip +{n}"),
-        E::GigaFolder(n) => format!("Giga Chip +{n}"),
-        E::TripleSupporter => "Triple Supporter".to_string(),
-        E::PanelStep(p) => format!(
-            "{} Panel Step",
-            match p {
-                P::Broken => "Broken",
-                P::Cracked => "Cracked",
-                P::Metal => "Metal",
-                P::Holy => "Holy",
-            }
-        ),
-        E::FullSynchro => "Full Synchro".to_string(),
-        E::Aura(a) => match a {
-            A::Barrier100 => "Barrier 100",
-            A::Barrier200 => "Barrier 200",
-            A::LifeAura => "LifeAura",
-        }
-        .to_string(),
-        E::Soul(s) => format!(
-            "{} Soul",
-            match s {
-                S::Roll => "Roll",
-                S::Guts => "Guts",
-                S::Wind => "Wind",
-                S::Search => "Search",
-                S::Fire => "Fire",
-                S::Thunder => "Thunder",
-                S::Proto => "Proto",
-                S::Number => "Number",
-                S::Metal => "Metal",
-                S::Junk => "Junk",
-                S::Aqua => "Aqua",
-                S::Wood => "Wood",
-            }
-        ),
-        E::Color(c) => format!(
-            "{} MegaMan",
-            match c {
-                C::Red => "Red",
-                C::Yellow => "Yellow",
-                C::White => "White",
-                C::Green => "Green",
-            }
-        ),
-        E::AllGuard => "All Guard".to_string(),
-    }
-}
-
-/// Joined human-readable label for a card's bugs, or `None` if it has none.
-fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option<String> {
-    use tango_dataview::rom::PatchCard4Bug as B;
-    if bugs.is_empty() {
-        return None;
-    }
-    Some(
-        bugs.iter()
-            .map(|b| match b {
-                B::Confused => "Start battle Confused",
-                B::AutoMove => "Auto-move forward",
-                B::HP(_) => "HP Bug",
-                B::CustomHP => "Custom HP Bug",
-                B::CustomMinus1 => "Custom −1",
-                B::PoisonPanelStep => "Poison Panel Step",
-            })
-            .collect::<Vec<_>>()
-            .join(" & "),
-    )
-}
 
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
@@ -533,12 +256,12 @@ pub struct State {
     pub editing: Option<EditState>,
     /// Sort order for the chip library pane. A persistent UI preference
     /// (kept across edit sessions), so it lives outside [`EditState`].
-    pub library_sort: LibrarySort,
+    pub library_sort: folder::LibrarySort,
     /// Sort order for the navicust palette pane (persistent preference).
     pub navicust_sort: navicust::NavicustSort,
     /// Sort order for the BN5/BN6 patch-card library pane (persistent
     /// preference).
-    pub patch_card56_sort: PatchCard56Sort,
+    pub patch_card56_sort: patch_cards::PatchCard56Sort,
     /// Sort order for the auto-battle-data chip library pane (persistent
     /// preference).
     pub auto_battle_data_sort: abd::AutoBattleDataSort,
@@ -632,9 +355,9 @@ impl State {
             folder_grouped: true,
             body_scroll_id: iced::widget::Id::unique(),
             editing: None,
-            library_sort: LibrarySort::Id,
+            library_sort: folder::LibrarySort::Id,
             navicust_sort: navicust::NavicustSort::Id,
-            patch_card56_sort: PatchCard56Sort::Id,
+            patch_card56_sort: patch_cards::PatchCard56Sort::Id,
             auto_battle_data_sort: abd::AutoBattleDataSort::Id,
             enter: crate::anim::Enter::default(),
             enter_from: iced::Vector::new(24.0, 0.0),
@@ -980,7 +703,7 @@ pub enum Action {
     /// Library pane: the filter text changed.
     LibraryFilterChanged(String),
     /// Library pane: the sort order changed.
-    LibrarySortChanged(LibrarySort),
+    LibrarySortChanged(folder::LibrarySort),
     // ----- Navicust editor (only emitted when `editable` is set) -----
     /// Palette: pick up part `id` in the orientation shown in the picker.
     PickUpPalettePart {
@@ -1041,7 +764,7 @@ pub enum Action {
     /// Library pane: the filter text changed.
     PatchCard56FilterChanged(String),
     /// Library pane: the sort order changed.
-    PatchCard56SortChanged(PatchCard56Sort),
+    PatchCard56SortChanged(patch_cards::PatchCard56Sort),
     // ----- BN4 patch-card editor (only emitted when `editable` is set) -----
     /// A slot's dropdown picked card `id` — install it into its own catalog
     /// slot, enabled (replacing whatever card occupied that slot).
@@ -1356,9 +1079,9 @@ fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded) -> Element
     let can_save = !loaded.chips_editable || {
         let full = loaded.save.view_chips().map_or(true, |v| {
             let folder = v.equipped_folder_index();
-            (0..MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
+            (0..folder::MAX_FOLDER_CHIPS).all(|i| v.chip(folder, i).is_some())
         });
-        full && folder_limits_satisfied(loaded)
+        full && folder::folder_limits_satisfied(loaded)
     };
     row![
         widgets::labeled_icon_button(
@@ -1507,7 +1230,7 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
             let tag_idxs = chips_view.tag_chip_indexes(folder_idx).flatten();
 
             let mut chips: Vec<Option<tango_dataview::save::Chip>> =
-                (0..MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
+                (0..folder::MAX_FOLDER_CHIPS).map(|i| chips_view.chip(folder_idx, i)).collect();
             let regular_display_idx = if !assets.regular_chip_is_in_place() {
                 if let Some(ri) = regular_idx {
                     let c = chips.remove(0);
@@ -1522,7 +1245,7 @@ pub fn tab_as_text(_lang: &LanguageIdentifier, tab: Tab, loaded: &Loaded, opts: 
 
             let mut out = String::new();
             if opts.folder_grouped {
-                let mut grouped_map: indexmap::IndexMap<Option<tango_dataview::save::Chip>, GroupedChip> =
+                let mut grouped_map: indexmap::IndexMap<Option<tango_dataview::save::Chip>, folder::GroupedChip> =
                     indexmap::IndexMap::new();
                 for (i, chip) in chips.iter().enumerate() {
                     let g = grouped_map.entry(chip.clone()).or_default();
@@ -1793,143 +1516,7 @@ fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &Loaded) -> Elem
         .into()
 }
 
-#[derive(Default)]
-struct GroupedChip {
-    count: usize,
-    is_regular: bool,
-    has_tag1: bool,
-    has_tag2: bool,
-}
 
-/// Mega/Giga class usage and per-chip copies in one folder, used to honor
-/// the equipped navi's [`tango_dataview::save::FolderLimits`] in both the
-/// editor UI (greying out un-addable library chips) and the apply path
-/// ([`crate::app`]'s `apply_chip_edit`). Built by scanning the folder's 30
-/// slots; cheap enough to rebuild per edit / per frame.
-pub struct FolderUsage {
-    pub navi: usize,
-    pub mega: usize,
-    pub giga: usize,
-    pub dark: usize,
-    /// Copies installed per chip id (codes collapsed — the copy cap is
-    /// per chip, not per code).
-    pub copies: std::collections::HashMap<usize, usize>,
-}
-
-impl FolderUsage {
-    /// Tally the equipped folder's 30 slots.
-    pub fn scan(loaded: &Loaded, folder_idx: usize) -> Self {
-        use tango_dataview::rom::ChipClass;
-        let assets = loaded.assets.as_ref();
-        let mut navi = 0;
-        let mut mega = 0;
-        let mut giga = 0;
-        let mut dark = 0;
-        let mut copies: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-        if let Some(view) = loaded.save.view_chips() {
-            for slot in 0..MAX_FOLDER_CHIPS {
-                let Some(c) = view.chip(folder_idx, slot) else { continue };
-                *copies.entry(c.id).or_insert(0) += 1;
-                let Some(chip) = assets.chip(c.id) else {
-                    continue;
-                };
-                if chip.dark() {
-                    dark += 1;
-                    continue;
-                }
-                match chip.class() {
-                    ChipClass::Navi => navi += 1,
-                    ChipClass::Mega => mega += 1,
-                    ChipClass::Giga => giga += 1,
-                    _ => {}
-                }
-            }
-        }
-        Self {
-            navi,
-            mega,
-            giga,
-            dark,
-            copies,
-        }
-    }
-
-    /// Whether one more copy of `chip_id` fits under `limits` — the
-    /// per-chip copy cap plus the mega/giga class cap. The folder-full
-    /// (30-slot) check is separate. Unknown chips aren't blocked.
-    pub fn can_add(&self, loaded: &Loaded, chip_id: usize, limits: &tango_dataview::save::FolderLimits) -> bool {
-        use tango_dataview::rom::ChipClass;
-        let Some(info) = loaded.assets.chip(chip_id) else {
-            return true;
-        };
-        if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
-            return false;
-        }
-        if info.dark() {
-            return limits.dark_limit.map(|limit| self.dark < limit).unwrap_or(true);
-        }
-        match info.class() {
-            ChipClass::Navi => limits.navi_limit.map(|limit| self.navi < limit).unwrap_or(true),
-            ChipClass::Mega => limits.mega_limit.map(|limit| self.mega < limit).unwrap_or(true),
-            ChipClass::Giga => limits.giga_limit.map(|limit| self.giga < limit).unwrap_or(true),
-            _ => true,
-        }
-    }
-}
-
-/// Whether the equipped folder satisfies the navi's
-/// [`tango_dataview::save::FolderLimits`] — the mega/giga class caps, the
-/// per-chip copy cap, and Regular/Tag memory. `true` when the game defines
-/// no limits. Gates Save: the folder pane blocks *adding* a violation, but
-/// cross-tab edits can still leave an already-built folder illegal (e.g.
-/// pulling a MegFldr part on the Navi tab lowers the mega cap under the
-/// chips already in the folder), and a save edited elsewhere may arrive
-/// over a limit.
-pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
-    let Some(view) = loaded.save.view_chips() else {
-        return true;
-    };
-    let folder_idx = view.equipped_folder_index();
-    let limits = loaded.save.folder_limits(&*loaded.assets);
-    let usage = FolderUsage::scan(loaded, folder_idx);
-    if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
-        || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
-        || limits.giga_limit.map(|limit| usage.giga > limit).unwrap_or(false)
-        || limits.dark_limit.map(|limit| usage.dark > limit).unwrap_or(false)
-    {
-        return false;
-    }
-    // Per-chip copy cap.
-    for (&id, &count) in &usage.copies {
-        if let Some(chip) = loaded.assets.chip(id) {
-            if count > (limits.max_copies)(chip.as_ref()) {
-                return false;
-            }
-        }
-    }
-    let mb_of = |slot: usize| {
-        view.chip(folder_idx, slot)
-            .and_then(|c| loaded.assets.chip(c.id))
-            .map_or(0u32, |c| c.mb() as u32)
-    };
-    // The Regular chip must fit Regular memory.
-    if let Some(cap) = limits.reg_memory {
-        if let Some(Some(reg)) = view.regular_chip_index(folder_idx) {
-            if mb_of(reg) > cap as u32 {
-                return false;
-            }
-        }
-    }
-    // The Tag pair's combined MB must fit Tag memory.
-    if let Some(budget) = limits.tag_memory {
-        if let Some(Some([a, b])) = view.tag_chip_indexes(folder_idx) {
-            if mb_of(a) + mb_of(b) > budget {
-                return false;
-            }
-        }
-    }
-    true
-}
 
 /// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
 /// rows keep the same height as filled ones.
@@ -2156,7 +1743,7 @@ fn chip_row<M: 'static>(
     loaded: &Loaded,
     chip_id: Option<usize>,
     code: Option<String>,
-    g: &GroupedChip,
+    g: &folder::GroupedChip,
     show_count_cell: bool,
     chips_have_mb: bool,
     row_idx: usize,
@@ -2439,49 +2026,6 @@ fn colored_badge_sized<M: 'static>(
             ..Default::default()
         })
         .into()
-}
-
-/// Solid + plus colors for an NCP color, matching the navicust render.
-fn ncp_colors(color: NavicustPartColor) -> (iced::Color, iced::Color) {
-    use NavicustPartColor as N;
-    match color {
-        N::Red => (
-            iced::Color::from_rgb8(0xde, 0x10, 0x00),
-            iced::Color::from_rgb8(0xbd, 0x00, 0x00),
-        ),
-        N::Pink => (
-            iced::Color::from_rgb8(0xde, 0x8c, 0xc6),
-            iced::Color::from_rgb8(0xbd, 0x6b, 0xa5),
-        ),
-        N::Yellow => (
-            iced::Color::from_rgb8(0xde, 0xde, 0x00),
-            iced::Color::from_rgb8(0xbd, 0xbd, 0x00),
-        ),
-        N::Green => (
-            iced::Color::from_rgb8(0x18, 0xc6, 0x00),
-            iced::Color::from_rgb8(0x00, 0xa5, 0x00),
-        ),
-        N::Blue => (
-            iced::Color::from_rgb8(0x29, 0x84, 0xde),
-            iced::Color::from_rgb8(0x08, 0x60, 0xb8),
-        ),
-        N::White => (
-            iced::Color::from_rgb8(0xde, 0xde, 0xde),
-            iced::Color::from_rgb8(0xbd, 0xbd, 0xbd),
-        ),
-        N::Orange => (
-            iced::Color::from_rgb8(0xde, 0x7b, 0x00),
-            iced::Color::from_rgb8(0xbd, 0x5a, 0x00),
-        ),
-        N::Purple => (
-            iced::Color::from_rgb8(0x94, 0x00, 0xce),
-            iced::Color::from_rgb8(0x73, 0x00, 0xad),
-        ),
-        N::Gray => (
-            iced::Color::from_rgb8(0x84, 0x84, 0x84),
-            iced::Color::from_rgb8(0x63, 0x63, 0x63),
-        ),
-    }
 }
 
 fn effect_badge<M: 'static>(e: &tango_dataview::rom::PatchCard56Effect, enabled: bool) -> Element<'static, M> {

@@ -521,7 +521,7 @@ impl State {
                         // shift the staged TAG selection to match.
                         if let Some(gap) = loaded.and_then(|l| l.save.view_chips()).and_then(|v| {
                             let fi = v.equipped_folder_index();
-                            (0..save_view::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
+                            (0..save_view::folder::MAX_FOLDER_CHIPS).find(|&i| v.chip(fi, i).is_none())
                         }) {
                             self.save_view.shift_tags_for_top_insert(gap);
                         }
@@ -545,7 +545,7 @@ impl State {
                         // Live folder occupancy, to validate + resolve the drop.
                         let Some(filled) = loaded.and_then(|l| l.save.view_chips()).map(|v| {
                             let fi = v.equipped_folder_index();
-                            (0..save_view::MAX_FOLDER_CHIPS)
+                            (0..save_view::folder::MAX_FOLDER_CHIPS)
                                 .map(|i| v.chip(fi, i).is_some())
                                 .collect::<Vec<bool>>()
                         }) else {
