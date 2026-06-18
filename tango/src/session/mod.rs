@@ -8,9 +8,9 @@
 //! module handles everything that happens after.
 
 pub mod pvp;
-pub mod render;
 pub mod replay;
 pub mod singleplayer;
+pub mod view;
 
 use crate::anim;
 use crate::app::Scanners;

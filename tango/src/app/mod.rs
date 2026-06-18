@@ -1223,7 +1223,7 @@ impl App {
             // arrived in. Going through subscriptions would
             // round-trip through an `mpsc::try_send` and cost ~1
             // winit iteration of input lag per event.
-            let session_view = session::render::view(
+            let session_view = session::view::view(
                 lang,
                 &self.session,
                 self.config.fractional_scaling,
