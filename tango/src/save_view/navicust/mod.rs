@@ -1,6 +1,9 @@
 use super::*;
 use sweeten::widget::{column, row};
 
+pub mod editor;
+pub mod grid;
+
 /// The palette thumbnail for part `id` at orientation `(rot, compressed)`.
 /// The default orientation reuses the icon baked once at load; a rotated /
 /// uncompressed shape is drawn live by a small canvas ([`PartThumb`]) so
@@ -25,15 +28,15 @@ fn part_thumb<'a>(loaded: &'a Loaded, id: usize, rot: u8, compressed: bool, dim:
         .compressed_bitmap()
         .filter(|_| compressed)
         .unwrap_or_else(|| info.uncompressed_bitmap());
-    let rotated = crate::navicust::rotate_bitmap(&bitmap, rot);
-    crate::navicust_editor::PartThumb::new(&rotated, color, info.is_solid(), dim).map(|t| t.view())
+    let rotated = grid::rotate_bitmap(&bitmap, rot);
+    editor::PartThumb::new(&rotated, color, info.is_solid(), dim).map(|t| t.view())
 }
 
 /// The navicust editor: an interactive grid (left) + a part palette
 /// (right), mirroring [`render_folder_edit`]'s two-pane layout — the grid
 /// pane shrinks to the grid so the palette gets the rest of the width. The
-/// grid is drawn live by [`crate::navicust_editor::EditorGrid`], which
-/// shares the decoration-drawing routine ([`crate::navicust::paint`]) with
+/// grid is drawn live by [`editor::EditorGrid`], which
+/// shares the decoration-drawing routine ([`grid::paint`]) with
 /// the read-only viewer and the clipboard image, and ghosts the held part.
 /// Each palette row carries its own rotate / (de)compress buttons that set
 /// the orientation the part is picked up in.
@@ -57,7 +60,7 @@ pub(super) fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a
     // Live grid recomputed from the part slots (NOT the WRAM cache), so
     // staged edits show immediately. `materialize` takes `[rows, cols]`.
     let materialized = tango_dataview::navicust::materialize(v.as_ref(), [rows, cols], assets);
-    let model = crate::navicust::build_model(&materialized, &layout, v.as_ref(), assets);
+    let model = grid::build_model(&materialized, &layout, v.as_ref(), assets);
     let installed = (0..v.count()).filter(|&i| v.navicust_part(i).is_some()).count();
     // Cell → installed-part slot, captured before `model` is moved into the
     // grid, to drive the per-cell hover popover overlay below.
@@ -71,9 +74,9 @@ pub(super) fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a
             .compressed_bitmap()
             .filter(|_| hp.compressed)
             .unwrap_or_else(|| info.uncompressed_bitmap());
-        let (solid, plus) = crate::navicust::part_colors(color);
-        Some(crate::navicust_editor::Held {
-            cells: crate::navicust_editor::rotated_offsets(&bitmap, hp.rot),
+        let (solid, plus) = grid::part_colors(color);
+        Some(editor::Held {
+            cells: editor::rotated_offsets(&bitmap, hp.rot),
             grab: (hp.grab_row as isize, hp.grab_col as isize),
             solid,
             plus,
@@ -83,15 +86,15 @@ pub(super) fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a
 
     // Editor grid geometry (must match `EditorGrid::new`) so the hover
     // popover overlay's cells line up with the painted squares.
-    let g = crate::navicust::geometry(cols, rows);
-    let scale = crate::navicust::display_scale(crate::navicust_editor::DISPLAY_W);
-    let cell = crate::navicust::SQUARE_SIZE * scale;
-    let origin_x = (g.body_origin_x + crate::navicust::BORDER_WIDTH / 2.0) * scale;
-    let origin_y = (g.body_origin_y + crate::navicust::BORDER_WIDTH / 2.0) * scale;
+    let g = grid::geometry(cols, rows);
+    let scale = grid::display_scale(editor::DISPLAY_W);
+    let cell = grid::SQUARE_SIZE * scale;
+    let origin_x = (g.body_origin_x + grid::BORDER_WIDTH / 2.0) * scale;
+    let origin_y = (g.body_origin_y + grid::BORDER_WIDTH / 2.0) * scale;
     let grid_w = g.total_w * scale;
     let grid_h = g.total_h * scale;
 
-    let canvas_el: Element<'a, Action> = crate::navicust_editor::EditorGrid::new(model, held).view();
+    let canvas_el: Element<'a, Action> = editor::EditorGrid::new(model, held).view();
 
     // Per-cell hover popover (part name + description), mirroring the
     // read-only viewer: a fixed grid of cell-sized spaces with each covered
@@ -167,7 +170,7 @@ pub(super) fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a
     {
         // Parts already at the per-part copy cap are greyed out + not
         // selectable.
-        let at_cap = installed_counts.get(&id).copied().unwrap_or(0) >= crate::navicust_editor::MAX_COPIES_PER_PART;
+        let at_cap = installed_counts.get(&id).copied().unwrap_or(0) >= editor::MAX_COPIES_PER_PART;
         // Orientation shown in (and picked up from) the picker.
         let (rot, compressed) = edit.orient_of(id);
         // Shape thumbnail at the part's current picker orientation, shown
@@ -593,7 +596,7 @@ fn render_navicust<M: 'static>(
 
             // Top layer: outline the block under the cursor. It never
             // captures events, so the tooltip layer beneath still fires.
-            let hover: Element<'static, M> = crate::navicust_editor::HoverOutline {
+            let hover: Element<'static, M> = editor::HoverOutline {
                 cols: g_cols,
                 rows: g_rows,
                 origin_x: body_x,

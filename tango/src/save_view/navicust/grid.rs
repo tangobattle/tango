@@ -1023,7 +1023,7 @@ pub fn render_part_thumb(
 /// `bitmap` rotated clockwise `rot` quarter turns. Grids are square
 /// (5×5 / 7×7), so a quarter turn preserves the dimensions. Matches the
 /// `(by, bx) -> (bx, n-1-by)` mapping used by
-/// [`crate::navicust_editor::rotated_offsets`] and `navicust::rotate90`.
+/// [`crate::save_view::navicust::editor::rotated_offsets`] and `navicust::rotate90`.
 pub fn rotate_bitmap(bitmap: &tango_dataview::rom::NavicustBitmap, rot: u8) -> tango_dataview::rom::NavicustBitmap {
     // Square grids only, so a quarter turn is an in-shape permutation —
     // clone the source each step and reassign cells (avoids naming the

@@ -259,7 +259,7 @@ pub fn apply_navicust_edit(loaded: &mut selection::Loaded, edit: tabs::play::Nav
                     let copies = (0..v.count())
                         .filter(|&i| v.navicust_part(i).map_or(false, |p| p.id == part.id))
                         .count();
-                    if copies >= crate::navicust_editor::MAX_COPIES_PER_PART {
+                    if copies >= crate::save_view::navicust::editor::MAX_COPIES_PER_PART {
                         return;
                     }
                     (0..v.count()).find(|&i| v.navicust_part(i).is_none())

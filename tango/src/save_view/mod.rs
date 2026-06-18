@@ -15,7 +15,7 @@ use tango_dataview::save::Save;
 use unic_langid::LanguageIdentifier;
 
 mod abd;
-mod navicust;
+pub mod navicust;
 mod patch_cards;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -318,7 +318,7 @@ impl HeldPart {
     /// Rotate the grab point 90° clockwise to track [`Self::rot`] being
     /// advanced — keeps the grabbed cell under the cursor through a
     /// rotate. Mirrors the clockwise cell map in
-    /// [`crate::navicust_editor::rotated_offsets`]: `(dy, dx) -> (dx, -dy)`.
+    /// [`navicust::editor::rotated_offsets`]: `(dy, dx) -> (dx, -dy)`.
     fn rotate_grab_cw(&mut self) {
         let (r, c) = (self.grab_row, self.grab_col);
         self.grab_row = c;
@@ -1879,7 +1879,7 @@ pub fn tab_as_image(tab: Tab, loaded: &Loaded) -> Option<image::RgbaImage> {
     let materialized = v.materialized();
     let lang = crate::game::region_to_language(loaded.game.region());
     // Clipboard / export path: render at native (high) resolution.
-    Some(crate::navicust::render(
+    Some(navicust::grid::render(
         &materialized,
         &layout,
         v.as_ref(),

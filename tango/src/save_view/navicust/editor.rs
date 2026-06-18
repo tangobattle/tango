@@ -1,5 +1,5 @@
 //! iced-canvas frontends for the NaviCust grid. The actual drawing lives
-//! in [`crate::navicust::paint`] (shared with the tiny-skia clipboard
+//! in [`crate::save_view::navicust::grid::paint`] (shared with the tiny-skia clipboard
 //! path); this module just provides the canvas `Program`s that feed it an
 //! iced-`Frame` backend:
 //!
@@ -12,7 +12,7 @@ use iced::widget::canvas::{self, Canvas, Frame, LineCap, Path, Stroke};
 use iced::widget::Action;
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
-use crate::navicust::{self, GridModel};
+use super::grid::{self as navicust, GridModel};
 use crate::save_view::Action as Msg;
 
 /// Outline the outer boundary of the part occupying `slot` (all its
@@ -70,7 +70,7 @@ fn draw_part_outline(
 }
 
 /// Per-cell pixel size of a palette thumbnail — matches
-/// [`crate::navicust::render_part_thumb`]'s `PX`, so the baked
+/// [`crate::save_view::navicust::grid::render_part_thumb`]'s `PX`, so the baked
 /// (default-orientation) palette icons and these live (re-oriented) ones
 /// share a size and line up in the list.
 const THUMB_PX: f32 = 8.0;

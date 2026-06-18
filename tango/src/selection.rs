@@ -240,7 +240,7 @@ impl Loaded {
         for id in 0..assets.num_navicust_parts() {
             let imgs = assets.navicust_part(id).and_then(|info| {
                 let color = info.color()?;
-                let img = crate::navicust::render_part_thumb(
+                let img = crate::save_view::navicust::grid::render_part_thumb(
                     &info.compressed_bitmap().unwrap_or_else(|| info.uncompressed_bitmap()),
                     color,
                     info.is_solid(),
@@ -382,23 +382,23 @@ fn build_navicust_render(
     let materialized = view.materialized();
 
     // Mirrors the constants inside navicust.rs's tiny-skia render.
-    const PADDING_H: f32 = crate::navicust::PADDING_H as f32;
-    const PADDING_V: f32 = crate::navicust::PADDING_V as f32;
-    const SQUARE_SIZE: f32 = crate::navicust::SQUARE_SIZE;
-    const BORDER_WIDTH: f32 = crate::navicust::BORDER_WIDTH;
+    const PADDING_H: f32 = crate::save_view::navicust::grid::PADDING_H as f32;
+    const PADDING_V: f32 = crate::save_view::navicust::grid::PADDING_V as f32;
+    const SQUARE_SIZE: f32 = crate::save_view::navicust::grid::SQUARE_SIZE;
+    const BORDER_WIDTH: f32 = crate::save_view::navicust::grid::BORDER_WIDTH;
     let (rows, cols) = materialized.dim();
 
     let lang = crate::game::region_to_language(game.region());
     // Render at native resolution; the iced widget paints it at the same
     // display width as the interactive editor, so iced scales the high-res
     // source down — keeping it crisp on HiDPI.
-    let mut img = crate::navicust::render(&materialized, &layout, view.as_ref(), assets, &lang, None);
+    let mut img = crate::save_view::navicust::grid::render(&materialized, &layout, view.as_ref(), assets, &lang, None);
     let (handle_w, handle_h) = (img.width(), img.height());
 
     // Constant cell size across all games (the 7×7 cell size), so the image
     // grows/shrinks with the grid instead of every grid being squeezed to one
     // total width. Same scale `EditorGrid` uses, so viewer and editor match.
-    let display_scale = crate::navicust::display_scale(crate::navicust_editor::DISPLAY_W);
+    let display_scale = crate::save_view::navicust::grid::display_scale(crate::save_view::navicust::editor::DISPLAY_W);
     let display_w = handle_w as f32 * display_scale;
     let display_h = handle_h as f32 * display_scale;
     // Round corners to ~4 display px (the pane's radius).
