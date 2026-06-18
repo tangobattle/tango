@@ -9,6 +9,8 @@
 //! so the UI never blocks on catch-up emulation. Audio is bound via
 //! the shared [`crate::audio::LateBinder`].
 
+pub mod scrubber;
+
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;

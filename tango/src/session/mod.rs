@@ -9,7 +9,6 @@
 
 pub mod pvp;
 pub mod replay;
-pub mod scrubber;
 pub mod singleplayer;
 
 use crate::anim;
@@ -217,7 +216,7 @@ pub struct State {
     /// driving the floating thumbnail card above it. `None` when the
     /// cursor is off the bar — and during a drag, when the full-screen
     /// blit preview supersedes it.
-    pub scrub_hover: Option<scrubber::HoverInfo>,
+    pub scrub_hover: Option<replay::scrubber::HoverInfo>,
     /// RGBA conversion of the snapshot behind the hover thumbnail,
     /// keyed by the snapshot's absolute tick so cursor moves within
     /// the same keyframe reuse the handle instead of re-converting.
@@ -335,7 +334,7 @@ pub enum Message {
     /// Cursor moved onto / along the scrub bar (`Some`) or off it
     /// (`None`) without a button held. Drives the floating keyframe
     /// thumbnail above the bar. Replay-only.
-    ScrubHover(Option<scrubber::HoverInfo>),
+    ScrubHover(Option<replay::scrubber::HoverInfo>),
     /// Set the playback speed factor (1.0 = realtime). Replay-only.
     SetSpeed(f32),
     /// PvP-only: the match-settings frame-delay slider moved. Live-sets this
@@ -2102,7 +2101,7 @@ fn replay_transport<'a>(
     } else {
         (Icon::Pause, t!(lang, "playback-pause"), false)
     };
-    let scrub = scrubber::Scrubber::new(
+    let scrub = replay::scrubber::Scrubber::new(
         cur,
         total,
         prefetched,
