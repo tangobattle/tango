@@ -16,8 +16,8 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    anim, audio, config, discord, game, i18n, input, loadout, net, netplay, patch, pvp_session, replays, rom, save,
-    selection, session, tabs, updater, widgets, INIT_LINK_CODE,
+    anim, audio, config, discord, game, i18n, input, loadout, net, netplay, patch, replays, rom, save, selection,
+    session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
 use iced::widget::container;
@@ -682,7 +682,7 @@ pub enum Message {
     /// Carries the freshly-constructed PvP session back into the
     /// App after the async build task in `spawn_pvp` resolves.
     /// `Slot` because PvpSession isn't Clone.
-    PvpSessionBuilt(netplay::Slot<anyhow::Result<pvp_session::PvpSession>>),
+    PvpSessionBuilt(netplay::Slot<anyhow::Result<session::pvp::PvpSession>>),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
     /// Discord-initiated join secret into the play link-code
     /// field.

@@ -7,6 +7,11 @@
 //! [`spawn_singleplayer`] and stuff it into `state.active`); this
 //! module handles everything that happens after.
 
+pub mod pvp;
+pub mod replay;
+pub mod scrubber;
+pub mod singleplayer;
+
 use crate::anim;
 use crate::app::Scanners;
 use crate::audio;
@@ -14,12 +19,8 @@ use crate::config;
 use crate::game;
 use crate::i18n::t;
 use crate::patch;
-use crate::pvp_session;
-use crate::replay_session;
 use crate::save_view;
-use crate::scrubber;
 use crate::selection;
-use crate::singleplayer_session;
 use crate::style::{self, TEXT_BODY, TEXT_CAPTION};
 use crate::video::framebuffer::Effect;
 use crate::widgets;
@@ -53,9 +54,9 @@ pub(crate) fn new_gba_core(rom: &[u8]) -> anyhow::Result<mgba::core::Core> {
 /// single-player. The two variants share enough surface (vbuf,
 /// close-request) that the view + tick loop wrap them uniformly.
 pub enum ActiveSession {
-    Replay(replay_session::ReplaySession),
-    SinglePlayer(singleplayer_session::SinglePlayerSession),
-    PvP(pvp_session::PvpSession),
+    Replay(replay::ReplaySession),
+    SinglePlayer(singleplayer::SinglePlayerSession),
+    PvP(pvp::PvpSession),
 }
 
 impl ActiveSession {
@@ -78,7 +79,7 @@ impl ActiveSession {
         }
     }
 
-    pub fn as_replay(&self) -> Option<&replay_session::ReplaySession> {
+    pub fn as_replay(&self) -> Option<&replay::ReplaySession> {
         match self {
             Self::Replay(s) => Some(s),
             _ => None,
@@ -116,7 +117,7 @@ pub struct MetricSample {
 impl MetricSample {
     /// Read the current telemetry off a live PvP session. Called once per
     /// emulator frame from the [`Message::UpdateFramebuffer`] handler.
-    fn capture(pvp: &pvp_session::PvpSession) -> Self {
+    fn capture(pvp: &pvp::PvpSession) -> Self {
         Self {
             tps: pvp.tps(),
             fps_target: pvp.fps_target(),
@@ -674,8 +675,8 @@ impl State {
                         self.frame_revision = self.frame_revision.wrapping_add(1);
                         self.current_frame = Some(crate::video::framebuffer::Frame {
                             pixels: std::sync::Arc::new(pixels),
-                            width: replay_session::SCREEN_WIDTH,
-                            height: replay_session::SCREEN_HEIGHT,
+                            width: replay::SCREEN_WIDTH,
+                            height: replay::SCREEN_HEIGHT,
                             revision: self.frame_revision,
                             effect: crate::video::effects::effect_for(video_filter),
                         });
@@ -781,7 +782,7 @@ fn background_handle(game: &'static crate::game::Game) -> Option<iced::widget::i
 /// the slider gets lobby-like width even in the compact panel. Frame delay is
 /// purely local display lag, so dragging it mid-match takes effect on the next
 /// rendered frame with no peer coordination.
-fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp_session::PvpSession) -> Element<'a, Message> {
+fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a pvp::PvpSession) -> Element<'a, Message> {
     let fd = pvp.frame_delay();
 
     // Heading: turtle glyph + title, both muted — matches the metric-card
@@ -1080,7 +1081,7 @@ fn metric_card<'a>(
 /// sample.
 fn match_settings_content<'a>(
     lang: &'a LanguageIdentifier,
-    pvp: &'a pvp_session::PvpSession,
+    pvp: &'a pvp::PvpSession,
     history: &std::collections::VecDeque<MetricSample>,
 ) -> Element<'a, Message> {
     // `zero` is the reference line: parity (mid-height) for skew, the value-0
@@ -1594,8 +1595,8 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     // upscalers produced — and the effect's fragment shader magnifies the
     // native texture to fill it.
     let scale = effect.scale;
-    let img_w = (replay_session::SCREEN_WIDTH * scale) as f32;
-    let img_h = (replay_session::SCREEN_HEIGHT * scale) as f32;
+    let img_w = (replay::SCREEN_WIDTH * scale) as f32;
+    let img_h = (replay::SCREEN_HEIGHT * scale) as f32;
 
     iced::widget::responsive(move |size| {
         let raw = (size.width / img_w).min(size.height / img_h);
@@ -1777,7 +1778,7 @@ fn setup_drawers_overlay<'a>(
 /// controls live in compact corner chips ([`corner_chips`]).
 fn replay_bar<'a>(
     lang: &'a LanguageIdentifier,
-    r: &'a replay_session::ReplaySession,
+    r: &'a replay::ReplaySession,
     state: &'a State,
 ) -> sweeten::widget::Row<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
@@ -2077,7 +2078,7 @@ fn setup_handles_overlay<'a>(
 /// total tick — pushed onto the strip in that order.
 fn replay_transport<'a>(
     lang: &'a LanguageIdentifier,
-    r: &'a replay_session::ReplaySession,
+    r: &'a replay::ReplaySession,
     state: &State,
     controls: sweeten::widget::Row<'a, Message>,
 ) -> sweeten::widget::Row<'a, Message> {
@@ -2396,7 +2397,7 @@ fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> 
 fn thumbnail_handle(framebuffer: &[u8]) -> iced::widget::image::Handle {
     let mut rgba = vec![0u8; framebuffer.len() * 2];
     tango_dataview::rom::bgr555_to_rgba8(framebuffer, &mut rgba);
-    iced::widget::image::Handle::from_rgba(replay_session::SCREEN_WIDTH, replay_session::SCREEN_HEIGHT, rgba)
+    iced::widget::image::Handle::from_rgba(replay::SCREEN_WIDTH, replay::SCREEN_HEIGHT, rgba)
 }
 
 /// Disconnect confirmation modal (PvP-only). Centered panel with a
@@ -2474,7 +2475,7 @@ pub fn build_playback(
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
     vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     path: &std::path::Path,
-) -> anyhow::Result<replay_session::ReplaySession> {
+) -> anyhow::Result<replay::ReplaySession> {
     let f = std::fs::File::open(path)?;
     let replay = std::sync::Arc::new(tango_pvp::replay::Replay::decode(f)?);
     let patches_path = config.patches_path();
@@ -2509,7 +2510,7 @@ pub fn build_playback(
 
     let (local_game, local_rom) = resolve_rom(replay.metadata.local_side.as_ref())?;
     let (remote_game, remote_rom) = resolve_rom(replay.metadata.remote_side.as_ref())?;
-    replay_session::ReplaySession::new(
+    replay::ReplaySession::new(
         local_game,
         local_rom,
         remote_game,
@@ -2534,7 +2535,7 @@ pub async fn spawn_pvp(
     local_game: crate::rom::GameRef,
     local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
-) -> anyhow::Result<pvp_session::PvpSession> {
+) -> anyhow::Result<pvp::PvpSession> {
     let local_game_impl =
         game::from_gamedb_entry(local_game).ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
     let local_rom_raw = scanners
@@ -2640,7 +2641,7 @@ pub async fn spawn_pvp(
         ))
     };
 
-    pvp_session::PvpSession::new(
+    pvp::PvpSession::new(
         local_game_impl,
         std::sync::Arc::new(local_rom_bytes),
         remote_game_impl,
@@ -2673,7 +2674,7 @@ pub fn spawn_singleplayer(
     frame_notify: std::sync::Arc<tokio::sync::Notify>,
     vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     loaded: &selection::Loaded,
-) -> anyhow::Result<singleplayer_session::SinglePlayerSession> {
+) -> anyhow::Result<singleplayer::SinglePlayerSession> {
     let game = game::from_gamedb_entry(loaded.game)
         .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
     // Loaded stashes the *parsed* ROM (assets), not the raw bytes —
@@ -2690,7 +2691,7 @@ pub fn spawn_singleplayer(
     } else {
         raw
     };
-    singleplayer_session::SinglePlayerSession::new(
+    singleplayer::SinglePlayerSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
         &loaded.save_path,

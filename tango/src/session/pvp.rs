@@ -1,5 +1,5 @@
 //! Live PvP emulator session — peer-paired netplay sibling of
-//! [`crate::singleplayer_session::SinglePlayerSession`]. Owns the
+//! [`crate::session::singleplayer::SinglePlayerSession`]. Owns the
 //! mgba thread driven by the local ROM + save, hooks the primary
 //! traps that talk to the shared `tango_pvp::battle::Match`, and
 //! spawns the background match-run task that pumps remote inputs
@@ -532,7 +532,7 @@ impl PvpSession {
     }
 
     /// Overwrite the joyflag bitmap (same shape as singleplayer's
-    /// — see [`crate::singleplayer_session::SinglePlayerSession::set_joyflags`]).
+    /// — see [`crate::session::singleplayer::SinglePlayerSession::set_joyflags`]).
     pub fn set_joyflags(&self, mgba_keys: u32) {
         self.joyflags.store(mgba_keys, Ordering::Relaxed);
     }
