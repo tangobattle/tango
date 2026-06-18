@@ -117,7 +117,7 @@ pub(super) fn traps(
                         // rng1 is the local rng, it should not be synced.
                         // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
                         // rng2 is the shared rng, it must be synced.
-                        let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, match_.is_offerer());
+                        let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, round.local_player_index() == 0);
                         munger.set_rng1_state(core, rng1_state);
                         munger.set_rng2_state(core, rng2_state);
 
