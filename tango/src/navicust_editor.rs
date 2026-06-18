@@ -15,10 +15,6 @@ use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Them
 use crate::navicust::{self, GridModel};
 use crate::save_view::Action as Msg;
 
-fn to_color(c: [u8; 4]) -> Color {
-    Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
-}
-
 /// Outline the outer boundary of the part occupying `slot` (all its
 /// cells) in white, in display coordinates — the hover highlight shared
 /// by the editor and the read-only viewer.
@@ -149,8 +145,8 @@ impl<M> canvas::Program<M> for PartThumb {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let solid = to_color(self.solid);
-        let plus = to_color(self.plus);
+        let solid = navicust::to_color(self.solid);
+        let plus = navicust::to_color(self.plus);
         // Solid bodies first.
         for &(c, r) in &self.cells {
             frame.fill_rectangle(

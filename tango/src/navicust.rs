@@ -917,7 +917,7 @@ fn paint_ghost<R: geometry::Renderer>(frame: &mut geometry::Frame<R>, g: &Geomet
     }
 }
 
-fn to_color(c: [u8; 4]) -> Color {
+pub(crate) fn to_color(c: [u8; 4]) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3] as f32 / 255.0)
 }
 
