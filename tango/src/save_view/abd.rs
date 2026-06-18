@@ -326,3 +326,36 @@ pub(super) fn render_auto_battle_data_edit<'a>(
     );
     editor_panes(deck_pane, editor_pane(lib_header, lib))
 }
+
+/// Sort order for the auto-battle-data editor's chip library pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutoBattleDataSort {
+    Id,
+    Name,
+    Used,
+}
+
+impl AutoBattleDataSort {
+    pub const ALL: [AutoBattleDataSort; 3] = [
+        AutoBattleDataSort::Id,
+        AutoBattleDataSort::Name,
+        AutoBattleDataSort::Used,
+    ];
+
+    fn label(self, lang: &LanguageIdentifier) -> String {
+        match self {
+            AutoBattleDataSort::Id => t!(lang, "folder-sort-id"),
+            AutoBattleDataSort::Name => t!(lang, "folder-sort-name"),
+            AutoBattleDataSort::Used => t!(lang, "auto-battle-data-edit-used"),
+        }
+    }
+}
+
+/// Width of each use-count column (caption + numeric field) in the Auto
+/// Battle Data editor's library, so the Used / Sec. fields line up as
+/// columns across rows (and a non-standard chip's missing Sec. field can
+/// reserve the same gap).
+const ABD_COUNT_COL_W: f32 = 104.0;
+/// Use counts are stored as `u16` in the save, so the numeric fields
+/// clamp entries to this ceiling.
+const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;

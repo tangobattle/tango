@@ -14,7 +14,7 @@ use tango_dataview::rom::NavicustPartColor;
 use tango_dataview::save::Save;
 use unic_langid::LanguageIdentifier;
 
-mod abd;
+pub(crate) mod abd;
 mod folder;
 pub mod navicust;
 mod patch_cards;
@@ -517,38 +517,7 @@ fn patch_card4_bugs_label(bugs: &[tango_dataview::rom::PatchCard4Bug]) -> Option
     )
 }
 
-/// Sort order for the auto-battle-data editor's chip library pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AutoBattleDataSort {
-    Id,
-    Name,
-    Used,
-}
 
-impl AutoBattleDataSort {
-    pub const ALL: [AutoBattleDataSort; 3] = [
-        AutoBattleDataSort::Id,
-        AutoBattleDataSort::Name,
-        AutoBattleDataSort::Used,
-    ];
-
-    fn label(self, lang: &LanguageIdentifier) -> String {
-        match self {
-            AutoBattleDataSort::Id => t!(lang, "folder-sort-id"),
-            AutoBattleDataSort::Name => t!(lang, "folder-sort-name"),
-            AutoBattleDataSort::Used => t!(lang, "auto-battle-data-edit-used"),
-        }
-    }
-}
-
-/// Width of each use-count column (caption + numeric field) in the Auto
-/// Battle Data editor's library, so the Used / Sec. fields line up as
-/// columns across rows (and a non-standard chip's missing Sec. field can
-/// reserve the same gap).
-const ABD_COUNT_COL_W: f32 = 104.0;
-/// Use counts are stored as `u16` in the save, so the numeric fields
-/// clamp entries to this ceiling.
-const MAX_ABD_USE_COUNT: usize = u16::MAX as usize;
 
 /// Stable color ordering for the palette's Color sort.
 fn ncp_color_rank(color: &Option<NavicustPartColor>) -> u8 {
@@ -695,7 +664,7 @@ pub struct State {
     pub patch_card56_sort: PatchCard56Sort,
     /// Sort order for the auto-battle-data chip library pane (persistent
     /// preference).
-    pub auto_battle_data_sort: AutoBattleDataSort,
+    pub auto_battle_data_sort: abd::AutoBattleDataSort,
     /// Entrance restarted on each sub-tab switch — the tab body
     /// (and the per-tab extras in the strip's tail) slides in,
     /// direction following the strip's order like the app's
@@ -789,7 +758,7 @@ impl State {
             library_sort: LibrarySort::Id,
             navicust_sort: NavicustSort::Id,
             patch_card56_sort: PatchCard56Sort::Id,
-            auto_battle_data_sort: AutoBattleDataSort::Id,
+            auto_battle_data_sort: abd::AutoBattleDataSort::Id,
             enter: crate::anim::Enter::default(),
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
@@ -1230,7 +1199,7 @@ pub enum Action {
     /// Library pane: the filter text changed.
     AutoBattleDataFilterChanged(String),
     /// Library pane: the sort order changed.
-    AutoBattleDataSortChanged(AutoBattleDataSort),
+    AutoBattleDataSortChanged(abd::AutoBattleDataSort),
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
