@@ -161,7 +161,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // by re-priming r4 at its first `main_read_joyflags`.
                 // Never fires in replay mode.
                 if state.at_capture_tick() {
-                    state.set_local_packet(munger.tx_packet(core).to_vec());
                     state.capture();
                     // Halt run_loop at the capture: its leftover cycle budget must
                     // not spill into copy_input_data_entry and double-advance the
