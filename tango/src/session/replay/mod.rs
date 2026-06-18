@@ -24,10 +24,12 @@ const EXPECTED_FPS: f32 = 60.0;
 pub struct ReplaySession {
     game: &'static crate::game::Game,
     close_requested: Arc<AtomicBool>,
-    replay: Arc<tango_pvp::replay::Replay>,
     stepper_state: tango_pvp::stepper::State,
     snapshots: SnapshotStore,
     prefetch_progress: Arc<AtomicU32>,
+    /// Inter-round seek-bar marks, filled in by the prefetcher as it
+    /// crosses each round transition (see [`Self::round_boundaries`]).
+    round_boundaries: Arc<Mutex<Vec<u32>>>,
     total_ticks: u32,
     /// Shared display framebuffer + its wake handle, kept so
     /// [`Self::scrub_preview`] can blit snapshot framebuffers without
@@ -95,6 +97,7 @@ impl ReplaySession {
 
         let snapshots = SnapshotStore::new();
         let prefetch_progress = Arc::new(AtomicU32::new(0));
+        let round_boundaries = Arc::new(Mutex::new(Vec::new()));
         let prefetcher = Prefetcher::spawn(
             rom.clone(),
             remote_rom.clone(),
@@ -103,6 +106,7 @@ impl ReplaySession {
             remote_game,
             snapshots.clone(),
             prefetch_progress.clone(),
+            round_boundaries.clone(),
         );
 
         let seek = Arc::new(SeekController::new());
@@ -178,10 +182,10 @@ impl ReplaySession {
         Ok(Self {
             game,
             close_requested: Arc::new(AtomicBool::new(false)),
-            replay,
             stepper_state,
             snapshots,
             prefetch_progress,
+            round_boundaries,
             total_ticks,
             vbuf,
             frame_notify,
@@ -250,21 +254,20 @@ impl ReplaySession {
         self.prefetch_progress.load(Ordering::Relaxed)
     }
 
-    /// Cumulative tick at the end of each round *except* the last —
-    /// the inter-round boundaries the scrubber draws marks at. Empty
-    /// for a single-round replay.
+    /// Absolute tick of each inter-round transition — the marks the
+    /// scrubber draws. Discovered by the prefetcher as it crosses each
+    /// round (see [`tango_pvp::replay::playback::run_prefetch`]), so the
+    /// marks fill in left-to-right shortly after the session opens and
+    /// sit on the same tick scale as the playhead. Empty for a
+    /// single-round replay, and until the prefetcher reaches them.
+    ///
+    /// They can't just be summed from `round.len()`: the playhead's
+    /// `absolute_tick` also advances through the round-end animation
+    /// frames between rounds, which no recorded input pair backs, so a
+    /// `len()`-based mark drifts left of the playhead by the accumulated
+    /// per-round gap.
     pub fn round_boundaries(&self) -> Vec<u32> {
-        let n = self.replay.rounds.len();
-        if n <= 1 {
-            return Vec::new();
-        }
-        let mut acc = 0u32;
-        let mut out = Vec::with_capacity(n - 1);
-        for r in self.replay.rounds.iter().take(n - 1) {
-            acc += r.len() as u32;
-            out.push(acc);
-        }
-        out
+        self.round_boundaries.lock().unwrap().clone()
     }
 
     /// Jump the playhead to `target`, asynchronously. Records the request
@@ -411,6 +414,7 @@ impl Prefetcher {
         remote_game: &'static crate::game::Game,
         snapshots: SnapshotStore,
         progress: Arc<AtomicU32>,
+        round_boundaries: Arc<Mutex<Vec<u32>>>,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = cancel.clone();
@@ -426,6 +430,7 @@ impl Prefetcher {
                 snapshots,
                 cancel_for_thread,
                 progress,
+                round_boundaries,
             ) {
                 log::error!("replay prefetch worker exited with error: {e:?}");
             }

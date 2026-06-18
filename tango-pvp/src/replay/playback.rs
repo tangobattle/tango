@@ -138,6 +138,16 @@ impl SnapshotStore {
 ///
 /// The host spawns the thread that drives this — this function takes no
 /// thread handle and never blocks except on its own work loop.
+///
+/// As it crosses each round transition it appends the live `absolute_tick`
+/// at that point to `round_boundaries` — the seek bar draws its inter-round
+/// marks there. These can't be derived from the recorded input-pair counts:
+/// `absolute_tick` also advances through the round-end animation frames that
+/// run between rounds (no input pair backs them, so they're absent from
+/// `round.len()`), which would otherwise drift the marks left of the
+/// playhead by the accumulated gap. Observing the real tick keeps the mark
+/// and the playhead on the same scale, so they coincide as the playhead
+/// crosses.
 pub fn run_prefetch(
     local_rom: &[u8],
     remote_rom: &[u8],
@@ -147,6 +157,7 @@ pub fn run_prefetch(
     store: SnapshotStore,
     cancel: Arc<AtomicBool>,
     progress: Arc<AtomicU32>,
+    round_boundaries: Arc<Mutex<Vec<u32>>>,
 ) -> anyhow::Result<()> {
     let mut core = mgba::core::Core::new_gba("tango-prefetch", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();
@@ -165,19 +176,33 @@ pub fn run_prefetch(
     traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
 
+    // Highest round index whose start tick we've already recorded. The
+    // first round (index 0) starts at tick 0 and isn't a boundary.
+    let mut recorded_round_index = 0u32;
+
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Ok(());
         }
 
-        let (total_left, absolute_tick, total_replay_ticks) = {
+        let (total_left, absolute_tick, total_replay_ticks, round_index) = {
             let inner = stepper_state.lock_inner();
             (
                 inner.total_input_pairs_left(),
                 inner.absolute_tick(),
                 inner.total_replay_ticks(),
+                inner.current_round_index(),
             )
         };
+
+        // A round just loaded: its first inputs haven't committed yet, so
+        // `absolute_tick` is still frozen at the previous round's end (past
+        // the round-end animation) — exactly the transition point to mark.
+        if round_index > recorded_round_index {
+            recorded_round_index = round_index;
+            round_boundaries.lock().unwrap().push(absolute_tick);
+        }
+
         if total_left == 0 && absolute_tick > 0 {
             // Reached end-of-replay. Mark the bar fully buffered and exit —
             // the playback thread will pick up from existing snapshots from
