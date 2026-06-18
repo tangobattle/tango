@@ -62,7 +62,7 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
     }
     tooltip(
         btn,
-        container(text(tip).size(TEXT_CAPTION)).padding(6).style(tooltip_chrome),
+        tooltip_bubble(tip),
         tooltip::Position::Top,
     )
     .gap(4)
@@ -332,9 +332,7 @@ pub fn icon_button_styled<'a, M: Clone + 'a>(
     }
     tooltip(
         btn,
-        container(text(label).size(TEXT_CAPTION))
-            .padding(6)
-            .style(tooltip_chrome),
+        tooltip_bubble(label),
         tooltip::Position::Bottom,
     )
     .gap(4)
@@ -489,9 +487,7 @@ pub fn nav_icon_tab_button<'a, M: Clone + 'a>(
     let stacked = tab_button_inner(icon, None, msg, active, true);
     tooltip(
         stacked,
-        container(text(tooltip_label).size(TEXT_CAPTION))
-            .padding(6)
-            .style(tooltip_chrome),
+        tooltip_bubble(tooltip_label),
         tooltip::Position::Bottom,
     )
     .gap(4)
@@ -726,6 +722,12 @@ pub fn primary_text_style(theme: &iced::Theme) -> iced::widget::text::Style {
     iced::widget::text::Style {
         color: Some(theme.palette().primary),
     }
+}
+
+/// The standard tooltip bubble: a caption-sized `label` on the
+/// [`tooltip_chrome`] plate. Pass as the overlay to `iced::widget::tooltip`.
+pub fn tooltip_bubble<'a, M: 'a>(label: impl Into<String>) -> iced::widget::Container<'a, M> {
+    container(text(label.into()).size(TEXT_CAPTION)).padding(6).style(tooltip_chrome)
 }
 
 pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {

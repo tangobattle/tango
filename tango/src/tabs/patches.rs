@@ -362,9 +362,7 @@ impl PatchesState {
                 .on_press(Message::ToggleFavorite(name.to_string()));
             iced::widget::tooltip(
                 btn,
-                container(text(label).size(TEXT_CAPTION))
-                    .padding(6)
-                    .style(widgets::tooltip_chrome),
+                widgets::tooltip_bubble(label),
                 iced::widget::tooltip::Position::Bottom,
             )
             .gap(4)

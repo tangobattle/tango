@@ -744,9 +744,7 @@ fn side_card(
                     .widget()
                     .size(TEXT_HEADING)
                     .style(widgets::danger_text_style),
-                container(text(blind_tip).size(TEXT_CAPTION))
-                    .padding(6)
-                    .style(widgets::tooltip_chrome),
+                widgets::tooltip_bubble(blind_tip),
                 iced::widget::tooltip::Position::Top,
             )
             .gap(4),

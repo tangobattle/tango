@@ -1850,9 +1850,7 @@ fn corner_commands_overlay<'a>(
         let btn = button(icon.widget().size(16.0)).padding([6.0, 8.0]).style(style).on_press(msg);
         iced::widget::tooltip(
             btn,
-            container(text(label).size(TEXT_CAPTION))
-                .padding(6)
-                .style(widgets::tooltip_chrome),
+            widgets::tooltip_bubble(label),
             iced::widget::tooltip::Position::Bottom,
         )
         .gap(4)
@@ -1996,9 +1994,7 @@ fn setup_handles_overlay<'a>(
         }
         let tip = iced::widget::tooltip(
             btn,
-            container(text(label).size(TEXT_CAPTION))
-                .padding(6)
-                .style(widgets::tooltip_chrome),
+            widgets::tooltip_bubble(label),
             if on_left {
                 iced::widget::tooltip::Position::Right
             } else {
@@ -2151,9 +2147,7 @@ fn replay_transport<'a>(
         .height(iced::Length::Fixed(32.0))
         .style(play_pause_style)
         .on_press(Message::TogglePlay),
-        iced::widget::container(text(play_pause_label).size(TEXT_CAPTION))
-            .padding(6)
-            .style(widgets::tooltip_chrome),
+        widgets::tooltip_bubble(play_pause_label),
         iced::widget::tooltip::Position::Top,
     )
     .gap(4);
@@ -2312,9 +2306,7 @@ fn telemetry_overlay<'a>(
             .on_press(Message::ToggleMatchSettings);
         iced::widget::tooltip(
             chip,
-            container(text(reading).size(TEXT_CAPTION))
-                .padding(6)
-                .style(widgets::tooltip_chrome),
+            widgets::tooltip_bubble(reading),
             iced::widget::tooltip::Position::Left,
         )
         .gap(4)

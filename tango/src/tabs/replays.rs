@@ -1026,9 +1026,7 @@ fn replay_detail<'a>(
                     } else {
                         iced::widget::tooltip(
                             btn,
-                            container(text(t!(lang, "replays-watch-missing-rom")).size(TEXT_CAPTION))
-                                .padding(6)
-                                .style(widgets::tooltip_chrome),
+                            widgets::tooltip_bubble(t!(lang, "replays-watch-missing-rom")),
                             iced::widget::tooltip::Position::Top,
                         )
                         .gap(4)
