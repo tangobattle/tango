@@ -7,7 +7,7 @@
 //! (no button) emits the hover message per tick change so the caller
 //! can float a thumbnail preview above the bar.
 
-use iced::widget::canvas::{self, Canvas, Frame, Path};
+use iced::widget::canvas::{self, Canvas, Frame, Path, Stroke};
 use iced::{mouse, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
 /// Where the cursor is resting on the bar, published through
@@ -127,16 +127,40 @@ where
         let h = bounds.height;
         let total = self.total.max(1) as f32;
 
-        // Slim rounded track centered vertically. The canvas bounds
-        // are tall (22 px) so the round playhead handle has room to
-        // protrude above + below — the track itself is just 6 px.
-        const TRACK_H: f32 = 6.0;
-        let track_y = ((h - TRACK_H) / 2.0).round();
-        let track_radius = TRACK_H / 2.0;
+        // Pull the rail + handle colors/sizes straight from the
+        // `chunky_slider` style for the current interaction state, so the
+        // scrub bar reads as the same widget family as every other slider.
+        let hovered = state.dragging || cursor.is_over(bounds);
+        let status = if state.dragging {
+            iced::widget::slider::Status::Dragged
+        } else if hovered {
+            iced::widget::slider::Status::Hovered
+        } else {
+            iced::widget::slider::Status::Active
+        };
+        let style = crate::widgets::chunky_slider(theme, status);
+        let color_of = |bg: &iced::Background, fallback: iced::Color| match bg {
+            iced::Background::Color(c) => *c,
+            _ => fallback,
+        };
+        let fill_color = color_of(&style.rail.backgrounds.0, palette.primary.base.color);
+        let track_color = color_of(&style.rail.backgrounds.1, palette.background.weak.color);
+        let handle_color = color_of(&style.handle.background, palette.primary.strong.color);
+        let handle_r = match style.handle.shape {
+            iced::widget::slider::HandleShape::Circle { radius } => radius,
+            _ => 8.0,
+        };
+
+        // Slim rounded track centered vertically; its height matches the
+        // real sliders' rail. The canvas bounds are taller so the round
+        // playhead handle protrudes above + below without clipping.
+        let track_h = style.rail.width;
+        let track_y = ((h - track_h) / 2.0).round();
+        let track_radius = track_h / 2.0;
 
         // Full-width unplayed/unprefetched track.
-        let track = Path::rounded_rectangle(Point::new(0.0, track_y), Size::new(w, TRACK_H), track_radius.into());
-        frame.fill(&track, palette.background.weak.color);
+        let track = Path::rounded_rectangle(Point::new(0.0, track_y), Size::new(w, track_h), track_radius.into());
+        frame.fill(&track, track_color);
 
         // Prefetched range — primary hue at weak strength so it reads
         // as a lower-contrast underlay beneath the played fill.
@@ -144,7 +168,7 @@ where
         if prefetched_w > 0.0 {
             let prefetched = Path::rounded_rectangle(
                 Point::new(0.0, track_y),
-                Size::new(prefetched_w, TRACK_H),
+                Size::new(prefetched_w, track_h),
                 track_radius.into(),
             );
             frame.fill(&prefetched, palette.primary.weak.color);
@@ -155,10 +179,10 @@ where
         if played_w > 0.0 {
             let played = Path::rounded_rectangle(
                 Point::new(0.0, track_y),
-                Size::new(played_w, TRACK_H),
+                Size::new(played_w, track_h),
                 track_radius.into(),
             );
-            frame.fill(&played, palette.primary.base.color);
+            frame.fill(&played, fill_color);
         }
 
         // Round-boundary pips. Drawn as 2-px-wide full-height
@@ -171,7 +195,7 @@ where
         // unprefetched section.
         let notch_color = palette.background.strong.text;
         let notch_w = 2.0;
-        let notch_h = TRACK_H + 4.0;
+        let notch_h = track_h + 4.0;
         let notch_top = ((h - notch_h) / 2.0).round();
         for &b in &self.round_boundaries {
             // Skip 0 + total — they overlap the track ends.
@@ -204,19 +228,21 @@ where
             }
         }
 
-        // Playhead: filled circle with a thin border, sized larger
-        // than the track height so it sits proud of the bar. Grows
-        // slightly while dragging / hovering for tactile feedback.
-        let hovered = state.dragging || cursor.is_over(bounds);
-        let handle_r = if hovered { 7.0 } else { 6.0 };
+        // Playhead: a filled circle with the slider's 2 px border, so the
+        // handle matches every other slider in the app. The radius (and
+        // its hover/drag growth) comes from the slider style too.
         let handle_x = played_w.clamp(handle_r, w - handle_r);
         let handle_y = h / 2.0;
         let handle = Path::circle(Point::new(handle_x, handle_y), handle_r);
-        // Outer ring (same color as the track bg) so the handle has
-        // a halo against both played + unplayed regions.
-        let halo = Path::circle(Point::new(handle_x, handle_y), handle_r + 1.5);
-        frame.fill(&halo, palette.background.base.color);
-        frame.fill(&handle, palette.primary.strong.color);
+        frame.fill(&handle, handle_color);
+        if style.handle.border_width > 0.0 {
+            frame.stroke(
+                &handle,
+                Stroke::default()
+                    .with_color(style.handle.border_color)
+                    .with_width(style.handle.border_width),
+            );
+        }
 
         vec![frame.into_geometry()]
     }
