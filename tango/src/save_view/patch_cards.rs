@@ -716,3 +716,17 @@ pub(crate) fn as_text(loaded: &Loaded) -> Option<String> {
     }
     Some(out)
 }
+
+fn effect_badge<M: 'static>(e: &tango_dataview::rom::PatchCard56Effect, enabled: bool) -> Element<'static, M> {
+    let name = e.name.clone().unwrap_or_else(|| "???".to_string());
+    let bg = if enabled {
+        if e.is_debuff {
+            iced::Color::from_rgb8(0xb5, 0x5a, 0xde)
+        } else {
+            iced::Color::from_rgb8(0xff, 0xbd, 0x18)
+        }
+    } else {
+        iced::Color::from_rgb8(0xbd, 0xbd, 0xbd)
+    };
+    colored_badge(name, bg, iced::Color::BLACK)
+}
