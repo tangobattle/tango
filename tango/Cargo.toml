@@ -49,6 +49,7 @@ mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
 mgba = { path = "../mgba" }
+rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
 tango-filesync = { path = "../tango-filesync" }
 tango-signaling = { path = "../tango-signaling" }

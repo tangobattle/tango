@@ -3,8 +3,9 @@
 //! * [`control`] — the reliable lobby/handshake channel: the `Packet`
 //!   [`protocol`](control::protocol), the `Sender` / `Receiver` byte transport,
 //!   and the version `negotiate` handshake.
-//! * [`data`] — the live in-match channel: the loss-tolerant `wire` protocol
-//!   and reliability state machines, plus the `InMatchTx` / `PvpSender` /
+//! * [`data`] — the live in-match channel: tango's concrete `protocol`
+//!   `Element` (carried by the loss-tolerant frame codec + reliability state
+//!   machines in the [`rennet`] crate), plus the `InMatchTx` / `PvpSender` /
 //!   `PvpReceiver` adapters used by the battle loop. Runs over a separate
 //!   **unreliable** data channel.
 //!

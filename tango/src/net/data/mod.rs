@@ -1,16 +1,19 @@
 //! Data plane: the live in-match protocol.
 //!
-//! The byte-minimized [`protocol`] frame codec, the [`stream`] reliability state
-//! machines (redundancy window + cumulative-ack reassembly), and the [`InMatchTx`]
-//! / [`PvpSender`] / [`PvpReceiver`] adapters that run them over the
-//! unreliable in-match channel and present the engine's ordered
-//! `tango_pvp::net::Event` stream. Loss-tolerant by design — it never assumes
-//! the reliable/ordered guarantee the control plane relies on.
+//! tango's concrete [`protocol`] [`Element`](protocol::Element) (wired into the
+//! generic [`rennet`] frame codec + redundancy-window / cumulative-ack
+//! reliability streams), plus the [`InMatchTx`] / [`PvpSender`] / [`PvpReceiver`]
+//! adapters that run them over the unreliable in-match channel and present the
+//! engine's ordered `tango_pvp::net::Event` stream. Loss-tolerant by design — it
+//! never assumes the reliable/ordered guarantee the control plane relies on.
 
 pub mod protocol;
-pub mod stream;
 
 use super::{LatencyCounter, Receiver, Sender};
+
+/// The in-match streams' element type: tango's [`protocol::Element`].
+type OutStream = rennet::OutStream<protocol::Element>;
+type InStream = rennet::InStream<protocol::Element>;
 
 /// Send-pump queue depth. Deeper than the engine's unacked-local-input cap
 /// so that under a genuinely stalled wire the engine's overflow bail fires
@@ -27,12 +30,12 @@ const SEND_PUMP_DEPTH: usize = tango_pvp::battle::MAX_QUEUE_LENGTH + 8;
 const MAX_RTT_SAMPLES: usize = tango_pvp::battle::MAX_QUEUE_LENGTH;
 
 /// Shared per-match stream state: the outbound seq/redundancy window
-/// ([`stream::OutStream`]) and the inbound reorder/ack machinery
-/// ([`stream::InStream`]). Locked briefly — no awaits held — from the send
+/// ([`rennet::OutStream`]) and the inbound reorder/ack machinery
+/// ([`rennet::InStream`]). Locked briefly — no awaits held — from the send
 /// pump, the receive loop, and the session's in-band EndOfMatch fire.
 struct InMatchState {
-    out: stream::OutStream,
-    inn: stream::InStream,
+    out: OutStream,
+    inn: InStream,
     /// First-send wall time of each unconfirmed seq, ascending by seq. Pushed
     /// when a brand-new seq ships; popped as the peer's cumulative ack confirms
     /// it, and the freshest just-confirmed entry dates the round-trip. This is
@@ -53,7 +56,7 @@ const RTT_EWMA_ALPHA: f64 = 0.125;
 
 /// Frames of round-trip that add one element to the proactive redundancy floor.
 /// The floor is a continuous `1 + rtt_frames / FRAMES_PER_REDUNDANCY` (rounded,
-/// then capped at [`stream::MAX_REDUNDANCY`]), where `rtt_frames` is the smoothed
+/// then capped at [`rennet::MAX_REDUNDANCY`]), where `rtt_frames` is the smoothed
 /// RTT in [`InMatchTx::heartbeat`] (≈ one frame) units. A redundant copy recovers
 /// a dropped datagram in ~one frame, where an ack-driven resend costs ~one whole
 /// RTT — so the deeper the RTT, the more a copy is worth. At a sub-frame (LAN)
@@ -96,8 +99,8 @@ impl InMatchTx {
     pub fn new(sink: std::sync::Arc<tokio::sync::Mutex<Sender>>, heartbeat: std::time::Duration) -> Self {
         let this = Self {
             state: std::sync::Arc::new(std::sync::Mutex::new(InMatchState {
-                out: stream::OutStream::new(),
-                inn: stream::InStream::new(),
+                out: OutStream::new(protocol::HORIZON),
+                inn: InStream::new(protocol::HORIZON),
                 sent_times: std::collections::VecDeque::new(),
                 rtt_ewma: None,
             })),
@@ -111,7 +114,7 @@ impl InMatchTx {
 
     /// Push an element, snapshot the current redundancy window + cumulative ack into
     /// one frame, and ship it. The state lock is dropped before the await.
-    async fn send_frame_with(&self, push: impl FnOnce(&mut stream::OutStream)) -> std::io::Result<()> {
+    async fn send_frame_with(&self, push: impl FnOnce(&mut OutStream)) -> std::io::Result<()> {
         self.data_sends.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let frame = {
             let mut st = self.state.lock().unwrap();
@@ -129,14 +132,17 @@ impl InMatchTx {
             }
             let w = st.out.window().expect("window is non-empty after a push");
             let ack = st.inn.ack();
-            protocol::Frame::data(w.base, w.frame_advantage, w.entries, ack)
+            protocol::data_frame(w.base, w.frame_advantage, w.entries, ack)
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
     }
 
     pub async fn send_input(&self, joyflags: u16, frame_advantage: i16) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
-            out.push_input(joyflags, frame_advantage);
+            out.push_advantaged(
+                protocol::Element::Input(joyflags & tango_pvp::input::JOYFLAGS_MASK),
+                frame_advantage,
+            );
         })
         .await
     }
@@ -167,8 +173,8 @@ impl InMatchTx {
             let st = self.state.lock().unwrap();
             let ack = st.inn.ack();
             match st.out.window() {
-                Some(w) => protocol::Frame::data(w.base, w.frame_advantage, w.entries, ack),
-                None => protocol::Frame::Ack(ack),
+                Some(w) => protocol::data_frame(w.base, w.frame_advantage, w.entries, ack),
+                None => protocol::Frame::ack_only(st.out.next_seq(), ack),
             }
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
@@ -207,17 +213,12 @@ impl InMatchTx {
     /// order), the freshest frame-advantage, and an RTT sample when the ack
     /// confirmed one of our timestamped seqs. `Err` => a gap blew past the
     /// rollback horizon and the match must tear down.
-    fn recv(&self, frame: &protocol::Frame) -> Result<Delivery, stream::HorizonExceeded> {
+    fn recv(&self, frame: &protocol::Frame) -> Result<Delivery, rennet::HorizonExceeded> {
         let mut st = self.state.lock().unwrap();
         // The ack is the out-stream's concern (it acks what we sent); the
         // in-stream reassembly below only consumes the data entries. Every frame
-        // carries one — `Frame::Ack` outright, every `Frame::Data` piggybacked —
-        // so applying it is unconditional.
-        let ack = match frame {
-            protocol::Frame::Ack(ack) => *ack,
-            protocol::Frame::Data { ack, .. } => *ack,
-        };
-        st.out.apply_ack(ack);
+        // carries one in its header, so applying it is unconditional.
+        st.out.apply_ack(frame.ack());
         // The ack confirms every seq below the peer's frontier. Retire the
         // confirmed first-send timestamps; the newest one just retired dates
         // the round-trip (now − when we first sent that seq).
