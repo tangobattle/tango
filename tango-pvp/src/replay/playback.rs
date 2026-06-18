@@ -166,34 +166,20 @@ pub fn run_prefetch(
     traps.extend(local_hooks.stepper_traps(stepper_state.clone()));
     core.set_traps(traps);
 
-    // Highest round index whose start tick we've already recorded. The
-    // first round (index 0) starts at tick 0 and isn't a boundary.
-    let mut recorded_round_index = 0u32;
-
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Ok(());
         }
 
-        let (total_left, absolute_tick, total_replay_ticks, round_index) = {
+        let (total_left, inputs_consumed, total_replay_ticks) = {
             let inner = stepper_state.lock_inner();
             (
                 inner.total_input_pairs_left(),
-                inner.absolute_tick(),
+                inner.inputs_consumed(),
                 inner.total_replay_ticks(),
-                inner.current_round_index(),
             )
         };
-
-        // A round just loaded: its first inputs haven't committed yet, so
-        // `absolute_tick` is still frozen at the previous round's end (past
-        // the round-end animation) — exactly the transition point to mark.
-        if round_index > recorded_round_index {
-            recorded_round_index = round_index;
-            round_boundaries.lock().unwrap().push(absolute_tick);
-        }
-
-        if total_left == 0 && absolute_tick > 0 {
+        if total_left == 0 && inputs_consumed > 0 {
             // Reached end-of-replay. Mark the bar fully buffered and exit —
             // the playback thread will pick up from existing snapshots from
             // here on out.
@@ -209,7 +195,7 @@ pub fn run_prefetch(
             }
         }
 
-        progress.store(absolute_tick, Ordering::Relaxed);
+        progress.store(inputs_consumed, Ordering::Relaxed);
         core.as_mut().run_frame();
     }
 }
@@ -296,12 +282,13 @@ impl SeekController {
         self.resume.store(false, Ordering::Release);
     }
 
-    /// Whether the frame at `absolute_tick` should reach the display.
+    /// Whether the frame at `frame_index` should reach the display.
     /// During a chase only the landing frame passes — publishing every
     /// intermediate catch-up frame strobes a fast-forward of everything
-    /// between the start snapshot and the target.
-    pub fn should_publish_frame(&self, absolute_tick: u32) -> bool {
-        !self.chasing.load(Ordering::Acquire) || absolute_tick >= self.target.load(Ordering::Acquire)
+    /// between the start snapshot and the target. `frame_index` is the
+    /// recorded-frame index, same scale as the target.
+    pub fn should_publish_frame(&self, frame_index: u32) -> bool {
+        !self.chasing.load(Ordering::Acquire) || frame_index >= self.target.load(Ordering::Acquire)
     }
 }
 
@@ -387,7 +374,7 @@ fn chase_on_core(
         ctrl.dirty.store(false, Ordering::Release);
         let target = ctrl.target.load(Ordering::Acquire);
 
-        let cur = stepper_state.lock_inner().absolute_tick();
+        let cur = stepper_state.lock_inner().inputs_consumed();
         let start_snap = if target < cur {
             match store.best_at_or_before(target) {
                 Some(snap) => Some(snap),
@@ -423,7 +410,7 @@ fn chase_on_core(
             if ctrl.dirty.load(Ordering::Acquire) {
                 continue 'plan;
             }
-            if stepper_state.lock_inner().absolute_tick() >= target {
+            if stepper_state.lock_inner().inputs_consumed() >= target {
                 return Ok(());
             }
             if completion_token.is_complete() {
