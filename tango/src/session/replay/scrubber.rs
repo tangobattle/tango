@@ -25,14 +25,14 @@ pub struct HoverInfo {
     pub x: f32,
 }
 
-pub struct Scrubber<F, G, H> {
+pub struct Scrubber<M> {
     current: u32,
     total: u32,
     prefetched: u32,
     round_boundaries: Vec<u32>,
-    on_seek: F,
-    on_commit: G,
-    on_hover: H,
+    on_seek: Box<dyn Fn(u32) -> M>,
+    on_commit: Box<dyn Fn(u32) -> M>,
+    on_hover: Box<dyn Fn(Option<HoverInfo>) -> M>,
     height: f32,
 }
 
@@ -49,16 +49,23 @@ pub struct State {
     hovered: Option<u32>,
 }
 
-impl<F, G, H> Scrubber<F, G, H> {
-    pub fn new(current: u32, total: u32, prefetched: u32, on_seek: F, on_commit: G, on_hover: H) -> Self {
+impl<M> Scrubber<M> {
+    pub fn new(
+        current: u32,
+        total: u32,
+        prefetched: u32,
+        on_seek: impl Fn(u32) -> M + 'static,
+        on_commit: impl Fn(u32) -> M + 'static,
+        on_hover: impl Fn(Option<HoverInfo>) -> M + 'static,
+    ) -> Self {
         Self {
             current,
             total,
             prefetched,
             round_boundaries: Vec::new(),
-            on_seek,
-            on_commit,
-            on_hover,
+            on_seek: Box::new(on_seek),
+            on_commit: Box::new(on_commit),
+            on_hover: Box::new(on_hover),
             // Tall enough for the largest (hover/drag) playhead handle
             // plus its border to protrude above + below the slim track
             // without clipping against the canvas edges.
@@ -88,16 +95,11 @@ impl<F, G, H> Scrubber<F, G, H> {
     fn tick_at_x(&self, x: f32, width: f32) -> u32 {
         self.raw_tick_at_x(x, width).min(self.prefetched)
     }
-}
 
-impl<F, G, H, M> Scrubber<F, G, H>
-where
-    F: 'static + Fn(u32) -> M,
-    G: 'static + Fn(u32) -> M,
-    H: 'static + Fn(Option<HoverInfo>) -> M,
-    M: 'static,
-{
-    pub fn view(self) -> Element<'static, M> {
+    pub fn view(self) -> Element<'static, M>
+    where
+        M: 'static,
+    {
         let height = self.height;
         Canvas::new(self)
             .width(Length::Fill)
@@ -106,12 +108,7 @@ where
     }
 }
 
-impl<F, G, H, M> canvas::Program<M> for Scrubber<F, G, H>
-where
-    F: Fn(u32) -> M,
-    G: Fn(u32) -> M,
-    H: Fn(Option<HoverInfo>) -> M,
-{
+impl<M> canvas::Program<M> for Scrubber<M> {
     type State = State;
 
     fn draw(
