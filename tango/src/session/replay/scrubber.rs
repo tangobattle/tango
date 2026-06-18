@@ -59,9 +59,10 @@ impl<F, G, H> Scrubber<F, G, H> {
             on_seek,
             on_commit,
             on_hover,
-            // Tall enough for the playhead handle to protrude
-            // above + below the slim track without clipping.
-            height: 22.0,
+            // Tall enough for the largest (hover/drag) playhead handle
+            // plus its border to protrude above + below the slim track
+            // without clipping against the canvas edges.
+            height: 26.0,
         }
     }
 
@@ -231,7 +232,11 @@ where
         // Playhead: a filled circle with the slider's 2 px border, so the
         // handle matches every other slider in the app. The radius (and
         // its hover/drag growth) comes from the slider style too.
-        let handle_x = played_w.clamp(handle_r, w - handle_r);
+        // Inset the handle center by its radius + half its border so the
+        // full circle (border included) stays inside the canvas at both
+        // ends instead of clipping against the bar edges.
+        let handle_edge = handle_r + style.handle.border_width / 2.0;
+        let handle_x = played_w.clamp(handle_edge, (w - handle_edge).max(handle_edge));
         let handle_y = h / 2.0;
         let handle = Path::circle(Point::new(handle_x, handle_y), handle_r);
         frame.fill(&handle, handle_color);
