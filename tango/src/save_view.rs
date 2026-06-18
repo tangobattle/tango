@@ -164,6 +164,39 @@ fn editor_panes<'a>(left: Element<'a, Action>, right: Element<'a, Action>) -> El
         .into()
 }
 
+/// The red "Clear" button atop every save-editor pane — identical across the
+/// folder / navicust / patch-card / auto-battle-data panes apart from the
+/// action it fires.
+fn clear_all_button<'a>(lang: &LanguageIdentifier, action: Action) -> Element<'a, Action> {
+    crate::widgets::labeled_icon_button(
+        lucide_icons::Icon::Trash2,
+        t!(lang, "save-edit-clear"),
+        action,
+        [5.0, 10.0],
+        crate::widgets::danger_button,
+    )
+}
+
+/// Standard editor-pane header chrome: a body-size title, any inline stat
+/// captions (`extras`), a flexible spacer, then the clear-all button. Shared
+/// by the navicust / patch-card / auto-battle-data panes; the folder pane adds
+/// a second stats line and builds its own column.
+fn editor_header<'a>(
+    lang: &LanguageIdentifier,
+    title: String,
+    extras: Vec<Element<'a, Action>>,
+    clear_action: Action,
+) -> Element<'a, Action> {
+    let mut header = row![text(title).size(TEXT_BODY)].spacing(8).align_y(Alignment::Center);
+    for extra in extras {
+        header = header.push(extra);
+    }
+    header = header
+        .push(Space::new().width(Fill))
+        .push(clear_all_button(lang, clear_action));
+    container(header).width(Fill).padding(style::HEADER_PADDING).into()
+}
+
 /// Caption text that turns danger-red when an editor budget is blown
 /// (folder class limits, patch-card MB, folder over-fill) and reads
 /// muted otherwise.
@@ -2174,7 +2207,6 @@ pub fn folder_limits_satisfied(loaded: &Loaded) -> bool {
 /// cap, Regular/Tag memory) are surfaced in the folder header and enforced
 /// by greying out library chips / REG / TAG toggles that would break them.
 fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, state: &'a State) -> Element<'a, Action> {
-    use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -2259,13 +2291,7 @@ fn render_folder_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, stat
         .spacing(1)
         .style(reorder_drag_style)
         .on_drag(Action::ReorderChips);
-    let clear_all = widgets::labeled_icon_button(
-        lucide_icons::Icon::Trash2,
-        t!(lang, "save-edit-clear"),
-        Action::ClearFolder,
-        [5.0, 10.0],
-        widgets::danger_button,
-    );
+    let clear_all = clear_all_button(lang, Action::ClearFolder);
     // "Folder" label, then a smaller count that turns red while the
     // folder is short of the 30 chips a legal folder needs.
     let count = limit_caption(
@@ -2512,28 +2538,15 @@ fn render_navicust_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a Loaded, st
     }
 
     // ----- Left pane: grid + rotate/compress controls -----
-    let clear_all = widgets::labeled_icon_button(
-        lucide_icons::Icon::Trash2,
-        t!(lang, "save-edit-clear"),
-        Action::ClearNavicust,
-        [5.0, 10.0],
-        widgets::danger_button,
-    );
     let count = text(t!(lang, "navicust-edit-count", count = installed as i64))
         .size(TEXT_CAPTION)
         .style(muted_text_style);
-    let grid_header = container(
-        row![
-            text(t!(lang, "navicust-edit-grid")).size(TEXT_BODY),
-            count,
-            Space::new().width(Fill),
-            clear_all,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding(style::HEADER_PADDING);
+    let grid_header = editor_header(
+        lang,
+        t!(lang, "navicust-edit-grid"),
+        vec![count.into()],
+        Action::ClearNavicust,
+    );
 
     let held_opt = edit.held_part;
 
@@ -2666,28 +2679,16 @@ fn chip_icon<'a>(loaded: &'a Loaded, chip_id: Option<usize>) -> Element<'a, Acti
     }
 }
 
-/// Wrap `inner` so hovering anywhere over it shows the chip's full image
-/// + description (the read-only list's chip popover). No-op when the
-/// chip has neither, or for an empty slot.
-fn with_chip_tooltip<'a>(
-    loaded: &'a Loaded,
-    chip_id: Option<usize>,
+/// Build the chip popover — scaled artwork above its description — and wrap
+/// `inner` with it as a follow-cursor tooltip. Returns `inner` unchanged when
+/// the chip has neither artwork nor a description. `accent` tints the popover
+/// background to match the chip's class stripe.
+fn chip_popover<'a, M: 'a>(
+    inner: Element<'a, M>,
+    image_handle: Option<(u32, u32, iced_image::Handle)>,
+    description: Option<String>,
     accent: Option<iced::Color>,
-    inner: Element<'a, Action>,
-) -> Element<'a, Action> {
-    let Some(id) = chip_id else { return inner };
-    let info = loaded.assets.chip(id);
-    let description = info.as_ref().and_then(|i| i.description());
-    // Program advances have no meaningful standalone artwork, so their
-    // popover is description-only.
-    let is_pa = info
-        .as_ref()
-        .map_or(false, |i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
-    let image_handle = if is_pa {
-        None
-    } else {
-        loaded.chip_images.get(id).cloned().flatten()
-    };
+) -> Element<'a, M> {
     if description.is_none() && image_handle.is_none() {
         return inner;
     }
@@ -2711,6 +2712,31 @@ fn with_chip_tooltip<'a>(
     )
     .gap(8)
     .into()
+}
+
+/// Wrap `inner` so hovering anywhere over it shows the chip's full image
+/// + description (the read-only list's chip popover). No-op when the
+/// chip has neither, or for an empty slot.
+fn with_chip_tooltip<'a>(
+    loaded: &'a Loaded,
+    chip_id: Option<usize>,
+    accent: Option<iced::Color>,
+    inner: Element<'a, Action>,
+) -> Element<'a, Action> {
+    let Some(id) = chip_id else { return inner };
+    let info = loaded.assets.chip(id);
+    let description = info.as_ref().and_then(|i| i.description());
+    // Program advances have no meaningful standalone artwork, so their
+    // popover is description-only.
+    let is_pa = info
+        .as_ref()
+        .map_or(false, |i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
+    let image_handle = if is_pa {
+        None
+    } else {
+        loaded.chip_images.get(id).cloned().flatten()
+    };
+    chip_popover(inner, image_handle, description, accent)
 }
 
 /// Wrap an editor row's content with the class-accent stripe + zebra
@@ -3173,29 +3199,7 @@ fn chip_row<M: 'static>(
     } else {
         loaded.chip_images.get(id).cloned().flatten()
     };
-    if description.is_none() && image_handle.is_none() {
-        return card;
-    }
-    let mut tip = column![].spacing(6);
-    if let Some((w, h, h_handle)) = image_handle {
-        tip = tip.push(
-            Image::new(h_handle)
-                .width(Length::Fixed(w as f32 * 2.0))
-                .height(Length::Fixed(h as f32 * 2.0))
-                .filter_method(iced_image::FilterMethod::Nearest)
-                .content_fit(ContentFit::Contain),
-        );
-    }
-    if let Some(desc) = description {
-        tip = tip.push(text(desc).size(TEXT_CAPTION));
-    }
-    tooltip(
-        card,
-        container(tip).padding(8).style(chip_tooltip_style(accent)),
-        tooltip::Position::FollowCursor,
-    )
-    .gap(8)
-    .into()
+    chip_popover(card, image_handle, description, accent)
 }
 
 /// Tooltip chrome for chip hovers — same shape as
@@ -4068,7 +4072,6 @@ fn render_patch_card56s_edit<'a>(
     loaded: &'a Loaded,
     state: &'a State,
 ) -> Element<'a, Action> {
-    use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -4107,13 +4110,6 @@ fn render_patch_card56s_edit<'a>(
         .spacing(3)
         .style(reorder_drag_style)
         .on_drag(Action::ReorderPatchCard56s);
-    let clear_all = widgets::labeled_icon_button(
-        lucide_icons::Icon::Trash2,
-        t!(lang, "save-edit-clear"),
-        Action::ClearPatchCard56s,
-        [5.0, 10.0],
-        widgets::danger_button,
-    );
     // MB total turns red if it somehow exceeds the limit (e.g. a save
     // imported over-budget); the editor itself never lets it go over.
     let mb_text = limit_caption(
@@ -4125,21 +4121,15 @@ fn render_patch_card56s_edit<'a>(
         ),
         enabled_mb > MAX_PATCH_CARD56_MB,
     );
-    let list_header = container(
-        row![
-            text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),
-            text(t!(lang, "patch-card-edit-count", count = count as i64))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            mb_text,
-            Space::new().width(Fill),
-            clear_all,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding(style::HEADER_PADDING);
+    let count_caption = text(t!(lang, "patch-card-edit-count", count = count as i64))
+        .size(TEXT_CAPTION)
+        .style(muted_text_style);
+    let list_header = editor_header(
+        lang,
+        t!(lang, "save-tab-patch-cards"),
+        vec![count_caption.into(), mb_text.into()],
+        Action::ClearPatchCard56s,
+    );
     let list_pane = editor_pane(list_header, list_col);
 
     // ----- Right pane: the card library -----
@@ -4289,27 +4279,15 @@ fn render_patch_card4s_edit<'a>(
         rows = rows.push(patch_card4_slot_row(loaded, slot, installed, choices));
     }
 
-    let clear_all = widgets::labeled_icon_button(
-        lucide_icons::Icon::Trash2,
-        t!(lang, "save-edit-clear"),
+    let count_caption = text(t!(lang, "patch-card-edit-count", count = filled as i64))
+        .size(TEXT_CAPTION)
+        .style(muted_text_style);
+    let header = editor_header(
+        lang,
+        t!(lang, "save-tab-patch-cards"),
+        vec![count_caption.into()],
         Action::ClearPatchCard4s,
-        [5.0, 10.0],
-        widgets::danger_button,
     );
-    let header = container(
-        row![
-            text(t!(lang, "save-tab-patch-cards")).size(TEXT_BODY),
-            text(t!(lang, "patch-card-edit-count", count = filled as i64))
-                .size(TEXT_CAPTION)
-                .style(muted_text_style),
-            Space::new().width(Fill),
-            clear_all,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding(style::HEADER_PADDING);
 
     container(column![
         header,
@@ -4569,7 +4547,6 @@ fn render_auto_battle_data_edit<'a>(
     loaded: &'a Loaded,
     state: &'a State,
 ) -> Element<'a, Action> {
-    use crate::widgets;
     // Only reached while editing, so the EditState is present.
     let Some(edit) = state.editing.as_ref() else {
         return placeholder(t!(lang, "save-empty"));
@@ -4602,28 +4579,15 @@ fn render_auto_battle_data_edit<'a>(
         .filter_map(|(id, _)| *id)
         .collect::<std::collections::HashSet<_>>()
         .len();
-    let clear_all = widgets::labeled_icon_button(
-        lucide_icons::Icon::Trash2,
-        t!(lang, "save-edit-clear"),
-        Action::ClearAutoBattleData,
-        [5.0, 10.0],
-        widgets::danger_button,
-    );
     let count = text(t!(lang, "auto-battle-data-edit-count", count = distinct as i64))
         .size(TEXT_CAPTION)
         .style(muted_text_style);
-    let deck_header = container(
-        row![
-            text(t!(lang, "save-tab-auto-battle-data")).size(TEXT_BODY),
-            count,
-            Space::new().width(Fill),
-            clear_all,
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .padding(style::HEADER_PADDING);
+    let deck_header = editor_header(
+        lang,
+        t!(lang, "save-tab-auto-battle-data"),
+        vec![count.into()],
+        Action::ClearAutoBattleData,
+    );
     let deck_pane = editor_pane(deck_header, deck);
 
     // ----- Right pane: the chip library with editable use counts -----

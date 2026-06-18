@@ -1112,18 +1112,8 @@ impl State {
             // of the toolbar action that opened the form, so the form
             // visibly answers the button that started it.
             SaveAction::Renaming { draft } => row![
-                text_input(&t!(lang, "save-name-placeholder"), draft)
-                    .on_input(Message::SaveRenameDraftChanged)
-                    .on_submit(Message::SaveRenameConfirm)
-                    .style(widgets::chunky_text_input)
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fill),
-                widgets::icon_button(
-                    Icon::X,
-                    t!(lang, "save-action-cancel"),
-                    Message::SaveActionCancel,
-                    STANDARD_PADDING,
-                ),
+                save_name_input(lang, draft, Message::SaveRenameDraftChanged, Message::SaveRenameConfirm),
+                save_action_cancel_button(lang),
                 widgets::labeled_icon_button(
                     Icon::PencilLine,
                     t!(lang, "save-rename-confirm"),
@@ -1136,18 +1126,8 @@ impl State {
             .align_y(Alignment::Center)
             .into(),
             SaveAction::Duplicating { draft } => row![
-                text_input(&t!(lang, "save-name-placeholder"), draft)
-                    .on_input(Message::SaveDuplicateDraftChanged)
-                    .on_submit(Message::SaveDuplicateConfirm)
-                    .style(widgets::chunky_text_input)
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fill),
-                widgets::icon_button(
-                    Icon::X,
-                    t!(lang, "save-action-cancel"),
-                    Message::SaveActionCancel,
-                    STANDARD_PADDING,
-                ),
+                save_name_input(lang, draft, Message::SaveDuplicateDraftChanged, Message::SaveDuplicateConfirm),
+                save_action_cancel_button(lang),
                 widgets::labeled_icon_button(
                     Icon::Files,
                     t!(lang, "save-duplicate"),
@@ -1172,12 +1152,7 @@ impl State {
                     text(t!(lang, "save-delete-prompt", name = name))
                         .style(widgets::muted_text_style)
                         .width(Length::Fill),
-                    widgets::icon_button(
-                        Icon::X,
-                        t!(lang, "save-action-cancel"),
-                        Message::SaveActionCancel,
-                        STANDARD_PADDING,
-                    ),
+                    save_action_cancel_button(lang),
                     widgets::labeled_icon_button(
                         Icon::Trash,
                         t!(lang, "save-delete-confirm"),
@@ -1230,18 +1205,8 @@ impl State {
                     .padding(STANDARD_PADDING)
                     .width(Length::Fixed(180.0))
                     .style(widgets::chunky_pick_list),
-                    text_input(&t!(lang, "save-name-placeholder"), draft)
-                        .on_input(Message::SaveNewDraftChanged)
-                        .on_submit(Message::SaveNewConfirm)
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fill)
-                        .style(widgets::chunky_text_input),
-                    widgets::icon_button(
-                        Icon::X,
-                        t!(lang, "save-action-cancel"),
-                        Message::SaveActionCancel,
-                        STANDARD_PADDING,
-                    ),
+                    save_name_input(lang, draft, Message::SaveNewDraftChanged, Message::SaveNewConfirm),
+                    save_action_cancel_button(lang),
                     confirm_btn,
                 ]
                 .spacing(8)
@@ -1412,6 +1377,36 @@ impl State {
         .style(widgets::hud_bar)
         .into()
     }
+}
+
+// ---------- Save-action form helpers ----------
+
+/// The "× Cancel" button that ends every save-action form (rename / duplicate
+/// / delete / new) — identical across all four.
+fn save_action_cancel_button<'a>(lang: &LanguageIdentifier) -> Element<'a, Message> {
+    widgets::icon_button(
+        Icon::X,
+        t!(lang, "save-action-cancel"),
+        Message::SaveActionCancel,
+        STANDARD_PADDING,
+    )
+}
+
+/// The save-name text field shared by the rename / duplicate / new-save forms,
+/// differing only in the draft-changed and submit messages it emits.
+fn save_name_input<'a>(
+    lang: &LanguageIdentifier,
+    draft: &'a str,
+    on_input: impl Fn(String) -> Message + 'a,
+    on_submit: Message,
+) -> Element<'a, Message> {
+    text_input(&t!(lang, "save-name-placeholder"), draft)
+        .on_input(on_input)
+        .on_submit(on_submit)
+        .style(widgets::chunky_text_input)
+        .padding(STANDARD_PADDING)
+        .width(Length::Fill)
+        .into()
 }
 
 // ---------- New-save template helpers ----------
