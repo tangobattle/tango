@@ -31,16 +31,14 @@ pub(super) fn traps(
                 return;
             };
 
-            // Stamp the live core's *game* tick (not the netcode frontier),
-            // since this trap fires during the game's in-tick processing where
-            // its game.current_tick == last_loaded_tick. With a frame
-            // delay the two diverge by `frame_delay`; stamping with
-            // `round.frontier()` here under-runs the rx tick field by D
-            // and the game sees rx sequence numbers out of order.
-            let game_tick = round.last_loaded_tick();
-            if game_tick > 1 {
+            // Stamp the rx sequence field with the live session's tick. This
+            // trap fires during the game's in-tick processing, so use the
+            // round frontier — the tick the session has advanced to — so both
+            // peers label this exchange with the same sequence number.
+            let seq_tick = round.frontier();
+            if seq_tick > 1 {
                 let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                byteorder::LittleEndian::write_u32(&mut rx[4..8], game_tick.saturating_sub(2));
+                byteorder::LittleEndian::write_u32(&mut rx[4..8], seq_tick.saturating_sub(2));
                 munger.set_rx_packet(core, 0, &rx);
                 munger.set_rx_packet(core, 1, &rx);
             }
