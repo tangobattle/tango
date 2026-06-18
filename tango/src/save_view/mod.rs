@@ -284,6 +284,10 @@ pub struct State {
     pub active_tab: Option<Tab>,
     pub folder_grouped: bool,
     body_scroll_id: iced::widget::Id,
+    /// Stable id for the sub-tab strip scrollable, so its horizontal scroll
+    /// position survives re-renders (e.g. selecting a tab) instead of snapping
+    /// back to the start — which would otherwise leave the edge fade stuck on.
+    tab_scroll_id: iced::widget::Id,
     /// The in-progress save edit, or `None` when not editing. It's one
     /// global toggle for the whole save: while `Some`, every editable tab
     /// shows its editor, and one Save / Cancel commits / discards them all.
@@ -393,6 +397,7 @@ impl State {
             active_tab: None,
             folder_grouped: true,
             body_scroll_id: iced::widget::Id::unique(),
+            tab_scroll_id: iced::widget::Id::unique(),
             editing: None,
             library_sort: folder::LibrarySort::Id,
             navicust_sort: navicust::NavicustSort::Id,
@@ -964,6 +969,7 @@ pub fn view<'a>(
     // localized tab list scrolls instead of wrapping to a second line — the
     // edge fades below are the only scroll affordance.
     let tabs_scroll = scrollable(tabs_only)
+        .id(state.tab_scroll_id.clone())
         .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::new()))
         .on_scroll(|v| Action::TabScrolled(v.relative_offset().x))
         .style(tab_scrollbar)
