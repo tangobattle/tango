@@ -459,6 +459,18 @@ impl InnerState {
         self.input_pairs.len() + queued
     }
 
+    /// Cumulative input pairs consumed across all rounds so far — the
+    /// replay's recorded-frame index. Unlike [`Self::absolute_tick`], it
+    /// does *not* advance during the input-less inter-round animation (no
+    /// pair is popped then), so it maps statically onto the recorded round
+    /// lengths. This is the seek bar's coordinate: its round marks are just
+    /// cumulative round lengths, and the playhead reads exactly here. 0 in
+    /// Fastforwarder mode.
+    pub fn inputs_consumed(&self) -> u32 {
+        self.total_replay_ticks()
+            .saturating_sub(self.total_input_pairs_left() as u32)
+    }
+
     // ----- local packet (this emulator's tx_packet from the previous tick) -----
 
     pub fn set_local_packet(&mut self, packet: Vec<u8>) {
@@ -791,7 +803,14 @@ pub struct ReplayCheckpoint {
     pub has_committed_this_round: bool,
     pub rng_state: rand_pcg::Mcg128Xsl64,
     pub local_packet: Option<LocalPacket>,
-    pub inputs_consumed: u32,
+    /// Inputs consumed within the current round (resets each round);
+    /// reseeds the restored round's consume cursor.
+    pub inputs_consumed_in_current_round: u32,
+    /// Cumulative inputs consumed across all rounds at capture — the
+    /// recorded-frame index this snapshot sits at. The seek/snapshot
+    /// machinery keys on this so snapshots, the chase target, and the
+    /// seek bar all share one scale (see [`InnerState::inputs_consumed`]).
+    pub frame_index: u32,
 }
 
 /// Full replay-playback snapshot. Bundles the stepper's [`ReplayCheckpoint`]
@@ -889,7 +908,8 @@ impl State {
             has_committed_this_round: replay.phase.has_committed(),
             rng_state: replay.rng.clone(),
             local_packet: inner.local_packet.clone(),
-            inputs_consumed: inner.output_pairs.len() as u32,
+            inputs_consumed_in_current_round: inner.output_pairs.len() as u32,
+            frame_index: inner.inputs_consumed(),
         })
     }
 
@@ -937,7 +957,7 @@ impl State {
             shadow,
             is_offerer,
             rounds: rounds_from_current,
-            inputs_consumed_in_current_round: checkpoint.inputs_consumed,
+            inputs_consumed_in_current_round: checkpoint.inputs_consumed_in_current_round,
             current_round_index: checkpoint.current_round_index,
             absolute_tick: checkpoint.absolute_tick,
             total_replay_ticks,

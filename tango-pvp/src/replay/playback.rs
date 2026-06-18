@@ -39,11 +39,11 @@ impl SnapshotStore {
             && !snaps.iter().any(|s| {
                 s.checkpoint.current_round_index == cp.current_round_index && !s.checkpoint.has_committed_this_round
             });
-        let lo = cp.absolute_tick.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
+        let lo = cp.frame_index.saturating_sub(MID_ROUND_SNAPSHOT_INTERVAL);
         let want_mid_round = cp.has_committed_this_round
             && !snaps
                 .iter()
-                .any(|s| s.checkpoint.absolute_tick > lo && s.checkpoint.absolute_tick <= cp.absolute_tick);
+                .any(|s| s.checkpoint.frame_index > lo && s.checkpoint.frame_index <= cp.frame_index);
         want_round_start || want_mid_round
     }
 
@@ -51,19 +51,20 @@ impl SnapshotStore {
         self.0.lock().unwrap().push(Arc::new(snapshot));
     }
 
-    /// Largest snapshot with `absolute_tick <= target`, if any. Used by
-    /// backward seek to pick the closest jumping-off point.
+    /// Largest snapshot with `frame_index <= target`, if any. Used by
+    /// backward seek to pick the closest jumping-off point. `target` is a
+    /// recorded-frame index (see [`stepper::InnerState::inputs_consumed`]).
     pub fn best_at_or_before(&self, target: u32) -> Option<Arc<ReplaySnapshot>> {
         self.0
             .lock()
             .unwrap()
             .iter()
-            .filter(|s| s.checkpoint.absolute_tick <= target)
-            .max_by_key(|s| s.checkpoint.absolute_tick)
+            .filter(|s| s.checkpoint.frame_index <= target)
+            .max_by_key(|s| s.checkpoint.frame_index)
             .cloned()
     }
 
-    /// Largest snapshot with `lo_exclusive < absolute_tick <= hi_inclusive`,
+    /// Largest snapshot with `lo_exclusive < frame_index <= hi_inclusive`,
     /// if any. Used by forward seek to skip frames when a prefetched
     /// snapshot lands closer to the target than the current playhead.
     pub fn best_in_range(&self, lo_exclusive: u32, hi_inclusive: u32) -> Option<Arc<ReplaySnapshot>> {
@@ -71,20 +72,20 @@ impl SnapshotStore {
             .lock()
             .unwrap()
             .iter()
-            .filter(|s| s.checkpoint.absolute_tick > lo_exclusive && s.checkpoint.absolute_tick <= hi_inclusive)
-            .max_by_key(|s| s.checkpoint.absolute_tick)
+            .filter(|s| s.checkpoint.frame_index > lo_exclusive && s.checkpoint.frame_index <= hi_inclusive)
+            .max_by_key(|s| s.checkpoint.frame_index)
             .cloned()
     }
 
-    /// Snapshot whose tick is closest to `target` on either side, if any.
-    /// Used for the drag preview, where showing the frame just *after* the
-    /// cursor beats showing one a full interval before it.
+    /// Snapshot whose frame index is closest to `target` on either side, if
+    /// any. Used for the drag preview, where showing the frame just *after*
+    /// the cursor beats showing one a full interval before it.
     pub fn nearest(&self, target: u32) -> Option<Arc<ReplaySnapshot>> {
         self.0
             .lock()
             .unwrap()
             .iter()
-            .min_by_key(|s| s.checkpoint.absolute_tick.abs_diff(target))
+            .min_by_key(|s| s.checkpoint.frame_index.abs_diff(target))
             .cloned()
     }
 
@@ -138,16 +139,6 @@ impl SnapshotStore {
 ///
 /// The host spawns the thread that drives this — this function takes no
 /// thread handle and never blocks except on its own work loop.
-///
-/// As it crosses each round transition it appends the live `absolute_tick`
-/// at that point to `round_boundaries` — the seek bar draws its inter-round
-/// marks there. These can't be derived from the recorded input-pair counts:
-/// `absolute_tick` also advances through the round-end animation frames that
-/// run between rounds (no input pair backs them, so they're absent from
-/// `round.len()`), which would otherwise drift the marks left of the
-/// playhead by the accumulated gap. Observing the real tick keeps the mark
-/// and the playhead on the same scale, so they coincide as the playhead
-/// crosses.
 pub fn run_prefetch(
     local_rom: &[u8],
     remote_rom: &[u8],
@@ -157,7 +148,6 @@ pub fn run_prefetch(
     store: SnapshotStore,
     cancel: Arc<AtomicBool>,
     progress: Arc<AtomicU32>,
-    round_boundaries: Arc<Mutex<Vec<u32>>>,
 ) -> anyhow::Result<()> {
     let mut core = mgba::core::Core::new_gba("tango-prefetch", &mgba::core::Options { ..Default::default() })?;
     core.enable_video_buffer();

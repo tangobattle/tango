@@ -183,6 +183,49 @@ fn limit_caption<'a>(label: String, over: bool) -> iced::widget::Text<'a> {
         })
 }
 
+/// Left edge fade for the scrollable sub-tab strip: opaque pane plate at the
+/// left edge dissolving to transparent inward, so a tab scrolled past the
+/// start reads as "more to the left". Pure presentation — no event handlers,
+/// so clicks and wheel-scroll fall through to the strip beneath.
+fn tab_fade_left(theme: &iced::Theme) -> container::Style {
+    edge_fade(theme, std::f32::consts::FRAC_PI_2)
+}
+
+/// Right edge fade for the scrollable sub-tab strip. It sits over the empty
+/// plate when the tabs fit, so it stays invisible until tabs reach the edge.
+fn tab_fade_right(theme: &iced::Theme) -> container::Style {
+    edge_fade(theme, 3.0 * std::f32::consts::FRAC_PI_2)
+}
+
+/// A one-sided fade from the pane plate (at the `angle`-direction edge) to
+/// transparent, for the tab strip's scroll-edge fades.
+fn edge_fade(theme: &iced::Theme, angle: f32) -> container::Style {
+    let plate = crate::widgets::plate_color(theme);
+    let transparent = iced::Color { a: 0.0, ..plate };
+    container::Style {
+        background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+            iced::gradient::Linear::new(angle)
+                .add_stop(0.0, plate)
+                .add_stop(1.0, transparent),
+        ))),
+        ..Default::default()
+    }
+}
+
+/// Scrollbar style for the sub-tab strip: invisible at rest (the edge fades are
+/// the resting affordance) and revealing the standard chunky scrollbar only
+/// while the strip is hovered or dragged.
+fn tab_scrollbar(theme: &iced::Theme, status: iced::widget::scrollable::Status) -> iced::widget::scrollable::Style {
+    let mut style = crate::widgets::chunky_scrollable(theme, status);
+    if matches!(status, iced::widget::scrollable::Status::Active { .. }) {
+        for rail in [&mut style.horizontal_rail, &mut style.vertical_rail] {
+            rail.background = None;
+            rail.scroller.background = iced::Background::Color(iced::Color::TRANSPARENT);
+        }
+    }
+    style
+}
+
 pub fn available_tabs(save: &dyn Save, streamer_mode: bool) -> Vec<Tab> {
     let mut tabs = vec![];
     if streamer_mode {
@@ -279,6 +322,9 @@ pub struct State {
     /// is keyed on the mode (not the sub-tab), they stay planted
     /// while the user flips between editor tabs.
     pub edit_anim: crate::anim::Transition,
+    /// Horizontal scroll offset of the sub-tab strip (relative, 0..=1). Tracked
+    /// so the strip's edge fades only appear on the side that has hidden tabs.
+    tab_scroll: f32,
 }
 
 /// New index of an element originally at `i` after an ordered move that takes
@@ -356,6 +402,7 @@ impl State {
             enter_from: iced::Vector::new(24.0, 0.0),
             prev_tab: None,
             edit_anim: crate::anim::Transition::swap(false),
+            tab_scroll: 0.0,
         }
     }
 
@@ -480,6 +527,10 @@ impl State {
             }
             Action::ToggleFolderGrouped(g) => {
                 self.folder_grouped = *g;
+                iced::Task::none()
+            }
+            Action::TabScrolled(x) => {
+                self.tab_scroll = *x;
                 iced::Task::none()
             }
             // Save and Cancel both leave the global edit mode; the host
@@ -647,6 +698,9 @@ impl State {
 #[derive(Debug, Clone)]
 pub enum Action {
     SelectTab(Tab),
+    /// The sub-tab strip was scrolled; carries the new relative x offset
+    /// (0..=1), used only to drive the strip's edge fades.
+    TabScrolled(f32),
     ToggleFolderGrouped(bool),
     CopyTab(Tab),
     CopyTabImage(Tab),
@@ -906,7 +960,38 @@ pub fn view<'a>(
             *tab == active,
         ));
     }
-    let tabs_only = tabs_only.wrap();
+    // Horizontally scrollable strip with a hidden scrollbar, so a long /
+    // localized tab list scrolls instead of wrapping to a second line — the
+    // edge fades below are the only scroll affordance.
+    let tabs_scroll = scrollable(tabs_only)
+        .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::new()))
+        .on_scroll(|v| Action::TabScrolled(v.relative_offset().x))
+        .style(tab_scrollbar)
+        .width(Fill);
+    const TAB_FADE_W: f32 = 24.0;
+    // Left fade only once scrolled off the start; right fade until the end.
+    let left_fade: Element<'a, Action> = if state.tab_scroll > 0.01 {
+        container(Space::new())
+            .width(Length::Fixed(TAB_FADE_W))
+            .height(Fill)
+            .style(tab_fade_left)
+            .into()
+    } else {
+        Space::new().into()
+    };
+    let right_fade: Element<'a, Action> = if state.tab_scroll < 0.99 {
+        container(Space::new())
+            .width(Length::Fixed(TAB_FADE_W))
+            .height(Fill)
+            .style(tab_fade_right)
+            .into()
+    } else {
+        Space::new().into()
+    };
+    let tabs_only = stack![
+        tabs_scroll,
+        row![left_fade, Space::new().width(Fill), right_fade].height(Fill),
+    ];
     // The whole tail morphs as ONE unit between its two sides —
     // (extras + Edit + Play) and (Save / Cancel) — so entering or
     // leaving edit mode dissolves everything together. Animating
