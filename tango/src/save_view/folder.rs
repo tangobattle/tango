@@ -906,3 +906,132 @@ pub(crate) fn class_accent(class: Option<tango_dataview::rom::ChipClass>, dark: 
         _ => None,
     }
 }
+
+/// 28×28 chip icon. Empty (`None`) renders a same-sized spacer so empty
+/// rows keep the same height as filled ones.
+pub(crate) fn chip_icon<'a>(loaded: &'a Loaded, chip_id: Option<usize>) -> Element<'a, Action> {
+    match chip_id.and_then(|id| loaded.chip_icons.get(id).cloned().flatten()) {
+        Some(h) => Image::new(h)
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .filter_method(iced_image::FilterMethod::Nearest)
+            .content_fit(ContentFit::Contain)
+            .into(),
+        None => Space::new()
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .into(),
+    }
+}
+
+/// Build the chip popover — scaled artwork above its description — and wrap
+/// `inner` with it as a follow-cursor tooltip. Returns `inner` unchanged when
+/// the chip has neither artwork nor a description. `accent` tints the popover
+/// background to match the chip's class stripe.
+pub(crate) fn chip_popover<'a, M: 'a>(
+    inner: Element<'a, M>,
+    image_handle: Option<(u32, u32, iced_image::Handle)>,
+    description: Option<String>,
+    accent: Option<iced::Color>,
+) -> Element<'a, M> {
+    if description.is_none() && image_handle.is_none() {
+        return inner;
+    }
+    let mut tip = column![].spacing(6);
+    if let Some((w, h, h_handle)) = image_handle {
+        tip = tip.push(
+            Image::new(h_handle)
+                .width(Length::Fixed(w as f32 * 2.0))
+                .height(Length::Fixed(h as f32 * 2.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain),
+        );
+    }
+    if let Some(desc) = description {
+        tip = tip.push(text(desc).size(TEXT_CAPTION));
+    }
+    tooltip(
+        inner,
+        container(tip).padding(8).style(chip_tooltip_style(accent)),
+        tooltip::Position::FollowCursor,
+    )
+    .gap(8)
+    .into()
+}
+
+/// Wrap `inner` so hovering anywhere over it shows the chip's full image
+/// + description (the read-only list's chip popover). No-op when the
+/// chip has neither, or for an empty slot.
+pub(crate) fn with_chip_tooltip<'a>(
+    loaded: &'a Loaded,
+    chip_id: Option<usize>,
+    accent: Option<iced::Color>,
+    inner: Element<'a, Action>,
+) -> Element<'a, Action> {
+    let Some(id) = chip_id else { return inner };
+    let info = loaded.assets.chip(id);
+    let description = info.as_ref().and_then(|i| i.description());
+    // Program advances have no meaningful standalone artwork, so their
+    // popover is description-only.
+    let is_pa = info
+        .as_ref()
+        .map_or(false, |i| i.class() == tango_dataview::rom::ChipClass::ProgramAdvance);
+    let image_handle = if is_pa {
+        None
+    } else {
+        loaded.chip_images.get(id).cloned().flatten()
+    };
+    chip_popover(inner, image_handle, description, accent)
+}
+
+/// Element-icon / ATK / MB stat cells shared by both editor panes,
+/// matching the read-only chip list's columns. The MB cell collapses to
+/// nothing when the game doesn't use MB.
+pub(crate) fn chip_stat_cells<'a>(loaded: &'a Loaded, chip_id: usize, chips_have_mb: bool) -> [Element<'a, Action>; 3] {
+    let info = loaded.assets.chip(chip_id);
+    let element: Element<'a, Action> = info
+        .as_ref()
+        .map(|i| i.element())
+        .and_then(|id| loaded.element_icons.get(&id).cloned())
+        .map(|h| {
+            Image::new(h)
+                .width(Length::Fixed(28.0))
+                .height(Length::Fixed(28.0))
+                .filter_method(iced_image::FilterMethod::Nearest)
+                .content_fit(ContentFit::Contain)
+                .into()
+        })
+        .unwrap_or_else(|| Space::new().width(Length::Fixed(28.0)).into());
+    let power = info.as_ref().map(|i| i.attack_power()).unwrap_or(0);
+    let mb = info.as_ref().map(|i| i.mb()).unwrap_or(0);
+    let atk: Element<'a, Action> =
+        container(text(if power > 0 { format!("{power}") } else { String::new() }).size(TEXT_BODY))
+            .width(Length::Fixed(46.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into();
+    let mb_cell: Element<'a, Action> = if chips_have_mb {
+        container(text(if mb > 0 { format!("{mb}MB") } else { String::new() }).size(TEXT_CAPTION))
+            .width(Length::Fixed(42.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .into()
+    } else {
+        Space::new().into()
+    };
+    [element, atk, mb_cell]
+}
+
+pub(crate) fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) -> container::Style {
+    move |_theme: &iced::Theme| {
+        let bg = accent.unwrap_or_else(|| iced::Color::from_rgba8(0, 0, 0, 0.85));
+        container::Style {
+            background: Some(iced::Background::Color(bg)),
+            text_color: Some(iced::Color::WHITE),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: iced::Color::from_rgba8(255, 255, 255, 0.2),
+            },
+            ..Default::default()
+        }
+    }
+}
