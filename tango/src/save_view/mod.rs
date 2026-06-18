@@ -284,9 +284,9 @@ pub struct State {
     pub active_tab: Option<Tab>,
     pub folder_grouped: bool,
     body_scroll_id: iced::widget::Id,
-    /// Stable id for the sub-tab strip scrollable, so its horizontal scroll
-    /// position survives re-renders (e.g. selecting a tab) instead of snapping
-    /// back to the start — which would otherwise leave the edge fade stuck on.
+    /// Id of the sub-tab strip scrollable, so [`Action::SelectTab`] can
+    /// `snap_to` it (resetting its horizontal scroll to the start, in lockstep
+    /// with the [`tab_scroll`] fade mirror) the same way it resets the body.
     tab_scroll_id: iced::widget::Id,
     /// The in-progress save edit, or `None` when not editing. It's one
     /// global toggle for the whole save: while `Some`, every editable tab
@@ -525,10 +525,23 @@ impl State {
                     self.active_tab = Some(*t);
                     self.enter.start(iced::time::Instant::now());
                 }
-                iced::widget::operation::snap_to(
-                    self.body_scroll_id.clone(),
-                    iced::widget::scrollable::RelativeOffset::START,
-                )
+                // Reset the body scroll and the sub-tab strip scroll to the
+                // start, and clear the strip's fade mirror to match. The strip's
+                // offset snaps back to 0 on a tab click anyway, but `on_scroll`
+                // only fires from event handling — never from this relayout — so
+                // `tab_scroll` would otherwise stay stale and leave the left
+                // edge fade stuck on over a strip that's actually at the start.
+                self.tab_scroll = 0.0;
+                iced::Task::batch([
+                    iced::widget::operation::snap_to(
+                        self.body_scroll_id.clone(),
+                        iced::widget::scrollable::RelativeOffset::START,
+                    ),
+                    iced::widget::operation::snap_to(
+                        self.tab_scroll_id.clone(),
+                        iced::widget::scrollable::RelativeOffset::START,
+                    ),
+                ])
             }
             Action::ToggleFolderGrouped(g) => {
                 self.folder_grouped = *g;
