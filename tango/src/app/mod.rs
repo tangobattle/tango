@@ -1029,8 +1029,8 @@ impl App {
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.
-                        self.session.show_opponent_panel = false;
-                        self.session.show_self_panel = false;
+                        self.session.opponent_panel.close();
+                        self.session.self_panel.close();
                         self.session.wake_controls();
                     }
                     Err(e) => {
@@ -1236,8 +1236,8 @@ impl App {
             // backdrop. The emulator keeps running underneath.
             // Rendered while the open/close transition is in
             // flight too, so the panel eases in and out.
-            let composed: Element<'_, Message> = if self.session.settings_anim.visible(now) {
-                let progress = self.session.settings_anim.progress(now);
+            let composed: Element<'_, Message> = if self.session.settings.visible(now) {
+                let progress = self.session.settings.progress(now);
                 let body = tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking())
                     .map(Message::Settings);
                 // Top header row carrying the X close button. The
@@ -1293,7 +1293,7 @@ impl App {
                         .height(Fill)
                         .style(anim::backdrop_style(0.45 * progress)),
                 );
-                if self.session.settings_anim.shown() {
+                if self.session.settings.shown() {
                     backdrop = backdrop.on_press(|_| Message::Session(session::Message::CloseSettings));
                 }
                 iced::widget::stack![

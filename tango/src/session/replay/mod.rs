@@ -21,6 +21,84 @@ pub const SCREEN_WIDTH: u32 = mgba::gba::SCREEN_WIDTH;
 pub const SCREEN_HEIGHT: u32 = mgba::gba::SCREEN_HEIGHT;
 const EXPECTED_FPS: f32 = 60.0;
 
+/// Scrub-bar interaction state for a replay session. Splits the
+/// drag/hover bookkeeping out of [`crate::session::State`] (which is
+/// otherwise game-mode-agnostic) and keeps it next to the
+/// [`ReplaySession`] it drives. The owning state holds one of these
+/// and the transport widget reads it to draw the playhead + the
+/// floating keyframe thumbnail.
+#[derive(Default)]
+pub struct Scrub {
+    /// `Some(tick)` while the user is dragging — the previewed
+    /// position. The transport draws the playhead here instead of at
+    /// the emulator's actual tick, and the first event of a drag
+    /// pauses playback.
+    pub preview: Option<u32>,
+    /// Whether playback was running when the drag started, so
+    /// [`end_drag`](Self::end_drag)'s commit can resume it once the
+    /// seek lands.
+    pub resume: bool,
+    /// Whether this drag has blitted a keyframe preview yet. Until it
+    /// has, the live frame is still on screen and beats a farther
+    /// keyframe; afterwards previews always blit (the live frame is
+    /// gone from the buffer).
+    pub blitted: bool,
+    /// Where the cursor is resting on the scrub bar, driving the
+    /// floating thumbnail card above it. `None` when the cursor is off
+    /// the bar — and during a drag, when the full-screen blit preview
+    /// supersedes it.
+    pub hover: Option<scrubber::HoverInfo>,
+    /// RGBA conversion of the snapshot behind the hover thumbnail,
+    /// keyed by the snapshot's absolute tick so cursor moves within
+    /// the same keyframe reuse the handle instead of re-converting.
+    pub thumb: Option<(u32, iced::widget::image::Handle)>,
+}
+
+impl Scrub {
+    /// Begin or continue a drag at `target`. The first event of a drag
+    /// freezes playback under the cursor (remembering whether to
+    /// resume) and starts blitting keyframes from the snapshot store.
+    pub fn drag(&mut self, target: u32, replay: &ReplaySession) {
+        if self.preview.is_none() {
+            self.resume = !replay.is_paused();
+            replay.set_paused(true);
+        }
+        self.preview = Some(target);
+        if replay.scrub_preview(target, self.blitted) {
+            self.blitted = true;
+        }
+    }
+
+    /// Reset the per-drag fields once a drag is released. The actual
+    /// (asynchronous) seek is fired by the caller, which still owns the
+    /// `&ReplaySession` — this just clears the drag bookkeeping.
+    pub fn end_drag(&mut self) {
+        self.preview = None;
+        self.resume = false;
+        self.blitted = false;
+    }
+
+    /// Refresh the floating hover thumbnail for the current
+    /// [`hover`](Self::hover) position. Caches by the nearest
+    /// snapshot's absolute tick, so cursor moves within one keyframe
+    /// reuse the decoded handle.
+    pub fn refresh_thumb(&mut self, replay: &ReplaySession) {
+        let Some(h) = self.hover else { return };
+        if let Some(snap) = replay.nearest_snapshot(h.tick) {
+            let snap_tick = snap.checkpoint.absolute_tick;
+            if self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
+                self.thumb = Some((snap_tick, super::thumbnail_handle(&snap.framebuffer)));
+            }
+        }
+    }
+
+    /// Drop all scrub state, drag and hover alike — used when the
+    /// session closes.
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
 pub struct ReplaySession {
     game: &'static crate::game::Game,
     close_requested: Arc<AtomicBool>,

@@ -727,7 +727,7 @@ pub fn view<'a>(
     // The top-right commands stay un-hoisted on purpose: the
     // drawers are supposed to cover them.
     let now = iced::time::Instant::now();
-    let drawer_moving = state.self_panel_anim.is_animating(now) || state.opponent_panel_anim.is_animating(now);
+    let drawer_moving = state.self_panel.is_animating(now) || state.opponent_panel.is_animating(now);
     if state.controls_anim.visible(now) {
         // Replay: transport bar; PvP: setup-drawer edge handles.
         // SP has nothing down here.
@@ -917,13 +917,13 @@ fn emulator_body<'a>(
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
     if let ActiveSession::PvP(s) = session {
-        if s.local_loaded.is_some() && state.show_self_panel {
+        if s.local_loaded.is_some() && state.self_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
     if let ActiveSession::PvP(s) = session {
-        if s.opponent_loaded.is_some() && state.show_opponent_panel {
+        if s.opponent_loaded.is_some() && state.opponent_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
     }
@@ -966,11 +966,11 @@ fn setup_drawers_overlay<'a>(
         anim::slide_in(pane, progress, iced::Vector::new(from_dx, 0.0))
     };
     let mut panes: Vec<Element<'a, Message>> = Vec::new();
-    if s.local_loaded.is_some() && (state.show_self_panel || state.self_panel_anim.is_animating(now)) {
+    if s.local_loaded.is_some() && (state.self_panel.shown() || state.self_panel.is_animating(now)) {
         let me = s.local_loaded.as_ref().unwrap();
         let panel = save_view::view(lang, me, &s.local_save_view, true, None, false, false)
             .map(Message::SelfSaveViewAction);
-        let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel_anim.progress(now));
+        let pane = setup_pane(panel, -SETUP_DRAWER_TRAVEL, state.self_panel.progress(now));
         panes.push(
             container(pane)
                 .width(Fill)
@@ -979,11 +979,11 @@ fn setup_drawers_overlay<'a>(
                 .into(),
         );
     }
-    if s.opponent_loaded.is_some() && (state.show_opponent_panel || state.opponent_panel_anim.is_animating(now)) {
+    if s.opponent_loaded.is_some() && (state.opponent_panel.shown() || state.opponent_panel.is_animating(now)) {
         let opponent = s.opponent_loaded.as_ref().unwrap();
         let panel = save_view::view(lang, opponent, &s.opponent_save_view, true, None, false, false)
             .map(Message::OpponentSaveViewAction);
-        let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel_anim.progress(now));
+        let pane = setup_pane(panel, SETUP_DRAWER_TRAVEL, state.opponent_panel.progress(now));
         panes.push(
             container(pane)
                 .width(Fill)
@@ -1112,7 +1112,7 @@ fn corner_commands_overlay<'a>(
     // animation; at rest behind the drawer the slide is invisible
     // anyway.
     let behind_drawer = match session {
-        ActiveSession::PvP(pvp) => pvp.opponent_loaded.is_some() && state.show_opponent_panel,
+        ActiveSession::PvP(pvp) => pvp.opponent_loaded.is_some() && state.opponent_panel.shown(),
         _ => false,
     };
     let progress = if behind_drawer {
@@ -1269,8 +1269,8 @@ fn setup_handles_overlay<'a>(
     if pvp.local_loaded.is_some() {
         edges = edges.push(handle(
             true,
-            state.show_self_panel,
-            state.self_panel_anim.progress(now),
+            state.self_panel.shown(),
+            state.self_panel.progress(now),
             FIELD_RED,
             t!(lang, "session-self"),
             Some(Message::ToggleSelfPanel),
@@ -1282,8 +1282,8 @@ fn setup_handles_overlay<'a>(
     if pvp.opponent_loaded.is_some() {
         edges = edges.push(handle(
             false,
-            state.show_opponent_panel,
-            state.opponent_panel_anim.progress(now),
+            state.opponent_panel.shown(),
+            state.opponent_panel.progress(now),
             FIELD_BLUE,
             t!(lang, "session-opponent"),
             Some(Message::ToggleOpponentPanel),
@@ -1310,7 +1310,8 @@ fn replay_transport<'a>(
     // of an in-flight seek (so the handle doesn't snap back while the
     // chase catches up), else the emulator's actual position.
     let cur = state
-        .scrub_preview
+        .scrub
+        .preview
         .or_else(|| r.pending_seek_target())
         .unwrap_or_else(|| r.current_tick())
         .min(total);
@@ -1319,7 +1320,7 @@ fn replay_transport<'a>(
     // the seek chase that follows it, but when playback resumes on
     // landing the session is logically still *playing* — flipping the
     // button to "Play" mid-scrub reads as a stuck pause.
-    let logically_playing = (state.scrub_preview.is_some() && state.scrub_resume) || r.seek_will_resume();
+    let logically_playing = (state.scrub.preview.is_some() && state.scrub.resume) || r.seek_will_resume();
     let (play_pause_icon, play_pause_label, paused) = if r.is_paused() && !logically_playing {
         (Icon::Play, t!(lang, "playback-play"), true)
     } else {
@@ -1440,7 +1441,7 @@ fn telemetry_overlay<'a>(
     pvp.latency_raw()?;
     let now = iced::time::Instant::now();
 
-    let content: Element<'a, Message> = if state.match_settings_anim.visible(now) {
+    let content: Element<'a, Message> = if state.match_settings.visible(now) {
         // Expanded graph view. The header carries the players and
         // the collapse chevron — no latency readout here, the ping
         // sparkline below already shows it.
@@ -1504,7 +1505,7 @@ fn telemetry_overlay<'a>(
         )
         .padding(12)
         .style(widgets::panel);
-        anim::pop(panel, state.match_settings_anim.progress(now), 8.0)
+        anim::pop(panel, state.match_settings.progress(now), 8.0)
     } else {
         // Collapsed: signal bars showing the SYNC health — how far
         // the two sides have drifted (skew) — with the live frame
@@ -1564,8 +1565,8 @@ fn telemetry_overlay<'a>(
 /// never steals events from the transport below.
 fn scrub_thumbnail_overlay<'a>(session: &'a ActiveSession, state: &'a State) -> Option<Element<'a, Message>> {
     session.as_replay()?;
-    let h = state.scrub_hover?;
-    let (_, handle) = state.scrub_thumb.as_ref()?;
+    let h = state.scrub.hover?;
+    let (_, handle) = state.scrub.thumb.as_ref()?;
     let handle = handle.clone();
     // Native 240×160 at 0.75 — big enough to read the scene, small
     // enough not to feel like a second screen.
@@ -1622,10 +1623,10 @@ fn disconnect_overlay<'a>(
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
     let now = iced::time::Instant::now();
-    if !(state.disconnect_anim.visible(now) && matches!(session, ActiveSession::PvP(_))) {
+    if !(state.disconnect.visible(now) && matches!(session, ActiveSession::PvP(_))) {
         return None;
     }
-    let progress = state.disconnect_anim.progress(now);
+    let progress = state.disconnect.progress(now);
     let title = text(t!(lang, "playback-disconnect-prompt")).size(TEXT_BODY + 4.0);
     let body_text = text(t!(lang, "playback-disconnect-detail")).style(widgets::muted_text_style);
     let cancel_btn = widgets::labeled_icon_button(
@@ -1668,7 +1669,7 @@ fn disconnect_overlay<'a>(
             .height(Fill)
             .style(anim::backdrop_style(0.55 * progress)),
     );
-    if state.disconnect_anim.shown() {
+    if state.disconnect.shown() {
         backdrop = backdrop.on_press(|_| Message::CloseDisconnectConfirm);
     }
     Some(iced::widget::stack![Element::from(backdrop), Element::from(placement)].into())

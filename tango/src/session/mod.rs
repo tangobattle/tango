@@ -151,14 +151,15 @@ pub struct State {
     /// `ActiveSession`.
     pub vbuf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     pub active: Option<ActiveSession>,
-    /// PvP-only: shows the opponent's save view in a side panel
-    /// when they haven't blinded their setup. Defaults to hidden;
-    /// user opens it via the edge handle.
-    pub show_opponent_panel: bool,
-    /// PvP-only: shows the local player's save view in a side
-    /// panel. Defaults to hidden; user toggles via the
-    /// red toolbar button.
-    pub show_self_panel: bool,
+    /// PvP-only: the opponent's save-view side panel, shown when
+    /// they haven't blinded their setup. Defaults to hidden; user
+    /// opens it via the edge handle. The drawer slides in from the
+    /// screen edge and the edge handle rides its moving inner edge.
+    pub opponent_panel: anim::Overlay,
+    /// PvP-only: the local player's save-view side panel. Defaults
+    /// to hidden; user toggles it via the red toolbar button. Slides
+    /// the same way as [`opponent_panel`](Self::opponent_panel).
+    pub self_panel: anim::Overlay,
     /// Combined keyboard + gamepad held state. Updated from
     /// the input event stream; the user's Mapping resolves it
     /// into mgba joyflags each event.
@@ -172,17 +173,17 @@ pub struct State {
     /// "back to session" button on the overlay itself
     /// (`Message::CloseSettings`). The emulator keeps running
     /// underneath; we just swap what `App::view` renders.
-    pub show_settings: bool,
+    pub settings: anim::Overlay,
     /// PvP-only: the "are you sure?" modal that gates the
     /// Disconnect item in the options menu. Disconnect tears the
     /// session down mid-match (same as Close), so the confirm
     /// keeps a stray click from costing the user a real game.
-    pub show_disconnect_confirm: bool,
+    pub disconnect: anim::Overlay,
     /// PvP-only: the match-settings popover, anchored above the
     /// telemetry plate (instrument panel) and toggled by clicking it.
     /// Holds the live frame-delay control (moved here from the footer).
     /// Mutually exclusive with the options menu.
-    pub show_match_settings: bool,
+    pub match_settings: anim::Overlay,
     /// Latest GBA framebuffer (post upscale filter), presented by the
     /// [`crate::video::framebuffer`] shader widget. Refreshed in
     /// [`Message::UpdateFramebuffer`] (which the session subscription
@@ -199,28 +200,10 @@ pub struct State {
     /// [`METRIC_HISTORY_LEN`]; cleared whenever the active session is not a
     /// live PvP match.
     pub metric_history: std::collections::VecDeque<MetricSample>,
-    /// Replay-only: `Some(tick)` while the user is dragging the scrub
-    /// bar, holding the currently previewed position. The transport
-    /// draws the playhead here instead of at the emulator's actual
-    /// tick, and the first preview of a drag pauses playback.
-    pub scrub_preview: Option<u32>,
-    /// Replay-only: whether playback was running when the scrub drag
-    /// started, so the commit can resume it once the seek lands.
-    pub scrub_resume: bool,
-    /// Replay-only: whether this drag has blitted a keyframe preview
-    /// yet. Until it has, the live frame is still on screen and beats
-    /// a farther keyframe; afterwards previews always blit (the live
-    /// frame is gone from the buffer).
-    pub scrub_blitted: bool,
-    /// Replay-only: where the cursor is resting on the scrub bar,
-    /// driving the floating thumbnail card above it. `None` when the
-    /// cursor is off the bar — and during a drag, when the full-screen
-    /// blit preview supersedes it.
-    pub scrub_hover: Option<replay::scrubber::HoverInfo>,
-    /// RGBA conversion of the snapshot behind the hover thumbnail,
-    /// keyed by the snapshot's absolute tick so cursor moves within
-    /// the same keyframe reuse the handle instead of re-converting.
-    pub scrub_thumb: Option<(u32, iced::widget::image::Handle)>,
+    /// Replay-only: scrub-bar interaction state (drag preview, the
+    /// floating hover thumbnail, and the bookkeeping that ties them to
+    /// the running playback session). Inert outside a replay session.
+    pub scrub: replay::Scrub,
     /// Wall-clock of the last cursor movement over the session
     /// view — drives the floating controls' auto-hide. Bumped by
     /// [`Message::MouseMoved`] and on session start
@@ -229,27 +212,13 @@ pub struct State {
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
     pub controls_hovered: bool,
-    /// Show/hide transitions for the PvP setup drawers — the side
-    /// panes slide in from their screen edges and the edge handles
-    /// ride the drawer's moving inner edge. Mirror the
-    /// `show_self_panel` / `show_opponent_panel` bools, synced
-    /// after every update.
-    pub self_panel_anim: anim::Transition,
-    pub opponent_panel_anim: anim::Transition,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
     /// the cursor rests on the bar, any overlay is open, a scrub
-    /// is in flight, or a replay is paused.
+    /// is in flight, or a replay is paused. Unlike the [`anim::Overlay`]
+    /// fields above it has no companion bool — its target is recomputed
+    /// from those inputs each update rather than toggled by a handler.
     pub controls_anim: anim::Transition,
-    /// Show/hide animations mirroring the `show_*` overlay bools
-    /// above (which stay the source of truth). Re-synced after every
-    /// [`State::update`] call, so no individual handler has to
-    /// remember to drive them. Views render an overlay while its
-    /// transition is [`anim::Transition::visible`] and shape the
-    /// entrance/exit with its progress.
-    pub settings_anim: anim::Transition,
-    pub disconnect_anim: anim::Transition,
-    pub match_settings_anim: anim::Transition,
 }
 
 impl Default for State {
@@ -264,29 +233,20 @@ impl Default for State {
                     as usize
             ])),
             active: None,
-            show_opponent_panel: false,
-            show_self_panel: false,
+            opponent_panel: anim::Overlay::new(false),
+            self_panel: anim::Overlay::new(false),
             input_held: crate::input::HeldState::default(),
             speed_up_engaged: false,
-            show_settings: false,
-            show_disconnect_confirm: false,
-            show_match_settings: false,
+            settings: anim::Overlay::new(false),
+            disconnect: anim::Overlay::new(false),
+            match_settings: anim::Overlay::new(false),
             current_frame: None,
             frame_revision: 0,
             metric_history: std::collections::VecDeque::new(),
-            scrub_preview: None,
-            scrub_resume: false,
-            scrub_blitted: false,
-            scrub_hover: None,
-            scrub_thumb: None,
+            scrub: replay::Scrub::default(),
             last_mouse_move: std::time::Instant::now(),
             controls_hovered: false,
             controls_anim: anim::Transition::new(true),
-            self_panel_anim: anim::Transition::new(false),
-            opponent_panel_anim: anim::Transition::new(false),
-            settings_anim: anim::Transition::new(false),
-            disconnect_anim: anim::Transition::new(false),
-            match_settings_anim: anim::Transition::new(false),
         }
     }
 }
@@ -418,16 +378,16 @@ impl State {
     /// API parity with the other tabs).
     pub fn update(&mut self, msg: Message, mapping: &crate::input::Mapping, video_filter: &str) -> iced::Task<Message> {
         let task = self.update_inner(msg, mapping, video_filter);
-        // Mirror the overlay bools into their transitions in one
-        // place — handlers above flip `show_*` freely and the
+        // Mirror each overlay's bool into its transition in one
+        // place — handlers above flip them freely and the
         // animations follow, including the multi-flip paths (Esc
         // peeling, mutual-exclusion closes).
         let now = iced::time::Instant::now();
-        self.settings_anim.set(self.show_settings, now);
-        self.disconnect_anim.set(self.show_disconnect_confirm, now);
-        self.match_settings_anim.set(self.show_match_settings, now);
-        self.self_panel_anim.set(self.show_self_panel, now);
-        self.opponent_panel_anim.set(self.show_opponent_panel, now);
+        self.settings.sync(now);
+        self.disconnect.sync(now);
+        self.match_settings.sync(now);
+        self.self_panel.sync(now);
+        self.opponent_panel.sync(now);
         // Floating controls auto-hide. The per-frame
         // UpdateFramebuffer messages re-run this, so the idle
         // timer expires without needing its own timer source; a
@@ -437,15 +397,15 @@ impl State {
             .as_ref()
             .and_then(ActiveSession::as_replay)
             .map_or(false, |r| r.is_paused());
-        // The telemetry panel (show_match_settings) deliberately
+        // The telemetry panel (match_settings) deliberately
         // doesn't count: it lives in the permanently-visible
         // top-right indicator, independent of the HUD controls,
         // so leaving the graph open shouldn't pin the chips up.
-        let overlay_open = self.show_settings || self.show_disconnect_confirm;
+        let overlay_open = self.settings.shown() || self.disconnect.shown();
         let show_controls = self.controls_hovered
             || overlay_open
             || replay_paused
-            || self.scrub_preview.is_some()
+            || self.scrub.preview.is_some()
             || self.last_mouse_move.elapsed() < CONTROLS_HIDE_AFTER;
         self.controls_anim.set(show_controls, now);
         task
@@ -477,13 +437,9 @@ impl State {
                 self.active = None;
                 self.current_frame = None;
                 self.controls_hovered = false;
-                self.show_disconnect_confirm = false;
-                self.show_match_settings = false;
-                self.scrub_preview = None;
-                self.scrub_resume = false;
-                self.scrub_blitted = false;
-                self.scrub_hover = None;
-                self.scrub_thumb = None;
+                self.disconnect.close();
+                self.match_settings.close();
+                self.scrub.clear();
             }
             Message::Input(ev) => {
                 match ev {
@@ -539,38 +495,22 @@ impl State {
             }
             Message::ScrubPreview(target) => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    // First event of a drag: freeze playback under the
-                    // cursor and remember whether to resume on commit.
-                    if self.scrub_preview.is_none() {
-                        self.scrub_resume = !s.is_paused();
-                        s.set_paused(true);
-                    }
-                    self.scrub_preview = Some(target);
-                    if s.scrub_preview(target, self.scrub_blitted) {
-                        self.scrub_blitted = true;
-                    }
+                    self.scrub.drag(target, s);
                 }
                 // The drag blits its keyframes to the main screen —
                 // the floating hover thumbnail is redundant under it.
-                self.scrub_hover = None;
+                self.scrub.hover = None;
             }
             Message::ScrubCommit(target) => {
                 if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
-                    s.seek_to(target, self.scrub_resume);
+                    s.seek_to(target, self.scrub.resume);
                 }
-                self.scrub_preview = None;
-                self.scrub_resume = false;
-                self.scrub_blitted = false;
+                self.scrub.end_drag();
             }
             Message::ScrubHover(hover) => {
-                self.scrub_hover = hover;
-                if let (Some(h), Some(s)) = (hover, self.active.as_ref().and_then(ActiveSession::as_replay)) {
-                    if let Some(snap) = s.nearest_snapshot(h.tick) {
-                        let snap_tick = snap.checkpoint.absolute_tick;
-                        if self.scrub_thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
-                            self.scrub_thumb = Some((snap_tick, thumbnail_handle(&snap.framebuffer)));
-                        }
-                    }
+                self.scrub.hover = hover;
+                if let Some(s) = self.active.as_ref().and_then(ActiveSession::as_replay) {
+                    self.scrub.refresh_thumb(s);
                 }
             }
             Message::SetSpeed(factor) => {
@@ -595,7 +535,7 @@ impl State {
             Message::ToggleMatchSettings => {
                 // PvP-only: applied by the signal indicator.
                 if let Some(ActiveSession::PvP(_)) = self.active.as_ref() {
-                    self.show_match_settings = !self.show_match_settings;
+                    self.match_settings.toggle();
                 }
             }
             Message::EscPressed => {
@@ -604,19 +544,19 @@ impl State {
                 // popover. Esc stops there — it no longer tears the
                 // session down (replay/SP back-out and PvP disconnect
                 // are explicit button actions now).
-                if self.show_settings {
-                    self.show_settings = false;
-                } else if self.show_disconnect_confirm {
-                    self.show_disconnect_confirm = false;
-                } else if self.show_match_settings {
-                    self.show_match_settings = false;
+                if self.settings.shown() {
+                    self.settings.close();
+                } else if self.disconnect.shown() {
+                    self.disconnect.close();
+                } else if self.match_settings.shown() {
+                    self.match_settings.close();
                 }
             }
             Message::OpenDisconnectConfirm => {
-                self.show_disconnect_confirm = true;
+                self.disconnect.open();
             }
             Message::CloseDisconnectConfirm => {
-                self.show_disconnect_confirm = false;
+                self.disconnect.close();
             }
             Message::MouseMoved => {
                 self.last_mouse_move = std::time::Instant::now();
@@ -626,10 +566,10 @@ impl State {
             }
             Message::NoOp => {}
             Message::ToggleOpponentPanel => {
-                self.show_opponent_panel = !self.show_opponent_panel;
+                self.opponent_panel.toggle();
             }
             Message::ToggleSelfPanel => {
-                self.show_self_panel = !self.show_self_panel;
+                self.self_panel.toggle();
             }
             Message::OpponentSaveViewAction(action) => {
                 if let Some(ActiveSession::PvP(s)) = self.active.as_mut() {
@@ -644,10 +584,10 @@ impl State {
                 }
             }
             Message::OpenSettings => {
-                self.show_settings = true;
+                self.settings.open();
             }
             Message::CloseSettings => {
-                self.show_settings = false;
+                self.settings.close();
             }
             Message::UpdateFramebuffer => {
                 // Telemetry snapshot for the popover sparklines, captured while
@@ -665,8 +605,8 @@ impl State {
                         self.active = None;
                         self.current_frame = None;
                         self.controls_hovered = false;
-                        self.show_disconnect_confirm = false;
-                        self.show_match_settings = false;
+                        self.disconnect.close();
+                        self.match_settings.close();
                     } else {
                         // Upload the native frame as-is; the selected effect
                         // magnifies it on the GPU at draw time.

@@ -106,8 +106,9 @@ impl Enter {
 
 /// A show/hide animation around a boolean. The owning state keeps
 /// its plain `bool` as the source of truth and mirrors it in here
-/// (see `session::State::sync_transitions`); views render while
-/// [`visible`] and shape the entrance/exit with [`progress`].
+/// once per update; views render while [`visible`] and shape the
+/// entrance/exit with [`progress`]. When the bool is a simple
+/// toggle, prefer [`Overlay`], which bundles the two together.
 ///
 /// [`visible`]: Transition::visible
 /// [`progress`]: Transition::progress
@@ -166,6 +167,74 @@ impl Transition {
     /// 0.0 = fully hidden, 1.0 = fully shown.
     pub fn progress(&self, now: Instant) -> f32 {
         self.anim.interpolate(0.0, 1.0, now)
+    }
+}
+
+/// A toggleable overlay: a plain `bool` source of truth bundled with
+/// the [`Transition`] that animates its show/hide. Handlers flip the
+/// bool freely with [`open`]/[`close`]/[`toggle`]/[`set`] (no clock
+/// needed); a single [`sync`] call per update drives the animation
+/// toward it. Folds the old hand-paired `show_x: bool` + `x_anim:
+/// Transition` fields — and their easy-to-forget mirror block — into
+/// one field.
+///
+/// [`open`]: Overlay::open
+/// [`close`]: Overlay::close
+/// [`toggle`]: Overlay::toggle
+/// [`set`]: Overlay::set
+/// [`sync`]: Overlay::sync
+#[derive(Debug, Clone)]
+pub struct Overlay {
+    shown: bool,
+    anim: Transition,
+}
+
+impl Overlay {
+    pub fn new(shown: bool) -> Self {
+        Self {
+            shown,
+            anim: Transition::new(shown),
+        }
+    }
+
+    pub fn open(&mut self) {
+        self.shown = true;
+    }
+
+    pub fn close(&mut self) {
+        self.shown = false;
+    }
+
+    pub fn toggle(&mut self) {
+        self.shown = !self.shown;
+    }
+
+    /// The source-of-truth target the next [`sync`](Overlay::sync)
+    /// drives toward. Mid-flight the animation may still be catching
+    /// up, but logic should branch on this.
+    pub fn shown(&self) -> bool {
+        self.shown
+    }
+
+    /// Push the bool into the animation. Call once per update, after
+    /// the handlers have settled the bool.
+    pub fn sync(&mut self, now: Instant) {
+        self.anim.set(self.shown, now);
+    }
+
+    /// Whether the overlay should be in the tree at all — shown or
+    /// still animating out.
+    pub fn visible(&self, now: Instant) -> bool {
+        self.anim.visible(now)
+    }
+
+    pub fn is_animating(&self, now: Instant) -> bool {
+        self.anim.is_animating(now)
+    }
+
+    /// 0.0 = fully hidden, 1.0 = fully shown.
+    pub fn progress(&self, now: Instant) -> f32 {
+        self.anim.progress(now)
     }
 }
 
