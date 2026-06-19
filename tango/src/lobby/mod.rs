@@ -450,6 +450,20 @@ impl State {
         }
     }
 
+    /// Re-assert our base presence (online / invisible) — call when a match
+    /// ends to clear the "now playing" the server derived when the match was
+    /// brokered. No-op unless connected (a disconnect already drops us from the
+    /// roster), and invisible stays hidden.
+    pub fn report_idle(&self) {
+        if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
+            handle.set_status(if self.invisible {
+                tango_lobby::Status::Invisible
+            } else {
+                tango_lobby::Status::Online
+            });
+        }
+    }
+
     /// Apply a self-status pick: toggle visibility live when connected, or
     /// re-dial / tear down when crossing the connected boundary.
     pub fn set_self_status(&mut self, status: SelfStatus) -> iced::Task<Message> {

@@ -1258,6 +1258,11 @@ impl App {
                 // `RefreshAndReplayStats` followup also warms the
                 // stats sidebar with the just-landed match.
                 let pvp_closed = was_pvp && self.session.active.is_none();
+                if pvp_closed {
+                    // Clear the "now playing" the lobby derived when the match was
+                    // brokered, so the roster shows us idle again.
+                    self.lobby.report_idle();
+                }
                 let pvp_rescan = if pvp_closed {
                     self.rescan_off_thread(RescanFollowup::RefreshAndReplayStats)
                 } else {
