@@ -5,7 +5,7 @@
 //! Two layers:
 //!
 //! * [`frame`] — the on-wire [`Frame`]: a per-tick seq (`base`), a time-sync
-//!   `frame_advantage`, an opaque [`Body`], and a piggybacked cumulative ack,
+//!   `tick_advantage`, an opaque [`Body`], and a piggybacked cumulative ack,
 //!   byte-minimized (LEB128 varints, ack as a signed delta). rennet owns only
 //!   that envelope; the [`Body`] owns its own bytes and just has to
 //!   self-delimit and expose its elements. *How* a body packs its elements

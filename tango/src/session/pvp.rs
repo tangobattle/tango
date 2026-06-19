@@ -638,8 +638,8 @@ impl PvpSession {
     pub fn round_stats(&self) -> Option<RoundStats> {
         let metrics = self.match_handle.round_metrics()?;
         Some(RoundStats {
-            skew: metrics.local_frame_advantage as i32 - metrics.remote_frame_advantage as i32,
-            lead: metrics.local_frame_advantage as i32,
+            skew: metrics.local_tick_advantage as i32 - metrics.remote_tick_advantage as i32,
+            lead: metrics.local_tick_advantage as i32,
             depth: metrics.misprediction_depth,
         })
     }

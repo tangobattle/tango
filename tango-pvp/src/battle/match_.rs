@@ -91,9 +91,9 @@ impl RemoteInputs {
 pub struct RoundMetrics {
     /// How far our input frontier leads the inputs we've confirmed from the
     /// peer, in frames.
-    pub local_frame_advantage: i16,
+    pub local_tick_advantage: i16,
     /// The peer's most recently reported view of the same, from their side.
-    pub remote_frame_advantage: i16,
+    pub remote_tick_advantage: i16,
     /// Speculative frames the most recent step discarded and re-simulated
     /// because a confirmed remote input contradicted the prediction.
     pub misprediction_depth: u32,

@@ -68,7 +68,7 @@ const FRAMES_PER_REDUNDANCY: f64 = 2.0;
 /// and an RTT sample if the frame's ack confirmed a timestamped seq of ours.
 struct Delivery {
     elements: Vec<protocol::Element>,
-    frame_advantage: i16,
+    tick_advantage: i16,
     rtt: Option<std::time::Duration>,
 }
 
@@ -132,16 +132,16 @@ impl InMatchTx {
             }
             let w = st.out.window().expect("window is non-empty after a push");
             let ack = st.inn.ack();
-            protocol::data_frame(w.base, w.frame_advantage, w.entries, ack)
+            protocol::data_frame(w.base, w.tick_advantage, w.entries, ack)
         };
         self.sink.lock().await.send_raw(&frame.encode()).await
     }
 
-    pub async fn send_input(&self, joyflags: u16, frame_advantage: i16) -> std::io::Result<()> {
+    pub async fn send_input(&self, joyflags: u16, tick_advantage: i16) -> std::io::Result<()> {
         self.send_frame_with(move |out| {
             out.push_advantaged(
                 protocol::Element::Input(joyflags & tango_pvp::input::JOYFLAGS_MASK),
-                frame_advantage,
+                tick_advantage,
             );
         })
         .await
@@ -173,7 +173,7 @@ impl InMatchTx {
             let st = self.state.lock().unwrap();
             let ack = st.inn.ack();
             match st.out.window() {
-                Some(w) => protocol::data_frame(w.base, w.frame_advantage, w.entries, ack),
+                Some(w) => protocol::data_frame(w.base, w.tick_advantage, w.entries, ack),
                 None => protocol::Frame::ack_only(st.out.next_seq(), ack),
             }
         };
@@ -246,7 +246,7 @@ impl InMatchTx {
         let delivered = st.inn.accept(frame)?;
         Ok(Delivery {
             elements: delivered.entries,
-            frame_advantage: delivered.frame_advantage,
+            tick_advantage: delivered.tick_advantage,
             rtt,
         })
     }
@@ -270,7 +270,7 @@ impl PvpSender {
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 let result = match event {
-                    tango_pvp::net::Event::Input(input) => im.send_input(input.joyflags, input.frame_advantage).await,
+                    tango_pvp::net::Event::Input(input) => im.send_input(input.joyflags, input.tick_advantage).await,
                     tango_pvp::net::Event::EndOfRound => im.send_end_of_round().await,
                 };
                 if let Err(e) = result {
@@ -367,7 +367,7 @@ impl tango_pvp::net::Receiver for PvpReceiver {
                         self.pending
                             .push_back(tango_pvp::net::Event::Input(tango_pvp::net::Input {
                                 joyflags,
-                                frame_advantage: delivery.frame_advantage,
+                                tick_advantage: delivery.tick_advantage,
                             }));
                     }
                     protocol::Element::EndOfRound => {

@@ -5,7 +5,7 @@ pub struct Input {
     /// leads the remote input it has received (the input queue's signed lead).
     /// The receiver subtracts this from its own advantage to get the raw skew
     /// that drives the time-sync throttler (see `Round::update_fps_target`).
-    pub frame_advantage: i16,
+    pub tick_advantage: i16,
 }
 
 /// What the in-match receive loop yields. `Input` is the per-tick

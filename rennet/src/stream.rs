@@ -53,15 +53,16 @@ pub struct Window<E> {
     pub base: u32,
     /// Time-sync lead carried with this run: the newest local input's lead
     /// outbound, the freshest advantage seen inbound.
-    pub frame_advantage: i16,
+    pub tick_advantage: i16,
     /// The elements, ascending by seq from `base`.
     pub entries: Vec<E>,
 }
 
 /// Sender half: seq assignment + redundancy window.
 pub struct OutStream<E> {
-    /// Next seq to hand out. Seqs are 1-based so `0` stays free as the
-    /// ack-only sentinel in [`Frame`].
+    /// Next seq to hand out; the seq line is 0-based (the first element gets
+    /// seq 0). There's no reserved sentinel — an ack-only [`Frame`] is told
+    /// from a data one by the absence of a body, not by a magic seq.
     next_seq: u32,
     /// Unconfirmed/redundancy window, ascending by seq. Exactly the set
     /// [`window`](Self::window) emits. Seqs aren't stored per element: the
@@ -87,9 +88,9 @@ impl<E: Copy> OutStream<E> {
     /// `horizon` elements (the consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
         Self {
-            next_seq: 1,
+            next_seq: 0,
             history: VecDeque::new(),
-            peer_ack_base: 1,
+            peer_ack_base: 0,
             latest_advantage: 0,
             min_redundancy: DEFAULT_REDUNDANCY,
             horizon,
@@ -115,8 +116,8 @@ impl<E: Copy> OutStream<E> {
     /// carries; returns its seq. The advantaged counterpart to [`push`](Self::push)
     /// — use it for elements that update the clock-sync lead (inputs); markers
     /// carry none and go through `push`.
-    pub fn push_advantaged(&mut self, e: E, frame_advantage: i16) -> u32 {
-        self.latest_advantage = frame_advantage;
+    pub fn push_advantaged(&mut self, e: E, tick_advantage: i16) -> u32 {
+        self.latest_advantage = tick_advantage;
         self.push(e)
     }
 
@@ -156,7 +157,7 @@ impl<E: Copy> OutStream<E> {
         let newest = self.next_seq - 1;
         let redundancy_floor = newest.saturating_sub(self.min_redundancy.saturating_sub(1));
         let horizon_floor = newest.saturating_sub(self.horizon.saturating_sub(1));
-        let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor).max(1);
+        let keep_from = self.peer_ack_base.min(redundancy_floor).max(horizon_floor);
         // Each pop advances the front seq (`base` rises as the deque shrinks);
         // `keep_from <= newest`, so this always leaves at least one element.
         while self.base() < keep_from {
@@ -180,7 +181,7 @@ impl<E: Copy> OutStream<E> {
         }
         Some(Window {
             base: self.base(),
-            frame_advantage: self.latest_advantage,
+            tick_advantage: self.latest_advantage,
             entries: self.history.iter().copied().collect(),
         })
     }
@@ -189,7 +190,7 @@ impl<E: Copy> OutStream<E> {
     /// caller timestamps this on each send to derive RTT from the peer's ack
     /// of it.
     pub fn newest_seq(&self) -> Option<u32> {
-        (self.next_seq > 1).then(|| self.next_seq - 1)
+        (self.next_seq > 0).then(|| self.next_seq - 1)
     }
 
     /// The next seq this stream will assign. Used as the `base` of an ack-only
@@ -220,13 +221,13 @@ pub struct HorizonExceeded;
 /// Receiver half: reorder buffer + contiguous delivery + cumulative ack.
 pub struct InStream<E> {
     /// Next contiguous seq we still need. Everything below has been
-    /// delivered. 1-based to match [`OutStream`].
+    /// delivered. Starts at 0, matching [`OutStream`]'s 0-based seq line.
     recv_base: u32,
     /// Elements received with seq > recv_base that can't be delivered yet
     /// (a gap precedes them). Keyed by seq; re-inserting a seq is a no-op,
     /// which is how redundant copies dedup.
     buffer: BTreeMap<u32, E>,
-    /// Freshest frame-advantage seen; [`accept`](Self::accept) returns it with
+    /// Freshest tick-advantage seen; [`accept`](Self::accept) returns it with
     /// every delivery so the caller can tag the delivered inputs. Persisted
     /// across calls for the reorder guard below.
     latest_advantage: i16,
@@ -246,7 +247,7 @@ impl<E: Copy> InStream<E> {
     /// consuming engine's rollback depth).
     pub fn new(horizon: u32) -> Self {
         Self {
-            recv_base: 1,
+            recv_base: 0,
             buffer: BTreeMap::new(),
             latest_advantage: 0,
             latest_advantage_seq: 0,
@@ -256,28 +257,28 @@ impl<E: Copy> InStream<E> {
 
     /// Ingest one frame's entries. Returns the run that became contiguous (in
     /// strict seq order, possibly empty) as a [`Window`]: `entries` are the
-    /// newly-delivered elements, `base` their starting seq, and `frame_advantage`
+    /// newly-delivered elements, `base` their starting seq, and `tick_advantage`
     /// the freshest advantage seen so far — the reorder guard below keeps a
     /// late-arriving older frame from regressing it. The frame's cumulative ack
     /// is the caller's job to apply to its [`OutStream`].
     pub fn accept<B: Body<Elem = E>>(&mut self, frame: &Frame<B>) -> Result<Window<E>, HorizonExceeded> {
         // Ack-only frames carry no entries — nothing to reassemble.
-        let (base, frame_advantage, entries) = match &frame.payload {
+        let (base, tick_advantage, entries) = match &frame.payload {
             None => {
                 return Ok(Window {
                     base: self.recv_base,
-                    frame_advantage: self.latest_advantage,
+                    tick_advantage: self.latest_advantage,
                     entries: Vec::new(),
                 })
             }
-            Some(p) => (frame.base, p.frame_advantage, p.body.elements()),
+            Some(p) => (frame.base, p.tick_advantage, p.body.elements()),
         };
         // Only the newest-by-seq frame's advantage is fresh; a reordered older
-        // frame arriving later must not clobber it (its `frame_advantage` is stale).
+        // frame arriving later must not clobber it (its `tick_advantage` is stale).
         let frame_newest = base.saturating_add(entries.len() as u32).saturating_sub(1);
         if frame_newest >= self.latest_advantage_seq {
             self.latest_advantage_seq = frame_newest;
-            self.latest_advantage = frame_advantage;
+            self.latest_advantage = tick_advantage;
         }
         for (i, &e) in entries.iter().enumerate() {
             // Saturating: `base` is peer-supplied, so `base + i` mustn't
@@ -302,7 +303,7 @@ impl<E: Copy> InStream<E> {
         }
         Ok(Window {
             base: delivered_base,
-            frame_advantage: self.latest_advantage,
+            tick_advantage: self.latest_advantage,
             entries: delivered,
         })
     }
@@ -349,7 +350,7 @@ mod tests {
     /// it — so it's pinned to the initial frontier.
     fn make_frame(out: &OutStream<El>) -> Frame<RawBody> {
         let w = out.window().expect("window");
-        Frame::decode(&frame(w.base, w.frame_advantage, w.entries, 1).encode()).unwrap()
+        Frame::decode(&frame(w.base, w.tick_advantage, w.entries, 1).encode()).unwrap()
     }
 
     #[test]
@@ -358,12 +359,12 @@ mod tests {
         push_input(&mut out, 1, 0);
         push_input(&mut out, 2, 0);
         push_input(&mut out, 3, 0);
-        // Peer has confirmed everything through seq 3 (frontier = 4).
-        out.apply_ack(4);
-        // Still keeps DEFAULT_REDUNDANCY recent elements (seqs are 1..=3).
+        // Peer has confirmed everything through seq 2 (frontier = 3).
+        out.apply_ack(3);
+        // Still keeps DEFAULT_REDUNDANCY recent elements (seqs are 0..=2).
         assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
         let w = out.window().unwrap();
-        assert_eq!(w.base, 3 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 2
+        assert_eq!(w.base, 2 - (DEFAULT_REDUNDANCY - 1)); // seq of first kept = 1
         assert_eq!(w.entries.len(), DEFAULT_REDUNDANCY as usize);
     }
 
@@ -373,7 +374,7 @@ mod tests {
         for k in 0..5 {
             push_input(&mut out, k, 0);
         }
-        out.apply_ack(6); // peer caught up: only the floor is retained.
+        out.apply_ack(5); // peer caught up: only the floor is retained.
         assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
 
         // Lower the floor (clean/low-RTT link): the window sheds down to 1 at once.
@@ -385,7 +386,7 @@ mod tests {
         for k in 5..10 {
             push_input(&mut out, k, 0);
         }
-        out.apply_ack(11);
+        out.apply_ack(10);
         assert_eq!(out.window_len(), MAX_REDUNDANCY as usize);
     }
 
@@ -395,11 +396,11 @@ mod tests {
         for k in 0..10 {
             push_input(&mut out, k, 0);
         }
-        // Peer only confirmed through seq 4 (frontier = 5): seqs 5..=10 unconfirmed.
-        out.apply_ack(5);
+        // Peer only confirmed through seq 3 (frontier = 4): seqs 4..=9 unconfirmed.
+        out.apply_ack(4);
         let w = out.window().unwrap();
-        assert_eq!(w.base, 5);
-        assert_eq!(w.entries.len(), 6); // 5,6,7,8,9,10
+        assert_eq!(w.base, 4);
+        assert_eq!(w.entries.len(), 6); // 4,5,6,7,8,9
     }
 
     #[test]
@@ -418,11 +419,11 @@ mod tests {
     fn ack_beyond_sent_is_clamped() {
         let mut out = out();
         push_input(&mut out, 1, 0);
-        push_input(&mut out, 2, 0); // next_seq = 3
+        push_input(&mut out, 2, 0); // next_seq = 2
                                     // A peer can't have received a seq we never sent; the bogus frontier
                                     // is clamped to next_seq rather than pinned far into the future.
         out.apply_ack(9999);
-        assert_eq!(out.peer_ack_base(), 3);
+        assert_eq!(out.peer_ack_base(), 2);
     }
 
     #[test]
@@ -435,7 +436,7 @@ mod tests {
         let f = make_frame(&out);
         let delivered = inn.accept(&f).unwrap();
         assert_eq!(delivered.entries, (1..=5).map(input).collect::<Vec<_>>());
-        assert_eq!(inn.ack(), 6);
+        assert_eq!(inn.ack(), 5);
     }
 
     #[test]
@@ -451,7 +452,7 @@ mod tests {
         let f2 = make_frame(&out);
         // 2 is a dup (already delivered), only 3 is new.
         assert_eq!(inn.accept(&f2).unwrap().entries, vec![input(3)]);
-        assert_eq!(inn.ack(), 4);
+        assert_eq!(inn.ack(), 3);
     }
 
     #[test]
@@ -461,7 +462,7 @@ mod tests {
         // Each "frame" carries the last DEFAULT_REDUNDANCY+ elements. Drop one
         // datagram entirely; the next one's window should still cover it.
         push_input(&mut out, 10, 0);
-        let f_a = make_frame(&out); // window ends at seq1=Input(10)
+        let f_a = make_frame(&out); // window ends at seq0=Input(10)
         assert_eq!(inn.accept(&f_a).unwrap().entries, vec![input(10)]);
 
         push_input(&mut out, 11, 0);
@@ -476,27 +477,27 @@ mod tests {
     #[test]
     fn in_buffers_out_of_order_then_fills_gap() {
         let mut inn = inn();
-        // Deliver a frame starting at seq 3 (1 and 2 missing): buffered, none delivered.
-        let ahead = frame(3, 0, vec![input(30), input(40)], 1);
+        // Deliver a frame starting at seq 2 (0 and 1 missing): buffered, none delivered.
+        let ahead = frame(2, 0, vec![input(30), input(40)], 1);
         assert_eq!(inn.accept(&ahead).unwrap().entries, vec![]);
-        assert_eq!(inn.ack(), 1);
-        // The ack reports the frontier: still seq 1 (the hole), regardless of
-        // the out-of-order seqs 3,4 sitting in the reorder buffer.
-        assert_eq!(inn.ack(), 1);
+        assert_eq!(inn.ack(), 0);
+        // The ack reports the frontier: still seq 0 (the hole), regardless of
+        // the out-of-order seqs 2,3 sitting in the reorder buffer.
+        assert_eq!(inn.ack(), 0);
         // Now the gap arrives; everything drains in order.
-        let gap = frame(1, 0, vec![input(10), input(20)], 1);
+        let gap = frame(0, 0, vec![input(10), input(20)], 1);
         assert_eq!(
             inn.accept(&gap).unwrap().entries,
             vec![input(10), input(20), input(30), input(40)]
         );
-        assert_eq!(inn.ack(), 5);
+        assert_eq!(inn.ack(), 4);
     }
 
     #[test]
     fn in_bails_past_horizon() {
         let mut inn = inn();
-        // ack is 1; this is exactly a horizon away.
-        let way_ahead = frame(1 + HORIZON, 0, vec![input(1)], 1);
+        // ack is 0; this is exactly a horizon away.
+        let way_ahead = frame(HORIZON, 0, vec![input(1)], 1);
         assert_eq!(inn.accept(&way_ahead), Err(HorizonExceeded));
     }
 
@@ -524,7 +525,7 @@ mod tests {
         }
         let f = make_frame(&out);
         inn.accept(&f).unwrap();
-        // The in-stream now wants seq 5; its ack should advance the peer's
+        // The in-stream now wants seq 4; its ack should advance the peer's
         // out-stream frontier so it trims to the redundancy floor.
         out.apply_ack(inn.ack());
         assert_eq!(out.window_len(), DEFAULT_REDUNDANCY as usize);
@@ -541,7 +542,7 @@ mod tests {
         for k in 1..=200u32 {
             push_input(&mut out, k as u16, 0);
             let w = out.window().unwrap();
-            let dg = frame(w.base, w.frame_advantage, w.entries, 1);
+            let dg = frame(w.base, w.tick_advantage, w.entries, 1);
             if k % 3 != 0 {
                 // delivered: round-trip through the wire and ingest.
                 let f = Frame::<RawBody>::decode(&dg.encode()).unwrap();

@@ -3,7 +3,7 @@
 //! packs a run of them onto the wire.
 //!
 //! The envelope (per-tick seq `base`, the delta-encoded cumulative `ack`, and
-//! the `frame_advantage`), the LEB128 codec, and the redundancy-window /
+//! the `tick_advantage`), the LEB128 codec, and the redundancy-window /
 //! cumulative-ack reliability machinery all live in the transport- and
 //! packing-agnostic [`rennet`] crate. rennet doesn't know or care how a body is
 //! laid out — it just calls [`Body::encode`](rennet::Body::encode) /
@@ -115,7 +115,9 @@ impl rennet::Body for Entries {
                 }
             } else {
                 // Input: this byte's the high half, the next its low half.
-                let b1 = *bytes.get(i).ok_or_else(|| invalid("input entry truncated".to_string()))?;
+                let b1 = *bytes
+                    .get(i)
+                    .ok_or_else(|| invalid("input entry truncated".to_string()))?;
                 i += 1;
                 Element::Input(((b0 as u16) << 8 | b1 as u16) & JOYFLAGS_MASK)
             };
@@ -141,8 +143,8 @@ fn invalid(msg: String) -> io::Error {
 
 /// Build an in-match data frame from a run of [`Element`]s. Wraps the entries
 /// into [`Entries`] and defers to [`rennet::Frame::data`].
-pub fn data_frame(base: u32, frame_advantage: i16, entries: Vec<Element>, ack: Ack) -> Frame {
-    rennet::Frame::data(base, frame_advantage, Entries(entries), ack)
+pub fn data_frame(base: u32, tick_advantage: i16, entries: Vec<Element>, ack: Ack) -> Frame {
+    rennet::Frame::data(base, tick_advantage, Entries(entries), ack)
 }
 
 #[cfg(test)]
@@ -159,10 +161,7 @@ mod tests {
             vec![Element::Input(0x010), Element::EndOfRound, Element::Input(0x001)],
             12345,
         );
-        assert_eq!(
-            f.encode(),
-            vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]
-        );
+        assert_eq!(f.encode(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x80, 0x00, 0x01]);
     }
 
     #[test]

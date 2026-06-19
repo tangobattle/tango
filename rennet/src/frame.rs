@@ -1,7 +1,7 @@
 //! The on-wire datagram: a generic [`Frame`] over a [`Body`].
 //!
 //! One datagram is exactly one [`Frame`]: a `base` seq + cumulative `ack`
-//! header, optionally followed by a time-sync `frame_advantage` and a [`Body`]
+//! header, optionally followed by a time-sync `tick_advantage` and a [`Body`]
 //! of entries. There is no envelope tag — a `Frame` *is* the whole message —
 //! and no separate ping/pong probe: round-trip latency is derived from the ack
 //! round-trip by the caller. Reliability is the receiver's job (see
@@ -12,7 +12,7 @@
 //! ```text
 //! base             uvarint   always
 //! ack              svarint   always; (frontier - base)
-//! frame_advantage  svarint   present iff a body follows
+//! tick_advantage  svarint   present iff a body follows
 //! body             Body      present iff there are bytes left; runs to the
 //!                            end of the datagram
 //! ```
@@ -48,7 +48,7 @@ pub type Ack = u32;
 /// [`decode`](Body::decode) is handed exactly its own bytes and
 /// [`encode`](Body::encode) just appends — no length prefix, no self-delimiting.
 /// An empty body is fine: a data frame is told from an ack-only one by the
-/// `frame_advantage` after the header, not by carrying entries, so a zero-entry
+/// `tick_advantage` after the header, not by carrying entries, so a zero-entry
 /// body just decodes to an empty run.
 pub trait Body: Sized {
     /// The entry type this body carries — what the reliability streams
@@ -91,7 +91,7 @@ pub struct Frame<B> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Payload<B> {
     /// The newest entry's time-sync lead.
-    pub frame_advantage: i16,
+    pub tick_advantage: i16,
     /// The entry run (see [`Body`]).
     pub body: B,
 }
@@ -99,11 +99,11 @@ pub struct Payload<B> {
 impl<B> Frame<B> {
     /// Build a data frame (header + payload). `ack` is the absolute frontier;
     /// it's stored as an offset from `base`.
-    pub fn data(base: u32, frame_advantage: i16, body: B, ack: Ack) -> Frame<B> {
+    pub fn data(base: u32, tick_advantage: i16, body: B, ack: Ack) -> Frame<B> {
         Frame {
             base,
             ack_offset: ack_offset(base, ack),
-            payload: Some(Payload { frame_advantage, body }),
+            payload: Some(Payload { tick_advantage, body }),
         }
     }
 
@@ -147,14 +147,14 @@ impl<B: Body> Frame<B> {
         // `base` — see the module header).
         write_svarint(&mut out, self.ack_offset as i64);
         if let Some(p) = &self.payload {
-            write_svarint(&mut out, p.frame_advantage as i64);
+            write_svarint(&mut out, p.tick_advantage as i64);
             p.body.encode(&mut out);
         }
         out
     }
 
     /// Decode one whole datagram. `base`/`ack` are flat uvarints; any bytes
-    /// after them are a `frame_advantage` + body (the body runs to the end), so
+    /// after them are a `tick_advantage` + body (the body runs to the end), so
     /// this never leans on a length prefix or sentinel. `buf` is one datagram =
     /// one frame.
     pub fn decode(buf: &[u8]) -> io::Result<Frame<B>> {
@@ -168,11 +168,11 @@ impl<B: Body> Frame<B> {
             // Nothing after the header → ack-only.
             None
         } else {
-            let frame_advantage = i16::try_from(read_svarint(&mut c)?)
-                .map_err(|_| invalid("frame_advantage out of range".to_string()))?;
+            let tick_advantage =
+                i16::try_from(read_svarint(&mut c)?).map_err(|_| invalid("tick_advantage out of range".to_string()))?;
             // Whatever's left is the body — hand it exactly its own bytes.
             let body = B::decode(&buf[c.position() as usize..])?;
-            Some(Payload { frame_advantage, body })
+            Some(Payload { tick_advantage, body })
         };
         Ok(Frame {
             base,
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn negative_frame_advantage_roundtrips() {
+    fn negative_tick_advantage_roundtrips() {
         for fa in [-1i16, -2, -64, -300, i16::MIN, i16::MAX, 0, 63, 200] {
             roundtrip(&data(1, fa, vec![El::Input(0x3ff)], 1));
         }
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn empty_body_data_frame_is_distinct_from_ack_only() {
-        // A data frame with an empty body still carries a `frame_advantage`, so
+        // A data frame with an empty body still carries a `tick_advantage`, so
         // it's told apart from an ack-only frame and decodes to an empty run —
         // no ">= 1 entry" rule needed.
         let empty: Raw = Frame::data(3, 7, RawBody(vec![]), 5);
@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(back, empty);
         assert!(back.payload.as_ref().unwrap().body.0.is_empty());
         // The ack-only frame with the same header has no payload, and a
-        // different wire form (no `frame_advantage` byte).
+        // different wire form (no `tick_advantage` byte).
         let ack: Raw = Frame::ack_only(3, 5);
         assert!(Raw::decode(&ack.encode()).unwrap().payload.is_none());
         assert_ne!(empty.encode(), ack.encode());

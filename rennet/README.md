@@ -22,7 +22,7 @@ cumulative ack, and the byte-minimized envelope — nothing above or below it.
 ### `frame` — the wire envelope
 
 The on-wire `Frame<B>`: a per-tick seq (`base`), a piggybacked cumulative `ack`,
-an optional time-sync `frame_advantage`, and an opaque `Body` of entries. One
+an optional time-sync `tick_advantage`, and an opaque `Body` of entries. One
 datagram is exactly one `Frame` — there is no envelope tag, and no separate
 ping/pong probe (round-trip latency falls out of the ack round-trip). It is
 byte-minimized: LEB128 varints, and the ack travels as a *signed delta from
@@ -62,7 +62,7 @@ frame simply by whether any bytes follow the header.
 ```text
 base             uvarint   always
 ack              svarint   always; encoded as (frontier − base)
-frame_advantage  svarint   present iff a body follows
+tick_advantage  svarint   present iff a body follows
 body             Body      present iff there are bytes left; runs to the
                            end of the datagram
 ```
@@ -107,7 +107,7 @@ out.push_advantaged(Element::Input(joyflags), local_tick_advantage); // or out.p
 
 let ack = inn.ack();
 let frame = match out.window() {
-    Some(w) => Frame::data(w.base, w.frame_advantage, MyBody(w.entries), ack),
+    Some(w) => Frame::data(w.base, w.tick_advantage, MyBody(w.entries), ack),
     None    => Frame::ack_only(out.next_seq(), ack),
 };
 send_datagram(&frame.encode());
@@ -122,7 +122,7 @@ let frame = Frame::<MyBody>::decode(&datagram)?;
 out.apply_ack(frame.ack());
 let delivered = inn.accept(&frame)?;   // Err(HorizonExceeded) → tear the match down
 for element in delivered.entries {
-    feed_engine(element, delivered.frame_advantage);
+    feed_engine(element, delivered.tick_advantage);
 }
 ```
 
@@ -135,7 +135,7 @@ past it tells you the round-trip is known.
 
 ## Key terms
 
-- **Seq / `base`** — every element gets a monotonic 1-based seq; `base` is the seq
+- **Seq / `base`** — every element gets a monotonic 0-based seq; `base` is the seq
   of a frame's first entry (or, on an ack-only frame, the sender's next unsent
   seq).
 - **Redundancy window** — the recent unconfirmed elements re-sent on every data
@@ -144,7 +144,7 @@ past it tells you the round-trip is known.
 - **Cumulative ack** — the receiver's contiguous frontier: the lowest seq it
   hasn't received, i.e. "resend your window from here." A contiguous resend window
   is all the sender can act on, so a single frontier is the whole ack — no bitmap.
-- **Frame advantage** — an opaque time-sync lead carried alongside the entry run
+- **Tick advantage** — an opaque time-sync lead carried alongside the entry run
   (the newest local input's lead outbound, the freshest seen inbound). rennet only
   shuttles it; the clock-sync policy lives in the engine.
 - **Rollback horizon** — a constructor parameter, not a constant: it's a property
@@ -157,6 +157,6 @@ It **does**: ordered in-band delivery, dedup, proactive loss recovery, cumulativ
 acks, adaptive redundancy, and a compact self-delimiting wire envelope.
 
 It **doesn't**: own a transport (you pump bytes), an engine (it doesn't know what
-an element means), a clock (it only shuttles `frame_advantage`), a body packing
+an element means), a clock (it only shuttles `tick_advantage`), a body packing
 (you implement `Body`), or a connection lifecycle (handshake, reconnect, and the
 reliable out-of-match channel live above it).

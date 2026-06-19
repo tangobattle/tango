@@ -162,15 +162,15 @@ impl Round {
         self.session.is_some()
     }
 
-    fn local_frame_advantage(&self) -> i16 {
+    fn local_tick_advantage(&self) -> i16 {
         self.session.as_ref().map_or(0, |s| s.local_tick_advantage())
     }
 
     /// Engine metrics for the host status bar; all zero while armed.
     pub(super) fn metrics(&self) -> super::RoundMetrics {
         super::RoundMetrics {
-            local_frame_advantage: self.local_frame_advantage(),
-            remote_frame_advantage: self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage()),
+            local_tick_advantage: self.local_tick_advantage(),
+            remote_tick_advantage: self.session.as_ref().map_or(0, |s| s.last_remote_tick_advantage()),
             misprediction_depth: self.session.as_ref().map_or(0, |s| s.last_misprediction_depth()),
         }
     }
@@ -186,13 +186,13 @@ impl Round {
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
     ) -> anyhow::Result<()> {
-        let frame_advantage = self.local_frame_advantage();
+        let tick_advantage = self.local_tick_advantage();
         sender
             .lock()
             .await
             .send(&crate::net::Event::Input(crate::net::Input {
                 joyflags,
-                frame_advantage,
+                tick_advantage,
             }))
             .await?;
 
@@ -220,7 +220,7 @@ impl Round {
                 PartialInput {
                     joyflags: input.joyflags,
                 },
-                input.frame_advantage,
+                input.tick_advantage,
             );
             Ok(())
         })?;
