@@ -185,45 +185,24 @@ pub fn view<'a>(
     let Some(session) = state.active.as_ref() else {
         // No live session yet — the App also renders this view while a netplay
         // match is coming up (the WebRTC + reveal handshake, then the spawn).
-        // Show the local game's emulator border (its BNLC art) with a "setting
-        // up" line so it reads as the session loading; the emulator + chrome
-        // fill in the moment `spawn_pvp` lands (the first point emulation can
-        // start — it needs the peer's save to boot).
-        let bnlc_bg = if hide_emulator_border {
-            None
-        } else {
-            coming_up_game.and_then(background_handle)
-        };
-        let backdrop: Element<'a, Message> = match bnlc_bg {
-            Some(bg) => iced::widget::image(bg)
-                .width(Fill)
-                .height(Fill)
-                .content_fit(iced::ContentFit::Cover)
-                .into(),
-            None => container(iced::widget::Space::new().width(Fill).height(Fill))
-                .style(|_t: &iced::Theme| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(iced::Color::BLACK)),
-                    ..Default::default()
-                })
-                .into(),
-        };
-        let line = container(
-            iced::widget::text(t!(lang, "match-coming-up"))
-                .size(style::TEXT_TITLE)
-                .style(|_t: &iced::Theme| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.82, 0.82, 0.88)),
-                }),
-        )
-        .center(Fill);
-        return stack![Element::from(backdrop), Element::from(line)]
-            .width(Fill)
-            .height(Fill)
-            .into();
+        // Render through the *same* emulator_body/screen path as a live session,
+        // with a "setting up" line drawn inside the emulator-screen rect instead
+        // of the live framebuffer; the emulator + chrome fill in the moment
+        // `spawn_pvp` lands (the first point emulation can start — it needs the
+        // peer's save to boot).
+        let screen = emulator_screen(state, fractional_scaling, effect, ScreenContent::Loading(t!(lang, "match-coming-up")));
+        return emulator_body(None, state, screen, coming_up_game, hide_emulator_border);
     };
 
-    let frame = framebuffer_view(state, fractional_scaling, effect);
+    let frame = emulator_screen(state, fractional_scaling, effect, ScreenContent::Live);
     let mut layout = column![].spacing(0).width(Fill).height(Fill);
-    layout = layout.push(emulator_body(session, state, frame, hide_emulator_border));
+    layout = layout.push(emulator_body(
+        Some(session),
+        state,
+        frame,
+        Some(session.local_game()),
+        hide_emulator_border,
+    ));
 
     // The controls live in a floating bar over the emulator (no
     // reserved bottom strip), sliding away after the cursor sits
@@ -315,20 +294,28 @@ fn floating_controls<'a>(
         .into()
 }
 
-/// The live framebuffer, rendered through a custom wgpu shader widget
-/// (one persistent GPU texture, written in place each vblank) instead
-/// of a per-frame `image` handle. The shader fills the widget's
-/// bounds, so the widget is sized to the framebuffer rect — an exact
-/// integer multiple (crisp, the default) or a smooth aspect-fit —
-/// using `responsive` for the pane size both need. Before the first
-/// frame, a 1×1 black placeholder keeps the pane opaque.
-fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'static Effect) -> Element<'a, Message> {
-    // Post-filter framebuffer dimensions. Drive the scale math below;
-    // match the (w, h) `build_frame_pixels` stamps into the frame the
-    // `framebuffer` shader uploads.
-    // The widget is sized to native·scale — the same rectangle the old CPU
-    // upscalers produced — and the effect's fragment shader magnifies the
-    // native texture to fill it.
+/// What fills the emulator-screen rect: the live framebuffer, or a "setting up
+/// the match" line while a netplay match is coming up (no session yet).
+enum ScreenContent {
+    Live,
+    Loading(String),
+}
+
+/// The emulator screen: the GBA-sized rect (an exact integer multiple — crisp,
+/// the default — or a smooth aspect-fit), centered in its pane with a drop
+/// shadow. The live framebuffer renders through a custom wgpu shader widget
+/// (one persistent GPU texture written in place each vblank); the coming-up
+/// loading line draws on a black screen of the same rect. Both go through this
+/// one sizing/framing path.
+fn emulator_screen<'a>(
+    state: &'a State,
+    fractional_scaling: bool,
+    effect: &'static Effect,
+    content: ScreenContent,
+) -> Element<'a, Message> {
+    // Post-filter framebuffer dimensions. Drive the scale math below; match the
+    // (w, h) `build_frame_pixels` stamps into the frame the shader uploads. The
+    // effect's fragment shader magnifies the native texture to fill it.
     let scale = effect.scale;
     let img_w = (replay::SCREEN_WIDTH * scale) as f32;
     let img_h = (replay::SCREEN_HEIGHT * scale) as f32;
@@ -342,13 +329,34 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
         };
         let (w, h) = (img_w * scale, img_h * scale);
 
-        let frame = state
-            .current_frame
-            .clone()
-            .unwrap_or_else(crate::video::framebuffer::Frame::black);
-        let fb = iced::widget::shader::Shader::new(crate::video::framebuffer::Program::new(frame))
+        let screen: Element<'a, Message> = match &content {
+            ScreenContent::Live => {
+                let frame = state
+                    .current_frame
+                    .clone()
+                    .unwrap_or_else(crate::video::framebuffer::Frame::black);
+                iced::widget::shader::Shader::new(crate::video::framebuffer::Program::new(frame))
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
+                    .into()
+            }
+            ScreenContent::Loading(msg) => container(
+                iced::widget::text(msg.clone())
+                    .size(style::TEXT_TITLE)
+                    .style(|_t: &iced::Theme| iced::widget::text::Style {
+                        color: Some(iced::Color::from_rgb(0.82, 0.82, 0.88)),
+                    }),
+            )
             .width(Length::Fixed(w))
-            .height(Length::Fixed(h));
+            .height(Length::Fixed(h))
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(|_t: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::BLACK)),
+                ..Default::default()
+            })
+            .into(),
+        };
 
         let centered = |content: Element<'a, Message>| -> Element<'a, Message> {
             iced::widget::container(content)
@@ -361,11 +369,11 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
 
         if fractional_scaling {
             // Smooth aspect-fit, centered, no drop shadow.
-            centered(fb.into())
+            centered(screen)
         } else {
-            // Tight container around the Fixed-size framebuffer so the
-            // shadow style traces its edges, not the surrounding pane.
-            let framed = iced::widget::container(fb)
+            // Tight container around the Fixed-size screen so the shadow traces
+            // its edges, not the surrounding pane.
+            let framed = iced::widget::container(screen)
                 .width(Length::Fixed(w))
                 .height(Length::Fixed(h))
                 .style(|_theme: &iced::Theme| iced::widget::container::Style {
@@ -382,23 +390,20 @@ fn framebuffer_view<'a>(state: &'a State, fractional_scaling: bool, effect: &'st
     .into()
 }
 
-/// Body: framebuffer + optional setup panes layered over the game's
-/// BNLC background art (cover-fit, crops as needed) or a pure-black
-/// backdrop when BNLC isn't installed. The backdrop spans the full
-/// body width so the setup panes float on top of the same bezel art.
-fn emulator_body<'a>(
-    session: &'a ActiveSession,
-    state: &'a State,
-    frame: Element<'a, Message>,
+/// The emulator backdrop: the game's BNLC border art (cover-fit, crops as
+/// needed), or pure black when the border is hidden or the art isn't installed.
+/// Shared by the live `emulator_body` and the match-coming-up loading screen so
+/// both render the bezel through the same path.
+fn emulator_backdrop<'a>(
+    game: Option<&'static crate::game::Game>,
     hide_emulator_border: bool,
 ) -> Element<'a, Message> {
-    let frame_container = container(frame).center(Fill);
     let bnlc_bg = if hide_emulator_border {
         None
     } else {
-        background_handle(session.local_game())
+        game.and_then(background_handle)
     };
-    let backdrop: Element<'a, Message> = match bnlc_bg {
+    match bnlc_bg {
         Some(bg_handle) => iced::widget::image(bg_handle)
             .width(Fill)
             .height(Fill)
@@ -410,7 +415,22 @@ fn emulator_body<'a>(
                 ..Default::default()
             })
             .into(),
-    };
+    }
+}
+
+/// Body: framebuffer + optional setup panes layered over the game's
+/// BNLC background art (cover-fit, crops as needed) or a pure-black
+/// backdrop when BNLC isn't installed. The backdrop spans the full
+/// body width so the setup panes float on top of the same bezel art.
+fn emulator_body<'a>(
+    session: Option<&'a ActiveSession>,
+    state: &'a State,
+    frame: Element<'a, Message>,
+    game: Option<&'static crate::game::Game>,
+    hide_emulator_border: bool,
+) -> Element<'a, Message> {
+    let frame_container = container(frame).center(Fill);
+    let backdrop = emulator_backdrop(game, hide_emulator_border);
 
     // Left/right drawer SLOTS for PvP. The panes themselves render
     // as overlay layers in [`view`] (`setup_drawers_overlay`) so
@@ -428,13 +448,13 @@ fn emulator_body<'a>(
             .height(Fill)
     };
     let mut content_row = row![].spacing(0).height(Fill).width(Fill);
-    if let ActiveSession::PvP(s) = session {
+    if let Some(ActiveSession::PvP(s)) = session {
         if s.local_loaded.is_some() && state.self_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
     }
     content_row = content_row.push(container(frame_container).width(Fill).height(Fill));
-    if let ActiveSession::PvP(s) = session {
+    if let Some(ActiveSession::PvP(s)) = session {
         if s.opponent_loaded.is_some() && state.opponent_panel.shown() {
             content_row = content_row.push(drawer_slot());
         }
