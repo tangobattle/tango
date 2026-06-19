@@ -1,6 +1,6 @@
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(
     hooks: &super::Hooks,

@@ -1,10 +1,20 @@
 use crate::hooks::Trap;
 use crate::stepper::BattleOutcome;
 
-use super::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) -> Vec<Trap> {
-    vec![
+    // Both player-index sites answer the same way: r0 = the replay's local
+    // player index.
+    let make_is_p2_hook = || {
+        let stepper_state = stepper_state.clone();
+        Box::new(move |mut core: mgba::core::CoreMutRef| {
+            let state = stepper_state.lock_inner();
+            core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
+        })
+    };
+
+    let mut traps: Vec<Trap> = vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             let stepper_state = stepper_state.clone();
@@ -46,20 +56,8 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
             })
         }),
-        (hooks.offsets.rom.battle_is_p2_tst, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let state = stepper_state.lock_inner();
-                core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
-            })
-        }),
-        (hooks.offsets.rom.link_is_p2_ret, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |mut core: mgba::core::CoreMutRef| {
-                let state = stepper_state.lock_inner();
-                core.gba_mut().cpu_mut().set_gpr(0, state.local_player_index() as i32);
-            })
-        }),
+        (hooks.offsets.rom.battle_is_p2_tst, make_is_p2_hook()),
+        (hooks.offsets.rom.link_is_p2_ret, make_is_p2_hook()),
         {
             let munger = hooks.munger();
             (
@@ -127,10 +125,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                     state.on_first_commit();
                 }
 
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != current_tick {
-                    panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                }
+                assert_tick(current_tick, munger.current_tick(core));
 
                 // FF state capture. At `capture_tick` the input window is
                 // exhausted (all of `inputs` consumed), so there's no pair to
@@ -173,10 +168,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 let current_tick = state.current_tick();
 
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != current_tick {
-                    panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                }
+                assert_tick(current_tick, munger.current_tick(core));
 
                 let Some((local, remote)) = state.pop_input_pair() else {
                     return;
@@ -220,10 +212,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
 
                 let current_tick = state.current_tick();
 
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != current_tick {
-                    panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                }
+                assert_tick(current_tick, munger.current_tick(core));
 
                 state.set_local_packet(munger.tx_packet(core).to_vec());
             })
@@ -249,40 +238,34 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 }
             })
         }),
-        (hooks.offsets.rom.round_end_set_win, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Win);
-            })
-        }),
-        (hooks.offsets.rom.round_end_set_loss, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Loss);
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_win, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Win);
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_loss, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Loss);
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_draw, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Draw);
-            })
-        }),
-    ]
+    ];
+
+    // Every round-end verdict site just records the outcome.
+    for (offset, outcome) in [
+        (hooks.offsets.rom.round_end_set_win, BattleOutcome::Win),
+        (hooks.offsets.rom.round_end_set_loss, BattleOutcome::Loss),
+        (hooks.offsets.rom.round_end_damage_judge_set_win, BattleOutcome::Win),
+        (hooks.offsets.rom.round_end_damage_judge_set_loss, BattleOutcome::Loss),
+        (hooks.offsets.rom.round_end_damage_judge_set_draw, BattleOutcome::Draw),
+    ] {
+        let stepper_state = stepper_state.clone();
+        traps.push((
+            offset,
+            Box::new(move |_core: mgba::core::CoreMutRef| {
+                stepper_state.lock_inner().set_round_result(outcome);
+            }),
+        ));
+    }
+
+    traps
+}
+
+/// Panic if the game's battle tick has drifted from the replay round's. The
+/// stepper drives the emulator deterministically, so any drift is a bug; the
+/// panic is reported at the call site via `#[track_caller]`.
+#[track_caller]
+fn assert_tick(round_tick: u32, game_tick: u32) {
+    if game_tick != round_tick {
+        panic!("round tick = {round_tick} but game tick = {game_tick}");
+    }
 }

@@ -3,7 +3,6 @@ mod munger;
 mod offsets;
 mod pizzazz;
 mod primary;
-mod rng;
 mod shadow;
 mod stepper;
 

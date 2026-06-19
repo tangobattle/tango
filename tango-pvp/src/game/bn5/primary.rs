@@ -1,6 +1,6 @@
 use crate::hooks::{CompletionToken, MatchHandle, Trap};
 
-use super::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(
     hooks: &super::Hooks,
@@ -134,9 +134,6 @@ pub(super) fn traps(
                     let (rng1_state, rng2_state) = pick_rng_states(&mut *rng, round.local_player_index() == 0);
                     munger.set_rng1_state(core, rng1_state);
                     munger.set_rng2_state(core, rng2_state);
-
-                    // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
-                    munger.set_current_tick(core, 0);
 
                     if let Err(e) = match_.record_first_commit(round, core, &munger.tx_packet(core)) {
                         log::error!("record first commit failed: {e:#}");

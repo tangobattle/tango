@@ -2,7 +2,6 @@ mod common;
 mod munger;
 mod offsets;
 mod primary;
-mod rng;
 mod shadow;
 mod stepper;
 

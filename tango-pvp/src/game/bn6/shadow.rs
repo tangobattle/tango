@@ -1,9 +1,22 @@
 use crate::hooks::Trap;
 
-use super::rng::{generate_rng2_state, pick_rng_states};
+use crate::game::shared::rng::{generate_rng2_state, pick_rng_states};
 
 pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) -> Vec<Trap> {
-    vec![
+    // Both player-index sites answer the same way: r0 = the shadow's remote
+    // player index.
+    let make_is_p2_hook = || {
+        let shadow_state = shadow_state.clone();
+        Box::new(move |mut core: mgba::core::CoreMutRef| {
+            let mut state = shadow_state.lock();
+            let Some(round) = state.round.as_mut() else {
+                return;
+            };
+            core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+        })
+    };
+
+    let mut traps: Vec<Trap> = vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
@@ -26,26 +39,8 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 core.end_run_loop();
             })
         }),
-        (hooks.offsets.rom.battle_is_p2_tst, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |mut core| {
-                let mut state = shadow_state.lock();
-                let Some(round) = state.round.as_mut() else {
-                    return;
-                };
-                core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
-            })
-        }),
-        (hooks.offsets.rom.link_is_p2_ret, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |mut core| {
-                let mut state = shadow_state.lock();
-                let Some(round) = state.round.as_mut() else {
-                    return;
-                };
-                core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
-            })
-        }),
+        (hooks.offsets.rom.battle_is_p2_tst, make_is_p2_hook()),
+        (hooks.offsets.rom.link_is_p2_ret, make_is_p2_hook()),
         (
             hooks.offsets.rom.handle_sio_entry,
             Box::new(move |core| {
@@ -115,14 +110,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                     return;
                 }
 
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
-                    shadow_state.set_anyhow_error(anyhow::anyhow!(
-                        "read joyflags: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
-                    ));
-                }
+                report_tick_mismatch(&shadow_state, "read joyflags", round.current_tick(), munger.current_tick(core));
 
                 if let Some(pending) = round.peek_shadow_input() {
                     let (_local, remote) = &pending.pair;
@@ -146,14 +134,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 let Some(round) = state.round.as_mut() else {
                     return;
                 };
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
-                    shadow_state.set_anyhow_error(anyhow::anyhow!(
-                        "copy input data: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
-                    ));
-                }
+                report_tick_mismatch(&shadow_state, "copy input data", round.current_tick(), munger.current_tick(core));
 
                 let Some(pending) = round.take_shadow_input() else {
                     return;
@@ -187,14 +168,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 let Some(round) = state.round.as_mut() else {
                     return;
                 };
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
-                    shadow_state.set_anyhow_error(anyhow::anyhow!(
-                        "copy input data: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
-                    ));
-                }
+                report_tick_mismatch(&shadow_state, "copy input data", round.current_tick(), munger.current_tick(core));
 
                 round.set_remote_packet(munger.tx_packet(core).to_vec());
                 round.set_input_injected();
@@ -213,45 +187,37 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 }
                 round.increment_current_tick();
 
-                let game_current_tick = munger.current_tick(core);
-                if game_current_tick != round.current_tick() {
-                    shadow_state.set_anyhow_error(anyhow::anyhow!(
-                        "post increment tick: round tick = {} but game tick = {}",
-                        round.current_tick(),
-                        game_current_tick
-                    ));
-                }
+                report_tick_mismatch(&shadow_state, "post increment tick", round.current_tick(), munger.current_tick(core));
             })
         }),
-        (hooks.offsets.rom.round_end_set_win, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
+    ];
+
+    // Every round-end verdict site just latches `result_is_in`; the shadow
+    // doesn't track which side won.
+    for offset in [
+        hooks.offsets.rom.round_end_set_win,
+        hooks.offsets.rom.round_end_set_loss,
+        hooks.offsets.rom.round_end_damage_judge_set_win,
+        hooks.offsets.rom.round_end_damage_judge_set_loss,
+        hooks.offsets.rom.round_end_damage_judge_set_draw,
+    ] {
+        let shadow_state = shadow_state.clone();
+        traps.push((
+            offset,
+            Box::new(move |_core: mgba::core::CoreMutRef| {
                 shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_set_loss, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_win, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_loss, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_draw, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-    ]
+            }),
+        ));
+    }
+
+    traps
+}
+
+/// Flag a desync if the game's battle tick has drifted from the shadow round's.
+fn report_tick_mismatch(shadow_state: &crate::shadow::State, ctx: &str, round_tick: u32, game_tick: u32) {
+    if game_tick != round_tick {
+        shadow_state.set_anyhow_error(anyhow::anyhow!(
+            "{ctx}: round tick = {round_tick} but game tick = {game_tick}"
+        ));
+    }
 }

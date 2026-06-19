@@ -49,7 +49,7 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
         })
     };
 
-    vec![
+    let mut traps: Vec<Trap> = vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             let shadow_state = shadow_state.clone();
@@ -177,35 +177,25 @@ pub(super) fn traps(hooks: &super::Hooks, shadow_state: crate::shadow::State) ->
                 round.increment_current_tick();
             })
         }),
-        (hooks.offsets.rom.round_end_set_win, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
+    ];
+
+    // Every round-end verdict site just latches `result_is_in`; the shadow
+    // doesn't track which side won.
+    for offset in [
+        hooks.offsets.rom.round_end_set_win,
+        hooks.offsets.rom.round_end_set_loss,
+        hooks.offsets.rom.round_end_damage_judge_set_win,
+        hooks.offsets.rom.round_end_damage_judge_set_loss,
+        hooks.offsets.rom.round_end_damage_judge_set_draw,
+    ] {
+        let shadow_state = shadow_state.clone();
+        traps.push((
+            offset,
+            Box::new(move |_core: mgba::core::CoreMutRef| {
                 shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_set_loss, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_win, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_loss, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-        (hooks.offsets.rom.round_end_damage_judge_set_draw, {
-            let shadow_state = shadow_state.clone();
-            Box::new(move |_core| {
-                shadow_state.lock().result_is_in = true;
-            })
-        }),
-    ]
+            }),
+        ));
+    }
+
+    traps
 }

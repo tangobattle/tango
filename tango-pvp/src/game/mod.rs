@@ -1,3 +1,5 @@
+mod shared;
+
 pub mod bn1;
 pub mod bn2;
 pub mod bn3;

@@ -63,7 +63,7 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
         })
     };
 
-    vec![
+    let mut traps: Vec<Trap> = vec![
         (hooks.offsets.rom.comm_menu_init_ret, {
             let munger = hooks.munger();
             Box::new(move |core| {
@@ -191,19 +191,21 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 state.increment_current_tick();
             })
         }),
-        (hooks.offsets.rom.round_end_set_win, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Win);
-            })
-        }),
-        (hooks.offsets.rom.round_end_set_loss, {
-            let stepper_state = stepper_state.clone();
-            Box::new(move |_core| {
-                let mut state = stepper_state.lock_inner();
-                state.set_round_result(BattleOutcome::Loss);
-            })
-        }),
-    ]
+    ];
+
+    // Every round-end verdict site just records the outcome.
+    for (offset, outcome) in [
+        (hooks.offsets.rom.round_end_set_win, BattleOutcome::Win),
+        (hooks.offsets.rom.round_end_set_loss, BattleOutcome::Loss),
+    ] {
+        let stepper_state = stepper_state.clone();
+        traps.push((
+            offset,
+            Box::new(move |_core: mgba::core::CoreMutRef| {
+                stepper_state.lock_inner().set_round_result(outcome);
+            }),
+        ));
+    }
+
+    traps
 }
