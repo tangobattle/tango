@@ -1341,6 +1341,24 @@ impl App {
                 match result {
                     Ok(session) => {
                         self.session.active = Some(ActiveSession::PvP(session));
+                        // A direct match isn't brokered by the lobby, so the
+                        // server can't auto-derive our presence — report it now
+                        // that the match is truly live (lobby matches are already
+                        // marked server-side on accept). `report_idle` clears it
+                        // on match end. `phase` is still Connecting until the
+                        // `finish_handoff` below, so the ident is still readable.
+                        let direct = matches!(
+                            self.netplay.phase,
+                            netplay::Phase::Connecting {
+                                ident: netplay::LinkIdent::Direct(..),
+                                ..
+                            }
+                        );
+                        if direct {
+                            if let Some(proposal) = self.current_proposal() {
+                                self.lobby.report_in_match(proposal);
+                            }
+                        }
                         // Both setup drawers start closed — the edge
                         // handles are the invitation; a pane that
                         // barges in over the match start isn't.

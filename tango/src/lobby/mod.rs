@@ -450,6 +450,21 @@ impl State {
         }
     }
 
+    /// Report that we've entered a match the lobby didn't broker (a direct
+    /// link), so the roster shows us playing. Lobby-brokered matches are marked
+    /// server-side on accept instead, so this is only for the direct path.
+    /// Invisible stays hidden (a now-playing status would reveal us); cleared by
+    /// [`Self::report_idle`] when the match ends.
+    pub fn report_in_match(&self, proposal: MatchProposal) {
+        if let (Connection::Connected { .. }, Some(handle)) = (&self.connection, &self.handle) {
+            handle.set_status(if self.invisible {
+                tango_lobby::Status::Invisible
+            } else {
+                tango_lobby::Status::InMatch(proposal)
+            });
+        }
+    }
+
     /// Re-assert our base presence (online / invisible) — call when a match
     /// ends to clear the "now playing" the server derived when the match was
     /// brokered. No-op unless connected (a disconnect already drops us from the
