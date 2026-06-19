@@ -1356,7 +1356,7 @@ impl App {
                         );
                         if direct {
                             if let Some(proposal) = self.current_proposal() {
-                                self.lobby.report_in_match(proposal);
+                                self.lobby.report_busy(proposal);
                             }
                         }
                         // Both setup drawers start closed — the edge

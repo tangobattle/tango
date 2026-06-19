@@ -110,8 +110,9 @@ pub enum Status {
     Online,
     /// Hidden — indistinguishable from offline to everyone else.
     Invisible,
-    /// Visible and in a match; the proposal renders as `now_playing`.
-    InMatch(pb::MatchProposal),
+    /// Visible but unavailable — in a match, or with a challenge in flight. The
+    /// proposal renders as `now_playing` on the wire.
+    Busy(pb::MatchProposal),
 }
 
 impl Status {
@@ -119,7 +120,7 @@ impl Status {
         let state = match self {
             Status::Online => pb::status::State::Online(pb::status::Online {}),
             Status::Invisible => pb::status::State::Invisible(pb::status::Invisible {}),
-            Status::InMatch(proposal) => pb::status::State::NowPlaying(proposal.clone()),
+            Status::Busy(proposal) => pb::status::State::NowPlaying(proposal.clone()),
         };
         pb::Status { state: Some(state) }
     }

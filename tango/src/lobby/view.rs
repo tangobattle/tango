@@ -61,7 +61,8 @@ pub struct Ctx<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Status {
     Online,
-    InMatch,
+    /// In a match, or with a challenge in flight — unavailable either way.
+    Busy,
     Offline,
 }
 
@@ -86,7 +87,7 @@ struct Player {
     incoming_seq: Option<u64>,
     incoming_label: Option<String>,
     incoming_blind: bool,
-    /// Loadout label of the match they're in, while `Status::InMatch`.
+    /// Loadout label of the match they're in, while `Status::Busy`.
     now_playing_label: Option<String>,
 }
 
@@ -249,7 +250,7 @@ fn player(ctx: &Ctx, code: FriendCode) -> Player {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
     let (status, now_playing_label) = match ctx.state.roster.get(&code) {
-        Some(Some(p)) => (Status::InMatch, Some(proposal_label(ctx.lang, p))),
+        Some(Some(p)) => (Status::Busy, Some(proposal_label(ctx.lang, p))),
         Some(None) => (Status::Online, None),
         None => (Status::Offline, None),
     };
@@ -411,7 +412,7 @@ fn name_slot<'a>(p: &Player, secondary: Option<Element<'a, Message>>) -> Element
 /// playing beneath the name while they're in a match.
 fn identity_lines<'a>(p: &Player) -> Element<'a, Message> {
     let secondary = match (p.status, &p.now_playing_label) {
-        (Status::InMatch, Some(playing)) => Some(clipped_line(playing.clone())),
+        (Status::Busy, Some(playing)) => Some(clipped_line(playing.clone())),
         _ => None,
     };
     row![avatar(&p.code_str, pip_of(p.status), 26.0), name_slot(p, secondary)]
@@ -841,7 +842,7 @@ fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<Fr
         // Allow challenging anyone who isn't already in a match — including
         // someone who reads as offline, since an invisible user shows that way
         // but can still receive (and answer) a challenge.
-        let can = p.status != Status::InMatch && ctx.netplay_idle && ctx.can_challenge;
+        let can = p.status != Status::Busy && ctx.netplay_idle && ctx.can_challenge;
         sub = sub.push(widgets::labeled_icon_button_maybe(
             Icon::Swords,
             t!(lang, "roster-challenge"),
@@ -1205,7 +1206,7 @@ fn hint_row<'a>(message: String) -> Element<'a, Message> {
 fn status_rank(status: Status) -> u8 {
     match status {
         Status::Online => 0,
-        Status::InMatch => 1,
+        Status::Busy => 1,
         Status::Offline => 2,
     }
 }
@@ -1213,7 +1214,7 @@ fn status_rank(status: Status) -> u8 {
 fn pip_of(status: Status) -> Pip {
     match status {
         Status::Online => Pip::Online,
-        Status::InMatch => Pip::Match,
+        Status::Busy => Pip::Match,
         Status::Offline => Pip::Off,
     }
 }
