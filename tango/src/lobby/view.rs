@@ -26,12 +26,6 @@ use crate::{game, rom, widgets};
 /// Fixed width of the presence sidebar — matches the prototype's roomier pane.
 pub const SIDEBAR_WIDTH: f32 = 320.0;
 
-/// Characters a single roster line (a challenge / now-playing loadout label)
-/// shows before it truncates to an ellipsis + tooltip. Kept low enough that the
-/// ellipsized text fits even the narrowest row (a challenge row, with its
-/// accept/decline buttons) so the "…" lands inside the clip rather than past it.
-const LINE_MAX_CHARS: usize = 24;
-
 /// Copy-feedback keys — distinct so copying your own code doesn't flash a
 /// profile's code button (and vice versa) when both are on screen.
 const SELF_CODE_FLASH_KEY: &str = "lobby-self-code";
@@ -269,10 +263,14 @@ fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
     friends.sort_by_key(order);
     online.sort_by_key(order);
 
+    // Friends keep showing while offline (so you can still challenge them — an
+    // "offline" friend may just be invisible), but the header counts only the
+    // ones actually present.
+    let friends_online = friends.iter().filter(|p| p.status != Status::Offline).count();
     let mut list = column![].spacing(style::PANE_GAP).width(Fill);
     if !friends.is_empty() {
         list = list.push(section(
-            t!(lang, "roster-friends", count = friends.len() as i64),
+            t!(lang, "roster-friends", count = friends_online as i64),
             &friends,
             ctx,
             incompatible,
@@ -422,23 +420,24 @@ fn incoming_row<'a>(ctx: &Ctx<'a>, p: &Player, incompatible: &BTreeSet<FriendCod
     .into()
 }
 
-/// Highlight plate for an incoming-challenge row — a strong primary-tinted wash
-/// plus a primary border so a pending challenge clearly stands out from the
-/// plain roster rows around it.
+/// Highlight plate for an incoming-challenge row — a strong wash in the Legacy
+/// Collection's selection yellow (the same register the replay list paints a
+/// picked row), so a pending challenge stands out from the plain rows. Just the
+/// row wash: a plain rounded plate, no tech-frame border.
 fn challenge_highlight(theme: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
-    let primary = theme.palette().primary;
+    let sel = crate::theme::SELECT_YELLOW;
     let bg = theme.palette().background;
     let wash = match status {
-        iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => 0.42,
-        _ => 0.30,
+        iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => 0.50,
+        _ => 0.38,
     };
     iced::widget::button::Style {
-        background: Some(iced::Background::Color(widgets::mix(bg, primary, wash))),
+        background: Some(iced::Background::Color(widgets::mix(bg, sel, wash))),
         text_color: theme.palette().text,
         border: iced::Border {
-            radius: widgets::tech_radius(4.0),
-            width: 1.0,
-            color: iced::Color { a: 0.7, ..primary },
+            radius: 4.0.into(),
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
         },
         ..Default::default()
     }
@@ -477,6 +476,10 @@ fn add_contact_bar<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
 fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<FriendCode>) -> Element<'a, Message> {
     let lang = ctx.lang;
     let p = player(ctx, code);
+    // Looking yourself up: it's not a peer you can friend or challenge, so the
+    // card just shows "You" like the footer chip. Your pip comes from
+    // self-status — you're never in your own roster, so `player` reads offline.
+    let is_me = ctx.state.friend_code() == Some(code);
     let challenging = ctx.state.outgoing_peer() == Some(code);
 
     let back = widgets::icon_button_styled(
@@ -487,38 +490,60 @@ fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<Fr
         widgets::flat,
     );
 
-    // Identity: avatar + rename field (the field *is* the name), with an X to
-    // clear the nickname (un-friend) once one is set. The field value borrows
-    // straight from `ctx.friends` so it lives as long as the element.
-    let nick_value: &'a str = ctx.friends.get(&p.code_str).map(String::as_str).unwrap_or("");
-    let code_for_rename = p.code_str.clone();
-    let rename = text_input(&t!(lang, "roster-name-placeholder"), nick_value)
-        .on_input(move |name| Message::SetNickname {
-            code: code_for_rename.clone(),
-            name,
-        })
-        .padding(STANDARD_PADDING)
-        .width(Fill)
-        .style(widgets::chunky_text_input);
-    let mut id_row = row![avatar(&p.code_str, pip_of(p.status), 40.0), rename]
+    let pip = if is_me {
+        self_pip(ctx.state.self_status())
+    } else {
+        pip_of(p.status)
+    };
+    // Identity: avatar + (for others) a rename field that *is* the name, with an
+    // X to clear it (un-friend); for yourself, a static "You" label. The field
+    // value borrows straight from `ctx.friends` so it lives as long as the element.
+    let id_row = if is_me {
+        row![
+            avatar(&p.code_str, pip, 40.0),
+            text(t!(lang, "roster-you")).size(TEXT_BODY).width(Fill),
+        ]
         .spacing(10)
-        .align_y(Alignment::Center);
-    if p.is_friend() {
-        let code_clear = p.code_str.clone();
-        id_row = id_row.push(widgets::icon_button_styled(
-            Icon::X,
-            t!(lang, "roster-remove-friend"),
-            Some(Message::SetNickname {
-                code: code_clear,
-                name: String::new(),
-            }),
-            STANDARD_PADDING,
-            widgets::flat,
-        ));
-    }
+        .align_y(Alignment::Center)
+    } else {
+        let nick_value: &'a str = ctx.friends.get(&p.code_str).map(String::as_str).unwrap_or("");
+        let code_for_rename = p.code_str.clone();
+        let rename = text_input(&t!(lang, "roster-name-placeholder"), nick_value)
+            .on_input(move |name| Message::SetNickname {
+                code: code_for_rename.clone(),
+                name,
+            })
+            .padding(STANDARD_PADDING)
+            .width(Fill)
+            .style(widgets::chunky_text_input);
+        let mut id_row = row![avatar(&p.code_str, pip, 40.0), rename]
+            .spacing(10)
+            .align_y(Alignment::Center);
+        if p.is_friend() {
+            let code_clear = p.code_str.clone();
+            id_row = id_row.push(widgets::icon_button_styled(
+                Icon::X,
+                t!(lang, "roster-remove-friend"),
+                Some(Message::SetNickname {
+                    code: code_clear,
+                    name: String::new(),
+                }),
+                STANDARD_PADDING,
+                widgets::flat,
+            ));
+        }
+        id_row
+    };
 
+    // Mask your own code on stream, like the footer chip does (copy still grabs
+    // the real one).
+    let shown_code = if is_me && ctx.streamer_mode {
+        "••••••".to_string()
+    } else {
+        p.code_str.clone()
+    };
     let code_line = row![
-        text(p.code_str.clone())
+        text(shown_code)
             .size(TEXT_CAPTION)
             .font(style::MONOSPACE_FONT)
             .style(widgets::muted_text_style),
@@ -544,6 +569,11 @@ fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<Fr
         .width(Fill)
         .height(Fill);
     let col = col.push(Space::new().height(Fill));
+
+    // Your own card stops here: nothing to accept, send, or cancel.
+    if is_me {
+        return col.into();
+    }
 
     // The challenge subsection, pinned to the bottom — its shape depends on the
     // relationship: they've challenged you → accept/decline; you've challenged
@@ -620,7 +650,10 @@ fn profile_panel<'a>(ctx: &Ctx<'a>, code: FriendCode, incompatible: &BTreeSet<Fr
         ));
     } else {
         sub = sub.push(challenge_settings(ctx));
-        let can = p.status == Status::Online && ctx.netplay_idle && ctx.can_challenge;
+        // Allow challenging anyone who isn't already in a match — including
+        // someone who reads as offline, since an invisible user shows that way
+        // but can still receive (and answer) a challenge.
+        let can = p.status != Status::InMatch && ctx.netplay_idle && ctx.can_challenge;
         sub = sub.push(widgets::labeled_icon_button_maybe(
             Icon::Swords,
             t!(lang, "roster-challenge"),
@@ -873,32 +906,78 @@ fn challenge_line<'a>(lang: &LanguageIdentifier, label: String, blind: bool) -> 
     row![line, eye].spacing(6).align_y(Alignment::Center).into()
 }
 
-/// One caption line that never overflows: a single non-wrapping line, bound to
-/// the width it's given and hard-clipped, so a long loadout/now-playing label
-/// truncates instead of wrapping or pushing the row wider. When it's also over
-/// `LINE_MAX_CHARS` it gets an ellipsis + a full-text tooltip.
+/// One caption line that never overflows: measured against the width it's
+/// actually allotted (via `responsive`) and truncated to a real ellipsis when
+/// it won't fit, with a full-text tooltip. The width comes from the layout, not
+/// a per-character guess, so the "…" lands wherever the text genuinely runs out.
 fn clipped_line<'a>(label: String) -> Element<'a, Message> {
-    let long = label.chars().count() > LINE_MAX_CHARS;
-    let shown = if long {
-        format!("{}…", label.chars().take(LINE_MAX_CHARS.saturating_sub(1)).collect::<String>())
-    } else {
-        label.clone()
-    };
-    let line = container(
-        text(shown)
-            .size(TEXT_CAPTION)
-            .style(widgets::muted_text_style)
-            .wrapping(iced::widget::text::Wrapping::None),
-    )
-    .width(Fill)
-    .clip(true);
-    if long {
-        tooltip(line, widgets::tooltip_bubble(label), tooltip::Position::Top)
-            .gap(4)
-            .into()
-    } else {
-        line.into()
+    let body = iced::widget::responsive(move |size| {
+        let (shown, long) = ellipsize_to(&label, size.width);
+        let line: Element<'_, Message> = container(
+            text(shown)
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style)
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .width(Fill)
+        .clip(true)
+        .into();
+        if long {
+            tooltip(line, widgets::tooltip_bubble(label.clone()), tooltip::Position::Top)
+                .gap(4)
+                .into()
+        } else {
+            line
+        }
+    });
+    // `responsive` fills its allotment in both axes; pin the height to one
+    // caption line so it doesn't stretch the row.
+    container(body)
+        .width(Fill)
+        .height(Length::Fixed((TEXT_CAPTION * 1.3).ceil()))
+        .into()
+}
+
+/// Logical width a caption-sized run of `s` occupies, measured by the real
+/// shaping engine (the global font system) so truncation matches the rendered
+/// glyphs rather than assuming a fixed per-character width.
+fn caption_width(s: &str) -> f32 {
+    use iced::advanced::text::Paragraph as _;
+    let para = iced_graphics::text::Paragraph::with_text(iced::advanced::text::Text {
+        content: s,
+        bounds: iced::Size::INFINITE,
+        size: iced::Pixels(TEXT_CAPTION),
+        line_height: iced::advanced::text::LineHeight::default(),
+        font: iced::Font::default(),
+        align_x: iced::advanced::text::Alignment::Default,
+        align_y: iced::alignment::Vertical::Top,
+        shaping: iced::advanced::text::Shaping::default(),
+        wrapping: iced::advanced::text::Wrapping::None,
+    });
+    para.min_width()
+}
+
+/// Largest character-boundary prefix of `label` whose shaped width plus an
+/// ellipsis fits within `avail` px, paired with whether it had to truncate.
+/// Binary search over the measured width — a fixed character budget is wrong
+/// for proportional fonts (an `m` is far wider than an `i`).
+fn ellipsize_to(label: &str, avail: f32) -> (String, bool) {
+    if avail <= 0.0 || caption_width(label) <= avail {
+        return (label.to_string(), false);
     }
+    let chars: Vec<char> = label.chars().collect();
+    // `lo` = chars that fit with the ellipsis appended; `hi` = upper bound.
+    let (mut lo, mut hi) = (0usize, chars.len());
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        let candidate: String = chars[..mid].iter().collect::<String>() + "…";
+        if caption_width(&candidate) <= avail {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    (chars[..lo].iter().collect::<String>() + "…", true)
 }
 
 fn section_label<'a>(label: String) -> Element<'a, Message> {
