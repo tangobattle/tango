@@ -99,23 +99,11 @@ pub struct State {
     /// Live connection objects, when post-negotiate. Cleared on
     /// Disconnect / Failed / on the next Connect.
     conn: Option<ConnectionHandles>,
-    /// Local ready handshake data: the random nonce we picked,
-    /// the zstd-compressed serialized NegotiatedState we
-    /// committed to, and the commitment we sent. Cleared on
-    /// Uncommit + on every settings change.
-    local_commit: Option<LocalCommit>,
-    /// Peer's most recently received Commit hash.
-    remote_commitment: Option<[u8; 16]>,
-    /// Reassembled peer chunks (zstd-compressed
-    /// NegotiatedState). Cleared whenever either side
-    /// uncommits / disconnects / fails. Finalized once an
-    /// empty-sentinel `Chunk` arrives — see the
-    /// `Message::RemoteChunk` handler.
-    remote_chunks: Vec<u8>,
-    /// Guards `maybe_kick_chunk_exchange` so it spawns the
-    /// chunk-sender task at most once per commit pairing.
-    /// Cleared on Uncommit / Disconnect / Failed.
-    local_chunks_sent: bool,
+    /// The "ready" commitment exchange — our commit, the peer's
+    /// commitment + reassembled chunks, and the chunk-send guard.
+    /// Reset together on every session boundary (see
+    /// [`Handshake::reset`]).
+    handshake: Handshake,
     /// Cancellation token shared with every in-flight async task
     /// (signaling, negotiate, lobby loop). `Disconnect` calls
     /// `cancel()`, which makes the running task short-circuit via
@@ -233,10 +221,7 @@ impl Default for State {
             post_lobby_receiver: Arc::new(std::sync::Mutex::new(None)),
             in_match_receiver_slot: Arc::new(std::sync::Mutex::new(None)),
             lobby: LobbyState::default(),
-            local_commit: None,
-            remote_commitment: None,
-            remote_chunks: Vec::new(),
-            local_chunks_sent: false,
+            handshake: Handshake::default(),
         }
     }
 }
@@ -251,6 +236,39 @@ struct LocalCommit {
     /// `zstd(bincode(state))` — the bytes we hash for our
     /// commitment and slice into the Chunk packets.
     compressed: Vec<u8>,
+}
+
+/// The ready/commitment exchange between the two lobby peers. Bundled
+/// out of [`State`] because the four fields move as a unit: every
+/// session boundary ([`State::cancel_and_renew`], peer-disconnect,
+/// handoff finish) wipes them together.
+#[derive(Default)]
+struct Handshake {
+    /// Local ready handshake data: the random nonce we picked, the
+    /// zstd-compressed serialized NegotiatedState we committed to, and
+    /// the commitment we sent. Cleared on Uncommit + on every settings
+    /// change.
+    local_commit: Option<LocalCommit>,
+    /// Peer's most recently received Commit hash.
+    remote_commitment: Option<[u8; 16]>,
+    /// Reassembled peer chunks (zstd-compressed NegotiatedState).
+    /// Cleared whenever either side uncommits / disconnects / fails.
+    /// Finalized once an empty-sentinel `Chunk` arrives — see the
+    /// `Message::RemoteChunk` handler.
+    remote_chunks: Vec<u8>,
+    /// Guards `maybe_kick_chunk_exchange` so it spawns the chunk-sender
+    /// task at most once per commit pairing. Cleared on Uncommit /
+    /// Disconnect / Failed.
+    local_chunks_sent: bool,
+}
+
+impl Handshake {
+    /// Drop every commitment field — both sides' commits, the chunk
+    /// buffer, and the send-once guard. Used at session boundaries
+    /// where the whole exchange is starting over.
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
 }
 
 /// Handles we hang onto for the duration of a connected session:
@@ -463,10 +481,7 @@ impl State {
         self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
         self.conn = None;
         self.lobby = LobbyState::default();
-        self.local_commit = None;
-        self.remote_commitment = None;
-        self.remote_chunks.clear();
-        self.local_chunks_sent = false;
+        self.handshake.reset();
     }
 
     /// Apply a Message. Returns the iced Task to schedule for any
@@ -477,192 +492,18 @@ impl State {
                 link_code,
                 endpoint,
                 use_relay,
-            } => {
-                self.cancel_and_renew();
-                self.phase = Phase::Connecting {
-                    ident: LinkIdent::Matchmaking(link_code.clone()),
-                    waiting_for_opponent: false,
-                };
-                let cancel = self.cancel.clone();
-                iced::Task::perform(
-                    run_signaling_connect(endpoint, link_code, use_relay, cancel),
-                    map_signaling_hello_result,
-                )
-            }
-            Message::ConnectDirect { role } => {
-                self.cancel_and_renew();
-                // Host = "waiting for inbound peer" (accept() is
-                // the slow await); Connect = "actively dialing"
-                // (mirrors the matchmaking-path semantics so the
-                // existing waiting-screen UI reads correctly).
-                let waiting_for_opponent = matches!(role, DirectRole::Host { .. });
-                self.phase = Phase::Connecting {
-                    ident: LinkIdent::Direct(role.clone()),
-                    waiting_for_opponent,
-                };
-                let cancel = self.cancel.clone();
-                iced::Task::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
-            }
-            Message::SignalingHelloReceived(slot_rx) => {
-                let ident = match &self.phase {
-                    Phase::Connecting { ident, .. } => ident.clone(),
-                    // Cancelled / superseded — late delivery, ignore.
-                    _ => return iced::Task::none(),
-                };
-                let Some(hello) = slot_rx.lock().unwrap().take() else {
-                    return iced::Task::none();
-                };
-                self.phase = Phase::Connecting {
-                    ident,
-                    waiting_for_opponent: true,
-                };
-                let cancel = self.cancel.clone();
-                iced::Task::perform(run_await_peer(hello, cancel), map_connect_result)
-            }
-            Message::SignalingDone(slot_rx) => {
-                let ident = match &self.phase {
-                    Phase::Connecting { ident, .. } => ident.clone(),
-                    // Cancelled / superseded — late delivery, ignore.
-                    _ => return iced::Task::none(),
-                };
-                let Some(payload) = slot_rx.lock().unwrap().take() else {
-                    return iced::Task::none();
-                };
-                self.phase = Phase::Negotiating { ident };
-                let cancel = self.cancel.clone();
-                iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
-            }
-            Message::NegotiationDone(slot_rx) => {
-                // Accept both `Connecting` (direct path: the bring-up
-                // and negotiate are folded into one task and skip the
-                // intermediate Negotiating phase) and `Negotiating`
-                // (matchmaking path: signaling + peer-await + negotiate
-                // are split stages). Either is a valid
-                // Connect-or-Direct-Connect lifecycle that's progressed
-                // past the wire handshake.
-                let ident = match &self.phase {
-                    Phase::Negotiating { ident } => ident.clone(),
-                    Phase::Connecting { ident, .. } => ident.clone(),
-                    _ => return iced::Task::none(),
-                };
-                let Some(out) = slot_rx.lock().unwrap().take() else {
-                    return iced::Task::none();
-                };
-                let sender = out.sender.clone();
-                // Resolve how the transport actually flows for the
-                // lobby's ping line. We read the selected ICE pair — a
-                // `typ relay` candidate on either end means TURN. The
-                // signaling-free direct path only ever forms host
-                // candidate pairs, so it resolves to Direct.
-                self.lobby.connection_kind = out.peer_conn.selected_candidate_pair().ok().map(|(local, remote)| {
-                    if local.contains("typ relay") || remote.contains("typ relay") {
-                        ConnectionKind::Relayed
-                    } else {
-                        ConnectionKind::Direct
-                    }
-                });
-                // Park the unreliable in-match receiver for the PvP handoff.
-                // Nothing flows on it during the lobby (all lobby traffic is on
-                // the reliable channel), so — unlike the reliable receiver — it
-                // isn't owned by the lobby loop and can be stashed here right
-                // away.
-                *self.in_match_receiver_slot.lock().unwrap() = Some(out.in_match_receiver);
-                self.conn = Some(ConnectionHandles {
-                    sender: out.sender,
-                    in_match_sender: out.in_match_sender,
-                    peer_conn: out.peer_conn,
-                    is_offerer: out.is_offerer,
-                });
-                // Spawn the lobby loop as a detached tokio task.
-                // It owns the data-channel receiver and bridges
-                // its observations through `event_tx` to the iced
-                // subscription. Decoupling the loop from the iced
-                // subscription's future means an incidental
-                // subscription drop (e.g. take_pre_match flipping
-                // phase → Idle before the loop has noticed the
-                // cancel) can no longer abort the loop mid-await
-                // and lose the receiver.
-                let (event_tx, event_rx) = futures::channel::mpsc::unbounded();
-                *self.lobby_event_rx_slot.lock().unwrap() = Some(event_rx);
-                let cancel = self.cancel.clone();
-                let post = self.post_lobby_receiver.clone();
-                let receiver = out.receiver;
-                tokio::spawn(async move {
-                    let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
-                    *post.lock().unwrap() = Some(receiver);
-                });
-                self.phase = Phase::Lobby { ident };
-                iced::Task::none()
-            }
+            } => self.connect(link_code, endpoint, use_relay),
+            Message::ConnectDirect { role } => self.connect_direct(role),
+            Message::SignalingHelloReceived(slot_rx) => self.on_signaling_hello(slot_rx),
+            Message::SignalingDone(slot_rx) => self.on_signaling_done(slot_rx),
+            Message::NegotiationDone(slot_rx) => self.on_negotiation_done(slot_rx),
             Message::PingMeasured(dur) => {
                 self.lobby.latency_counter.mark(dur);
                 iced::Task::none()
             }
-            Message::SendLocalSettings(settings) => {
-                // Only meaningful in Lobby phase; ignore late
-                // arrivals after a Disconnect/Failed.
-                if !matches!(self.phase, Phase::Lobby { .. }) {
-                    return iced::Task::none();
-                }
-                // Dedupe — `make_local_settings()` re-runs on
-                // every Play / Netplay handler dispatch and most
-                // of those don't actually change anything that
-                // crosses the wire.
-                if self.lobby.local.as_ref() == Some(&*settings) {
-                    return iced::Task::none();
-                }
-                let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
-                    return iced::Task::none();
-                };
-                // If the material parts of Settings changed (game
-                // selection / match type — i.e. anything the
-                // commitment was implicitly tied to) drop the
-                // local commit so the peer doesn't think we're
-                // still committed to the old save. Nickname /
-                // available-games churn is excluded so harmless
-                // metadata refreshes don't kick the user out of
-                // the ready state.
-                let invalidate = match self.lobby.local.as_ref() {
-                    Some(prev) if settings_materially_differ(prev, &settings) => self.invalidate_local_commit(),
-                    _ => iced::Task::none(),
-                };
-                self.lobby.local = Some(*settings.clone());
-                let send = iced::Task::perform(
-                    async move {
-                        sender
-                            .lock()
-                            .await
-                            .send_settings(*settings)
-                            .await
-                            .map_err(|e| format!("send_settings: {e}"))
-                    },
-                    |r| match r {
-                        Ok(()) => Message::WireOpDone,
-                        Err(e) => Message::Failed(e),
-                    },
-                );
-                iced::Task::batch([invalidate, send])
-            }
+            Message::SendLocalSettings(settings) => self.send_local_settings(settings),
             Message::WireOpDone => iced::Task::none(),
-            Message::RemoteSettings(settings) => {
-                // Visibility downgrade (peer's setup used to be
-                // visible, now they've blinded it): drop our local
-                // commit so we re-commit explicitly under the new
-                // visibility contract. Matches the legacy app
-                // (gui/play_pane.rs::handle_settings).
-                let downgrade = self
-                    .lobby
-                    .remote
-                    .as_ref()
-                    .map(|prev| !prev.blind_setup && settings.blind_setup)
-                    .unwrap_or(false);
-                self.lobby.remote = Some(*settings);
-                if downgrade {
-                    self.invalidate_local_commit()
-                } else {
-                    iced::Task::none()
-                }
-            }
+            Message::RemoteSettings(settings) => self.on_remote_settings(settings),
             Message::SetMatchType(mt) => {
                 self.lobby.match_type = mt;
                 // Don't unready here directly — the App fires a
@@ -671,39 +512,20 @@ impl State {
                 // material-diff check.
                 iced::Task::none()
             }
-            Message::SetBlindSetup(v) => {
-                let prev = self.lobby.blind_setup;
-                self.lobby.blind_setup = v;
-                // Downgrading our own visibility (blind flips on):
-                // drop the *peer's* commit so they re-commit under
-                // the new visibility contract. Matches legacy
-                // `set_reveal_setup` in gui/play_pane.rs.
-                if !prev && v {
-                    self.remote_commitment = None;
-                    self.remote_chunks.clear();
-                    self.lobby.remote_ready = false;
-                    self.lobby.remote_match_ready = false;
-                    self.lobby.match_ready = false;
-                }
-                // App fires a settings resend after this. The
-                // SendLocalSettings material-diff check doesn't
-                // include blind_setup, so a same-game blind
-                // toggle doesn't drop our own commit unnecessarily.
-                iced::Task::none()
-            }
+            Message::SetBlindSetup(v) => self.set_blind_setup(v),
             Message::Commit { save_sram } => self.commit_local(save_sram),
             Message::Uncommit => self.invalidate_local_commit(),
             Message::RemoteCommit(c) => {
-                self.remote_commitment = Some(c);
-                self.remote_chunks.clear();
+                self.handshake.remote_commitment = Some(c);
+                self.handshake.remote_chunks.clear();
                 self.lobby.remote_ready = true;
                 // First chunk send happens once both sides have
                 // committed. Until then we just sit ready.
                 self.maybe_kick_chunk_exchange()
             }
             Message::RemoteUncommit => {
-                self.remote_commitment = None;
-                self.remote_chunks.clear();
+                self.handshake.remote_commitment = None;
+                self.handshake.remote_chunks.clear();
                 self.lobby.remote_ready = false;
                 self.lobby.match_ready = false;
                 iced::Task::none()
@@ -717,7 +539,7 @@ impl State {
                 if c.is_empty() {
                     self.try_finish_handshake()
                 } else {
-                    self.remote_chunks.extend_from_slice(&c);
+                    self.handshake.remote_chunks.extend_from_slice(&c);
                     iced::Task::none()
                 }
             }
@@ -737,33 +559,7 @@ impl State {
                 iced::Task::none()
             }
             Message::Cancelled => iced::Task::none(),
-            Message::PeerDisconnected => {
-                // Remote side cancelled / closed the data channel.
-                // Park netplay in Failed (with a peer-cancelled
-                // marker the UI surfaces) instead of silently
-                // dropping back to Idle, so the user sees what
-                // happened and clears it explicitly. We tear
-                // down the live connection here but deliberately
-                // do NOT wipe `self.lobby` — the opponent's
-                // card stays populated with their last-known
-                // nickname / game so the "they left" banner has
-                // a face attached to it.
-                self.cancel.cancel();
-                self.cancel = CancellationToken::new();
-                self.session_id = self.session_id.wrapping_add(1);
-                self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
-                self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
-                self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
-                self.conn = None;
-                self.local_commit = None;
-                self.remote_commitment = None;
-                self.remote_chunks.clear();
-                self.local_chunks_sent = false;
-                self.phase = Phase::Failed {
-                    error: "peer-disconnected".to_string(),
-                };
-                iced::Task::none()
-            }
+            Message::PeerDisconnected => self.on_peer_disconnected(),
             Message::Disconnect => {
                 self.cancel_and_renew();
                 self.phase = Phase::Idle;
@@ -772,13 +568,265 @@ impl State {
         }
     }
 
+    /// `Message::Connect` — start the matchmaking-server connect task.
+    fn connect(&mut self, link_code: String, endpoint: String, use_relay: Option<bool>) -> iced::Task<Message> {
+        self.cancel_and_renew();
+        self.phase = Phase::Connecting {
+            ident: LinkIdent::Matchmaking(link_code.clone()),
+            waiting_for_opponent: false,
+        };
+        let cancel = self.cancel.clone();
+        iced::Task::perform(
+            run_signaling_connect(endpoint, link_code, use_relay, cancel),
+            map_signaling_hello_result,
+        )
+    }
+
+    /// `Message::ConnectDirect` — start the signaling-free direct path.
+    fn connect_direct(&mut self, role: DirectRole) -> iced::Task<Message> {
+        self.cancel_and_renew();
+        // Host = "waiting for inbound peer" (accept() is
+        // the slow await); Connect = "actively dialing"
+        // (mirrors the matchmaking-path semantics so the
+        // existing waiting-screen UI reads correctly).
+        let waiting_for_opponent = matches!(role, DirectRole::Host { .. });
+        self.phase = Phase::Connecting {
+            ident: LinkIdent::Direct(role.clone()),
+            waiting_for_opponent,
+        };
+        let cancel = self.cancel.clone();
+        iced::Task::perform(run_direct_rtc_negotiate(role, cancel), map_negotiate_result)
+    }
+
+    /// `Message::SignalingHelloReceived` — server hello arrived; flip to
+    /// "waiting for opponent" and kick off the WebRTC await task.
+    fn on_signaling_hello(&mut self, slot_rx: Slot<SignalingHello>) -> iced::Task<Message> {
+        let ident = match &self.phase {
+            Phase::Connecting { ident, .. } => ident.clone(),
+            // Cancelled / superseded — late delivery, ignore.
+            _ => return iced::Task::none(),
+        };
+        let Some(hello) = slot_rx.lock().unwrap().take() else {
+            return iced::Task::none();
+        };
+        self.phase = Phase::Connecting {
+            ident,
+            waiting_for_opponent: true,
+        };
+        let cancel = self.cancel.clone();
+        iced::Task::perform(run_await_peer(hello, cancel), map_connect_result)
+    }
+
+    /// `Message::SignalingDone` — WebRTC handshake resolved; run the protocol
+    /// negotiate task before lifecycle moves out of Connecting.
+    fn on_signaling_done(&mut self, slot_rx: Slot<ConnectionPayload>) -> iced::Task<Message> {
+        let ident = match &self.phase {
+            Phase::Connecting { ident, .. } => ident.clone(),
+            // Cancelled / superseded — late delivery, ignore.
+            _ => return iced::Task::none(),
+        };
+        let Some(payload) = slot_rx.lock().unwrap().take() else {
+            return iced::Task::none();
+        };
+        self.phase = Phase::Negotiating { ident };
+        let cancel = self.cancel.clone();
+        iced::Task::perform(run_negotiate(payload, cancel), map_negotiate_result)
+    }
+
+    /// `Message::NegotiationDone` — protocol handshake complete; install the
+    /// connection handles, park the in-match receiver, and spawn the lobby loop.
+    fn on_negotiation_done(&mut self, slot_rx: Slot<NegotiationOutput>) -> iced::Task<Message> {
+        // Accept both `Connecting` (direct path: the bring-up
+        // and negotiate are folded into one task and skip the
+        // intermediate Negotiating phase) and `Negotiating`
+        // (matchmaking path: signaling + peer-await + negotiate
+        // are split stages). Either is a valid
+        // Connect-or-Direct-Connect lifecycle that's progressed
+        // past the wire handshake.
+        let ident = match &self.phase {
+            Phase::Negotiating { ident } => ident.clone(),
+            Phase::Connecting { ident, .. } => ident.clone(),
+            _ => return iced::Task::none(),
+        };
+        let Some(out) = slot_rx.lock().unwrap().take() else {
+            return iced::Task::none();
+        };
+        let sender = out.sender.clone();
+        // Resolve how the transport actually flows for the
+        // lobby's ping line. We read the selected ICE pair — a
+        // `typ relay` candidate on either end means TURN. The
+        // signaling-free direct path only ever forms host
+        // candidate pairs, so it resolves to Direct.
+        self.lobby.connection_kind = out.peer_conn.selected_candidate_pair().ok().map(|(local, remote)| {
+            if local.contains("typ relay") || remote.contains("typ relay") {
+                ConnectionKind::Relayed
+            } else {
+                ConnectionKind::Direct
+            }
+        });
+        // Park the unreliable in-match receiver for the PvP handoff.
+        // Nothing flows on it during the lobby (all lobby traffic is on
+        // the reliable channel), so — unlike the reliable receiver — it
+        // isn't owned by the lobby loop and can be stashed here right
+        // away.
+        *self.in_match_receiver_slot.lock().unwrap() = Some(out.in_match_receiver);
+        self.conn = Some(ConnectionHandles {
+            sender: out.sender,
+            in_match_sender: out.in_match_sender,
+            peer_conn: out.peer_conn,
+            is_offerer: out.is_offerer,
+        });
+        // Spawn the lobby loop as a detached tokio task.
+        // It owns the data-channel receiver and bridges
+        // its observations through `event_tx` to the iced
+        // subscription. Decoupling the loop from the iced
+        // subscription's future means an incidental
+        // subscription drop (e.g. take_pre_match flipping
+        // phase → Idle before the loop has noticed the
+        // cancel) can no longer abort the loop mid-await
+        // and lose the receiver.
+        let (event_tx, event_rx) = futures::channel::mpsc::unbounded();
+        *self.lobby_event_rx_slot.lock().unwrap() = Some(event_rx);
+        let cancel = self.cancel.clone();
+        let post = self.post_lobby_receiver.clone();
+        let receiver = out.receiver;
+        tokio::spawn(async move {
+            let receiver = run_lobby_loop(receiver, sender, event_tx, cancel).await;
+            *post.lock().unwrap() = Some(receiver);
+        });
+        self.phase = Phase::Lobby { ident };
+        iced::Task::none()
+    }
+
+    /// `Message::SendLocalSettings` — push our Settings packet (Lobby only),
+    /// deduping against the last sent value and dropping the local commit on a
+    /// material change.
+    fn send_local_settings(&mut self, settings: Box<crate::net::protocol::Settings>) -> iced::Task<Message> {
+        // Only meaningful in Lobby phase; ignore late
+        // arrivals after a Disconnect/Failed.
+        if !matches!(self.phase, Phase::Lobby { .. }) {
+            return iced::Task::none();
+        }
+        // Dedupe — `make_local_settings()` re-runs on
+        // every Play / Netplay handler dispatch and most
+        // of those don't actually change anything that
+        // crosses the wire.
+        if self.lobby.local.as_ref() == Some(&*settings) {
+            return iced::Task::none();
+        }
+        let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
+            return iced::Task::none();
+        };
+        // If the material parts of Settings changed (game
+        // selection / match type — i.e. anything the
+        // commitment was implicitly tied to) drop the
+        // local commit so the peer doesn't think we're
+        // still committed to the old save. Nickname /
+        // available-games churn is excluded so harmless
+        // metadata refreshes don't kick the user out of
+        // the ready state.
+        let invalidate = match self.lobby.local.as_ref() {
+            Some(prev) if settings_materially_differ(prev, &settings) => self.invalidate_local_commit(),
+            _ => iced::Task::none(),
+        };
+        self.lobby.local = Some(*settings.clone());
+        let send = iced::Task::perform(
+            async move {
+                sender
+                    .lock()
+                    .await
+                    .send_settings(*settings)
+                    .await
+                    .map_err(|e| format!("send_settings: {e}"))
+            },
+            |r| match r {
+                Ok(()) => Message::WireOpDone,
+                Err(e) => Message::Failed(e),
+            },
+        );
+        iced::Task::batch([invalidate, send])
+    }
+
+    /// `Message::RemoteSettings` — peer's Settings landed; record them and
+    /// drop our commit if they downgraded visibility.
+    fn on_remote_settings(&mut self, settings: Box<crate::net::protocol::Settings>) -> iced::Task<Message> {
+        // Visibility downgrade (peer's setup used to be
+        // visible, now they've blinded it): drop our local
+        // commit so we re-commit explicitly under the new
+        // visibility contract. Matches the legacy app
+        // (gui/play_pane.rs::handle_settings).
+        let downgrade = self
+            .lobby
+            .remote
+            .as_ref()
+            .map(|prev| !prev.blind_setup && settings.blind_setup)
+            .unwrap_or(false);
+        self.lobby.remote = Some(*settings);
+        if downgrade {
+            self.invalidate_local_commit()
+        } else {
+            iced::Task::none()
+        }
+    }
+
+    /// `Message::SetBlindSetup` — toggle our blind-setup flag; flipping it on
+    /// drops the peer's commit (they must re-commit under the new contract).
+    fn set_blind_setup(&mut self, v: bool) -> iced::Task<Message> {
+        let prev = self.lobby.blind_setup;
+        self.lobby.blind_setup = v;
+        // Downgrading our own visibility (blind flips on):
+        // drop the *peer's* commit so they re-commit under
+        // the new visibility contract. Matches legacy
+        // `set_reveal_setup` in gui/play_pane.rs.
+        if !prev && v {
+            self.handshake.remote_commitment = None;
+            self.handshake.remote_chunks.clear();
+            self.lobby.remote_ready = false;
+            self.lobby.remote_match_ready = false;
+            self.lobby.match_ready = false;
+        }
+        // App fires a settings resend after this. The
+        // SendLocalSettings material-diff check doesn't
+        // include blind_setup, so a same-game blind
+        // toggle doesn't drop our own commit unnecessarily.
+        iced::Task::none()
+    }
+
+    /// `Message::PeerDisconnected` — peer closed the data channel cleanly.
+    /// Tear the live connection down into a sticky Failed banner, but keep
+    /// `self.lobby` so the opponent card still has a face on it.
+    fn on_peer_disconnected(&mut self) -> iced::Task<Message> {
+        // Remote side cancelled / closed the data channel.
+        // Park netplay in Failed (with a peer-cancelled
+        // marker the UI surfaces) instead of silently
+        // dropping back to Idle, so the user sees what
+        // happened and clears it explicitly. We tear
+        // down the live connection here but deliberately
+        // do NOT wipe `self.lobby` — the opponent's
+        // card stays populated with their last-known
+        // nickname / game so the "they left" banner has
+        // a face attached to it.
+        self.cancel.cancel();
+        self.cancel = CancellationToken::new();
+        self.session_id = self.session_id.wrapping_add(1);
+        self.lobby_event_rx_slot = Arc::new(std::sync::Mutex::new(None));
+        self.post_lobby_receiver = Arc::new(std::sync::Mutex::new(None));
+        self.in_match_receiver_slot = Arc::new(std::sync::Mutex::new(None));
+        self.conn = None;
+        self.handshake.reset();
+        self.phase = Phase::Failed {
+            error: "peer-disconnected".to_string(),
+        };
+        iced::Task::none()
+    }
+
     /// Drop the local commitment + reset the related lobby flags.
     /// If we had previously sent a Commit, also fires an Uncommit
     /// packet so the peer doesn't sit waiting for our chunks.
     fn invalidate_local_commit(&mut self) -> iced::Task<Message> {
-        let had_commit = self.local_commit.is_some();
-        self.local_commit = None;
-        self.local_chunks_sent = false;
+        let had_commit = self.handshake.local_commit.is_some();
+        self.handshake.local_commit = None;
+        self.handshake.local_chunks_sent = false;
         self.lobby.local_ready = false;
         self.lobby.match_ready = false;
         if !had_commit {
@@ -833,8 +881,8 @@ impl State {
             }
         };
         let commitment = make_commitment(&compressed);
-        self.local_commit = Some(LocalCommit { state, compressed });
-        self.local_chunks_sent = false;
+        self.handshake.local_commit = Some(LocalCommit { state, compressed });
+        self.handshake.local_chunks_sent = false;
         self.lobby.local_ready = true;
 
         let send_commit = iced::Task::perform(
@@ -859,14 +907,17 @@ impl State {
     /// called from both Commit and RemoteCommit handlers, fires
     /// the task exactly once per commit pairing.
     fn maybe_kick_chunk_exchange(&mut self) -> iced::Task<Message> {
-        if self.local_chunks_sent || self.local_commit.is_none() || self.remote_commitment.is_none() {
+        if self.handshake.local_chunks_sent
+            || self.handshake.local_commit.is_none()
+            || self.handshake.remote_commitment.is_none()
+        {
             return iced::Task::none();
         }
         let Some(sender) = self.conn.as_ref().map(|c| c.sender.clone()) else {
             return iced::Task::none();
         };
-        let compressed = self.local_commit.as_ref().unwrap().compressed.clone();
-        self.local_chunks_sent = true;
+        let compressed = self.handshake.local_commit.as_ref().unwrap().compressed.clone();
+        self.handshake.local_chunks_sent = true;
         let cancel = self.cancel.clone();
         iced::Task::perform(
             async move {
@@ -905,10 +956,10 @@ impl State {
     /// chunks, decodes their NegotiatedState (sanity), flips
     /// `match_ready`, then fires StartMatch.
     fn try_finish_handshake(&mut self) -> iced::Task<Message> {
-        let Some(remote_commitment) = self.remote_commitment else {
+        let Some(remote_commitment) = self.handshake.remote_commitment else {
             return iced::Task::done(Message::Failed("peer sent end-of-chunks before Commit".to_string()));
         };
-        if self.local_commit.is_none() {
+        if self.handshake.local_commit.is_none() {
             // Their stream is here but we haven't committed yet —
             // just hold the bytes; finalization runs once we
             // commit + their stream re-finalizes via the
@@ -916,7 +967,7 @@ impl State {
             // just bail until both sides are ready.
             return iced::Task::none();
         }
-        let actual = make_commitment(&self.remote_chunks);
+        let actual = make_commitment(&self.handshake.remote_chunks);
         if !bool::from(actual.ct_eq(&remote_commitment)) {
             return iced::Task::done(Message::Failed("peer commitment mismatch".to_string()));
         }
@@ -924,7 +975,7 @@ impl State {
         // don't use it for anything until round 6 (PvP session
         // handoff), but verifying that it parses now means we
         // catch wire-format breakage before the user hits Play.
-        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)) {
+        let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)) {
             Ok(b) => b,
             Err(e) => {
                 return iced::Task::done(Message::Failed(format!("zstd decode: {e}")));
@@ -986,13 +1037,13 @@ impl State {
             return None;
         }
         let handles = self.conn.take()?;
-        let local_commit = self.local_commit.take()?;
+        let local_commit = self.handshake.local_commit.take()?;
         let local_settings = self.lobby.local.clone()?;
         let remote_settings = self.lobby.remote.clone()?;
         // Decompress + decode peer's NegotiatedState — we already
         // verified its hash in try_finish_handshake; this is just
         // to recover the nonce + save_data.
-        let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.remote_chunks)).ok()?;
+        let peer_state_bytes = zstd::stream::decode_all(std::io::Cursor::new(&self.handshake.remote_chunks)).ok()?;
         let peer_state = crate::net::protocol::NegotiatedState::deserialize(&peer_state_bytes).ok()?;
         // Direct-TCP codes carry no remote-discoverable identity,
         // so the replay metadata's `link_code` slot is left empty
@@ -1048,9 +1099,9 @@ impl State {
     pub fn finish_handoff(&mut self) {
         self.phase = Phase::Idle;
         self.lobby = LobbyState::default();
-        self.remote_commitment = None;
-        self.remote_chunks.clear();
-        self.local_chunks_sent = false;
+        self.handshake.remote_commitment = None;
+        self.handshake.remote_chunks.clear();
+        self.handshake.local_chunks_sent = false;
     }
 
     /// True once both sides have exchanged StartMatch and the
