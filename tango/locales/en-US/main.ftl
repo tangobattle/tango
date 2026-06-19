@@ -49,6 +49,8 @@ lobby-decline = Decline
 # Presence sidebar (roster)
 roster-zone = Who's around
 roster-empty = No one's around
+roster-friends = Friends ({ $count })
+roster-online = Online ({ $count })
 roster-lookup = Look up by friend code
 roster-lookup-placeholder = Friend code
 roster-decline = Decline

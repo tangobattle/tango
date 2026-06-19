@@ -241,6 +241,11 @@ pub struct Config {
     /// each lobby remains independently toggleable thereafter.
     #[serde(default)]
     pub last_blind_setup: bool,
+    /// Last presence the user picked in the lobby (online / invisible /
+    /// offline). Restored on launch so reopening Tango comes up the way they
+    /// left it — Offline stays disconnected until they go back online.
+    #[serde(default)]
+    pub lobby_status: crate::lobby::SelfStatus,
 }
 
 impl Default for Config {
@@ -281,6 +286,7 @@ impl Default for Config {
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
             last_blind_setup: false,
+            lobby_status: crate::lobby::SelfStatus::default(),
         }
     }
 }

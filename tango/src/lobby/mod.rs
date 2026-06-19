@@ -30,8 +30,9 @@ type EventRx = tokio::sync::mpsc::UnboundedReceiver<Event>;
 /// Your own presence, IM-client style. Online and Invisible are both
 /// *connected* (you see the roster and can challenge); Invisible hides you
 /// from everyone else's roster. Offline tears the presence connection down.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SelfStatus {
+    #[default]
     Online,
     Invisible,
     Offline,
@@ -180,8 +181,15 @@ pub enum Message {
 }
 
 impl State {
-    pub fn new(endpoint: String, identity: Option<tango_lobby::ClientIdentity>) -> Self {
-        let connection = if identity.is_some() {
+    pub fn new(endpoint: String, identity: Option<tango_lobby::ClientIdentity>, initial_status: SelfStatus) -> Self {
+        // Restore the user's last presence: Offline stays disconnected until
+        // they pick Online/Invisible; otherwise we dial (Invisible just comes up
+        // hidden — see `connect`).
+        let user_offline = initial_status == SelfStatus::Offline;
+        let invisible = initial_status == SelfStatus::Invisible;
+        let connection = if user_offline {
+            Connection::Disconnected("offline".to_string())
+        } else if identity.is_some() {
             Connection::Connecting
         } else {
             Connection::NoIdentity
@@ -189,8 +197,8 @@ impl State {
         Self {
             endpoint,
             identity,
-            invisible: false,
-            user_offline: false,
+            invisible,
+            user_offline,
             connection,
             roster: std::collections::BTreeMap::new(),
             incoming: std::collections::BTreeMap::new(),
@@ -268,6 +276,10 @@ impl State {
     /// `tango_lobby` driver handles transparent reconnects after that. Comes up
     /// Invisible if that's the user's current pick.
     pub fn connect(&mut self) -> iced::Task<Message> {
+        // Deliberately Offline — don't dial until the user picks Online/Invisible.
+        if self.user_offline {
+            return iced::Task::none();
+        }
         let Some(identity) = self.identity.clone() else {
             self.connection = Connection::NoIdentity;
             return iced::Task::none();

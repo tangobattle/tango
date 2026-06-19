@@ -3,8 +3,8 @@ use super::*;
 impl App {
     /// Apply a loadout-strip message (from either tab) to the shared
     /// App-level [`loadout::Loadout`] and run the selection-change
-    /// follow-ups. The caller batches a lobby settings-resend after
-    /// this, so a mid-lobby save/patch switch reaches the peer.
+    /// follow-ups, including re-sending any outstanding lobby challenge so a
+    /// mid-setup save/patch/game switch reaches the peer.
     pub(super) fn update_loadout(&mut self, msg: loadout::Message) -> iced::Task<Message> {
         let Some(effect) = self.loadout.update(msg, &self.scanners, &self.config) else {
             return iced::Task::none();
@@ -18,7 +18,8 @@ impl App {
                 // type (Triple where supported) instead of the
                 // last game's pick.
                 self.apply_default_match_type();
-                iced::Task::none()
+                // Push the new loadout to anyone we're currently challenging.
+                self.refresh_outgoing_challenge()
             }
             loadout::Effect::Rescan => self.rescan_off_thread(RescanFollowup::Refresh),
         }

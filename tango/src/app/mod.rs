@@ -385,7 +385,7 @@ impl App {
 
         // Persistent self-signed identity, loaded once and handed to the lobby
         // client to present as its mTLS client certificate.
-        let lobby = lobby::State::new(config.lobby_endpoint.clone(), identity::load());
+        let lobby = lobby::State::new(config.lobby_endpoint.clone(), identity::load(), config.lobby_status);
 
         let mut app = Self {
             config,
@@ -414,6 +414,10 @@ impl App {
             screen_enter_scope: EnterScope::Root { dy: ROOT_SLIDE },
         };
         app.refresh_loaded();
+        // Seed the proposal's default match type for the restored game (the
+        // SelectionChanged path that normally drives this doesn't fire for the
+        // startup restore), so a fresh launch defaults to Triple where supported.
+        app.apply_default_match_type();
         let stats_task = app.kick_replay_stats_loader().map(Message::Replays);
         let lobby_task = app.lobby.connect().map(Message::Lobby);
         (app, iced::Task::batch([stats_task, lobby_task]))
@@ -479,19 +483,26 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
-            // The match settings feed `current_proposal` — stash them on the
-            // netplay lobby state the proposal builder reads (no live
-            // connection during challenge setup, so nothing to resend).
+            // Remember the user's presence so reopening Tango comes back the
+            // same way; the lobby state derives the connect/disconnect from it.
+            lobby::Message::SetSelfStatus(status) => {
+                self.config.lobby_status = status;
+                self.persist_config();
+                self.lobby.set_self_status(status).map(Message::Lobby)
+            }
+            // The match settings feed `current_proposal`. Stash them on the
+            // netplay lobby state the proposal builder reads, then re-send any
+            // outstanding challenge so the peer sees the updated terms.
             lobby::Message::SetMatchType(mt) => {
                 self.netplay.lobby.match_type = mt;
-                iced::Task::none()
+                self.refresh_outgoing_challenge()
             }
             lobby::Message::SetBlindSetup(v) => {
                 self.netplay.lobby.blind_setup = v;
                 // Remember it so the next challenge defaults to the same choice.
                 self.config.last_blind_setup = v;
                 self.persist_config();
-                iced::Task::none()
+                self.refresh_outgoing_challenge()
             }
             lobby::Message::CopyText { text, flash } => {
                 crate::copy_feedback::flash(flash);
@@ -660,6 +671,17 @@ impl App {
         iced::Task::none()
     }
 
+    /// If we have an outstanding outgoing challenge, re-send it with the
+    /// current loadout + match settings so the peer always sees what we'd
+    /// actually play. A no-op when nothing is pending. Called when the
+    /// selection or proposed match type / blind setup changes.
+    fn refresh_outgoing_challenge(&mut self) -> iced::Task<Message> {
+        match self.lobby.outgoing_peer() {
+            Some(peer) => self.issue_challenge(peer),
+            None => iced::Task::none(),
+        }
+    }
+
     fn accept_incoming(&mut self, peer: tango_lobby::FriendCode) -> iced::Task<Message> {
         let Some(incoming) = self.lobby.incoming.get(&peer).cloned() else {
             return iced::Task::none();
@@ -686,7 +708,7 @@ impl App {
     /// A fresh `lobby::State` resets the roster + transient view state, which a
     /// reconnect would clear regardless.
     fn restart_lobby(&mut self) -> iced::Task<Message> {
-        self.lobby = lobby::State::new(self.config.lobby_endpoint.clone(), identity::load());
+        self.lobby = lobby::State::new(self.config.lobby_endpoint.clone(), identity::load(), self.config.lobby_status);
         self.lobby.connect().map(Message::Lobby)
     }
 

@@ -27,8 +27,10 @@ use crate::{game, rom, widgets};
 pub const SIDEBAR_WIDTH: f32 = 320.0;
 
 /// Characters a single roster line (a challenge / now-playing loadout label)
-/// shows before it truncates to an ellipsis + tooltip.
-const LINE_MAX_CHARS: usize = 30;
+/// shows before it truncates to an ellipsis + tooltip. Kept low enough that the
+/// ellipsized text fits even the narrowest row (a challenge row, with its
+/// accept/decline buttons) so the "…" lands inside the clip rather than past it.
+const LINE_MAX_CHARS: usize = 24;
 
 /// Copy-feedback keys — distinct so copying your own code doesn't flash a
 /// profile's code button (and vice versa) when both are on screen.
@@ -155,13 +157,16 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
         .height(Fill);
 
     // The status menu opens upward as an overlay so it never shifts the layout,
-    // anchored to the avatar at the bottom-left (left-aligned over the icon),
-    // with a sidebar-scoped scrim for click-away.
+    // sitting flush on top of the You pane and left-aligned with the avatar,
+    // with a sidebar-scoped scrim for click-away. YOU_REGION is the You pane's
+    // footprint from the sidebar bottom (the body's bottom PANE_GAP + the chip
+    // pane's ~56 px) so the menu's bottom edge meets the pane's top with no gap.
     if ctx.state.status_menu_open {
-        const YOU_REGION: f32 = 70.0;
+        const YOU_REGION: f32 = style::PANE_GAP + 56.0;
         let scrim = mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::ToggleStatusMenu);
         let card = container(status_menu_card(ctx))
             .width(Fill)
+            .height(Fill)
             .align_x(iced::alignment::Horizontal::Left)
             .align_y(iced::alignment::Vertical::Bottom)
             .padding(iced::Padding {
@@ -249,36 +254,46 @@ fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
             .into();
     }
 
-    let mut all = players(ctx);
-    // Drop offline strangers (no nickname, not present, no pending challenge);
-    // offline friends stay. One flat list — challenges float to the top
-    // (friends first, then by time received), then everyone else (free players
-    // first, then by name). The composite key works because the seq slot is 0
-    // for non-challengers and the name slot is empty for challengers, so each
-    // group only breaks ties on its own field.
-    all.retain(|p| p.has_incoming() || p.is_friend() || p.status != Status::Offline);
-    all.sort_by_key(|p| {
-        if p.has_incoming() {
-            (0u8, u8::from(!p.is_friend()), p.incoming_seq.unwrap_or(0), String::new())
-        } else {
-            (1u8, status_rank(p.status), 0u64, p.sort_name())
-        }
-    });
+    let all = players(ctx);
+    // Two sections — Friends (anyone you've nicknamed, online or offline) and
+    // Online (present strangers). Within each, pending challenges float to the
+    // top (earliest first), then free players, then by name. Offline strangers
+    // aren't shown.
+    let mut friends: Vec<&Player> = all.iter().filter(|p| p.is_friend()).collect();
+    let mut online: Vec<&Player> = all
+        .iter()
+        .filter(|p| !p.is_friend() && p.status != Status::Offline)
+        .collect();
+    let order =
+        |p: &&Player| (!p.has_incoming(), p.incoming_seq.unwrap_or(u64::MAX), status_rank(p.status), p.sort_name());
+    friends.sort_by_key(order);
+    online.sort_by_key(order);
 
-    let body: Element<'a, Message> = if all.is_empty() {
-        container(hint_row(t!(lang, "roster-empty"))).width(Fill).height(Fill).into()
-    } else {
-        let mut flush = column![].width(Fill);
-        for (zebra, p) in all.iter().enumerate() {
-            let row_el = if p.has_incoming() {
-                incoming_row(ctx, p, incompatible, zebra)
-            } else {
-                roster_row(p, zebra)
-            };
-            flush = flush.push(row_el);
-        }
-        scrollable(flush).height(Fill).width(Fill).style(widgets::chunky_scrollable).into()
-    };
+    let mut list = column![].spacing(style::PANE_GAP).width(Fill);
+    if !friends.is_empty() {
+        list = list.push(section(
+            t!(lang, "roster-friends", count = friends.len() as i64),
+            &friends,
+            ctx,
+            incompatible,
+        ));
+    }
+    if !online.is_empty() {
+        list = list.push(section(
+            t!(lang, "roster-online", count = online.len() as i64),
+            &online,
+            ctx,
+            incompatible,
+        ));
+    }
+    if friends.is_empty() && online.is_empty() {
+        list = list.push(hint_row(t!(lang, "roster-empty")));
+    }
+    let body: Element<'a, Message> = scrollable(list)
+        .height(Fill)
+        .width(Fill)
+        .style(widgets::chunky_scrollable)
+        .into();
 
     // The look-up-by-code bar pins to the bottom; it keeps the pane inset the
     // flush rows drop. A small top gap keeps the first row off the edge.
@@ -299,6 +314,26 @@ fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
     .width(Fill)
     .height(Fill)
     .into()
+}
+
+/// A titled section of flush rows: highlighted accept/decline rows for pending
+/// challengers (floated to the top by the caller's sort), plain rows otherwise.
+fn section<'a>(
+    label: String,
+    group: &[&Player],
+    ctx: &Ctx<'a>,
+    incompatible: &BTreeSet<FriendCode>,
+) -> Element<'a, Message> {
+    let mut flush = column![].width(Fill);
+    for (zebra, p) in group.iter().copied().enumerate() {
+        let row_el = if p.has_incoming() {
+            incoming_row(ctx, p, incompatible)
+        } else {
+            roster_row(p, zebra)
+        };
+        flush = flush.push(row_el);
+    }
+    column![section_label(label)].spacing(6).push(flush).into()
 }
 
 /// One roster entry — the whole row is a list button opening that player's
@@ -340,12 +375,7 @@ fn identity_lines<'a>(p: &Player) -> Element<'a, Message> {
 /// One incoming-challenge row — clickable to open the challenger's profile,
 /// with reject (✕) / accept (✓) on the right. Accept is blocked on a netplay
 /// mismatch (the profile spells out the fix).
-fn incoming_row<'a>(
-    ctx: &Ctx<'a>,
-    p: &Player,
-    incompatible: &BTreeSet<FriendCode>,
-    zebra: usize,
-) -> Element<'a, Message> {
+fn incoming_row<'a>(ctx: &Ctx<'a>, p: &Player, incompatible: &BTreeSet<FriendCode>) -> Element<'a, Message> {
     let lang = ctx.lang;
     let mismatch = incompatible.contains(&p.code);
     let can_accept = !mismatch && ctx.can_challenge && ctx.netplay_idle;
@@ -387,9 +417,31 @@ fn incoming_row<'a>(
     )
     .padding([6, 12])
     .width(Fill)
-    .style(widgets::list_item(false, zebra))
+    .style(challenge_highlight)
     .on_press(Message::OpenPeer(p.code))
     .into()
+}
+
+/// Highlight plate for an incoming-challenge row — a strong primary-tinted wash
+/// plus a primary border so a pending challenge clearly stands out from the
+/// plain roster rows around it.
+fn challenge_highlight(theme: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+    let primary = theme.palette().primary;
+    let bg = theme.palette().background;
+    let wash = match status {
+        iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => 0.42,
+        _ => 0.30,
+    };
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(widgets::mix(bg, primary, wash))),
+        text_color: theme.palette().text,
+        border: iced::Border {
+            radius: widgets::tech_radius(4.0),
+            width: 1.0,
+            color: iced::Color { a: 0.7, ..primary },
+        },
+        ..Default::default()
+    }
 }
 
 /// The "find by friend code" bar, pinned at the bottom: a code input + add
@@ -670,10 +722,15 @@ fn you_chip<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
 
     let avatar_el: Element<'a, Message> = match &code {
         Some(c) => avatar(c, self_pip(status), 26.0),
-        // No code yet (connecting / offline / no identity): a neutral emblem.
-        None => container(Icon::CircleUserRound.widget().size(26.0))
+        // No code yet (connecting / offline / no identity): a neutral emblem,
+        // centered in the same 26×26 footprint as the identicon so the row
+        // doesn't shift when a code appears/disappears. (The glyph's line box is
+        // taller than the disc, so size it down and center rather than fill.)
+        None => container(Icon::CircleUserRound.widget().size(22.0))
             .width(Length::Fixed(26.0))
             .height(Length::Fixed(26.0))
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
             .into(),
     };
     let avatar_btn = tooltip(
@@ -785,7 +842,7 @@ fn proposal_label(lang: &LanguageIdentifier, p: &MatchProposal) -> String {
     let Some(gi) = p.game_info.as_ref() else {
         return t!(lang, "lobby-no-game");
     };
-    let mut s = game::family_str(&gi.family, lang, "name").unwrap_or_else(|| gi.family.clone());
+    let mut s = game::family_str(&gi.family, lang, "short").unwrap_or_else(|| gi.family.clone());
     if let Some(patch) = gi.patch.as_ref() {
         s.push_str(&format!(" · {} v{}", patch.name, patch.version));
     }
@@ -796,8 +853,8 @@ fn proposal_label(lang: &LanguageIdentifier, p: &MatchProposal) -> String {
     s
 }
 
-/// A "loadout · match type" line with an optional red blind eye, truncating to
-/// a tooltip when it's too long for the sidebar.
+/// A "loadout · match type" line with an optional red blind eye on the right,
+/// truncating to a tooltip when it's too long for the sidebar.
 fn challenge_line<'a>(lang: &LanguageIdentifier, label: String, blind: bool) -> Element<'a, Message> {
     let line = clipped_line(label);
     if !blind {
@@ -812,24 +869,36 @@ fn challenge_line<'a>(lang: &LanguageIdentifier, label: String, blind: bool) -> 
         tooltip::Position::Top,
     )
     .gap(4);
-    row![eye, line].spacing(6).align_y(Alignment::Center).into()
+    // The line fills, pinning the blind eye to the right edge.
+    row![line, eye].spacing(6).align_y(Alignment::Center).into()
 }
 
-/// One caption line, truncated to an ellipsis with a full-text tooltip when it
-/// overflows the sidebar — the no-marquee replacement for long lines.
+/// One caption line that never overflows: a single non-wrapping line, bound to
+/// the width it's given and hard-clipped, so a long loadout/now-playing label
+/// truncates instead of wrapping or pushing the row wider. When it's also over
+/// `LINE_MAX_CHARS` it gets an ellipsis + a full-text tooltip.
 fn clipped_line<'a>(label: String) -> Element<'a, Message> {
-    let line = |s: String| text(s).size(TEXT_CAPTION).style(widgets::muted_text_style);
-    if label.chars().count() <= LINE_MAX_CHARS {
-        return line(label).into();
-    }
-    let truncated: String = label.chars().take(LINE_MAX_CHARS.saturating_sub(1)).collect();
-    tooltip(
-        line(format!("{truncated}…")),
-        widgets::tooltip_bubble(label),
-        tooltip::Position::Top,
+    let long = label.chars().count() > LINE_MAX_CHARS;
+    let shown = if long {
+        format!("{}…", label.chars().take(LINE_MAX_CHARS.saturating_sub(1)).collect::<String>())
+    } else {
+        label.clone()
+    };
+    let line = container(
+        text(shown)
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style)
+            .wrapping(iced::widget::text::Wrapping::None),
     )
-    .gap(4)
-    .into()
+    .width(Fill)
+    .clip(true);
+    if long {
+        tooltip(line, widgets::tooltip_bubble(label), tooltip::Position::Top)
+            .gap(4)
+            .into()
+    } else {
+        line.into()
+    }
 }
 
 fn section_label<'a>(label: String) -> Element<'a, Message> {
@@ -870,20 +939,23 @@ fn self_pip(status: SelfStatus) -> Pip {
 /// Lifted-card chrome — plate fill, primary border, drop shadow — for the
 /// floating status menu.
 fn floating_card(theme: &iced::Theme) -> iced::widget::container::Style {
+    // Plain popover: solid plate fill, a neutral hairline, square-ish corners,
+    // and just a whisper of shadow to lift it off the roster — no accent border
+    // or heavy drop shadow.
     iced::widget::container::Style {
         background: Some(iced::Background::Color(widgets::plate_color(theme))),
         border: iced::Border {
-            color: theme.palette().primary,
-            width: 1.5,
-            radius: widgets::tech_radius(8.0),
+            color: theme.extended_palette().background.strong.color,
+            width: 1.0,
+            radius: 4.0.into(),
         },
         shadow: iced::Shadow {
             color: iced::Color {
-                a: 0.35,
+                a: 0.2,
                 ..iced::Color::BLACK
             },
-            offset: iced::Vector::new(0.0, 4.0),
-            blur_radius: 16.0,
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 6.0,
         },
         ..Default::default()
     }
