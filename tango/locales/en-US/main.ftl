@@ -80,7 +80,9 @@ direct-join-label = Connect to a peer
 direct-join = Connect
 direct-addr-placeholder = IP address or host:port
 direct-need-game = Pick a game and load a save first.
-direct-busy = A match is already in progress.
+direct-waiting = Waiting for a peer to connect…
+direct-dialing = Connecting…
+direct-cancel = Cancel
 # Zone header over the Play tab body, paired with roster-zone on the sidebar.
 play-zone-build = Your build
 # Full-screen overlay shown while a netplay match is being brought up (the

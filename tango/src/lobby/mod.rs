@@ -142,6 +142,10 @@ pub struct State {
     /// Draft address for the direct-connect "join" field (`host` or
     /// `host:port`).
     pub direct_addr: String,
+    /// Set by the App when a direct bring-up reached a peer but their netplay
+    /// settings were incompatible — the direct view shows the localized reason.
+    /// The `Verdict` (not a string) so the view localizes at point of use.
+    pub direct_error: Option<crate::netplay::compat::Verdict>,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +203,9 @@ pub enum Message {
     DirectHost,
     /// UI: dial the typed address for a direct link. Also App-intercepted.
     DirectJoin,
+    /// UI: abort an in-flight direct bring-up (the connecting screen's Cancel).
+    /// App-intercepted — resets netplay to idle.
+    CancelDirect,
 }
 
 impl State {
@@ -235,6 +242,7 @@ impl State {
             menu_open: false,
             direct_connect: false,
             direct_addr: String::new(),
+            direct_error: None,
         }
     }
 
@@ -391,6 +399,7 @@ impl State {
             Message::OpenDirectConnect => {
                 self.direct_connect = true;
                 self.menu_open = false;
+                self.direct_error = None;
                 // The direct view replaces the list area — drop any open profile
                 // so returning lands back on the roster, not a stale card.
                 self.open_peer = None;
@@ -399,6 +408,7 @@ impl State {
             }
             Message::CloseDirectConnect => {
                 self.direct_connect = false;
+                self.direct_error = None;
                 iced::Task::none()
             }
             Message::DirectAddrChanged(s) => {
@@ -435,7 +445,8 @@ impl State {
             | Message::SetBlindSetup(_)
             | Message::CopyText { .. }
             | Message::DirectHost
-            | Message::DirectJoin => iced::Task::none(),
+            | Message::DirectJoin
+            | Message::CancelDirect => iced::Task::none(),
         }
     }
 

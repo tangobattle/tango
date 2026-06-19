@@ -539,6 +539,13 @@ impl App {
                 }
                 self.start_direct(netplay::DirectRole::Connect { addr })
             }
+            lobby::Message::CancelDirect => {
+                // Abort the in-flight bring-up; the direct view drops back to its
+                // host/join form (netplay returns to idle).
+                self.netplay.cancel();
+                self.lobby.direct_error = None;
+                iced::Task::none()
+            }
             other => self.lobby.update(other).map(Message::Lobby),
         }
     }
@@ -555,15 +562,14 @@ impl App {
         };
         let local_settings = self.make_local_settings();
         let match_type = self.netplay.lobby.match_type;
-        self.lobby.direct_connect = false;
         self.lobby.menu_open = false;
+        self.lobby.direct_error = None;
+        // Keep the direct-connect view open — while netplay is connecting it
+        // renders as the "waiting for a peer" screen (no full-screen takeover
+        // until the match actually starts; see `netplay_takes_over_screen`).
+        // Compatibility is gated on the resulting PreMatchData at handoff.
         self.netplay
-            .update(netplay::Message::ConnectDirect {
-                role,
-                local_settings,
-                local_compressed: reveal.compressed,
-                match_type,
-            })
+            .connect_direct(role, local_settings, reveal.compressed, match_type)
             .map(Message::Netplay)
     }
 
@@ -1051,22 +1057,33 @@ impl App {
     fn screen_key(&self) -> ScreenKey {
         if self.config.nickname.is_none() {
             ScreenKey::Welcome
-        } else if self.session.is_active() || self.netplay_coming_up() {
-            // The session screen comes up the moment a match starts coming up —
-            // its backdrop renders first and the live session fills in once
-            // `spawn_pvp` lands, so it's one screen, not a separate connecting
-            // one.
+        } else if self.netplay_takes_over_screen() {
+            // The session screen comes up the moment a (lobby) match starts
+            // coming up — its backdrop renders first and the live session fills
+            // in once `spawn_pvp` lands, so it's one screen, not a separate
+            // connecting one. A direct link instead waits on the Play tab.
             ScreenKey::Session
         } else {
             ScreenKey::Tabs(self.tab)
         }
     }
 
-    /// A netplay match is being brought up — the WebRTC + reveal handshake is in
-    /// flight, or its `PreMatchData` is handing off to the PvP spawn. (Excludes
-    /// `Failed`, which falls back to the menu.) Drives the "coming up" overlay.
-    fn netplay_coming_up(&self) -> bool {
-        matches!(self.netplay.phase, netplay::Phase::Connecting { .. }) || self.netplay.handoff_pending()
+    /// Whether the full-screen session view should take over the window. The
+    /// lobby path merges connecting into the session screen (a peer who already
+    /// accepted connects in a beat), but a *direct* link can wait indefinitely
+    /// for someone to dial in — so it stays on the Play tab and waits in the
+    /// sidebar's direct-connect screen until the match actually hands off.
+    fn netplay_takes_over_screen(&self) -> bool {
+        if self.session.is_active() || self.netplay.handoff_pending() {
+            return true;
+        }
+        matches!(
+            self.netplay.phase,
+            netplay::Phase::Connecting {
+                ident: netplay::LinkIdent::Lobby,
+                ..
+            }
+        )
     }
 
     /// Whether a netplay attempt is in flight (connecting, failed-but-not-
@@ -1255,9 +1272,34 @@ impl App {
                 // receiver-handoff slot until the loop releases
                 // ownership. On success we land back in
                 // Message::PvpSessionBuilt below.
+                // A direct link had no lobby to gate compatibility up front, so
+                // check it here on the peer's settings before committing to the
+                // spawn. Both sides run the same check, so both bail symmetrically
+                // on a mismatch; the direct view shows the localized reason.
+                let direct = matches!(
+                    self.netplay.phase,
+                    netplay::Phase::Connecting {
+                        ident: netplay::LinkIdent::Direct(..),
+                        ..
+                    }
+                );
                 let Some(pre_match) = self.netplay.take_pre_match() else {
                     return iced::Task::none();
                 };
+                if direct {
+                    let verdict = {
+                        let patches = self.scanners.patches.read();
+                        netplay::compat::check(&pre_match.local_settings, &pre_match.remote_settings, &patches)
+                    };
+                    if verdict != netplay::compat::Verdict::Compatible {
+                        self.netplay.cancel();
+                        self.lobby.direct_error = Some(verdict);
+                        return iced::Task::none();
+                    }
+                }
+                // The peer connected and the match is starting — the direct
+                // connect screen has done its job; the session takes over now.
+                self.lobby.direct_connect = false;
                 let scanners = self.scanners.clone();
                 let config = self.config.clone();
                 let audio_binder = self.audio_binder.clone();
@@ -1466,7 +1508,7 @@ impl App {
         // coming up there's no `active` session yet, so the session view renders
         // just its backdrop + a "setting up" line, and the live session (with
         // emulation) fills in the moment `spawn_pvp` lands.
-        if self.session.is_active() || self.netplay_coming_up() {
+        if self.netplay_takes_over_screen() {
             // Deliver keyboard + gamepad input through the
             // synchronous widget path so each event reaches
             // `program.update()` on the same winit iteration it
@@ -1638,6 +1680,13 @@ impl App {
                     streamer_mode: self.config.streamer_mode,
                     can_challenge: self.can_challenge(),
                     netplay_idle: matches!(self.netplay.phase, netplay::Phase::Idle),
+                    direct_connecting: match self.netplay.phase {
+                        netplay::Phase::Connecting {
+                            ident: netplay::LinkIdent::Direct(..),
+                            waiting_for_opponent,
+                        } => Some(waiting_for_opponent),
+                        _ => None,
+                    },
                     local_game: self.loadout.game,
                     match_type: self.netplay.lobby.match_type,
                     blind_setup: self.netplay.lobby.blind_setup,

@@ -44,9 +44,8 @@ pub enum Phase {
     /// correctly; the active dialer sees plain "Connecting".
     Connecting {
         ident: LinkIdent,
-        // Set by both connect paths; read only by the (removed) bottom band's
-        // waiting screen. Kept for the direct-connect ready-up re-expose.
-        #[allow(dead_code)]
+        // True for the passive side; the sidebar's direct-connect screen reads it
+        // to show "waiting for a peer" vs "connecting".
         waiting_for_opponent: bool,
     },
     /// Last attempt failed. Stays here until the user starts a new
@@ -150,21 +149,6 @@ impl Default for State {
 /// these via `Message::Netplay(_)`.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// Direct local-play entry. Brings up a signaling-free libdatachannel peer
-    /// connection whose SDP both sides fabricate from fixed ICE creds (see
-    /// [`crate::net::direct_rtc`]) — host pins the UDP port, connect dials it —
-    /// then runs the same `Hello → Chunk → StartMatch` flow as the lobby path,
-    /// building a `PreMatchData` for the PvP spawn. Carries the local settings +
-    /// reveal so the inline flow has everything (no lobby to broker them).
-    ///
-    /// Dispatched by the sidebar's direct-connect view (see
-    /// `App::start_direct`).
-    ConnectDirect {
-        role: DirectRole,
-        local_settings: crate::net::protocol::Settings,
-        local_compressed: Vec<u8>,
-        match_type: (u8, u8),
-    },
     /// A bring-up finished its `Hello → Chunk → StartMatch` exchange; the built
     /// `PreMatchData` is parked for the App's PvP spawn (no lobby screen).
     MatchReady(Slot<PreMatchData>),
@@ -218,12 +202,6 @@ impl State {
     /// async follow-up.
     pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
         match msg {
-            Message::ConnectDirect {
-                role,
-                local_settings,
-                local_compressed,
-                match_type,
-            } => self.connect_direct(role, local_settings, local_compressed, match_type),
             Message::MatchReady(slot_rx) => self.on_match_ready(slot_rx),
             Message::MatchHandoffReady => {
                 // Pure signal — the App picks it up and pulls pre-match data via
@@ -239,9 +217,12 @@ impl State {
         }
     }
 
-    /// `Message::ConnectDirect` — start the signaling-free direct path, running
-    /// the same inline `Hello → Chunk → StartMatch` flow as the lobby path.
-    fn connect_direct(
+    /// Start the signaling-free direct path, running the same inline
+    /// `Hello → Chunk → StartMatch` flow as the lobby path. Called directly by
+    /// `App::start_direct` rather than via `Message` (the App also gates
+    /// compatibility on the resulting `PreMatchData` before spawning, the direct
+    /// path's stand-in for the lobby's up-front check).
+    pub fn connect_direct(
         &mut self,
         role: DirectRole,
         local_settings: crate::net::protocol::Settings,
@@ -261,6 +242,14 @@ impl State {
             run_direct_match(role, local_settings, local_compressed, match_type, cancel),
             map_match_result,
         )
+    }
+
+    /// Abort an in-flight direct bring-up and return to idle (the direct-connect
+    /// view's Cancel). The cancelled task's late result no-ops via the renewed
+    /// token. No-op if nothing is connecting.
+    pub fn cancel(&mut self) {
+        self.cancel_and_renew();
+        self.phase = Phase::Idle;
     }
 
     /// Start a lobby-server-brokered match: bring up the WebRTC connection by

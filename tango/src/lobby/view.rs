@@ -46,6 +46,10 @@ pub struct Ctx<'a> {
     /// Netplay is idle (else challenge / accept are disabled — a match is
     /// already in flight).
     pub netplay_idle: bool,
+    /// A direct bring-up the sidebar kicked off is in flight: `Some(true)` while
+    /// hosting (waiting for a peer to dial in), `Some(false)` while dialing.
+    /// Drives the direct view's "connecting" screen.
+    pub direct_connecting: Option<bool>,
     pub local_game: Option<rom::GameRef>,
     /// The match type we'll propose (mirrors `netplay.lobby.match_type`).
     pub match_type: (u8, u8),
@@ -182,10 +186,10 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
             });
         Some((card.into(), Message::ToggleStatusMenu))
     } else if ctx.state.menu_open {
-        // Just above the find-friend bar (one strip above the You pane),
-        // right-aligned with the ⋮ button. MENU_REGION clears the You pane, the
-        // gap between the two panes, and the bar itself.
-        const MENU_REGION: f32 = style::PANE_GAP + 56.0 + style::PANE_GAP + 44.0;
+        // Flush on top of the You pane, right-aligned with the ⋮ button on the
+        // user plate (mirror of the status menu, which hangs off the avatar at
+        // the other end). Same YOU_REGION footprint.
+        const YOU_REGION: f32 = style::PANE_GAP + 56.0;
         let card = container(overflow_menu_card(ctx))
             .width(Fill)
             .height(Fill)
@@ -195,7 +199,7 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
                 top: 0.0,
                 right: style::PANE_PADDING,
                 left: 0.0,
-                bottom: MENU_REGION,
+                bottom: YOU_REGION,
             });
         Some((card.into(), Message::ToggleMenu))
     } else {
@@ -502,15 +506,6 @@ fn add_contact_bar<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
             STANDARD_PADDING,
             widgets::primary_button,
         ),
-        // Overflow (⋮): for now just the direct-connect entry. Opens a popover
-        // upward (see `sidebar`).
-        widgets::icon_button_styled(
-            Icon::EllipsisVertical,
-            t!(lang, "roster-menu"),
-            Some(Message::ToggleMenu),
-            STANDARD_PADDING,
-            widgets::neutral,
-        ),
     ]
     .spacing(6)
     .width(Fill)
@@ -518,11 +513,15 @@ fn add_contact_bar<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     .into()
 }
 
-/// The overflow (⋮) popover card: a floating plate of menu items. Today just
-/// "Direct connect"; sized to match the status menu's card.
+/// The overflow (⋮) popover card hanging off the user plate: a floating plate of
+/// menu items. Today just "Direct connect", disabled while an outgoing challenge
+/// is pending (you'd be juggling two bring-ups). Sized like the status menu card.
 fn overflow_menu_card<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
-    let item = button(
+    // An outstanding outgoing challenge owns the netplay bring-up; don't let a
+    // direct connect race it.
+    let busy = ctx.state.outgoing_peer().is_some();
+    let mut item = button(
         row![
             Icon::Cable.widget().size(TEXT_BODY),
             text(t!(lang, "roster-direct-connect")).size(TEXT_BODY),
@@ -533,8 +532,10 @@ fn overflow_menu_card<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     )
     .padding([6, 8])
     .width(Fill)
-    .style(widgets::flat)
-    .on_press(Message::OpenDirectConnect);
+    .style(widgets::flat);
+    if !busy {
+        item = item.on_press(Message::OpenDirectConnect);
+    }
     container(column![item].width(Fill))
         .width(Length::Fixed(190.0))
         .padding(6)
@@ -548,7 +549,31 @@ fn overflow_menu_card<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
 /// (same as a challenge), so the actions disable until ready.
 fn direct_connect_view<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
-    let ready = ctx.can_challenge && ctx.netplay_idle;
+
+    // Bring-up in flight: a waiting screen with Cancel (the only way out — a
+    // plain "back" would orphan the connection). Host waits for a dialer;
+    // the dialer is actively connecting.
+    if let Some(waiting) = ctx.direct_connecting {
+        let title = text(t!(lang, "direct-title")).size(style::TEXT_TITLE);
+        let status = text(if waiting {
+            t!(lang, "direct-waiting")
+        } else {
+            t!(lang, "direct-dialing")
+        })
+        .size(TEXT_BODY);
+        let cancel = widgets::labeled_icon_button(
+            Icon::X,
+            t!(lang, "direct-cancel"),
+            Message::CancelDirect,
+            STANDARD_PADDING,
+            widgets::neutral,
+        );
+        return column![title, status, cancel].spacing(16).width(Fill).into();
+    }
+
+    // Idle (or a just-failed attempt): the host/join form. Starting a connect
+    // resets any prior failure, so the only gate is a loaded game + save.
+    let ready = ctx.can_challenge;
 
     let back = widgets::icon_button_styled(
         Icon::ArrowLeft,
@@ -602,17 +627,36 @@ fn direct_connect_view<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     .width(Fill);
 
     let mut col = column![header, explainer, host, join].spacing(16).width(Fill);
+    // A peer reached us but their settings didn't match — show the localized
+    // reason (matched off the Verdict here, at the point of display).
+    if let Some(verdict) = &ctx.state.direct_error {
+        col = col.push(
+            text(compat_verdict_text(lang, verdict))
+                .size(TEXT_CAPTION)
+                .style(widgets::danger_text_style),
+        );
+    }
     if !ready {
-        // Spell out why the actions are inert (no game/save, or a match already
-        // in flight) instead of leaving dead buttons unexplained.
-        let why = if ctx.can_challenge {
-            t!(lang, "direct-busy")
-        } else {
-            t!(lang, "direct-need-game")
-        };
-        col = col.push(text(why).size(TEXT_CAPTION).style(widgets::muted_text_style));
+        col = col.push(
+            text(t!(lang, "direct-need-game"))
+                .size(TEXT_CAPTION)
+                .style(widgets::muted_text_style),
+        );
     }
     col.into()
+}
+
+/// The localized reason a direct peer was rejected, matched off the compat
+/// [`Verdict`](crate::netplay::compat::Verdict) at the point of display so it
+/// reuses the lobby pane's compatibility strings.
+fn compat_verdict_text(lang: &LanguageIdentifier, verdict: &crate::netplay::compat::Verdict) -> String {
+    use crate::netplay::compat::Verdict;
+    match verdict {
+        Verdict::Compatible => t!(lang, "lobby-compat-ok"),
+        Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
+        Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
+        Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
+    }
 }
 
 // ---------- profile (master→detail) ----------
@@ -965,7 +1009,21 @@ fn you_chip<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
     let info = column![text(t!(lang, "roster-you")).size(TEXT_BODY), code_slot]
         .spacing(1)
         .width(Fill);
-    row![avatar_btn, info].spacing(8).align_y(Alignment::Center).into()
+    // Overflow (⋮) on the user plate: opens the menu popover upward (see
+    // `sidebar`). Top-positioned tooltip so it doesn't clip past the window edge.
+    let menu_btn = tooltip(
+        button(Icon::EllipsisVertical.widget().size(TEXT_BODY))
+            .padding([4, 6])
+            .style(widgets::flat)
+            .on_press(Message::ToggleMenu),
+        widgets::tooltip_bubble(t!(lang, "roster-menu")),
+        tooltip::Position::Top,
+    )
+    .gap(4);
+    row![avatar_btn, info, menu_btn]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn status_menu_card<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
