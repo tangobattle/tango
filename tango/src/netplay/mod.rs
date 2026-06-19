@@ -529,13 +529,20 @@ async fn run_lobby_match(
         } = crate::net::lobby_rtc::bring_up(ice_servers, role, use_relay, send_local_sdp, sdp_rx)
             .await
             .map_err(|e| AsyncError::Failed(format!("lobby rtc: {e}")))?;
-        // The lobby already gave us the peer's settings + commitment, so we
-        // verify the reveal against the lobby's `peer_commitment` and ignore the
-        // peer's Hello — but we still send our own so the protocol is uniform.
+        // The lobby already brokered the peer's commitment; require their Hello
+        // to present the same one before trusting the reveal exchange, so a peer
+        // can't swap in a different reveal than the one they committed to via
+        // the lobby. (The reveal is then verified against this commitment too.)
+        use subtle::ConstantTimeEq;
         let local_commitment = crate::net::protocol::make_commitment(&local_compressed);
-        crate::net::negotiate(&mut sender, &mut receiver, local_settings.clone(), local_commitment)
+        let peer_hello = crate::net::negotiate(&mut sender, &mut receiver, local_settings.clone(), local_commitment)
             .await
             .map_err(negotiation_error_sentinel)?;
+        if !bool::from(peer_hello.commitment.ct_eq(&peer_commitment)) {
+            return Err(AsyncError::Failed(
+                "peer commitment mismatch (lobby vs handshake)".to_string(),
+            ));
+        }
 
         let remote_compressed =
             exchange_reveal(&mut sender, &mut receiver, &local_compressed, &peer_commitment).await?;

@@ -178,9 +178,47 @@ pub fn view<'a>(
     fractional_scaling: bool,
     hide_emulator_border: bool,
     effect: &'static Effect,
+    // The local game while a match is coming up (no `active` session yet) — so
+    // the loading screen can show that game's emulator border.
+    coming_up_game: Option<&'static crate::game::Game>,
 ) -> Element<'a, Message> {
     let Some(session) = state.active.as_ref() else {
-        return iced::widget::Space::new().width(Fill).height(Fill).into();
+        // No live session yet — the App also renders this view while a netplay
+        // match is coming up (the WebRTC + reveal handshake, then the spawn).
+        // Show the local game's emulator border (its BNLC art) with a "setting
+        // up" line so it reads as the session loading; the emulator + chrome
+        // fill in the moment `spawn_pvp` lands (the first point emulation can
+        // start — it needs the peer's save to boot).
+        let bnlc_bg = if hide_emulator_border {
+            None
+        } else {
+            coming_up_game.and_then(background_handle)
+        };
+        let backdrop: Element<'a, Message> = match bnlc_bg {
+            Some(bg) => iced::widget::image(bg)
+                .width(Fill)
+                .height(Fill)
+                .content_fit(iced::ContentFit::Cover)
+                .into(),
+            None => container(iced::widget::Space::new().width(Fill).height(Fill))
+                .style(|_t: &iced::Theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(iced::Color::BLACK)),
+                    ..Default::default()
+                })
+                .into(),
+        };
+        let line = container(
+            iced::widget::text(t!(lang, "match-coming-up"))
+                .size(style::TEXT_TITLE)
+                .style(|_t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(iced::Color::from_rgb(0.82, 0.82, 0.88)),
+                }),
+        )
+        .center(Fill);
+        return stack![Element::from(backdrop), Element::from(line)]
+            .width(Fill)
+            .height(Fill)
+            .into();
     };
 
     let frame = framebuffer_view(state, fractional_scaling, effect);

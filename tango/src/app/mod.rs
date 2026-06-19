@@ -515,6 +515,11 @@ impl App {
             .iter()
             .filter_map(|(fc, inc)| {
                 let remote = settings_from_proposal(&inc.proposal, String::new());
+                // Accepting adopts the challenger's match type, so only a
+                // game/patch mismatch should block accept — line the match types
+                // up before the check so a mere match-type difference doesn't.
+                let mut local = local.clone();
+                local.match_type = remote.match_type;
                 match netplay::compat::check(&local, &remote, &*patches) {
                     netplay::compat::Verdict::Compatible => None,
                     _ => Some(*fc),
@@ -599,8 +604,17 @@ impl App {
         self.loadout.game.is_some() && self.loaded.is_some()
     }
 
-    /// The match proposal for our current loadout, or `None` if no game is picked.
+    /// The match proposal for our current loadout (with our picked match type),
+    /// or `None` if no game is picked.
     fn current_proposal(&self) -> Option<tango_lobby::MatchProposal> {
+        self.proposal_with_match_type(self.netplay.lobby.match_type)
+    }
+
+    /// Build a match proposal for the current loadout with an explicit match
+    /// type. Accepting an incoming challenge reuses this with the *challenger's*
+    /// match type (you accept on their terms), so a match-type difference never
+    /// has to block accepting — we just adopt theirs.
+    fn proposal_with_match_type(&self, match_type: (u8, u8)) -> Option<tango_lobby::MatchProposal> {
         let game = self.loadout.game?;
         let (family, variant) = game.family_and_variant();
         let patch = match (&self.loadout.patch, &self.loadout.patch_version) {
@@ -612,8 +626,8 @@ impl App {
         };
         Some(tango_lobby::MatchProposal {
             match_type: Some(tango_lobby::MatchType {
-                mode: self.netplay.lobby.match_type.0 as u32,
-                subtype: self.netplay.lobby.match_type.1 as u32,
+                mode: match_type.0 as u32,
+                subtype: match_type.1 as u32,
             }),
             game_info: Some(tango_lobby::GameInfo {
                 family: family.to_string(),
@@ -650,7 +664,16 @@ impl App {
         let Some(incoming) = self.lobby.incoming.get(&peer).cloned() else {
             return iced::Task::none();
         };
-        let (Some(proposal), Some(reveal)) = (self.current_proposal(), self.local_reveal()) else {
+        // Accept on their terms: adopt the challenger's match type so the two
+        // sides always agree, rather than forcing the user to match it by hand.
+        let their_match_type = incoming
+            .proposal
+            .match_type
+            .as_ref()
+            .map(|m| (m.mode as u8, m.subtype as u8))
+            .unwrap_or(self.netplay.lobby.match_type);
+        let (Some(proposal), Some(reveal)) = (self.proposal_with_match_type(their_match_type), self.local_reveal())
+        else {
             log::warn!("lobby accept: need a game + save loaded");
             return iced::Task::none();
         };
@@ -951,11 +974,22 @@ impl App {
     fn screen_key(&self) -> ScreenKey {
         if self.config.nickname.is_none() {
             ScreenKey::Welcome
-        } else if self.session.is_active() {
+        } else if self.session.is_active() || self.netplay_coming_up() {
+            // The session screen comes up the moment a match starts coming up —
+            // its backdrop renders first and the live session fills in once
+            // `spawn_pvp` lands, so it's one screen, not a separate connecting
+            // one.
             ScreenKey::Session
         } else {
             ScreenKey::Tabs(self.tab)
         }
+    }
+
+    /// A netplay match is being brought up — the WebRTC + reveal handshake is in
+    /// flight, or its `PreMatchData` is handing off to the PvP spawn. (Excludes
+    /// `Failed`, which falls back to the menu.) Drives the "coming up" overlay.
+    fn netplay_coming_up(&self) -> bool {
+        matches!(self.netplay.phase, netplay::Phase::Connecting { .. }) || self.netplay.handoff_pending()
     }
 
     /// Whether a netplay attempt is in flight (connecting, failed-but-not-
@@ -1351,7 +1385,11 @@ impl App {
             );
         }
 
-        if self.session.is_active() {
+        // The session screen also covers the match bring-up: while a match is
+        // coming up there's no `active` session yet, so the session view renders
+        // just its backdrop + a "setting up" line, and the live session (with
+        // emulation) fills in the moment `spawn_pvp` lands.
+        if self.session.is_active() || self.netplay_coming_up() {
             // Deliver keyboard + gamepad input through the
             // synchronous widget path so each event reaches
             // `program.update()` on the same winit iteration it
@@ -1364,6 +1402,7 @@ impl App {
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 crate::video::effects::effect_for(&self.config.video_filter),
+                self.loadout.game.and_then(game::from_gamedb_entry),
             )
             .map(Message::Session);
             // In-session settings modal: floats centered over the

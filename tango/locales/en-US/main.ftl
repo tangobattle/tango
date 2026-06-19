@@ -69,6 +69,9 @@ roster-self-invisible = Invisible
 roster-self-offline = Offline
 # Zone header over the Play tab body, paired with roster-zone on the sidebar.
 play-zone-build = Your build
+# Full-screen overlay shown while a netplay match is being brought up (the
+# WebRTC + reveal handshake, then the PvP spawn) before emulation starts.
+match-coming-up = Setting up the match…
 
 # Play selectors
 play-no-game = No game selected
