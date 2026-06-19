@@ -48,6 +48,7 @@ regex = "1"
 mailparse = "0.14"
 open = "5"
 bps = { path = "../bps" }
+discord-ipc = { path = "../discord-ipc" }
 mgba = { path = "../mgba" }
 rennet = { path = "../rennet" }
 tango-pvp = { path = "../tango-pvp" }
@@ -113,16 +114,6 @@ anyhow = "1"
 crash-handler = "0.6"
 indexmap = "2"
 clap = { version = "4", features = ["derive"] }
-# Discord rich-presence IPC client (ported from legacy
-# tango/src/discord). byteorder + bytes for the framing layer,
-# num-derive/num-traits for the opcode enum, serde-hex for the
-# request-nonce serialization. Tokio "net" pulls in the
-# UnixStream + named-pipe transports.
-byteorder = "1"
-bytes = "1"
-num-derive = "0.4"
-num-traits = "0.2"
-serde-hex = "0.1"
 
 [lints]
 workspace = true

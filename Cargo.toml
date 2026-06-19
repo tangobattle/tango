@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "bps",
     "datachannel-wrapper",
+    "discord-ipc",
     "libdatachannel",
     "mgba",
     "getgud",

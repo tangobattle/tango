@@ -1,0 +1,20 @@
+[package]
+name = "discord-ipc"
+version = "0.1.0"
+edition = "2021"
+description = "Async Discord rich-presence IPC client (local socket / named pipe), transport- and runtime-agnostic over tokio."
+
+[dependencies]
+byteorder = "1"
+bytes = "1"
+num-derive = "0.4"
+num-traits = "0.2"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-hex = "0.1"
+tokio = { version = "1", features = ["io-util", "net", "sync", "rt"] }
+log = "0.4"
+
+[lints]
+workspace = true

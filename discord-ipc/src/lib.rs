@@ -1,8 +1,16 @@
-//! Discord IPC RPC client — Unix-socket / Windows-named-pipe
-//! transport, JSON-over-framed-binary opcodes, async request /
-//! response with nonce matching. Ported verbatim from
-//! `tango/src/discord/rpc.rs`; see that file for the original
-//! comments.
+//! Async **Discord rich-presence IPC client**.
+//!
+//! Speaks the local Discord RPC protocol — a Unix domain socket on
+//! Linux/macOS, a named pipe on Windows — over `tokio`: the framed binary
+//! envelope, the handshake, the JSON command/event opcodes, and the
+//! request/response nonce matching.
+//!
+//! [`Client::connect`] opens the connection and spawns a background reader
+//! task; the returned [`Client`] exposes [`Client::subscribe`] and
+//! [`Client::set_activity`], and the paired `mpsc::Receiver` carries
+//! subscribed [`Event`]s back to the caller. The [`activity`] module holds the
+//! rich-presence payload types. Reconnection policy is left to the caller — a
+//! dropped connection surfaces as a `NotConnected` error on the next call.
 
 use byteorder::ByteOrder;
 use bytes::{Buf, BufMut};

@@ -4,7 +4,7 @@
 //! the UI calls from the main thread. Ported from
 //! `tango/src/discord.rs`.
 
-mod rpc;
+use discord_ipc as rpc;
 
 pub use rpc::activity;
 
