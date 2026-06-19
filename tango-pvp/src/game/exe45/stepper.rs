@@ -115,10 +115,6 @@ pub(super) fn traps(hooks: &super::Hooks, stepper_state: crate::stepper::State) 
                 // Never fires in replay mode.
                 if state.at_capture_tick() {
                     state.capture();
-                    // Halt run_loop at the capture: its leftover cycle budget must
-                    // not spill into copy_input_data_entry and double-advance the
-                    // shadow for the captured tick.
-                    core.end_run_loop();
                     return;
                 }
 

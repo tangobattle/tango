@@ -416,10 +416,10 @@ impl App {
                             .map(|h| h.path().to_path_buf())
                     },
                     move |maybe_path| match maybe_path {
-                        Some(output) => tabs::replays::Message::ExportStart {
+                        Some(output) => tabs::replays::Message::Export(tabs::replays::ExportMessage::Start {
                             replay: replay_for_msg.clone(),
                             output,
-                        },
+                        }),
                         // User dismissed the dialog without picking — keep
                         // the form open and untouched. ExportDismiss would
                         // also close the panel, which is wrong here since
@@ -631,11 +631,11 @@ impl App {
                     biased;
                     next = rx.next() => match next {
                         Some((c, t)) => Some((
-                            tabs::replays::Message::ExportProgress {
+                            tabs::replays::Message::Export(tabs::replays::ExportMessage::Progress {
                                 replay: replay.clone(),
                                 completed: c,
                                 total: t,
-                            },
+                            }),
                             (rx, done, replay, false),
                         )),
                         None => {
@@ -645,10 +645,10 @@ impl App {
                                 Err("export task ended without result".to_string())
                             });
                             Some((
-                                tabs::replays::Message::ExportFinished {
+                                tabs::replays::Message::Export(tabs::replays::ExportMessage::Finished {
                                     replay: replay.clone(),
                                     result: r,
-                                },
+                                }),
                                 (rx, done, replay, true),
                             ))
                         }
