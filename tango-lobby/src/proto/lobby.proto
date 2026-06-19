@@ -29,7 +29,7 @@ message MatchProposal {
 // A visible player in the roster.
 //
 // friend_code is the raw 75-bit identifier as 10 bytes big-endian, derived
-// server-side from the verified mTLS fingerprint. The Crockford-Base32 + Luhn
+// server-side from the verified mTLS fingerprint. The Crockford-Base32 + Verhoeff
 // "friendly" form is purely a client-side rendering/input concern.
 //
 // now_playing present  <=> in a match (IN_MATCH); absent <=> ONLINE.

@@ -2,7 +2,7 @@
 //! mTLS-authenticated presence + matchmaking websocket.
 //!
 //! The wire protocol is protobuf; this crate owns the friendly `FriendCode`
-//! rendering (Crockford-Base32 + Luhn), which is deliberately a *client-only*
+//! rendering (Crockford-Base32 + Verhoeff), which is deliberately a *client-only*
 //! concern — the server only ever speaks the raw 10-byte identifier.
 
 pub mod proto;
