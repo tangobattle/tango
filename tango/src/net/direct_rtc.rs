@@ -29,7 +29,7 @@
 //! `data::wire` datagrams. The peer connection must be kept alive by the caller
 //! for the channels' lifetime (see `netplay::NegotiationOutput`).
 
-use super::{Receiver, Sender};
+use super::channel::Channels;
 use datachannel_wrapper::{LocalDescriptionInit, PeerConnection, RtcConfig, SdpType, SessionDescription};
 
 /// Fixed local ICE ufrag for the host (offerer) side. Must be a valid
@@ -41,17 +41,6 @@ const UFRAG_CLIENT: &str = "tangoClient";
 /// the same value — ICE only requires each peer to know the other's pwd,
 /// and a fixed shared secret satisfies that without an exchange.
 const ICE_PWD: &str = "tangoDirectNoSignalingPwd";
-
-/// Both transport channels brought up by the direct link, plus the peer
-/// connection that owns them (kept alive by the caller). The channel specs
-/// (labels, stream ids, reliability) live in [`super::channel`].
-pub struct DirectChannels {
-    /// Reliable, ordered — the control/lobby `Packet` protocol.
-    pub control: (Sender, Receiver),
-    /// Unreliable, unordered — the in-match `data::wire` datagrams.
-    pub in_match: (Sender, Receiver),
-    pub peer_conn: PeerConnection,
-}
 
 /// Build a fabricated remote SDP for the peer. `setup` is the DTLS role
 /// the *peer* advertises (`actpass` for an offer, `active` for an answer);
@@ -97,7 +86,7 @@ fn fabricate_sdp(sdp_type: SdpType, setup: &str, ufrag: &str, candidate: Option<
 /// reliable control channel + the unreliable in-match channel) and split each
 /// into our transport-agnostic Sender/Receiver, returning the peer connection
 /// so the caller can keep it alive.
-fn open_channels(mut pc: PeerConnection) -> DirectChannels {
+fn open_channels(mut pc: PeerConnection) -> Channels {
     let (label, init) = super::channel::control_channel();
     let control_dc = pc
         .create_data_channel(label, init)
@@ -106,7 +95,7 @@ fn open_channels(mut pc: PeerConnection) -> DirectChannels {
     let in_match_dc = pc
         .create_data_channel(label, init)
         .expect("create pre-negotiated in-match data channel");
-    DirectChannels {
+    Channels {
         control: super::channel::pair(control_dc),
         in_match: super::channel::pair(in_match_dc),
         peer_conn: pc,
@@ -116,7 +105,7 @@ fn open_channels(mut pc: PeerConnection) -> DirectChannels {
 /// Host side: pin the UDP `port`, offer with fixed ICE creds, and accept
 /// the dialer reflexively. Returns once the descriptions are set; the
 /// channels open asynchronously and the first `send` blocks until they do.
-pub async fn host(port: u16) -> std::io::Result<DirectChannels> {
+pub async fn host(port: u16) -> std::io::Result<Channels> {
     let (pc, _events) = PeerConnection::new(RtcConfig {
         disable_fingerprint_verification: true,
         // We drive setLocalDescription ourselves (with pinned ICE creds);
@@ -148,7 +137,7 @@ pub async fn host(port: u16) -> std::io::Result<DirectChannels> {
 
 /// Dialer side: fabricate the host's offer (carrying a host candidate for
 /// `addr`), then answer with fixed ICE creds.
-pub async fn connect(addr: &str) -> std::io::Result<DirectChannels> {
+pub async fn connect(addr: &str) -> std::io::Result<Channels> {
     // Resolve the typed address into a concrete host candidate.
     let sock = tokio::net::lookup_host(addr)
         .await?

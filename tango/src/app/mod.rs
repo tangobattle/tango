@@ -95,6 +95,22 @@ fn ice_to_strings(servers: &[tango_lobby::IceServer], use_relay: Option<bool>) -
         .collect()
 }
 
+/// Normalize a typed direct-connect target into a `host:port`. Mirrors the
+/// `/connect` parser's heuristic: append the default port unless the input
+/// already carries one (a colon that isn't just an IPv6 group, i.e. not ending
+/// in `]`). Returns empty for blank input so the caller can bail.
+fn direct_dial_addr(input: &str) -> String {
+    let arg = input.trim();
+    if arg.is_empty() {
+        return String::new();
+    }
+    if arg.contains(':') && !arg.ends_with(']') {
+        arg.to_string()
+    } else {
+        format!("{arg}:{}", crate::net::DEFAULT_LOCAL_PORT)
+    }
+}
+
 fn copy_image_to_clipboard(img: image::RgbaImage) {
     let (width, height) = (img.width() as usize, img.height() as usize);
     let bytes = img.into_raw();
@@ -508,8 +524,47 @@ impl App {
                 crate::copy_feedback::flash(flash);
                 iced::clipboard::write(text)
             }
+            // Direct-connect (signaling-free): host on the default port, or dial
+            // the typed address. Both reuse the challenge path's local
+            // settings + reveal, then hand off to netplay's ConnectDirect.
+            lobby::Message::DirectHost => {
+                self.start_direct(netplay::DirectRole::Host {
+                    port: crate::net::DEFAULT_LOCAL_PORT,
+                })
+            }
+            lobby::Message::DirectJoin => {
+                let addr = direct_dial_addr(&self.lobby.direct_addr);
+                if addr.is_empty() {
+                    return iced::Task::none();
+                }
+                self.start_direct(netplay::DirectRole::Connect { addr })
+            }
             other => self.lobby.update(other).map(Message::Lobby),
         }
+    }
+
+    /// Bring up a signaling-free direct link in the given role. Mirrors
+    /// `issue_challenge`'s preconditions (a game + save must be loaded so we can
+    /// build local settings + a reveal), leaves the direct-connect view, and
+    /// dispatches netplay's `ConnectDirect` — the rest of the flow (handshake,
+    /// match handoff, PvP spawn) is identical to the lobby path.
+    fn start_direct(&mut self, role: netplay::DirectRole) -> iced::Task<Message> {
+        let Some(reveal) = self.local_reveal() else {
+            log::warn!("direct connect: need a game + save loaded");
+            return iced::Task::none();
+        };
+        let local_settings = self.make_local_settings();
+        let match_type = self.netplay.lobby.match_type;
+        self.lobby.direct_connect = false;
+        self.lobby.menu_open = false;
+        self.netplay
+            .update(netplay::Message::ConnectDirect {
+                role,
+                local_settings,
+                local_compressed: reveal.compressed,
+                match_type,
+            })
+            .map(Message::Netplay)
     }
 
     /// Incoming challengers whose proposed setup is netplay-incompatible with

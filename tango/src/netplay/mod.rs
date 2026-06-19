@@ -150,24 +150,15 @@ impl Default for State {
 /// these via `Message::Netplay(_)`.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// Direct local-play entry. Runs the protocol-version negotiate
-    /// handshake over a libdatachannel peer connection whose SDP both
-    /// sides fabricate from fixed ICE creds (see [`crate::net::direct_rtc`]).
-    /// `role` says whether we're the host (pins the UDP port) or the
-    /// dialer; the UI-side identifier is derived from it (see [`LinkIdent`]).
-    ///
-    /// Dormant: no UI constructs this yet (internet play goes through the
-    /// lobby roster). Kept wired end-to-end so re-exposing direct play is
-    /// just a matter of building a [`DirectRole`] and dispatching this.
     /// Direct local-play entry. Brings up a signaling-free libdatachannel peer
-    /// connection (host pins a UDP port; connect dials it) and runs the same
-    /// `Hello → Chunk → StartMatch` flow as the lobby path, building a
-    /// `PreMatchData` for the PvP spawn. Carries the local settings + reveal so
-    /// the inline flow has everything (no lobby to broker them).
+    /// connection whose SDP both sides fabricate from fixed ICE creds (see
+    /// [`crate::net::direct_rtc`]) — host pins the UDP port, connect dials it —
+    /// then runs the same `Hello → Chunk → StartMatch` flow as the lobby path,
+    /// building a `PreMatchData` for the PvP spawn. Carries the local settings +
+    /// reveal so the inline flow has everything (no lobby to broker them).
     ///
-    /// Dormant: no UI constructs this yet (internet play goes through the lobby
-    /// roster). Kept wired end-to-end for a future direct-play re-expose.
-    #[allow(dead_code)]
+    /// Dispatched by the sidebar's direct-connect view (see
+    /// `App::start_direct`).
     ConnectDirect {
         role: DirectRole,
         local_settings: crate::net::protocol::Settings,
@@ -458,7 +449,7 @@ async fn run_direct_match(
                 .await
                 .map_err(|e| AsyncError::Failed(format!("direct connect: {e}")))?,
         };
-        let crate::net::direct_rtc::DirectChannels {
+        let crate::net::channel::Channels {
             control: (mut sender, mut receiver),
             in_match: (in_match_sender, in_match_receiver),
             peer_conn,
@@ -522,7 +513,7 @@ async fn run_lobby_match(
 ) -> Result<PreMatchData, AsyncError> {
     let is_offerer = matches!(role, crate::net::lobby_rtc::LobbyRole::Offerer);
     let work = async {
-        let crate::net::direct_rtc::DirectChannels {
+        let crate::net::channel::Channels {
             control: (mut sender, mut receiver),
             in_match: (in_match_sender, in_match_receiver),
             peer_conn,

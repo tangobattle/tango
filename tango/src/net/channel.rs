@@ -18,7 +18,21 @@
 //! both sides just create them with matching ids — no DCEP open handshake.
 
 use super::{PacketSink, PacketStream, Receiver, Sender};
-use datachannel_wrapper::{DataChannelInit, Reliability};
+use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
+
+/// Both transport channels of a netplay connection, plus the peer connection
+/// that owns them (kept alive by the caller — see `netplay::NegotiationOutput`).
+/// Produced by every transport: the lobby-relayed path ([`super::lobby_rtc`])
+/// and the signaling-free direct path ([`super::direct_rtc`]) both hand one
+/// back, so it lives here next to the channel specs rather than under either
+/// transport.
+pub struct Channels {
+    /// Reliable, ordered — the control/lobby `Packet` protocol.
+    pub control: (Sender, Receiver),
+    /// Unreliable, unordered — the in-match `data::wire` datagrams.
+    pub in_match: (Sender, Receiver),
+    pub peer_conn: PeerConnection,
+}
 
 /// Label + init for the reliable control channel. Both transports create this
 /// up front, before any SDP, so it rides the initial association.

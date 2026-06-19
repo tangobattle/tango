@@ -117,20 +117,30 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
         .visible(now)
         .then(|| ctx.state.open_peer)
         .flatten();
-    let content: Element<'a, Message> = match open {
-        Some(code) => {
-            let prog = ctx.state.profile_vis.progress(now);
-            let profile = container(profile_panel(ctx, code, incompatible))
-                .padding(style::PANE_PADDING)
-                .width(Fill)
-                .height(Fill);
-            let mut el: Element<'a, Message> = profile.into();
-            if prog < 1.0 {
-                el = crate::anim::slide_in(el, prog, iced::Vector::new(48.0, 0.0));
+    let content: Element<'a, Message> = if ctx.state.direct_connect {
+        // The direct-connect form takes over the list area (entered from the ⋮
+        // menu); a back arrow returns to the roster.
+        container(direct_connect_view(ctx))
+            .padding(style::PANE_PADDING)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else {
+        match open {
+            Some(code) => {
+                let prog = ctx.state.profile_vis.progress(now);
+                let profile = container(profile_panel(ctx, code, incompatible))
+                    .padding(style::PANE_PADDING)
+                    .width(Fill)
+                    .height(Fill);
+                let mut el: Element<'a, Message> = profile.into();
+                if prog < 1.0 {
+                    el = crate::anim::slide_in(el, prog, iced::Vector::new(48.0, 0.0));
+                }
+                el
             }
-            el
+            None => roster_list(ctx, incompatible),
         }
-        None => roster_list(ctx, incompatible),
     };
 
     let list_pane = container(content).width(Fill).height(Fill).style(widgets::pane);
@@ -150,14 +160,15 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
         .width(Length::Fixed(SIDEBAR_WIDTH))
         .height(Fill);
 
-    // The status menu opens upward as an overlay so it never shifts the layout,
-    // sitting flush on top of the You pane and left-aligned with the avatar,
-    // with a sidebar-scoped scrim for click-away. YOU_REGION is the You pane's
-    // footprint from the sidebar bottom (the body's bottom PANE_GAP + the chip
-    // pane's ~56 px) so the menu's bottom edge meets the pane's top with no gap.
-    if ctx.state.status_menu_open {
+    // At most one popover is open at a time. Each opens upward as an overlay so
+    // it never shifts the layout, anchored over the bottom strip it belongs to,
+    // with a sidebar-scoped scrim for click-away.
+    let popover: Option<(Element<'a, Message>, Message)> = if ctx.state.status_menu_open {
+        // Flush on top of the You pane, left-aligned with the avatar. YOU_REGION
+        // is the You pane's footprint from the sidebar bottom (the body's bottom
+        // PANE_GAP + the chip pane's ~56 px) so the card's bottom meets the
+        // pane's top with no gap.
         const YOU_REGION: f32 = style::PANE_GAP + 56.0;
-        let scrim = mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::ToggleStatusMenu);
         let card = container(status_menu_card(ctx))
             .width(Fill)
             .height(Fill)
@@ -169,6 +180,30 @@ pub fn sidebar<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
                 left: style::PANE_PADDING,
                 bottom: YOU_REGION,
             });
+        Some((card.into(), Message::ToggleStatusMenu))
+    } else if ctx.state.menu_open {
+        // Just above the find-friend bar (one strip above the You pane),
+        // right-aligned with the ⋮ button. MENU_REGION clears the You pane, the
+        // gap between the two panes, and the bar itself.
+        const MENU_REGION: f32 = style::PANE_GAP + 56.0 + style::PANE_GAP + 44.0;
+        let card = container(overflow_menu_card(ctx))
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: style::PANE_PADDING,
+                left: 0.0,
+                bottom: MENU_REGION,
+            });
+        Some((card.into(), Message::ToggleMenu))
+    } else {
+        None
+    };
+
+    if let Some((card, dismiss)) = popover {
+        let scrim = mouse_area(Space::new().width(Fill).height(Fill)).on_press(dismiss);
         Stack::new()
             .push(body)
             .push(scrim)
@@ -467,11 +502,117 @@ fn add_contact_bar<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
             STANDARD_PADDING,
             widgets::primary_button,
         ),
+        // Overflow (⋮): for now just the direct-connect entry. Opens a popover
+        // upward (see `sidebar`).
+        widgets::icon_button_styled(
+            Icon::EllipsisVertical,
+            t!(lang, "roster-menu"),
+            Some(Message::ToggleMenu),
+            STANDARD_PADDING,
+            widgets::neutral,
+        ),
     ]
     .spacing(6)
     .width(Fill)
     .align_y(Alignment::Center)
     .into()
+}
+
+/// The overflow (⋮) popover card: a floating plate of menu items. Today just
+/// "Direct connect"; sized to match the status menu's card.
+fn overflow_menu_card<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let item = button(
+        row![
+            Icon::Cable.widget().size(TEXT_BODY),
+            text(t!(lang, "roster-direct-connect")).size(TEXT_BODY),
+        ]
+        .spacing(8)
+        .width(Fill)
+        .align_y(Alignment::Center),
+    )
+    .padding([6, 8])
+    .width(Fill)
+    .style(widgets::flat)
+    .on_press(Message::OpenDirectConnect);
+    container(column![item].width(Fill))
+        .width(Length::Fixed(190.0))
+        .padding(6)
+        .style(floating_card)
+        .into()
+}
+
+/// The direct-connect view that takes over the list area: host a link on the
+/// default port, or dial a peer by address — the signaling-free path that needs
+/// no lobby (see [`crate::net::direct_rtc`]). Both require a game + save loaded
+/// (same as a challenge), so the actions disable until ready.
+fn direct_connect_view<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let ready = ctx.can_challenge && ctx.netplay_idle;
+
+    let back = widgets::icon_button_styled(
+        Icon::ArrowLeft,
+        t!(lang, "roster-back"),
+        Some(Message::CloseDirectConnect),
+        [2.0, 6.0],
+        widgets::flat,
+    );
+    let header = row![back, text(t!(lang, "direct-title")).size(style::TEXT_TITLE)]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+    let explainer = text(t!(lang, "direct-explainer"))
+        .size(TEXT_CAPTION)
+        .style(widgets::muted_text_style);
+
+    // Host: listen on the default UDP port and wait for a dialer.
+    let host_btn = widgets::labeled_icon_button_maybe(
+        Icon::RadioTower,
+        t!(lang, "direct-host"),
+        ready.then_some(Message::DirectHost),
+        STANDARD_PADDING,
+        widgets::primary_button,
+    );
+    let host_hint = text(t!(lang, "direct-host-hint", port = crate::net::DEFAULT_LOCAL_PORT as i64))
+        .size(TEXT_CAPTION)
+        .style(widgets::muted_text_style);
+    let host = column![host_btn, host_hint].spacing(6).width(Fill);
+
+    // Join: dial a typed address (`host` or `host:port`).
+    let addr_valid = !ctx.state.direct_addr.trim().is_empty();
+    let join_msg = (ready && addr_valid).then_some(Message::DirectJoin);
+    let addr_input = text_input(&t!(lang, "direct-addr-placeholder"), &ctx.state.direct_addr)
+        .on_input(Message::DirectAddrChanged)
+        .on_submit(Message::DirectJoin)
+        .padding(STANDARD_PADDING)
+        .width(Fill)
+        .style(widgets::chunky_text_input);
+    let join_btn = widgets::icon_button_styled(
+        Icon::Cable,
+        t!(lang, "direct-join"),
+        join_msg,
+        STANDARD_PADDING,
+        widgets::primary_button,
+    );
+    let join = column![
+        text(t!(lang, "direct-join-label")).size(TEXT_CAPTION).style(widgets::muted_text_style),
+        row![addr_input, join_btn].spacing(6).width(Fill).align_y(Alignment::Center),
+    ]
+    .spacing(6)
+    .width(Fill);
+
+    let mut col = column![header, explainer, host, join].spacing(16).width(Fill);
+    if !ready {
+        // Spell out why the actions are inert (no game/save, or a match already
+        // in flight) instead of leaving dead buttons unexplained.
+        let why = if ctx.can_challenge {
+            t!(lang, "direct-busy")
+        } else {
+            t!(lang, "direct-need-game")
+        };
+        col = col.push(text(why).size(TEXT_CAPTION).style(widgets::muted_text_style));
+    }
+    col.into()
 }
 
 // ---------- profile (master→detail) ----------
@@ -990,8 +1131,10 @@ fn ellipsize_to(label: &str, avail: f32) -> (String, bool) {
 }
 
 fn section_label<'a>(label: String) -> Element<'a, Message> {
+    // Left padding matches the rows' (`[6, 12]`) so the header lines up with the
+    // avatars below it rather than sitting a few px to their left.
     container(text(label).size(TEXT_CAPTION).style(widgets::muted_text_style))
-        .padding([2, 8])
+        .padding([2, 12])
         .into()
 }
 

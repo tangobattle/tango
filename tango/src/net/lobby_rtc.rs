@@ -7,14 +7,14 @@
 //! The relay itself is the caller's job — `send_local_sdp` ships our SDP to the
 //! peer (over the lobby's RtcOffer/RtcAnswer) and `sdp_rx` delivers theirs — so
 //! this module stays free of any lobby/protocol types. The two data channels
-//! and the resulting `PeerConnection` come back as [`DirectChannels`], the same
+//! and the resulting `PeerConnection` come back as [`super::channel::Channels`], the same
 //! shape the direct path returns, so the rest of netplay treats both alike.
 
 use datachannel_wrapper::{
     GatheringState, PeerConnection, PeerConnectionEvent, RtcConfig, SdpType, SessionDescription,
 };
 
-use super::direct_rtc::DirectChannels;
+use super::channel::Channels;
 
 /// Which half of the SDP exchange we drive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub async fn bring_up(
     use_relay: Option<bool>,
     send_local_sdp: impl FnOnce(String) + Send + 'static,
     mut sdp_rx: tokio::sync::mpsc::Receiver<String>,
-) -> std::io::Result<DirectChannels> {
+) -> std::io::Result<Channels> {
     let mut config = RtcConfig {
         ice_servers,
         // We drive the offer/answer ourselves, after both channels exist (real
@@ -81,7 +81,7 @@ pub async fn bring_up(
         }
     }
 
-    Ok(DirectChannels {
+    Ok(Channels {
         control: super::channel::pair(control_dc),
         in_match: super::channel::pair(in_match_dc),
         peer_conn: pc,

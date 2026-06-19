@@ -134,6 +134,14 @@ pub struct State {
     /// Draft of the "find by friend code" bar. Submitting opens that code's
     /// profile so you can nickname it.
     pub add_draft: String,
+    /// Whether the overflow (⋮) menu by the find-friend bar is open.
+    pub menu_open: bool,
+    /// When set, the sidebar shows the direct-connect form (host / join by
+    /// address) in place of the roster.
+    pub direct_connect: bool,
+    /// Draft address for the direct-connect "join" field (`host` or
+    /// `host:port`).
+    pub direct_addr: String,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +186,19 @@ pub enum Message {
     /// UI: copy text (a friend code) to the clipboard, lighting the `flash`
     /// copy button's feedback. App-intercepted.
     CopyText { text: String, flash: &'static str },
+    /// UI: open/close the overflow (⋮) menu by the find-friend bar.
+    ToggleMenu,
+    /// UI: enter the direct-connect view (host / join by address).
+    OpenDirectConnect,
+    /// UI: leave the direct-connect view, back to the roster.
+    CloseDirectConnect,
+    /// UI: edit the direct-connect join-address draft.
+    DirectAddrChanged(String),
+    /// UI: start hosting a direct link. App-intercepted — it builds the local
+    /// settings + reveal and dispatches netplay's `ConnectDirect`.
+    DirectHost,
+    /// UI: dial the typed address for a direct link. Also App-intercepted.
+    DirectJoin,
 }
 
 impl State {
@@ -211,6 +232,9 @@ impl State {
             profile_vis: crate::anim::Transition::new(false),
             status_menu_open: false,
             add_draft: String::new(),
+            menu_open: false,
+            direct_connect: false,
+            direct_addr: String::new(),
         }
     }
 
@@ -356,6 +380,29 @@ impl State {
             }
             Message::ToggleStatusMenu => {
                 self.status_menu_open = !self.status_menu_open;
+                self.menu_open = false;
+                iced::Task::none()
+            }
+            Message::ToggleMenu => {
+                self.menu_open = !self.menu_open;
+                self.status_menu_open = false;
+                iced::Task::none()
+            }
+            Message::OpenDirectConnect => {
+                self.direct_connect = true;
+                self.menu_open = false;
+                // The direct view replaces the list area — drop any open profile
+                // so returning lands back on the roster, not a stale card.
+                self.open_peer = None;
+                self.profile_vis.set(false, now);
+                iced::Task::none()
+            }
+            Message::CloseDirectConnect => {
+                self.direct_connect = false;
+                iced::Task::none()
+            }
+            Message::DirectAddrChanged(s) => {
+                self.direct_addr = s.chars().take(128).collect();
                 iced::Task::none()
             }
             Message::AddDraftChanged(s) => {
@@ -386,7 +433,9 @@ impl State {
             | Message::SetNickname { .. }
             | Message::SetMatchType(_)
             | Message::SetBlindSetup(_)
-            | Message::CopyText { .. } => iced::Task::none(),
+            | Message::CopyText { .. }
+            | Message::DirectHost
+            | Message::DirectJoin => iced::Task::none(),
         }
     }
 

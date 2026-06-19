@@ -9,9 +9,10 @@
 //!   `PvpReceiver` adapters used by the battle loop. Runs over a separate
 //!   **unreliable** data channel.
 //!
-//! [`channel`] owns the data-channel specs (labels / stream ids / reliability)
-//! and the adapter that splits a WebRTC `DataChannel` into a `Sender` /
-//! `Receiver`. [`direct_rtc`] is the signaling-free direct transport.
+//! [`channel`] owns the data-channel specs (labels / stream ids / reliability),
+//! the adapter that splits a WebRTC `DataChannel` into a `Sender` / `Receiver`,
+//! and the [`Channels`](channel::Channels) bundle both transports hand back.
+//! [`direct_rtc`] is the signaling-free direct transport.
 //!
 //! The control plane's transport types and the `protocol` module are re-exported
 //! at the root so callers can keep saying `crate::net::Sender`,

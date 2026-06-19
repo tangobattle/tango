@@ -69,6 +69,18 @@ roster-set-status = Set your status
 roster-self-online = Online
 roster-self-invisible = Invisible
 roster-self-offline = Offline
+roster-menu = More
+roster-direct-connect = Direct connect
+# Direct-connect view (signaling-free local/IP play), reached from the ⋮ menu.
+direct-title = Direct connect
+direct-explainer = Play someone directly — host a link, or connect to their address. No lobby needed.
+direct-host = Host
+direct-host-hint = Listen on UDP port { $port } and wait for someone to connect.
+direct-join-label = Connect to a peer
+direct-join = Connect
+direct-addr-placeholder = IP address or host:port
+direct-need-game = Pick a game and load a save first.
+direct-busy = A match is already in progress.
 # Zone header over the Play tab body, paired with roster-zone on the sidebar.
 play-zone-build = Your build
 # Full-screen overlay shown while a netplay match is being brought up (the
