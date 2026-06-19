@@ -9,6 +9,7 @@ mod discord;
 mod game;
 mod gamepad;
 mod i18n;
+mod identity;
 mod input;
 mod input_capture;
 mod loadout;

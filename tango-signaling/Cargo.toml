@@ -11,7 +11,9 @@ client = [
   "dep:urlencoding",
   "dep:tokio-tungstenite",
   "dep:tokio",
-  "dep:rand"
+  "dep:rand",
+  "dep:rustls",
+  "dep:webpki-roots"
 ]
 proto = []
 
@@ -23,6 +25,12 @@ http = "0.2"
 log = "0.4"
 prost = "0.14"
 rand = { version = "0.8", optional = true }
+# Pinned to the same versions tokio-tungstenite 0.16 pulls (rustls 0.20,
+# webpki-roots 0.22) so cargo unifies a single rustls in the graph — we
+# build the client `ClientConfig` ourselves to attach the mTLS client
+# certificate (see `client::build_tls_config`).
+rustls = { version = "0.20", optional = true }
+webpki-roots = { version = "0.22", optional = true }
 thiserror = "1"
 tokio = { version = "1", features = ["full"], optional = true }
 tokio-tungstenite = { version = "0.16", features = [

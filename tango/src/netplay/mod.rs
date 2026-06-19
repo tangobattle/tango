@@ -306,6 +306,10 @@ pub enum Message {
         link_code: String,
         endpoint: String,
         use_relay: Option<bool>,
+        /// The App's persistent client identity (cloned from app state),
+        /// presented as the signaling websocket's mTLS client certificate.
+        /// `None` when no identity could be loaded — dial without one.
+        identity: Option<tango_signaling::ClientIdentity>,
     },
     /// Direct local-play entry. Bypasses the signaling server —
     /// runs the protocol-version negotiate handshake over a
@@ -492,7 +496,8 @@ impl State {
                 link_code,
                 endpoint,
                 use_relay,
-            } => self.connect(link_code, endpoint, use_relay),
+                identity,
+            } => self.connect(link_code, endpoint, use_relay, identity),
             Message::ConnectDirect { role } => self.connect_direct(role),
             Message::SignalingHelloReceived(slot_rx) => self.on_signaling_hello(slot_rx),
             Message::SignalingDone(slot_rx) => self.on_signaling_done(slot_rx),
@@ -569,7 +574,13 @@ impl State {
     }
 
     /// `Message::Connect` — start the matchmaking-server connect task.
-    fn connect(&mut self, link_code: String, endpoint: String, use_relay: Option<bool>) -> iced::Task<Message> {
+    fn connect(
+        &mut self,
+        link_code: String,
+        endpoint: String,
+        use_relay: Option<bool>,
+        identity: Option<tango_signaling::ClientIdentity>,
+    ) -> iced::Task<Message> {
         self.cancel_and_renew();
         self.phase = Phase::Connecting {
             ident: LinkIdent::Matchmaking(link_code.clone()),
@@ -577,7 +588,7 @@ impl State {
         };
         let cancel = self.cancel.clone();
         iced::Task::perform(
-            run_signaling_connect(endpoint, link_code, use_relay, cancel),
+            run_signaling_connect(endpoint, link_code, use_relay, identity, cancel),
             map_signaling_hello_result,
         )
     }
@@ -1275,6 +1286,7 @@ async fn run_signaling_connect(
     endpoint: String,
     link_code: String,
     use_relay: Option<bool>,
+    identity: Option<tango_signaling::ClientIdentity>,
     cancel: CancellationToken,
 ) -> Result<SignalingHello, AsyncError> {
     let work = async {
@@ -1294,6 +1306,12 @@ async fn run_signaling_connect(
                 crate::net::channel::control_channel(),
                 crate::net::channel::in_match_channel(),
             ],
+            // The persistent self-signed identity (threaded from app state),
+            // presented as the websocket's mTLS client certificate so the
+            // server can log our fingerprint. `None` when it couldn't be
+            // loaded — the dial still succeeds, just without a client cert
+            // (see `crate::identity`).
+            identity,
         )
         .await
         .map_err(|e| AsyncError::Failed(format!("signaling: {e}")))?;

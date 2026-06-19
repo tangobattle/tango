@@ -8,6 +8,49 @@ pub type AbortReason = crate::proto::signaling::packet::abort::Reason;
 /// The concrete websocket stream `tokio_tungstenite::connect_async` hands back.
 type SignalingStream = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
+/// The caller's persistent client identity, presented as a TLS client
+/// certificate (mTLS) on the signaling websocket so the server can recognize
+/// the same install across sessions. Both fields are DER: a single self-signed
+/// certificate and its private key. The certificate is only sent if the server
+/// asks for one during the TLS handshake (i.e. mTLS is enabled on the
+/// endpoint); when it doesn't, the connection proceeds as an ordinary client,
+/// so attaching an identity is always safe.
+#[derive(Clone)]
+pub struct ClientIdentity {
+    pub cert_der: Vec<u8>,
+    pub key_der: Vec<u8>,
+}
+
+/// Hand-rolled so the private key never lands in a `Debug` dump (the enclosing
+/// netplay `Message` derives `Debug` and gets logged) — just the byte lengths.
+impl std::fmt::Debug for ClientIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientIdentity")
+            .field("cert_der_len", &self.cert_der.len())
+            .field("key_der_len", &self.key_der.len())
+            .finish()
+    }
+}
+
+/// Build a rustls `ClientConfig` that trusts the webpki root set (same roots
+/// `tokio_tungstenite`'s default connector uses) and presents `identity` as the
+/// client certificate. Returned behind an `Arc` so it can be cloned cheaply
+/// into a fresh `Connector` on every transparent reconnect.
+fn build_tls_config(identity: &ClientIdentity) -> Result<std::sync::Arc<rustls::ClientConfig>, Error> {
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+        rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(ta.subject, ta.spki, ta.name_constraints)
+    }));
+    let config = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_single_cert(
+            vec![rustls::Certificate(identity.cert_der.clone())],
+            rustls::PrivateKey(identity.key_der.clone()),
+        )?;
+    Ok(std::sync::Arc::new(config))
+}
+
 /// How long to wait for any signaling traffic before treating the websocket as
 /// dead. The server echoes our pings, so a healthy idle connection reads at
 /// least every `PING_INTERVAL`.
@@ -80,6 +123,9 @@ pub enum Error {
     #[error("tungstenite: {0:?}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
 
+    #[error("rustls: {0:?}")]
+    Rustls(#[from] rustls::Error),
+
     #[error("io: {0:?}")]
     Io(#[from] std::io::Error),
 
@@ -146,6 +192,7 @@ async fn establish(
     protocol_version: u32,
     connection_id: &[u8],
     channels: &[ChannelSpec],
+    tls_config: Option<&std::sync::Arc<rustls::ClientConfig>>,
 ) -> Result<
     (
         SignalingStream,
@@ -176,7 +223,12 @@ async fn establish(
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("{:x}", protocol_version))
             .map_err(|e| tokio_tungstenite::tungstenite::http::Error::from(e))?,
     );
-    let mut signaling_stream = match tokio_tungstenite::connect_async(req).await {
+    // A `Connector::Rustls` carrying our client certificate, rebuilt per
+    // attempt from the shared `ClientConfig` (the `Connector` itself isn't
+    // `Clone`, but the `Arc<ClientConfig>` inside it is). With no identity we
+    // pass `None`, which lets tungstenite fall back to its default connector.
+    let connector = tls_config.map(|c| tokio_tungstenite::Connector::Rustls(c.clone()));
+    let mut signaling_stream = match tokio_tungstenite::connect_async_tls_with_config(req, None, connector).await {
         Ok((signaling_stream, _)) => signaling_stream,
         Err(tokio_tungstenite::tungstenite::Error::Http(e)) if e.status() == http::StatusCode::BAD_REQUEST => {
             let abort = crate::proto::signaling::packet::Abort::decode(
@@ -422,6 +474,7 @@ pub async fn connect(
     use_relay: Option<bool>,
     protocol_version: u32,
     channels: Vec<ChannelSpec>,
+    identity: Option<ClientIdentity>,
 ) -> Result<Connecting, Error> {
     // A stable id for this logical connection attempt, sent with every `Start`.
     // It survives transparent reconnects, so when our offerer socket drops and
@@ -430,11 +483,28 @@ pub async fn connect(
     // answering peer.
     let connection_id: [u8; 16] = rand::random();
 
+    // Build the mTLS client config once: it's identical across every
+    // (re)connect, so the parse/validate cost (and any cert error) happens here,
+    // surfaced to the caller alongside the initial dial. Cloned per attempt as a
+    // cheap `Arc` bump in `establish`.
+    let tls_config = match identity.as_ref() {
+        Some(id) => Some(build_tls_config(id)?),
+        None => None,
+    };
+
     // The initial dial surfaces failures to the caller (so "couldn't reach the
     // matchmaking server" is reported promptly); transparent reconnects only
     // kick in once we've successfully connected at least once.
-    let (mut signaling_stream, mut dcs, mut event_rx, mut peer_conn) =
-        establish(addr, session_id, use_relay, protocol_version, &connection_id, &channels).await?;
+    let (mut signaling_stream, mut dcs, mut event_rx, mut peer_conn) = establish(
+        addr,
+        session_id,
+        use_relay,
+        protocol_version,
+        &connection_id,
+        &channels,
+        tls_config.as_ref(),
+    )
+    .await?;
 
     let addr = addr.to_owned();
     let session_id = session_id.to_owned();
@@ -460,6 +530,7 @@ pub async fn connect(
                             protocol_version,
                             &connection_id,
                             &channels,
+                            tls_config.as_ref(),
                         )
                         .await
                         {

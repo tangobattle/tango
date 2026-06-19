@@ -16,8 +16,8 @@
 use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
-    anim, audio, config, discord, game, i18n, input, loadout, net, netplay, patch, replays, rom, save, selection,
-    session, tabs, updater, widgets, INIT_LINK_CODE,
+    anim, audio, config, discord, game, i18n, identity, input, loadout, net, netplay, patch, replays, rom, save,
+    selection, session, tabs, updater, widgets, INIT_LINK_CODE,
 };
 use i18n::t;
 use iced::widget::container;
@@ -123,6 +123,12 @@ pub struct App {
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
     netplay: netplay::State,
+    /// Persistent self-signed client identity, loaded once at startup
+    /// (see [`crate::identity`]). Cloned into each matchmaking
+    /// `Connect` so the lobby websocket presents it as the mTLS client
+    /// certificate. `None` if it couldn't be loaded/created — netplay
+    /// then dials without a client cert.
+    identity: Option<tango_signaling::ClientIdentity>,
 
     /// Active emulator session (replay playback or single-player) plus
     /// the cached framebuffer Handle. While `session.is_active()`, the
@@ -357,6 +363,7 @@ impl App {
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
+            identity: identity::load(),
             discord: discord::Client::new(),
             session_started_at: None,
             patch_autoupdater,

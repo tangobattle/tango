@@ -84,7 +84,10 @@ const DEFAULT_ICE_SERVERS: tango.signaling.Packet.Hello.IICEServer[] = [
 ].map((uri) => ({ credential: null, username: null, urls: [uri] }));
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  // Params are left unannotated so `satisfies ExportedHandler<Env>` types
+  // `request` as an incoming request — that's what gives `request.cf` its
+  // `tlsClientAuth` (mTLS client-certificate) shape below.
+  async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/ok") {
@@ -112,6 +115,24 @@ export default {
         }).finish(),
         { status: 400 },
       );
+    }
+
+    // mTLS client identity. When the matchmaking hostname has mTLS enabled,
+    // Cloudflare populates `cf.tlsClientAuth` from the self-signed certificate
+    // Tango presents on the websocket (see the client's `identity` module).
+    // Log its SHA-256 fingerprint — the client's persistent identity — so a
+    // connection can be tied back to an install. `certVerified` reads
+    // "FAILED:self signed certificate" for these certs (there's no CA chain to
+    // validate, by design); we want the fingerprint, not verification.
+    // `tlsClientAuth` is absent entirely when mTLS isn't configured on the
+    // hostname, and `certPresented` is "0" when a client connects without one.
+    const tlsClientAuth = request.cf?.tlsClientAuth;
+    if (tlsClientAuth?.certPresented === "1") {
+      console.log(
+        `session ${sessionId}: client cert fingerprint sha256=${tlsClientAuth.certFingerprintSHA256} (verify: ${tlsClientAuth.certVerified})`,
+      );
+    } else {
+      console.log(`session ${sessionId}: no client certificate presented`);
     }
 
     const stub = env.MATCHMAKING.get(

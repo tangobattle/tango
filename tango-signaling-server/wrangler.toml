@@ -13,3 +13,10 @@ new_sqlite_classes = ["MatchmakingHub"]
 [route]
 pattern = "matchmaking.tango.n1gp.net"
 zone_name = "n1gp.net"
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
