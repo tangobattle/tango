@@ -71,7 +71,7 @@ enum Status {
 #[derive(Clone, Copy)]
 enum Pip {
     Online,
-    Match,
+    Busy,
     Off,
 }
 
@@ -298,8 +298,14 @@ fn roster_list<'a>(ctx: &Ctx<'a>, incompatible: &BTreeSet<FriendCode>) -> Elemen
         .iter()
         .filter(|p| !p.is_friend() && p.status != Status::Offline)
         .collect();
-    let order =
-        |p: &&Player| (!p.has_incoming(), p.incoming_seq.unwrap_or(u64::MAX), status_rank(p.status), p.sort_name());
+    let order = |p: &&Player| {
+        (
+            !p.has_incoming(),
+            p.incoming_seq.unwrap_or(u64::MAX),
+            status_rank(p.status),
+            p.sort_name(),
+        )
+    };
     friends.sort_by_key(order);
     online.sort_by_key(order);
 
@@ -599,9 +605,13 @@ fn direct_connect_view<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
         STANDARD_PADDING,
         widgets::primary_button,
     );
-    let host_hint = text(t!(lang, "direct-host-hint", port = crate::net::DEFAULT_LOCAL_PORT as i64))
-        .size(TEXT_CAPTION)
-        .style(widgets::muted_text_style);
+    let host_hint = text(t!(
+        lang,
+        "direct-host-hint",
+        port = crate::net::DEFAULT_LOCAL_PORT as i64
+    ))
+    .size(TEXT_CAPTION)
+    .style(widgets::muted_text_style);
     let host = column![host_btn, host_hint].spacing(6).width(Fill);
 
     // Join: dial a typed address (`host` or `host:port`).
@@ -621,8 +631,13 @@ fn direct_connect_view<'a>(ctx: &Ctx<'a>) -> Element<'a, Message> {
         widgets::primary_button,
     );
     let join = column![
-        text(t!(lang, "direct-join-label")).size(TEXT_CAPTION).style(widgets::muted_text_style),
-        row![addr_input, join_btn].spacing(6).width(Fill).align_y(Alignment::Center),
+        text(t!(lang, "direct-join-label"))
+            .size(TEXT_CAPTION)
+            .style(widgets::muted_text_style),
+        row![addr_input, join_btn]
+            .spacing(6)
+            .width(Fill)
+            .align_y(Alignment::Center),
     ]
     .spacing(6)
     .width(Fill);
@@ -1214,7 +1229,7 @@ fn status_rank(status: Status) -> u8 {
 fn pip_of(status: Status) -> Pip {
     match status {
         Status::Online => Pip::Online,
-        Status::Busy => Pip::Match,
+        Status::Busy => Pip::Busy,
         Status::Offline => Pip::Off,
     }
 }
@@ -1392,7 +1407,7 @@ fn status_dot<'a>(pip: Pip, size: f32) -> Element<'a, Message> {
             move |theme: &iced::Theme| {
                 let bg = match pip {
                     Pip::Online => theme.palette().primary,
-                    Pip::Match => theme.extended_palette().danger.strong.color,
+                    Pip::Busy => theme.extended_palette().warning.strong.color,
                     Pip::Off => widgets::muted_color(theme),
                 };
                 let glow = matches!(pip, Pip::Online);
