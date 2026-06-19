@@ -10,13 +10,8 @@ const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";
 const APPLICATION: &str = "tango";
 
-pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
 pub const DEFAULT_LOBBY_ENDPOINT: &str = "wss://lobby.tango.n1gp.net";
 pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
-
-fn default_matchmaking_endpoint() -> String {
-    DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-}
 
 fn default_lobby_endpoint() -> String {
     DEFAULT_LOBBY_ENDPOINT.to_string()
@@ -62,7 +57,7 @@ pub enum ThemeMode {
     Dark,
 }
 
-/// Whether matchmaking connections may/must go through the TURN
+/// Whether peer connections may/must go through the TURN
 /// relay. `Auto` lets ICE pick the best route (direct when possible,
 /// relay as fallback); `Always` forces every candidate through the
 /// relay (`ice_transport_policy = Relay`); `Never` strips the TURN
@@ -77,7 +72,8 @@ pub enum RelayMode {
 }
 
 impl RelayMode {
-    /// The `use_relay` argument `tango_signaling::connect` expects.
+    /// Relay preference for the lobby RTC bring-up: `None` = let ICE pick,
+    /// `Some(true)` = relay only, `Some(false)` = drop the TURN servers.
     pub fn use_relay(self) -> Option<bool> {
         match self {
             RelayMode::Auto => None,
@@ -105,7 +101,6 @@ pub struct Config {
     pub streamer_mode: bool,
     pub theme: ThemeMode,
     pub data_path: std::path::PathBuf,
-    pub matchmaking_endpoint: String,
     pub lobby_endpoint: String,
     pub patch_repo: String,
     /// When `true`, the patch autoupdater (`patch::Autoupdater`)
@@ -229,7 +224,7 @@ pub struct Config {
     /// with the peer); snapshotted into the match at start.
     #[serde(default = "default_frame_delay")]
     pub frame_delay: u32,
-    /// Relay (TURN) usage policy for matchmaking connections. See
+    /// Relay (TURN) usage policy for lobby RTC connections. See
     /// [`RelayMode`]. Sampled at connect time.
     #[serde(default)]
     pub relay_mode: RelayMode,
@@ -254,7 +249,6 @@ impl Default for Config {
             streamer_mode: false,
             theme: ThemeMode::default(),
             data_path,
-            matchmaking_endpoint: default_matchmaking_endpoint(),
             lobby_endpoint: default_lobby_endpoint(),
             patch_repo: default_patch_repo(),
             enable_patch_autoupdate: true,

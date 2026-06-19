@@ -2,9 +2,10 @@
 //!
 //! A self-signed certificate kept in the [config dir](crate::config::config_dir)
 //! gives this install a stable handle across runs. It's presented as the
-//! matchmaking websocket's TLS client certificate (mTLS), so the signaling
-//! server can read its SHA-256 fingerprint off the TLS handshake and recognize
-//! the same install session to session — no account system to ship.
+//! lobby websocket's TLS client certificate (mTLS), so the lobby server can
+//! read its SHA-256 fingerprint off the TLS handshake, derive a stable friend
+//! code from it, and recognize the same install session to session — no
+//! account system to ship.
 //!
 //! The cert + key are minted once (first launch, or whenever the files go
 //! missing) and stored as PEM. [`load`] is called once at startup; the result
@@ -25,7 +26,7 @@ const KEY_FILE: &str = "identity.key.pem";
 /// self-signed cert on first run. Returns `None` (logged) if it couldn't be
 /// loaded or created. Call this once at startup and hold the result in app
 /// state — it's threaded into each signaling connect, not re-read per dial.
-pub fn load() -> Option<tango_signaling::ClientIdentity> {
+pub fn load() -> Option<tango_lobby::ClientIdentity> {
     match load_or_create() {
         Ok((identity, fingerprint)) => {
             log::info!("client identity loaded (sha256 fingerprint: {fingerprint})");
@@ -41,7 +42,7 @@ pub fn load() -> Option<tango_signaling::ClientIdentity> {
 /// Load the identity from disk, minting + persisting a fresh self-signed cert
 /// when either file is missing. Returns the identity plus its lowercase-hex
 /// SHA-256 fingerprint (of the DER certificate) for logging.
-fn load_or_create() -> anyhow::Result<(tango_signaling::ClientIdentity, String)> {
+fn load_or_create() -> anyhow::Result<(tango_lobby::ClientIdentity, String)> {
     // `TANGO_IDENTITY_DIR` overrides where the identity files live, so a second
     // instance on the same machine can run a distinct identity (= a distinct
     // friend code) for local testing: `TANGO_IDENTITY_DIR=/tmp/tango-id2 cargo run`.
@@ -66,7 +67,7 @@ fn load_or_create() -> anyhow::Result<(tango_signaling::ClientIdentity, String)>
     let cert_der = parse_single_cert(&cert_pem)?;
     let key_der = parse_single_key(&key_pem)?;
     let fingerprint = hex(Sha256::digest(&cert_der).as_slice());
-    Ok((tango_signaling::ClientIdentity { cert_der, key_der }, fingerprint))
+    Ok((tango_lobby::ClientIdentity { cert_der, key_der }, fingerprint))
 }
 
 /// Mint a fresh self-signed certificate, write both PEM files (the key locked

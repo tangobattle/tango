@@ -470,9 +470,9 @@ fn setup_drawers_overlay<'a>(
 }
 
 /// The replay bar's strip: full transport (play/pause + scrubber +
-/// tick readouts) plus the options trigger, at the chunky
-/// BAR_CONTROL_HEIGHT sizing. SP/PvP don't use this — their few
-/// controls live in compact corner chips ([`corner_chips`]).
+/// tick readouts) plus the options trigger, at the chunky bar-control
+/// sizing. SP/PvP don't use this — their few controls live in compact
+/// corner chips ([`corner_chips`]).
 fn replay_bar<'a>(
     lang: &'a LanguageIdentifier,
     r: &'a replay::ReplaySession,

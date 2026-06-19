@@ -74,17 +74,12 @@ play-no-patch = No patch
 play-patch-toggle = Use a patch…
 play-version-placeholder = —
 
-# Play bottom strip
-play-link-code = Link code (leave empty for a random one)
-play-link-code-random = Random link code
+# Play tab / netplay status
 play-play = Play
-play-fight = Fight
 play-cancel = Leave
-play-status-idle = Enter a link code to start netplay, or leave blank for single-player.
-play-status-connecting = Connecting to matchmaking server…
+play-status-connecting = Connecting…
 play-status-direct-connecting = Connecting to opponent…
 play-status-waiting-opponent = Waiting for opponent…
-play-status-negotiating = Negotiating…
 play-status-failed = Connection failed: { $error }
 play-status-peer-disconnected = The other player left.
 play-status-negotiate-expected-hello = The other player didn't send the expected handshake.

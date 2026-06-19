@@ -17,7 +17,6 @@ mod lobby;
 mod net;
 mod netplay;
 mod patch;
-mod randomcode;
 mod replays;
 mod rom;
 mod rom_overrides;
@@ -63,22 +62,12 @@ const FONT_NOTO_EMOJI: &[u8] = include_bytes!("../fonts/NotoEmoji-Regular.ttf");
 /// app.
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 
-/// CLI shape — matches legacy `tango/src/main.rs::Args` so
-/// Discord deep-links and the `tango Join <code>` command-line
-/// invocation behave the same way.
+/// CLI shape. Currently takes no arguments — parsed only so unknown
+/// flags fail fast and `--help`/`--version` work. (The old `Join
+/// <code>` deep-link command went away with link-code matchmaking;
+/// internet play is driven by the lobby roster now.)
 #[derive(clap::Parser, Debug, Clone)]
-struct Args {
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(clap::Subcommand, Debug, Clone)]
-enum Command {
-    /// Jump straight to the Play tab with the given netplay link
-    /// code pre-filled. Used by `tango://join/<code>` style URI
-    /// handlers + Discord "Join Game" intents.
-    Join { link_code: String },
-}
+struct Args {}
 
 pub fn main() {
     if std::env::var(TANGO_CHILD_ENV_VAR).as_deref() == Ok("1") {
@@ -163,12 +152,6 @@ fn supervisor_main() -> anyhow::Result<i32> {
     Ok(status.code().unwrap_or(0))
 }
 
-/// Initial link code parsed from CLI args, stashed in a global
-/// so `App::new` (which iced calls with no arguments) can pick
-/// it up. Set once at startup; cleared after the first read so
-/// re-runs don't replay the same code.
-static INIT_LINK_CODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-
 /// Decode `icon.png` into an iced `window::Icon`. Returns
 /// `None` on any failure (image-crate decode error, dimension
 /// mismatch, etc.) — the OS just falls back to its default
@@ -190,14 +173,6 @@ fn run_app() -> iced::Result {
     // installed for the lifetime of the process.
     std::mem::forget(crash_log::install());
 
-    // Re-parse the CLI in the child (the supervisor doesn't pass
-    // it through). Bad args here would have failed in the
-    // supervisor already, so unwrap is fine.
-    let args = <Args as clap::Parser>::parse();
-    let init_link_code = args.command.and_then(|c| match c {
-        Command::Join { link_code } => Some(link_code),
-    });
-    let _ = INIT_LINK_CODE.set(init_link_code);
     // Route mgba's global default logger through `c_log` too — without
     // this, the prefetcher's bare Core falls through to mgba's printf
     // stub and spams `GBA BIOS: SWI: …` lines straight to stdout.

@@ -5735,7 +5735,6 @@ dependencies = [
  "tango-gamesupport-exe45",
  "tango-lobby",
  "tango-pvp",
- "tango-signaling",
  "thiserror 1.0.69",
  "tiny-skia",
  "tokio",
@@ -6019,27 +6018,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "zstd 0.11.2+zstd.1.5.2",
-]
-
-[[package]]
-name = "tango-signaling"
-version = "0.1.0"
-dependencies = [
- "datachannel-wrapper",
- "futures",
- "futures-util",
- "http",
- "log",
- "prost",
- "prost-build",
- "rand",
- "rustls",
- "thiserror 1.0.69",
- "tokio",
- "tokio-tungstenite",
- "url",
- "urlencoding",
- "webpki-roots",
 ]
 
 [[package]]

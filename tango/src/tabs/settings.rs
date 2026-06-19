@@ -82,7 +82,6 @@ pub enum Message {
     LanguageSelected(LanguageIdentifier),
     NicknameChanged(String),
     ToggleStreamerMode(bool),
-    MatchmakingEndpointChanged(String),
     /// Netplay frame-delay slider moved. Persisted to `config.frame_delay`;
     /// it's this side's local presentation lag, applied at the next match start
     /// (or live via the in-match footer slider).
@@ -147,7 +146,6 @@ pub enum ConfigChange {
     Language(LanguageIdentifier),
     Nickname(String),
     StreamerMode(bool),
-    MatchmakingEndpoint(String),
     FrameDelay(u32),
     RelayMode(config::RelayMode),
     PatchRepo(String),
@@ -197,7 +195,6 @@ impl State {
             Message::LanguageSelected(l) => Some(ConfigChange::Language(l)),
             Message::NicknameChanged(s) => Some(ConfigChange::Nickname(s)),
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
-            Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::FrameDelayChanged(v) => Some(ConfigChange::FrameDelay(v)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
@@ -606,14 +603,6 @@ fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config
         .frame_delay
         .clamp(tango_pvp::battle::MIN_FRAME_DELAY, tango_pvp::battle::MAX_FRAME_DELAY);
     column![
-        labeled::<Message>(
-            t!(lang, "settings-matchmaking-endpoint"),
-            text_input("", &config.matchmaking_endpoint)
-                .on_input(Message::MatchmakingEndpointChanged)
-                .padding(STANDARD_PADDING)
-                .width(Length::Fixed(480.0))
-                .style(widgets::chunky_text_input),
-        ),
         labeled::<Message>(
             t!(lang, "settings-netplay-frame-delay"),
             row![

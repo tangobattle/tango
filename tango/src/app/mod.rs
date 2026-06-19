@@ -17,7 +17,7 @@ use crate::session::ActiveSession;
 use crate::theme::theme_for;
 use crate::{
     anim, audio, config, discord, game, i18n, identity, input, loadout, lobby, net, netplay, patch, replays, rom,
-    save, selection, session, tabs, updater, widgets, INIT_LINK_CODE,
+    save, selection, session, tabs, updater, widgets,
 };
 use i18n::t;
 use iced::widget::container;
@@ -68,7 +68,7 @@ fn settings_from_proposal(p: &tango_lobby::MatchProposal, nickname: String) -> c
 
 /// Format lobby `IceServer`s into the inline-credential URL strings
 /// libdatachannel expects (TURN-over-TCP is dropped — libdatachannel rejects it).
-fn ice_to_strings(servers: &[tango_lobby::IceServer]) -> Vec<String> {
+fn ice_to_strings(servers: &[tango_lobby::IceServer], use_relay: Option<bool>) -> Vec<String> {
     servers
         .iter()
         .flat_map(|s| {
@@ -79,7 +79,12 @@ fn ice_to_strings(servers: &[tango_lobby::IceServer]) -> Vec<String> {
                 .filter_map(move |url| {
                     let colon = url.find(':')?;
                     let (proto, rest) = (&url[..colon], &url[colon + 1..]);
+                    // libdatachannel rejects TURN-over-TCP; "Never relay" drops
+                    // the TURN servers entirely.
                     if url.ends_with("?transport=tcp") {
+                        return None;
+                    }
+                    if use_relay == Some(false) && (proto == "turn" || proto == "turns") {
                         return None;
                     }
                     Some(match (&username, &credential) {
@@ -177,12 +182,6 @@ pub struct App {
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
     netplay: netplay::State,
-    /// Persistent self-signed client identity, loaded once at startup
-    /// (see [`crate::identity`]). Cloned into each matchmaking
-    /// `Connect` so the lobby websocket presents it as the mTLS client
-    /// certificate. `None` if it couldn't be loaded/created — netplay
-    /// then dials without a client cert.
-    identity: Option<tango_signaling::ClientIdentity>,
 
     /// Presence connection to the lobby server (roster + challenges). Runs
     /// alongside the existing link-code netplay path; a failure to reach it is
@@ -398,23 +397,11 @@ impl App {
             updater.set_enabled(true);
         }
 
-        let mut play = tabs::play::State::default();
-        // CLI `Join <code>` (or Discord deep-link routed through
-        // the same channel) lands here — prefill the link code so
-        // the user can hit Fight straight away.
-        let init_link_code = INIT_LINK_CODE.get().and_then(|c| c.clone());
-        if let Some(code) = &init_link_code {
-            play.link_code = code.clone();
-        }
+        let play = tabs::play::State::default();
 
-        let identity = identity::load();
-        let lobby = lobby::State::new(
-            config.lobby_endpoint.clone(),
-            identity.as_ref().map(|id| tango_lobby::ClientIdentity {
-                cert_der: id.cert_der.clone(),
-                key_der: id.key_der.clone(),
-            }),
-        );
+        // Persistent self-signed identity, loaded once and handed to the lobby
+        // client to present as its mTLS client certificate.
+        let lobby = lobby::State::new(config.lobby_endpoint.clone(), identity::load());
 
         let mut app = Self {
             config,
@@ -431,7 +418,6 @@ impl App {
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
-            identity,
             lobby,
             discord: discord::Client::new(),
             session_started_at: None,
@@ -535,7 +521,8 @@ impl App {
         } else {
             crate::net::lobby_rtc::LobbyRole::Answerer
         };
-        let ice_servers = ice_to_strings(&start.ice_servers);
+        let use_relay = self.config.relay_mode.use_relay();
+        let ice_servers = ice_to_strings(&start.ice_servers, use_relay);
         let match_type = start
             .local_proposal
             .match_type
@@ -548,6 +535,7 @@ impl App {
             .connect_lobby_match(
                 role,
                 ice_servers,
+                use_relay,
                 handle,
                 start.peer,
                 start.local_compressed,
@@ -973,7 +961,6 @@ impl App {
         matches!(
             self.netplay.phase,
             netplay::Phase::Connecting { .. }
-                | netplay::Phase::Negotiating { .. }
                 | netplay::Phase::Lobby { .. }
                 | netplay::Phase::Failed { .. }
         ) || self.netplay.handoff_pending()
@@ -1021,10 +1008,6 @@ impl App {
         let lobby_after = self.lobby_on_screen();
         if let (Some(snap), false) = (lobby_live, lobby_after) {
             self.lobby_exit_snapshot = Some(snap);
-            // A Fight-generated code never touched the input on the way in
-            // (it debuted in the lobby band) — drop it in now that the
-            // strip is coming back, so a retry re-hosts the same code.
-            self.play.restore_generated_link_code();
         }
         self.lobby_swap.set(lobby_after, now);
         // A different family swaps the entire bottom of the tab —
@@ -1316,7 +1299,7 @@ impl App {
         let waiting_pulse_on_screen = !self.session.is_active()
             && self.tab == Tab::Play
             && match &self.netplay.phase {
-                netplay::Phase::Connecting { .. } | netplay::Phase::Negotiating { .. } => true,
+                netplay::Phase::Connecting { .. } => true,
                 // The lobby's "waiting for opponent data" handshake
                 // line pulses too, until both sides' settings land.
                 netplay::Phase::Lobby { .. } => {
@@ -1339,17 +1322,6 @@ impl App {
             (Some(_), None) => self.session_started_at = Some(std::time::SystemTime::now()),
             (None, Some(_)) => self.session_started_at = None,
             _ => {}
-        }
-
-        // Discord "Join Game" handoff: the peer accepted our
-        // invite, Discord handed us their link code as the join
-        // secret. Drop it into the play tab + jump to it.
-        if self.discord.has_current_join_secret() {
-            if let Some(secret) = self.discord.take_current_join_secret() {
-                log::info!("discord: accepted join with link code");
-                self.play.link_code = secret;
-                self.tab = Tab::Play;
-            }
         }
 
         let activity = self.derive_discord_activity();
@@ -1387,7 +1359,7 @@ impl App {
 
         match &self.netplay.phase {
             netplay::Phase::Lobby { ident } => discord::make_in_lobby_activity(ident, lang, game_info),
-            netplay::Phase::Connecting { ident, .. } | netplay::Phase::Negotiating { ident } => {
+            netplay::Phase::Connecting { ident, .. } => {
                 discord::make_looking_activity(ident, lang, game_info)
             }
             netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),

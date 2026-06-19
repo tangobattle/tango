@@ -93,8 +93,8 @@ pub struct PvpSession {
     /// which is how the UI retires the instrument panel (see [`Self::latency`]).
     latency_counter: Arc<tokio::sync::Mutex<Option<crate::net::LatencyCounter>>>,
     /// The peer connection, kept alive so it outlives the data
-    /// channels. Both transports (matchmaking WebRTC and the
-    /// signaling-free direct link) bring one up.
+    /// channels. Both transports (the lobby-relayed and signaling-free
+    /// direct paths) bring one up.
     _peer_conn: datachannel_wrapper::PeerConnection,
     /// Reliable lobby channel's sender, parked for the match's lifetime. Idle
     /// in-match (all traffic is on the unreliable channel), but held open so

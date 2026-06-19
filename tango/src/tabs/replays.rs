@@ -59,7 +59,7 @@ pub struct ReplaysState {
     /// Filter replays by ROM family (e.g. "bn6"). `None` = "All
     /// games". Intentionally NOT keyed on variant — "BN6" should
     /// pull both Gregar and Falzar replays since the family is
-    /// the matchmaking unit.
+    /// the unit opponents are paired on.
     pub game_filter: Option<String>,
     /// Substring (case-insensitive) match against the remote
     /// side's nickname. Empty = no filter.

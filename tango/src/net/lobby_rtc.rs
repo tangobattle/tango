@@ -33,16 +33,23 @@ pub enum LobbyRole {
 pub async fn bring_up(
     ice_servers: Vec<String>,
     role: LobbyRole,
+    use_relay: Option<bool>,
     send_local_sdp: impl FnOnce(String) + Send + 'static,
     mut sdp_rx: tokio::sync::mpsc::Receiver<String>,
 ) -> std::io::Result<DirectChannels> {
-    let (mut pc, mut events) = PeerConnection::new(RtcConfig {
+    let mut config = RtcConfig {
         ice_servers,
         // We drive the offer/answer ourselves, after both channels exist (real
         // DTLS fingerprints are exchanged, so verification stays on).
         disable_auto_negotiation: true,
         ..Default::default()
-    })?;
+    };
+    // Relay-only when the user picked "Always". ("Never" is enforced upstream by
+    // dropping the TURN servers from `ice_servers` before they reach us.)
+    if use_relay == Some(true) {
+        config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
+    }
+    let (mut pc, mut events) = PeerConnection::new(config)?;
 
     // Pre-negotiate both channels on their fixed stream ids before any SDP, so
     // they ride the initial association (same as the signaling + direct paths).

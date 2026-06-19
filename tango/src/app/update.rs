@@ -42,39 +42,6 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
-            E::Connect { ident, copy_code } => {
-                let msg = match ident {
-                    netplay::LinkIdent::Matchmaking(link_code) => netplay::Message::Connect {
-                        link_code,
-                        endpoint: self.config.matchmaking_endpoint.clone(),
-                        use_relay: self.config.relay_mode.use_relay(),
-                        identity: self.identity.clone(),
-                    },
-                    netplay::LinkIdent::Direct(role) => netplay::Message::ConnectDirect { role },
-                    // Lobby matches are started from the roster sidebar
-                    // (handle_lobby_event), never the link-code Connect button.
-                    netplay::LinkIdent::Lobby => return iced::Task::none(),
-                };
-                let task = self.netplay.update(msg).map(Message::Netplay);
-                // Connect wipes lobby state — re-apply the
-                // default-MT policy now so the picker shows the
-                // right value from the moment the waiting screen
-                // appears, instead of flickering to Triple later
-                // when the first Lobby-phase resend runs.
-                self.apply_default_match_type();
-                // Seed the blind-setup checkbox from the user's last
-                // choice (cancel_and_renew reset it to false). Only
-                // here, not in the per-resend default pass, so a
-                // mid-lobby toggle still sticks.
-                self.netplay.lobby.blind_setup = self.config.last_blind_setup;
-                match copy_code {
-                    // Fight auto-generated this code — put it straight on
-                    // the clipboard so the host can paste it to their
-                    // opponent right away.
-                    Some(code) => iced::Task::batch([iced::clipboard::write(code), task]),
-                    None => task,
-                }
-            }
             E::Netplay(m) => {
                 // An explicit user pick of match type pre-Lobby
                 // would otherwise be clobbered the first time
@@ -693,7 +660,6 @@ impl App {
             C::Language(l) => self.config.language = l,
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
             C::StreamerMode(b) => self.config.streamer_mode = b,
-            C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::RelayMode(m) => self.config.relay_mode = m,
             C::FrameDelay(v) => {
                 self.config.frame_delay =

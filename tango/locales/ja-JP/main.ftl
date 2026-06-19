@@ -57,16 +57,11 @@ play-patch-toggle = パッチを使用…
 play-version-placeholder = —
 
 # Play bottom strip
-play-link-code = リンクコード（空欄でランダム生成）
-play-link-code-random = ランダムリンクコード
 play-play = プレイ
-play-fight = 対戦
 play-cancel = キャンセル
-play-status-idle = ネットプレイするにはリンクコードを入力、空欄で一人用モードになります。
 play-status-connecting = マッチメイキングサーバーに接続中…
 play-status-direct-connecting = 対戦相手に接続中…
 play-status-waiting-opponent = 対戦相手を待っています…
-play-status-negotiating = ネゴシエーション中…
 play-status-failed = 接続失敗: { $error }
 play-status-peer-disconnected = 相手が退出しました。
 play-status-negotiate-expected-hello = 相手から想定したハンドシェイクが届きませんでした。

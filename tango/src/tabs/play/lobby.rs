@@ -41,10 +41,6 @@ const SETTING_GAP: f32 = 4.0;
 const CONTROL_SLOT: f32 = 36.0;
 const COMMAND_BAR_CONTENT: f32 = SETTING_CAPTION_LINE + SETTING_GAP + CONTROL_SLOT;
 
-/// Copy-feedback key for the link-code copy button — the Play tab's
-/// CopyText handler fires this once the code lands on the clipboard.
-pub(super) const LINK_CODE_FLASH_KEY: &str = "lobby-link-code";
-
 /// Everything the lobby needs to paint one frame. Settings round-trip
 /// asynchronously, so either of `state.local` / `state.remote` may be
 /// `None` for a tick.
@@ -101,10 +97,9 @@ impl<'a> Lobby<'a> {
     fn status(&self) -> Status<'a> {
         match self.phase {
             Phase::Failed { error } => Status::Failed { error },
-            // Matchmaking codes hit the server first ("Connecting to
-            // matchmaking server…"); direct `/connect` codes dial
-            // straight at the peer, so the matchmaking copy is wrong —
-            // the status carries the distinction.
+            // A direct `/connect` dials straight at the peer; a lobby
+            // challenge's offerer brings RTC up through the lobby relay.
+            // Different copy, so the status carries the distinction.
             Phase::Connecting {
                 ident,
                 waiting_for_opponent: false,
@@ -115,7 +110,6 @@ impl<'a> Lobby<'a> {
                 waiting_for_opponent: true,
                 ..
             } => Status::WaitingForOpponent,
-            Phase::Negotiating { .. } => Status::Negotiating,
             _ => match (self.state.local.as_ref(), self.state.remote.as_ref()) {
                 (Some(l), Some(r)) => {
                     let patches = self.scanners.patches.read();
@@ -181,21 +175,16 @@ impl<'a> Lobby<'a> {
 
     /// Small line under the status, in one of two visually distinct
     /// states so a glance tells which one it's in. While dialing
-    /// (Connecting / Negotiating) it's the *identifier*: a link glyph
-    /// + the matchmaking code (or direct host / target), with a copy
-    /// button so the code can be handed to the opponent straight from
-    /// here. Once the connection is established it's the *wire*: an
-    /// activity glyph + the live ping. Streamer privacy mode masks
-    /// the code on screen — so a viewer can't scrape it and crash the
-    /// lobby — but the copy button still copies the real one, so
-    /// inviting someone doesn't require leaving streamer mode.
-    /// (Direct host / target stay fully hidden in streamer mode: they
-    /// can carry an address, and you typed them yourself anyway.) A
+    /// (Connecting) it's the *identifier*: a link glyph + the direct
+    /// host / target, or "connecting via lobby". Once the connection is
+    /// established it's the *wire*: an activity glyph + the live ping.
+    /// The direct host / target stay fully hidden in streamer mode —
+    /// they can carry an address, and you typed them yourself anyway. A
     /// failed lobby gets no line at all — the status line carries the
     /// failure.
     fn connection_line(&self) -> Option<Element<'a, Message>> {
         let lang = self.lang;
-        let (glyph, label, copy): (Icon, String, Option<String>) = match self.phase {
+        let (glyph, label): (Icon, String) = match self.phase {
             Phase::Lobby { .. } => {
                 let d = self.state.latency_counter.latest()?;
                 let ms = d.as_millis() as i64;
@@ -206,53 +195,29 @@ impl<'a> Lobby<'a> {
                 };
                 // Same glyph as the telemetry panel's ping metric, so
                 // "network latency" looks like one thing everywhere.
-                (Icon::ChevronsLeftRightEllipsis, label, None)
+                (Icon::ChevronsLeftRightEllipsis, label)
             }
-            Phase::Connecting { ident, .. } | Phase::Negotiating { ident } => {
+            Phase::Connecting { ident, .. } => {
                 use netplay::{DirectRole, LinkIdent};
                 match ident {
-                    LinkIdent::Matchmaking(code) => {
-                        let shown = if self.streamer_mode {
-                            t!(lang, "lobby-link-code", code = "••••••".to_string())
-                        } else {
-                            t!(lang, "lobby-link-code", code = code.clone())
-                        };
-                        (Icon::Link, shown, Some(code.clone()))
-                    }
                     LinkIdent::Direct(_) if self.streamer_mode => return None,
                     LinkIdent::Direct(DirectRole::Host { port }) => {
-                        (Icon::Link, t!(lang, "lobby-direct-host", port = port.to_string()), None)
+                        (Icon::Link, t!(lang, "lobby-direct-host", port = port.to_string()))
                     }
-                    LinkIdent::Direct(DirectRole::Connect { addr }) => (
-                        Icon::Link,
-                        t!(lang, "lobby-direct-connect", target = addr.clone()),
-                        None,
-                    ),
-                    LinkIdent::Lobby => (Icon::Link, t!(lang, "lobby-connecting"), None),
+                    LinkIdent::Direct(DirectRole::Connect { addr }) => {
+                        (Icon::Link, t!(lang, "lobby-direct-connect", target = addr.clone()))
+                    }
+                    LinkIdent::Lobby => (Icon::Link, t!(lang, "lobby-connecting")),
                 }
             }
             _ => return None,
         };
-        let mut line = row![
+        let line = row![
             glyph.widget().size(TEXT_CAPTION).style(widgets::muted_text_style),
             text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
-        if let Some(code) = copy {
-            // Micro copy button, caption-sized so the subtitle stays
-            // a subtitle. Flips to a "Copied!" check for a moment
-            // after the copy lands.
-            line = line.push(widgets::copy_icon_button(
-                LINK_CODE_FLASH_KEY,
-                Icon::ClipboardCopy,
-                TEXT_CAPTION,
-                t!(lang, "save-copy"),
-                t!(lang, "copied"),
-                Some(Message::CopyText(code)),
-                [2.0, 5.0],
-            ));
-        }
         Some(line.into())
     }
 
@@ -313,7 +278,6 @@ impl<'a> Lobby<'a> {
             Status::Connecting { direct: true } => in_flight(t!(lang, "play-status-direct-connecting")),
             Status::Connecting { direct: false } => in_flight(t!(lang, "play-status-connecting")),
             Status::WaitingForOpponent => in_flight(t!(lang, "play-status-waiting-opponent")),
-            Status::Negotiating => in_flight(t!(lang, "play-status-negotiating")),
             Status::Handshake => in_flight(t!(lang, "lobby-handshake")),
             Status::Verdict(verdict) => {
                 use netplay::compat::Verdict;
@@ -655,13 +619,12 @@ enum Status<'a> {
         error: &'a str,
     },
     /// Dialing out. `direct` = a `/connect` dial straight at the peer,
-    /// as opposed to the matchmaking server.
+    /// as opposed to a lobby-relayed challenge.
     Connecting {
         direct: bool,
     },
-    /// Connected to matchmaking; the peer hasn't shown up yet.
+    /// Direct host waiting for the dialer to show up.
     WaitingForOpponent,
-    Negotiating,
     /// In the lobby, but settings haven't round-tripped both ways yet.
     Handshake,
     /// Both sides' settings on hand — the compat verdict between them.

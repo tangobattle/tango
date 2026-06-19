@@ -29,8 +29,7 @@ const MAX_RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_sec
 
 /// The caller's persistent client identity, presented as a TLS client
 /// certificate (mTLS) so the server can derive a stable friend code. Both
-/// fields are DER. Same shape as `tango_signaling::ClientIdentity`; kept
-/// independent so this crate has no dependency on the signaling client.
+/// fields are DER.
 #[derive(Clone)]
 pub struct ClientIdentity {
     pub cert_der: Vec<u8>,

@@ -55,7 +55,7 @@ pub fn make_looking_activity(
 ) -> rpc::activity::Activity {
     rpc::activity::Activity {
         state: Some(i18n::t!(lang, "discord-presence-looking")),
-        // Only matchmaking codes carry a join secret — direct-TCP
+        // Neither transport carries a join secret — direct and lobby
         // sessions aren't joinable via Discord deep-link.
         secrets: ident.discord_join_secret().map(|s| rpc::activity::Secrets {
             join: Some(s.to_string()),
@@ -69,15 +69,12 @@ pub fn make_looking_activity(
     }
 }
 
-/// Rich-presence party identifier. Matchmaking codes group users
-/// by code (so two people on the same link share a party); direct
-/// sessions have no cross-instance identity, so we return `None`
-/// and Discord drops the grouping — important not just for
-/// privacy but because a synthetic placeholder like `party:direct`
-/// would collide with a matchmaking code of literally `"direct"`.
+/// Rich-presence party identifier. Neither transport has a stable
+/// cross-instance identity to group by (direct sessions are
+/// machine-local; lobby challenges are per-peer and presence-driven),
+/// so we return `None` and Discord drops the grouping.
 fn party_id(ident: &crate::netplay::LinkIdent) -> Option<String> {
     match ident {
-        crate::netplay::LinkIdent::Matchmaking(code) => Some(format!("party:{code}")),
         crate::netplay::LinkIdent::Direct(_) | crate::netplay::LinkIdent::Lobby => None,
     }
 }
@@ -142,20 +139,17 @@ pub fn make_in_progress_activity(
 pub struct Client {
     rpc: std::sync::Arc<tokio::sync::Mutex<Option<rpc::Client>>>,
     current_activity: std::sync::Arc<tokio::sync::Mutex<Option<rpc::activity::Activity>>>,
-    current_join_secret: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl Client {
     pub fn new() -> Self {
         let current_activity: std::sync::Arc<tokio::sync::Mutex<Option<rpc::activity::Activity>>> =
             std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        let current_join_secret = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let rpc = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
         {
             let rpc = rpc.clone();
             let current_activity = current_activity.clone();
-            let current_join_secret = current_join_secret.clone();
 
             tokio::task::spawn(async move {
                 let mut last_err_summary = None;
@@ -210,22 +204,13 @@ impl Client {
                                     else => { break 'l; }
                                 };
 
-                                let Some((event, v)) = event else {
+                                let Some(_) = event else {
                                     break;
                                 };
-
-                                // Only ActivityJoin events matter for now.
-                                if event != rpc::Event::ActivityJoin {
-                                    continue;
-                                }
-
-                                let Some(secret) =
-                                    v.and_then(|v| v.get("secret").and_then(|v| v.as_str().map(|v| v.to_string())))
-                                else {
-                                    continue;
-                                };
-
-                                *current_join_secret.lock().await = Some(secret);
+                                // We subscribe to ActivityJoin to keep the RPC
+                                // event stream flowing, but no longer consume
+                                // its join secret — link-code joins went away
+                                // with matchmaking. Drain and ignore.
                             }
 
                             // Push the latest activity to the RPC.
@@ -255,11 +240,7 @@ impl Client {
             });
         }
 
-        Self {
-            rpc,
-            current_activity,
-            current_join_secret,
-        }
+        Self { rpc, current_activity }
     }
 
     pub fn set_current_activity(&self, activity: Option<rpc::activity::Activity>) {
@@ -283,11 +264,4 @@ impl Client {
         }
     }
 
-    pub fn has_current_join_secret(&self) -> bool {
-        self.current_join_secret.blocking_lock().is_some()
-    }
-
-    pub fn take_current_join_secret(&self) -> Option<String> {
-        self.current_join_secret.blocking_lock().take()
-    }
 }

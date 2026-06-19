@@ -31,12 +31,6 @@ pub enum Message {
     Loadout(loadout::Message),
     SaveViewAction(save_view::Action),
 
-    LinkCodeChanged(String),
-    /// Copy plain text to the clipboard — the lobby's copy-link-code
-    /// button. Carries the real code even when streamer mode masks it
-    /// on screen.
-    CopyText(String),
-    FightPressed,
     Disconnect,
     /// Lobby UI: user picked a different match type. App routes
     /// this through netplay::Message::SetMatchType so the resend
@@ -92,16 +86,6 @@ pub enum Message {
 // ---------- Play tab state ----------
 
 pub struct State {
-    pub link_code: String,
-    /// A link code Fight auto-generated for an empty input, parked here
-    /// instead of `link_code` while the lobby is up: the outgoing strip
-    /// renders for the first half of the band morph, so writing the input
-    /// immediately would flash the code on screen before the lobby's
-    /// connection line (which masks it in streamer mode) gets to debut it.
-    /// [`restore_generated_link_code`](Self::restore_generated_link_code)
-    /// moves it into the input when the lobby band leaves, so a retry
-    /// re-hosts the same code.
-    pending_generated_code: Option<String>,
     /// Persistent state for the embedded save view (active tab,
     /// folder grouping). Apply incoming `SaveViewAction`s via
     /// [`save_view::State::apply`].
@@ -171,8 +155,6 @@ pub enum SaveAction {
 impl Default for State {
     fn default() -> Self {
         Self {
-            link_code: String::new(),
-            pending_generated_code: None,
             save_view: save_view::State::new(),
             save_action: SaveAction::None,
             last_error: None,
@@ -280,16 +262,6 @@ pub enum AutoBattleDataEdit {
 /// as an `Effect` for the caller to interpret.
 #[derive(Debug)]
 pub enum Effect {
-    /// Kick off netplay. The `LinkIdent` variant tells the app
-    /// handler whether to route via matchmaking signaling or direct
-    /// TCP transport. `copy_code` is `Some` when Fight auto-generated
-    /// the code for an empty input — the App puts it straight on the
-    /// clipboard so the host can paste it to their opponent without
-    /// hunting for the lobby's copy button.
-    Connect {
-        ident: crate::netplay::LinkIdent,
-        copy_code: Option<String>,
-    },
     /// Forward verbatim to the netplay subsystem.
     Netplay(crate::netplay::Message),
     /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
@@ -377,19 +349,6 @@ impl State {
         effect
     }
 
-    /// Move a Fight-generated link code into the input. The App calls this
-    /// the moment the lobby band leaves (failure, cancel, or handoff into a
-    /// match), so the returning strip shows what was hosted and a retry
-    /// re-hosts the same code — without the code ever rendering in the
-    /// input on the way *into* the lobby.
-    pub fn restore_generated_link_code(&mut self) {
-        if let Some(code) = self.pending_generated_code.take() {
-            if self.link_code.trim().is_empty() {
-                self.link_code = code;
-            }
-        }
-    }
-
     fn update_inner(
         &mut self,
         msg: Message,
@@ -402,65 +361,6 @@ impl State {
             // Routed to the shared Loadout at App level before this
             // dispatch is reached.
             Message::Loadout(_) => None,
-            Message::LinkCodeChanged(s) => {
-                // Direct-TCP commands (/host, /connect) need slashes,
-                // spaces, dots, colons, brackets — pass them through.
-                // Link codes are lowercased as typed: matchmaking is
-                // case-sensitive, so this keeps a code read aloud or
-                // retyped from a screenshot from missing its lobby.
-                let filtered: String = if s.starts_with('/') {
-                    s
-                } else {
-                    s.chars()
-                        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-                        .map(|c| c.to_ascii_lowercase())
-                        .collect()
-                };
-                self.link_code = filtered.chars().take(100).collect();
-                None
-            }
-            Message::CopyText(s) => {
-                // The lobby's copy-link-code button is the only
-                // sender — light its "Copied!" flash as the text
-                // heads for the clipboard.
-                crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
-                Some(Effect::CopyText(s))
-            }
-            Message::FightPressed => {
-                // An empty bar means "just get me a lobby": generate a
-                // fresh random adjective-word-noun code and connect with
-                // it directly. The code deliberately skips the input —
-                // the outgoing strip still renders through the first
-                // half of the band morph, so the lobby's connection
-                // line (which masks in streamer mode) should be the
-                // first place it shows. It rides the Connect effect
-                // onto the clipboard, and `pending_generated_code`
-                // refills the input once the lobby band leaves.
-                let generated = self
-                    .link_code
-                    .trim()
-                    .is_empty()
-                    .then(|| crate::randomcode::generate(&config.language));
-                // The Fight CTA is gated at the view layer to require
-                // an empty or submittable link code, so reaching this
-                // handler with a malformed one is a stale message +
-                // safe to ignore.
-                let ident = resolve_link_ident(generated.as_deref().unwrap_or(self.link_code.trim()))?;
-                if let Some(code) = &generated {
-                    self.pending_generated_code = Some(code.clone());
-                    // Light the lobby copy button's "Copied!" flash as
-                    // the band rises — the cue that the code is already
-                    // in hand.
-                    crate::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
-                }
-                // Clear any leftover after-the-fact error from a prior
-                // attempt — the new attempt's outcome will replace it.
-                self.last_error = None;
-                Some(Effect::Connect {
-                    ident,
-                    copy_code: generated,
-                })
-            }
             Message::Noop => None,
             Message::Disconnect => Some(Effect::Netplay(crate::netplay::Message::Disconnect)),
             Message::SetMatchType(mt) => Some(Effect::Netplay(crate::netplay::Message::SetMatchType(mt))),
@@ -915,23 +815,21 @@ impl State {
             col = col.push(widgets::error_banner(lang, err, Message::DismissError));
         }
         col = col.push(inner);
-        // While a netplay attempt is in flight (Connecting /
-        // Negotiating / Lobby, sticky Failed, handoff) the lobby IS
-        // the bottom band — it carries the versus cards, match
-        // settings, and the verdict/cancel/ready chrome, while the
-        // save view above stays visible. Otherwise the normal bottom
-        // strip handles the link code + Fight CTA.
+        // While a netplay attempt is in flight (Connecting / Lobby,
+        // sticky Failed, handoff) the lobby IS the bottom band — it
+        // carries the versus cards, match settings, and the
+        // verdict/cancel/ready chrome, while the save view above stays
+        // visible. When idle there's no bottom band at all: the save
+        // view fills the space and netplay is started from the roster
+        // sidebar.
         //
-        // The swap between them is a two-phase morph on
-        // `bottom_swap`'s unified timeline: the outgoing band sinks
-        // while dissolving into the page surface, then the incoming
-        // one rises out of it — so the code strip reads as turning
-        // into the lobby and back, rather than one vanishing and the
-        // other arriving. The bottom HUD scanline is grouped into the
-        // moving band so it rides the motion instead of staying
-        // pinned above it.
+        // The band slides in and out on `bottom_swap`'s timeline,
+        // rising out of the page surface on the way in and sinking
+        // back into it on the way out. The bottom HUD scanline is
+        // grouped into the moving band so it rides the motion instead
+        // of staying pinned above it.
         let (render_lobby, swap) = crate::anim::swap_phase(bottom_swap, now);
-        let bottom: Element<'a, Message> = if render_lobby {
+        if render_lobby {
             // While the band is on its way OUT, the live phase has
             // already gone Idle (and the lobby may be wiped) — use
             // the snapshot the App froze on the band's last live
@@ -951,7 +849,7 @@ impl State {
             // the wire, so the visible info during the handshake
             // exactly matches what gets sent.
             let local_fallback = loadout.make_local_settings(config, netplay_lobby, scanners);
-            lobby::Lobby {
+            let band = lobby::Lobby {
                 lang,
                 state: band_lobby,
                 phase: band_phase,
@@ -963,18 +861,16 @@ impl State {
                 handoff_pending: netplay_handoff_pending,
                 frame_delay: config.frame_delay,
             }
-            .view()
-        } else {
-            self.bottom_strip(lang, streamer_mode)
-        };
-        let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
-        if let Some(phase) = swap {
-            let dist = if render_lobby { 48.0 } else { 24.0 };
-            group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, dist), |theme: &iced::Theme| {
-                theme.palette().background
-            });
+            .view();
+            let mut group: Element<'a, Message> =
+                column![widgets::hud_scanline_bottom(), band].width(Fill).into();
+            if let Some(phase) = swap {
+                group = crate::anim::swap_transform(group, phase, iced::Vector::new(0.0, 48.0), |theme: &iced::Theme| {
+                    theme.palette().background
+                });
+            }
+            col = col.push(group);
         }
-        col = col.push(group);
         col.into()
     }
 
@@ -1310,73 +1206,6 @@ impl State {
         .map(Message::SaveViewAction)
     }
 
-    /// The idle bottom band: link-code input + Fight CTA. The lobby
-    /// band replaces this strip for every in-flight netplay phase, so
-    /// this strip is pure "enter a link code and fight" —
-    /// singleplayer lives in the save view's Play button. An empty
-    /// input is fair game: Fight generates a random code on the spot
-    /// (see the FightPressed handler) which never renders here on the
-    /// way in — it debuts in the lobby's connection line and only
-    /// lands in this input when the lobby band leaves. In streamer
-    /// mode the input renders secure (masked) — typed, pasted, and
-    /// restored-generated codes are all scrapeable off a stream
-    /// otherwise.
-    fn bottom_strip<'a>(&'a self, lang: &'a LanguageIdentifier, streamer_mode: bool) -> Element<'a, Message> {
-        const BOTTOM_SIZE: f32 = 15.0;
-        const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
-        const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
-        let trimmed = self.link_code.trim();
-        let can_submit = trimmed.is_empty() || resolve_link_ident(trimmed).is_some();
-        let fight_button: Element<'a, Message> = {
-            // Same chrome as the lobby's Ready button — both are
-            // "commit to a match" CTAs. ready_button_style for
-            // ReadyPalette::Idle falls back to neutral when the
-            // button is disabled, so the empty-link-code case
-            // renders as a plain greyed-out pill without a
-            // separate branch here.
-            let label = row![
-                Icon::Swords.widget().size(BOTTOM_SIZE),
-                text(t!(lang, "play-fight")).size(BOTTOM_SIZE),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center);
-            let mut btn = button(label)
-                .padding(BOTTOM_CTA_PAD)
-                .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-                .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
-            if can_submit {
-                btn = btn.on_press(Message::FightPressed);
-            }
-            btn.into()
-        };
-        // Link-code input fills all the slack to the left of the
-        // Fight CTA. text_input doesn't expose a `.height()` method,
-        // so we wrap it in a fixed-height container to match the
-        // surrounding controls.
-        let link_input: Element<'a, Message> = container(
-            text_input(&t!(lang, "play-link-code"), &self.link_code)
-                .secure(streamer_mode)
-                .on_input(Message::LinkCodeChanged)
-                .on_submit(Message::FightPressed)
-                .size(BOTTOM_SIZE)
-                .padding(BOTTOM_PAD)
-                .width(Length::Fill)
-                .style(widgets::chunky_text_input),
-        )
-        .height(Length::Fixed(crate::style::BAR_CONTROL_HEIGHT))
-        .width(Length::Fill)
-        .into();
-
-        container(
-            row![link_input, fight_button]
-                .spacing(10)
-                .align_y(Alignment::Center)
-                .padding([10, 8]),
-        )
-        .width(Fill)
-        .style(widgets::hud_bar)
-        .into()
-    }
 }
 
 // ---------- Save-action form helpers ----------
@@ -1854,33 +1683,22 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
     }
 }
 
-// ---------- Link-code parsing ----------
+// ---------- Direct-command parsing ----------
 
-/// Resolve a trimmed link-code input into a submittable
-/// [`crate::netplay::LinkIdent`], or `None` if the input isn't
-/// submittable (empty, or a malformed `/`-prefixed direct command).
-fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
-    if input.is_empty() {
-        return None;
-    }
-    if input.starts_with('/') {
-        parse_direct_command(input).map(crate::netplay::LinkIdent::Direct)
-    } else {
-        Some(crate::netplay::LinkIdent::Matchmaking(input.to_string()))
-    }
-}
-
-/// Recognise the direct-TCP link-code commands the user can type
-/// in place of a matchmaking code:
+/// Recognise the direct-TCP `/host`·`/connect` commands:
 ///
 /// - `/host`            — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
 /// - `/host <port>`     — listen on the given port
 /// - `/connect <addr>`  — dial `<addr>`, appending the default
 ///                        port if the user didn't specify one
+///
+/// Dormant: internet play now goes through the lobby roster, so there's
+/// no UI that feeds this yet. Kept as the parsing primitive for a future
+/// re-expose of the signaling-free direct path (see [`crate::net::direct_rtc`]
+/// and [`crate::netplay::Netplay::connect_direct`]).
+#[allow(dead_code)]
 fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
-    // The leading slash is the disambiguator — without it, any
-    // input is a matchmaking link code (which can legitimately
-    // contain letters, digits, and the random-code separators).
+    // The leading slash is the disambiguator.
     if !input.starts_with('/') {
         return None;
     }

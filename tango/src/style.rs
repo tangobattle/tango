@@ -41,12 +41,6 @@ pub const CONTROL_PADDING: [f32; 2] = [5.0, 10.0];
 /// List rows and whole-row buttons (library entries, zebra rows).
 pub const ROW_PADDING: [f32; 2] = [6.0, 10.0];
 
-/// Pinned inner-control height for the play-tab link-code bar
-/// and the session media-controls bar — every button / picker
-/// in both strips is sized to this so the bars come out the
-/// same height naturally (no outer container pinning needed).
-pub const BAR_CONTROL_HEIGHT: f32 = 40.0;
-
 /// Standard internal padding for [`crate::widgets::pane`] containers.
 /// Use this on `.padding(...)` so every demarcation pane has the same
 /// gap between its edge and its content.
